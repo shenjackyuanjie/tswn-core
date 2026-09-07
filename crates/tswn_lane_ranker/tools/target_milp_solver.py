@@ -197,7 +197,7 @@ def _sum_constrained_ridge(
     except np.linalg.LinAlgError:
         solution = np.linalg.lstsq(system, target, rcond=1e-12)[0]
     fitted = anchor + solution[:column_count]
-    # Remove the last few ulps of equality-constraint drift.
+    # 消除等式约束中最后几个 ulp 的漂移。
     fitted -= (float(np.sum(fitted)) - float(np.sum(anchor))) / column_count
     return fitted
 
@@ -308,7 +308,7 @@ def _cross_validated_stable_projection(
             "fitted": fitted_all,
         })
 
-    # The unmodified anchor is the limiting alpha=+infinity model.
+    # 未修改的锚点对应 alpha=+infinity 的极限模型。
     anchor_residual = rates @ anchor - target_signal
     anchor_fold_rmse = [
         float(np.sqrt(np.mean(anchor_residual[fold_id == fold] ** 2)))
@@ -476,9 +476,8 @@ def solve_merged_tail_compression(payload: dict[str, Any]) -> dict[str, Any]:
         final_deviation_l2_limit=baseline_final_deviation_l2,
         final_max_deviation_limit=baseline_final_max_deviation,
     )
-    # A selected ridge point should obey the physical signed-tail box as well.
-    # If numerical/path selection violates it, the proportional anchor is the
-    # deterministic safe fallback.
+    # 选定的岭点也应满足有符号尾部的物理边界。
+    # 若数值计算或路径选择违反该边界，则按比例锚点是确定性的安全回退方案。
     if float(np.max(np.abs(additions))) > tail_l1_weight + 1e-8:
         additions = baseline_additions.copy()
         status = "ok_proportional_box_fallback"
@@ -487,8 +486,7 @@ def solve_merged_tail_compression(payload: dict[str, Any]) -> dict[str, Any]:
 
     optimized = compression_metrics(rates, base, tail_signal, additions, score_denominator)
     if optimized["max_abs_diff"] > baseline["max_abs_diff"] + 1e-7:
-        # Do not accept a stable fit that makes the worst current-row replay
-        # worse than the proportional baseline.
+        # 不接受使当前行中最差重放结果劣于按比例基线的稳定拟合。
         additions = baseline_additions
         optimized = baseline.copy()
         status = "ok_proportional_fallback"
@@ -690,9 +688,8 @@ def _initial_support_and_locked(
             "count under account-uniqueness and merged-team cap constraints"
         )
 
-    # "Initial target AND player's Top3": compute each merged team's global
-    # C-Score Top3 once, intersect it with S0 once, and never recompute it after
-    # replacements.
+    # “初始目标 AND 玩家 Top3”：每个合并队伍的全局 C-Score Top3 只计算一次，
+    # 只与 S0 求一次交集，替换后绝不重新计算。
     by_owner: dict[str, list[int]] = {}
     for idx in player_top3_universe:
         by_owner.setdefault(owner_keys[idx], []).append(idx)
@@ -797,8 +794,8 @@ def _type_balanced_transport_anchor(
             0.08,
         )
         logits = -(receiver_dist / temperature) ** 2
-        # This is deliberately mild: type similarity remains the primary
-        # allocation rule, while higher C-Score wins near-ties.
+        # 此处特意设置得较弱：类型相似性仍是主要分配规则，
+        # 只有接近平局时才由较高的 C-Score 胜出。
         logits += 0.18 * receiver_score_z
         logits -= float(np.max(logits))
         receiver_profile_shares = np.exp(logits)
@@ -1077,9 +1074,8 @@ def _local_profile_pairs(
         normalized, means, support_array, support_array,
     )
     score_std = max(float(np.std(correct_scores[support_array], ddof=0)), 1e-6)
-    # The desired gap is deliberately small; the comparatively strong local
-    # pair penalty below is meant to establish direction, not manufacture a
-    # new rank-based weight scale.
+    # 期望差距特意设得很小；下方相对较强的局部配对惩罚用于确定方向，
+    # 而非构造新的基于排名的权重尺度。
     desired_scale = 0.08 * tail_l1_weight / max(1, len(support))
     pairs: dict[tuple[int, int], tuple[float, float]] = {}
     neighbor_count = min(4, max(0, len(support) - 1))
@@ -1139,7 +1135,7 @@ def _sum_constrained_quadratic_fit(
             support_rates, list(range(column_count)),
             correct_scores[np.asarray(support, dtype=int)], tail_l1_weight,
         ):
-            # Within one support matrix the local indices are 0..k-1.
+            # 同一支持矩阵内的局部索引为 0..k-1。
             graph_alpha = 6.0 * alpha * similarity
             system[i, i] += graph_alpha
             system[j, j] += graph_alpha
@@ -1270,10 +1266,9 @@ def _solve_affine_soft_weights(
         target = np.concatenate(targets)
         gram = design.T @ design
         rhs = design.T @ target
-        # The support is ordered by descending C-Score.  On the unlocked tail
-        # use two continuous priors: stay near the inherited anchor and prefer
-        # a small positive adjacent C-Score slope.  Neither is a hard order;
-        # matchup evidence may retain local inversions.
+        # 支持项按 C-Score 降序排列。对于未锁定的尾部，采用两个连续先验：
+        # 靠近继承锚点，并偏好较小的正相邻 C-Score 斜率。二者均非硬顺序；
+        # 对局证据可以保留局部逆序。
         tail_start = min(30, k)
         tail_count = k - tail_start
         tail_regularization_scale = (
@@ -1317,9 +1312,8 @@ def _solve_affine_soft_weights(
                 * tail_difference.T
                 @ np.full(tail_count - 1, desired_gap, dtype=float)
             )
-        # Golden=1 is a soft cohesion prior, not an exact equality.  Penalize
-        # deviations from the block mean while retaining only mass as a hard
-        # constraint, so matchup evidence may move individual unit rows.
+        # Golden=1 是软凝聚先验，而非精确相等约束。在只把总量保留为硬约束时，
+        # 惩罚偏离块均值的程度，因此对局证据仍可移动单个单位行。
         positions = list(equal_positions or ())
         if len(positions) > 1:
             cohesion = np.zeros((len(positions), k), dtype=float)
@@ -1395,9 +1389,8 @@ def _affine_soft_structural_prior(
     score_curve = (
         ordered_scores - float(np.mean(ordered_scores))
     ) / score_range
-    # C-Score is a soft prior only.  Across the full board its contribution is
-    # deliberately mild; the retained matchup-type signal may locally reverse
-    # the order when the response columns justify it.
+    # C-Score 仅为软先验。在整个面板中其贡献特意设置得较弱；
+    # 若响应列能够证明合理，保留的对局类型信号可以局部颠倒顺序。
     strength_preference_range = 0.15 * max(abs(mean_weight), 1e-6)
     strength_prior = mean_weight + strength_preference_range * score_curve
     type_signal_retention = 0.35
@@ -1674,8 +1667,7 @@ def _locked_big_target_structural_prior(
             "seed_mass_partition_rule": seed_mass_partition_rule,
         }
 
-    # Remove locked mass from the transport universe: it is already represented
-    # exactly and must not be redistributed onto the new rows.
+    # 从运输空间中移除锁定总量：它已被精确表示，不得重新分配至新行。
     transport_weights = big_weights.copy()
     if locked_indices.size:
         transport_weights[locked_indices] = 0.0
@@ -1990,10 +1982,8 @@ def _select_big_target_support_from_locked(
                     all_distances[:, pos],
                 )
                 support = current_support + [idx]
-                # Cheaply screen every legal branch first.  The front-prefix
-                # projection is then evaluated on a bounded shortlist below;
-                # invoking its constrained least-squares solve on thousands
-                # of obviously inferior branches would waste calibration CPU.
+                # 先低成本筛选每条合法分支。随后仅在下方受限候选列表上评估前缀投影；
+                # 对数千条明显较差的分支调用其受约束最小二乘求解会浪费校准 CPU。
                 metrics = provisional_metrics(
                     support, project_priority=False,
                 )
@@ -2324,11 +2314,10 @@ def _evaluate_inherited_support(
             pos for pos, idx in enumerate(ordered_support_for_prior)
             if int(idx) in locked
         ], dtype=int)
-        # Do not flatten complete weights toward total_mass / support_count.
-        # That obsolete centering lifted a 0.5--0.6 supplemental big-target
-        # base toward 1 before deletion. Golden=1 rows share one complete
-        # weight level, while every Golden!=1 row stays a forward-fit variable.
-        # Preserve this audited anchor without global-mean centering.
+        # 不要把完整权重压平至 total_mass / support_count。
+        # 旧的居中方式会在删除前把 0.5--0.6 的补充大目标基数抬高到接近 1。
+        # Golden=1 行共享同一完整权重层级，而每条 Golden!=1 行仍是前向拟合变量。
+        # 保留这个已审计的锚点，不进行全局均值居中。
         structural_prior_ordered = seed_anchor_ordered.copy()
         prior_std = float(np.std(structural_prior_ordered, ddof=0))
         unlocked_additions = (
@@ -2348,8 +2337,7 @@ def _evaluate_inherited_support(
             "global_mean_weight_centering_applied": False,
             "seed_shape_retention_for_final_flattening": 1.0,
             "seed_shape_retention_maximum": 1.0,
-            # Retain the legacy field for export compatibility.  It is an
-            # audit value, not a global-mean dispersion cap.
+            # 为保持导出兼容性而保留旧字段。它是审计值，不是全局均值离散度上限。
             "flattened_structural_prior_std_target": prior_std,
             "flattened_structural_prior_std": prior_std,
             "flattened_structural_prior_min": float(
@@ -2538,10 +2526,8 @@ def _evaluate_inherited_support(
         + 0.10 * normalized(mean_error_values)
     )
     normalized_structure = normalized(structure_values)
-    # 0.20 is a reporting goal, not a feasibility switch. Path selection is a
-    # continuous error/structure tradeoff, with replay quality deliberately
-    # dominant and the structural term breaking near-ties toward smoother
-    # weights.
+    # 0.20 是报告目标，不是可行性开关。路径选择是连续的误差/结构权衡，
+    # 重放质量特意占主导；结构项仅在接近平局时倾向更平滑的权重。
     selection_scores = (
         0.75 * normalized_error + 0.25 * normalized_structure
     )
@@ -2669,10 +2655,8 @@ def _replacement_shortlists(
     flattened_correct = (
         reference_scores - affine_intercept
     ) / affine_slope
-    # A replacement is useful when its matchup column explains what the
-    # current support is missing after C-Score has been flattened onto the
-    # direct weighted-target scale.  Matching the uncompressed big target here
-    # would reintroduce the obsolete "raw replay must be identical" objective.
+    # 当替换项的对局列能解释 C-Score 被压平到直接加权目标尺度后当前支持项缺少的部分时，
+    # 该替换才有价值。此处匹配未压缩的大目标会重新引入已废弃的“原始重放必须相同”目标。
     residual = flattened_correct - compressed
     residual_centered = residual - float(np.mean(residual))
     residual_norm = max(float(np.linalg.norm(residual_centered)), 1e-12)
@@ -2706,7 +2690,7 @@ def _replacement_shortlists(
         by_residual + by_coverage + by_score + by_tail_mass
     ))[:24]
 
-    # Keep only candidates that can participate in at least one legal swap.
+    # 只保留至少能参与一次合法交换的候选项。
     feasible_additions = []
     for added in addition_list:
         if any(
@@ -2766,9 +2750,8 @@ def _collective_absorption_anchor(
     if centered_l1 <= 1e-12 or abs(removed_weight) <= 1e-15:
         profile_transfer = equal_transfer
     else:
-        # This contrast is deliberately bounded.  It expresses the requested
-        # "nearer receives more, farther receives less" direction without
-        # recreating the old nearest-neighbour concentration.
+        # 此差异被特意限制在边界内。它表达“更近者获得更多、更远者获得更少”的要求，
+        # 同时不重建旧的最近邻集中效应。
         contrast = (
             math.copysign(0.75 * abs(removed_weight), removed_weight)
             * centered
@@ -2842,10 +2825,9 @@ def _front_priority_c_score_projection(
         score_span = max(
             float(prefix_scores[0] - prefix_scores[-1]), 1e-9,
         )
-        # A zero/near-zero score gap permits only a 0.3%-of-mean weight gap.
-        # Across the complete protected score span, another 38%-of-mean is
-        # available.  This keeps close C-Scores visually close without forcing
-        # the whole front prefix to one constant.
+        # 零或近零分差只允许相当于均值 0.3% 的权重差。
+        # 在完整受保护分数跨度内，可额外使用相当于均值 38% 的差异。
+        # 这会让相近的 C-Score 在视觉上保持相近，同时不强迫整个前缀变成常量。
         adjacent_drop_caps = (
             0.003 * mean_abs_weight
             + 0.38 * mean_abs_weight * score_gaps / score_span
@@ -2855,9 +2837,8 @@ def _front_priority_c_score_projection(
 
     total_weight = float(np.sum(ordered_original))
 
-    # Moving an early row is progressively more expensive.  Tail rows have
-    # unit fidelity: low tail rows are not raised merely to make the board
-    # prettier, while excess tail mass can move into the protected prefix.
+    # 越靠前的行移动成本越高。尾部行具有单位保真性：不会仅为了让面板更美观而抬高低尾部行，
+    # 但多余的尾部总量可以移入受保护前缀。
     fidelity = np.ones(count, dtype=float)
     if priority_count > 1:
         fidelity[:priority_count] = np.linspace(
@@ -2866,16 +2847,13 @@ def _front_priority_c_score_projection(
     else:
         fidelity[0] = 4.0
 
-    # Parameterize every feasible vector by bounded front drops d_i and
-    # non-negative tail slacks s_j:
+    # 使用有界前缀下降量 d_i 与非负尾部松弛量 s_j 参数化每个可行向量：
     #
     #   w_i = boundary + Σ_{k=i}^{p-2} d_k
     #   w_j = boundary - s_j, j >= p
     #
-    # Eliminating `boundary` with Σw=total converts the projection into a
-    # bounded linear least-squares problem.  This is a convex, deterministic
-    # solve and is substantially more reliable than a generic constrained
-    # optimizer along the thousands of deletion-path candidates.
+    # 通过 Σw=total 消去 `boundary` 后，投影将变为有界线性最小二乘问题。
+    # 该求解为凸且确定性的，比在数千条删除路径候选上使用通用约束优化器可靠得多。
     front_drop_count = max(0, priority_count - 1)
     tail_count = count - priority_count
     variable_count = front_drop_count + tail_count
@@ -4407,9 +4385,8 @@ def _solve_top40_dynamic10_aligned_minimax(payload: dict[str, Any]) -> dict[str,
     raw_members = [[str(key) for key in values] for values in payload.get("raw_members", [[] for _ in range(big.size)])]
     owners = [str(value) for value in payload["owner_keys"]]
     owner_cap = int(payload.get("owner_cap", 5))
-    # Lane-1 candidates are already individual groups.  The account/owner
-    # collision limits are pair-lane constraints and must not make a locked
-    # single-name front infeasible.
+    # Lane-1 候选本身就是单个组。账号/所有者冲突限制是配对 lane 的约束，
+    # 不得令已锁定的单名首部变为不可行。
     single_name_mode = all(len(values) <= 1 for values in raw_members)
     locked_count = int(payload.get("locked_big_weight_count", 40))
     dynamic_count = int(payload.get("dynamic_big_weight_count", 10))
@@ -4417,12 +4394,9 @@ def _solve_top40_dynamic10_aligned_minimax(payload: dict[str, Any]) -> dict[str,
     total = locked_count + dynamic_count
     mass = float(np.sum(big))
 
-    # Reproduce the browser main-board folding before the weight MILP.  A
-    # higher-Correct parent consumes lower-ranked candidates sharing one of
-    # its displayed members; their complete BigWeight is transferred to that
-    # parent (mass-conserving, never duplicated).  This makes a newly promoted
-    # sibling such as ⑨+ⅺ inherit the weight of the displaced ⑨+凯洛斯总督
-    # instead of being filtered out merely because its own Golden weight was 0.
+    # 在权重 MILP 前复现浏览器主面板的折叠逻辑。较高 Correct 的父项会吸收与其展示成员之一
+    # 相同的低排名候选项；它们的完整 BigWeight 转移到该父项（守恒且绝不复制）。这使新晋升的
+    # 同级项（如 ⑨+ⅺ）继承被置换的 ⑨+凯洛斯总督 的权重，而不会仅因自身 Golden 权重为 0 被过滤。
     pair_ranks = list(payload.get("pair_ranks", [None] * big.size))
     raw_ranks = [int(value) for value in payload.get("raw_ranks", range(big.size))]
     group_ids = [int(value) for value in payload.get("group_ids", range(big.size))]
@@ -4454,8 +4428,7 @@ def _solve_top40_dynamic10_aligned_minimax(payload: dict[str, Any]) -> dict[str,
                 continue
             if parent_members.intersection(raw_members[child]):
                 child_indices.append(child)
-        # Include candidates that the browser folding routine consumed but
-        # which are not returned as parents (the normal parent/child case).
+        # 纳入被浏览器折叠逻辑吸收、但未作为父项返回的候选项（普通父/子情形）。
         if child_indices:
             transferred = float(np.sum(big[np.asarray(child_indices, dtype=int)]))
             inherited_big[parent] += transferred
@@ -4466,9 +4439,8 @@ def _solve_top40_dynamic10_aligned_minimax(payload: dict[str, Any]) -> dict[str,
                 "child_indices": [int(idx) for idx in child_indices],
                 "transferred_weight": transferred,
             })
-    # Candidates not folded into a higher-ranked parent retain their own
-    # weight.  The MILP sees only positive inherited weights, so zeroed child
-    # rows cannot re-enter as independent support items.
+    # 未折叠到较高排名父项的候选保留自身权重。MILP 仅看到正的继承权重，
+    # 因此已清零的子行无法作为独立支持项重新进入。
     big = inherited_big
     eligible = [
         idx for idx in range(big.size)
@@ -4482,10 +4454,9 @@ def _solve_top40_dynamic10_aligned_minimax(payload: dict[str, Any]) -> dict[str,
     )
     if len(ordered) < total:
         raise RuntimeError("top40+dynamic10 compression has fewer than 50 positive eligible big targets")
-    # Build the locked front by score while respecting the per-team cap.
-    # This avoids making the MILP infeasible when the raw top-40 contains
-    # more than owner_cap candidates from one team.  The skipped candidates
-    # remain available to the dynamic tail.
+    # 在遵守每队上限的同时按分数构建锁定首部。
+    # 这避免原始 top-40 包含来自同一队的超过 owner_cap 个候选时使 MILP 不可行。
+    # 被跳过的候选仍可用于动态尾部。
     locked = []
     locked_owner_counts: dict[str, int] = {}
     deferred = []
@@ -4515,7 +4486,7 @@ def _solve_top40_dynamic10_aligned_minimax(payload: dict[str, Any]) -> dict[str,
         center_bounds: dict[int, float] | None = None,
         fixed_support: set[int] | None = None,
     ) -> dict[str, Any]:
-        # z, q=normalization_scale*z, delta, normalization_scale, intercept, max error
+        # z、q=normalization_scale*z、delta、normalization_scale、截距、最大误差
         z0, q0, d0 = 0, m, 2 * m
         scale_idx, intercept_idx, error_idx = 3 * m, 3 * m + 1, 3 * m + 2
         count = 3 * m + 3
@@ -4573,8 +4544,7 @@ def _solve_top40_dynamic10_aligned_minimax(payload: dict[str, Any]) -> dict[str,
         A = lil_matrix((len(rows), count), dtype=float)
         for r, values in enumerate(rows):
             for col, value in values.items(): A[r, col] = value
-        # Configurable per-MILP budget.  Thirty seconds is the formal default;
-        # callers may raise it for a deliberately higher-budget audit run.
+        # 每个 MILP 的预算可配置。正式默认值为 30 秒；调用方可在刻意提高预算的审计运行中调高它。
         try:
             time_limit = float(os.environ.get("TARGET_MILP_TIME_LIMIT", "30"))
         except ValueError:
@@ -4602,20 +4572,18 @@ def _solve_top40_dynamic10_aligned_minimax(payload: dict[str, Any]) -> dict[str,
         }
 
     coarse = [0.90, 0.95, 1.00, 1.05, 1.10]
-    # Independent slope MILPs can run concurrently.  Results are collected in
-    # slope-list order so the existing deterministic tie-break is unchanged.
+    # 独立的斜率 MILP 可并发运行。结果按斜率列表顺序收集，
+    # 因而不会改变现有的确定性平局裁决。
     try:
         solver_workers = int(os.environ.get("TARGET_SOLVER_WORKERS", "8"))
     except ValueError:
         solver_workers = 8
     solver_workers = max(1, min(solver_workers, 20))
 
-    # HiGHS (used by scipy.optimize.milp) is not safe when several solves are
-    # launched concurrently from threads in one Python process on Windows.
-    # Keep the same bounded parallelism, but isolate every solve in its own
-    # worker process.  The immutable model inputs are copied once into each
-    # worker through the initializer rather than captured by a local closure
-    # (which is not picklable under the Windows ``spawn`` start method).
+    # 在 Windows 上，从同一 Python 进程的多个线程并发启动多个求解时，
+    # HiGHS（由 scipy.optimize.milp 使用）并不安全。保持相同的有界并行度，
+    # 但将每次求解隔离到自己的工作进程。不可变模型输入通过初始化器复制一次到每个工作进程，
+    # 而不是由局部闭包捕获（后者无法在 Windows ``spawn`` 启动方式下被 pickle）。
     try:
         solver_time_limit = float(os.environ.get("TARGET_MILP_TIME_LIMIT", "30"))
     except ValueError:
@@ -4647,8 +4615,7 @@ def _solve_top40_dynamic10_aligned_minimax(payload: dict[str, Any]) -> dict[str,
             initializer=_init_top40_worker,
             initargs=(worker_context,),
         ) as pool:
-            # map() preserves slope-list order, retaining deterministic
-            # tie-breaking while avoiding same-process HiGHS concurrency.
+            # map() 保持斜率列表顺序，在避免同进程 HiGHS 并发的同时保留确定性平局裁决。
             return list(pool.map(_top40_worker_slope, slopes))
 
     def solve_center_refit(slope: float, centers: np.ndarray) -> dict[str, Any]:
@@ -4724,11 +4691,8 @@ def _solve_top40_dynamic10_aligned_minimax(payload: dict[str, Any]) -> dict[str,
     base = big[np.asarray(support, dtype=int)]
     base_export_seed = base_export.copy()
 
-    # Second pass: keep the first-pass support fixed, move each candidate's
-    # centre according to Golden/CQD, then solve the same replay MILP again
-    # with an individual centre +/- 0.1 interval.  This is preferable to a
-    # post-hoc multiplication because the new centres participate in the
-    # actual rate-matrix optimization.
+    # 第二轮：固定第一轮支持项，按 Golden/CQD 移动各候选的中心，随后使用各自中心 +/- 0.1 的区间
+    # 再次求解相同的重放 MILP。这优于事后乘法，因为新中心会参与实际的速率矩阵优化。
     center_refit_info = {
         "applied": False,
         "rule": "post_compression_center_refit_fixed_support_v1",
@@ -4776,13 +4740,10 @@ def _solve_top40_dynamic10_aligned_minimax(payload: dict[str, Any]) -> dict[str,
         elif refit is not None:
             center_refit_info["error"] = "refit support differs from first-pass support"
 
-    # The MILP is deliberately focused on replay error and therefore often
-    # leaves a block of equal weights when several Golden anchors are equal.
-    # Apply a deterministic post-compression centre spread to those anchors:
-    # strong Golden rows rise with CQD (up to 1.25x), while weaker Golden rows
-    # are reduced (down to 0.75x).  The spread is then blended back until the
-    # replay max error stays within a small, explicit tolerance of the MILP
-    # optimum.  This keeps the optimization/support semantics unchanged.
+    # MILP 特意聚焦于重放误差，因此多个 Golden 锚点相等时常留下相同权重的块。
+    # 对这些锚点施加确定性的压缩后中心扩散：强 Golden 行随 CQD 上升（最多 1.25x），
+    # 较弱 Golden 行下降（最低 0.75x）。随后逐步混合回去，直到重放最大误差仍处于
+    # MILP 最优值的小而明确的容差内。这不会改变优化/支持项语义。
     spread_info = {
         "applied": False,
         "rule": "post_compression_golden_center_spread_v1",
@@ -4808,8 +4769,7 @@ def _solve_top40_dynamic10_aligned_minimax(payload: dict[str, Any]) -> dict[str,
             high_u = np.clip((high_scores - score_lo) / (score_hi - score_lo), 0.0, 1.0)
         else:
             high_u = np.zeros_like(high_scores)
-        # A power > 1 keeps the lower-CQD end visually close to the original
-        # centre while reserving the larger lift for genuinely strong rows.
+        # 大于 1 的幂使较低 CQD 一端在视觉上接近原中心，同时把较大的抬升留给真正强的行。
         factors[high_mask] = 1.0 + 0.25 * np.power(high_u, 1.35)
         golden_ratio = np.clip(support_golden[low_mask] / golden_max, 0.0, 1.0)
         factors[low_mask] = 0.75 + 0.25 * golden_ratio
@@ -4824,8 +4784,7 @@ def _solve_top40_dynamic10_aligned_minimax(payload: dict[str, Any]) -> dict[str,
             rates, big, scores, support, desired, base_export, correct,
             best["slope"], best["intercept"],
         )
-        # Permit only a small absolute replay degradation, and never cross the
-        # existing 0.20 audit target solely because of the visual spread.
+        # 仅允许很小的绝对重放劣化，且绝不能只因视觉扩散就越过现有 0.20 审计目标。
         baseline_max = float(baseline_metrics["aligned_max_abs_diff"])
         allowed_max = min(0.20, baseline_max + 0.02)
         if float(desired_metrics["aligned_max_abs_diff"]) <= allowed_max + 1e-12:
@@ -5027,9 +4986,8 @@ def solve_inherited_big_target_compression(payload: dict[str, Any]) -> dict[str,
         owner_cap,
         target_total,
     )
-    # Reset replacement from the actual browser Top50.  Freeze its C-Score
-    # Top30 once; the lower 20 remain eligible for low-C-Score-first swaps.
-    # The lock never replenishes after a replacement.
+    # 从实际浏览器 Top50 重置替换。其 C-Score Top30 只冻结一次；
+    # 较低的 20 项仍可参与低 C-Score 优先的交换。替换后锁定项绝不补充。
     replacement_order = sorted(
         browser_initial_support,
         key=lambda idx: _candidate_order_key(
@@ -5113,10 +5071,8 @@ def solve_inherited_big_target_compression(payload: dict[str, Any]) -> dict[str,
                     absorption_priority_indices=absorption_priority_for(
                         proposed
                     ),
-                    # Screening hundreds of legal swaps does not need a full
-                    # regularization path. Keep enough points around the
-                    # low-error/high-stability bend to avoid screening swaps
-                    # by a smooth but inaccurate pure prior.
+                    # 筛选数百个合法交换无需完整的正则化路径。保留低误差/高稳定性拐点附近的足够点，
+                    # 以免通过平滑但不准确的纯先验来筛选交换。
                     regularization_factors=[
                         0.0, 1e-3, 2e-3, 3e-3, 1e-2, None,
                     ],
@@ -5137,8 +5093,7 @@ def solve_inherited_big_target_compression(payload: dict[str, Any]) -> dict[str,
                 -float(np.sum(correct_scores[np.asarray(item["support"], dtype=int)])),
             )
         )
-        # Retain both the error frontier and the low-effective-slot frontier.
-        # This is derived only from fitted weights, never from text labels.
+        # 同时保留误差前沿和低有效槽位前沿。这只由拟合权重推导，绝不依赖文本标签。
         finalist_by_signature: dict[tuple[int, ...], dict[str, Any]] = {}
         for item in fast_candidates[:8]:
             finalist_by_signature[tuple(sorted(item["support"]))] = item
@@ -5197,8 +5152,8 @@ def solve_inherited_big_target_compression(payload: dict[str, Any]) -> dict[str,
         ]
         if not admissible:
             break
-        # Among incumbent-safe swaps, first remove the lowest-C-Score row;
-        # then prefer a smaller type slot-vs-mass mismatch.
+        # 在对当前解安全的交换中，先移除 C-Score 最低的行；
+        # 随后偏好更小的类型槽位与总量不匹配。
         chosen = min(
             admissible,
             key=lambda item: (
@@ -5263,10 +5218,8 @@ def solve_inherited_big_target_compression(payload: dict[str, Any]) -> dict[str,
     ):
         raise RuntimeError("pre-deletion support violates target constraints")
 
-    # Deletion has a deliberately different lock from replacement. Sort the
-    # completed post-replacement Top50 once by the browser C-Score order and
-    # freeze only its first N rows. Deleting a row never promotes another row
-    # into the protected prefix.
+    # 删除使用与替换特意不同的锁定方式。将完成替换后的 Top50 按浏览器 C-Score 顺序排序一次，
+    # 并只冻结前 N 行。删除一行绝不会将另一行晋升到受保护前缀。
     deletion_order = sorted(
         pre_deletion_support,
         key=lambda idx: _candidate_order_key(
@@ -5312,9 +5265,8 @@ def solve_inherited_big_target_compression(payload: dict[str, Any]) -> dict[str,
         effective_deletion_lock_count,
         target_total - max_deletions,
     )
-    # Reset the final add/remove/swap search from the best pre-deletion
-    # incumbent.  It may revisit every requested count, including 50, rather
-    # than being trapped in the old greedy 40..44 tail window.
+    # 从删除前最佳当前解重置最终的添加/删除/交换搜索。它可重新访问包括 50 在内的每个请求数量，
+    # 而非被困在旧的贪心 40..44 尾部窗口中。
     final_beam_max_count = target_total
     if final_beam_min_count <= len(final_stage["support"]) <= final_beam_max_count:
         final_stage, final_support_edits, final_support_search = (
@@ -5338,9 +5290,8 @@ def solve_inherited_big_target_compression(payload: dict[str, Any]) -> dict[str,
             )
         )
     else:
-        # The deletion path is allowed to retain its incumbent when no
-        # acceptable removal exists.  A 40..44-only refinement must not turn
-        # that valid 50-target incumbent into a runtime failure.
+        # 没有可接受的删除项时，删除路径允许保留当前解。仅针对 40..44 的细化不得将这个有效的
+        # 50 目标当前解变为运行时失败。
         final_support_edits = []
         final_support_search = {
             "applied": False,
@@ -5602,7 +5553,7 @@ def solve_fixed_slope(
     time_limit: float,
 ) -> tuple[list[int], list[float], dict[str, Any]] | None:
     m, n = rate_matrix.shape
-    # variables: x_0..x_{n-1}, w_0..w_{n-1}, b, t
+    # 变量：x_0..x_{n-1}、w_0..w_{n-1}、b、t
     x0 = 0
     w0 = n
     b_idx = 2 * n

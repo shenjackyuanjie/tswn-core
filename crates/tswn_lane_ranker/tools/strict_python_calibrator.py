@@ -2,7 +2,7 @@
 from __future__ import annotations
 import argparse, math, os, sys, json, sqlite3, csv, zipfile, shutil, textwrap, warnings
 
-# Keep BLAS deterministic and prevent small dense Laplace inversions from oversubscribing threads.
+# 保持 BLAS 的确定性，并避免小型稠密 Laplace 逆运算过度占用线程。
 os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')
 os.environ.setdefault('OMP_NUM_THREADS', '1')
 os.environ.setdefault('MKL_NUM_THREADS', '1')
@@ -19,7 +19,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.preprocessing import StandardScaler
 
 # =========================
-# Embedded Python port of tswn_lane_ranker/src/skill_eq.rs
+# tswn_lane_ranker/src/skill_eq.rs 的内嵌 Python 移植版本
 # =========================
 N=256; M=128; K=64; SKILL_CNT=40; TYPE_SKILL_THRESHOLD=25.0; ACTIVE_SKILL_COUNT=25
 SKILL_NAME_MAP=["火球","冰冻","雷击","地裂","吸血","投毒","连击","会心","瘟疫","命轮","狂暴","魅惑","加速","减速","诅咒","治愈","苏生","净化","铁壁","蓄力","聚气","背刺","血祭","分身","幻术","防御","守护","反弹","护符","护盾","反击","吞噬","召灵","垂死","隐匿"]
@@ -216,19 +216,19 @@ def compute_group_skill_summary(members:List[str])->Dict[str,Any]:
     return {'display_canonical': display_canonical, 'type_label': '+'.join(member_type_labels) if member_type_labels else '高八维', 'simple_type_label': '+'.join(member_simple) if member_simple else '高八维', 'skill_totals': totals}
 
 # =========================
-# Data and model helpers
+# 数据与模型辅助函数
 # =========================
 
 def sigmoid(x): return expit(np.clip(x,-40,40))
 
 def binomial_logloss(y,n,eta):
-    # weighted per sample negative log likelihood
+    # 按样本加权的负对数似然
     eta=np.clip(eta,-40,40); return float(np.sum(n*(np.logaddexp(0,eta)-y*eta))/max(1.0,np.sum(n)))
 
 def brier(y,n,p): return float(np.sum(n*(p-y)**2)/max(1.0,np.sum(n)))
 
 def fit_raw_beta(x,y,n):
-    # One-dimensional Newton solver for the raw-Cqd logit scale. Raw Cqd is not recomputed.
+    # 用于 raw-Cqd logit 尺度的一维 Newton 求解器；不会重新计算 Raw Cqd。
     b=1.0
     for _ in range(80):
         eta=np.clip(b*x,-40,40); p=sigmoid(eta)
@@ -237,7 +237,7 @@ def fit_raw_beta(x,y,n):
         if not np.isfinite(g) or not np.isfinite(h) or h<=1e-12:
             break
         step=g/h
-        # numerical damping only; not a score/rank cap.
+        # 仅用于数值阻尼；不是分数或排名上限。
         damp=1.0
         old=float(np.sum(n*(np.logaddexp(0,eta)-y*eta)))
         while damp>1e-6:
@@ -252,14 +252,14 @@ def fit_raw_beta(x,y,n):
     return float(b)
 
 def edge_fold_ids(ga,gb,nfold=5):
-    # stable pair-level hash, independent of order
+    # 稳定的配对级哈希，与顺序无关
     a=np.minimum(ga,gb).astype(np.int64); b=np.maximum(ga,gb).astype(np.int64)
     return ((a*1000003 + b*9176 + 13) % nfold).astype(int)
 
 def build_profile(groups_df, edges_df, raw_beta, train_mask, group_to_idx, n_bins=None):
     gids=groups_df['group_id'].to_numpy(); raw=groups_df['raw_cqd'].to_numpy(); n=len(gids)
     if n_bins is None: n_bins=max(2,int(math.ceil(math.sqrt(max(2,n)))))
-    # opponent raw quantile bins
+    # 对手 Raw 分位数分箱
     try:
         bins=pd.qcut(raw, q=min(n_bins,n), labels=False, duplicates='drop')
         bins=np.asarray(bins, dtype=float)
@@ -270,27 +270,27 @@ def build_profile(groups_df, edges_df, raw_beta, train_mask, group_to_idx, n_bin
     prof=np.zeros((n,B),dtype=float); wsum=np.zeros((n,B),dtype=float)
     sub=edges_df.loc[train_mask]
     ia=sub['ia'].to_numpy(); ib=sub['ib'].to_numpy(); samples=sub['samples'].to_numpy(dtype=float); y=sub['win_rate_a'].to_numpy(dtype=float)
-    # Laplace-smoothed empirical logit for residual shape only
+    # 仅用于残差形状的 Laplace 平滑经验 logit
     p=(y*samples + 0.5)/(samples + 1.0)
     r=logit(np.clip(p,1e-6,1-1e-6)) - raw_beta*(raw[ia]-raw[ib])
-    # group a residual into bin of b; group b reverse residual into bin of a
+    # 将组 a 的残差归入 b 的分箱；将组 b 的反向残差归入 a 的分箱
     for src, opp, rr in [(ia, ib, r),(ib, ia, -r)]:
         ob=bins[opp]
         np.add.at(prof,(src,ob),rr*samples)
         np.add.at(wsum,(src,ob),samples)
     prof=np.divide(prof, np.maximum(wsum,1e-12))
-    # strength-neutral shape: subtract row weighted mean where support exists
+    # 强度中性的形状：在存在支持项时减去行加权均值
     row_w=wsum.sum(axis=1,keepdims=True)
     row_mean=np.divide((prof*wsum).sum(axis=1,keepdims=True), np.maximum(row_w,1e-12))
     prof_center=np.where(wsum>0, prof-row_mean, 0.0)
-    # append support-derived shape diagnostics? no type label input, no old W-Type.
+    # 是否附加由支持项推导的形状诊断？不使用类型标签输入，也不使用旧 W-Type。
     scaler=StandardScaler(with_mean=True, with_std=True)
     X=scaler.fit_transform(prof_center)
     X=np.nan_to_num(X)
     return X, prof_center, wsum
 
 def estimate_counter_for_k(edges_df, mask, type_ids, raw, beta, ridge=1e-6):
-    # Vectorized antisymmetric residual mean for K selection only.
+    # 仅用于选择 K 的向量化反对称残差均值。
     sub=edges_df.loc[mask]
     ia=sub['ia'].to_numpy(); ib=sub['ib'].to_numpy(); y=sub['win_rate_a'].to_numpy(dtype=float); n=sub['samples'].to_numpy(dtype=float)
     p=(y*n + 0.5)/(n+1.0)
@@ -322,11 +322,11 @@ def adaptive_residual_type(groups_df, edges_df, raw_beta, train_mask, validation
     k_max=max(1,int(math.floor(math.sqrt(max(1,n)))))
     candidates=list(range(1,k_max+1))
     if validation_mask is None:
-        # deterministic split inside train: validation is 20% of train edges by hash, no manual labels.
+        # 训练集内的确定性划分：按哈希将训练边的 20% 作为验证集，不使用人工标签。
         idx=np.where(train_mask)[0]
         val_inner=np.zeros(len(edges_df),dtype=bool)
         val_inner[idx[(np.arange(len(idx))*2654435761 % max(1,len(idx))) < max(1,len(idx)//5)]] = True
-        # above not stable. Use fold hash instead:
+        # 上述方式不稳定，改用折叠哈希：
         val_inner = train_mask & ((edges_df['fold5'].to_numpy()+seed) % 5 == 0)
         if val_inner.sum()==0 or (train_mask & ~val_inner).sum()==0:
             validation_mask=train_mask
@@ -383,8 +383,8 @@ def make_counter_index(type_ids):
 
 
 def initial_beta_binomial_phi(y, n, mu):
-    # Exact beta-binomial overdispersion initialized by a method-of-moments estimate.
-    # This is only a starting value; the training objective optimizes log(phi) directly.
+    # 以矩估计初始化精确的 beta-binomial 过度离散。
+    # 这只是起始值；训练目标会直接优化 log(phi)。
     y=np.asarray(y,dtype=float); n=np.asarray(n,dtype=float); mu=np.clip(np.asarray(mu,dtype=float),1e-6,1-1e-6)
     base=mu*(1-mu)/np.maximum(n,1.0)
     obs=(y-mu)**2
@@ -432,19 +432,19 @@ def fit_betabinomial_eb(groups_df, edges_df, train_mask, type_ids, max_eb_iter=6
         z=np.zeros(dim); z[:min(dim,len(init))]=init[:min(dim,len(init))]
         if z[-1]==0.0:
             z[-1]=math.log(max(1e-3, initial_beta_binomial_phi(y,n,sigmoid(z[0]*xraw))))
-    # Initial prior scales from strength-neutral residual spread; subsequent scales are EB-learned.
+    # 初始先验尺度来自强度中性残差的离散度；后续尺度由 EB 学习。
     p0=np.clip((y*n + 0.5)/(n + 1.0),1e-6,1-1e-6)
     raw_resid=logit(p0)-z[0]*xraw
     resid_sd=float(np.sqrt(np.average((raw_resid-np.average(raw_resid,weights=n))**2,weights=n))) if len(raw_resid) else 0.1
     tau_delta=max(resid_sd/4.0,1e-6); tau_counter=max(resid_sd/4.0,1e-6)
     if C==0: tau_counter=1e-6
     success=True; msg='bb-lbfgsb'; map_nll=np.nan; iters=0
-    # The optimizer operates on log_phi. Clip is only to prevent numerical overflow in special functions.
+    # 优化器在 log_phi 上工作。截断仅用于防止特殊函数发生数值溢出。
     def objective_grad(par, prior_diag):
         core=par[:core_dim]; log_phi=float(par[-1]); phi=math.exp(float(np.clip(log_phi,-20.0,20.0)))
         eta=np.clip(X.dot(core),-40,40); mu=sigmoid(eta)
         a=np.maximum(mu*phi,1e-12); b=np.maximum((1.0-mu)*phi,1e-12)
-        # Drop the combinatorial constant; it is parameter-independent.
+        # 丢弃组合常数；它与参数无关。
         ll=betaln(k+a, n-k+b) - betaln(a,b)
         nll=float(-np.sum(ll) + 0.5*np.sum(prior_diag*core*core))
         dL_deta=phi*mu*(1.0-mu)*(digamma(k+a)-digamma(a)-digamma(n-k+b)+digamma(b))
@@ -469,7 +469,7 @@ def fit_betabinomial_eb(groups_df, edges_df, train_mask, type_ids, max_eb_iter=6
         delta=z[1:1+G]; theta=z[1+G:1+G+C]
         new_tau_delta=float(math.sqrt(max(1e-12,np.mean(delta*delta))))
         new_tau_counter=float(math.sqrt(max(1e-12,np.mean(theta*theta)))) if C>0 else 1e-6
-        # Numerical lower bounds only avoid singular priors; they are not score caps or rank guards.
+        # 数值下界仅用于避免奇异先验；不是分数上限或排名保护。
         new_tau_delta=max(new_tau_delta,1e-6); new_tau_counter=max(new_tau_counter,1e-6)
         if abs(math.log(new_tau_delta/max(tau_delta,1e-12)))<tol and (C==0 or abs(math.log(new_tau_counter/max(tau_counter,1e-12)))<tol):
             tau_delta, tau_counter = new_tau_delta, new_tau_counter
@@ -499,7 +499,7 @@ def metrics_for(sub, raw_eta, corr_eta):
     out=[]
     for name,eta in [('raw',raw_eta),('corrected',corr_eta)]:
         p=sigmoid(eta); ll=binomial_logloss(y,n,eta); br=brier(y,n,p)
-        # soft weighted AUC: expand with weights? Use pair-level soft ordering approx with y>0.5 labels.
+        # 软加权 AUC：是否按权重展开？使用 y>0.5 标签进行配对级软排序近似。
         try:
             label=(y>0.5).astype(int); auc=roc_auc_score(label, p, sample_weight=n) if len(np.unique(label))>1 else np.nan
         except Exception: auc=np.nan
@@ -555,11 +555,9 @@ def _attach_selection_weight_columns(
     raw_resid_map: Dict[int, float] = {}
     shrunk_resid_map: Dict[int, float] = {}
     residual_diag_cols = [
-        # Final projection provenance / source diagnostics.  These must be
-        # attached for active rows as well as score-only rows; otherwise the
-        # final_all_candidate_diagnostics table silently loses the explanation
-        # for the rows that were already present in groups_out before the
-        # final score-only frame was concatenated.
+        # 最终投影的来源/源诊断。这些诊断必须同时附加到活跃行和仅评分行；
+        # 否则拼接最终仅评分框架后，final_all_candidate_diagnostics 表会悄然丢失
+        # 原先已存在于 groups_out 中各行的解释。
         "active_set_iteration",
         "active_set_challenger_edges",
         "active_weight_reference_mass",
@@ -629,12 +627,10 @@ def _attach_selection_weight_columns(
 
         for _, rr in final_scored.iterrows():
             gid = int(rr.group_id)
-            # Important: prefer final projection `regularized_active_cqd` per row.
-            # A concatenated frame may contain `active_set_smoothed_regularized_cqd`
-            # from the active q loop, while the later final projection rows have
-            # that column as NaN.  The old global column choice therefore skipped
-            # the final projection score and fell back to global_base_cqd, making
-            # exported Correct Cqd exactly equal to global base.
+            # 重要：逐行优先使用最终投影 `regularized_active_cqd`。
+            # 拼接后的框架可能包含活跃 q 循环产生的 `active_set_smoothed_regularized_cqd`，
+            # 而后续最终投影行在该列为 NaN。旧的全局列选择因此跳过最终投影分数并回退至
+            # global_base_cqd，使导出的 Correct Cqd 与全局基数完全相等。
             reg_val = _finite_row_value(
                 rr,
                 [
@@ -715,7 +711,7 @@ def _attach_selection_weight_columns(
 
 
 # =========================
-# Raw-anchored prospective de-stratified Correct
+# 以 Raw 为锚点的前瞻性去分层 Correct
 # =========================
 PROSPECTIVE_CORRECT_ENV_EPS_CQD = 0.015
 PROSPECTIVE_CROSSFIT_FOLDS = 5
@@ -753,8 +749,7 @@ def _deduplicate_undirected_edges(edges: pd.DataFrame) -> Tuple[pd.DataFrame, Di
         if gg.empty:
             continue
         weights = gg["_n"].to_numpy(float)
-        # Duplicate directions describe the same unordered observation.  Use
-        # their weighted consensus rate but do not add their sample counts.
+        # 重复方向描述同一个无序观测。使用其加权共识率，但不累加样本数。
         canonical_y = float(np.average(gg["_canonical_y"].to_numpy(float), weights=weights))
         representative_n = float(np.max(weights))
         row = gg.iloc[0].drop(labels=["_lo", "_hi", "_canonical_y", "_n"]).to_dict()
@@ -797,12 +792,10 @@ def _equal_reference_location_and_se(
     observed_var = float(np.var(x, ddof=1))
     scenario_var = max(0.0, observed_var - float(np.mean(mv)))
     scenario_scale = float(math.sqrt(scenario_var))
-    # The legal reference universe is the complete fixed scoring policy, not a
-    # random sample from an infinite superpopulation. Variation between legal
-    # references is therefore real matchup structure inside the estimand, not
-    # measurement error in its mean. Only win-rate measurement variance belongs
-    # in the reliability SE. Scenario spread is returned separately for stress
-    # diagnostics and must not drive the scalar signal variance to zero.
+    # 合法参考空间是完整的固定评分策略，而不是无限超总体的随机样本。
+    # 因此，合法参考项之间的差异是估计量内真实的对局结构，不是均值测量误差。
+    # 只有胜率测量方差应计入可靠性 SE。场景离散度会单独返回以供压力诊断，
+    # 且不得把标量信号方差压至零。
     estimation_var = float(np.sum(mv) / (n * n))
     return location, float(math.sqrt(max(0.0, estimation_var))), float(n), scenario_scale
 
@@ -848,8 +841,8 @@ def _build_prospective_reference_universe(
             f"and frontend raw_min={threshold_text}; threshold fallback is forbidden"
         )
 
-    # Deterministic Raw-first selection enforces member uniqueness.  A group
-    # without member metadata gets a private synthetic key and cannot collide.
+    # 确定性的 Raw 优先选择保证成员唯一性。没有成员元数据的组会获得私有合成键，
+    # 因而不会发生冲突。
     gids: List[int] = []
     used_members: Set[str] = set()
     duplicate_member_rows_removed = 0
@@ -1039,9 +1032,8 @@ def _select_regularization_pareto_knee(
     for entry in entries:
         entry["pareto_plateau_eligible"] = id(entry) in plateau_ids
 
-    # The path is deliberately coarse. Treat a knee-score improvement below
-    # one percent as a plateau, then prefer the least structurally expensive
-    # (and, on an exact tie, more strongly regularized) solution.
+    # 路径特意设置得较粗。将低于 1% 的拐点分数改善视为平台期，随后选择结构成本最低的解；
+    # 若完全相同，则选择正则化更强的解。
     selected = min(
         plateau,
         key=lambda entry: (
@@ -1145,10 +1137,8 @@ def _golden_start_correct_target_backprop(
     ):
         raise ValueError("Golden-start Correct target inputs are invalid")
 
-    # Production v12: use Golden as a score-aware hard range and solve the
-    # common target by non-negative Chebyshev (minimax) replay.  High-Golden
-    # targets receive a continuous C-Score multiplier; lower-Golden targets
-    # retain the legacy movement guard.
+    # 生产版 v12：将 Golden 作为感知分数的硬范围，并通过非负 Chebyshev（极小化最大值）重放
+    # 求解公共目标。高 Golden 目标获得连续的 C-Score 乘数；低 Golden 目标保留旧的移动保护。
     if target_scores is None:
         raise ValueError("Score-aware Correct target minimax requires target scores")
     design = rate_matrix / 50.0
@@ -1280,8 +1270,7 @@ def _golden_start_correct_target_backprop(
         for limit in delta_caps
     ]
 
-    # Build a label-free target similarity graph from centered winrate-column
-    # profiles. Near-identical columns are connected most strongly.
+    # 从居中的胜率列画像构建无标签的目标相似度图。近乎相同的列连接最强。
     centered_columns = rate_matrix - np.mean(rate_matrix, axis=0, keepdims=True)
     column_norms = np.linalg.norm(centered_columns, axis=0)
     valid_columns = column_norms > 1e-12
@@ -1326,9 +1315,8 @@ def _golden_start_correct_target_backprop(
         graph_weight = np.empty(0, dtype=float)
         graph_weight_sum = 0.0
 
-    # C-Score ordering is meaningful only within the same matchup-profile
-    # neighborhood. Applying it to unrelated columns would erase counter
-    # structure and turn the target into a disguised global rank table.
+    # C-Score 排序仅在相同对局画像邻域内有意义。将其应用于无关列会抹除克制结构，
+    # 并使目标变成伪装的全局排名表。
     order_low: List[int] = []
     order_high: List[int] = []
     order_weight: List[float] = []
@@ -1470,8 +1458,7 @@ def _golden_start_correct_target_backprop(
         penalty, penalty_gradient, _ = regularizer(delta)
         return fit + alpha * penalty, fit_gradient + alpha * penalty_gradient
 
-    # A decreasing path is warm-started from Golden. This is equivalent to
-    # gradually allowing finer residual directions into the target.
+    # 递减路径从 Golden 热启动。这等价于逐步允许更细的残差方向进入目标。
     regularization_path = [
         3.0, 1.0, 0.3, 0.1, 0.03, 0.01, 0.003, 0.001,
         0.0003, 0.0001, 0.00003, 0.00001, 0.000003,
@@ -1509,8 +1496,7 @@ def _golden_start_correct_target_backprop(
     if not path_results:
         raise RuntimeError("Stable Correct target regularization path produced no solution")
 
-    # The unregularized minimum-norm solution is diagnostic only. It determines
-    # how much replay improvement is available, but can never be selected.
+    # 未正则化的最小范数解仅用于诊断。它决定可获得多少重放改善，但绝不能被选中。
     unregularized_delta = np.linalg.lstsq(
         design,
         desired - initial_replay,
@@ -1857,10 +1843,8 @@ def _write_rowwise_correct_target_trace(
 
     coefficient_mean = np.mean(final_coefficients, axis=0)
     coefficient_stddev = np.std(final_coefficients, axis=0, ddof=0)
-    # The production K=5 Correct has an exact common target. Keep 45/50 of
-    # Golden and represent the five synthetic slots by spreading weight 5
-    # equally across the complete legal reference universe. No inverse fit is
-    # needed here; only the later small-target compression is approximate.
+    # 生产版 K=5 Correct 有精确的公共目标。保留 Golden 的 45/50，并将五个合成槽位的权重 5
+    # 均匀分配至完整的合法参考全集。此处无需逆向拟合；只有后续的小目标压缩是近似的。
     common_weight = 0.9 * golden
     common_weight[np.asarray(reference_columns, dtype=int)] += (
         float(PROSPECTIVE_REPLACEMENT_K) / float(len(reference_columns))
@@ -1935,8 +1919,7 @@ def _write_rowwise_correct_target_trace(
         "lane_size": int(lane_size),
         "reference_scope": "common_correct_candidate_coefficients",
         "group_id": np.asarray(target_ids, dtype=int)[nonzero],
-        # Audit-only normalized magnitude. Signed targeting semantics live in
-        # common_coefficient/correct_target_weight.
+        # 仅供审计的归一化大小。带符号的定向语义由 common_coefficient/correct_target_weight 表示。
         "reference_weight": np.abs(common_weight[nonzero]) / common_weight_l1_sum,
         "nominal_weight": common_weight[nonzero],
         "raw_golden_weight": golden[nonzero],
@@ -2557,9 +2540,8 @@ def _select_nonnegative_logloss_alpha(
     raw_loss = float(binomial_logloss(y, n, raw_eta))
     if not np.any(np.abs(inc) > 1e-15):
         return 0.0, raw_loss, raw_loss, True, 0
-    # The objective is convex in alpha.  Solve its analytic score equation so
-    # the answer cannot depend on optimizer starting value or finite-difference
-    # tolerance (the log-loss improvements are intentionally small).
+    # 目标关于 alpha 为凸。求解其解析得分方程，使结果不依赖优化器初值或有限差分容差
+    # （对数损失的改进有意保持很小）。
     mass = max(float(np.sum(n)), 1.0)
     def gradient(alpha: float) -> float:
         return float(np.sum(n * inc * (expit(raw_eta + float(alpha) * inc) - y)) / mass)
@@ -2618,8 +2600,7 @@ def _fit_direct_reference_oof_alpha(
     target_fit_ids = set(fit_ids) - ref_set
     reference_only_validation = not bool(target_fit_ids)
     nfold = max(2, min(PROSPECTIVE_CROSSFIT_FOLDS, len(ref_set)))
-    # Stable hash ordering followed by round-robin assignment keeps reference
-    # folds balanced without using any outcome or score-only information.
+    # 稳定哈希排序后采用轮转分配，在不使用结果或仅评分信息的前提下保持参考折均衡。
     ordered_refs = sorted(ref_set, key=lambda gid: (((int(gid) * 2654435761) & 0xFFFFFFFF), int(gid)))
     ref_fold = {int(gid): int(pos % nfold) for pos, gid in enumerate(ordered_refs)}
     raw_map = {int(g): float(r) for g, r in df[["group_id", "raw_cqd"]].itertuples(index=False, name=None)}
@@ -2647,15 +2628,12 @@ def _fit_direct_reference_oof_alpha(
         }
         ga_all = edges["group_a"].astype(int)
         gb_all = edges["group_b"].astype(int)
-        # Exactly one endpoint is a held reference and the other is a legal
-        # non-reference fit target.  Consequently the evaluated edge was used
-        # in neither endpoint's train-reference mean.
+        # 一个端点恰为保留参考项，另一个为合法的非参考拟合目标。因此，待评估边没有用于任一端点的
+        # 训练参考均值。
         if reference_only_validation:
-            # Lane 1 can have every legal non-score-only fit row in the
-            # member-unique reference set. Use edges between two held references:
-            # each endpoint's direct mean was fitted only against train_refs, so
-            # the held-held edge is absent from both estimates. Canonical A is
-            # the target and canonical B is the held policy opponent.
+            # Lane 1 的成员唯一参考集可能包含每一条合法的非仅评分拟合行。使用两个保留参考项之间的边：
+            # 每个端点的直接均值仅相对于 train_refs 拟合，因此保留-保留边不在任一估计中。规范 A 是目标，
+            # 规范 B 是保留的策略对手。
             calibration_hold = (
                 ga_all.isin(held_refs).to_numpy(bool)
                 & gb_all.isin(held_refs).to_numpy(bool)
@@ -2737,8 +2715,7 @@ def _fit_direct_reference_oof_alpha(
     finite_se = se_target[np.isfinite(se_target)]
     se_scale = float(np.median(finite_se)) if len(finite_se) else 1.0
     se_scale = max(se_scale, 1e-12)
-    # Bounds are purely numerical: 1e-8*SE is the exact-zero limit and
-    # 1e8*SE is the no-shrink limit. They are not CQD/business thresholds.
+    # 边界纯为数值用途：1e-8*SE 是精确零极限，1e8*SE 是无收缩极限。它们不是 CQD/业务阈值。
     opt = minimize_scalar(
         lambda log_ratio: cluster_equal_loss_for_tau(se_scale * math.exp(float(log_ratio))),
         bounds=(math.log(1e-8), math.log(1e8)), method="bounded",
@@ -2747,12 +2724,9 @@ def _fit_direct_reference_oof_alpha(
     if not opt.success or not np.isfinite(opt.x):
         raise RuntimeError(f"Direct-reference OOF tau fit failed: {opt.message}")
     tau_oof = float(se_scale * math.exp(float(opt.x)))
-    # Estimate the production signal scale from the heteroskedastic marginal
-    # distribution of full-reference direct means on fit rows. OOF remains an
-    # independent predictive audit. Letting a one-SE predictive rule choose the
-    # production scale can legitimately hit exactly zero on a weak batch and
-    # collapse every Correct score to Raw; REML estimates the latent across-row
-    # signal variance directly and has no hand-set movement floor.
+    # 根据拟合行上全参考直接均值的异方差边际分布估计生产信号尺度。OOF 仍是独立的预测审计。
+    # 让一个 SE 的预测规则选择生产尺度，在弱批次上可能合理地恰好取零，并让每个 Correct 分数退化为 Raw；
+    # REML 直接估计跨行潜在信号方差，且没有手设的移动下限。
     full_direct = _prospective_reference_delta(df, edges, reference_ids, beta)
     reml = full_direct[full_direct["group_id"].astype(int).isin(fit_ids)].copy()
     z_reml = pd.to_numeric(reml["prospective_reference_delta_cqd"], errors="coerce").to_numpy(float)
@@ -2767,7 +2741,7 @@ def _fit_direct_reference_oof_alpha(
         variance = np.maximum(se_reml * se_reml + max(0.0, float(tau_value)) ** 2, 1e-300)
         precision = 1.0 / variance
         mu = float(np.sum(precision * z_reml) / np.sum(precision))
-        # Restricted likelihood profiles out the unknown common location.
+        # 限制似然剖析掉未知的公共位置参数。
         return float(0.5 * (np.sum(np.log(variance) + (z_reml - mu) ** 2 / variance) + math.log(np.sum(precision))))
 
     reml_opt = minimize_scalar(
@@ -2783,10 +2757,8 @@ def _fit_direct_reference_oof_alpha(
             "Direct-reference REML estimated zero latent signal; refusing to emit Raw-as-Correct "
             "without inventing an artificial minimum movement"
         )
-    # With tau frozen by REML, learn how much between-reference scenario
-    # dispersion is genuinely predictive uncertainty. Kappa=0 is the complete
-    # fixed-policy interpretation; kappa=1 is the old hard-coded superpopulation
-    # assumption. No upper business bound is imposed.
+    # 固定 REML 得到的 tau 后，学习参考项间场景离散度中有多少确为预测不确定性。Kappa=0 是完整的
+    # 固定策略解释；kappa=1 是旧的硬编码超总体假设。未施加业务上限。
     raw_loss = cluster_equal_loss_for_tau(0.0)
     kappa_zero_loss = cluster_equal_loss_for_tau(tau, 0.0)
     kappa_opt = minimize_scalar(
@@ -2798,11 +2770,9 @@ def _fit_direct_reference_oof_alpha(
         raise RuntimeError(f"Direct-reference OOF kappa fit failed: {kappa_opt.message}")
     positive_kappa = float(math.exp(float(kappa_opt.x)))
     positive_kappa_loss = cluster_equal_loss_for_tau(tau, positive_kappa)
-    # Continuous kappa is not identifiable here: when OOF prefers Raw it runs to
-    # infinity and switches every correction off. Average the two explicit
-    # scientific models directly and equally: kappa=0 (complete fixed policy)
-    # and kappa=1 (standard superpopulation prediction variance). Do not let an
-    # unstable batch-level evidence weighting move this midpoint per run.
+    # 连续 kappa 在此不可识别：OOF 偏好 Raw 时它会趋于无穷，并关闭所有修正。直接等权平均两个明确的
+    # 科学模型：kappa=0（完整固定策略）和 kappa=1（标准超总体预测方差）。不要让不稳定的批次级证据权重
+    # 在每次运行时移动这一中点。
     kappa_one_loss = cluster_equal_loss_for_tau(tau, 1.0)
     cluster_count = max(1, int(len(np.unique(clusters))))
     log_evidence_ratio_one_over_zero = float(cluster_count) * float(kappa_zero_loss - kappa_one_loss)
@@ -2937,9 +2907,7 @@ def _member_conditioned_strength_eb(
         if fit_rows[len(members_by_group) - 1]:
             for m in ms:
                 member_frequency[m] = member_frequency.get(m, 0) + 1
-    # Only repeated members define a common component.  A one-off member is
-    # observationally indistinguishable from this group's partner-specific
-    # term and must not create a duplicate latent parameter.
+    # 只有重复成员定义公共成分。一次性成员在观测上无法与该组的对手特定项区分，不能创建重复的潜在参数。
     member_names = sorted([m for m, count in member_frequency.items() if count >= 2])
     midx = {m: j for j, m in enumerate(member_names)}
     rr: List[int] = []; cc: List[int] = []; dd: List[float] = []
@@ -2986,13 +2954,10 @@ def _member_conditioned_strength_eb(
             break
         tau_member, tau_partner = new_tau_member, new_tau_partner
     member_component = np.asarray(X.dot(member_coef)).ravel()
-    # EB is used only to attribute the projected strength between a repeated-
-    # member common component and a partner-specific component.  It must not
-    # attenuate the scalar strength exported to Correct: in real audits the
-    # fitted tau_partner can collapse to its numerical floor and turn dozens of
-    # valid 0.2--1.4 CQD residuals into ~1e-9 movements.  Keep the decomposition
-    # additive and exact for both fit rows and read-only score rows.  Rows
-    # outside fit_mask still cannot affect member_coef or either fitted tau.
+    # EB 仅用于在重复成员公共成分与对手特定成分之间归属投影强度。它不得衰减导出至 Correct 的标量强度：
+    # 在真实审计中，拟合的 tau_partner 可能坍缩至数值下限，进而将数十个有效的 0.2--1.4 CQD 残差变成
+    # 约 1e-9 的移动。对拟合行及只读评分行均保持加性且精确的分解。fit_mask 之外的行仍不能影响
+    # member_coef 或任一拟合 tau。
     partner_coef = z - member_component
     posterior = member_component + partner_coef
     return posterior, member_component, partner_coef, float(tau_member), float(tau_partner), bool(converged), int(rounds)
@@ -3120,10 +3085,8 @@ def _crossfit_continuous_strength_adjustment(
         rank, spectrum, embedding = _derive_reference_anchored_embedding(
             df, edges, train, reference_ids, float(beta),
         )
-        # Identify strength relative to the actual prospective policy.  With
-        # E_ref[u_ref] = 0, every skew interaction satisfies
-        # E_ref[u_i^T S u_ref] = 0, so it cannot transfer a reference-average
-        # residual into (or out of) scalar strength as spectral rank changes.
+        # 相对于实际前瞻性策略识别强度。因 E_ref[u_ref] = 0，每个偏斜交互均满足
+        # E_ref[u_i^T S u_ref] = 0，因此当谱秩改变时，它不能将参考平均残差转入（或转出）标量强度。
         ref_row_mask = df["group_id"].astype(int).isin(ref_set).to_numpy(bool)
         if embedding.shape[1] > 0 and np.any(ref_row_mask):
             embedding = embedding - np.mean(embedding[ref_row_mask], axis=0, keepdims=True)
@@ -3135,9 +3098,7 @@ def _crossfit_continuous_strength_adjustment(
         spectrum = spectrum.copy()
         spectrum["fold"] = int(fold)
         spectrum.to_csv(out_dir / f"prospective_continuous_spectrum_fold_{fold}.csv", index=False)
-        # Fit the environment only on member-unique references.  Duplicate
-        # candidate families and score-only targets cannot influence gamma,
-        # tau, or another group's scalar strength.
+        # 仅在成员唯一参考项上拟合环境。重复候选族和仅评分目标不能影响 gamma、tau 或其他组的标量强度。
         ref_rows = np.flatnonzero(ref_row_mask)
         ref_df = df.iloc[ref_rows].copy().reset_index(drop=True)
         ref_index = {int(g): i for i, g in enumerate(ref_df["group_id"].astype(int))}
@@ -3186,8 +3147,7 @@ def _crossfit_continuous_strength_adjustment(
         fold_delta.append(delta_cqd)
         fold_member_component.append(member_component / float(beta))
         fold_partner_component.append(partner_component / float(beta))
-        # OOF calibration is model fitting.  Score-only rows may be projected
-        # by the frozen model, but their outcomes must not choose alpha.
+        # OOF 校准属于模型拟合。冻结模型可投影仅评分行，但其结果不得用于选择 alpha。
         calibration_hold = (
             hold
             & edges["group_a"].astype(int).isin(fit_gid_set).to_numpy(bool)
@@ -3367,9 +3327,8 @@ def _apply_raw_anchored_prospective_correct(
     if not np.all(np.isfinite(mean_rate)):
         bad = out.loc[~np.isfinite(mean_rate), "group_id"].astype(int).tolist()
         raise RuntimeError(f"Non-finite replacement mean rate; first_group_ids={bad[:30]}")
-    # Five expected future entrants occupy five of the fixed 50 Raw target
-    # slots. Each is an equal draw from the legal, member-unique reference pool.
-    # Therefore they uniformly replace 5/50 of the current Golden target mass.
+    # 五个预期未来加入者占据固定 50 个 Raw 目标槽位中的五个。每个均是合法成员唯一参考池中的等概率抽取。
+    # 因而它们均匀替换当前 Golden 目标质量的 5/50。
     adjustment = (float(PROSPECTIVE_REPLACEMENT_K) / 50.0) * (mean_rate - raw_score)
     estimation_se = np.zeros(len(out), dtype=float)
     scenario_sd = np.zeros(len(out), dtype=float)
@@ -3384,8 +3343,7 @@ def _apply_raw_anchored_prospective_correct(
     out["prospective_mixed_residual_adjustment_audit_cqd"] = pd.to_numeric(
         out["prospective_reference_delta_cqd"], errors="coerce"
     )
-    # Compatibility fields explicitly describe the retired model rather than
-    # presenting a fabricated member/partner explanation.
+    # 兼容字段明确描述已退役模型，而非展示虚构的成员/对手解释。
     out["prospective_strength_adjustment_cqd"] = adjustment
     out["prospective_strength_crossfit_se_cqd"] = estimation_se
     out["prospective_strength_fold_sd_cqd"] = scenario_sd
@@ -3422,8 +3380,7 @@ def _apply_raw_anchored_prospective_correct(
     out["Correct_potential_cqd"] = out["Correct_center_cqd"].to_numpy(float) + uncertainty
     out["Correct_uncertainty_cqd"] = uncertainty
 
-    # Member-overlap amplification uncertainty is computed after the center score
-    # exists.  It is reported separately and not subtracted from Correct_center.
+    # 成员重叠放大不确定性在中心分数存在后计算。单独报告，且不从 Correct_center 中扣除。
     score_map = {int(g): float(s) for g, s in out[["group_id", "Correct_center_cqd"]].itertuples(index=False, name=None)}
     member_to_gids: Dict[str, List[int]] = {}
     for gid in out["group_id"].astype(int):
@@ -3442,15 +3399,13 @@ def _apply_raw_anchored_prospective_correct(
         nearest = min(margins) if margins else np.inf
         overlap_u.append(float(max(0.0, 0.18 - nearest) / 0.18 * 0.18) if np.isfinite(nearest) else 0.0)
     out["Correct_member_overlap_uncertainty_cqd"] = np.asarray(overlap_u, dtype=float)
-    # Keep the requested posterior-plus-scenario uncertainty definition pure.
-    # Member overlap remains an additional, separately named decision diagnostic.
+    # 保持所要求的后验加场景不确定性定义纯粹。成员重叠仍是额外的、单独命名的决策诊断。
     out["Correct_selection_risk_penalized_cqd"] = out["Correct_center_cqd"].astype(float) - 0.35 * np.sqrt(
         out["Correct_uncertainty_cqd"].astype(float) ** 2
         + out["Correct_member_overlap_uncertainty_cqd"].astype(float) ** 2
     )
 
-    # Override final public score.  Keep uncertainty separate; do not punish rare
-    # or under-exposed profiles inside the semantic center score.
+    # 覆盖最终公开分数。保持不确定性独立；不要在语义中心分数中惩罚稀有或暴露不足的画像。
     out["Correct Cqd"] = out["Correct_center_cqd"].astype(float)
     out["selection_weight_cqd"] = out["Correct_center_cqd"].astype(float)
     out["Selection Weight Cqd"] = out["selection_weight_cqd"].astype(float)
@@ -3810,7 +3765,7 @@ def _write_post_training_correction_overfit_diagnostics(out_dir: Path, groups_ou
 
     pd.DataFrame(rows).to_csv(out_dir / "post_training_correction_overfit_diagnostics.csv", index=False)
 
-    # Keep a compact row-level file for the top rows most affected by shrink.
+    # 为最受收缩影响的顶端行保留紧凑的行级文件。
     row_diag = pd.DataFrame({
         "group_id": df["group_id"].astype(int),
         "raw_cqd": raw,
@@ -3950,7 +3905,7 @@ def _write_raw_adhesion_diagnostics(out_dir: Path, groups_out: pd.DataFrame) -> 
 def run(sqlite_path:Path, out_dir:Path, lane_size:int=2, nfold:int=5, seed:int=123):
     out_dir.mkdir(parents=True, exist_ok=True)
     conn=sqlite3.connect(sqlite_path)
-    # lane results only; raw_average_cqd required.
+    # 仅使用 lane 结果；要求 raw_average_cqd。
     lr=pd.read_sql_query("""
         select lr.group_id, lr.raw_average_cqd, lr.average_cqd as old_average_cqd,
                lr.rank as old_rank, lr.golden_rate,
@@ -3961,7 +3916,7 @@ def run(sqlite_path:Path, out_dir:Path, lane_size:int=2, nfold:int=5, seed:int=1
     """, conn, params=(lane_size,))
     if lr.empty: raise RuntimeError('No lane_results rows with raw_average_cqd')
     lr=lr.rename(columns={'raw_average_cqd':'raw_cqd'})
-    # members and text type from embedded algorithm
+    # 来自嵌入算法的成员和文本类型。
     gm=pd.read_sql_query("""
         select gm.group_id, gm.member, gm.position from group_members gm
         join lane_results lr on lr.group_id=gm.group_id and lr.lane_size=?
@@ -3977,18 +3932,18 @@ def run(sqlite_path:Path, out_dir:Path, lane_size:int=2, nfold:int=5, seed:int=1
     groups_df=lr.merge(text_df,on='group_id',how='left')
     groups_df['raw_rank']=groups_df['raw_cqd'].rank(ascending=False,method='first').astype(int)
     group_to_idx={gid:i for i,gid in enumerate(groups_df['group_id'])}
-    # edges within these groups
+    # 这些组内部的边。
     edges=pd.read_sql_query("select group_a, group_b, win_rate_a, samples from group_rates where samples>0 and win_rate_a is not null", conn)
     conn.close()
     edges=edges[edges.group_a.isin(group_to_idx) & edges.group_b.isin(group_to_idx)].copy()
-    # DB stores win_rate_a as percentage in this dataset. Normalize exactly once to probability.
+    # 此数据集的数据库将 win_rate_a 存为百分比。恰好一次地归一化为概率。
     if float(edges['win_rate_a'].max()) > 1.0:
         edges['win_rate_a'] = edges['win_rate_a'] / 100.0
     edges['ia']=edges.group_a.map(group_to_idx).astype(int); edges['ib']=edges.group_b.map(group_to_idx).astype(int)
     edges['fold5']=edge_fold_ids(edges['group_a'].to_numpy(),edges['group_b'].to_numpy(),nfold=nfold)
     if edges.empty: raise RuntimeError('No within-lane group_rates edges')
     raw=groups_df['raw_cqd'].to_numpy();
-    # Input integrity
+    # 输入完整性。
     checks=[]
     checks.append({'check':'raw_cqd_rows','value':len(groups_df),'status':'OK'})
     checks.append({'check':'pair_edges','value':len(edges),'status':'OK'})
@@ -3996,7 +3951,7 @@ def run(sqlite_path:Path, out_dir:Path, lane_size:int=2, nfold:int=5, seed:int=1
     checks.append({'check':'golden_used','value':0,'status':'OK'})
     checks.append({'check':'legacy_winrate_type_used','value':0,'status':'OK'})
     pd.DataFrame(checks).to_csv(out_dir/'input_integrity_checks.csv',index=False)
-    # OOF crossfit
+    # OOF 交叉拟合。
     oof_rows=[]; fold_records=[]; k_records=[]; fit_records=[]; fold_strength_rows=[]
     for f in range(nfold):
         hold=(edges['fold5'].to_numpy()==f); train=~hold
@@ -4010,7 +3965,7 @@ def run(sqlite_path:Path, out_dir:Path, lane_size:int=2, nfold:int=5, seed:int=1
         sub=edges.loc[hold].copy().reset_index(drop=True)
         sub['outer_fold']=f; sub['raw_eta']=raw_eta; sub['corrected_eta']=corr_eta; sub['raw_p']=sigmoid(raw_eta); sub['corrected_p']=sigmoid(corr_eta)
         sub['type_a']=[type_labels[i] for i in sub['ia']]; sub['type_b']=[type_labels[i] for i in sub['ib']]
-        # residual on empirical logit with Laplace smoothing for bias diagnostics
+        # 使用经 Laplace 平滑的经验 logit 残差进行偏差诊断。
         n=sub['samples'].to_numpy(float); y=sub['win_rate_a'].to_numpy(float); elog=logit(np.clip((y*n+0.5)/(n+1.0),1e-6,1-1e-6))
         sub['raw_residual']=elog-sub['raw_eta']; sub['corrected_residual']=elog-sub['corrected_eta']
         oof_rows.append(sub)
@@ -4044,15 +3999,15 @@ def run(sqlite_path:Path, out_dir:Path, lane_size:int=2, nfold:int=5, seed:int=1
     pd.concat(k_records,ignore_index=True).to_csv(out_dir/'adaptive_rsw_type_k_selection_by_fold.csv',index=False)
     pd.DataFrame(fold_records).to_csv(out_dir/'outer_fold_prediction_metrics.csv',index=False)
     pd.DataFrame(fit_records).to_csv(out_dir/'betabinomial_eb_fit_diagnostics_by_fold.csv',index=False)
-    # Overall OOF metrics
+    # 整体 OOF 指标。
     oof_metrics=metrics_for(oof, oof['raw_eta'].to_numpy(), oof['corrected_eta'].to_numpy())
     oof_metrics.to_csv(out_dir/'oof_prediction_metrics_before_after.csv',index=False)
-    # Type bias diagnostics
+    # 类型偏差诊断。
     tl=weighted_bias_by_type(oof, 'type_a')
     tl.to_csv(out_dir/'oof_type_level_bias_before_after.csv',index=False)
     tp=type_pair_bias(oof)
     tp.to_csv(out_dir/'oof_type_pair_bias_before_after_detail.csv',index=False)
-    # summaries
+    # 汇总。
     summary=[]
     for model in ['raw','corrected']:
         t=tl[tl.model==model]; p=tp[tp.model==model]
@@ -4062,13 +4017,13 @@ def run(sqlite_path:Path, out_dir:Path, lane_size:int=2, nfold:int=5, seed:int=1
                         'worst_abs_type_bias':float(t.abs_mean_residual.max()) if len(t) else np.nan,
                         'worst_abs_type_pair_bias':float(p.abs_mean_residual.max()) if len(p) else np.nan})
     type_summary=pd.DataFrame(summary); type_summary.to_csv(out_dir/'oof_type_bias_summary_before_after.csv',index=False)
-    # worst worsened type-pairs
+    # 恶化最严重的类型对。
     piv=tp.pivot_table(index=['type_a','type_b'],columns='model',values=['mean_residual','abs_mean_residual','support_edges','support_samples'],aggfunc='first')
     piv.columns=['_'.join(c).strip() for c in piv.columns.values]; piv=piv.reset_index()
     if 'abs_mean_residual_corrected' in piv and 'abs_mean_residual_raw' in piv:
         piv['abs_bias_delta']=piv['abs_mean_residual_corrected']-piv['abs_mean_residual_raw']
     piv.sort_values('abs_bias_delta' if 'abs_bias_delta' in piv else 'type_a', ascending=False).to_csv(out_dir/'worst_worsened_type_pair_bias.csv',index=False)
-    # gap calibration and high confidence violation
+    # 间隔校准与高置信度违例。
     gap=np.abs(oof['corrected_eta'])
     try: oof['corrected_gap_decile']=pd.qcut(gap,10,labels=False,duplicates='drop')
     except Exception: oof['corrected_gap_decile']=0
@@ -4091,13 +4046,13 @@ def run(sqlite_path:Path, out_dir:Path, lane_size:int=2, nfold:int=5, seed:int=1
         for b in sorted(set(bins)):
             m=bins==b; viol_rows.append({'model':model,'gap_bin':int(b),'edge_count':int(m.sum()),'sample_count':float(n[m].sum()),'weighted_violation_rate':float(np.sum(n[m]*violation[m])/max(1.0,np.sum(n[m]))),'mean_abs_eta_gap':float(np.average(np.abs(eta[m]),weights=n[m]))})
     pd.DataFrame(viol_rows).to_csv(out_dir/'high_confidence_violation_by_gap_decile.csv',index=False)
-    # Full final model on all edges
+    # 所有边上的完整最终模型。
     beta_all=fit_raw_beta(raw[edges['ia'].to_numpy()]-raw[edges['ib'].to_numpy()], edges['win_rate_a'].to_numpy(float), edges['samples'].to_numpy(float))
     all_mask=np.ones(len(edges),dtype=bool)
     type_ids, type_labels, kdf, prof, wsum=adaptive_residual_type(groups_df, edges, beta_all, all_mask, validation_mask=None, seed=seed+100)
     kdf.to_csv(out_dir/'adaptive_rsw_type_k_selection_full.csv',index=False)
     fit=fit_betabinomial_eb(groups_df, edges, all_mask, type_ids, max_eb_iter=6, tol=1e-3)
-    # final group posterior strength
+    # 最终组后验强度。
     beta=fit.beta
     if abs(beta)<1e-8:
         corrected_cqd=beta*raw+fit.delta
@@ -4114,8 +4069,8 @@ def run(sqlite_path:Path, out_dir:Path, lane_size:int=2, nfold:int=5, seed:int=1
     groups_out['cv_bagged_delta_logit']=groups_out['cv_bagged_delta_logit'].fillna(groups_out['full_model_delta_logit'])
     groups_out['stability_strength_sd_logit']=groups_out['stability_strength_sd_logit'].fillna(0.0)
     groups_out['cv_delta_sd_logit']=groups_out['cv_delta_sd_logit'].fillna(0.0)
-    # Final leaderboard score uses cross-fit bagged random effect, not the full-fit delta.
-    # This is a data-driven ensemble estimator, not a cap or hand-tuned alpha.
+    # 最终排行榜分数使用交叉拟合装袋随机效应，而非全拟合 delta。
+    # 这是数据驱动的集成估计器，不是上限或手调 alpha。
     groups_out['posterior_strength_logit']=beta*raw+groups_out['cv_bagged_delta_logit'].to_numpy(float)
     groups_out['Correct Cqd']=raw+groups_out['cv_bagged_delta_logit'].to_numpy(float)/beta if abs(beta)>1e-8 else groups_out['posterior_strength_logit']
     groups_out['posterior_delta_logit']=groups_out['cv_bagged_delta_logit']
@@ -4125,14 +4080,14 @@ def run(sqlite_path:Path, out_dir:Path, lane_size:int=2, nfold:int=5, seed:int=1
     groups_out['Raw Cqd']=groups_out['raw_cqd']
     groups_out['Correct Rank All Candidates']=groups_out['Correct Cqd'].rank(ascending=False,method='first').astype(int)
     groups_out['rank_delta_all_candidates']=groups_out['Raw Rank']-groups_out['Correct Rank All Candidates']
-    # type full table
+    # 类型完整表。
     groups_out[['group_id','RSW-Type','Text-Type','Simple Text-Type','Name','raw_cqd','Correct Cqd','full_model_corrected_cqd','posterior_strength_logit','full_model_strength_logit','posterior_delta_logit','full_model_delta_logit','stability_strength_sd_logit','stability_strength_sd_cqd','cv_delta_sd_logit','cv_delta_sd_cqd','Raw Rank','Correct Rank All Candidates']].to_csv(out_dir/'posterior_strength_by_group.csv',index=False)
-    # counter table
+    # 克制表。
     counter_rows=[]
     for j,(a,b) in enumerate(fit.theta_pairs):
         counter_rows.append({'type_a':f'RSW{a+1:02d}','type_b':f'RSW{b+1:02d}','counter_a_beats_b_logit':fit.theta[j],'effect_sd_not_laplace':math.sqrt(max(fit.var_theta[j],0)) if j<len(fit.var_theta) else np.nan})
     pd.DataFrame(counter_rows).to_csv(out_dir/'antisymmetric_type_counter_posterior.csv',index=False)
-    # Resolver exact set-packing MILP using utility posterior_strength_logit. Candidate group all groups.
+    # 使用 utility posterior_strength_logit 的解析器精确集合打包 MILP。候选组为所有组。
     members=group_members
     member_list=sorted({m for ms in members.values() for m in ms})
     mem_idx={m:i for i,m in enumerate(member_list)}
@@ -4145,25 +4100,25 @@ def run(sqlite_path:Path, out_dir:Path, lane_size:int=2, nfold:int=5, seed:int=1
     lc=LinearConstraint(A, lb=np.zeros(len(member_list)), ub=np.ones(len(member_list)))
     res=milp(c=-utilities, integrality=np.ones(G), bounds=Bounds(0,1), constraints=lc, options={'time_limit':120})
     if not res.success:
-        # deterministic greedy fallback is not used silently; mark if MILP fails.
+        # 不会静默使用确定性贪婪回退；若 MILP 失败则标记。
         raise RuntimeError(f'MILP resolver failed: {res.message}')
     x=np.rint(res.x).astype(int)
     groups_out['resolver_selected']=x
     selected=groups_out[groups_out.resolver_selected==1].copy()
     selected=selected.sort_values('Correct Cqd',ascending=False).reset_index(drop=True)
     selected['Correct Rank']=np.arange(1,len(selected)+1)
-    # duplicate check
+    # 重复检查。
     used=[]
     for gid in selected.group_id:
         used.extend(members.get(int(gid),[]))
     dup_count=len(used)-len(set(used))
-    # review table exactly six columns
+    # 审查表恰有六列。
     review=selected[['Correct Rank','Correct Cqd','Raw Rank','Raw Cqd','Text-Type','Name']].copy()
     review.to_csv(out_dir/'corrected_rank_review_crossfit_betabinomial_cvbag_eb_strength_typecounter_resolver_48_7.csv',index=False)
-    # also all candidate diagnostics
+    # 同时输出所有候选诊断。
     groups_out.to_csv(out_dir/'final_all_candidate_diagnostics.csv',index=False)
     selected.to_csv(out_dir/'resolver_selection_detail.csv',index=False)
-    # Same member competitors
+    # 相同成员竞争者。
     comp=[]
     for m in member_list:
         gids=[gid for gid,ms in members.items() if m in ms]
@@ -4172,18 +4127,18 @@ def run(sqlite_path:Path, out_dir:Path, lane_size:int=2, nfold:int=5, seed:int=1
             best=g.iloc[0]; second=g.iloc[1]
             comp.append({'member':m,'candidate_count':len(g),'selected_group_id':int(best.group_id) if int(best.resolver_selected)==1 else None,'top_group_id':int(best.group_id),'top_utility_logit':float(best.posterior_strength_logit),'second_group_id':int(second.group_id),'second_utility_logit':float(second.posterior_strength_logit),'best_vs_second_margin_logit':float(best.posterior_strength_logit-second.posterior_strength_logit),'competition_class':'dominant' if best.posterior_strength_logit-second.posterior_strength_logit>float(np.nanmedian(groups_out.stability_strength_sd_logit)) else 'close'})
     pd.DataFrame(comp).to_csv(out_dir/'same_member_competitor_detail.csv',index=False)
-    # jumper uncertainty detail
+    # 跳跃者不确定性详情。
     jump=groups_out.copy(); jump['abs_rank_delta']=jump['rank_delta_all_candidates'].abs(); jump.sort_values(['rank_delta_all_candidates','Correct Rank All Candidates'],ascending=[False,True]).to_csv(out_dir/'posterior_uncertainty_jumper_detail.csv',index=False)
-    # summary
+    # 汇总。
     movement={'mean_abs_delta_cqd':float(np.mean(np.abs(groups_out['Correct Cqd']-groups_out['Raw Cqd']))),'max_abs_delta_cqd':float(np.max(np.abs(groups_out['Correct Cqd']-groups_out['Raw Cqd']))),'p95_abs_delta_cqd':float(np.quantile(np.abs(groups_out['Correct Cqd']-groups_out['Raw Cqd']),0.95)),'mean_abs_rank_delta_all_candidates':float(np.mean(np.abs(groups_out['rank_delta_all_candidates']))),'top50_jaccard_diagnostic':float(len(set(groups_out.nsmallest(50,'Raw Rank').group_id)&set(groups_out.nsmallest(50,'Correct Rank All Candidates').group_id))/50.0)}
     final_summary=pd.DataFrame([{'lane_size':lane_size,'group_count':len(groups_out),'edge_count':len(edges),'oof_edges':len(oof),'final_selected_count':len(selected),'duplicate_selected_members':dup_count,'full_selected_k':int(kdf.sort_values('validation_logloss').iloc[0]['k']),'full_beta_raw':beta_all,'full_beta_model':fit.beta,'full_tau_delta':fit.tau_delta,'full_tau_counter':fit.tau_counter,'full_beta_binomial_phi':fit.phi,'full_counter_dim':len(fit.theta),'cqd_scale_note':'crossfit_bagged_delta_over_full_beta','full_model_cqd_scale_note':cqd_scale_note,'full_model_mean_abs_delta_cqd':float(np.mean(np.abs(groups_out['full_model_corrected_cqd']-groups_out['Raw Cqd']))),'full_model_max_abs_delta_cqd':float(np.max(np.abs(groups_out['full_model_corrected_cqd']-groups_out['Raw Cqd']))),**movement}])
     final_summary.to_csv(out_dir/'final_model_summary.csv',index=False)
-    # Write report
+    # 写入报告。
     raw_metrics=oof_metrics[oof_metrics.model=='raw'].iloc[0].to_dict(); corr_metrics=oof_metrics[oof_metrics.model=='corrected'].iloc[0].to_dict()
     raw_ts=type_summary[type_summary.model=='raw'].iloc[0].to_dict(); corr_ts=type_summary[type_summary.model=='corrected'].iloc[0].to_dict()
     report=f"""# crossfit_betabinomial_cvbag_eb_strength_typecounter_resolver\n\nThis run implements the requested clean branch with all required code aggregated into one Python source file.\n\n## Non-negotiables\n\n- Raw Cqd is used only as immutable input from `lane_results.raw_average_cqd`; it is not recomputed.\n- Golden is not used.\n- Legacy `winrate_type_label` is not used.\n- Text-Type is computed from an embedded Python port of `tswn_lane_ranker/src/skill_eq.rs`, not from W-Type.\n- RSW-Type is derived from strength-neutral residual shape and its K is selected by held-out logloss; k14 is not hardcoded.\n- Resolver is exact generic set-packing MILP: maximize learned utility subject to each member used <= 1.\n- No topK, no rank-movement guard, no manual cap/shrink/golden/history rule is used.\n\n## Model\n\n```text\nlogit P(i beats j) = beta * (RawCqd_i - RawCqd_j) + delta_i - delta_j + counter(type_i,type_j)\ndelta_i ~ Normal(0, tau_delta^2)\ncounter(a,b) = -counter(b,a), counter(a,a)=0\ncounter(a,b) ~ Normal(0, tau_counter^2)\n```\n\nStrength edge predictions are computed by exact beta-binomial penalized MAP with EB prior scales. The final leaderboard uses the cross-fit bagged group delta averaged across outer-fold models, combined with the full-model raw scale; this is a data-driven ensemble estimator and not a hand cap/shrink. Uncertainty fields are cross-fit stability diagnostics rather than Laplace posterior covariance. `tau_delta`, `tau_counter`, and the beta-binomial overdispersion precision `phi` are learned from data; no Laplace covariance approximation is used for the main score.\n\n## OOF prediction headline\n\n| metric | Raw | Corrected | Delta |\n|---|---:|---:|---:|\n| weighted_logloss | {raw_metrics['weighted_logloss']:.9f} | {corr_metrics['weighted_logloss']:.9f} | {corr_metrics['weighted_logloss']-raw_metrics['weighted_logloss']:+.9f} |\n| weighted_brier | {raw_metrics['weighted_brier']:.9f} | {corr_metrics['weighted_brier']:.9f} | {corr_metrics['weighted_brier']-raw_metrics['weighted_brier']:+.9f} |\n| weighted_auc | {raw_metrics['weighted_auc']:.9f} | {corr_metrics['weighted_auc']:.9f} | {corr_metrics['weighted_auc']-raw_metrics['weighted_auc']:+.9f} |\n| weighted_ordering_accuracy | {raw_metrics['weighted_ordering_accuracy']:.9f} | {corr_metrics['weighted_ordering_accuracy']:.9f} | {corr_metrics['weighted_ordering_accuracy']-raw_metrics['weighted_ordering_accuracy']:+.9f} |\n\n## OOF type-bias headline\n\n| metric | Raw | Corrected | Delta |\n|---|---:|---:|---:|\n| type_level_bias_rms | {raw_ts['type_level_bias_rms']:.9f} | {corr_ts['type_level_bias_rms']:.9f} | {corr_ts['type_level_bias_rms']-raw_ts['type_level_bias_rms']:+.9f} |\n| residual_eta2_by_type_a | {raw_ts['residual_eta2_by_type_a']:.9f} | {corr_ts['residual_eta2_by_type_a']:.9f} | {corr_ts['residual_eta2_by_type_a']-raw_ts['residual_eta2_by_type_a']:+.9f} |\n| type_pair_bias_rms | {raw_ts['type_pair_bias_rms']:.9f} | {corr_ts['type_pair_bias_rms']:.9f} | {corr_ts['type_pair_bias_rms']-raw_ts['type_pair_bias_rms']:+.9f} |\n| worst_abs_type_pair_bias | {raw_ts['worst_abs_type_pair_bias']:.9f} | {corr_ts['worst_abs_type_pair_bias']:.9f} | {corr_ts['worst_abs_type_pair_bias']-raw_ts['worst_abs_type_pair_bias']:+.9f} |\n\n## Final full-model resolver\n\n- selected groups: {len(selected)}\n- duplicate selected member count: {dup_count}\n- selected full-model RSW K: {int(kdf.sort_values('validation_logloss').iloc[0]['k'])}\n- beta: {fit.beta:.9f}\n- tau_delta: {fit.tau_delta:.9f}\n- tau_counter: {fit.tau_counter:.9f}\n- mean_abs_delta_cqd: {movement['mean_abs_delta_cqd']:.9f}\n- max_abs_delta_cqd: {movement['max_abs_delta_cqd']:.9f}\n\nThe fixed human review table is exported with exactly:\n\n```text\nCorrect Rank | Correct Cqd | Raw Rank | Raw Cqd | Text-Type | Name\n```\n"""
     (out_dir/'CROSSFIT_BETABINOMIAL_CVBAG_EB_STRENGTH_TYPECOUNTER_RESOLVER_REPORT.md').write_text(report,encoding='utf-8')
-    # Copy source itself after run in caller.
+    # 调用方在运行后复制源文件本身。
     return {'out_dir':str(out_dir),'selected':len(selected),'dup_count':dup_count,'oof_logloss_raw':raw_metrics['weighted_logloss'],'oof_logloss_corrected':corr_metrics['weighted_logloss'],'oof_logloss_delta':corr_metrics['weighted_logloss']-raw_metrics['weighted_logloss'],'mean_abs_delta_cqd':movement['mean_abs_delta_cqd'],'max_abs_delta_cqd':movement['max_abs_delta_cqd'],'p95_abs_delta_cqd':movement['p95_abs_delta_cqd']}
 
 
@@ -4206,7 +4161,7 @@ def _write_df_sheet(wb, sheet_name: str, df: pd.DataFrame, max_rows: Optional[in
     d=df.copy()
     if max_rows is not None and len(d)>max_rows:
         d=d.head(max_rows).copy()
-    # Keep audit workbook compact; full details are exported as CSV.
+    # 审计工作簿保持紧凑；完整详情导出为 CSV。
     rows=[list(d.columns)] + [[_excel_safe_value(v) for v in row] for row in d.itertuples(index=False, name=None)]
     if not rows:
         rows=[['empty']]
@@ -4220,14 +4175,14 @@ def _write_df_sheet(wb, sheet_name: str, df: pd.DataFrame, max_rows: Optional[in
 
 def create_excel_outputs(out_dir: Path) -> None:
     from artifact_tool import Workbook, SpreadsheetFile
-    # Review workbook with exactly the required table.
+    # 含有所需精确表格的审查工作簿。
     review_csv=out_dir/'corrected_rank_review_crossfit_betabinomial_cvbag_eb_strength_typecounter_resolver_48_7.csv'
     if review_csv.exists():
         review=pd.read_csv(review_csv)
         wb=Workbook.create()
         _write_df_sheet(wb, 'Review', review)
         SpreadsheetFile.export_xlsx(wb).save(str(out_dir/'corrected_rank_review_crossfit_betabinomial_cvbag_eb_strength_typecounter_resolver_48_7.xlsx'))
-    # Comprehensive audit workbook: summary + compact detail slices. Full details remain in CSV.
+    # 综合审计工作簿：汇总加紧凑详情切片。完整详情仍保留在 CSV 中。
     wb=Workbook.create()
     sheet_specs=[
         ('Summary','final_model_summary.csv',None),
@@ -4266,7 +4221,7 @@ def bundle_outputs(out_dir: Path, source_path: Optional[Path]=None) -> Path:
 
 
 # =========================
-# Low-rank antisymmetric residual interaction branch
+# 低秩反对称残差交互分支
 # =========================
 @dataclass
 class LowRankEBFit:
@@ -4310,13 +4265,13 @@ def robust_spectral_rank(X: np.ndarray, target_rank: Optional[int] = None) -> Tu
         return 0, pd.DataFrame([{"component": 1, "singular_value": 0.0, "selected": False}]), np.zeros((X.shape[0], 0))
     med = float(np.median(s))
     mad = float(np.median(np.abs(s - med)))
-    # 1.4826 is the standard normal consistency constant for MAD, not a leaderboard cap.
+    # 1.4826 是 MAD 的标准正态一致性常数，不是排行榜上限。
     floor = med + 1.4826 * mad
     selected = s > floor
     if target_rank is not None:
-        # Interaction-rich branch:
-        # low-rank capacity is tied to the held-out selected RSW K, not a handpicked fixed number.
-        # EB still learns tau_lowrank and shrinks unnecessary skew directions.
+        # 交互丰富分支：
+        # 低秩容量与保留的已选 RSW K 绑定，而非人为挑选的固定数字。
+        # EB 仍会学习 tau_lowrank 并收缩不必要的偏斜方向。
         rank = int(max(0, min(int(target_rank), len(s))))
     else:
         rank = int(selected.sum())
@@ -4352,9 +4307,8 @@ def build_lowrank_design(edges_subset: pd.DataFrame, embedding: np.ndarray, skew
     Z = np.empty((len(edges_subset), len(skew_pairs)), dtype=float)
     for j, (a, b) in enumerate(skew_pairs):
         Z[:, j] = Eia[:, a] * Eib[:, b] - Eia[:, b] * Eib[:, a]
-    # Embedding coordinates already have a fixed scale.  Never standardize Z
-    # on the supplied edge subset: train and validation would otherwise use
-    # different feature coordinates for the same fitted gamma.
+    # 嵌入坐标已有固定尺度。绝不可在提供的边子集上标准化 Z：否则训练和验证会对同一拟合 gamma
+    # 使用不同特征坐标。
     return np.nan_to_num(Z)
 
 def derive_lowrank_embedding(groups_df, edges_df, raw_beta, train_mask, seed=123, target_rank: Optional[int] = None):
@@ -4700,44 +4654,33 @@ def _prepare_partial_edges_for_ids(all_edges: pd.DataFrame, ids: Sequence[int], 
 
 
 # =========================
-# Active-set challenger selection
+# 活跃集挑战者选择
 # =========================
 #
-# The public leaderboard displays one non-overlapping "main" set, but the raw
-# candidate table can contain many groups sharing the same members.  Training on
-# every duplicate candidate makes the model optimize the wrong universe.  The
-# weighted active-environment loop below represents the displayed environment as
-# continuous membership weights q_i in [0, 1].  Both the active fit and the
-# challenger projection are weighted by q, then q is updated by a damped soft
-# browser-greedy map until it reaches a numerical fixed point.
+# 公开排行榜展示一个不重叠的“主”集合，但原始候选表可包含许多共享相同成员的组。对每个重复候选项训练会使
+# 模型优化错误的全集。下方的加权活跃环境循环用 [0, 1] 中的连续成员权重 q_i 表示展示环境。活跃拟合和
+# 挑战者投影均按 q 加权，然后通过阻尼软浏览器贪婪映射更新 q，直到达到数值不动点。
 
-# Weighted active-environment iteration.  These are numerical iteration
-# parameters, not rank caps or hand-written candidate filters.  The active
-# environment is represented by q_i in [0, 1] instead of a hard selected set.
+# 加权活跃环境迭代。这些是数值迭代参数，不是排名上限或手写候选过滤器。活跃环境由 [0, 1] 中的 q_i
+# 表示，而非硬选择集。
 ACTIVE_SET_WEIGHTED_MAX_ITERS = 100
 ACTIVE_SET_WEIGHTED_SUPPORT_EPS = 5e-2
 ACTIVE_SET_WEIGHTED_CONVERGENCE_MAX_DELTA = 1e-3
 ACTIVE_SET_WEIGHTED_CONVERGENCE_MEAN_DELTA = 2.5e-4
 ACTIVE_SET_WEIGHTED_MASS_TOL = 1e-4
 
-# Regularized self-training controls.  These are continuous EB / validation
-# controls, not rank caps, Raw guards, blacklist rules, or hard rescue filters.
+# 正则化自训练控制。这些是连续 EB / 验证控制，不是排名上限、Raw 保护、黑名单规则或硬救援过滤器。
 ACTIVE_REG_BASE_DELTA_ROBUST_SCALE_CQD = 1.25
-# Global base is an EB prior, not the final active score.  When the fitted
-# group-delta prior scale explodes in CQD units (tau_delta / beta), the base
-# becomes a full-data group correction and can switch regimes around a small
-# raw_min change.  This soft shrink keeps global base as a modest prior while
-# leaving final active projection/residual correction to carry local evidence.
+# 全局基数是 EB 先验，不是最终活跃分数。当拟合的组 delta 先验尺度以 CQD 单位爆炸
+# （tau_delta / beta）时，基数会成为全数据组修正，并可能在 raw_min 的小变化附近切换状态。
+# 此软收缩使全局基数维持为温和先验，同时让最终活跃投影/残差修正承载局部证据。
 ACTIVE_REG_GLOBAL_BASE_TAU_CQD_STABILITY_SCALE = 0.75
-# Historical learned-global-base controls are intentionally not used by the
-# current run path.  `global_base_cqd` is Raw; all learnable movement is confined
-# to active projection / residual correction below.
-# Active residuals are now evidence-aware.  Global base stays exactly Raw;
-# these controls only affect the post-active score-only residual layer.
+# 历史学习型全局基数控制有意不由当前运行路径使用。`global_base_cqd` 为 Raw；所有可学习移动均限制在
+# 下方的活跃投影 / 残差修正中。
+# 活跃残差现已具备证据感知能力。全局基数保持为精确的 Raw；这些控制仅影响活跃后仅评分残差层。
 ACTIVE_REG_RESIDUAL_SOFT_CAP_CQD = 1.25
-# Make the cap evidence-aware: high-evidence score-only rows can retain more
-# active residual, while selected/q-support rows remain more strongly protected
-# against self-fit.  These are continuous shrink controls, not Raw/rank guards.
+# 令上限具备证据感知能力：高证据仅评分行可保留更多活跃残差，而已选/q 支持行仍会更强地防范自拟合。
+# 这些是连续收缩控制，不是 Raw/排名保护。
 ACTIVE_REG_SCORE_ONLY_SOFT_CAP_MULTIPLIER = 1.00
 ACTIVE_REG_SELECTED_ROW_SOFT_CAP_MULTIPLIER = 0.85
 ACTIVE_REG_EVIDENCE_SOFT_CAP_MIN_MULTIPLIER = 0.75
@@ -4759,26 +4702,22 @@ ACTIVE_REG_BAD_STEP_ALPHA = 0.07
 ACTIVE_REG_CHURN_DAMP_START_RATIO = 0.35
 ACTIVE_REG_CHURN_DAMP_FULL_RATIO = 0.90
 ACTIVE_REG_CHURN_DAMP_MIN_MULTIPLIER = 0.35
-# Late-stage one-in/one-out q flips can keep max_delta high even when aggregate
-# mass and validation are stable.  Apply an additional smooth micro-churn damp
-# after the exploratory warmup instead of early-stopping.
+# 后期的一进一出 q 翻转即使在总质量和验证稳定时仍可使 max_delta 保持较高。探索预热后施加额外的平滑
+# 微变动阻尼，而非提前停止。
 ACTIVE_REG_MICRO_CHURN_DAMP_START_ITER = 10
 ACTIVE_REG_MICRO_CHURN_DAMP_STRENGTH = 80.0
 ACTIVE_REG_MICRO_CHURN_DAMP_DELTA_SCALE = 0.25
 ACTIVE_REG_MICRO_CHURN_DAMP_MIN_MULTIPLIER = 0.35
 
-# Environment-level moment alignment and tail-q finalization.  These are not
-# Raw adhesion guards and not rank caps: they only prevent the active
-# environment from creating its own global mean/variance drift while q is still
-# seeking a fixed point.
+# 环境级矩对齐和尾部 q 最终化。这些不是 Raw 黏附保护也不是排名上限：它们仅在 q 仍寻找不动点时，防止活跃
+# 环境创造自身的全局均值/方差漂移。
 ACTIVE_MOMENT_ALIGNMENT_MIN_ROWS = 5
 ACTIVE_MOMENT_ALIGNMENT_MIN_SD_CQD = 1e-8
 ACTIVE_Q_TARGET_EMA_ALPHA = 0.35
 ACTIVE_Q_OSCILLATION_DAMP_STRENGTH = 0.35
 ACTIVE_Q_TAIL_WINDOW = 20
-# Final active environment uses only tail-persistent support.  Boundary rows
-# whose q briefly crosses support_eps in the last phase are kept in the audit
-# but not allowed to define the final reference environment.
+# 最终活跃环境仅使用尾部持续支持。在最后阶段 q 短暂跨过 support_eps 的边界行会保留在审计中，但不允许定义
+# 最终参考环境。
 ACTIVE_Q_TAIL_MIN_SUPPORT_PROB = 0.90
 
 
@@ -4806,7 +4745,7 @@ def _solve_member_setpacking(
     if df.empty:
         return []
 
-    # Keep deterministic column order for MILP and tie-breaking.
+    # 为 MILP 和决胜保持确定性列顺序。
     df = df.sort_values([score_col, "raw_cqd", "group_id"], ascending=[False, False, True]).reset_index(drop=True)
     member_list = sorted({
         m
@@ -5213,10 +5152,8 @@ def _compute_soft_browser_active_targets(
     rel = rel.where(np.isfinite(rel), 0.0).clip(lower=0.0, upper=1.0).to_numpy(float)
     coverage = pd.to_numeric(df.get("active_residual_coverage_reliability", pd.Series(np.nan, index=df.index)), errors="coerce").astype(float)
     coverage = coverage.where(np.isfinite(coverage), rel).clip(lower=0.0, upper=1.0).to_numpy(float)
-    # q-target is still score-driven, but low-evidence rows should not jump into
-    # the active environment at q≈1 merely because a noisy projection crossed the
-    # floor.  Existing support is allowed some inertia; score-only rows need
-    # actual active-reference evidence.
+    # q 目标仍由分数驱动，但低证据行不应仅因噪声投影越过下限就在 q≈1 时跳入活跃环境。现有支持可保留一些惯性；
+    # 仅评分行需要真实的活跃参考证据。
     evidence_gate = np.clip(0.20 + 0.80 * np.sqrt(np.maximum(rel * coverage, 0.0)), 0.0, 1.0)
     evidence_gate = np.maximum(evidence_gate, 0.35 * q_now)
 
@@ -5554,8 +5491,7 @@ def _renormalize_weight_mass(weights: Dict[int, float], target_mass: float) -> D
         return vals
     scale = tm / mass
     vals = {gid: max(0.0, min(1.0, q * scale)) for gid, q in vals.items()}
-    # One pass cannot always restore mass when clipping at 1.0.  That is fine;
-    # the audit reports realized mass and support probability.
+    # 在 1.0 处裁剪时，单次遍历不总能恢复质量。这没有问题；审计会报告实现质量和支持概率。
     return vals
 
 
@@ -5591,11 +5527,8 @@ def _tail_average_active_weights(
             "q_tail_persistent_support_min_probability": float(ACTIVE_Q_TAIL_MIN_SUPPORT_PROB),
         })
 
-    # The final active environment should be the stable tail environment, not a
-    # union of every row that briefly crossed support_eps.  Rows that do not have
-    # enough tail support probability are audited but zeroed before mass
-    # renormalization.  This keeps the weighted map continuous while preventing
-    # tail averaging from inflating support cardinality.
+    # 最终活跃环境应是稳定的尾部环境，而非每条曾短暂跨过 support_eps 的行的并集。尾部支持概率不足的行会被审计，
+    # 但在质量重新归一化前置零。这样保持加权映射连续，同时防止尾部平均夸大支持基数。
     persistent_weight = {
         gid: (q if support_prob_by_gid.get(gid, 0.0) >= float(ACTIVE_Q_TAIL_MIN_SUPPORT_PROB) else 0.0)
         for gid, q in mean_weight.items()
@@ -5706,8 +5639,7 @@ def _fit_global_regularized_base(
     )
     spectrum.to_csv(out_dir / "global_regularized_base_lowrank_spectrum.csv", index=False)
 
-    # Keep the base model deliberately modest.  It corrects Raw's global bias,
-    # while the later active loop handles environment residuals under shrinkage.
+    # 有意保持基础模型温和。它修正 Raw 的全局偏差，而后续活跃循环在收缩下处理环境残差。
     fit = fit_betabinomial_lowrank_counter_eb(
         df,
         edges,
@@ -5738,14 +5670,11 @@ def _fit_global_regularized_base(
     tau_delta_cqd = float(fit.tau_delta) / beta_abs
     tau_counter_cqd = float(fit.tau_counter) / beta_abs if len(fit.theta) > 0 else 0.0
     tau_lowrank_cqd = float(fit.tau_lowrank) / beta_abs if len(fit.gamma) > 0 else 0.0
-    # The exported global base only uses the group-level delta as a scalar base.
-    # Counter/lowrank terms are pairwise residual structure, not scalar scores.
+    # 导出的全局基数仅使用组级 delta 作为标量基数。克制/低秩项是成对残差结构，而非标量分数。
     #
-    # Keep tau-instability as a diagnostic, but do not multiply it into the
-    # score.  The existing reliability and robust shrink already control the
-    # scalar global-base delta.  Applying an additional tau_stability_shrink here
-    # made the base overly adhesive to Raw, especially when counter/lowrank tau
-    # was large even though scalar group delta was already robust-shrunk.
+    # 保留 tau 不稳定性作为诊断，但不要将其乘入分数。现有可靠性和稳健收缩已经控制标量全局基数 delta。
+    # 此处额外应用 tau_stability_shrink 会让基数过度黏附于 Raw，尤其当克制/低秩 tau 很大而标量组 delta
+    # 已被稳健收缩时。
     tau_instability_cqd = max(float(tau_delta_cqd), 0.5 * float(tau_counter_cqd), 0.25 * float(tau_lowrank_cqd))
     tau_stability_shrink = 1.0 / (1.0 + (tau_instability_cqd / max(ACTIVE_REG_GLOBAL_BASE_TAU_CQD_STABILITY_SCALE, 1e-12)) ** 2)
 
@@ -5941,9 +5870,7 @@ def _apply_regularized_active_residuals(
     q_now = pd.to_numeric(df.get("active_weight_q", pd.Series(0.0, index=df.index)), errors="coerce").astype(float)
     q_now = q_now.where(np.isfinite(q_now), 0.0).clip(lower=0.0, upper=1.0)
 
-    # Split reliability components.  Use a geometric blend instead of a product;
-    # otherwise one modest component can zero out otherwise well-measured active
-    # evidence and recreate Raw adhesion.
+    # 拆分可靠性成分。使用几何混合而不是乘积；否则一个中等成分可将其他测量良好的活跃证据置零，并重现 Raw 黏附。
     q_mass_reliability = (ref_mass / np.maximum(ref_mass + ACTIVE_REG_Q_MASS_KAPPA, 1e-12)).clip(lower=0.0, upper=1.0)
     edge_count_reliability = (edge_count / np.maximum(edge_count + ACTIVE_REG_EDGE_COUNT_KAPPA, 1e-12)).clip(lower=0.0, upper=1.0)
     mass_basis = np.maximum(sample_mass, q_sample_mass)
@@ -5969,10 +5896,8 @@ def _apply_regularized_active_residuals(
     ) | df.get("active_set_selected_for_training", pd.Series(False, index=df.index)).fillna(False).astype(bool).to_numpy()
     role_factor = np.where(is_selected_like, float(ACTIVE_REG_SELECTED_ROW_SELF_FIT_MULTIPLIER), 1.0)
 
-    # Evidence-aware soft cap.  The previous scalar cap created a visible pile-up
-    # at the same max movement.  Keep selected/q-support rows tighter, but let
-    # well-covered score-only rows retain medium residuals when validation is
-    # clearly better than Raw/base.
+    # 证据感知软上限。先前标量上限在同一最大移动处产生可见堆积。保持已选/q 支持行更紧，但当验证明显优于
+    # Raw/基数时，让覆盖充分的仅评分行保留中等残差。
     evidence_cap_multiplier = (
         float(ACTIVE_REG_EVIDENCE_SOFT_CAP_MIN_MULTIPLIER)
         + (float(ACTIVE_REG_EVIDENCE_SOFT_CAP_MAX_MULTIPLIER) - float(ACTIVE_REG_EVIDENCE_SOFT_CAP_MIN_MULTIPLIER))
@@ -6004,9 +5929,7 @@ def _apply_regularized_active_residuals(
         where=np.abs(raw_adj_arr) > 1e-12,
     )
 
-    # Uncertainty/leverage shrink residual magnitude toward base symmetrically;
-    # do not always subtract from the score, because that creates a one-sided
-    # downward bias unrelated to active evidence.
+    # 不确定性/杠杆率应对称地将残差大小向基数收缩；不要总从分数扣除，因为那会产生与活跃证据无关的单侧向下偏差。
     uncertainty = (
         (1.0 - q_mass_reliability.to_numpy(float))
         + (1.0 - edge_count_reliability.to_numpy(float))
@@ -6090,10 +6013,8 @@ def _fit_frozen_global_rsw_types(
     function freezes the type assignment before any active/challenger iteration.
     """
     eligible_df = eligible_df.copy().reset_index(drop=True)
-    # The frozen RSW universe may include Raw<raw_min scout rows.  Scouts are
-    # characterized by their true pairwise residual profile against the active
-    # reference environment; they do not need scout-vs-scout edges unless they
-    # are later rescued into active training.
+    # 冻结的 RSW 全集可能包含 Raw<raw_min 的侦察行。侦察项通过其相对于活跃参考环境的真实成对残差画像表征；
+    # 除非后来被救援进入活跃训练，否则不需要侦察项对侦察项的边。
     edges = _prepare_partial_edges_for_ids(
         all_edges,
         eligible_df["group_id"].astype(int).tolist(),
@@ -6165,18 +6086,15 @@ def _fit_active_model_for_challenge(
             f"first_group_ids={preview}"
         )
 
-    # Fixed global RSW-Type assignment. Do NOT call adaptive_residual_type()
-    # inside the active loop.
+    # 固定的全局 RSW-Type 分配。不要在活跃循环内调用 adaptive_residual_type()。
     type_ids = np.asarray(
         [int(frozen_rsw["type_by_gid"][int(g)]) for g in active_df["group_id"].astype(int)],
         dtype=int,
     )
     type_labels = [str(frozen_rsw["label_by_gid"][int(g)]) for g in active_df["group_id"].astype(int)]
 
-    # Keep low-rank fitting on the current weighted active support, but tie the
-    # target rank to the frozen global type count rather than a per-iteration RSW
-    # re-cluster.  Spectral/profile steps use weighted sample mass; the final
-    # beta-binomial fit uses original counts plus likelihood_weight.
+    # 将低秩拟合保持在当前加权活跃支持上，但将目标秩与冻结的全局类型计数绑定，而非每次迭代重新聚类 RSW。
+    # 谱/画像步骤使用加权样本质量；最终 beta-binomial 拟合使用原始计数加 likelihood_weight。
     selected_k = int(max(1, min(frozen_rsw["n_types"], 4, max(1, int(np.sqrt(max(1, len(active_df))))))))
     _, spectrum, embedding, _, _ = derive_lowrank_embedding(
         active_df,
@@ -6312,11 +6230,8 @@ def _score_challengers_against_active(
                 continue
             y.append(y_g)
             n.append(float(er.samples))
-            # Frozen active strength model for P(challenger beats active_opp).
-            # We intentionally fit only a challenger group-level delta here.
-            # Counter/lowrank terms are not estimated for a one-off challenger
-            # because doing so would make hidden duplicates part of the training
-            # representation again.
+            # 用于 P(challenger beats active_opp) 的冻结活跃强度模型。此处有意只拟合挑战者组级 delta。
+            # 不对一次性挑战者估计克制/低秩项，因为那会再次让隐藏重复项成为训练表示的一部分。
             eta0.append(beta * (raw_g - raw_by_gid[opp]) - delta_by_gid[opp])
 
         if not y:
@@ -6628,9 +6543,8 @@ def run_active_set_challenger_selection(
     q_history: List[Dict[int, float]] = []
     moment_alignment_rows: List[Dict[str, Any]] = []
     target_ema_state: Dict[int, float] = {int(g): float(active_weight.get(int(g), 0.0)) for g in active_weight}
-    # Lazy initialized from first observed desire/availability.  Initializing
-    # these to zero made early-iteration audit and any downstream use look like
-    # a real suppression signal even though no environment history existed yet.
+    # 从首次观察到的愿望/可用性惰性初始化。将它们初始化为零会让早期迭代审计和任何下游使用看起来像真实的
+    # 抑制信号，尽管当时尚不存在环境历史。
     desire_ema_state: Dict[int, float] = {}
     availability_ema_state: Dict[int, float] = {}
     prev_target_direction: Dict[int, int] = {int(g): 0 for g in active_weight}
@@ -6640,25 +6554,19 @@ def run_active_set_challenger_selection(
     for iteration in range(1, ACTIVE_SET_WEIGHTED_MAX_ITERS + 1):
         active_ids = _active_weight_support_ids(active_weight)
         if len(active_ids) < 2:
-            # Fall back to the strongest current q rows if numerical support got
-            # too sparse.  This is a numerical safeguard for the continuous map,
-            # not a rank cap or business rule.
+            # 若数值支持过稀，则回退至当前 q 最强的行。这是连续映射的数值保障，不是排名上限或业务规则。
             active_ids = [gid for gid, _ in sorted(active_weight.items(), key=lambda kv: (-kv[1], kv[0]))[:max(2, len(initial_active_ids))]]
             for gid in active_ids:
                 active_weight[int(gid)] = max(float(active_weight.get(int(gid), 0.0)), ACTIVE_SET_WEIGHTED_SUPPORT_EPS * 2.0)
 
-        # Weighted active support may include low-q scouts before every pair has
-        # been requested.  We therefore fit/score on available edges and let rows
-        # with missing weighted-reference evidence decay through q rather than
-        # aborting the entire continuous iteration.
+        # 在请求每一对之前，加权活跃支持可能包含低 q 侦察项。因此我们在可用边上拟合/评分，并让缺少加权参考
+        # 证据的行通过 q 衰减，而非中止整个连续迭代。
         active_df = eligible[eligible["group_id"].astype(int).isin(set(active_ids))].copy()
         active_df = active_df.sort_values(["raw_rank", "raw_cqd", "group_id"], ascending=[True, False, True]).reset_index(drop=True)
         active_df = _attach_active_weight_columns(active_df, active_weight)
 
-        # Required active-environment edges are measurable data.  Do not silently
-        # downweight missing candidate-active edges here; request them from Rust
-        # and retry so selected / not_selected / challenger scores use measured
-        # support rather than synthetic missing mass.
+        # 所需的活跃环境边是可测量数据。不要在此静默降权缺失的候选-活跃边；从 Rust 请求它们并重试，使
+        # selected / not_selected / challenger 分数使用测量支持而非合成缺失质量。
         require_pairs_or_request(
             all_edges,
             active_ids,
@@ -6739,9 +6647,7 @@ def run_active_set_challenger_selection(
             target_mass=float(len(initial_active_ids)),
         )
 
-        # Smooth the environment inputs themselves, not only the q output.  This
-        # prevents resolver availability/desire flips from pushing the active map
-        # into a last-phase oscillation.
+        # 平滑环境输入本身，而不仅是 q 输出。这样可防止解析器可用性/愿望翻转将活跃映射推入最后阶段振荡。
         ema_alpha = float(ACTIVE_Q_TARGET_EMA_ALPHA)
         target_mass = float(len(initial_active_ids))
         raw_target_sum = float(pd.to_numeric(combined["active_weight_target"], errors="coerce").fillna(0.0).sum())
@@ -6783,9 +6689,8 @@ def run_active_set_challenger_selection(
         ema_mass_raw = float(sum(ema_target_raw_values.values()))
         ema_target_scaled = _renormalize_weight_mass(ema_target_raw_values, target_mass)
         ema_mass_scaled = float(sum(ema_target_scaled.values()))
-        # Keep the EMA state in the same mass scale as the q update target.
-        # Otherwise the next iteration mixes unscaled target EMA with scaled q,
-        # which changes the apparent direction of the q map.
+        # 将 EMA 状态保持在与 q 更新目标相同的质量尺度。否则下一次迭代会混合未缩放目标 EMA 和缩放后的 q，
+        # 从而改变 q 映射的表观方向。
         for _gid, _q_scaled in ema_target_scaled.items():
             target_ema_state[int(_gid)] = float(_q_scaled)
         target_direction_values = {
@@ -6826,8 +6731,7 @@ def run_active_set_challenger_selection(
                 step_alpha = ACTIVE_REG_BAD_STEP_ALPHA
         else:
             step_alpha = ACTIVE_REG_NEUTRAL_STEP_ALPHA
-        # validation_bad_rounds is diagnostic only; it must not force an
-        # additional bad-step throttle.
+        # validation_bad_rounds 仅供诊断；不得强制附加的坏步节流。
 
         old_weight = {int(g): float(active_weight.get(int(g), 0.0)) for g in eligible["group_id"].astype(int).tolist()}
         target_weight = {
@@ -6872,7 +6776,7 @@ def run_active_set_challenger_selection(
         combined["active_weight_tentative_mean_delta"] = float(tentative_mean_delta)
 
         support_ids = _active_weight_support_ids(active_weight)
-        # Diagnostic hard-visible set only.  The environment itself is q-weighted.
+        # 仅用于诊断的硬可见集合。环境本身按 q 加权。
         hard_visible_ids = _greedy_visible_main_group_ids(
             combined.assign(active_weight_sort=combined["active_weight_q_next"].astype(float)),
             group_members,
@@ -6978,9 +6882,8 @@ def run_active_set_challenger_selection(
         if stable:
             convergence_mode = "regularized_weighted_fixed_point"
             break
-        # Do not early-stop on validation patience.  Keep validation metrics as
-        # diagnostics only so adjacent raw_min runs are comparable and every run
-        # follows the same active q iteration schedule.
+        # 不要基于验证耐心值提前停止。验证指标仅作诊断，以使相邻 raw_min 运行可比较，并让每次运行遵循相同的
+        # 活跃 q 迭代计划。
 
     if final_scored is None:
         raise RuntimeError("weighted active-set selection did not run any iterations")
@@ -7247,27 +7150,21 @@ def run(sqlite_path: Path, out_dir: Path, lane_size: int = 2, nfold: int = 5, se
     eligible_ids = set(eligible_groups_df["group_id"].astype(int).tolist())
     global_base_ids = set(global_base_universe_df["group_id"].astype(int).tolist())
 
-    # Global base model is deliberately disabled.  Do not request global-base
-    # graph edges and do not fit a global EB base.  Raw is the only base; all
-    # subsequent correction must be learned by the active projection/residual
-    # layer and diagnosed separately.
+    # 有意禁用全局基数模型。不要请求全局基数图边，也不要拟合全局 EB 基数。Raw 是唯一基数；所有后续修正
+    # 必须由活跃投影/残差层学习并单独诊断。
     all_edges = all_edges_all[
         all_edges_all.group_a.isin(eligible_ids) & all_edges_all.group_b.isin(eligible_ids)
     ].copy()
     if all_edges.empty:
         raise RuntimeError("No eligible within-lane group_rates edges")
-    # Prospective-only production path.
+    # 仅前瞻性生产路径。
     #
-    # The legacy active-q / crossfit / final-active-projection mainline is not
-    # executed in this mode.  Its functions remain in this file for optional
-    # historical diagnostics and for compatibility with older notes, but `run()`
-    # no longer calls them.  Missing-rate measurement is still strict: each
-    # prospective external environment calls require_pairs_or_request(), so any
-    # missing scoreable-vs-reference edge exits through MissingRateRequest instead
-    # of using a synthetic default or 0.
-    # RSW-Type clustering belongs to the retired active/low-rank diagnostics.
-    # Production Correct is a fixed equal-policy reference mean and does not
-    # consume these labels. Avoid the full adaptive clustering pass here.
+    # 此模式不执行旧版 active-q / 交叉拟合 / 最终活跃投影主线路。其函数保留在本文件中，供可选的历史诊断和
+    # 与旧说明兼容，但 `run()` 不再调用它们。缺失率测量仍然严格：每个前瞻性外部环境调用
+    # require_pairs_or_request()，故任何缺失的可评分对参考边都会经 MissingRateRequest 退出，而非使用
+    # 合成默认值或 0。
+    # RSW-Type 聚类属于已退役的活跃/低秩诊断。生产 Correct 是固定的等策略参考均值，不使用这些标签。
+    # 在此避免完整的自适应聚类过程。
     raw_map_for_rsw = {
         int(g): float(r)
         for g, r in core_groups_df[["group_id", "raw_cqd"]].itertuples(index=False, name=None)
@@ -7298,8 +7195,7 @@ def run(sqlite_path: Path, out_dir: Path, lane_size: int = 2, nfold: int = 5, se
     scout_groups_df = eligible_groups_df[eligible_groups_df["scout_candidate"]].copy()
 
     beta_edge_df = all_edges.copy()
-    # Raw beta is a fitted parameter.  Strictly exclude scout/score-only and
-    # blocked rows so they participate only in final scoring.
+    # Raw beta 是拟合参数。严格排除侦察/仅评分和阻塞行，使它们仅参与最终评分。
     raw_map_for_beta = {
         int(g): float(r)
         for g, r in core_groups_df[["group_id", "raw_cqd"]].itertuples(index=False, name=None)
@@ -7420,8 +7316,7 @@ def run(sqlite_path: Path, out_dir: Path, lane_size: int = 2, nfold: int = 5, se
         {"check": "manual_cap_or_topk_used", "value": 0, "status": "OK"},
     ]).to_csv(out_dir / "input_integrity_checks.csv", index=False)
 
-    # Compatibility diagnostics: these files explicitly record that the legacy
-    # active mainline did not run.  They are not produced by an active loop.
+    # 兼容性诊断：这些文件明确记录旧版活跃主线没有运行。它们并非由活跃循环产生。
     pd.DataFrame([{
         "mode": "legacy_active_iteration_disabled",
         "iterations": 0,
@@ -7471,8 +7366,7 @@ def run(sqlite_path: Path, out_dir: Path, lane_size: int = 2, nfold: int = 5, se
         resolver_baseline_cqd=float(resolver_baseline_cqd),
         seed=seed,
     )
-    # The fixed-slot K=5 formula is already the final public scale. A later
-    # affine moment alignment would bend that line and change its meaning.
+    # 固定槽位 K=5 公式已是最终公开尺度。后续仿射矩对齐会弯曲该直线并改变其含义。
     groups_out["Correct_center_cqd_pre_final_moment_alignment"] = groups_out["Correct_center_cqd"].astype(float)
     raw_values = groups_out["Raw Cqd"].astype(float).to_numpy()
     correct_values = groups_out["selection_weight_cqd"].astype(float).to_numpy()
@@ -7813,7 +7707,7 @@ The old functions remain in the file for optional diagnostics and historical com
         encoding="utf-8",
     )
 
-    # Full total table: include every lane-2 group, not just model candidates.
+    # 完整总表：包含每个 lane-2 组，而不仅是模型候选项。
     conn2 = sqlite3.connect(sqlite_path)
     lr_all_total = pd.read_sql_query("""
         select lr.group_id, lr.raw_average_cqd as raw_cqd, lr.average_cqd as db_average_cqd, lr.rank as db_rank,
@@ -7888,10 +7782,9 @@ The old functions remain in the file for optional diagnostics and historical com
         "scout_candidate", "raw_score_ge_candidate_min", "blocked_score_only_candidate",
     ]
     model_for_total = groups_out[[c for c in model_cols if c in groups_out.columns]].copy()
-    # raw_score_ge_candidate_min already exists on all_total for every DB row.
-    # If it is also carried by model_for_total, pandas suffixes it into _x/_y
-    # and downstream code expects the canonical unsuffixed name.  Prefer the
-    # all_total value because it covers non-scoreable DB rows too.
+    # raw_score_ge_candidate_min 已存在于每个数据库行的 all_total 中。若 model_for_total 也携带它，
+    # pandas 会将其加后缀为 _x/_y，而下游代码期望规范的无后缀名称。优先使用 all_total 值，因为它也覆盖
+    # 不可评分的数据库行。
     if "raw_score_ge_candidate_min" in model_for_total.columns:
         model_for_total = model_for_total.drop(columns=["raw_score_ge_candidate_min"])
     total = all_total.merge(model_for_total, on="group_id", how="left")
@@ -7947,18 +7840,14 @@ The old functions remain in the file for optional diagnostics and historical com
         default=""
     )
     total["resolver_selected"] = total["resolver_selected"].fillna(0).astype(int)
-    # Active and score-only candidates both have selection-weight display scores.
-    # Only blocked/below-threshold/outside rows fall back to raw display.
+    # 活跃和仅评分候选项都有选择权重显示分数。只有阻塞/低于阈值/范围外的行回退至原始显示。
     total["candidate_model_missing"] = ~total["in_scoreable_candidate_pool"]
     if "selection_weight_cqd" not in total.columns:
         total["selection_weight_cqd"] = total["Correct Cqd"]
 
-    # The serialized UI/export score is selection_weight_cqd.  For rows that are
-    # deliberately not allowed to use the model score as a selection weight
-    # (blocked / below-threshold / outside active-score pool), the selection
-    # weight is the raw CQD fallback.  Keep the literal selection_weight_cqd
-    # column aligned with the display column so Rust, frontend and exported text
-    # all observe the same value.
+    # 序列化 UI/导出分数是 selection_weight_cqd。对于有意不允许将模型分数用作选择权重的行
+    # （阻塞 / 低于阈值 / 活跃评分池外），选择权重为原始 CQD 回退。使字面的 selection_weight_cqd 列与
+    # 显示列保持一致，以便 Rust、前端和导出文本均观察到相同值。
     _not_scoreable_for_selection_weight = ~total["in_scoreable_candidate_pool"].fillna(False)
     total["Selection Weight Cqd Display"] = total["selection_weight_cqd"].where(
         total["in_scoreable_candidate_pool"],
@@ -7972,8 +7861,7 @@ The old functions remain in the file for optional diagnostics and historical com
     total["selection_weight_delta_from_raw_cqd"] = total["selection_weight_cqd"].astype(float) - total["raw_cqd"].astype(float)
 
     total["Model Correct Cqd Display"] = total["Correct Cqd"].where(total["in_scoreable_candidate_pool"], total["raw_cqd"])
-    # Backward-compatible display score consumed by Rust/UI: now it is the
-    # selection/output weight in CQD units, not the raw model Correct Cqd.
+    # Rust/UI 使用的向后兼容显示分数：现在它是 CQD 单位的选择/输出权重，而非原始模型 Correct Cqd。
     total["Correct Cqd Display"] = total["Selection Weight Cqd Display"]
     total["Raw Cqd Display"] = total["Raw Cqd"].where(total["in_scoreable_candidate_pool"], total["raw_cqd"])
     total = total.sort_values(["resolver_selected", "Selection Weight Cqd Display", "raw_cqd"], ascending=[False, False, False])
@@ -8058,11 +7946,10 @@ def bundle_outputs(out_dir: Path, source_path: Optional[Path] = None) -> Path:
 
 
 # =========================
-# Arbitrary lane-size + score-only blocked support
+# 任意 lane 大小 + 仅评分阻塞支持
 # =========================
-# This section intentionally stays in the same source file.  It does not import
-# a separate base algorithm file.  All model, resolver, Text-Type, RSW, EB,
-# low-rank/counter, and blocked score-only logic is aggregated here.
+# 本节有意保留在同一源文件。它不导入单独的基础算法文件。所有模型、解析器、Text-Type、RSW、EB、
+# 低秩/克制和仅评分阻塞逻辑均聚合在此。
 
 def sigmoid_any(x):
     return expit(np.clip(np.asarray(x, dtype=float), -40, 40))
@@ -8282,7 +8169,7 @@ def score_blocked_only_any(sqlite_path: Path, out_dir: Path, lane_size: int, raw
     if train_lr.empty:
         raise RuntimeError("Cannot score blocked-only rows because train_pool is empty after excluding blocked.")
 
-    # Frozen model: fit with nonblocked train pool only.
+    # 冻结模型：仅使用未阻塞训练池拟合。
     train_lr = add_text_type_rows_any(train_lr, group_members)
     train_lr["raw_rank"] = train_lr["raw_cqd"].rank(ascending=False, method="first").astype(int)
     train_group_to_idx = {gid: i for i, gid in enumerate(train_lr["group_id"])}
@@ -8559,7 +8446,7 @@ def run_anysize(sqlite_path: Path, out_dir: Path, lane_size: int, nfold: int, se
     out_dir.mkdir(parents=True, exist_ok=True)
     tag = make_run_tag(lane_size, raw_min)
 
-    # Inventory is written before model execution so no-data lane sizes are easy to inspect.
+    # 在模型执行前写入清单，以便轻松检查无数据的 lane 大小。
     inventory = write_lane_size_inventory(sqlite_path, out_dir)
     if lane_size not in set(inventory["lane_size"].astype(int).tolist()):
         raise RuntimeError(f"lane_size={lane_size} has no lane_results rows in this sqlite. Inventory written to {out_dir / 'lane_size_inventory.csv'}.")

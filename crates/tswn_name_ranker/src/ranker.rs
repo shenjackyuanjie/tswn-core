@@ -90,8 +90,7 @@ pub fn fit_and_rank(
         }
     }
 
-    // Recompute once with the final synchronous parameters so the returned
-    // scores and coefficients describe exactly the same fixed-point state.
+    // 使用最终同步参数再计算一次，使返回的分数和系数描述完全相同的不动点状态。
     let coefficients = log_coefficients.iter().map(|x| x.exp()).collect::<Vec<_>>();
     for i in 0..n {
         let mut candidates = (0..n)
@@ -216,10 +215,8 @@ fn fit_and_rank_legacy(
     let targets = edges.iter().zip(&expected_loss).map(|(e, u)| e.z + u).collect::<Vec<_>>();
     beta = solve_full(n, &edges, &weights, &targets, 1.0 / strength_variance)?;
     let measurement_variance = edges.iter().map(|e| e.noise).sum::<f64>() / edges.len() as f64;
-    // The standard-deviation share was slightly too aggressive while the
-    // variance share was too conservative.  Their geometric mean keeps the
-    // correction data-driven and provides a modest shrinkage between the two.
-    // The focal name is conditioned on and therefore is not part of this noise.
+    // 标准差份额略显激进，而方差份额过于保守。二者的几何平均让修正保持数据驱动，并提供适中的收缩。
+    // 焦点名称是条件变量，因而不属于这部分噪声。
     let strength_sd = strength_variance.sqrt();
     let noise_variance = loss_variance + process_variance + measurement_variance;
     let noise_sd = noise_variance.sqrt();
@@ -230,10 +227,8 @@ fn fit_and_rank_legacy(
     for e in &edges {
         let qi = e.z - correction_reliability * beta[e.j + 1];
         let qj = e.z - correction_reliability * beta[e.i + 1];
-        // The frontier intercept includes the population's mean latent compatibility
-        // loss.  That component is not attributable to either member of a pair, so
-        // centre the symmetric allocation on the observed population instead.
-        // This also keeps a constant 50% matrix anchored at exactly 50%.
+        // 前沿截距包含总体平均潜在兼容性损失。该成分无法归因至配对的任一成员，因此改在观测总体上居中地
+        // 对称分配。这也使恒定 50% 矩阵恰好锚定在 50%。
         let allocated_i = (qi + mean + correction_reliability * beta[e.i + 1]) / 2.0;
         let allocated_j = (qj + mean + correction_reliability * beta[e.j + 1]) / 2.0;
         choices[e.i].push((e.z, qi, allocated_i, e.j));

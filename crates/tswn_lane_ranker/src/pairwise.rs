@@ -19,16 +19,13 @@ use crate::ranker::RankerConfig;
 use crate::team::TeamDsu;
 use crate::winrate::compute_rate_without_db;
 
-/// Default threshold retained for backward-compatible callers. New UI/service
-/// calls `default_selection_cqd_threshold(lane_size)` so single and pair lanes
-/// can use different defaults without hard-coding in the front end.
+/// 为向后兼容调用方保留的默认阈值。新的 UI/service 调用 `default_selection_cqd_threshold(lane_size)`，
+/// 使单人和双人 lane 无需在前端硬编码即可使用不同默认值。
 pub const DEFAULT_SELECTION_CQD_THRESHOLD: f64 = 48.7;
 
 pub fn default_selection_cqd_threshold(lane_size: usize) -> f64 { if lane_size == 1 { 48.0 } else { 48.7 } }
 
-/// Prospective Correct replacement slots are lane-specific: the single lane
-/// uses ten hypothetical replacements, while all multi-member lanes retain
-/// the production five-slot setting.
+/// 前瞻性 Correct 替换槽位因 lane 而异：单人 lane 使用十个假设替换项，所有多成员 lane 保留生产版五槽位设置。
 pub fn replacement_k_for_lane(lane_size: usize) -> f64 { if lane_size == 1 { 10.0 } else { 5.0 } }
 
 fn format_k_label(k: f64) -> String {
@@ -321,10 +318,8 @@ fn reset_calibration_fields(row: &mut LaneResultRow) {
     row.marginal_value = None;
     row.constrained_rank = None;
 
-    // Clear stale calibration/profile diagnostics.  The production lane-specific
-    // prospective Correct path owns the corrected score; keeping old values
-    // here would make the UI/export look partially calibrated even when those
-    // fields no longer correspond to the active score model.
+    // 清除过期的校准/画像诊断。生产版 lane 特定前瞻性 Correct 路径拥有校正分数；在此保留旧值会让 UI/导出
+    // 在这些字段已不再对应活跃评分模型时看似仍部分完成校准。
     row.winrate_type_label = None;
     row.winrate_profile_distance = None;
     row.winrate_profile_second_distance = None;
@@ -452,9 +447,8 @@ fn read_strict_python_scores(out_dir: &Path) -> anyhow::Result<Vec<StrictPythonS
     }
     let header = &records[0];
     let idx_group = csv_col(header, "group_id")?;
-    // Frontend/export C-Score must be the explicit selection/output weight.
-    // Do not silently fall back to model Correct Cqd here: pair_score is the
-    // serialized UI/export field and must stay aligned with selection_weight_cqd.
+    // 前端/导出的 C-Score 必须是明确的选择/输出权重。不要在此静默回退至模型 Correct Cqd：pair_score 是
+    // 序列化的 UI/导出字段，必须与 selection_weight_cqd 保持一致。
     let idx_correct = csv_col(header, "Selection Weight Cqd Display")
         .or_else(|_| csv_col(header, "selection_weight_cqd"))
         .with_context(|| {
@@ -765,9 +759,8 @@ fn parse_csv_records(text: &str) -> Vec<Vec<String>> {
     records
 }
 
-/// Compatibility entry point used by older recompute paths. The new calibration
-/// is intentionally driven from saved Raw lane results; `nodes` and `dsu` are not
-/// part of the score model, which keeps Raw generation separate from correction.
+/// 旧重算路径使用的兼容入口。新校准有意由已保存的 Raw lane 结果驱动；`nodes` 和 `dsu` 不属于评分模型，
+/// 从而将 Raw 生成与修正分开。
 pub fn calibrate_lane_rows(
     db: &Db,
     lane_size: usize,
@@ -778,9 +771,8 @@ pub fn calibrate_lane_rows(
     _final_round: usize,
     cqd_threshold: f64,
 ) -> anyhow::Result<PairwiseCalibrationReport> {
-    // Compatibility callers now use the same lane-specific production path as saved
-    // lane calibration.  The legacy Python validator remains available only
-    // through the explicit pair-validation/audit endpoint below.
+    // 兼容调用方现在使用与已保存 lane 校准相同的 lane 特定生产路径。旧版 Python 校验器仅能通过下方明确的
+    // 配对校验/审计端点使用。
     run_fast_correct(db, lane_size, rows, config, cqd_threshold)
 }
 
@@ -1035,8 +1027,7 @@ fn run_crossfit_betabinomial_lowrank_calibration(
         row.raw_average_cqd = score.raw_score.unwrap_or(g.raw_score);
 
         if g.raw_score < cqd_threshold && score.candidate_model_missing {
-            // Below-threshold rows stay hidden unless Python explicitly scored
-            // them through the Raw-below-threshold scout/rescue challenger path.
+            // 低于阈值的行保持隐藏，除非 Python 已通过 Raw 低于阈值侦察/救援挑战者路径明确为其评分。
             row.selection_status = "below_threshold".to_string();
             continue;
         }
@@ -1377,9 +1368,8 @@ fn ensure_required_winrates_for_strict_python(
         );
     }
 
-    // Python fits all nonblocked rows with Raw >= --raw-min. Blocked rows are
-    // excluded from fit, but the Python score-only branch needs every blocked
-    // row with Raw >= --raw-min to have edges against the frozen train pool.
+    // Python 拟合 Raw >= --raw-min 的所有未阻塞行。阻塞行被排除在拟合外，但 Python 仅评分分支需要每条
+    // Raw >= --raw-min 的阻塞行均拥有对冻结训练池的边。
     let blocked_score_only_ids: Vec<GroupId> = groups
         .iter()
         .filter(|g| g.is_blocked && g.raw_score >= cqd_threshold)

@@ -75,9 +75,7 @@ impl Service {
         self.db.set_names_expanded(&names, expanded)
     }
 
-    /// Measure only the missing legal edges incident to one name. This is
-    /// useful for probing a manually expanded candidate without scheduling a
-    /// full recomputation for every pending name.
+    /// 仅测量与一个名称相连的缺失合法边。这便于探查手动扩展的候选项，无需为每个待处理名称安排完整重算。
     pub fn measure_one(&self, raw: &str) -> anyhow::Result<usize> {
         let names = self.db.names_for_run(false)?;
         let target = names
@@ -357,11 +355,8 @@ impl Service {
             let fit = ranker::fit_and_rank(&sub_matrix, &sub_allowed, effective_samples, |step| {
                 status.lock().unwrap().iteration = step
             })?;
-            // Keep the self-consistent ordering, but calibrate its display
-            // scale back to the population's direct top-four averages.  The
-            // archive threshold is defined on that familiar win-rate scale;
-            // applying it to weighted contributions directly can otherwise
-            // archive almost the entire population when coefficients shrink.
+            // 保持自洽排序，但将其显示尺度校准回总体的直接前四平均值。归档阈值在这一熟悉的 win-rate 尺度上
+            // 定义；若直接应用于加权贡献，系数收缩时可能归档几乎整个总体。
             let base_scores = (0..m)
                 .map(|i| {
                     let mut values = (0..m).filter(|&j| sub_allowed[i][j]).map(|j| sub_matrix[i][j]).collect::<Vec<_>>();

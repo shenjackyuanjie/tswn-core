@@ -574,7 +574,7 @@ impl AppService {
         #[cfg(any())]
         const SUPPORT_COUNT: usize = 50;
 
-        // Retained only for compatibility with the old target-bar request.
+        // 仅为兼容旧的 target-bar 请求而保留。
         let _ = (req.cqd_threshold, req.fixed_main_count);
         let lane_rows = self.db.lane_results(lane)?;
         if lane_rows.is_empty() {
@@ -710,10 +710,8 @@ impl AppService {
         );
         required_rate_target_indices.sort_unstable();
         required_rate_target_indices.dedup();
-        // Every saved row remains an error-audit row.  Matrix columns are the
-        // union of threshold-eligible support candidates and nonzero Correct
-        // lineage columns (Raw Golden may contribute a below-threshold column).
-        // Zero-mass, below-threshold scout columns cannot be consumed.
+        // 每个已保存行仍是误差审计行。矩阵列由满足阈值的支持候选项和非零 Correct 谱系列的并集构成
+        // （Raw Golden 可能贡献低于阈值的列）。零质量、低于阈值的侦察列无法被使用。
         let missing_correct_pairs =
             collect_missing_target_rate_pairs(&all_candidate_indices, &required_rate_target_indices, &candidates, &rate_map);
         fill_missing_target_rates_with_checkpoints(
@@ -764,9 +762,8 @@ impl AppService {
         let big_target_weight_sum = merged_weights.iter().sum::<f64>();
         let compression_target_set = compression_target_indices.iter().copied().collect::<HashSet<_>>();
 
-        // Start from the actual browser Top50 and freeze its C-Score Top30
-        // once for replacement. The lower 20 are searched low-C-Score-first;
-        // the deletion stage freezes its own post-replacement Top30 once.
+        // 从实际浏览器 Top50 开始，并为替换一次性冻结其 C-Score Top30。较低的 20 项按低 C-Score 优先搜索；
+        // 删除阶段一次性冻结自己的替换后 Top30。
         self.db.set_lane_progress(
             lane,
             "target_compression",
@@ -894,8 +891,7 @@ impl AppService {
         let final_transport = compression.final_transport.clone();
         let regularization_path = compression.regularization_path.clone();
         if let Some(metadata) = trace_metadata.as_object_mut() {
-            // Keep each json! fragment small.  A single very large object can
-            // exhaust rustc's default macro recursion limit.
+            // 保持每个 json! 片段较小。单个过大的对象会耗尽 rustc 默认的宏递归限制。
             let generation_parts = [
                 serde_json::json!({
                     "version": "variable_count_reset_support_search_v21",
@@ -1136,19 +1132,16 @@ impl AppService {
             reference_audit_rows: Vec::<TargetReferenceAuditRow>::new(),
         });
 
-        // The legacy Top50 compression implementation is retained only as
-        // source reference. It must not participate in this build: besides
-        // being unreachable after the complete-target return above, its large
-        // json! expression can exhaust rustc's default macro recursion limit.
+        // 旧版 Top50 压缩实现仅保留作源代码参考。它不得参与本次构建：除在上方完整目标 return 后不可达外，
+        // 其巨大的 json! 表达式还会耗尽 rustc 默认的宏递归限制。
         #[cfg(any())]
         {
             let merged_weight_sum_before_normalization = merged_weights.iter().sum::<f64>();
             if !merged_weight_sum_before_normalization.is_finite() {
                 anyhow::bail!("Correct 完整权重总和非法");
             }
-            // CorrectTargetWeight already starts from Golden/50 and therefore
-            // contains the Raw component. Adding Golden again would double-count
-            // Raw and inflate the target mass from roughly 50 to roughly 100.
+            // CorrectTargetWeight 已从 Golden/50 开始，故包含 Raw 成分。再次加入 Golden 会重复计算 Raw，
+            // 并将目标质量从约 50 膨胀至约 100。
             let merged_normalization_scale = 1.0_f64;
             let mut merged_indices: Vec<usize> = merged_weights
                 .iter()
@@ -1171,10 +1164,8 @@ impl AppService {
             let support_indices = merged_indices[..SUPPORT_COUNT].to_vec();
             let tail_indices = merged_indices[SUPPORT_COUNT..].to_vec();
 
-            // Optimize and validate on the complete score universe. Restricting the
-            // fit to the old Top100/Top200 reference prefix allowed signed null-space
-            // solutions to overfit that prefix and produce much larger errors on
-            // rows outside it.
+            // 在完整评分全集上优化和验证。将拟合限制为旧 Top100/Top200 参考前缀，会允许带符号的零空间解对
+            // 该前缀过拟合，并在其外部行上产生大得多的误差。
             let reference_indices = all_candidate_indices.clone();
             let reference_limit = reference_indices.len();
             if reference_indices.is_empty() {
@@ -1441,9 +1432,8 @@ impl AppService {
 #[derive(Debug, Clone)]
 struct TargetCandidate {
     row: crate::model::LaneResultRow,
-    /// Normalized account keys (`name@root_team`), used only for the global
-    /// no-repeated-account rule.  The per-player/owner cap is tracked
-    /// separately by `row.root_team_name`.
+    /// 归一化账户键（`name@root_team`），仅用于全局账户不重复规则。每位玩家/所有者上限由
+    /// `row.root_team_name` 单独跟踪。
     player_keys: Vec<String>,
 }
 
@@ -1471,10 +1461,10 @@ fn target_rate_column_requires_observed(target_idx: usize, big_weight: f64, comp
 
 #[derive(Debug, Clone)]
 struct TargetObjective {
-    /// Mean squared error after the affine Chebyshev alignment; kept as a late tie-breaker.
+    /// 仿射 Chebyshev 对齐后的均方误差；作为较晚的决胜条件保留。
     mse: f64,
     corr: Option<f64>,
-    /// Primary minimax objective on the C-Score scale after positive-slope affine alignment.
+    /// 正斜率仿射对齐后 C-Score 尺度上的主极小化最大值目标。
     max_abs_diff: f64,
     p95_abs_diff: f64,
     mean_abs_diff: f64,
@@ -1781,10 +1771,8 @@ fn run_inherited_big_target_compression_solver(
                     )
                 })?
             } else {
-                // This column is structurally ineligible and has zero Correct
-                // mass, so the solver can never consume it.  A neutral finite
-                // placeholder keeps the all-candidate metadata indices stable
-                // without manufacturing a low×low simulation requirement.
+                // 此列在结构上不合资格且 Correct 质量为零，因而求解器绝不会使用它。中性的有限占位符可保持
+                // 全候选元数据索引稳定，而不凭空制造 low×low 模拟需求。
                 rate_between(rate_map, ref_gid, candidate.row.group_id).unwrap_or(50.0)
             };
             row_rates.push(rate);
@@ -2220,8 +2208,7 @@ fn run_merged_tail_compression_solver(
         "total_weight": total_weight,
         "score_denominator": 50.0,
         "rate_matrix": rate_matrix,
-        // Historical field name retained for the embedded solver. This is the
-        // direct Correct response remaining after the support base.
+        // 为嵌入式求解器保留的历史字段名。这是支持基数之后剩余的直接 Correct 响应。
         "tail_signal": target_residual_signal,
         "time_limit": 30.0,
     });
@@ -2697,7 +2684,7 @@ fn affine_chebyshev_fit(avg_values: &[f64], score_values: &[f64]) -> (f64, f64, 
         last_hi_score = fixed_slope_chebyshev_fit(avg_values, score_values, hi).1;
     }
 
-    // z(a) is convex piecewise-linear; ternary search is deterministic and accurate enough here.
+    // z(a) 是凸分段线性的；三分搜索在此具有确定性且精度足够。
     for _ in 0..80 {
         let m1 = lo + (hi - lo) / 3.0;
         let m2 = hi - (hi - lo) / 3.0;
@@ -2754,8 +2741,7 @@ fn target_objective(
             continue;
         }
 
-        // Production target generation should have complete reference × target coverage.
-        // If an unexpected missing edge remains, keep the row but penalize the objective.
+        // 生产目标生成应拥有完整的参考项 × 目标覆盖。若仍存在意外缺失边，则保留该行但惩罚目标函数。
         let denominator = count + missing_for_ref;
         avg_values.push(sum / denominator.max(1) as f64);
         score_values.push(candidates[ref_idx].correct_score());
@@ -2916,21 +2902,18 @@ fn objective_corr_key(value: Option<f64>) -> f64 {
 }
 
 fn compare_target_objectives(a: &TargetObjective, b: &TargetObjective) -> std::cmp::Ordering {
-    // IMPORTANT: this comparator is used by Rust's slice::sort_by.  It must be a
-    // strict total order.  Do not use EPS/tolerance comparisons here: approximate
-    // equality is not transitive, so sort_by may panic with:
-    // "user-provided comparison function does not correctly implement a total order".
+    // 重要：此比较器由 Rust 的 slice::sort_by 使用。它必须是严格全序。不要在此使用 EPS/容差比较：近似相等
+    // 不具传递性，sort_by 可能会 panic 并显示“user-provided comparison function does not correctly implement a total order”。
     //
-    // If two objective values should be treated as practically equal, keep the
-    // exact total order here and express the tolerance in the objective itself
-    // before sorting, e.g. by rounded/quantized metrics.
+    // 若两个目标值应视作实际相等，则在此保持精确全序，并在排序前的目标函数中表达容差，例如采用
+    // 四舍五入/量化指标。
     objective_loss_key(a.max_abs_diff)
         .total_cmp(&objective_loss_key(b.max_abs_diff))
         .then_with(|| objective_loss_key(a.p95_abs_diff).total_cmp(&objective_loss_key(b.p95_abs_diff)))
         .then_with(|| objective_loss_key(a.mean_abs_diff).total_cmp(&objective_loss_key(b.mean_abs_diff)))
         .then_with(|| objective_loss_key(a.rmse).total_cmp(&objective_loss_key(b.rmse)))
         .then_with(|| objective_loss_key(a.mse).total_cmp(&objective_loss_key(b.mse)))
-        // Higher correlation is better, so reverse the order.
+        // 相关性越高越好，故反转顺序。
         .then_with(|| objective_corr_key(b.corr).total_cmp(&objective_corr_key(a.corr)))
 }
 
@@ -3116,10 +3099,8 @@ fn feasibility_beam_refill_solution(
             return None;
         }
 
-        // This fallback is only about proving/finding feasibility, so rank by
-        // stable main-list order and by remaining player-cap slack instead of
-        // residual objective.  That avoids falsely reporting "cannot fill" just
-        // because the minimax beam pruned into a dead basin.
+        // 此回退仅用于证明/寻找可行性，因此按稳定主列表顺序和剩余玩家上限余量排序，而不是按残差目标排序。
+        // 这避免极小化最大值束搜索剪枝至死盆地后，仅因此错误报告“cannot fill”。
         next.sort_by(|a, b| compare_solution_order(a, b, candidates).then_with(|| b.len().cmp(&a.len())));
         next.dedup_by(|a, b| solution_signature(a) == solution_signature(b));
         next.truncate(beam_width.max(1));
@@ -3287,9 +3268,7 @@ fn projected_refill_objective(
         return obj;
     }
 
-    // Dynamic lookahead: estimate the remaining fill from the current worst
-    // residuals, not from a static pool mean.  This keeps partial beam states
-    // from being scored as if their current incomplete profile were final.
+    // 动态前瞻：根据当前最差残差而非静态池均值估计剩余填充量。这避免将部分束状态按其当前未完成画像已是最终结果来评分。
     let residuals = target_reference_residuals(reference_indices, partial, candidates, rate_map);
     let mut ranked_pool: Vec<(usize, f64)> = pool
         .iter()
@@ -3317,10 +3296,8 @@ fn projected_refill_objective(
         }
     }
 
-    // If the residual-guided projection cannot complete the target set, use a
-    // feasibility-only completion as a second lookahead.  If even that cannot
-    // complete, penalize the partial heavily so the beam does not keep a dead
-    // branch just because its incomplete profile looks good.
+    // 若残差引导投影无法完成目标集，则使用仅可行性的完成作为第二次前瞻。若仍无法完成，就重罚该部分状态，
+    // 使束搜索不会只因其未完成画像看似良好而保留死分支。
     if projected.len() < target_total {
         if let Some(completed) =
             feasibility_beam_refill_solution(partial.to_vec(), pool, target_total, player_cap, candidates, 64)
@@ -4312,17 +4289,14 @@ mod target_rate_scope_tests {
     fn below_threshold_zero_mass_columns_do_not_require_low_by_low_rates() {
         let eligible = HashSet::from([0usize, 1usize]);
 
-        // All score rows still require observations against eligible target
-        // columns (high×high and low×high use this same column rule).
+        // 所有评分行仍要求对合资格目标列的观测（high×high 和 low×high 均使用这一列规则）。
         assert!(target_rate_column_requires_observed(0, 0.0, &eligible));
         assert!(target_rate_column_requires_observed(1, 0.0, &eligible));
 
-        // A below-threshold column with no Correct mass cannot be selected and
-        // therefore must not manufacture a low×low simulation requirement.
+        // 没有 Correct 质量的低于阈值列无法被选中，因而不得凭空制造 low×low 模拟需求。
         assert!(!target_rate_column_requires_observed(2, 0.0, &eligible));
 
-        // Defensive invariant: an unexpected nonzero big-target column is
-        // never silently replaced by a placeholder rate.
+        // 防御性不变式：绝不以占位率静默替换意外的非零大目标列。
         assert!(target_rate_column_requires_observed(2, 0.25, &eligible));
     }
 }

@@ -32,9 +32,7 @@ pub const DEFAULT_STICKINESS_PER_MEMBER: usize = 10;
 pub const EARLY_STOP_START_ROUND: usize = 100_000;
 pub const EARLY_STOP_STABLE_ROUNDS: usize = 100;
 
-/// After this round, only groups that have already received non-zero Golden
-/// mass continue to participate in the iterative update.  The remaining Raw
-/// scores are reconstructed once from the final Golden target.
+/// 此轮后，只有已经获得非零 Golden 质量的组继续参与迭代更新。剩余的 Raw 分数会依据最终 Golden 目标重建一次。
 pub const RAW_CORE_ONLY_START_ROUND: usize = 100_000;
 
 pub const KICK_AVG_CQD_THRESHOLD: f64 = 45.0;
@@ -205,8 +203,7 @@ pub fn recompute_lane_until_stable(db: &Db, lane_size: usize, config: &RankerCon
         };
 
         if archive_candidates.is_empty() {
-            // Raw has changed, so any Correct reference recipe from the previous
-            // calibration no longer describes the saved lane results.
+            // Raw 已改变，因此上一次校准的任何 Correct 参考方案都不再描述已保存的 lane 结果。
             db.clear_correct_target_trace(lane_size)?;
             db.save_lane_results(lane_size, &result)?;
             db.set_lane_status(lane_size, "ready", result.len())?;
@@ -600,8 +597,7 @@ fn validate_raw_golden_identity(nodes: &[RankNode], raw_scores: &[f64], rate_mat
         }
     }
 
-    // Keep this parameter in the validation boundary so future storage changes
-    // cannot accidentally validate scores against a different rate source.
+    // 将此参数保留在验证边界中，以免未来存储变更意外地依据不同的率来源验证分数。
     let _ = rate_matrix.loaded_pair_count();
     Ok(())
 }

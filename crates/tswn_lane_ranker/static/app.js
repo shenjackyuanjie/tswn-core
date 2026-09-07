@@ -68,8 +68,7 @@ function readSelectionSettings() {
   return {
     outer_workers: outerRaw ? Number(outerRaw) : 0,
     raw_score_threshold: rawScoreThreshold,
-    // Legacy compatibility for older backend builds. New strict Python calibration
-    // uses raw_score_threshold and passes the same value to --raw-min.
+    // 与旧版后端构建兼容。新的严格 Python 校准使用 raw_score_threshold，并将相同值传给 --raw-min。
     cqd_threshold: rawScoreThreshold,
   };
 }
@@ -935,7 +934,7 @@ function statusBadge(row) {
   if (!row) {
     return "";
   }
-  // Active-environment non-selected rows are displayed like normal rows.
+  // 活跃环境中未选中的行按普通行显示。
   if (isBlockedRow(row)) {
     return `<span class="blocked-badge">blocked</span>`;
   }
@@ -1075,15 +1074,13 @@ async function generateTargets() {
         }
         await loadLanes();
       } catch (_) {
-        // The target request remains authoritative. A transient progress-poll
-        // failure must not cancel generation or hide its eventual response.
+        // 目标请求仍具有权威性。短暂的进度轮询失败不得取消生成或隐藏其最终响应。
       }
     }
   })();
   try {
     button.disabled = true;
-    // Start this click at a fresh zero instead of briefly replaying progress
-    // left by an interrupted target-generation request.
+    // 此次点击从全新的零开始，而非短暂重放被中断的目标生成请求遗留的进度。
     out.textContent = "generating targets: target_preparing 0/0, 0.00 pair/s";
     const data = await postJson(`/api/lanes/${laneSize}/targets`, readTargetSettings());
     currentTargets = data;
@@ -1149,15 +1146,12 @@ function exportTargets() {
   }
 
   const laneSize = document.getElementById("laneSize").value;
-  // Openbox target preset format (TOML-style tables).  The requested
-  // extension is .html, but the payload intentionally matches newTarget2.toml.
+  // Openbox 目标预设格式（TOML 风格表格）。请求的扩展名是 .html，但载荷有意匹配 newTarget2.toml。
   const tomlString = value => JSON.stringify(String(value));
   const targetLines = [];
   for (const row of currentTargets.rows) {
-    // Export the original display identities. `player_keys` intentionally uses
-    // DSU/root-team names for internal ownership constraints (e.g. Squall may
-    // be normalized to Asunder); exposing those keys would rewrite the names
-    // users see in the target file. Keep the normalized keys internal only.
+    // 导出原始显示身份。`player_keys` 有意将 DSU/root-team 名称用于内部所有权约束（例如 Squall 可能归一化为
+    // Asunder）；暴露这些键会改写用户在目标文件中看到的名称。仅在内部保留归一化键。
     const players = String(row.canonical || "").split("+").map(s => s.trim()).filter(Boolean);
     targetLines.push(
       "[[targets]]",
@@ -1169,7 +1163,7 @@ function exportTargets() {
   downloadText(`Target${laneSize}.html`, targetLines.join("\n"));
   return;
 
-  /* Legacy diagnostic export retained below for reference only.
+  /* 下方旧版诊断导出仅供参考而保留。
   const s = currentTargets.summary || {};
   const configText = typeof currentTargets.target_config_text === "string"
     ? currentTargets.target_config_text.trim()
