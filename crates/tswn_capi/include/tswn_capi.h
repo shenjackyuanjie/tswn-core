@@ -91,6 +91,38 @@ typedef struct tswn_update_snapshot_t {
     tswn_update_type_t update_type;
 } tswn_update_snapshot_t;
 
+/* Canonical User API. ABI 4 is preserved by additive exports. */
+typedef struct tswn_battle_session_t tswn_battle_session_t;
+typedef struct tswn_battle_options_t {
+    uint32_t struct_size;
+    double eval_rq;
+    size_t max_rounds;
+    uint8_t include_icons;
+} tswn_battle_options_t;
+typedef enum tswn_battle_status_t {
+    TSWN_BATTLE_RUNNING = 0, TSWN_BATTLE_FINISHED = 1, TSWN_BATTLE_TRUNCATED = 2
+} tswn_battle_status_t;
+typedef enum tswn_battle_stop_reason_t {
+    TSWN_BATTLE_STOP_NONE = 0, TSWN_BATTLE_STOP_WINNER = 1,
+    TSWN_BATTLE_STOP_MAX_ROUNDS = 2, TSWN_BATTLE_STOP_NO_PROGRESS = 3
+} tswn_battle_stop_reason_t;
+
+/* Initialize before overriding fields. new accepts NULL options for defaults.
+ * struct_size smaller than this version is rejected; larger future tails are ignored.
+ * Each live handle must be freed once, and must not be used concurrently.
+ * All returned strings are owned by the caller; release with tswn_str_free.
+ * Optional outputs use has=0 and {NULL,0} when absent, including repeated terminal calls.
+ */
+void tswn_battle_options_default(tswn_battle_options_t* options);
+tswn_status_t tswn_battle_session_new(const char* raw_text_utf8, const tswn_battle_options_t* options, tswn_battle_session_t** out_session);
+void tswn_battle_session_free(tswn_battle_session_t* session);
+tswn_status_t tswn_battle_session_initial_states_json(const tswn_battle_session_t* session, tswn_str_t* out_json);
+tswn_status_t tswn_battle_session_current_states_json(const tswn_battle_session_t* session, tswn_str_t* out_json);
+tswn_status_t tswn_battle_session_next_frame_json(tswn_battle_session_t* session, uint8_t* out_has_frame, tswn_str_t* out_json);
+tswn_status_t tswn_battle_session_result_json(const tswn_battle_session_t* session, uint8_t* out_has_result, tswn_str_t* out_json);
+tswn_status_t tswn_battle_session_status(const tswn_battle_session_t* session, tswn_battle_status_t* out_value);
+tswn_status_t tswn_battle_session_stop_reason(const tswn_battle_session_t* session, tswn_battle_stop_reason_t* out_value);
+
 typedef struct tswn_runner_t tswn_runner_t;
 typedef struct tswn_prepared_runner_t tswn_prepared_runner_t;
 typedef struct tswn_updates_t tswn_updates_t;

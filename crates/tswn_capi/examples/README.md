@@ -144,3 +144,7 @@
 - 若运行时提示找不到 `tswn_capi.dll`，可先把 `lib/tswn_capi.dll` 复制到生成的 `.exe` 同目录，再重新执行
 - 若你使用的是 `tswn_capi.lib`，则 `tswn_capi` 本体会在链接时进入最终可执行文件，但仍可能需要额外补充 Windows 系统库
 - 若你想编译别的示例，只需把上述命令里的 `examples/version_and_error.c` 替换成对应源文件即可
+
+## 增量对局示例
+
+`battle_session.c` 使用 ABI 4 的正式 `BattleSession` 接口，按 initial、frame、result 顺序输出 JSON。先调用 `tswn_battle_options_default`，每个返回字符串使用 `tswn_str_free` 释放，最后使用 `tswn_battle_session_free` 释放会话。

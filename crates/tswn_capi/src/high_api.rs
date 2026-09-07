@@ -89,7 +89,7 @@ struct JsonIconInfo {
 
 fn nanos_to_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
 
-fn cli_api_error(err: CliApiError) -> FfiError {
+pub(crate) fn cli_api_error(err: CliApiError) -> FfiError {
     let status = match &err {
         CliApiError::InvalidInput(_) | CliApiError::InvalidArgument(_) | CliApiError::UnsupportedOption(_) => {
             tswn_status_t::TSWN_ERR_INVALID_ARGUMENT
@@ -575,7 +575,7 @@ pub unsafe extern "C" fn tswn_battle_replay_json(
         let raw = unsafe { read_utf8(raw_text_utf8, "raw_text_utf8")? };
         let result = core_cli_api::battle_replay(
             &raw,
-            core_cli_api::BattleReplayOptions {
+            core_cli_api::BattleOptions {
                 eval_rq,
                 include_icons: include_icons != 0,
                 max_rounds,

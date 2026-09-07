@@ -5,6 +5,7 @@
 
 #![allow(non_camel_case_types, non_snake_case)]
 
+mod battle_api;
 mod high_api;
 mod icon_api;
 mod runner_api;
@@ -143,11 +144,11 @@ pub(crate) fn ffi_error_with_code(status: tswn_status_t, code: &'static str, mes
 
 fn error_code_for_status(status: tswn_status_t) -> &'static str {
     match status {
-        tswn_status_t::TSWN_ERR_NULL => "INVALID_ARGUMENT",
-        tswn_status_t::TSWN_ERR_INVALID_UTF8 => "INVALID_INPUT",
-        tswn_status_t::TSWN_ERR_INVALID_ARGUMENT => "INVALID_ARGUMENT",
-        tswn_status_t::TSWN_ERR_RUNNER => "RUNNER_INIT_FAILED",
-        tswn_status_t::TSWN_ERR_PANIC => "INTERNAL_ERROR",
+        tswn_status_t::TSWN_ERR_NULL => tswn_core::cli_api::CliApiErrorCode::InvalidArgument.as_str(),
+        tswn_status_t::TSWN_ERR_INVALID_UTF8 => tswn_core::cli_api::CliApiErrorCode::InvalidInput.as_str(),
+        tswn_status_t::TSWN_ERR_INVALID_ARGUMENT => tswn_core::cli_api::CliApiErrorCode::InvalidArgument.as_str(),
+        tswn_status_t::TSWN_ERR_RUNNER => tswn_core::cli_api::CliApiErrorCode::RunnerInitFailed.as_str(),
+        tswn_status_t::TSWN_ERR_PANIC => tswn_core::cli_api::CliApiErrorCode::InternalError.as_str(),
         tswn_status_t::TSWN_OK => "",
     }
 }
