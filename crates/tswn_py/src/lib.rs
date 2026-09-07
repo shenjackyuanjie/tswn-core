@@ -5,6 +5,7 @@
 //! 批量胜率和图标输出则提供便于脚本调用的顶层函数。
 
 /// 类型 wrapper
+mod battle;
 pub mod cli_api;
 pub mod wrapper;
 
@@ -154,6 +155,10 @@ fn module_init(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cli_api::parse_group_lines, m)?)?;
     m.add_function(wrap_pyfunction!(cli_api::default_custom_runtime_normalized_run, m)?)?;
     m.add_function(wrap_pyfunction!(cli_api::battle_replay, m)?)?;
+    m.add_class::<battle::PyBattleSession>()?;
+    m.add_class::<cli_api::PyInvalidArgumentError>()?;
+    m.add_class::<cli_api::PyUnsupportedOptionError>()?;
+    m.add_class::<cli_api::PyInternalError>()?;
     m.add_class::<cli_api::PyWinRateResult>()?;
     m.add_class::<cli_api::PyScoreResult>()?;
     m.add_class::<cli_api::PyNamerPfResult>()?;

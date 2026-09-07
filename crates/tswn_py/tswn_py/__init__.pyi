@@ -8,6 +8,11 @@ tswn_py 包顶层类型存根。
 
 from ._version import __version__ as __version__
 from .tswn_py import (
+    BattleSession as BattleSession,
+    InvalidArgumentError as InvalidArgumentError,
+    UnsupportedOptionError as UnsupportedOptionError,
+    TswnInternalError as TswnInternalError,
+
     DEFAULT_EVAL_RQ as DEFAULT_EVAL_RQ,
     PreparedRunner as PreparedRunner,
     WinRateResult as WinRateResult,
@@ -49,6 +54,11 @@ from .tswn_py import (
 )
 
 __all__ = [
+    "BattleSession",
+    "InvalidArgumentError",
+    "UnsupportedOptionError",
+    "TswnInternalError",
+
     "__version__",
     "RunnerError",
     "PreparedRunner",

@@ -1,4 +1,4 @@
-"""High-level replay DTO types."""
+"""Advanced Runner compatibility DTOs; canonical user DTOs are in _types_battle."""
 
 from __future__ import annotations
 

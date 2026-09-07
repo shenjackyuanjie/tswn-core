@@ -77,6 +77,8 @@ def prepare_import_tree(release: bool) -> None:
         src = CRATE_DIR / "tswn_py" / name
         if src.exists():
             shutil.copy2(src, PKG_DIR / name)
+    for src in (CRATE_DIR / "tswn_py").glob("_types_*.pyi"):
+        shutil.copy2(src, PKG_DIR / src.name)
 
     sys.path.insert(0, str(IMPORT_ROOT))
 
@@ -323,6 +325,82 @@ def verify_battle_replay(tswn_py: Any) -> None:
     assert_equal(any(frame["rows"] for frame in replay["frames"]), True, "battle_replay rows")
 
 
+def verify_battle_session(tswn_py: Any) -> None:
+    dto_tree = ast.parse((CRATE_DIR / "tswn_py" / "_types_battle.pyi").read_text(encoding="utf-8"))
+    dto_keys = {
+        node.name: {field.target.id for field in node.body if isinstance(field, ast.AnnAssign)}
+        for node in dto_tree.body if isinstance(node, ast.ClassDef)
+    }
+    def shape(value: dict[str, Any], name: str) -> None:
+        assert_equal(set(value), dto_keys[name], f"{name} exact TypedDict keys")
+
+    fixture_dir = ROOT / "crates" / "tswn_test" / "cases" / "runtime_stress"
+    for fixture in ["1v1-0f92cb76cc37fdc5.txt", "2v2-554f4128af707167.txt",
+                    "ffa_8-16d11de1ebe1df41.txt", "3v3v3-0ace5df17b84e26a.txt"]:
+        raw = (fixture_dir / fixture).read_text(encoding="utf-8")
+        for budget in [1, 20_000]:
+            session = tswn_py.BattleSession(raw, max_rounds=budget)
+            assert_equal(session.status(), "running", "initial status")
+            assert_equal(session.stop_reason(), None, "initial reason")
+            assert_equal(session.result(), None, "initial result")
+            assert_equal(iter(session) is session, True, "iterator identity")
+            initial = session.initial_states()
+            replay = tswn_py.battle_replay(raw, max_rounds=budget)
+            shape(replay, "BattleReplay")
+            assert_equal(initial, replay["initial_states"], "session initial parity")
+            frames = list(session)
+            assert_equal(frames, replay["frames"], "session exact frame parity")
+            result = session.result()
+            shape(result, "BattleResult")
+            for key, value in result.items():
+                assert_equal(value, replay[key], f"session result parity: {key}")
+            assert_equal(session.current_states(), result["final_states"], "current final parity")
+            assert_equal(session.frames_emitted(), len(frames), "frame count")
+            assert_equal(session.rounds_advanced(), result["rounds_advanced"], "round count")
+            assert_equal(session.is_done(), True, "terminal")
+            assert_equal(session.is_finished(), result["finished"], "finished")
+            assert_equal(session.is_truncated(), result["truncated"], "truncated")
+            assert_equal(session.status(), result["status"], "status")
+            assert_equal(session.stop_reason(), result["stop_reason"], "reason")
+            for _ in range(3):
+                assert_equal(session.next_frame(), None, "terminal idempotence")
+                assert_equal(list(session), [], "terminal iterator")
+            for frame in frames:
+                shape(frame, "BattleReplayFrame")
+                for state in frame["states"]:
+                    shape(state, "BattlePlayerState")
+                for update in frame["updates"]:
+                    shape(update, "BattleUpdate")
+                for row in frame["rows"]:
+                    shape(row, "BattleReplayRow")
+                    for clip in row["clips"]:
+                        shape(clip, "BattleReplayClip")
+                        for part in clip["parts"]:
+                            shape(part, "BattleReplayTextPart")
+            # Returned Python objects cannot mutate the Rust session snapshots.
+            initial[0]["hp"] = -999
+            assert_equal(session.initial_states(), replay["initial_states"], "snapshot ownership")
+    for raw, kwargs, error_type, code in [
+        ("", {}, tswn_py.InvalidInputError, "INVALID_INPUT"),
+        ("a\n\nb", {"max_rounds": 0}, tswn_py.InvalidArgumentError, "INVALID_ARGUMENT"),
+        ("a\n\nb", {"eval_rq": float("nan")}, tswn_py.InvalidArgumentError, "INVALID_ARGUMENT"),
+    ]:
+        try:
+            tswn_py.BattleSession(raw, **kwargs)
+        except error_type as error:
+            assert_equal(error.code, code, "canonical Python error code")
+        else:
+            raise AssertionError("BattleSession accepted invalid input/options")
+
+    extension = ast.parse((CRATE_DIR / "tswn_py" / "tswn_py.pyi").read_text(encoding="utf-8"))
+    replay_stub = next(node for node in extension.body if isinstance(node, ast.FunctionDef) and node.name == "battle_replay")
+    assert_equal(ast.unparse(replay_stub.returns), "BattleReplay", "precise replay return type")
+    session_stub = next(node for node in extension.body if isinstance(node, ast.ClassDef) and node.name == "BattleSession")
+    for method in session_stub.body:
+        if isinstance(method, ast.FunctionDef):
+            assert_equal(hasattr(tswn_py.BattleSession, method.name), True, f"session method {method.name}")
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Verify tswn_py CLI-aligned APIs")
     parser.add_argument("--release", action="store_true", help="build/import release artifact")
@@ -348,6 +426,7 @@ def main(argv: list[str]) -> int:
         verify_to_diy_roundtrip,
         verify_icon_and_parsers,
         verify_battle_replay,
+        verify_battle_session,
     ]
     for check in checks:
         print(f"[check] {check.__name__}", flush=True)

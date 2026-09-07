@@ -24,5 +24,5 @@ impl PyRunnerError {
 #[pyo3::pymethods]
 impl PyRunnerError {
     #[getter]
-    fn code(&self) -> &'static str { "RUNNER_INIT_FAILED" }
+    fn code(&self) -> &'static str { tswn_core::cli_api::CliApiErrorCode::RunnerInitFailed.as_str() }
 }

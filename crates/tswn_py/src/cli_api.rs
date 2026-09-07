@@ -4,7 +4,7 @@ use pyo3::{
     Py, PyAny, PyResult, Python,
     exceptions::{PyRuntimeError, PyValueError},
     pyclass, pyfunction, pymethods,
-    types::{PyAnyMethods, PyDict, PyDictMethods, PyList},
+    types::{PyDict, PyDictMethods, PyList},
 };
 use tswn_core::cli_api::{
     self as core_cli_api, CliApiError, JsonRuntimeNormalizedOutcome, JsonRuntimeNormalizedRun, JsonRuntimeUpdateFrame,
@@ -23,7 +23,7 @@ impl PyInvalidInputError {
     fn new(_message: &pyo3::Bound<'_, PyAny>) -> Self { Self }
 
     #[getter]
-    fn code(&self) -> &'static str { "INVALID_INPUT" }
+    fn code(&self) -> &'static str { core_cli_api::CliApiErrorCode::InvalidInput.as_str() }
 }
 
 /// Stable-code runtime error for user-facing helper APIs.
@@ -37,7 +37,7 @@ impl PyCliRuntimeError {
     fn new(_message: &pyo3::Bound<'_, PyAny>) -> Self { Self }
 
     #[getter]
-    fn code(&self) -> &'static str { "RUNTIME_FAILED" }
+    fn code(&self) -> &'static str { core_cli_api::CliApiErrorCode::RuntimeFailed.as_str() }
 }
 
 #[pyclass(skip_from_py_object)]
@@ -403,13 +403,14 @@ impl PyIconInfo {
     }
 }
 
-fn map_cli_error(err: CliApiError) -> pyo3::PyErr {
+pub(crate) fn map_cli_error(err: CliApiError) -> pyo3::PyErr {
     match err {
         CliApiError::InvalidInput(message) => pyo3::PyErr::new::<PyInvalidInputError, _>(message),
         CliApiError::RunnerInit(err) => wrapper::error::PyRunnerError::new(err).into(),
         CliApiError::Runtime(message) => pyo3::PyErr::new::<PyCliRuntimeError, _>(message),
-        CliApiError::InvalidArgument(message) | CliApiError::UnsupportedOption(message) => PyValueError::new_err(message),
-        CliApiError::Internal(message) => PyRuntimeError::new_err(message),
+        CliApiError::InvalidArgument(message) => pyo3::PyErr::new::<PyInvalidArgumentError, _>(message),
+        CliApiError::UnsupportedOption(message) => pyo3::PyErr::new::<PyUnsupportedOptionError, _>(message),
+        CliApiError::Internal(message) => pyo3::PyErr::new::<PyInternalError, _>(message),
     }
 }
 
@@ -494,18 +495,9 @@ pub fn battle_replay(
     include_icons: bool,
     max_rounds: Option<usize>,
 ) -> PyResult<Py<PyAny>> {
-    let mut options = core_cli_api::BattleReplayOptions::default();
-    if let Some(eval_rq) = eval_rq {
-        options.eval_rq = eval_rq;
-    }
-    options.include_icons = include_icons;
-    if let Some(max_rounds) = max_rounds {
-        options.max_rounds = max_rounds;
-    }
+    let options = crate::battle::options(eval_rq, include_icons, max_rounds);
     let replay = core_cli_api::battle_replay(&raw, options).map_err(map_cli_error)?;
-    let json = serde_json::to_string(&replay).map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
-    let json_module = pyo3::types::PyModule::import(py, "json")?;
-    Ok(json_module.getattr("loads")?.call1((json,))?.unbind())
+    crate::battle::dto_to_python(py, &replay)
 }
 
 #[pyfunction(signature = (raw, n, eval_rq=None, thread=0))]
@@ -657,7 +649,7 @@ fn format_rate(value: f64, precision: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pyo3::types::{PyAnyMethods, PyDict, PyDictMethods, PyList};
+    use pyo3::types::{PyDict, PyDictMethods, PyList};
 
     #[test]
     fn default_custom_runtime_normalized_run_returns_python_dict_golden_shape() {
@@ -832,4 +824,37 @@ mod tests {
             assert!(err.matches(py, py.get_type::<PyValueError>()).unwrap());
         });
     }
+}
+
+#[pyclass(extends=PyValueError)]
+#[pyo3(name = "InvalidArgumentError")]
+pub struct PyInvalidArgumentError;
+#[pymethods]
+impl PyInvalidArgumentError {
+    #[new]
+    fn new(_message: &pyo3::Bound<'_, PyAny>) -> Self { Self }
+    #[getter]
+    fn code(&self) -> &'static str { core_cli_api::CliApiErrorCode::InvalidArgument.as_str() }
+}
+
+#[pyclass(extends=PyValueError)]
+#[pyo3(name = "UnsupportedOptionError")]
+pub struct PyUnsupportedOptionError;
+#[pymethods]
+impl PyUnsupportedOptionError {
+    #[new]
+    fn new(_message: &pyo3::Bound<'_, PyAny>) -> Self { Self }
+    #[getter]
+    fn code(&self) -> &'static str { core_cli_api::CliApiErrorCode::UnsupportedOption.as_str() }
+}
+
+#[pyclass(extends=PyRuntimeError)]
+#[pyo3(name = "TswnInternalError")]
+pub struct PyInternalError;
+#[pymethods]
+impl PyInternalError {
+    #[new]
+    fn new(_message: &pyo3::Bound<'_, PyAny>) -> Self { Self }
+    #[getter]
+    fn code(&self) -> &'static str { core_cli_api::CliApiErrorCode::InternalError.as_str() }
 }

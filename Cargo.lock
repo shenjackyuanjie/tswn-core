@@ -4313,6 +4313,7 @@ name = "tswn_py"
 version = "0.5.2"
 dependencies = [
  "pyo3",
+ "serde",
  "serde_json",
  "smallvec",
  "tswn_core",
