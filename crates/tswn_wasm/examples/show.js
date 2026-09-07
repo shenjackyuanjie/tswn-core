@@ -166,7 +166,9 @@ import {
   buildShowShareUrl,
   readStaticReplayInputFromSearch,
 } from "./show-routing.js";
-import { ensureApi, buildMainNormalizedReplay } from "./show-wasm.js";
+import { ensureApi, createBattleStreamSource } from "./show-wasm.js";
+
+import { BattleStreamController } from "./show-stream.js";
 
 // ============================================================================
 // 默认示例输入 — 可在页面中直接点击"示例"按钮填入
@@ -280,7 +282,10 @@ const stepForwardFrameBtn = document.querySelector("#stepForwardFrameBtn");
 // ============================================================================
 
 /** @type {FightReplay|null} 当前已生成的回放数据 */
-let currentReplay = null;
+let currentBattle = null;
+let streamController = null;
+let streamError = null;
+let battleGenerationToken = 0;
 /** @type {FightState[]} 当前左侧面板对应的状态快照 */
 let currentVisibleStates = [];
 /** @type {number|null} 当前详情面板打开的 playerId */
@@ -365,7 +370,7 @@ function rememberPlayers(players) {
   for (const player of players) {
     playersById.set(player.id, player);
   }
-  syncIconStyles(currentReplay?.icon_styles ?? players);
+  syncIconStyles(currentBattle?.icon_styles ?? players);
 }
 
 function ensureIconStyleTag() {
@@ -496,35 +501,35 @@ function currentStateById(playerId) {
   if (visibleState) {
     return visibleState;
   }
-  if (!currentReplay) {
+  if (!currentBattle) {
     return null;
   }
-  for (const frame of [...(currentReplay.frames ?? [])].reverse()) {
+  for (const frame of [...(currentBattle.frames ?? [])].reverse()) {
     const state = frame.states?.find((candidate) => candidate.id === playerId);
     if (state) {
       return state;
     }
   }
   return (
-    currentReplay.final_states?.find((state) => state.id === playerId) ??
-    currentReplay.initial_states?.find((state) => state.id === playerId) ??
+    currentBattle.final_states?.find((state) => state.id === playerId) ??
+    currentBattle.initial_states?.find((state) => state.id === playerId) ??
     null
   );
 }
 
 function inputPlayerById(playerId) {
-  return currentReplay?.players?.find((player) => player.id === playerId) ?? null;
+  return currentBattle?.players?.find((player) => player.id === playerId) ?? null;
 }
 
 function visibleStatesForCursor(cursor) {
-  if (!currentReplay || !currentPlan) {
+  if (!currentBattle || !currentPlan) {
     return [];
   }
-  if (cursor >= currentPlan.totalChunks) {
-    return currentReplay.final_states;
+  if (currentBattle.source_done && cursor >= currentPlan.totalChunks) {
+    return currentBattle.final_states;
   }
 
-  let states = currentReplay.initial_states;
+  let states = currentBattle.initial_states;
   for (const framePlan of currentPlan.frames) {
     if (cursor >= framePlan.end) {
       states = framePlan.frame.states;
@@ -565,7 +570,10 @@ function setLoading(loading) {
 
 function clearCurrentReplayView() {
   clearPlayerHighlight();
-  currentReplay = null;
+  streamController?.dispose();
+  streamController = null;
+  streamError = null;
+  currentBattle = null;
   currentPlan = null;
   playbackCheckpoints = new Map();
   playbackCursor = 0;
@@ -590,7 +598,7 @@ function prepareReplayPlan(replay) {
     appendFrameToReplayPlan(plan, frame, previousStates, workingPlayersById);
     previousStates = frame.states;
   }
-  markReplayPlanComplete(plan, replay);
+  if (replay.source_done) markReplayPlanComplete(plan, replay.result);
   return plan;
 }
 
@@ -611,29 +619,31 @@ function syncPlaybackUi() {
     pauseBtn,
     playbackPaused,
     speedMode,
-    currentReplay,
+    currentBattle,
     headerMeta,
   );
 
-  pauseBtn.disabled = !currentReplay;
-  shareBtn.disabled = !currentReplay;
+  pauseBtn.disabled = !currentBattle;
+  shareBtn.disabled = !currentBattle;
   pauseBtn.classList.toggle("is-paused", playbackPaused);
 
   stepControls.hidden = false;
 
-  const noReplay = !currentReplay;
+  const noReplay = !currentBattle;
   stepBackEventBtn.disabled = noReplay || playbackCursor <= 0;
   stepBackFrameBtn.disabled = noReplay || playbackCursor <= 0;
   stepForwardEventBtn.disabled =
-    noReplay || !currentPlan || playbackCursor >= currentPlan.totalChunks;
+    noReplay || !currentPlan || (currentBattle.source_done && playbackCursor >= currentPlan.totalChunks);
   stepForwardFrameBtn.disabled =
-    noReplay || !currentPlan || playbackCursor >= currentPlan.totalChunks;
+    noReplay || !currentPlan || (currentBattle.source_done && playbackCursor >= currentPlan.totalChunks);
 
-  if (currentReplay) {
+  if (streamError) {
+    headerMeta.textContent = `战斗读取失败：${formatError(streamError)}`;
+  } else if (currentBattle) {
     if (playbackPaused) {
-      headerMeta.textContent = `已暂停，可单步前后移动。当前位置：frame ${currentFrameIndexFromCursor()} / ${Math.max(0, currentReplay.frames.length - 1)}。`;
+      headerMeta.textContent = `已暂停，可单步前后移动。当前位置：frame ${currentFrameIndexFromCursor()} / ${Math.max(0, currentBattle.frames.length - 1)}。`;
     } else if (playbackFinished) {
-      headerMeta.textContent = `回放已结束，共 ${currentReplay.frames.length} 帧。`;
+      headerMeta.textContent = `回放已结束，共 ${currentBattle.frames.length} 帧。`;
     }
   }
 }
@@ -681,7 +691,7 @@ function appendPlaybackChunk(chunk) {
 function renderSidebarSnapshot(states, previousStates, involved) {
   currentVisibleStates = states;
   renderPlayers(
-    currentReplay.players,
+    currentBattle.players,
     states,
     previousStates,
     involved,
@@ -691,7 +701,7 @@ function renderSidebarSnapshot(states, previousStates, involved) {
 }
 
 function renderChunkSidebar(chunk) {
-  if (!currentReplay || !Array.isArray(chunk.sidebarStates)) {
+  if (!currentBattle || !Array.isArray(chunk.sidebarStates)) {
     return;
   }
   renderSidebarSnapshot(
@@ -827,7 +837,7 @@ function appendChunksBetween(startCursor, targetCursor) {
 }
 
 function renderPlaybackToCursor(cursor, { forceReset = false } = {}) {
-  if (!currentReplay || !currentPlan) {
+  if (!currentBattle || !currentPlan) {
     return;
   }
 
@@ -835,10 +845,10 @@ function renderPlaybackToCursor(cursor, { forceReset = false } = {}) {
   const wasFinished = playbackFinished;
   const targetCursor = Math.max(0, Math.min(cursor, currentPlan.totalChunks));
   playbackCursor = targetCursor;
-  playbackFinished = playbackCursor >= currentPlan.totalChunks;
+  playbackFinished = currentBattle.source_done && playbackCursor >= currentPlan.totalChunks;
 
   if (forceReset) {
-    resetPlaybackView(currentReplay);
+    resetPlaybackView(currentBattle);
     appendChunksBetween(0, targetCursor);
   } else if (targetCursor === previousCursor && wasFinished === playbackFinished) {
     // 游标没动且完成状态没变，无需重新渲染
@@ -851,23 +861,23 @@ function renderPlaybackToCursor(cursor, { forceReset = false } = {}) {
       if (checkpointCursor > 0 && restorePlaybackCheckpoint(checkpointCursor)) {
         appendChunksBetween(checkpointCursor, targetCursor);
       } else {
-        resetPlaybackView(currentReplay);
+        resetPlaybackView(currentBattle);
         appendChunksBetween(0, targetCursor);
       }
     }
   }
 
   if (playbackFinished) {
-    currentVisibleStates = currentReplay.final_states;
+    currentVisibleStates = currentBattle.final_states;
     renderPlayers(
-      currentReplay.players,
-      currentReplay.final_states,
-      currentReplay.final_states,
+      currentBattle.players,
+      currentBattle.final_states,
+      currentBattle.final_states,
       null,
       playerList,
       playersById,
     );
-    appendReplayResultBlock(currentReplay);
+    appendReplayResultBlock(currentBattle);
     storePlaybackCheckpoint(playbackCursor);
   }
 
@@ -908,22 +918,32 @@ async function waitForPlaybackDelay(ms, token) {
 }
 
 async function autoplayFromCurrentCursor() {
-  if (!currentReplay || !currentPlan || playbackFinished) {
+  if (!currentBattle || !currentPlan || playbackFinished) {
     syncPlaybackUi();
     return;
   }
 
   const token = ++playbackLoopToken;
   playbackPaused = false;
+  streamController?.setPaused(false);
   syncPlaybackUi();
 
-  while (playbackCursor < currentPlan.totalChunks) {
+  while (true) {
     if (token !== playbackLoopToken || playbackPaused) {
       return;
     }
 
+    if (playbackCursor >= currentPlan.totalChunks) {
+      if (currentBattle.source_done) break;
+      try { await streamController.ensureFrame(currentBattle.frames.length); }
+      catch { return; }
+      if (token !== playbackLoopToken || playbackPaused) return;
+      continue;
+    }
     const chunk = currentPlan.flatChunks[playbackCursor];
     const framePlan = currentPlan.frames[chunk.frameIndex];
+    streamController?.setPlaybackFrame(framePlan.frameIndex);
+    void streamController?.ensureBuffered().catch(() => {});
     const delay =
       playbackCursor === 0 && speedMode === "normal"
         ? 0
@@ -956,11 +976,11 @@ async function autoplayFromCurrentCursor() {
   }
 
   playbackFinished = true;
-  currentVisibleStates = currentReplay.final_states;
+  currentVisibleStates = currentBattle.final_states;
   renderPlayers(
-    currentReplay.players,
-    currentReplay.final_states,
-    currentReplay.final_states,
+    currentBattle.players,
+    currentBattle.final_states,
+    currentBattle.final_states,
     null,
     playerList,
     playersById,
@@ -971,9 +991,10 @@ async function autoplayFromCurrentCursor() {
       return;
     }
   }
-  appendReplayResultBlock(currentReplay);
+  appendReplayResultBlock(currentBattle);
   storePlaybackCheckpoint(playbackCursor);
   playbackPaused = true;
+  streamController?.setPaused(true);
   // 极速是一次性按钮：播完后自动回到暂停态
   if (speedMode === "turbo") {
     playbackPaused = true;
@@ -983,7 +1004,7 @@ async function autoplayFromCurrentCursor() {
 }
 
 function beginReplayPlayback(replay, { autoPlay = true } = {}) {
-  currentReplay = replay;
+  currentBattle = replay;
   currentPlan = prepareReplayPlan(replay);
   playbackCheckpoints = new Map();
   playbackCursor = 0;
@@ -991,6 +1012,7 @@ function beginReplayPlayback(replay, { autoPlay = true } = {}) {
   playbackFinished = false;
   playbackStartedAt = performance.now();
   stopPlaybackLoop();
+  streamController?.setPlaybackFrame(-1);
   renderPlaybackToCursor(0, { forceReset: true });
   if (autoPlay !== false) {
     void autoplayFromCurrentCursor();
@@ -1047,16 +1069,17 @@ function previousFrameCursor(cursor) {
 }
 
 function pausePlayback() {
-  if (!currentReplay) {
+  if (!currentBattle) {
     return;
   }
   playbackPaused = true;
+  streamController?.setPaused(true);
   stopPlaybackLoop();
   syncPlaybackUi();
 }
 
 function resumePlayback() {
-  if (!currentReplay) {
+  if (!currentBattle) {
     return;
   }
 
@@ -1071,7 +1094,7 @@ function resumePlayback() {
 }
 
 function togglePausePlayback() {
-  if (!currentReplay) {
+  if (!currentBattle) {
     return;
   }
   if (playbackPaused) {
@@ -1082,10 +1105,11 @@ function togglePausePlayback() {
 }
 
 function stepPlaybackTo(cursor) {
-  if (!currentReplay || !currentPlan) {
+  if (!currentBattle || !currentPlan) {
     return;
   }
   playbackPaused = true;
+  streamController?.setPaused(true);
   stopPlaybackLoop();
   renderPlaybackToCursor(cursor);
 }
@@ -1182,9 +1206,6 @@ function readStaticReplayInputFromUrl() {
   return readStaticReplayInputFromSearch(window.location.search);
 }
 
-async function buildMainReplay(rawInput) {
-  return buildMainNormalizedReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo);
-}
 
 // ============================================================================
 // localStorage 持久化
@@ -1320,7 +1341,7 @@ function openInputEditor(selectAll = false) {
 }
 
 function openPlayerDetail(playerId) {
-  if (!currentReplay) {
+  if (!currentBattle) {
     return;
   }
   pausePlayback();
@@ -1346,17 +1367,17 @@ function openPlayerDetail(playerId) {
 }
 
 function refreshCurrentReplayView() {
-  if (!currentReplay || !currentPlan) {
+  if (!currentBattle || !currentPlan) {
     return;
   }
-  applyNicknamesToReplay(currentReplay);
-  currentPlan = prepareReplayPlan(currentReplay);
+  applyNicknamesToReplay(currentBattle);
+  currentPlan = prepareReplayPlan(currentBattle);
   playbackCheckpoints = new Map();
   renderPlaybackToCursor(playbackCursor, { forceReset: true });
 }
 
 function saveCurrentNickname() {
-  if (currentDetailPlayerId == null || !currentReplay) {
+  if (currentDetailPlayerId == null || !currentBattle) {
     return;
   }
   const player = inputPlayerById(currentDetailPlayerId);
@@ -1416,23 +1437,54 @@ async function startBattle({ persistInput = true } = {}) {
   if (persistInput) {
     persistInputValue();
   }
+  const generation = ++battleGenerationToken;
   stopPlaybackLoop();
   clearCurrentReplayView();
   setLoading(true);
-  setInputStatus("正在生成回放，请稍候...");
+  setInputStatus("正在准备战斗...");
 
   try {
-    currentReplay = applyNicknamesToReplay(
-      normalizeReplayPlayers(await buildMainReplay(rawInput)),
-    );
-    setInputStatus("回放已生成，开始自动播放。");
+    const source = await createBattleStreamSource(rawInput, versionInfo, coreVersionInfo, modulePathInfo);
+    if (generation !== battleGenerationToken) { source.dispose(); return; }
+    currentBattle = {
+      raw_input: source.raw_input, seed_line: source.seed_line,
+      players: source.players, initial_states: source.initial_states,
+      frames: [], result: null, source_done: false,
+      winner_ids: [], final_states: source.initial_states,
+    };
+    // Initial DOM and loading state are ready before the first source pull.
     closePanel(inputPanel);
-    beginReplayPlayback(currentReplay);
+    beginReplayPlayback(currentBattle, { autoPlay: false });
+    setLoading(false);
+    setInputStatus("战斗已开始，正在逐帧播放。");
+    streamController = new BattleStreamController(source, { paused: true });
+    streamController.subscribe(event => {
+      if (generation !== battleGenerationToken) return;
+      if (event.type === "frame") {
+        const previousStates = currentBattle.frames.at(-1)?.states ?? currentBattle.initial_states;
+        currentBattle.frames.push(event.data);
+        appendFrameToReplayPlan(currentPlan, event.data, previousStates, playersById);
+      } else if (event.type === "result") {
+        currentBattle.result = event.data;
+        currentBattle.source_done = true;
+        currentBattle.final_states = event.data.final_states;
+        currentBattle.winner_ids = event.data.winner_ids;
+        markReplayPlanComplete(currentPlan, event.data);
+      } else if (event.type === "error") {
+        streamError = event.error;
+        pausePlayback();
+        setInputStatus(formatError(event.error), true);
+      }
+      syncPlaybackUi();
+    });
+    void autoplayFromCurrentCursor();
   } catch (error) {
+    if (generation !== battleGenerationToken) return;
+    streamController?.dispose();
     setInputStatus(formatError(error), true);
     openInputEditor();
   } finally {
-    setLoading(false);
+    if (generation === battleGenerationToken) setLoading(false);
   }
 }
 
@@ -1441,22 +1493,22 @@ async function startBattle({ persistInput = true } = {}) {
  * @returns {Promise<void>}
  */
 async function replayCurrent() {
-  if (!currentReplay) {
+  if (!currentBattle) {
     openInputEditor();
     return;
   }
-  beginReplayPlayback(currentReplay);
+  beginReplayPlayback(currentBattle);
 }
 
 async function copyCurrentShareUrl() {
-  if (!currentReplay?.raw_input) {
+  if (!currentBattle?.raw_input) {
     setInputStatus("当前还没有可分享的对局。", true);
     openInputEditor();
     return;
   }
 
   try {
-    await copyTextToClipboard(buildShareUrl(currentReplay.raw_input));
+    await copyTextToClipboard(buildShareUrl(currentBattle.raw_input));
     setInputStatus("分享链接已复制到剪贴板。");
     showShareToast();
   } catch (error) {
@@ -1534,7 +1586,7 @@ editNamesBtn.addEventListener("click", () => {
 // 播放按钮：normal 速度播放
 normalBtn.addEventListener("click", () => {
   speedMode = "normal";
-  if (playbackPaused && currentReplay && !playbackFinished) {
+  if (playbackPaused && currentBattle && !playbackFinished) {
     resumePlayback();
     return;
   }
@@ -1544,7 +1596,7 @@ normalBtn.addEventListener("click", () => {
 // 快进按钮：fast 速度播放
 fastBtn.addEventListener("click", () => {
   speedMode = "fast";
-  if (playbackPaused && currentReplay && !playbackFinished) {
+  if (playbackPaused && currentBattle && !playbackFinished) {
     resumePlayback();
     return;
   }
@@ -1553,7 +1605,7 @@ fastBtn.addEventListener("click", () => {
 
 // 极速按钮：一次性快进至结束，完成后自动暂停
 turboBtn.addEventListener("click", () => {
-  if (!currentReplay || playbackFinished) {
+  if (!currentBattle || playbackFinished) {
     return;
   }
   speedMode = "turbo";
@@ -1586,12 +1638,12 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (event.key === " ") {
-    if (!currentReplay) return;
+    if (!currentBattle) return;
     togglePausePlayback();
     event.preventDefault();
     return;
   }
-  if (!currentReplay) {
+  if (!currentBattle) {
     return;
   }
   switch (event.key) {
@@ -1616,7 +1668,7 @@ document.addEventListener("keydown", (event) => {
 
 // 关闭输入面板（仅在已有回放时允许关闭）
 closeInputBtn.addEventListener("click", () => {
-  if (currentReplay) {
+  if (currentBattle) {
     closePanel(inputPanel);
   }
 });

@@ -10,25 +10,13 @@ async function readExampleFile(name) {
   return readFile(join(examplesDir, name), "utf8");
 }
 
-test("show page only wires the shared replay view path", async () => {
-  const [html, script, wasmScript] = await Promise.all([
-    readExampleFile("index.html"),
-    readExampleFile("show.js"),
-    readExampleFile("show-wasm.js"),
-  ]);
-
-  assert.match(html, /id="runtimeModeInfo"/);
-  assert.match(html, /使用 battle_replay 生成 replay 适配视图。/);
-  assert.match(html, /<script type="module" src="\.\/show\.js\?v=20260904a"><\/script>/);
-
-  assert.match(script, /import \{ ensureApi, buildMainNormalizedReplay \} from "\.\/show-wasm\.js";/);
-  assert.match(script, /return buildMainNormalizedReplay\(rawInput, versionInfo, coreVersionInfo, modulePathInfo\);/);
-  assert.doesNotMatch(script, /FightSession|readReplayEngineFromSearch|DEFAULT_REPLAY_ENGINE/);
-  assert.match(
-    wasmScript,
-    /export async function buildMainNormalizedReplay[\s\S]*api\.battle_replay\(rawInput, \{[\s\S]*include_icons: true,[\s\S]*max_rounds: maxRounds,[\s\S]*\}\);[\s\S]*return buildMainReplayFromBattleReplay\(rawInput, replay, wasmDurationMs\);/,
-  );
-  assert.doesNotMatch(wasmScript, /new api\.FightSession|export async function buildReplay\(/);
+test("show page starts a canonical streaming session", async () => {
+  const [html, script] = await Promise.all([readExampleFile("index.html"), readExampleFile("show.js")]);
+  assert.match(html, /使用 BattleSession 边计算边播放战斗。/);
+  assert.match(html, /show\.js\?v=20260907a/);
+  assert.match(script, /await createBattleStreamSource\(/);
+  assert.match(script, /new BattleStreamController\(/);
+  assert.doesNotMatch(script, /buildMainNormalizedReplay|battle_replay|FightSession/);
 });
 
 test("show page removes runtime choice from generated share links", async () => {
