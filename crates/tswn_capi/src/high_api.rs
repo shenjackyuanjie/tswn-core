@@ -725,6 +725,6 @@ mod tests {
                 .to_owned()
         };
         unsafe { crate::tswn_str_free(code_value) };
-        assert_eq!(code, "INVALID_INPUT");
+        assert_eq!(code, "INVALID_ARGUMENT");
     }
 }

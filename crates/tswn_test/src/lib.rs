@@ -261,3 +261,6 @@ macro_rules! test_engine_suite {
         }
     };
 }
+
+#[cfg(test)]
+mod battle_session;
