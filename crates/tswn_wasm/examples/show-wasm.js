@@ -593,6 +593,73 @@ function playersFromBattleReplayStates(states) {
         }));
 }
 
+/** Create one incrementally driven WASM session. No frames are pulled at startup.
+ * `api` is an optional dependency injection point for adapter tests.
+ */
+export async function createBattleStreamSource(rawInput, versionInfo, coreVersionInfo, modulePathInfo, options = {}) {
+    const api = options.api ?? await ensureApi(versionInfo, coreVersionInfo, modulePathInfo);
+    if (typeof api.BattleSession !== "function") {
+        throw new Error("当前 tswn_wasm 包未导出 BattleSession");
+    }
+    let session = new api.BattleSession(rawInput, {
+        include_icons: false,
+        ...(options.maxRounds == null ? {} : { max_rounds: options.maxRounds }),
+        ...(options.evalRq == null ? {} : { eval_rq: options.evalRq }),
+    });
+    let terminalResult = null;
+    let disposed = false;
+    let failure = null;
+    function release() {
+        const owned = session;
+        session = null;
+        owned?.free();
+    }
+    function captureResult() {
+        if (session?.is_done()) {
+            terminalResult = session.result();
+            if (terminalResult == null) throw new Error("BattleSession 终止但未返回 result");
+            release();
+        }
+    }
+    try {
+        const initialStates = session.initial_states();
+        captureResult();
+        return {
+            raw_input: rawInput,
+            seed_line: extractSpecifiedSeedLine(rawInput),
+            players: playersFromBattleReplayStates(initialStates),
+            initial_states: initialStates,
+            async nextFrame() {
+                if (failure) throw failure;
+                if (disposed || terminalResult != null) return null;
+                try {
+                    const frame = session.next_frame();
+                    captureResult();
+                    if (frame == null && terminalResult == null) {
+                        throw new Error("BattleSession 返回空 frame 但尚未终止");
+                    }
+                    return frame ?? null;
+                } catch (error) {
+                    failure = error;
+                    release();
+                    throw error;
+                }
+            },
+            result() { return terminalResult; },
+            isDone() { return terminalResult != null; },
+            dispose() {
+                if (disposed) return;
+                disposed = true;
+                release();
+            },
+            loadIcon(iconKey) { return api.name_to_png_base64(iconKey); },
+        };
+    } catch (error) {
+        release();
+        throw error;
+    }
+}
+
 /**
  * Wrap the shared `battle_replay()` view with the small amount of page metadata
  * that the show page needs for sharing, labels, and icon lookup.

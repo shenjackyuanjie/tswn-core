@@ -2,8 +2,80 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { actorToken, buildFrameRows } from "./show-render.js";
-import { buildMainReplayFromBattleReplay, buildMainReplayFromNormalizedRun } from "./show-wasm.js";
+import { buildMainReplayFromBattleReplay, buildMainReplayFromNormalizedRun, createBattleStreamSource } from "./show-wasm.js";
 import { actorHpMetrics } from "./show-utils.js";
+
+function streamApi({ failAt = -1, initialFailure = false } = {}) {
+  const calls = { pulls: 0, frees: 0, eager: 0, options: null };
+  const initial = [{ id: 0, hp: 100, team_index: 0, display_name: "alpha", owner_id: null }];
+  const frames = [{ frame_index: 0, states: initial, rows: [] }, { frame_index: 1, states: initial, rows: [] }];
+  const result = { status: "finished", stop_reason: "winner", frames_emitted: 2 };
+  return { calls, initial, frames, result, api: {
+    BattleSession: class {
+      constructor(raw, options) { calls.options = options; calls.raw = raw; }
+      initial_states() { if (initialFailure) throw new Error("initial failed"); return initial; }
+      next_frame() {
+        if (calls.pulls === failAt) throw new Error("runtime failed");
+        return frames[calls.pulls++] ?? null;
+      }
+      is_done() { return calls.pulls >= frames.length; }
+      result() { return result; }
+      free() { calls.frees += 1; }
+    },
+    battle_replay() { calls.eager += 1; throw new Error("must not eagerly run battle"); },
+    name_to_png_base64(key) { return `icon:${key}`; },
+  } };
+}
+
+test("stream source creates BattleSession and returns initial without pulling", async () => {
+  const fake = streamApi();
+  const source = await createBattleStreamSource("seed:42@!\nalpha", null, null, null, { api: fake.api, maxRounds: 8 });
+  assert.equal(fake.calls.pulls, 0);
+  assert.equal(fake.calls.eager, 0);
+  assert.deepEqual(fake.calls.options, { include_icons: false, max_rounds: 8 });
+  assert.equal(source.initial_states, fake.initial);
+  assert.equal(source.players[0].hp, 100);
+  assert.equal(source.seed_line, "seed:42@!");
+  assert.equal(source.result(), null);
+  assert.equal(source.loadIcon("alpha"), "icon:alpha");
+  assert.equal(await source.nextFrame(), fake.frames[0]);
+  assert.equal(await source.nextFrame(), fake.frames[1]);
+  assert.equal(source.result(), fake.result);
+  assert.equal(source.isDone(), true);
+  assert.equal(fake.calls.frees, 1);
+  assert.equal(await source.nextFrame(), null);
+  source.dispose();
+  source.dispose();
+  assert.equal(fake.calls.frees, 1);
+});
+
+test("stream source frees an aborted session exactly once", async () => {
+  const fake = streamApi();
+  const source = await createBattleStreamSource("alpha", null, null, null, { api: fake.api });
+  source.dispose();
+  assert.equal(await source.nextFrame(), null);
+  assert.equal(source.result(), null);
+  assert.equal(fake.calls.pulls, 0);
+  assert.equal(fake.calls.frees, 1);
+});
+
+test("stream errors propagate and release WASM without inventing a result", async () => {
+  const fake = streamApi({ failAt: 1 });
+  const source = await createBattleStreamSource("alpha", null, null, null, { api: fake.api });
+  await source.nextFrame();
+  await assert.rejects(source.nextFrame(), /runtime failed/);
+  await assert.rejects(source.nextFrame(), /runtime failed/);
+  assert.equal(source.result(), null);
+  assert.equal(fake.calls.frees, 1);
+  source.dispose();
+  assert.equal(fake.calls.frees, 1);
+});
+
+test("stream constructor failure after allocation releases the handle", async () => {
+  const fake = streamApi({ initialFailure: true });
+  await assert.rejects(createBattleStreamSource("alpha", null, null, null, { api: fake.api }), /initial failed/);
+  assert.equal(fake.calls.frees, 1);
+});
 
 test("revive HP bars render only the blue recovery segment", () => {
   const metrics = actorHpMetrics(
