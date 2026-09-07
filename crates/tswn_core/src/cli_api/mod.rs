@@ -5,7 +5,7 @@ mod bench;
 mod parse;
 
 #[allow(deprecated)]
-pub use battle::{BattleOptions, BattleReplay, BattleReplayOptions, BattleResult, BattleStatus, BattleStopReason};
+pub use battle::{BattleOptions, BattleReplay, BattleReplayOptions, BattleResult, BattleSession, BattleStatus, BattleStopReason};
 
 use crate::namerena::eval_name;
 use crate::namerena::icon::icon_from_raw_name;
