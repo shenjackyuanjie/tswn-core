@@ -317,9 +317,6 @@ impl Service {
             })?;
         }
 
-        let weight_sum = targets.iter().map(|t| t.weight).sum::<f64>();
-        let weight_square_sum = targets.iter().map(|t| t.weight * t.weight).sum::<f64>();
-        let effective_samples = WIN_RATE_SAMPLES as f64 * weight_sum * weight_sum / weight_square_sum;
         let mut active_indices = (0..n).collect::<Vec<_>>();
         let mut archive_rows = Vec::<(i64, String, f64)>::new();
         let (rows, fit, display_scale, display_offset) = loop {
@@ -352,9 +349,7 @@ impl Service {
                 .map(|&i| active_indices.iter().map(|&j| allowed[i][j]).collect::<Vec<_>>())
                 .collect::<Vec<_>>();
             let status = self.status.clone();
-            let fit = ranker::fit_and_rank(&sub_matrix, &sub_allowed, effective_samples, |step| {
-                status.lock().unwrap().iteration = step
-            })?;
+            let fit = ranker::fit_and_rank(&sub_matrix, &sub_allowed, |step| status.lock().unwrap().iteration = step)?;
             // 保持自洽排序，但将其显示尺度校准回总体的直接前四平均值。归档阈值在这一熟悉的 win-rate 尺度上
             // 定义；若直接应用于加权贡献，系数收缩时可能归档几乎整个总体。
             let base_scores = (0..m)
@@ -423,7 +418,7 @@ impl Service {
         status.state = "ready".into();
         status.iteration = fit.iterations;
         status.message = format!(
-            "完成；随机前沿 EM {} 轮，converged={}，final change={:.3e}，correction reliability={:.8}，display scale={:.8}，display offset={:.8}，archived={}，skip_archived={}，strength variance={:.8}，compatibility-loss variance={:.8}，process variance={:.8}；固定 10000 局/靶子",
+            "完成；自洽系数迭代 {} 轮，converged={}，final change={:.3e}，correction reliability={:.8}，display scale={:.8}，display offset={:.8}，archived={}，skip_archived={}，strength variance={:.8}；固定 10000 局/靶子",
             fit.iterations,
             fit.converged,
             fit.final_change,
@@ -432,9 +427,7 @@ impl Service {
             display_offset,
             archived_count,
             skip_archived,
-            fit.strength_variance,
-            fit.loss_variance,
-            fit.process_variance
+            fit.strength_variance
         );
         Ok(())
     }

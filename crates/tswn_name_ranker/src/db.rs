@@ -238,21 +238,6 @@ INSERT OR IGNORE INTO abcp_complete_names(raw) SELECT name_b FROM abcp_scores;
         tx.commit()?;
         Ok(())
     }
-    pub fn results(&self) -> anyhow::Result<Vec<ResultRow>> {
-        let c = self.conn.lock().unwrap();
-        let mut s=c.prepare("SELECT r.rank,r.score,n.text_type,n.raw,r.coefficient,r.strength FROM results r JOIN names n ON n.id=r.name_id ORDER BY r.rank")?;
-        let it = s.query_map([], |x| {
-            Ok(ResultRow {
-                rank: x.get::<_, i64>(0)? as usize,
-                score: x.get(1)?,
-                text_type: x.get(2)?,
-                name: x.get(3)?,
-                coefficient: x.get(4)?,
-                strength: x.get(5)?,
-            })
-        })?;
-        Ok(it.collect::<Result<_, _>>()?)
-    }
     pub fn result_details(&self, legal: &std::collections::HashSet<(String, String)>) -> anyhow::Result<Vec<ResultDetailRow>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
