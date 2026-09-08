@@ -50,6 +50,7 @@ mod summon_explode_post_defend_tests;
 mod summon_explode_pre_defend_tests;
 mod summon_explode_scheduler_tests;
 mod summon_explode_tests;
+mod winner_path_divergence_tests;
 
 fn assert_rng_state_eq(actual: &RC4, expected: &RC4) {
     assert_eq!(actual.i, expected.i);

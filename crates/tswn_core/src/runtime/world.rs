@@ -314,12 +314,23 @@ impl WorldArena {
     ///
     /// prepared 批量路径的死亡、复活和召唤都会同步更新 `team_alive`，因此无需在
     /// 每个行动前后重新扫描完整实体表；普通可交互路径仍保留 `sync_winner` 的防御性扫描。
+    ///
+    /// 判据必须按 `team_alive` 的非空槽位数来数，不能复用 `alive_group_count`：后者保留
+    /// legacy 语义，队伍被清空后复活不会把计数加回来（见 [`Self::revive_alive`]），
+    /// 直接用它判胜会把“某队被清空又被复活”的残局误判为已经分出胜负。
     pub(crate) fn sync_winner_from_alive_views(&mut self) -> Option<usize> {
-        self.winner_team = if self.alive_group_count == 1 {
-            self.team_alive.iter().position(|team| !team.is_empty())
-        } else {
-            None
-        };
+        let mut winner = None;
+        let mut alive_groups = 0usize;
+        for (team, alive) in self.team_alive.iter().enumerate() {
+            if alive.is_empty() {
+                continue;
+            }
+            alive_groups += 1;
+            if alive_groups == 1 {
+                winner = Some(team);
+            }
+        }
+        self.winner_team = if alive_groups == 1 { winner } else { None };
         self.winner_team
     }
 
@@ -501,5 +512,33 @@ mod tests {
 
         assert_eq!(world.team_alive(1), Some([EntityIdx(1)].as_slice()));
         assert_eq!(world.alive_group_count(), 1);
+    }
+
+    /// 队伍被清空后复活会让 `alive_group_count` 残留，胜者判定不能依赖该计数。
+    #[test]
+    fn world_alive_view_winner_ignores_stale_group_count_after_revive() {
+        let mut entities = EntityArena::from_templates(vec![
+            PlayerTemplate::new(1, "wiped", 0, 10, 3),
+            PlayerTemplate::new(2, "reviver-owner", 1, 10, 3),
+            PlayerTemplate::new(3, "bystander", 2, 10, 3),
+        ]);
+        let mut world = WorldArena::from_entities(&entities);
+
+        // 队伍 0 被清空：计数 3 -> 2。
+        entities.get_mut(EntityIdx(0)).unwrap().runtime.alive = false;
+        assert!(world.remove_alive(EntityIdx(0), 0));
+        assert_eq!(world.alive_group_count(), 2);
+        // 复活不会补回计数，仍是 2。
+        entities.get_mut(EntityIdx(0)).unwrap().runtime.alive = true;
+        world.revive_alive(EntityIdx(0), 0);
+        assert_eq!(world.alive_group_count(), 2);
+
+        // 队伍 1 被清空：计数 2 -> 1，但实际存活的是队伍 0 与队伍 2。
+        entities.get_mut(EntityIdx(1)).unwrap().runtime.alive = false;
+        assert!(world.remove_alive(EntityIdx(1), 1));
+        assert_eq!(world.alive_group_count(), 1);
+
+        assert_eq!(world.sync_winner_from_alive_views(), None);
+        assert_eq!(world.sync_winner(&entities), None);
     }
 }
