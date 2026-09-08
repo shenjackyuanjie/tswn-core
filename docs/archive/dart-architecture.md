@@ -28,34 +28,36 @@
 
 快速定位入口（示例）
 
+（下列代码块只保留原始 Dart 文件与行号定位；Dart 源码未随本仓库归档。）
+
 - `Plr`：核心战斗单位（详见）
 
-```D:\githubs\namer\namer-src\plr.dart#L1-400
-
+```dart
+// plr.dart#L1-400
 ```
 
 - `Skill` 与 `ActionSkl`（选择/评分/执行）
 
-```D:\githubs\namer\namer-src\skl.dart#L1-160
-
+```dart
+// skl.dart#L1-160
 ```
 
 - 事件输出（RunUpdate / RunUpdates）
 
-```D:\githubs\namer\namer-src\misc.dart#L1-140
-
+```dart
+// misc.dart#L1-140
 ```
 
 - 队伍管理（Grp）
 
-```D:\githubs\namer\namer-src\grp.dart#L1-200
-
+```dart
+// grp.dart#L1-200
 ```
 
 - 武器（factory、init、upgrade 钩子）
 
-```D:\githubs\namer\namer-src\weapon\weapon.dart#L1-220
-
+```dart
+// weapon/weapon.dart#L1-220
 ```
 
 ---
@@ -69,12 +71,12 @@
 - 关键字段与扩展点（事件列表）：`updatestates`, `presteps`, `preactions`, `postactions`, `predefends`, `postdefends`, `postdamages`, `dies`, `kills`（它们是模块化插入逻辑的基础）。
 - 参考（定位用）：
 
-```D:\githubs\namer\namer-src\plr.dart#L1-140
-
+```dart
+// plr.dart#L1-140
 ```
 
-```D:\githubs\namer\namer-src\plr.dart#L200-360
-
+```dart
+// plr.dart#L200-360
 ```
 
 2.2 Skill（技能系统）
@@ -84,8 +86,8 @@
 - 被动能力通过 `addToProcs()` 将行为挂到 `Plr` 的那些 Entry 列表上，主动技能通过 `actions` 列表被挑选执行。
 - 参考：
 
-```D:\githubs\namer\namer-src\skl.dart#L1-160
-
+```dart
+// skl.dart#L1-160
 ```
 
 2.3 Grp（队伍）
@@ -94,8 +96,8 @@
 - 与 Fgt（战斗控制器）耦合，用于全局成员管理与胜利检查。
 - 参考：
 
-```D:\githubs\namer\namer-src\grp.dart#L1-200
-
+```dart
+// grp.dart#L1-200
 ```
 
 2.4 RunUpdate / RunUpdates（事件日志）
@@ -104,8 +106,8 @@
 - `Plr.damage()`、`onDie()` 等处会 push `RunUpdate` 实例到 `RunUpdates`。
 - 参考：
 
-```D:\githubs\namer\namer-src\misc.dart#L1-140
-
+```dart
+// misc.dart#L1-140
 ```
 
 2.5 Weapon（武器）
@@ -115,8 +117,8 @@
 - 对重写者的建议：可先实现一个简化版本（只返回常规 attrAdd 与 sklLevel），随后再实现复杂的随机解码。
 - 参考：
 
-```D:\githubs\namer\namer-src\weapon\weapon.dart#L1-220
-
+```dart
+// weapon/weapon.dart#L1-220
 ```
 
 ---
@@ -135,54 +137,54 @@
 
 字段声明位置：
 
-```D:\githubs\namer\namer-src\plr.dart#L1-120
-
+```dart
+// plr.dart#L1-120
 ```
 
 3.2 生命周期（构建到运行）
 
 - 构建/升级：`buildAsync()` 调用 `weapon.preUpgrade()`、`initRawAttr()`、`initSkills()`、`weapon.postUpgrade()`、`addSkillsToProc()`、`initValues()`。这是一条固定的初始化流水线。
 
-```D:\githubs\namer\namer-src\plr.dart#L60-140
-
+```dart
+// plr.dart#L60-140
 ```
 
 - 运行步进：`step(R r, RunUpdates updates)` 基于 `spd` 与随机数累积 `spsum`；超过阈值（2048）触发 `action()`。
 
-```D:\githubs\namer\namer-src\plr.dart#L200-260
-
+```dart
+// plr.dart#L200-260
 ```
 
 - 行动流程：`action()` 负责 MP 消耗、技能挑选（先查 `preAction`，否则在 `actions` 中按概率挑选）、目标选择、调用技能 `act()`，以及 `postAction()`。行动结束后会检查并处理需要清除的状态。
 
-```D:\githubs\namer\namer-src\plr.dart#L260-360
-
+```dart
+// plr.dart#L260-360
 ```
 
 3.3 伤害 / 防御 / 死亡流程（顺序必须保留）
 
 - 被攻击入点：`attacked(atp, isMag, caster, ondmg, r, updates)`。它先调用 `preDefend`（允许防御型 proc 修改伤害），随后判断闪避（Alg.dodge），再调用 `defend`。
 
-```D:\githubs\namer\namer-src\plr.dart#L320-380
-
+```dart
+// plr.dart#L320-380
 ```
 
 - 防御：`defend(atp...)` 根据防御系数 `Alg.getDf` 计算实际伤害，随后调用 `damage()`。
 
-```D:\githubs\namer\namer-src\plr.dart#L380-420
-
+```dart
+// plr.dart#L380-420
 ```
 
 - 伤害应用：`damage(dmg, caster, ondmg, r, updates)` 处理 hp 变化，构建 `RunUpdate`（包含 delay/score 等），调用 `ondmg` 回调，最后触发 `onDamaged()`。
 
-```D:\githubs\namer\namer-src\plr.dart#L420-480
-
+```dart
+// plr.dart#L420-480
 ```
 
 - 死亡处理：`onDamaged()` 检测 hp，若 hp<=0 则调用 `onDie(oldhp, caster, r, updates)`；`onDie` 会发出死亡日志、调用 dies 列表里的 entry 并通知 `Grp.die(this)`。
 
-```D:\githubs\namer\namer-src\plr.dart#L460-520
-
+```dart
+// plr.dart#L460-520
 ```
 
 3.4 技能选择与评分（AI 方面）
@@ -190,8 +192,8 @@
 - `Skill.select()`：会重复调用 `selectOneTarget()` 直到达到需要目标数量或超过容错次数，最后使用 `scoreTarget` 对候选目标评分并返回 `PlrScore` 排序结果。
 - `Skill.scoreTargetImpl()`：在“智能”模式下会依据敌我存活数、属性和 `Alg.rateHiHp` / `Alg.rateLowHp` 等函数计算分值；否则返回随机基准值加 attract。
 
-```D:\githubs\namer\namer-src\skl.dart#L1-160
-
+```dart
+// skl.dart#L1-160
 ```
 
 - `ActionSkl.prob()`：默认使用 `r.r127 < level` 决定该技能在候选中被选中的概率（一个重要的概率模型点）。
@@ -202,8 +204,8 @@
 - 在重写时可以保留相同的“生命周期挂钩”概念，但建议用更通用的 Event/Listener（或 Observer）接口以提高可维护性与测试性。
 - 示例用例定位（Entry 用法遍布技能/weapon 子目录，例如 `weapon/rinick_modifier.dart`）：
 
-```D:\githubs\namer\namer-src\weapon\r inick_modifier.dart#L80-130
-
+```dart
+// weapon/r inick_modifier.dart#L80-130
 ```
 
 ---
@@ -264,32 +266,32 @@ sequenceDiagram
 
 - Plr 类（核心字段、行为实现）：
 
-```D:\githubs\namer\namer-src\plr.dart#L1-520
-
+```dart
+// plr.dart#L1-520
 ```
 
 - Skill 与 ActionSkl：
 
-```D:\githubs\namer\namer-src\skl.dart#L1-160
-
+```dart
+// skl.dart#L1-160
 ```
 
 - RunUpdate / RunUpdates：
 
-```D:\githubs\namer\namer-src\misc.dart#L1-140
-
+```dart
+// misc.dart#L1-140
 ```
 
 - Grp（队伍管理）：
 
-```D:\githubs\namer\namer-src\grp.dart#L1-200
-
+```dart
+// grp.dart#L1-200
 ```
 
 - Weapon（工厂 + 升级钩子）：
 
-```D:\githubs\namer\namer-src\weapon\weapon.dart#L1-220
-
+```dart
+// weapon/weapon.dart#L1-220
 ```
 
 ---
