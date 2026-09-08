@@ -8,13 +8,16 @@ use std::time::Instant;
 use std::{fs, process::Command};
 
 use anyhow::Context;
-use tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ;
+use tswn_core::namerena::{
+    NamerenaInput, PreparedPlayer, PreparedRoster,
+    eval_name::{DEFAULT_EVAL_RQ, WIN_RATE_EVAL_RQ},
+};
 
 use crate::{
     abcp_calibration::Calibrator,
     db::Db,
     model::{NameRow, RecomputeRequest, Status, TargetRow},
-    name_profile::{build_player, export_player, player_text_type},
+    name_profile::player_text_type,
     parser, ranker,
 };
 
@@ -54,7 +57,7 @@ impl Service {
         for raw in parser::parse_names(text)? {
             let player = build_player(&raw).with_context(|| format!("解析号：{raw}"))?;
             let text_type = player_text_type(&player);
-            let diy = export_player(&raw).with_context(|| format!("导出号：{raw}"))?;
+            let diy = tswn_core::cli_api::to_diy_prepared(&player, false, true).with_context(|| format!("导出号：{raw}"))?;
             if self.db.add_name(&raw, &diy, &text_type)? {
                 count += 1;
             }
@@ -571,6 +574,15 @@ fn format_duration(seconds: f64) -> String {
     } else {
         format!("{:.1}h", seconds / 3600.0)
     }
+}
+
+fn build_player(raw: &str) -> anyhow::Result<PreparedPlayer> {
+    let input = NamerenaInput::from_raw_groups(&[vec![raw.to_owned()]])?;
+    let mut roster = match PreparedRoster::build(&input, DEFAULT_EVAL_RQ) {
+        Ok(roster) => roster,
+        Err(error) => match error {},
+    };
+    roster.players.pop().ok_or_else(|| anyhow::anyhow!("没有构建出角色"))
 }
 
 fn refresh_text_types_if_needed(db: &Db) -> anyhow::Result<()> {

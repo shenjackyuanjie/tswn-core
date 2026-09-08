@@ -598,6 +598,16 @@ pub fn pair_rate_factored(
 
 pub fn to_diy(name: &str, old: bool, minions: bool) -> CliApiResult<String> { parse::export_player(name, old, minions) }
 
+/// 导出已构建的角色，保留其属性和技能，不重新解析名字或构建队伍。
+///
+/// 与 [`to_diy`] 一样，旧版 DIY 格式（`old`）不能同时导出召唤物（`minions`）。
+pub fn to_diy_prepared(player: &crate::namerena::PreparedPlayer, old: bool, minions: bool) -> CliApiResult<String> {
+    if old && minions {
+        return Err(invalid_input("old and minions are mutually exclusive"));
+    }
+    Ok(parse::export_built_player(player, old, minions))
+}
+
 pub fn to_diy_batch(names: &[String], old: bool, minions: bool) -> CliApiResult<Vec<String>> {
     names.iter().map(|name| parse::export_player(name, old, minions)).collect()
 }

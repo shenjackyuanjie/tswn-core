@@ -1,19 +1,14 @@
-use tswn_core::namerena::{BuiltinSkillRef, NamerenaInput, PreparedPlayer, PreparedRoster, eval_name::DEFAULT_EVAL_RQ};
-
-pub fn build_player(raw: &str) -> anyhow::Result<PreparedPlayer> {
-    let input = NamerenaInput::from_raw_groups(&[vec![raw.to_owned()]])?;
-    let mut roster = match PreparedRoster::build(&input, DEFAULT_EVAL_RQ) {
-        Ok(roster) => roster,
-        Err(error) => match error {},
-    };
-    roster.players.pop().ok_or_else(|| anyhow::anyhow!("没有构建出角色"))
-}
-
-pub fn export_player(raw: &str) -> anyhow::Result<String> { Ok(tswn_core::cli_api::to_diy(raw, false, true)?) }
+use tswn_core::namerena::{BuiltinSkillRef, PreparedPlayer};
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tswn_core::namerena::{NamerenaInput, PreparedRoster, eval_name::DEFAULT_EVAL_RQ};
+
+    fn build_player(raw: &str) -> anyhow::Result<PreparedPlayer> {
+        let input = NamerenaInput::from_raw_groups(&[vec![raw.to_owned()]])?;
+        Ok(PreparedRoster::build(&input, DEFAULT_EVAL_RQ).unwrap().players.remove(0))
+    }
 
     #[test]
     fn skill_order_boosts_and_passive_scaling_are_preserved() {
@@ -37,7 +32,7 @@ mod tests {
     fn export_roundtrip_keeps_skills_attributes_and_minions() {
         let raw = r#"alice@A+ol:{"skills":{"sklclone":60,"sklsummon":55},"shadow":{"attrs":[80,81,82,83,84,85,86,300],"skills":{"sklfire":50}}}"#;
         let before = build_player(raw).unwrap();
-        let exported = export_player(raw).unwrap();
+        let exported = tswn_core::cli_api::to_diy_prepared(&before, false, true).unwrap();
         let after = build_player(&exported).unwrap();
         assert_eq!(before.attrs, after.attrs);
         assert_eq!(player_effective_skill_values(&before), player_effective_skill_values(&after));

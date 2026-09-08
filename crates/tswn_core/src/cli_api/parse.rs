@@ -80,7 +80,7 @@ fn export_group(group: &[String], old: bool, minions: bool) -> CliApiResult<Stri
         .join("+"))
 }
 
-fn export_built_player(player: &PreparedPlayer, old: bool, minions: bool) -> String {
+pub(super) fn export_built_player(player: &PreparedPlayer, old: bool, minions: bool) -> String {
     if old {
         return format!(
             "{}{}+diy[{}]{}",
@@ -345,6 +345,45 @@ fn push_group_segment(group: &mut Vec<String>, current: &mut String) {
 mod tests {
     use super::{export_player, parse_plus_separated_groups};
     use crate::namerena::{NamerenaInput, PreparedRoster};
+
+    #[test]
+    fn prepared_export_matches_raw_export_in_all_supported_formats() {
+        for raw in [
+            "alice@red",
+            "mario@red+fire",
+            r#"alice@red+ol:{"skills":{"sklheal":"40+30","sklclone":60,"sklsummon":55}}"#,
+        ] {
+            let input = NamerenaInput::from_raw_groups(&[vec![raw.to_owned()]]).unwrap();
+            let roster = PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
+            for (old, minions) in [(true, false), (false, false), (false, true)] {
+                assert_eq!(
+                    crate::cli_api::to_diy_prepared(&roster.players[0], old, minions).unwrap(),
+                    crate::cli_api::to_diy(raw, old, minions).unwrap(),
+                    "{raw}, old={old}, minions={minions}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn prepared_export_uses_supplied_attributes_without_rebuilding() {
+        let input = NamerenaInput::from_raw_groups(&[vec!["alice@red".to_owned()]]).unwrap();
+        let mut roster = PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
+        let player = &mut roster.players[0];
+        player.attrs[0] = 1234;
+        let exported = crate::cli_api::to_diy_prepared(player, false, false).unwrap();
+        let (_, json) = exported.split_once("+ol:").unwrap();
+        let value: serde_json::Value = serde_json::from_str(json).unwrap();
+        assert_eq!(value["attrs"][0], 1270);
+    }
+
+    #[test]
+    fn prepared_export_rejects_old_format_with_minions() {
+        let input = NamerenaInput::from_raw_groups(&[vec!["alice".to_owned()]]).unwrap();
+        let roster = PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
+        let error = crate::cli_api::to_diy_prepared(&roster.players[0], true, true).unwrap_err();
+        assert_eq!(error.code(), crate::cli_api::CliApiErrorCode::InvalidInput);
+    }
 
     #[test]
     fn parse_plus_groups_keeps_ol_overlay_with_whitespace() {
