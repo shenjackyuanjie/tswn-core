@@ -7,13 +7,14 @@
 
 实现入口主要在：
 
-- `crates/tswn_core/src/player/overlay.rs`
-- `crates/tswn_core/src/player/impl_ctor.rs`
-- `crates/tswn_core/src/player/impl_attr.rs`
-- `crates/tswn_core/src/player/skill.rs`
-- `crates/tswn_core/src/player/skill/act/minion.rs`
-- `crates/tswn_core/src/player/skill/act/summon.rs`
-- `crates/tswn_core/src/player/skill/act/clone.rs`
+- `crates/tswn_core/src/namerena/overlay.rs`：overlay 解析、编码与 minion overlay 结构。
+- `crates/tswn_core/src/namerena/input.rs`：从名字行里切出 `+diy[...]` / `+ol:{...}` 段。
+- `crates/tswn_core/src/namerena/build.rs`：把 overlay 应用到本体与幻影／使魔／丧尸的构造结果。
+- `crates/tswn_core/src/namerena/stats.rs`、`crates/tswn_core/src/namerena/skill.rs`：属性与技能构成的最终值。
+- `crates/tswn_core/src/runtime/handlers/minions.rs`、`crates/tswn_core/src/runtime/plain_summon.rs`：使魔／召唤物的运行期行为。
+- `crates/tswn_core/src/runtime/combat/skills_control.rs`、`crates/tswn_core/src/runtime/entity/skill_loadout.rs`：幻影等分身技能的构造与技能表重建。
+
+（旧 `crates/tswn_core/src/player/**` 是 0.x 时期布局，已随旧执行器一并删除。）
 
 ## 基本格式
 
@@ -373,14 +374,17 @@ cargo run -p tswn_core --bin tswn-cli -- to-diy -f names.txt --minions -o diy.tx
 
 相关测试集中在：
 
-- `crates/tswn_core/src/player/test/basic.rs`
-- `crates/tswn_core/src/player/test/minions.rs`
+- `crates/tswn_core/src/namerena/input.rs`（`parses_identity_weapon_and_overlay_without_splitting_quoted_plus`）
+- `crates/tswn_core/src/namerena/build.rs`（`native_minion_blueprints_apply_overlay_data`）
+- `crates/tswn_core/src/cli_api/parse.rs`（`+diy` / `+ol` 段解析与导出）
+- `crates/tswn_core/src/runtime/tests/custom_runner_import_tests.rs`、`crates/tswn_core/src/runtime/tests/plain_raw_import_tests.rs`
 
 常用验证命令：
 
 ```bash
-cargo test -p tswn_core player::test::basic::player_raw_new_parses_diy_overlay --lib -- --test-threads=1
-cargo test -p tswn_core player::test::minions --lib -- --test-threads=1
+cargo test -p tswn_core namerena::input::tests::parses_identity_weapon_and_overlay_without_splitting_quoted_plus --lib -- --test-threads=1
+cargo test -p tswn_core namerena::build::tests::native_minion_blueprints_apply_overlay_data --lib -- --test-threads=1
+cargo test -p tswn_core runtime::tests::custom_runner_import_tests --lib -- --test-threads=1
 cargo test -p tswn_core --lib -- --test-threads=1
 ```
 
@@ -388,4 +392,4 @@ cargo test -p tswn_core --lib -- --test-threads=1
 
 - `docs/guides/diy-validation.md`
 - `track_diy_roundtrip.py`
-- `crates/tswn_core/src/bin/track_diy_roundtrip.rs`
+- 旧 `crates/tswn_core/src/bin/track_diy_roundtrip.rs` 已随旧执行器删除，仅保留 Python 脚本
