@@ -4297,6 +4297,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "tswn_name_ranker"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "tswn_core",
+]
+
+[[package]]
 name = "tswn_openbox"
 version = "0.4.2"
 dependencies = [
