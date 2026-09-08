@@ -20,7 +20,7 @@
 
 流程如下：
 
-```
+```text
 1. 校验队名/玩家名长度
 2. 确定 PlayerType（Normal / Test1 / Test2 / TestEx / Boss / Boost / Seed）
 3. RC4::new(&team_bytes, 1)   ← team 初始化 RC4，skip=1
@@ -134,7 +134,7 @@ minion 也要占构造序号，但它们在 `new_minion_and_init()` → `build()
 
 排查时只需要关注这三个文件：
 
-```
+```text
 crates/tswn_core/src/player/impl_ctor.rs     ← 玩家构造 + name_base
 crates/tswn_core/src/player/impl_attr.rs     ← 八围/技能展开
 crates/tswn_core/src/engine/runners.rs       ← PreparedRunner 缓存 + 分组
@@ -144,7 +144,7 @@ crates/tswn_core/src/engine/runners.rs       ← PreparedRunner 缓存 + 分组
 
 ### 阅读顺序（如果以后需要深入代码）
 
-```
+```text
 impl_ctor.rs    → 构造流程 + name_base 生成
 impl_attr.rs    → name_base → 属性/技能
 shadow.rs       → minion 创建示例
