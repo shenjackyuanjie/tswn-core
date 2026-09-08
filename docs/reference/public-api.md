@@ -1,4 +1,4 @@
-# 对外 API 对齐约定
+# 公共 API 与跨语言契约
 
 `BattleSession` 是 Rust、Python、WASM、C 的正式增量对局 API；`battle_replay` 收集同一个 session 的完整结果。`Runner`、`PreparedRunner`、WASM `FightSession` 和 `WinRateSession` 属于 Advanced / Compatibility API。
 
