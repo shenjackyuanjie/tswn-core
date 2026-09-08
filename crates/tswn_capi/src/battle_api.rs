@@ -5,6 +5,20 @@ use crate::{
 use std::{ffi::c_char, mem::size_of, ptr};
 use tswn_core::cli_api::battle::{BattleOptions, BattleSession, BattleStatus, BattleStopReason};
 
+// 永久冻结的历史 V1 prefix；禁止增加字段。每个后续版本也须永久保留其 prefix size。
+// 未来字段 offset 必须 >= BATTLE_OPTIONS_V1_SIZE，必要时显式 padding，禁止复用 V1 tail padding。
+// 按 struct_size >= field_end_offset 单独读取扩展字段；缺失字段保留 core 默认值。
+// 最小尺寸永远是 V1_SIZE，不能因 public struct 增长而拒绝旧 caller。
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct BattleOptionsV1 {
+    struct_size: u32,
+    eval_rq: f64,
+    max_rounds: usize,
+    include_icons: u8,
+}
+const BATTLE_OPTIONS_V1_SIZE: usize = size_of::<BattleOptionsV1>();
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct tswn_battle_options_t {
@@ -48,25 +62,25 @@ unsafe fn read_options(options: *const tswn_battle_options_t) -> FfiResult<Battl
     if options.is_null() {
         return Ok(BattleOptions::default());
     }
-    let struct_size = unsafe { options.cast::<u32>().read() };
-    if struct_size < size_of::<tswn_battle_options_t>() as u32 {
+    let struct_size = unsafe { options.cast::<u32>().read_unaligned() } as usize;
+    if struct_size < BATTLE_OPTIONS_V1_SIZE {
         return Err(ffi_error(
             tswn_status_t::TSWN_ERR_INVALID_ARGUMENT,
             "battle options struct_size is too small",
         ));
     }
-    let options = unsafe { options.read() };
+    let options = unsafe { options.cast::<BattleOptionsV1>().read_unaligned() };
     if options.include_icons > 1 {
         return Err(ffi_error(
             tswn_status_t::TSWN_ERR_INVALID_ARGUMENT,
             "include_icons must be 0 or 1",
         ));
     }
-    Ok(BattleOptions {
-        eval_rq: options.eval_rq,
-        max_rounds: options.max_rounds,
-        include_icons: options.include_icons != 0,
-    })
+    let mut result = BattleOptions::default();
+    result.eval_rq = options.eval_rq;
+    result.max_rounds = options.max_rounds;
+    result.include_icons = options.include_icons != 0;
+    Ok(result)
 }
 unsafe fn session_ref<'a>(session: *const tswn_battle_session_t) -> FfiResult<&'a BattleSession> {
     unsafe { session.as_ref() }
@@ -247,6 +261,104 @@ mod tests {
     use super::*;
     use serde_json::Value;
     use std::ffi::CString;
+
+    // 保持独立于 public struct；以后 public struct 扩展也必须接受此历史 caller。
+    #[repr(C)]
+    struct SimulatedOldBattleOptionsV1 {
+        struct_size: u32,
+        eval_rq: f64,
+        max_rounds: usize,
+        include_icons: u8,
+    }
+
+    #[test]
+    fn options_v1_layout_is_frozen() {
+        use std::mem::{align_of, offset_of};
+        let eval_offset = 4usize.next_multiple_of(align_of::<f64>());
+        let rounds_offset = eval_offset + 8;
+        let icons_offset = rounds_offset + size_of::<usize>();
+        let v1_size = (icons_offset + 1).next_multiple_of(align_of::<BattleOptionsV1>());
+        assert_eq!(offset_of!(BattleOptionsV1, struct_size), 0);
+        assert_eq!(offset_of!(BattleOptionsV1, eval_rq), eval_offset);
+        assert_eq!(offset_of!(BattleOptionsV1, max_rounds), rounds_offset);
+        assert_eq!(offset_of!(BattleOptionsV1, include_icons), icons_offset);
+        assert_eq!(BATTLE_OPTIONS_V1_SIZE, v1_size);
+        assert_eq!(size_of::<SimulatedOldBattleOptionsV1>(), v1_size);
+        assert_eq!(offset_of!(tswn_battle_options_t, struct_size), 0);
+        assert_eq!(offset_of!(tswn_battle_options_t, eval_rq), eval_offset);
+        assert_eq!(offset_of!(tswn_battle_options_t, max_rounds), rounds_offset);
+        assert_eq!(offset_of!(tswn_battle_options_t, include_icons), icons_offset);
+        #[cfg(target_pointer_width = "64")]
+        assert_eq!((eval_offset, rounds_offset, icons_offset, v1_size), (8, 16, 24, 32));
+    }
+
+    #[test]
+    fn options_accept_null_exact_v1_old_caller_and_unaligned_future_buffer() {
+        let raw = CString::new("a\n\nb").unwrap();
+        let expected = BattleOptions {
+            eval_rq: 0.5,
+            max_rounds: 1,
+            include_icons: true,
+        };
+        let old = SimulatedOldBattleOptionsV1 {
+            struct_size: size_of::<SimulatedOldBattleOptionsV1>() as u32,
+            eval_rq: expected.eval_rq,
+            max_rounds: expected.max_rounds,
+            include_icons: 1,
+        };
+        unsafe {
+            assert_eq!(
+                read_options(ptr::null()).ok().expect("valid V1 options"),
+                BattleOptions::default()
+            );
+            let mut exact = tswn_battle_options_t::default();
+            tswn_battle_options_default(&mut exact);
+            assert_eq!(exact.struct_size as usize, BATTLE_OPTIONS_V1_SIZE);
+            let mut handle = ptr::null_mut();
+            assert_eq!(
+                tswn_battle_session_new(raw.as_ptr(), &exact, &mut handle),
+                tswn_status_t::TSWN_OK
+            );
+            tswn_battle_session_free(handle);
+            let old_ptr = (&old as *const SimulatedOldBattleOptionsV1).cast();
+            assert_eq!(read_options(old_ptr).ok().expect("valid V1 options"), expected);
+
+            // 多分配一字节，故意使用非对齐地址；所有 padding 和未来尾部初始化为非零。
+            let mut buffer = vec![0xA5u8; BATTLE_OPTIONS_V1_SIZE + 65];
+            let future = buffer.as_mut_ptr().add(1).cast::<BattleOptionsV1>();
+            ptr::addr_of_mut!((*future).struct_size).write_unaligned((BATTLE_OPTIONS_V1_SIZE + 64) as u32);
+            ptr::addr_of_mut!((*future).eval_rq).write_unaligned(old.eval_rq);
+            ptr::addr_of_mut!((*future).max_rounds).write_unaligned(old.max_rounds);
+            ptr::addr_of_mut!((*future).include_icons).write_unaligned(old.include_icons);
+            assert_eq!(read_options(future.cast()).ok().expect("valid V1 options"), expected);
+            assert_eq!(
+                tswn_battle_session_new(raw.as_ptr(), future.cast(), &mut handle),
+                tswn_status_t::TSWN_OK
+            );
+            let mut canonical = BattleSession::new("a\n\nb", expected).unwrap();
+            assert_eq!((*handle).inner.initial_states(), canonical.initial_states());
+            assert_eq!((*handle).inner.next_frame().unwrap(), canonical.next_frame().unwrap());
+            assert_eq!((*handle).inner.result(), canonical.result());
+            tswn_battle_session_free(handle);
+        }
+    }
+
+    #[test]
+    fn options_reject_one_byte_short_of_v1_with_stable_code() {
+        let raw = CString::new("a\n\nb").unwrap();
+        let buffer = vec![(BATTLE_OPTIONS_V1_SIZE - 1) as u32; BATTLE_OPTIONS_V1_SIZE.div_ceil(4)];
+        let mut handle = ptr::null_mut();
+        unsafe {
+            assert_eq!(
+                tswn_battle_session_new(raw.as_ptr(), buffer.as_ptr().cast(), &mut handle),
+                tswn_status_t::TSWN_ERR_INVALID_ARGUMENT
+            );
+            assert!(handle.is_null());
+            let code = crate::tswn_last_error_code();
+            assert_eq!(std::slice::from_raw_parts(code.ptr.cast::<u8>(), code.len), b"INVALID_ARGUMENT");
+            crate::tswn_str_free(code);
+        }
+    }
 
     unsafe fn take_json(value: tswn_str_t) -> Value {
         let json = serde_json::from_slice(unsafe { std::slice::from_raw_parts(value.ptr.cast(), value.len) }).unwrap();
