@@ -1,0 +1,196 @@
+# winprob 数据集生成规模基线
+
+> 采集时间：2026-09-08  
+> 采集提交：`a3e3f771`（含 `chore(deps)` 更新后的依赖）  
+> 生成器：`tswn-winprob-dataset`，`release` profile（`lto = "fat"`、`debug = 1`、`codegen-units = 1`）
+
+本文记录 `tswn_winprob_dataset` 在 10k / 100k 规模下的吞吐、存储、内存与校验开销，
+以及修复“每局一个 Parquet 行组”缺陷前后的对比。它是 handoff 中 Commit 4 的交付物。
+
+## 结论
+
+1. **行组缺陷是本次最大的发现。** `SampleRow.state` 约 450 个叶子列，`max_row_group_bytes`
+   按列写入器缓冲容量累加估算，一次 `append`（一局 8 个样本）就被判为超过 16 MiB，于是
+   **每局都新开一个行组**。修复后每样本字节从 **16548 B 降到 862 B（19.2 倍）**，压缩比从
+   1.28x 升到 6.6x，单分片回读校验从 **9.5 分钟降到 0.7 秒**。
+2. **不需要改数据格式。** handoff #47 担心的“每样本重复静态模板”确实存在
+   （`state.entities` 占 94.4% 的列块字节），但在修好行组之后，100k 局 / 80 万样本的
+   数据集只有 **537 MiB**（每样本 704 B）。暂时没有理由引入“静态模板表 + 动态状态表”。
+3. **100k 局 13 分钟**（128 对局/s、1025 样本/s，16 worker），校验 3 分钟。
+   线性外推：**100 万局约 2.2 小时生成 + 30 分钟校验，约 5.2 GiB 存储**。
+4. **该名字池下截断率为 0**（10k/100k 全部 `winner` 终止，最长 167 轮，远低于
+   `max_rounds = 20000`）。因此“训练默认排除空标签”在这份数据上不排除任何样本；
+   截断分布仍需用包含 Boss/DIY 的池单独测。
+5. **CPU 利用率只有 584% / 1600%（约 5.9 核）**，机器仍有大量空余。这是待跟进项，
+   不是当前瓶颈（详见“待跟进”）。
+
+## 环境与方法
+
+| 项 | 值 |
+| --- | --- |
+| CPU | Ryzen 7 5800X，16 逻辑核 |
+| 内存 | 64 GiB |
+| 输出盘 | `D:` = ZHITAI Ti600 2TB NVMe SSD |
+| 名字池 | `tests/sqp5900.txt`，3684 行；**该文件在 `.gitignore` 的 `tests` 规则下，属本地未跟踪数据**，SHA-256 `013b132e7eb195f36e2997fdf1bbf65692a6fc684fb98394f0b4a027138c5a0f` |
+| manifest `input_sha256` | `e46c4491b21919ea…` |
+| manifest `executable_sha256` | `e1f09b507291ea49…`（10k 与 100k 为同一产物） |
+| 阵容 | `--team-sizes 2,2,2`（3 队 × 2 人） |
+| 采样 | 默认 `--samples-per-game 8` |
+| `eval_rq` | 4.0，`max_rounds` 20000 |
+
+采集命令：
+
+```powershell
+# 10k：100 个阵容 × 100 局，每分片 250 局（40 分片，16 worker）
+target/release/tswn-winprob-dataset.exe bench `
+  --out target/winprob-10k --names tests/sqp5900.txt --team-sizes 2,2,2 `
+  --matchups 100 --games-per-matchup 100 --battles-per-shard 250 --seed bench
+
+# 100k：500 个阵容 × 200 局，每分片 1000 局（100 分片，16 worker）
+target/release/tswn-winprob-dataset.exe bench `
+  --out target/winprob-100k --names tests/sqp5900.txt --team-sizes 2,2,2 `
+  --matchups 500 --games-per-matchup 200 --battles-per-shard 1000 --seed bench
+
+# 分布统计（只读）
+target/release/tswn-winprob-dataset.exe stats --out target/winprob-100k --json-out target/benchmark-logs/100k-stats.json
+```
+
+`bench` 在本进程内运行 `generate`/`validate` 并采样自身 RSS、线程数与 CPU 时间，再读产物
+Parquet 元数据；数值与原 Python 采集脚本一致（200 局探针：3.51 s vs 3.50 s）。
+
+## 行组缺陷与修复
+
+### 证据
+
+200 局 / 1600 样本、单分片：
+
+| 指标 | 修复前 | 修复后 |
+| --- | --- | --- |
+| `samples.parquet` 大小 | 25.24 MiB | 1.30 MiB |
+| 行组数 | 200（每局一个） | 2 |
+| 每样本字节 | 16548 B | 862 B |
+| 列块压缩比 | 1.28x | 5.90x |
+| 校验墙钟 | 2.62 s | 0.69 s |
+
+同一份数据用 PyArrow 按不同 `row_group_size` 重写，隔离行组大小的影响：
+
+| `row_group_size` | 文件大小 | 相对原始 |
+| --- | --- | --- |
+| 8（原始行为） | 22.98 MiB | 1.00x |
+| 64 | 4.14 MiB | 5.55x 更小 |
+| 256 | 1.98 MiB | 11.6x 更小 |
+| 1024 | 1.33 MiB | **19.9x 更小** |
+
+16 worker 并发时缺陷被放大：修复前一次 10k 采集在 15 分钟内只提交 1/40 分片
+（单分片 250 局生成耗时 5.4 分钟、回读校验耗时 9.5 分钟）；修复后同样的 10k
+采集 78 秒完成。
+
+### 修复
+
+行组只按行数切分（`ROW_GROUP_ROWS = 1024`），不再设置 `max_row_group_bytes`，
+也不在 `append` 中按 `memory_size()` 手动 flush。超宽嵌套 schema 下字节估算被列缓冲
+容量放大，无法作为可靠阈值。回归测试 `wide_state_rows_share_row_groups_instead_of_one_per_append`
+断言逐条 `append` 仍只产生一个行组。
+
+## 规模结果
+
+| 指标 | 10k | 100k |
+| --- | --- | --- |
+| 对局 / 样本 | 10000 / 80000 | 100000 / 800000 |
+| 分片 / 行组 | 40 / 120 | 100 / 900 |
+| 生成墙钟 | 78.04 s | 780.3 s（13.0 min） |
+| 生成吞吐 | 128.1 对局/s，1025.1 样本/s | 128.2 对局/s，1025.2 样本/s |
+| 生成峰值 RSS | 1313.3 MiB | 1515.2 MiB |
+| 生成 CPU 时间 / 利用率 | 457.3 s / 586% 单核 | 4560 s / 584% 单核 |
+| 校验墙钟 | 19.02 s（525.7 对局/s） | 180.7 s（553.4 对局/s） |
+| 校验峰值 RSS | 73.4 MiB | 88.9 MiB |
+| 总文件 | 55.4 MiB | 537.3 MiB |
+| 每对局 / 每样本 | 5808 B / 726 B | 5634 B / 704 B |
+| `battles.parquet` | 0.54 MiB，2.10x | 4.26 MiB，2.11x |
+| `samples.parquet` | 54.85 MiB，6.58x | 533.02 MiB，6.57x |
+| 切分（train/val/test） | 8300 / 800 / 900 | 80800 / 9800 / 9400 |
+
+吞吐在 10k 与 100k 之间完全线性（128 对局/s），说明没有随规模退化的行为。
+生成阶段进程累计写入 583 MiB（100k），略高于 537 MiB 的产物，差额来自每局重写的
+`active-battle.json` 与临时分片。
+
+## 每样本字节构成（100k）
+
+`samples.parquet` 列块压缩字节按路径前 2 级：
+
+| 路径 | 占比 |
+| --- | --- |
+| `state.entities` | 94.4% |
+| `state.template_slots` | 0.9% |
+| `state.battle_slots` | 0.9% |
+| `seed` | 0.8% |
+| `progress` | 0.6% |
+| `state.world.team_alive` | 0.6% |
+
+压缩字节最高的叶子列：
+
+| 列路径 | 占 samples 列块 |
+| --- | --- |
+| `state.entities[].runtime.move_state.speed_points` | 2.5% |
+| `state.entities[].template.skills.active_order[]` | 1.7% |
+| `state.entities[].template.skills.lanes[].level` | 1.4% |
+| `state.entities[].runtime.hp` | 1.3% |
+| `state.entities[].template.move_state.speed_points` | 1.3% |
+| `state.entities[].runtime.magic_point` | 1.1% |
+
+结论：字节几乎全部落在实体（模板 + 运行时状态 + 技能表）上，审计列（`seed`、`progress`、
+`matchup_id`、`split`、帧边界）合计不到 2%。修复行组后绝对量已经很小，
+**不需要为“静态模板重复”单独做表拆分**；但若未来要把数据集扩到千万局量级，
+优先考虑的是实体模板去重，而不是编码方式。
+
+## 数据集分布（100k）
+
+对局：
+
+| 序列 | 数量 | 最小 | 中位 | 平均 | p90 | p99 | 最大 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 对局轮数 | 100000 | 10 | 39 | 41.4 | 60 | 84 | 167 |
+| 对局可见帧 | 100000 | 10 | 39 | 40.8 | 59 | 84 | 167 |
+| 每局样本数 | 100000 | 8 | 8 | 8.0 | 8 | 8 | 8 |
+
+样本：
+
+| 序列 | 数量 | 最小 | 中位 | 平均 | p90 | p99 | 最大 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 样本轮数 | 800000 | 0 | 16 | 18.1 | 39 | 61 | 146 |
+| 每样本实体数 | 800000 | 6 | 7 | 7.6 | 10 | 15 | 30 |
+| 每样本存活实体 | 800000 | 2 | 6 | 5.9 | 8 | 11 | 20 |
+| 每样本实体槽 | 800000 | 6 | 7 | 7.8 | 11 | 16 | 31 |
+| 每样本状态条目 | 800000 | 0 | 0 | 0.6 | 2 | 4 | 10 |
+| 每样本技能槽 | 800000 | 210 | 211 | 241.6 | 315 | 422 | 742 |
+
+- 胜者（输入队伍索引）：`0: 34267`、`1: 33381`、`2: 32352`，先手方略高但差距很小。
+- 进度桶：`0-20%: 239516`、`20-40%: 140044`、`40-60%: 139894`、`60-80%: 140078`、`80-100%: 140468`。
+  首个桶偏大是因为初始状态 `progress = 0`，且抽样按最终轮数分层。
+- 载荷 kind：`slow 80708`、`fire_mag_half_steps 79912`、`curse 73128`、`berserk 68996`、
+  `iron 56062`、`poison 46681`、`haste 32491`、`ice 28470`、`charm 28228`。
+- 模板 kind：`u32::MAX 4800000`（每样本恰好 6 个，即本体角色）、`5: 703995`、`2: 440852`、
+  `4: 101630`、`3: 49020`。召唤物种类只用到 2–5。
+- Boss kind：空——该名字池不含内置 Boss；Boss/DIY 由审计测试单独覆盖，不在这份分布内。
+- 阵营分组：`0: 6075097`、`1: 20400`，几乎全部实体同阵营。
+
+对 FeatureEncoder 的直接输入：
+
+- 实体数是变化的（6–30），但中位数 7、p99 15，绝大多数帧是小规模集合。
+- **技能槽中位数 211/样本**（约 35 条/实体），远大于实体数；技能张量化会是最大的
+  单块输入，需要按 `skill_id` 分类 + lane 级标量分别处理，不能整体 JSON embedding。
+- 状态条目稀疏（中位数 0），适合用 kind embedding + 通用 payload 槽表达。
+
+## 待跟进
+
+1. **生成阶段 CPU 利用率只有 584%/1600%。** 单线程 200 局探针为 17.5 ms/局，
+   而 100k 并发下折算约 45.6 ms/局 CPU。可能来源：每局重写并 `fsync`
+   `active-battle.json`（实测单次 fsync 1.24 ms，100k 局约 124 s）、Arrow 写入器的
+   列级开销、以及 100 个分片在 16 个 worker 上的负载不均。建议下一步把
+   `active-battle.json` 改为只在失败时写，并给 `generate` 增加阶段计时。
+2. **截断率 0 只代表这个池。** 需要一份包含内置 Boss、DIY、长局阵容的池来测截断比例与
+   `no_progress` 分布，否则“训练默认排除空标签”这条约束没有被真实检验。
+3. **输入池未跟踪。** 复现本基线需要 `tests/sqp5900.txt`（SHA-256 见上）。若要长期保留
+   这份基线，建议把名字池放到仓库内可跟踪的位置。
+4. **Actor-disjoint 评估所需的元数据还不存在。** 当前 split 只按规范化阵容哈希分桶，
+   分布统计里也没有“角色指纹”维度；等 baseline 阶段再补。

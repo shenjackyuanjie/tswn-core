@@ -65,6 +65,27 @@ Runtime 错误、panic、导出失败和两遍不一致都会停止生成。已�
 
 `validate` 回读所有行，校验文件摘要、对局顺序、标签、状态引用、抽样计数和切分。训练/验证/测试按规范化阵容哈希分为 80/10/10，同阵容的所有 seed 与队伍顺序变体不跨集合；小数据集不保证恰好达到此比例。
 
+## 分布统计与基准
+
+`stats` 只读取已提交分片，汇总对局轮数/帧数、胜者与终止原因、样本进度桶、实体与状态条目数量，
+以及技能 ID、载荷 kind、模板 kind、Boss 与阵营分组频次：
+
+```powershell
+target/release/tswn-winprob-dataset.exe stats --out target/winprob-demo --json-out target/stats.json
+```
+
+`bench` 在本进程内运行 `generate`/`validate` 并采样自身 RSS、线程数与 CPU 时间，再读产物
+Parquet 元数据，输出吞吐、存储、行组与列块压缩比、嵌套字段占比：
+
+```powershell
+target/release/tswn-winprob-dataset.exe bench --out target/winprob-demo `
+  --names crates/tswn_winprob_dataset/examples/names.txt --team-sizes 2,2,2 `
+  --matchups 10 --games-per-matchup 20 --seed demo
+```
+
+两条子命令都不修改数据。10k/100k 规模的实际结果见
+[winprob 数据集生成规模基线](../../docs/perf/reports/winprob-dataset-scale-baseline.md)。
+
 ## Python 读取
 
 安装 `pyarrow` 后：
