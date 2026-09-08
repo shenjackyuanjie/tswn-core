@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- 收紧 canonical TypeScript minion kind、update type、tone 和 text part kind 的 literal union，增加源码和生成声明的 contract tests。
+- 修复 legacy FightSession 状态的 owner_id 映射，保留直接 owner，避免误用 root source_id。
+
 - 新增 BattleSession `is_failed()` 查询 sticky Runtime failure；失败没有 result/stop_reason，is_done 仍为 false，不改变 DTO 或状态枚举。
 
 - 新增 canonical BattleSession 与 plain JS/TS DTO；旧 FightSession 委托 core；网页改为真实 streaming、两帧预取、显示层昵称图标和性能计时。

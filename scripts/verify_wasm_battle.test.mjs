@@ -90,6 +90,41 @@ test("generated TypeScript declares precise canonical DTOs and methods", () => {
   ]) assert.ok(declaration.includes(signature), signature);
 });
 
+test("canonical TypeScript stable enums use exact literal aliases", () => {
+  for (const file of ["crates/tswn_wasm/src/battle_types.d.ts", packagePath.replace(/\.js$/, ".d.ts")]) {
+    const declaration = readFileSync(file, "utf8");
+    const aliases = {
+      BattleMinionKind: ["clone", "summon", "shadow", "zombie"],
+      BattleUpdateType: ["win", "none", "next_line"],
+      BattleTone: ["normal", "damage", "recover", "knockout", "status_exit"],
+      BattleReplayTextPartKind: ["text", "highlight", "player", "data"],
+    };
+    for (const [alias, literals] of Object.entries(aliases)) {
+      const match = declaration.match(new RegExp(`export type ${alias}\\s*=([^;]+);`));
+      assert.ok(match, `${file}: missing ${alias}`);
+      assert.deepEqual(match[1].split("|").map(value => value.trim()).filter(Boolean),
+        literals.map(value => JSON.stringify(value)), `${file}: ${alias} exact literal union`);
+    }
+    for (const [type, field, alias] of [
+      ["BattlePlayerState", "minion_kind", "BattleMinionKind | null"],
+      ["BattleUpdate", "update_type", "BattleUpdateType"],
+      ["BattleUpdate", "tone", "BattleTone"],
+      ["BattleReplayClip", "tone", "BattleTone"],
+      ["BattleReplayTextPart", "kind", "BattleReplayTextPartKind"],
+      ["BattlePlayerState", "player_type", "string"],
+      ["BattleReplayClip", "color", "string"],
+      ["BattleUpdate", "message_template", "string"],
+      ["BattleUpdate", "message_rendered", "string"],
+      ["BattlePlayerState", "status_labels", "Array<string>"],
+    ]) {
+      const body = declaration.match(new RegExp(`export interface ${type}\\s*\\{([^}]+)\\}`))?.[1];
+      assert.ok(body, `${file}: missing ${type}`);
+      const actual = body.match(new RegExp(`\\b${field}:\\s*([^;]+);`))?.[1].trim();
+      assert.equal(actual, alias, `${file}: ${type}.${field}`);
+    }
+  }
+});
+
 test("legacy FightSession projects canonical frame semantics", () => {
   const raw = readFileSync(resolve("crates/tswn_test/cases/runtime_stress", fixtures[3]), "utf8");
   const canonical = wasm.battle_replay(raw);

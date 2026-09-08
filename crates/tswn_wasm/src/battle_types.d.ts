@@ -1,6 +1,10 @@
 // 规范 core DTO 形状。没有单独的 Rust 绑定 schema。
 export type BattleStatus = "running" | "finished" | "truncated";
 export type BattleStopReason = "winner" | "max_rounds" | "no_progress";
+export type BattleMinionKind = "clone" | "summon" | "shadow" | "zombie";
+export type BattleUpdateType = "win" | "none" | "next_line";
+export type BattleTone = "normal" | "damage" | "recover" | "knockout" | "status_exit";
+export type BattleReplayTextPartKind = "text" | "highlight" | "player" | "data";
 export type BattleReplayOptions = BattleOptions;
 
 export interface BattleReplay {
@@ -31,7 +35,7 @@ export interface BattlePlayerState {
     display_index: number;
     base_name: string;
     player_type: string;
-    minion_kind: string | null;
+    minion_kind: BattleMinionKind | null;
     icon_png_base64: string | null;
     hp: number;
     max_hp: number;
@@ -67,8 +71,8 @@ export interface BattleReplayFrame {
 }
 
 export interface BattleUpdate {
-    update_type: string;
-    tone: string;
+    update_type: BattleUpdateType;
+    tone: BattleTone;
     message_template: string;
     message_rendered: string;
     caster_id: number | null;
@@ -91,7 +95,7 @@ export interface BattleReplayRow {
 export interface BattleReplayClip {
     delay: number;
     color: string;
-    tone: string;
+    tone: BattleTone;
     parts: Array<BattleReplayTextPart>;
     caster_ids: Array<number>;
     target_ids: Array<number>;
@@ -101,7 +105,7 @@ export interface BattleReplayClip {
 }
 
 export interface BattleReplayTextPart {
-    kind: string;
+    kind: BattleReplayTextPartKind;
     text: string;
     player_id: number | null;
     show_hp: boolean;

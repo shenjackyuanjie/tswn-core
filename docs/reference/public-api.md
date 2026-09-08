@@ -51,6 +51,15 @@ Runtime error 后会话进入 sticky failure（poisoned）：`is_failed() = true
 
 调用方应保持 canonical snapshots 不变。昵称、图标 CSS 类、播放计划、检查点都是显示层数据。Python/WASM 的快照脱离会话持有的 Rust 内存，修改返回对象不会修改 Runtime。
 
+稳定 TypeScript literal 类型：
+
+- `BattleMinionKind`：`clone | summon | shadow | zombie`，用于 `BattlePlayerState.minion_kind`（另允许 null）。
+- `BattleUpdateType`：`win | none | next_line`，用于 `BattleUpdate.update_type`。
+- `BattleTone`：`normal | damage | recover | knockout | status_exit`，用于 `BattleUpdate.tone` 和 `BattleReplayClip.tone`。
+- `BattleReplayTextPartKind`：`text | highlight | player | data`，用于 `BattleReplayTextPart.kind`。
+
+`player_type`、`color`、message 和 `status_labels` 仍使用字符串类型；运行时 DTO shape 不变。
+
 ## Python
 
 ```python
