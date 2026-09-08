@@ -9,7 +9,7 @@
 - `show-metrics.js`：TTIS / TTFE、拉帧和渲染计时；`?perf=1` 才输出统计。
 - `show.js` / `show-replay.js`：可增长的播放计划、暂停/单步/历史检查点/重播。
 
-测试：`node --test crates/tswn_wasm/examples/show-*.test.mjs`；页面行为测试和浏览器基线命令见 [性能基线](../../../docs/perf/web_streaming_baseline.md)。
+测试：`node --test crates/tswn_wasm/examples/show-*.test.mjs`；页面行为测试和浏览器基线命令见 [性能基线](../../../docs/perf/reports/web-streaming-baseline.md)。
 
 ## 示例一览
 

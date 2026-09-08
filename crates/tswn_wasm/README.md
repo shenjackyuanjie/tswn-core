@@ -47,9 +47,9 @@ try {
 }
 ```
 
-完整方法与 DTO 见 [公共 API](../../docs/public_api.md)。返回值为 plain JS object，缺省值为 null，TypeScript 类型随生成包导出。`max_rounds` 包含空 round；terminal next_frame 幂等。`battle_replay` 仅收集同一个 session。
+完整方法与 DTO 见 [公共 API](../../docs/reference/public-api.md)。返回值为 plain JS object，缺省值为 null，TypeScript 类型随生成包导出。`max_rounds` 包含空 round；terminal next_frame 幂等。`battle_replay` 仅收集同一个 session。
 
-示例页面先显示 initial states，再逐帧拉取，最多预取 2 帧；昵称与图标只装饰显示层。`?perf=1` 输出性能统计，参见 [性能基线](../../docs/perf/web_streaming_baseline.md)。
+示例页面先显示 initial states，再逐帧拉取，最多预取 2 帧；昵称与图标只装饰显示层。`?perf=1` 输出性能统计，参见 [性能基线](../../docs/perf/reports/web-streaming-baseline.md)。
 
 ### FightSession（Advanced / Compatibility）
 
@@ -206,4 +206,4 @@ cargo install wasm-bindgen-cli
 
 ## 版本
 
-当前版本见 [CHANGELOG.md](./CHANGELOG.md)。
+当前版本见 [CHANGELOG.md](CHANGELOG.md)。

@@ -66,7 +66,7 @@
 - 使用当前 nightly 同工具链重建 `749fcd1`，对普通 score 做五轮交替 A/B；
   mario、CQP 单人和 CQP 双人 wall 中位数分别回退 2.41%、3.46% 和 3.19%。
   本轮以正确性为第一优先级，完整原始轮次与附加 qp 结果见
-  `docs/update/0.5.1.md`。
+  `docs/releases/0.5.1.md`。
 
 ## [0.5.0] - 2026-07-18
 
@@ -80,7 +80,7 @@
 ### 验证
 
 - 冻结并通过 87 个 JS exact trace 与 37 个压力 golden；release 门禁同时检查输入 SHA-256、winner、rounds、score、最终 RC4、逐回合 canonical digest，以及旧对象路径和禁用符号均未回流。
-- 完成 0.5.0 主 Runtime 完整 release benchmark；fixed30、win-rate、score 与 OpenBox CQP/CQD 均通过相对 0.4.3 不回退超过 3% 的门禁，最大观测回退为 CQP 单人 score 的 2.53%，同机五轮交替 A/B 的最大回退为 CQD 1000 档的 1.09%。完整环境、逐轮中位数与机器漂移说明见 `docs/perf/runtime_0.5.0_749fcd1_release_benchmark.md` 及同名 JSON。
+- 完成 0.5.0 主 Runtime 完整 release benchmark；fixed30、win-rate、score 与 OpenBox CQP/CQD 均通过相对 0.4.3 不回退超过 3% 的门禁，最大观测回退为 CQP 单人 score 的 2.53%，同机五轮交替 A/B 的最大回退为 CQD 1000 档的 1.09%。完整环境、逐轮中位数与机器漂移说明见 `docs/perf/reports/runtime-0.5.0-749fcd1-release-benchmark.md` 及报告内链接的原始 JSON。
 
 ### 修复
 
@@ -98,7 +98,7 @@
 
 ### 验证
 
-- 在最终代码提交 `9d3a3b9` 上完成 Runtime 0.4.3 正式多轮发版 benchmark：fixed30 单线程 3 次中位数为 `28.257 us/battle`，自动线程 5 次中位数为 `3.632 us/battle`，相对 0.4.2 mimalloc 快照分别快 9.74% 与 6.76%；普通 win-rate 13000 场 5 次中位数为 `0.098 s`；三组 score 的 runtime wall 中位数为 `0.428/0.672/0.944 s`，同轮 legacy/runtime 吞吐为 `1.939x/1.936x/2.307x`，15 次对账差异均为 0；OpenBox CQP/CQD 六档 5 次中位数相对 0.4.2 快 10.57%～25.81%，30 次运行全部完成。完整环境、逐轮值与硬目标差距见 `docs/perf/runtime_0.4.3_9d3a3b9_release_benchmark.md` 及同名 JSON。
+- 在最终代码提交 `9d3a3b9` 上完成 Runtime 0.4.3 正式多轮发版 benchmark：fixed30 单线程 3 次中位数为 `28.257 us/battle`，自动线程 5 次中位数为 `3.632 us/battle`，相对 0.4.2 mimalloc 快照分别快 9.74% 与 6.76%；普通 win-rate 13000 场 5 次中位数为 `0.098 s`；三组 score 的 runtime wall 中位数为 `0.428/0.672/0.944 s`，同轮 legacy/runtime 吞吐为 `1.939x/1.936x/2.307x`，15 次对账差异均为 0；OpenBox CQP/CQD 六档 5 次中位数相对 0.4.2 快 10.57%～25.81%，30 次运行全部完成。完整环境、逐轮值与硬目标差距见 `docs/perf/reports/runtime-0.4.3-9d3a3b9-release-benchmark.md` 及报告内链接的原始 JSON。
 
 ## [0.4.2] - 2026-07-16
 
@@ -131,12 +131,12 @@
 
 ### 验证
 
-- 在正确性修复提交 `1ed1258` 上完成 Runtime-only 单次完整 benchmark，并用独立 target 额外构建系统分配器版本；未运行 legacy Runtime、Node.js 或 Bun 性能测试。默认 mimalloc fixed30 单线程/自动线程 overall 为 `31.307/3.895 us/battle`，stress_multi 为 `65.044 us/battle`，win-rate 为 `0.107 s`；score mario、CQP 单人、双人为 `0.519/0.765/1.044 s`；CQP 单人 1%/10%/100% 为 `0.137/1.040/10.404 s`，CQD 双人为 `0.511/4.602/44.255 s`。mimalloc 在全部正式指标上比系统分配器快 8.55%～25.41%，系统分配器则明显降低 OpenBox 结束 RSS。完整数据见 `docs/perf/runtime_0.4.2_1ed1258_allocator_snapshot.md`。
+- 在正确性修复提交 `1ed1258` 上完成 Runtime-only 单次完整 benchmark，并用独立 target 额外构建系统分配器版本；未运行 legacy Runtime、Node.js 或 Bun 性能测试。默认 mimalloc fixed30 单线程/自动线程 overall 为 `31.307/3.895 us/battle`，stress_multi 为 `65.044 us/battle`，win-rate 为 `0.107 s`；score mario、CQP 单人、双人为 `0.519/0.765/1.044 s`；CQP 单人 1%/10%/100% 为 `0.137/1.040/10.404 s`，CQD 双人为 `0.511/4.602/44.255 s`。mimalloc 在全部正式指标上比系统分配器快 8.55%～25.41%，系统分配器则明显降低 OpenBox 结束 RSS。完整数据见 `docs/perf/reports/runtime-0.4.2-1ed1258-allocator-snapshot.md`。
 - 四方 CQD 矩阵复测发现的 4 个单 seed 胜负分叉和 1 个行动保护上限异常现已全部闭环。逐 seed 对比排除了复用 runner 污染；5 个原始输入均已归档到 `tswn_test/cases/runtime_stress` 并接入长期 strict-diff 回归。保护异常与瘟疫分摊后的活动使魔致死链缺口同源，修复后无需提高行动保护上限。
 - 对四个胜负分叉坐标各扩展扫描 1000 个 seed，并对原保护异常坐标扫描 10000 个 seed，共 14000 个 seed，异常数为 0。加入 benchmark 发现的 mario score 回归后，完整 release Runtime corpus 124/124 通过；`cargo test -p tswn_core` 为核心库 596 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过；release `no_debug` Runtime 库测试 429 通过、2 忽略，release CLI Runtime 测试 12 通过。
 - 新增 `track_cqp_case` 辅助诊断工具，可按 CQP/CQD 的真实 seed 调度扫描指定 matchup，并在胜负或保护上限异常时同时对比 legacy、复用 Runtime runner 与全新 Runtime runner，输出首个 strict/non-score 分叉及 JSON 报告；该工具仅在 `aux_bins` feature 下构建，不进入正式运行路径。
 - 新增 `track_cqp_perf`，以相同外层 worker 数在同一批 `player × target` matchup 上交替测量 legacy Runtime/runtime，输出逐 matchup 对账和机器可读 JSON；`track_perf_cases` 同步增加 `--engine legacy|main`，并新增 Node.js/Bun 官方 `md5.js` 稳态基准脚本，统一覆盖 fixed30、win-rate、score 与 CQP/CQD 动态矩阵。
-- `d813e5f` 完成单次全套阶段快照：fixed30 单线程/自动线程 overall 为 `32.105/4.644 us/battle`，stress_multi 为 `66.340 us/battle`，win-rate 13000 场为 `0.117 s`、`7077` 胜；score mario、CQP 单人、双人分别达到同轮 legacy 的 `1.734x/1.814x/2.018x` 吞吐且逐组 0 差异；CQP/CQD 六档较旧 runtime 再快 25.78%～29.38%。该快照不重置既定半时硬线，完整数据见 `docs/perf/runtime_0.4.2_d813e5f_snapshot.md`。
+- `d813e5f` 完成单次全套阶段快照：fixed30 单线程/自动线程 overall 为 `32.105/4.644 us/battle`，stress_multi 为 `66.340 us/battle`，win-rate 13000 场为 `0.117 s`、`7077` 胜；score mario、CQP 单人、双人分别达到同轮 legacy 的 `1.734x/1.814x/2.018x` 吞吐且逐组 0 差异；CQP/CQD 六档较旧 runtime 再快 25.78%～29.38%。该快照不重置既定半时硬线，完整数据见 `docs/perf/reports/runtime-0.4.2-d813e5f-snapshot.md`。
 
 ## [0.4.1] - 2026-07-14
 
@@ -206,12 +206,12 @@
 
 ### 验证
 
-- CQP/CQD 同机 legacy Runtime 基线对照：OpenBox 单人 20 × target1 的 1%/10%/100% 分别快 49.64%/51.30%/40.78%，双人 32 × target2 分别快 44.52%/43.39%/39.89%；完整口径见 `docs/perf/cqp_runtime_baseline.md`。
+- CQP/CQD 同机 legacy Runtime 基线对照：OpenBox 单人 20 × target1 的 1%/10%/100% 分别快 49.64%/51.30%/40.78%，双人 32 × target2 分别快 44.52%/43.39%/39.89%；完整口径见 `docs/perf/reports/cqp-runtime-baseline.md`。
 - CLI 自动矩阵与 `-s` 串行路径的 20 条 CQP 业务字段差异为 0；`sby_test.md` 六模式共 12000 case 为 `ts_failures=0`、`rust_failures=0`、`diff_failures=0`。
 - `cargo test -p tswn_core`（核心库 576 通过、2 忽略；CLI 59、runtime trace 3、engine 集成 29 均通过）；`track_score_perf` 自身 3 项测试通过。
 - fixed30/no_debug/13000 单线程正式中位数：overall `46.729 us/battle`，比 0.3.10 快 32.23%；core 1v1/2v2、1v1、2v2、stress_multi 分别快 34.70%、32.93%、36.01%、30.85%；自动线程 overall 为 `5.872 us/battle`。
 - score 单线程裸计时：mario 13000 场 runtime/legacy wall 为 `2.325/0.819 s`；CQP 单人 20 组 × 1000 场为 `3.608/1.287 s`；双人 32 组 × 1000 场为 `5.613/2.166 s`。三类输入各 5 轮逐组结果差异均为 0；runtime 性能尚未达到 legacy 硬目标，仍需分别压缩 64.77%、64.33%、61.41%。
-- win-rate 13000 场单线程 runtime wall/init/fight 中位数为 `0.184/0.040/0.142 s`，相对同口径 legacy wall `0.2177835 s` 快 15.51%；完整新基线见 `docs/perf/runtime_0.4.0_baseline.md`。
+- win-rate 13000 场单线程 runtime wall/init/fight 中位数为 `0.184/0.040/0.142 s`，相对同口径 legacy wall `0.2177835 s` 快 15.51%；完整新基线见 `docs/perf/reports/runtime-0.4.0-baseline.md`。
 - `cargo test -p tswn_core --bin tswn-cli --release`（61 通过）
 - 历史 noalias 门禁当时完成 core/no_debug/CLI 与 118 项 corpus；当前 rustc 已移除对应参数，现行门禁统一使用 `python scripts/check_runtime_release.py --corpus`。
 - `python track_test.py --engine main -q`
@@ -353,7 +353,7 @@
 
 ### 文档
 
-- `docs/analysis/clone_mechanism.md` 补充 SlotBoost cap（`boost.min(current)`）机制说明。
+- `docs/mechanics/clone.md` 补充 SlotBoost cap（`boost.min(current)`）机制说明。
 
 ### 测试
 
@@ -413,8 +413,8 @@
 
 ### 文档
 
-- 更新 `docs/DIY.md`，补充 SkillBoost、DIY clone、导出与 CLI 用法。
-- 新增 `docs/analysis/skill_decay.md` 与 `docs/analysis/clone_mechanism.md`。
+- 更新 `docs/reference/diy-overlay.md`，补充 SkillBoost、DIY clone、导出与 CLI 用法。
+- 新增 `docs/mechanics/skill-decay.md` 与 `docs/mechanics/clone.md`。
 
 ## [0.3.6] - 2026-05-18
 
@@ -485,9 +485,9 @@
 
 ### 文档
 
-- 更新 `docs/DIY.md`，补充 SkillBoost、clone 衰减下限、to-diy CLI 等完整文档。
-- 新增 `docs/analysis/skill_decay.md` — 5 种衰减技能机制详解。
-- 新增 `docs/analysis/clone_mechanism.md` — 分身机制与衰减下限分析。
+- 更新 `docs/reference/diy-overlay.md`，补充 SkillBoost、clone 衰减下限、to-diy CLI 等完整文档。
+- 新增 `docs/mechanics/skill-decay.md` — 5 种衰减技能机制详解。
+- 新增 `docs/mechanics/clone.md` — 分身机制与衰减下限分析。
 
 ## [0.3.4] - 2026-05-17
 
@@ -618,7 +618,7 @@
   - 在 `Storage` 新增 `alive_group_len_containing(...)`，并将 `Assassinate` / `Berserk` / `Charm` / `Curse` / `Disperse` / `Exchange` / `Half` / `Slow` 的目标打分从 `alive_group_containing(...).len()` 线性扫描改成基于 team index 的 O(1) 查询。
   - 在 `pick_smart_target()` / `pick_smart_target_with_level()`（`skill.rs` trait）和 `pick_targets()` / `pick_forced_attack_target()`（`impl_runtime.rs`）中增加 `selected.len() == 1` 提前返回，跳过完整的 scoring + ranking 流水线，降低单候选时的函数调用与 Vec 分配开销。
   - 在 `tick.rs` 的 `select_targets()` 中将 `ally_dead` 构造从 `!ally_alive.contains(id)` 改为 `!is_alive_now(id)`，消除 `contains` 对 `ally_alive` 的线性扫描。
-- 按 `docs/performance.md` 的固定口径重跑当前工作树（`--release --features no_debug`，`tswn-cli bench win-rate ... --perf`）：
+- 按 `docs/perf/benchmark-history.md` 的固定口径重跑当前工作树（`--release --features no_debug`，`tswn-cli bench win-rate ... --perf`）：
   - `aaa` vs `bbb`：`100k` 单线程 `1.887s`，多线程 `0.291s`；`1M` 单线程 `18.438s`，多线程 `2.784s`
   - `喘际瞬爆@昀澤` vs `蕾蒂·怀特洛可-65HEZHB264LFPFQ@Squall`：`100k` 单线程 `2.891s`，多线程 `0.471s`；`1M` 单线程 `28.488s`，多线程 `3.749s`
 - 相比 `0.2.14` 基线，当前回退已缩小到：
@@ -627,7 +627,7 @@
 
 ### 文档
 
-- `docs/build_all.md`：全面迁移至 `uv run` 驱动的构建流程，新增 WSL/Linux 纯环境构建指南、uv 用户的 WSL 增强方案、快捷命令清单与版本对照表。
+- `docs/guides/build-all.md`：全面迁移至 `uv run` 驱动的构建流程，新增 WSL/Linux 纯环境构建指南、uv 用户的 WSL 增强方案、快捷命令清单与版本对照表。
 - `scripts/README.md`：统一将命令示例从 `python scripts/...` 更新为 `uv run scripts/...`，补充 uv 环境说明。
 
 ### 验证
@@ -657,10 +657,10 @@
 
 ### 性能
 
-- 按 `docs/performance.md` 的口径补跑了当前工作树（`--release --features no_debug`，`tswn-cli bench win-rate ... --perf`）：
+- 按 `docs/perf/benchmark-history.md` 的口径补跑了当前工作树（`--release --features no_debug`，`tswn-cli bench win-rate ... --perf`）：
   - `aaa` vs `bbb`：`100k` 单线程 `1.978s`，多线程 `0.309s`；`1M` 单线程 `19.246s`，多线程 `2.743s`
   - `喘际瞬爆@昀澤` vs `蕾蒂·怀特洛可-65HEZHB264LFPFQ@Squall`：`100k` 单线程 `2.895s`，多线程 `0.394s`；`1M` 单线程 `28.692s`，多线程 `3.900s`
-- 相比 `docs/performance.md` 记录的 `0.2.14` 基线，这一轮 8 个口径都偏慢；目前结果一致性已经收口，但性能仍值得继续排查。
+- 相比 `docs/perf/benchmark-history.md` 记录的 `0.2.14` 基线，这一轮 8 个口径都偏慢；目前结果一致性已经收口，但性能仍值得继续排查。
 
 ## [0.2.18] - 2026-04-21
 
@@ -832,7 +832,7 @@
 
 ### 分发与调用说明补充
 
-- **补充 Windows C++/CAPI 使用文档**：新增 `docs/howto/capi_cpp_windows.md`，记录：
+- **补充 Windows C++/CAPI 使用文档**：新增 `docs/guides/c-api-cpp-windows.md`，记录：
   - `clang++` 动态链接 `tswn_capi.dll.lib` 的推荐命令
   - `clang++` 静态链接 `tswn_capi.lib` 时需要额外补 `ntdll.lib`
   - `g++` / MinGW 使用 `.dll.lib` 可能遇到的兼容性问题

@@ -107,15 +107,16 @@ python scripts/check_runtime_release.py --corpus
 
 ## 文档入口
 
-- [`docs/runtime_0.5_migration.md`](docs/runtime_0.5_migration.md): 0.5.0 主 Runtime 迁移指南。
-- [`docs/architecture.md`](docs/architecture.md): 原始 Dart 实现的历史架构说明。
-- [`docs/DIY.md`](docs/DIY.md): DIY/OL overlay 相关说明。
-- [`docs/howto/1-start.md`](docs/howto/1-start.md): 入门操作记录。
-- [`docs/howto/diy_validation.md`](docs/howto/diy_validation.md): DIY 验证流程。
-- [`docs/build_all.md`](docs/build_all.md): 多产物构建说明。
-- [`docs/perf/benchmark_tracking.md`](docs/perf/benchmark_tracking.md): 性能追踪。
-- [`docs/perf/fixed_cases_30_benchmark.md`](docs/perf/fixed_cases_30_benchmark.md): 固定 30-case 性能回归口径。
-- [`docs/perf/amduprof.md`](docs/perf/amduprof.md): Windows / Zen CPU 函数级采样与 agent 报告读取。
+- [文档中心](docs/README.md)：按用途浏览指南、接口参考、设计规格、机制分析、性能、版本记录与历史归档。
+- [`docs/guides/runtime-0.5-migration.md`](docs/guides/runtime-0.5-migration.md): 0.5.0 主 Runtime 迁移指南。
+- [`docs/archive/dart-architecture.md`](docs/archive/dart-architecture.md): 原始 Dart 实现的历史架构说明。
+- [`docs/reference/diy-overlay.md`](docs/reference/diy-overlay.md): DIY/OL overlay 相关说明。
+- [`docs/archive/project-origins.md`](docs/archive/project-origins.md): 项目起源与重写背景。
+- [`docs/guides/diy-validation.md`](docs/guides/diy-validation.md): DIY 验证流程。
+- [`docs/guides/build-all.md`](docs/guides/build-all.md): 多产物构建说明。
+- [`docs/perf/benchmark-history.md`](docs/perf/benchmark-history.md): 性能追踪。
+- [`docs/perf/guides/fixed30-benchmark.md`](docs/perf/guides/fixed30-benchmark.md): 固定 30-case 性能回归口径。
+- [`docs/perf/guides/amd-uprof.md`](docs/perf/guides/amd-uprof.md): Windows / Zen CPU 函数级采样与 agent 报告读取。
 - [`crates/tswn_core/README.md`](crates/tswn_core/README.md): core crate 说明。
 - [`crates/tswn_py/README.md`](crates/tswn_py/README.md): Python 绑定说明。
 - [`crates/tswn_wasm/README.md`](crates/tswn_wasm/README.md): WASM 绑定说明。

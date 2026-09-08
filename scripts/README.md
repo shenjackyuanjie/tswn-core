@@ -247,4 +247,4 @@ Bun 脚本，用于对 tswn-md5 模块进行 profile trace。
 - `benchmark_web_streaming.mjs`：独立桌面浏览器四组各 20 次性能测试，生成 timing JSON、表格和截图。
 - `verify_battle_docs.py`：从公共 API 文档提取 Rust / Python / WASM 示例并实际运行。
 
-完整构建与复现步骤见 [Web streaming 基线](../docs/perf/web_streaming_baseline.md)。
+完整构建与复现步骤见 [Web streaming 基线](../docs/perf/reports/web-streaming-baseline.md)。

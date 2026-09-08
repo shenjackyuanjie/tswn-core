@@ -1,4 +1,4 @@
-"""Run executable examples extracted from docs/public_api.md against local artifacts."""
+"""Run executable examples extracted from docs/reference/public-api.md against local artifacts."""
 from pathlib import Path
 import os
 import re
@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
-text = (ROOT / 'docs/public_api.md').read_text(encoding='utf8')
+text = (ROOT / 'docs/reference/public-api.md').read_text(encoding='utf8')
 blocks = dict(re.findall(r'```(rust|python|js)\n(.*?)\n```', text, re.S))
 smoke = ROOT / 'target/battle_docs_smoke'
 (smoke / 'src').mkdir(parents=True, exist_ok=True)

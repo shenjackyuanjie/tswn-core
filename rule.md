@@ -51,7 +51,7 @@ target\release\openbox_mem_probe.exe `
 ```
 
 0.5.0 的 fixed30、score、win-rate 与 OpenBox 完整发版数据、环境和 A/B 判定见
-`docs/perf/runtime_0.5.0_749fcd1_release_benchmark.md`。fixed30 与 score 当时使用的临时
+`docs/perf/reports/runtime-0.5.0-749fcd1-release-benchmark.md`。fixed30 与 score 当时使用的临时
 外部 harness 不属于发布源码，因此不能用已删除的旧 binary 复跑。
 
 正式结果必须记录被测 commit、rustc/Cargo 版本、feature、输入哈希、线程口径和原始轮次；
@@ -94,7 +94,7 @@ python scripts/build_all.py --release --pgo    # 发布包的 CLI 与 Openbox �
 
 Windows 的管理员态主 CPU profiler 是 **AMD uProf CLI**（本机为 Zen 3）。它会把热点函数、
 调用栈和源码归因写入 CSV，适合让自动化 agent 直接读取；`samply` 保留为手动查看 Firefox
-火焰图 / 时间线的备选工具。完整流程见 [`docs/perf/amduprof.md`](docs/perf/amduprof.md)。
+火焰图 / 时间线的备选工具。完整流程见 [`docs/perf/guides/amd-uprof.md`](docs/perf/guides/amd-uprof.md)。
 
 先用 Time-Based Profile（TBP）定位热函数。采样工作负载应至少运行约 15 秒，且不要追加
 CLI 的 `--perf`（它会改变热路径的计时开销）：
