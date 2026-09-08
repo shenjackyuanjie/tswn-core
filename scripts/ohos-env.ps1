@@ -48,8 +48,6 @@ Set-Item -Path "Env:CMAKE_TOOLCHAIN_FILE_$target" -Value $cmakeToolchain
 
 $separator = [char]0x1f
 $rustflags = @(
-    "-Z",
-    "mutable-noalias=no",
     "-Clink-arg=-target",
     "-Clink-arg=aarch64-linux-ohos",
     "-Clink-arg=--sysroot=$sysroot",

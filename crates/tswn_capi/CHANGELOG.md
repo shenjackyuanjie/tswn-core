@@ -1,6 +1,47 @@
 # 更新日志
 
-## [0.4.1] - unreleased
+## 未发布
+
+- 新增 BattleSession `is_failed()` 查询 sticky Runtime failure；失败没有 result/stop_reason，is_done 仍为 false，不改变 DTO 或状态枚举。
+
+- 旧 options 初始化函数永久仅写 V1，避免未来扩展向旧 caller 的小缓冲区越界写入。
+
+- 冻结 BattleOptions V1 prefix，按非对齐前缀读取选项；兼容旧 caller 与未知未来尾部，明确禁止复用 V1 tail padding。现有布局和 ABI 4 不变。
+
+- ABI 4 新增 BattleSession opaque handle、版本化 options、逐帧/快照/result JSON 与状态查询。
+
+## [Unreleased]
+
+### 新增
+
+- 新增 `tswn_batch_rate_factored_json()` 与 `tswn_pair_rate_factored_json()`；调用方通过 `double` 权重数组传入带权靶子组。
+
+## [0.6.1] - 2026-08-31
+
+### 新增
+
+- 新增 `tswn_battle_replay_json()`、`tswn_last_error_code()`，并在公共头文件补齐此前遗漏的 `tswn_default_custom_runtime_normalized_run_json()` 声明。
+
+### 修复
+
+- PreparedRunner 的显式 `eval_rq` 现在验证创建值，不再静默忽略；`batch_rate` 区分未提供与显式空 labels。
+
+## [0.6.0] - 2026-07-18
+
+### ⚠️ Breaking Changes
+
+- crate 版本进入 `0.6.0`，`tswn_capi_abi_version()` 从 `3` 升为 `4`；调用方必须重新编译并重新链接。
+
+### 变更
+
+- opaque runner、prepared、updates、snapshot、score 与 win-rate 接口改由主 Runtime 驱动，函数签名和结构体布局保持不变；无显式 guard 的 completion 统一限制为 20,000 主回合。
+- 删除仅用于旧/主引擎对账的 `tswn_default_custom_runtime_parity_json` 导出。
+
+## [0.5.0] - 2026-07-14
+
+### ⚠️ Breaking Changes
+
+- C ABI 函数签名与结构体布局不变，但无 runtime 参数的评分、胜率、批量与配队高层导出默认改用 Runtime；依赖 legacy 执行副作用或错误分类的调用方需要重新验证。
 
 ### 新增
 
@@ -58,7 +99,7 @@
 
 ## [0.2.0] - 2026-04-07
 
-### Breaking Changes
+### 破坏性变更
 
 - 为高层胜率接口新增 `thread: u32` 参数，统一支持 `0=自动线程数`、`1=单线程`、`n=指定多线程数量`：
   - `tswn_win_rate(...)`

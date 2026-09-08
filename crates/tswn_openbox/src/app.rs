@@ -4,6 +4,7 @@
 //! 组织工具栏与左侧输入面板、中央日志面板，并将各工具 UI 分发给子模块渲染。
 
 mod actions;
+mod help;
 mod source;
 mod state;
 mod target_presets;
@@ -24,7 +25,7 @@ const INPUT_FOOTER_RESERVED_HEIGHT: f32 = 56.0;
 pub fn run() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("tswn openbox")
+            .with_title(format!("tswn openbox {}", env!("CARGO_PKG_VERSION")))
             .with_inner_size([1180.0, 780.0])
             .with_min_inner_size([960.0, 620.0]),
         ..Default::default()
@@ -47,7 +48,7 @@ impl eframe::App for OpenboxApp {
         ctx.set_theme(self.theme_preference);
         self.poll_events(&ctx);
 
-        egui::Panel::top("top_bar").show_inside(ui, |ui| {
+        egui::Panel::top("top_bar").show(ui, |ui| {
             top_bar_ui(ui, self, &ctx);
         });
 
@@ -55,7 +56,7 @@ impl eframe::App for OpenboxApp {
             .resizable(true)
             .min_size(380.0)
             .default_size(460.0)
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 egui::Frame::side_top_panel(ui.style())
                     .inner_margin(egui::Margin::same(PANEL_MARGIN))
                     .show(ui, |ui| {
@@ -76,7 +77,7 @@ impl eframe::App for OpenboxApp {
                     });
             });
 
-        egui::CentralPanel::default().show_inside(ui, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             egui::Frame::central_panel(ui.style())
                 .inner_margin(egui::Margin::same(PANEL_MARGIN))
                 .show(ui, |ui| {
@@ -85,6 +86,8 @@ impl eframe::App for OpenboxApp {
         });
 
         self.more_settings_window(&ctx);
+        help::show_help_window(&ctx, &mut self.active_help);
+        show_about_window(&ctx, &mut self.about_open);
     }
 }
 
@@ -115,6 +118,7 @@ fn top_bar_ui(ui: &mut egui::Ui, app: &mut OpenboxApp, ctx: &egui::Context) {
     ui.add_space(TOP_BAR_VERTICAL_SPACE);
     ui.horizontal(|ui| {
         ui.heading(egui::RichText::new("tswn openbox").size(23.0));
+        ui.label(egui::RichText::new(format!("v{} · core {}", env!("CARGO_PKG_VERSION"), tswn_core::version())).weak());
         ui.label(egui::RichText::new("本地工具箱").weak());
         ui.separator();
 
@@ -129,6 +133,9 @@ fn top_bar_ui(ui: &mut egui::Ui, app: &mut OpenboxApp, ctx: &egui::Context) {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if theme_switcher(ui, &mut app.theme_preference) {
                 ctx.set_theme(app.theme_preference);
+            }
+            if ui.button("关于").clicked() {
+                app.about_open = true;
             }
             ui.separator();
             status_pill(ui, app);
@@ -148,6 +155,40 @@ fn status_pill(ui: &mut egui::Ui, app: &OpenboxApp) {
         ui.visuals().weak_text_color()
     };
     ui.label(egui::RichText::new(&app.status).color(color).strong());
+}
+
+fn show_about_window(ctx: &egui::Context, open: &mut bool) {
+    let mut is_open = *open;
+    egui::Window::new("关于")
+        .id(egui::Id::new("openbox_about"))
+        .open(&mut is_open)
+        .collapsible(false)
+        .resizable(false)
+        .default_width(420.0)
+        .show(ctx, |ui| {
+            ui.set_max_width(520.0);
+            ui.vertical_centered(|ui| {
+                ui.heading(egui::RichText::new("tswn openbox").size(22.0));
+                ui.label(egui::RichText::new("本地工具箱").weak());
+            });
+            ui.separator();
+            ui.label(egui::RichText::new("版本").strong());
+            version_row(ui, "tswn_openbox", env!("CARGO_PKG_VERSION"));
+            version_row(ui, "tswn_core", tswn_core::version());
+            ui.separator();
+            ui.label(egui::RichText::new("项目主页").strong());
+            ui.hyperlink("https://github.com/shenjackyuanjie/tswn-core");
+        });
+    *open = is_open;
+}
+
+fn version_row(ui: &mut egui::Ui, name: &str, version: &str) {
+    ui.horizontal(|ui| {
+        ui.label(name);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.label(version);
+        });
+    });
 }
 
 fn theme_switcher(ui: &mut egui::Ui, theme_preference: &mut egui::ThemePreference) -> bool {

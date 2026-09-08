@@ -1,11 +1,13 @@
 //! 通用 egui 控件封装。
 
+use std::cell::Cell;
 use std::path::{PathBuf, absolute};
 
 use eframe::egui;
 
 use tswn_openbox::backend::OutputMode;
 
+use super::help::{HelpTopic, help_icon};
 use super::state::{AccuracyPreset, CountMode};
 
 #[derive(Debug, Clone, Default)]
@@ -60,6 +62,7 @@ pub fn bench_output_controls(
     default_name: &str,
     show_jsonl: bool,
     show_precision: bool,
+    requested_help: &Cell<Option<HelpTopic>>,
 ) {
     ui.horizontal(|ui| {
         ui.label("输出文件");
@@ -89,6 +92,7 @@ pub fn bench_output_controls(
             ui.radio_value(&mut output.mode, OutputMode::Jsonl, "JSONL (--log)");
         }
         ui.radio_value(&mut output.mode, OutputMode::Pure, "名字 (--pure)");
+        help_icon(ui, HelpTopic::BenchOutput, requested_help);
     });
 
     ui.horizontal(|ui| {
@@ -112,10 +116,17 @@ pub fn accuracy_controls(ui: &mut egui::Ui, accuracy: &mut AccuracyPreset) {
     });
 }
 
-pub fn count_mode_controls(ui: &mut egui::Ui, mode: &mut CountMode, accuracy: &mut AccuracyPreset, count: &mut usize) {
+pub fn count_mode_controls(
+    ui: &mut egui::Ui,
+    mode: &mut CountMode,
+    accuracy: &mut AccuracyPreset,
+    count: &mut usize,
+    requested_help: &Cell<Option<HelpTopic>>,
+) {
     ui.horizontal(|ui| {
         ui.radio_value(mode, CountMode::Accuracy, "精确度");
         ui.radio_value(mode, CountMode::Manual, "场数");
+        help_icon(ui, HelpTopic::Accuracy, requested_help);
     });
     match mode {
         CountMode::Accuracy => accuracy_controls(ui, accuracy),
@@ -128,11 +139,17 @@ pub fn count_mode_controls(ui: &mut egui::Ui, mode: &mut CountMode, accuracy: &m
     }
 }
 
-pub fn thread_controls(ui: &mut egui::Ui, auto_threads: &mut bool, threads: &mut usize) {
+pub fn thread_controls(
+    ui: &mut egui::Ui,
+    auto_threads: &mut bool,
+    threads: &mut usize,
+    requested_help: &Cell<Option<HelpTopic>>,
+) {
     ui.horizontal(|ui| {
         ui.checkbox(auto_threads, "系统线程 * 1.5");
         ui.label("线程");
         ui.add_enabled(!*auto_threads, egui::DragValue::new(threads).range(0..=256).speed(1));
+        help_icon(ui, HelpTopic::Threads, requested_help);
     });
 }
 

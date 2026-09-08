@@ -5,6 +5,9 @@ from __future__ import annotations
 from ._types_replay import EventDto
 
 class RunnerError(Exception):
+    @property
+    def code(self) -> str:
+        ...
     """Runner 初始化或运行时错误。"""
 
     ...

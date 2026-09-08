@@ -1,207 +1,207 @@
-//! `fight` / `diff` 的用户入口。
-//!
-//! 这一层只做两件事：
-//! - 负责把用户输入变成 `Runner`；
-//! - 负责把对局推进结果按“普通可读输出”或“diff 输出”打印出来。
-//!
-//! 和 raw benchmark 的分流逻辑、trace 字符串归一化逻辑相比，这里的职责更接近
-//! “命令驱动器”，因此单独拆出来，避免后续维护时在大量格式化细节里找入口函数。
+//! 规范战斗流的人类和 JSONL 消费端。
+use serde::Serialize;
+use std::{
+    collections::HashMap,
+    error::Error,
+    io::{self, Write},
+};
+use tswn_core::cli_api::battle::{BattleOptions, BattlePlayerState, BattleReplayFrame, BattleResult, BattleSession};
 
-use std::collections::HashMap;
+type OutputResult = Result<(), Box<dyn Error>>;
 
-use tswn_core::Runner;
-use tswn_core::engine::update::UpdateType;
-use tswn_core::error::runner::RunnerResult;
+#[derive(Serialize)]
+#[serde(tag = "type", content = "data", rename_all = "snake_case")]
+enum BattleEvent<'a> {
+    Initial(&'a [BattlePlayerState]),
+    Frame(&'a BattleReplayFrame),
+    Result(&'a BattleResult),
+}
 
-use super::trace::{collect_diff_lines, fmt_update, print_fight_raw};
+fn write_event(out: &mut impl Write, event: BattleEvent<'_>) -> OutputResult {
+    serde_json::to_writer(&mut *out, &event)?;
+    out.write_all(b"\n")?;
+    out.flush()?;
+    Ok(())
+}
 
-/// 运行普通对战。
-///
-/// 这里保留两种输出模式：
-/// - `out_raw=false` 时打印人类可读的完整回合日志；
-/// - `out_raw=true` 时把输出切给 raw trace 格式化器，避免两条路径彼此污染。
-pub fn run(raw: String, out_raw: bool) {
-    let mut runner = match new_runner_from_raw_for_cli(raw) {
-        Ok(runner) => runner,
-        Err(err) => {
-            eprintln!("构建对局失败: {err}");
-            std::process::exit(1);
-        }
-    };
-    let input_player_ids = collect_input_player_ids(&runner);
-
-    if out_raw {
-        print_fight_raw(&mut runner, &input_player_ids);
-        return;
+pub fn run(raw: String, jsonl: bool, max_rounds: usize) {
+    let result = BattleSession::new(
+        &raw,
+        BattleOptions {
+            max_rounds,
+            ..BattleOptions::default()
+        },
+    )
+    .map_err(|error| Box::new(error) as Box<dyn Error>)
+    .and_then(|mut session| write_battle(&mut session, &mut io::stdout().lock(), jsonl));
+    if let Err(error) = result {
+        eprintln!("{error}");
+        std::process::exit(1);
     }
+}
 
-    print_all_players(&runner);
+pub fn run_diff(raw: String) { super::runtime::run_runtime_diff(raw); }
 
-    let mut round = 1usize;
-    let mut idle_rounds = 0usize;
-    let mut total_score = 0u64;
-    let mut score_by_caster: HashMap<usize, u64> = HashMap::new();
-
-    while !runner.have_winner() && round <= 100_000 {
-        let updates = runner.main_round();
-        if updates.updates.is_empty() {
-            idle_rounds += 1;
-            if idle_rounds > 16 {
-                break;
-            }
-            continue;
+fn write_battle(session: &mut BattleSession, out: &mut impl Write, jsonl: bool) -> OutputResult {
+    if jsonl {
+        write_event(out, BattleEvent::Initial(session.initial_states()))?;
+    } else {
+        writeln!(out, "=== 玩家状态 ===")?;
+        for state in session.initial_states() {
+            writeln!(
+                out,
+                "- {} (id={}): HP={}/{}, ATK={}, DEF={}, SPD={}, AGI={}, MAG={}, MP={}, MDF={}, ITL={}, all_sum={} 系数: {}",
+                state.display_name,
+                state.id,
+                state.hp,
+                state.max_hp,
+                state.attack,
+                state.defense,
+                state.speed,
+                state.agility,
+                state.magic,
+                state.magic_point,
+                state.resistance,
+                state.wisdom,
+                state.all_sum,
+                state.name_factor
+            )?;
         }
-        idle_rounds = 0;
-
-        println!("=== 回合 {round} ===");
-        for update in updates.updates {
-            match update.update_type {
-                UpdateType::NextLine => println!(),
-                _ => {
-                    if update.score > 0 {
-                        total_score += update.score as u64;
-                        *score_by_caster.entry(update.caster).or_insert(0) += update.score as u64;
-                    }
-                    println!("{}", fmt_update(&runner, &update));
+        out.flush()?;
+    }
+    let mut scores = HashMap::<usize, u64>::new();
+    while let Some(frame) = session.next_frame()? {
+        if jsonl {
+            write_event(out, BattleEvent::Frame(&frame))?;
+        } else {
+            writeln!(out, "\n=== 回合 {} ===", frame.round_index + 1)?;
+            for row in &frame.rows {
+                let text = row
+                    .clips
+                    .iter()
+                    .flat_map(|clip| &clip.parts)
+                    .map(|part| part.text.as_str())
+                    .collect::<String>();
+                writeln!(out, "{}{text}", if row.indent { "  " } else { "" })?;
+            }
+            for update in &frame.updates {
+                if let Some(caster) = update.caster_id {
+                    *scores.entry(caster).or_default() += u64::from(update.score);
                 }
             }
+            out.flush()?;
         }
-        round += 1;
     }
-
-    println!("\n=== 对局结果 ===");
-    if let Some(winners) = runner.world.winner.clone() {
-        println!("赢家:");
-        for winner in winners {
-            if let Some(plr) = runner.storage.get_player(&winner) {
-                let battle_score = score_by_caster.get(&winner).copied().unwrap_or(0);
-                println!(
+    let result = session.result().ok_or("session ended without a result")?;
+    if jsonl {
+        write_event(out, BattleEvent::Result(&result))?;
+    } else {
+        writeln!(out, "\n=== 对局结果 ===")?;
+        if result.finished {
+            writeln!(out, "赢家:")?;
+            for state in result.final_states.iter().filter(|state| result.winner_ids.contains(&state.id)) {
+                writeln!(
+                    out,
                     "- {} (id={}, all_sum={}, battle_score={}, hp={})",
-                    plr.display_name(),
-                    winner,
-                    plr.get_status().all_sum,
-                    battle_score,
-                    plr.get_status().hp
-                );
+                    state.display_name,
+                    state.id,
+                    state.all_sum,
+                    scores.get(&state.id).copied().unwrap_or(0),
+                    state.hp
+                )?;
             }
+        } else {
+            writeln!(out, "对局截断: {:?}（推进 {} 轮）", result.stop_reason, result.rounds_advanced)?;
         }
-    } else {
-        println!("未分出胜负（达到安全轮次或连续空更新）。");
+        writeln!(out, "总战斗分: {}", scores.values().sum::<u64>())?;
+        out.flush()?;
     }
-    println!("总战斗分: {total_score}");
-    if let Some(win_idx_line) = fmt_winner_input_indices(&runner, &input_player_ids) {
-        println!("{win_idx_line}");
-    }
-}
-
-/// 运行普通对战并按 runner diff 格式输出。
-pub fn run_diff(raw: String) {
-    let mut runner = match new_runner_from_raw_for_cli(raw) {
-        Ok(runner) => runner,
-        Err(err) => {
-            eprintln!("构建对局失败: {err}");
-            std::process::exit(1);
-        }
-    };
-
-    let (lines, _guard, _total_score) = collect_diff_lines(&mut runner, 20_000, true);
-    if !lines.is_empty() {
-        println!("{}", lines.join("\n"));
-    }
-}
-
-/// 为 CLI 构建 `Runner`。
-///
-/// 这段逻辑单独抽出来，是为了让 `fight` / `diff` / `raw` 三条入口共享同一套
-/// “调试环境变量是否强制切到 win-rate rq” 的策略，不要各自维护一份细节分支。
-pub(super) fn new_runner_from_raw_for_cli(raw: String) -> RunnerResult<Runner> {
-    #[cfg(not(feature = "no_debug"))]
-    {
-        // 评分路径会把 JS 的全局 `rq` 污染为 6。这个环境变量只给单局复盘用，
-        // 方便 raw/fight/diff 用同一套名字强度口径复现评分分叉；`no_debug` 会整段编译掉。
-        if std::env::var_os("TSWN_DEBUG_FORCE_WIN_RATE_RQ").is_some() {
-            let (groups, seed) = Runner::split_namerena_into_groups(raw.clone());
-            return Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ);
-        }
-    }
-
-    Runner::new_from_namerena_raw(raw)
-}
-
-/// 记录原始输入中的玩家 ID 顺序。
-///
-/// raw trace 与普通输出最终都会把胜者映射回“输入中的位置”，因此这里保留一个统一 helper。
-pub(super) fn collect_input_player_ids(runner: &Runner) -> Vec<usize> {
-    runner.input_groups.iter().flat_map(|group| group.iter().copied()).collect()
-}
-
-/// 把胜者 ID 转换回输入顺序中的索引，输出 `win_idx=...`。
-pub(super) fn fmt_winner_input_indices(runner: &Runner, input_player_ids: &[usize]) -> Option<String> {
-    let winners = runner.world.winner.as_ref()?;
-    let indices = winners
-        .iter()
-        .filter_map(|winner| input_player_ids.iter().position(|id| id == winner))
-        .map(|idx| idx.to_string())
-        .collect::<Vec<String>>();
-    if indices.is_empty() {
-        None
-    } else {
-        Some(format!("win_idx={}", indices.join(",")))
-    }
-}
-
-/// 打印开战前所有玩家的状态快照。
-fn print_all_players(runner: &Runner) {
-    println!("=== 玩家状态 ===");
-    let player_ids = runner.storage.all_player_ids();
-    for id in player_ids {
-        if let Some(plr) = runner.storage.get_player(&id) {
-            let status = plr.get_status();
-            println!(
-                "- {} (id={}): HP={}/{}, move_point:{} ATK={}, DEF={}, SPD={}, AGI={}, MAG={}, MP={}, MDF={}, ITL={}, all_sum={} 系数: {}",
-                plr.display_name(),
-                id,
-                status.hp,
-                status.max_hp,
-                status.move_point,
-                status.attack,
-                status.defense,
-                status.speed,
-                status.agility,
-                status.magic,
-                status.magic_point,
-                status.resistance,
-                status.wisdom,
-                status.all_sum,
-                plr.get_name_factor()
-            );
-        }
-    }
-    println!();
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[derive(Default)]
+    struct LineWriter {
+        pending: Vec<u8>,
+        events: Vec<serde_json::Value>,
+    }
+    impl Write for LineWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.pending.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            assert_eq!(
+                self.pending.iter().filter(|byte| **byte == b'\n').count(),
+                1,
+                "flush exactly one JSON line"
+            );
+            self.events.push(serde_json::from_slice(&self.pending).unwrap());
+            self.pending.clear();
+            Ok(())
+        }
+    }
+
     #[test]
-    fn winner_input_indices_follow_original_input_order() {
-        let raw = "Italian_Love #5Agn8kVYl@Shabby_fish\n我会回来的 #yTneTj00J@Shabby_fish\n\nH6PeQOTNUlx@tyakasha\nOrbital #sfPTzSpZz@tyakasha\nseed:33554434@!";
-        let mut runner = Runner::new_from_namerena_raw(raw.to_string()).expect("runner should build");
-        let input_player_ids = collect_input_player_ids(&runner);
+    fn jsonl_flushes_each_canonical_payload_in_order() {
+        let raw = "left@red\n\nright@blue\nseed:42@!";
+        for max_rounds in [1, 20_000] {
+            let options = BattleOptions {
+                max_rounds,
+                ..BattleOptions::default()
+            };
+            let replay = tswn_core::cli_api::battle::battle_replay(raw, options).unwrap();
+            let mut session = BattleSession::new(raw, options).unwrap();
+            let mut writer = LineWriter::default();
+            write_battle(&mut session, &mut writer, true).unwrap();
+            assert!(writer.pending.is_empty());
+            assert_eq!(writer.events.len(), replay.frames.len() + 2);
+            assert_eq!(
+                writer.events[0],
+                serde_json::json!({"type": "initial", "data": replay.initial_states})
+            );
+            for (event, frame) in writer.events[1..writer.events.len() - 1].iter().zip(&replay.frames) {
+                assert_eq!(event, &serde_json::json!({"type": "frame", "data": frame}));
+            }
+            assert_eq!(
+                writer.events.last().unwrap(),
+                &serde_json::json!({"type": "result", "data": session.result().unwrap()})
+            );
+        }
+    }
 
-        runner.run_to_completion();
+    #[test]
+    fn output_failure_stops_before_advancing_runtime() {
+        struct BrokenWriter;
+        impl Write for BrokenWriter {
+            fn write(&mut self, _: &[u8]) -> io::Result<usize> { Err(io::ErrorKind::BrokenPipe.into()) }
+            fn flush(&mut self) -> io::Result<()> { Ok(()) }
+        }
+        let mut session = BattleSession::new("a\n\nb", BattleOptions::default()).unwrap();
+        assert!(write_battle(&mut session, &mut BrokenWriter, true).is_err());
+        assert_eq!(session.rounds_advanced(), 0);
+        assert!(session.result().is_none());
+    }
 
-        let win_idx = fmt_winner_input_indices(&runner, &input_player_ids).expect("winner indices should exist");
-        let indices = win_idx
-            .strip_prefix("win_idx=")
-            .expect("win_idx prefix should exist")
-            .split(',')
-            .filter(|part| !part.is_empty())
-            .map(|part| part.parse::<usize>().expect("winner index should be an integer"))
-            .collect::<Vec<_>>();
-
-        assert!(!indices.is_empty());
-        assert!(indices.iter().all(|idx| *idx < 2), "expected team0 winners, got {indices:?}");
+    #[test]
+    fn human_fight_prints_canonical_rows_and_explicit_truncation() {
+        let mut session = BattleSession::new(
+            "left@red\n\nright@blue",
+            BattleOptions {
+                max_rounds: 1,
+                ..BattleOptions::default()
+            },
+        )
+        .unwrap();
+        let mut output = Vec::new();
+        write_battle(&mut session, &mut output, false).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains("=== 玩家状态 ==="));
+        assert!(text.contains("=== 回合 1 ==="));
+        assert!(text.contains("对局截断: MaxRounds"));
+        assert_eq!(session.rounds_advanced(), 1);
     }
 }

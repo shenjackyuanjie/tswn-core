@@ -6,8 +6,8 @@
 use serde::{Deserialize, Serialize};
 use tsify::Tsify;
 use tswn_core::cli_api as core_cli_api;
-use tswn_core::engine::update::UpdateType;
-use tswn_core::player::skill::act::minion::MinionKind;
+use tswn_core::runtime::RuntimeMinionKind;
+use tswn_core::runtime::update::UpdateType;
 
 #[derive(Debug, Clone, Default, Deserialize, Tsify)]
 #[tsify(from_wasm_abi)]
@@ -21,7 +21,7 @@ pub struct FightOptions {
 }
 
 impl FightOptions {
-    pub fn resolved_eval_rq(&self) -> f64 { self.eval_rq.unwrap_or(tswn_core::player::eval_name::DEFAULT_EVAL_RQ) }
+    pub fn resolved_eval_rq(&self) -> f64 { self.eval_rq.unwrap_or(tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ) }
 
     pub fn include_icons(&self) -> bool { self.include_icons.unwrap_or(false) }
 
@@ -38,11 +38,49 @@ pub struct WinRateOptions {
 }
 
 impl WinRateOptions {
-    pub fn resolved_eval_rq(&self) -> f64 { self.eval_rq.unwrap_or(tswn_core::player::eval_name::WIN_RATE_EVAL_RQ) }
+    pub fn resolved_eval_rq(&self) -> f64 { self.eval_rq.unwrap_or(tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ) }
 
-    pub fn resolved_thread(&self) -> u32 {
-        let _ = self.thread;
-        1
+    pub fn resolved_thread(&self) -> Result<u32, &'static str> {
+        match self.thread.unwrap_or(0) {
+            0 | 1 => Ok(1),
+            _ => Err("thread must be 0 or 1 for the wasm target"),
+        }
+    }
+}
+
+/// 跨绑定、可供 UI 使用的战斗回放 API 选项。
+#[derive(Debug, Clone, Deserialize, Tsify)]
+#[tsify(from_wasm_abi)]
+pub struct BattleOptions {
+    #[tsify(optional)]
+    pub eval_rq: Option<f64>,
+    #[tsify(optional)]
+    pub include_icons: Option<bool>,
+    #[tsify(optional)]
+    pub max_rounds: Option<usize>,
+}
+
+impl Default for BattleOptions {
+    fn default() -> Self {
+        Self {
+            eval_rq: None,
+            include_icons: None,
+            max_rounds: None,
+        }
+    }
+}
+
+impl BattleOptions {
+    pub fn to_core(&self) -> core_cli_api::BattleOptions {
+        let mut options = core_cli_api::BattleOptions::default();
+        if let Some(eval_rq) = self.eval_rq {
+            options.eval_rq = eval_rq;
+        }
+        options.include_icons = self.include_icons.unwrap_or(false);
+        if let Some(max_rounds) = self.max_rounds {
+            options.max_rounds = max_rounds;
+        }
+        options
     }
 }
 
@@ -105,18 +143,18 @@ pub enum MinionKindView {
     Zombie,
 }
 
-impl From<MinionKind> for MinionKindView {
-    fn from(value: MinionKind) -> Self {
+impl From<RuntimeMinionKind> for MinionKindView {
+    fn from(value: RuntimeMinionKind) -> Self {
         match value {
-            MinionKind::Clone => Self::Clone,
-            MinionKind::Summon => Self::Summon,
-            MinionKind::Shadow => Self::Shadow,
-            MinionKind::Zombie => Self::Zombie,
+            RuntimeMinionKind::Clone => Self::Clone,
+            RuntimeMinionKind::Summon => Self::Summon,
+            RuntimeMinionKind::Shadow => Self::Shadow,
+            RuntimeMinionKind::Zombie => Self::Zombie,
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Tsify)]
 #[tsify(into_wasm_abi)]
 #[serde(rename_all = "snake_case")]
 pub enum UpdateTypeView {
@@ -133,6 +171,73 @@ impl From<UpdateType> for UpdateTypeView {
             UpdateType::NextLine => Self::NextLine,
         }
     }
+}
+
+impl From<&str> for UpdateTypeView {
+    fn from(value: &str) -> Self {
+        match value {
+            "win" => Self::Win,
+            "none" => Self::None,
+            "next_line" => Self::NextLine,
+            other => panic!("unknown runtime update_type token: {other}"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct RuntimeNormalizedRunView {
+    pub rounds: Vec<RuntimeNormalizedOutcomeView>,
+    pub winner_team: Option<usize>,
+    pub guard_exhausted: bool,
+    pub total_score: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct RuntimeNormalizedOutcomeView {
+    pub winner_team: Option<usize>,
+    pub round: u64,
+    pub total_score: u64,
+    pub rng_i: u32,
+    pub rng_j: u32,
+    pub entity_ids: Vec<usize>,
+    pub teams: Vec<usize>,
+    pub hp: Vec<i32>,
+    pub magic_point: Vec<i32>,
+    pub defense: Vec<i32>,
+    pub resistance: Vec<i32>,
+    pub alive: Vec<bool>,
+    pub round_order: Vec<usize>,
+    pub flat_alive: Vec<usize>,
+    pub team_alive: Vec<Vec<usize>>,
+    pub alive_group_count: usize,
+    pub actions: Vec<RuntimeActionBoundaryView>,
+    pub frames: Vec<RuntimeUpdateFrameView>,
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct RuntimeActionBoundaryView {
+    pub round: u64,
+    pub actor: usize,
+    pub target: usize,
+    pub amount: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct RuntimeUpdateFrameView {
+    pub message: String,
+    pub caster: usize,
+    pub target: usize,
+    pub targets: Vec<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub param: Option<u32>,
+    pub score: u32,
+    pub delay0: i32,
+    pub delay1: i32,
+    pub update_type: UpdateTypeView,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Tsify)]
@@ -384,6 +489,67 @@ pub struct CliIconInfo {
 
 fn nanos_to_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
 
+impl From<core_cli_api::JsonRuntimeNormalizedRun> for RuntimeNormalizedRunView {
+    fn from(value: core_cli_api::JsonRuntimeNormalizedRun) -> Self {
+        Self {
+            rounds: value.rounds.into_iter().map(Into::into).collect(),
+            winner_team: value.winner_team,
+            guard_exhausted: value.guard_exhausted,
+            total_score: value.total_score,
+        }
+    }
+}
+
+impl From<core_cli_api::JsonRuntimeNormalizedOutcome> for RuntimeNormalizedOutcomeView {
+    fn from(value: core_cli_api::JsonRuntimeNormalizedOutcome) -> Self {
+        Self {
+            winner_team: value.winner_team,
+            round: value.round,
+            total_score: value.total_score,
+            rng_i: value.rng_i,
+            rng_j: value.rng_j,
+            entity_ids: value.entity_ids,
+            teams: value.teams,
+            hp: value.hp,
+            magic_point: value.magic_point,
+            defense: value.defense,
+            resistance: value.resistance,
+            alive: value.alive,
+            round_order: value.round_order,
+            flat_alive: value.flat_alive,
+            team_alive: value.team_alive,
+            alive_group_count: value.alive_group_count,
+            actions: value
+                .actions
+                .into_iter()
+                .map(|action| RuntimeActionBoundaryView {
+                    round: action.round,
+                    actor: action.actor,
+                    target: action.target,
+                    amount: action.amount,
+                })
+                .collect(),
+            frames: value.frames.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<core_cli_api::JsonRuntimeUpdateFrame> for RuntimeUpdateFrameView {
+    fn from(value: core_cli_api::JsonRuntimeUpdateFrame) -> Self {
+        Self {
+            message: value.message,
+            caster: value.caster,
+            target: value.target,
+            targets: value.targets,
+            param: value.param,
+            score: value.score,
+            delay0: value.delay0,
+            delay1: value.delay1,
+            update_type: value.update_type.into(),
+        }
+    }
+}
+
 impl From<core_cli_api::WinRateResult> for CliWinRateResult {
     fn from(value: core_cli_api::WinRateResult) -> Self {
         Self {
@@ -486,3 +652,6 @@ impl From<core_cli_api::IconInfo> for CliIconInfo {
         }
     }
 }
+
+/// 供一次性调用方使用的兼容名称。
+pub type BattleReplayOptions = BattleOptions;

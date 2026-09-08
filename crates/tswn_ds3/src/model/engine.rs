@@ -114,9 +114,9 @@ impl NameFeature {
             return Err(Ds3Error::parse("invalid full name: empty"));
         }
 
-        // Match C++ build() trimming rules:
-        // - trim only leading/trailing ' ' and '+'
-        // - keep other trailing chars (notably '\r')
+        // 匹配 C++ build() 的裁剪规则：
+        // - 仅裁剪首尾的 ' ' 和 '+'
+        // - 保留其他尾随字符（尤其是 '\r'）
         let mut l = 0i32;
         let mut r = bytes.len() as i32 - 1;
         while l <= r && (bytes[l as usize] == b' ' || bytes[l as usize] == 0 || bytes[l as usize] == b'+') {

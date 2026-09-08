@@ -1,6 +1,6 @@
 # tswn_openbox
 
-当前版本：`0.3.10`
+当前版本：`0.4.2`
 
 `tswn_openbox` 是一个带 GUI 的本地交互面板，把常用 `tswn-cli` 工作流做成点击即用的界面。目标是能跑、无使用门槛、界面简洁。
 
@@ -35,7 +35,9 @@ Windows GUI 构建启用 `windows_subsystem = "windows"`，双击启动时不会
 
 ## 界面
 
-左侧是设置区，右侧只显示运行日志。常用设置直接展示，低频设置放在“更多设置”弹窗中。顶部主题按钮支持浅色、深色和跟随系统。
+左侧是设置区，右侧只显示运行日志。常用设置直接展示，低频设置放在“更多设置”弹窗中。顶部主题按钮支持浅色、深色和跟随系统；“关于”弹窗会显示 Openbox 与 Core 的当前版本，并提供 GitHub 项目链接。
+
+设置旁的圆形 `i` 是上下文帮助：鼠标悬浮会显示简要说明，点击后会把说明固定在独立小窗口中，方便对照设置。
 
 普通设置包括：
 
@@ -96,7 +98,7 @@ Windows GUI 构建启用 `windows_subsystem = "windows"`，双击启动时不会
 
 #### 技能榜
 
-`namer-pf` 支持“技能榜”输出。开启后，程序会把名字转为 `+diy` 形式，找到熟练度最高的技能，并按 `setting\score_now.toml` 的阈值筛选输出。
+`namer-pf` 支持“技能榜”输出。开启后，程序会把名字转为 `+diy` 形式，找到熟练度最高的技能，并按 `setting\score_now.toml` 的阈值筛选输出。若待评名字或组合的全部技能熟练度均小于 30，还会按 `[lessskl]`（白板号）阈值筛选。
 
 屏幕输出为蓝字，格式为：
 
@@ -121,6 +123,15 @@ qd = 8210
 all = 32721
 ```
 
+低熟练度白板号使用单独的 `[lessskl]` 配置：
+
+```toml
+[lessskl]
+pp = 8542
+qp = 6357
+qd = 6819
+```
+
 字段含义：
 
 - `pp`：普评阈值。
@@ -129,10 +140,16 @@ all = 32721
 - `all`：全能总分阈值。
 
 “全能”除满足对应 `all` 外，还需要同时满足 `pp >= 8000`、`pd >= 9000`、`qp >= 6000`、`qd >= 7000`。
+`[lessskl]` 可以只配置需要筛选的指标；默认白板号阈值暂不配置 `all`。
 
 ### cqd/cqp
 
 对应原 `bench batch-rate`。普通设置中保留常用选项，更多设置中可以切换手动靶子、`DIYcqp（++分割名字）`、线程数、场数和输出细节。
+
+靶子预设可通过 `factor_enabled = true` 启用带权模式。带权靶子使用 TOML 文件，每个 `[[targets]]` 项包含一个有限正数权重 `factor` 和玩家数组 `players`。最终平均胜率按有效对局的
+`sum(胜率 * factor) / sum(factor)` 计算。
+
+带权模式下，如果选手组和靶子组包含完全相同的玩家（不要求顺序相同），该组直接记为 `50%` 并参与加权；只有部分玩家相同时仍正常计算，不会按重名跳过。未启用带权模式时保持原有重名跳过行为。
 
 不勾选“每组胜率”时输出：
 
@@ -166,6 +183,24 @@ all = 32721
   cqp 队友名字
 ```
 
+`pair` 支持带权靶子 TOML，靶子权重会用于每个队友组合的加权平均。选手和队友都支持一行多个玩家；更多设置中可分别勾选 `++` 分割。默认选手按单个 `+` 分割，队友按 `++` 分割。
+
+输入按“每行一个组合”处理。未启用 `++` 分割时，行内使用单个 `+` 连接成员；启用后使用 `++` 连接成员。两个开关相互独立：选手输入和队友输入可以使用不同的分隔符。例如，选手输入（默认单个 `+`）可以写成：
+
+```text
+a@team+b@team
+```
+
+队友输入（默认 `++`）可以写成：
+
+```text
+c@team++d@team
+```
+
+每个组合会把选手组和队友组拼接后，与每个靶子组进行计算。普通文本靶子仍按每行一个靶子组解析；带权 TOML 则按每个 `[[targets]]` 项的 `players` 作为靶子组，靶子 `factor` 只影响靶子组之间的平均值。手动靶子不启用带权 TOML，选择手动靶子时会忽略预设的 `factor_enabled`。
+
+队友预设启用 `factor_enabled` 时，计算顺序是：先按靶子权重得到该队友组合的平均胜率，再乘以队友组的 `factor`，然后按乘权后的分数降序取前 `head` 个并求和。因此，队友权重会影响排名和最终分数，而不是只影响展示的平均胜率。手动输入队友时不会读取队友 TOML 权重。
+
 ## 配置文件
 
 面板会从当前目录的 `setting\settings.toml` 读取靶子和队友预设。路径相对于 `setting` 目录解析。
@@ -185,19 +220,51 @@ id = 2
 name = "pair默认靶子"
 file = "targets/pair-default.txt"
 
+[[targets]]
+id = 3
+name = "带权二人组"
+file = "targets/weighted-pairs.toml"
+factor_enabled = true
+
 [[teammate]]
 head = 3
 name = "默认队友"
 file = "teammates/default.txt"
+
+[[teammate]]
+head = 3
+name = "带权队友"
+file = "teammates/weighted.toml"
+factor_enabled = true
 ```
 
 说明：
 
 - `targets[].id` 期望是数字。
 - `targets[].file` 是靶子列表文件。
+- `targets[].factor_enabled` 可以省略，默认为 `false`；设为 `true` 时，`file` 必须使用下述带权 TOML 格式。
 - `teammate[].head` 是 `pair` 的“保留前几”。
 - `teammate[].file` 是队友列表文件。
+- `teammate[].factor_enabled` 可省略，默认为 `false`；设为 `true` 时，`file` 使用与带权靶子相同的 `[[targets]]` TOML 格式，并按每组 `factor` 调整队友组合分数后再取 `head`。
+- 选择“手动队友”后，预设中的 `factor_enabled` 和队友文件权重均不会生效；手动队友始终按文本列表解析。
 - `pair` 默认优先选择 `targets` 中 `id = 2` 的靶子；如果不存在，则退回第一个靶子。
+- `pair` 的选手和队友分组开关只影响行内分隔，不会改变换行分组；每行仍对应一个待评分的组合。
+
+带权靶子文件示例：
+
+```toml
+[[targets]]
+factor = 1.5
+players = ["mario", "luigi"]
+
+[[targets]]
+factor = 0.75
+players = ["peach", "fire"]
+```
+
+队友预设开启 `factor_enabled = true` 时，队友文件也使用上述 `[[targets]]` TOML 结构；每个队友组的平均胜率先乘以该组 `factor`，再按 `head` 取最高组合求和。
+
+`factor` 必须是大于 `0` 的有限数值，`players` 不得为空或包含空名字。带权 TOML 用于选中的 `cqd/cqp` 或 `pair` 靶子预设；手动靶子仍使用原文本格式。
 
 `setting\score_now.toml` 用于 `namer-pf` 技能榜阈值。仓库中提供了一份示例/当前阈值文件。
 

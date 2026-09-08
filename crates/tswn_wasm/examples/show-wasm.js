@@ -1,8 +1,8 @@
 /**
- * @fileoverview tswn_wasm 战斗回放展示页 — WASM 模块加载与回放生成
+ * @fileoverview tswn_wasm 战斗回放展示页 — WASM 模块加载与流式战斗
  *
  * 负责动态加载 tswn_wasm WASM 模块（懒加载 + 缓存），
- * 以及根据用户输入调用 FightSession 生成完整回放数据。
+ * 以及创建 BattleSession、逐帧拉取和显式释放 WASM 资源。
  */
 
 // ============================================================================
@@ -103,31 +103,91 @@ function extractSpecifiedSeedLine(rawInput) {
     return null;
 }
 
-/**
- * 根据原始输入文本生成完整回放数据。
- *
- * @param {string} rawInput — 原始输入文本（每行一个名字，空行分隔队伍）
- * @param {HTMLElement} versionInfo
- * @param {HTMLElement} coreVersionInfo
- * @param {HTMLElement} modulePathInfo
- * @returns {Promise<FightReplay>}
- */
-export async function buildReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo) {
-    const api = await ensureApi(versionInfo, coreVersionInfo, modulePathInfo);
-    const session = new api.FightSession(rawInput, { include_icons: true, capture_replay: true });
-    const players = session.players();
-    const initial_states = session.state();
-    const wasmStart = performance.now();
-    const replay = session.run_to_end();
-    const wasmDurationMs = performance.now() - wasmStart;
-    return {
-        raw_input: rawInput,
-        seed_line: extractSpecifiedSeedLine(rawInput),
-        players,
-        initial_states,
-        frames: replay.frames,
-        winner_ids: replay.winner_ids,
-        final_states: replay.final_states,
-        wasm_duration_ms: wasmDurationMs,
-    };
+function playersFromBattleReplayStates(states) {
+    return (states ?? [])
+        .filter((state) => state.owner_id == null)
+        .map((state) => ({
+            ...state,
+            id: Number(state.id),
+            team_index: Number(state.team_index ?? state.input_team_index ?? 0),
+            id_name: state.id_name ?? state.base_name ?? `entity_${state.id}`,
+            icon_key: state.icon_key ?? state.id_name ?? `entity_${state.id}`,
+            display_name: state.display_name ?? state.base_name ?? `#${state.id}`,
+            icon_png_base64: state.icon_png_base64 ?? null,
+        }));
 }
+
+/** 创建一个增量驱动的 WASM 会话。启动时不拉取任何帧。
+ * `api` 是供适配器测试使用的可选依赖注入点。
+ */
+export async function createBattleStreamSource(rawInput, versionInfo, coreVersionInfo, modulePathInfo, options = {}) {
+    const loadStart = performance.now();
+    const api = options.api ?? await ensureApi(versionInfo, coreVersionInfo, modulePathInfo);
+    options.metrics?.wasmLoaded(performance.now() - loadStart);
+    const createStart = performance.now();
+    if (typeof api.BattleSession !== "function") {
+        throw new Error("当前 tswn_wasm 包未导出 BattleSession");
+    }
+    let session = new api.BattleSession(rawInput, {
+        include_icons: false,
+        ...(options.maxRounds == null ? {} : { max_rounds: options.maxRounds }),
+        ...(options.evalRq == null ? {} : { eval_rq: options.evalRq }),
+    });
+    let terminalResult = null;
+    let disposed = false;
+    let failure = null;
+    function release() {
+        const owned = session;
+        session = null;
+        owned?.free();
+    }
+    function captureResult() {
+        if (session?.is_done()) {
+            terminalResult = session.result();
+            if (terminalResult == null) throw new Error("BattleSession 终止但未返回 result");
+            release();
+        }
+    }
+    try {
+        const initialStates = session.initial_states();
+        captureResult();
+        options.metrics?.sessionCreated(performance.now() - createStart);
+        return {
+            raw_input: rawInput,
+            seed_line: extractSpecifiedSeedLine(rawInput),
+            players: playersFromBattleReplayStates(initialStates),
+            initial_states: initialStates,
+            async nextFrame() {
+                if (failure) throw failure;
+                if (disposed || terminalResult != null) return null;
+                const pullStart = performance.now();
+                try {
+                    const frame = session.next_frame();
+                    captureResult();
+                    if (frame == null && terminalResult == null) {
+                        throw new Error("BattleSession 返回空 frame 但尚未终止");
+                    }
+                    return frame ?? null;
+                } catch (error) {
+                    failure = error;
+                    release();
+                    throw error;
+                } finally {
+                    options.metrics?.framePulled(performance.now() - pullStart);
+                }
+            },
+            result() { return terminalResult; },
+            isDone() { return terminalResult != null; },
+            dispose() {
+                if (disposed) return;
+                disposed = true;
+                release();
+            },
+            loadIcon(iconKey) { return api.name_to_png_base64(iconKey); },
+        };
+    } catch (error) {
+        release();
+        throw error;
+    }
+}
+

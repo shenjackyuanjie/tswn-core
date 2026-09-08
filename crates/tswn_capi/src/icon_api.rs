@@ -13,7 +13,7 @@ pub unsafe extern "C" fn tswn_name_to_icon_rgba(name_utf8: *const c_char, out_by
         }
         let name = unsafe { read_utf8(name_utf8, "name_utf8")? };
         unsafe {
-            *out_bytes = into_tswn_bytes(tswn_core::player::icon_render::render_icon_vec_from_name(&name));
+            *out_bytes = into_tswn_bytes(tswn_core::namerena::icon_render::render_icon_vec_from_name(&name));
         }
         Ok(())
     })
@@ -28,7 +28,7 @@ pub unsafe extern "C" fn tswn_name_to_png_bytes(name_utf8: *const c_char, out_by
         }
         let name = unsafe { read_utf8(name_utf8, "name_utf8")? };
         unsafe {
-            *out_bytes = into_tswn_bytes(tswn_core::player::icon_render::render_icon_png_from_name(&name));
+            *out_bytes = into_tswn_bytes(tswn_core::namerena::icon_render::render_icon_png_from_name(&name));
         }
         Ok(())
     })
@@ -38,7 +38,7 @@ pub unsafe extern "C" fn tswn_name_to_png_bytes(name_utf8: *const c_char, out_by
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_name_to_png_base64(name_utf8: *const c_char) -> tswn_str_t {
     match unsafe { read_utf8(name_utf8, "name_utf8") } {
-        Ok(name) => into_tswn_str(tswn_core::player::icon_render::render_icon_b64_from_name(&name)),
+        Ok(name) => into_tswn_str(tswn_core::namerena::icon_render::render_icon_b64_from_name(&name)),
         Err(err) => {
             set_last_error(err.message);
             tswn_str_t::default()

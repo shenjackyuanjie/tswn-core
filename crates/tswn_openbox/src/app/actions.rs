@@ -168,18 +168,20 @@ impl OpenboxApp {
     }
 
     pub fn start_batch_rate(&mut self) {
-        let (target_text, target_double_plus) = if self.batch_rate.manual_targets {
+        let (target_text, target_double_plus, target_factor_enabled) = if self.batch_rate.manual_targets {
             match self.batch_rate.targets.read_all() {
-                Ok(raw) => (raw, self.batch_rate.manual_target_double_plus),
+                Ok(raw) => (raw, self.batch_rate.manual_target_double_plus, false),
                 Err(err) => {
                     self.fail_before_start(err);
                     return;
                 }
             }
         } else {
-            let target_double_plus = self.batch_rate.target_presets.selected().is_some_and(|preset| preset.diy);
+            let selected = self.batch_rate.target_presets.selected();
+            let target_double_plus = selected.is_some_and(|preset| preset.diy);
+            let target_factor_enabled = selected.is_some_and(|preset| preset.factor_enabled);
             match load_selected_target_text(&self.batch_rate.target_presets) {
-                Ok(raw) => (raw, target_double_plus),
+                Ok(raw) => (raw, target_double_plus, target_factor_enabled),
                 Err(err) => {
                     self.fail_before_start(err);
                     return;
@@ -223,6 +225,7 @@ impl OpenboxApp {
         let input = BatchRateInput {
             target_text,
             player_text,
+            target_factor_enabled,
             target_double_plus,
             player_double_plus: self.batch_rate.double_plus,
             show_matchups: self.batch_rate.show_matchups,
@@ -248,11 +251,22 @@ impl OpenboxApp {
     }
 
     pub fn start_pair(&mut self) {
-        let target_text = match read_target_text(&self.pair.targets, &self.pair.target_presets, self.pair.manual_targets) {
-            Ok(raw) => raw,
-            Err(err) => {
-                self.fail_before_start(err);
-                return;
+        let (target_text, target_factor_enabled) = if self.pair.manual_targets {
+            match self.pair.targets.read_all() {
+                Ok(raw) => (raw, false),
+                Err(err) => {
+                    self.fail_before_start(err);
+                    return;
+                }
+            }
+        } else {
+            let target_factor_enabled = self.pair.target_presets.selected().is_some_and(|preset| preset.factor_enabled);
+            match load_selected_target_text(&self.pair.target_presets) {
+                Ok(raw) => (raw, target_factor_enabled),
+                Err(err) => {
+                    self.fail_before_start(err);
+                    return;
+                }
             }
         };
         let player_text = match self.pair.players.read_all() {
@@ -275,6 +289,8 @@ impl OpenboxApp {
         } else {
             self.pair.teammate_presets.selected().map(|preset| preset.head).unwrap_or(self.pair.head)
         };
+        let teammate_factor_enabled =
+            !self.pair.manual_teammates && self.pair.teammate_presets.selected().is_some_and(|preset| preset.factor_enabled);
         let output_file = self.pair.output.file_output.path();
         let min_screen = match parse_optional_f64_at_least(&self.pair.output.min_screen, "日志阈值", 0.0) {
             Ok(value) => value,
@@ -315,8 +331,12 @@ impl OpenboxApp {
         let cancel = self.cancel_token();
         let input = PairInput {
             target_text,
+            target_factor_enabled,
             player_text,
+            player_double_plus: self.pair.player_double_plus,
             teammate_text,
+            teammate_double_plus: self.pair.teammate_double_plus,
+            teammate_factor_enabled,
             head: head.max(1),
             detail_mode: self.pair.detail_mode,
             detail_min,
@@ -513,18 +533,6 @@ fn resolve_output_path(output: &OptionalFileOutput) -> Result<Option<std::path::
         Some(path) => Ok(Some(path)),
         None if output.enabled => Err("请先选择输出文件。".to_string()),
         None => Ok(None),
-    }
-}
-
-fn read_target_text(
-    manual_source: &super::source::TextSource,
-    presets: &super::target_presets::TargetPresetState,
-    manual_targets: bool,
-) -> Result<String, String> {
-    if manual_targets {
-        manual_source.read_all()
-    } else {
-        load_selected_target_text(presets)
     }
 }
 

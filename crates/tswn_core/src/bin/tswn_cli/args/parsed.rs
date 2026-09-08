@@ -57,22 +57,20 @@ impl NamerPfMode {
 #[derive(Debug)]
 pub enum ParsedCommand {
     Fight {
+        jsonl: bool,
+        max_rounds: usize,
         /// 普通对战输入，使用 namerena raw 格式。
         raw: String,
-        /// 是否改为输出 raw 聚合战斗日志。
-        out_raw: bool,
     },
-    FightDiff {
+    RuntimeDiff {
         /// 普通对战输入，使用 namerena raw 格式，并按 runner diff 的格式输出。
         raw: String,
     },
-    FightRaw {
-        /// 原始 namerena 输入，可能是普通对战，也可能是 `!test!` 基准测试输入。
+    RuntimeNormalizedRun {
+        /// 使用默认 custom runtime profile 运行的 namerena raw 输入。
         raw: String,
-        /// 评分或胜率测试的模拟场数。
-        n: usize,
-        /// 显式指定的基准测试线程数。
-        threads: Option<usize>,
+        /// 最多推进的回合数。
+        max_rounds: usize,
     },
     BenchAuto {
         /// 基准测试原始输入，按组数自动分流到评分或胜率测试。
@@ -125,6 +123,10 @@ pub enum ParsedCommand {
     BenchBatchRate {
         /// 靶子组列表；每项都已从 `+` 分隔行转换成 `\n` 分隔的 namerena 组字符串。
         target_groups: Vec<String>,
+        /// 与 `target_groups` 对应的靶子权重；普通文本靶子全部为 `1.0`。
+        target_factors: Vec<f64>,
+        /// 是否按带权靶子规则处理重名与平均值。
+        target_factored: bool,
         /// 选手组列表；每项都已从 `+` 分隔行转换成 `\n` 分隔的 namerena 组字符串。
         player_groups: Vec<String>,
         /// 选手组展示标签，保留文件中的原始行文本。
@@ -159,10 +161,18 @@ pub enum ParsedCommand {
     BenchPair {
         /// 靶子组列表；每项都已从 `+` 分隔行转换成 `\n` 分隔的 namerena 组字符串。
         target_groups: Vec<String>,
+        /// 与 `target_groups` 对应的靶子权重；普通文本靶子全部为 `1.0`。
+        target_factors: Vec<f64>,
+        /// 是否按带权靶子规则处理重名与平均值。
+        target_factored: bool,
         /// `player-list` 文件中的选手；每行一个名字。
         players: Vec<String>,
+        /// 选手组合的原始行标签。
+        player_labels: Vec<String>,
         /// `teammate-list` 文件中的队友；每行一个名字。
         teammates: Vec<String>,
+        /// 队友组合的原始行标签。
+        teammate_labels: Vec<String>,
         /// 每名选手取最高的 `head` 个二人组 `batch-rate` 结果求和。
         head: usize,
         /// 每组对局的模拟场数。

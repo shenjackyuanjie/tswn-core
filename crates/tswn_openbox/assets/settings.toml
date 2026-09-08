@@ -13,27 +13,44 @@ id = 3
 name = "三人组"
 file = "targets/target3.txt"
 
+[[targets]]
+id = 4
+name = "新版单人组"
+file = "targets/newTarget1.toml"
+factor_enabled = true
+
+[[targets]]
+id = 5
+name = "新版双人组"
+file = "targets/newTarget2.toml"
+factor_enabled = true
+
 [[teammate]]
 head = 5
 name = "刺评"
 file = "teammates/teammate_fz.txt"
+factor_enabled = false
 
 [[teammate]]
 head = 5
 name = "辅评"
 file = "teammates/teammate_bc.txt"
+factor_enabled = false
 
 [[teammate]]
 head = 5
 name = "无刺评"
 file = "teammates/teammate_wc.txt"
+factor_enabled = false
 
 [[teammate]]
 head = 3
 name = "分身评"
 file = "teammates/teammate_pj.txt"
+factor_enabled = false
 
 [[teammate]]
 head = 3
 name = "配件评"
 file = "teammates/teammate_fs.txt"
+factor_enabled = false

@@ -25,16 +25,26 @@ print(tswn_py.wrapper_version_str(), tswn_py.core_version_str())
 # 图标渲染
 b64 = tswn_py.name_to_png_base64("某个玩家名")
 
-# 创建对局
-runner = tswn_py.Runner.new_from_namerena_raw(raw_input)
-runner.run_to_completion()
-winner = runner.world_state.winner
+# 正式增量对局接口
+raw_input = "alpha\n\nbeta"
+session = tswn_py.BattleSession(raw_input, max_rounds=20_000)
+for frame in session:
+    print(frame["frame_index"], frame["round_index"])
+result = session.result()
 
 # PreparedRunner 复用胜率
 groups, _ = tswn_py.Runner.split_namerena_into_groups(raw_input)
 prepared = tswn_py.Runner.prepare_groups(groups)
 rate = prepared.win_rate(1000)
 ```
+
+## BattleSession
+
+Runtime error 后会话进入 sticky failure（poisoned）：`is_failed() = true`，`is_done() = false`，`result()` 与 `stop_reason()` 为 None / null，`status()` 仍为 running，不是 truncated。`is_done()` 只表示已产生正常 terminal BattleResult；后续 `next_frame()` 返回同一错误 code 和 message。调用方应停止推进并释放 session；`is_failed()` 是查询方法，不增加 DTO 字段或 BattleStatus 枚举值。
+
+`BattleSession(raw, eval_rq=None, include_icons=False, max_rounds=None)` 支持迭代器和 `next_frame()`；初始/当前快照用 `initial_states()` / `current_states()` 获取。`status()`、`stop_reason()`、完成标记、轮次/帧计数和 `result()` 与 [公共 API](../../docs/reference/public-api.md) 一致。终止后 `next_frame()` 返回 None；运行中没有 result。
+
+`max_rounds` 默认 20,000，统计真实 Runtime round，包括空轮；frame_index / round_index 均从零开始。正式 `BattleReplay` / `BattleResult` 等 TypedDict 位于 `_types_battle.pyi`。错误异常携带 core 的稳定 `.code`。
 
 ## 主要 API
 
@@ -61,6 +71,7 @@ rate = prepared.win_rate(1000)
 | `to_diy_batch(names, old, minions)`                   | 批量导出 DIY/OL overlay |
 | `icon_info(name)`                                     | 对齐 `icon show` 的图标结构信息 |
 | `parse_group_lines(content, double_plus)`             | 对齐 batch 列表文件的组解析 |
+| `battle_replay(raw, ...)`                              | 推荐的一次性完整 UI 回放     |
 | `compute_show_timeline(updates, player_count, scale)` | 按 show.html 语义计算事件播放延迟 |
 
 CLI 对齐 helper 返回结构化对象，方便脚本继续处理：
@@ -93,6 +104,10 @@ overlay = tswn_py.to_diy("mario@red+fire", minions=True)
 ```
 
 注意：`to_diy(old=True, minions=True)` 与 CLI 的 `--old` / `--minions` 一样互斥，会抛出 `ValueError`。
+
+`battle_replay(raw, eval_rq=None, include_icons=False, max_rounds=None)` 返回跨语言统一的 dict：包含初始/最终状态、`frames[].updates`、`frames[].rows[].clips[]`、赢家和完成状态；达到 `max_rounds` 或 `no_progress` 时返回 `truncated=True`，原因见 `stop_reason`。
+
+`Runner`、`PreparedRunner`、RC4 与基础 `win_rate` 是 Advanced API。`PreparedRunner.eval_rq` 在创建时固定；`win_rate(..., eval_rq=...)` 只能省略或传入该相同值。
 
 ### 直播回放辅助
 
@@ -139,15 +154,17 @@ replay view 中的玩家文本会使用该序号，而唯一对象编号仍保�
 
 ### 类
 
-| 类               | 说明                                     |
-| ---------------- | ---------------------------------------- |
-| `Runner`         | 对战运行器，支持逐步推进或一次跑完       |
-| `PreparedRunner` | 预处理后的复用模板，支持 `win_rate(...)` |
-| `RunUpdates`     | 回合更新容器                             |
-| `Storage`        | 玩家数据存储                             |
-| `WorldState`     | 世界状态                                 |
-| `Player`         | 玩家状态只读视图                         |
-| `RC4`            | RC4 加密算法                             |
+| 类               | 说明                                          |
+| ---------------- | --------------------------------------------- |
+| `Runner`         | 主 Runtime 对战会话，支持逐回合推进或一次跑完 |
+| `PreparedRunner` | 预处理后的复用模板，支持 `win_rate(...)`      |
+| `RunUpdates`     | 回合更新容器                                  |
+| `RunUpdate`      | 单条结构化更新                                |
+| `RC4`            | RC4 状态与算法                                |
+
+0.5.0 不再暴露 `Storage`、`WorldState`、`Player` 或 `Runner.round_tick*`。状态查询改用
+`snapshot_players()`、`winner_team_index()` / `winner_team_indices()`、`alives*()` 与
+`rc4`；逐回合推进统一使用 `main_round()`。
 
 ## 构建
 

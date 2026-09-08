@@ -1,9 +1,44 @@
-//! Python-facing helpers aligned with the high-level `tswn-cli` commands.
+//! 与高层 `tswn-cli` 命令对齐、面向 Python 的辅助函数。
 
-use pyo3::{PyResult, exceptions::PyValueError, pyclass, pyfunction, pymethods};
-use tswn_core::cli_api::{self as core_cli_api, CliApiError};
+use pyo3::{
+    Py, PyAny, PyResult, Python,
+    exceptions::{PyRuntimeError, PyValueError},
+    pyclass, pyfunction, pymethods,
+    types::{PyDict, PyDictMethods, PyList},
+};
+use tswn_core::cli_api::{
+    self as core_cli_api, CliApiError, JsonRuntimeNormalizedOutcome, JsonRuntimeNormalizedRun, JsonRuntimeUpdateFrame,
+};
 
 use crate::wrapper;
+
+/// 面向用户辅助 API 的稳定错误码：输入无效。
+#[pyclass(extends=PyValueError)]
+#[pyo3(name = "InvalidInputError")]
+pub struct PyInvalidInputError;
+
+#[pymethods]
+impl PyInvalidInputError {
+    #[new]
+    fn new(_message: &pyo3::Bound<'_, PyAny>) -> Self { Self }
+
+    #[getter]
+    fn code(&self) -> &'static str { core_cli_api::CliApiErrorCode::InvalidInput.as_str() }
+}
+
+/// 面向用户辅助 API 的稳定错误码：运行时错误。
+#[pyclass(extends=PyRuntimeError)]
+#[pyo3(name = "TswnRuntimeError")]
+pub struct PyCliRuntimeError;
+
+#[pymethods]
+impl PyCliRuntimeError {
+    #[new]
+    fn new(_message: &pyo3::Bound<'_, PyAny>) -> Self { Self }
+
+    #[getter]
+    fn code(&self) -> &'static str { core_cli_api::CliApiErrorCode::RuntimeFailed.as_str() }
+}
 
 #[pyclass(skip_from_py_object)]
 #[pyo3(name = "WinRateResult")]
@@ -368,11 +403,101 @@ impl PyIconInfo {
     }
 }
 
-fn map_cli_error(err: CliApiError) -> pyo3::PyErr {
+pub(crate) fn map_cli_error(err: CliApiError) -> pyo3::PyErr {
     match err {
-        CliApiError::InvalidInput(message) => PyValueError::new_err(message),
-        CliApiError::Runner(err) => wrapper::error::PyRunnerError::new(err).into(),
+        CliApiError::InvalidInput(message) => pyo3::PyErr::new::<PyInvalidInputError, _>(message),
+        CliApiError::RunnerInit(err) => wrapper::error::PyRunnerError::new(err).into(),
+        CliApiError::Runtime(message) => pyo3::PyErr::new::<PyCliRuntimeError, _>(message),
+        CliApiError::InvalidArgument(message) => pyo3::PyErr::new::<PyInvalidArgumentError, _>(message),
+        CliApiError::UnsupportedOption(message) => pyo3::PyErr::new::<PyUnsupportedOptionError, _>(message),
+        CliApiError::Internal(message) => pyo3::PyErr::new::<PyInternalError, _>(message),
     }
+}
+
+fn normalized_run_to_pydict<'py>(py: Python<'py>, run: JsonRuntimeNormalizedRun) -> PyResult<pyo3::Bound<'py, PyDict>> {
+    let dict = PyDict::new(py);
+    let rounds = run
+        .rounds
+        .into_iter()
+        .map(|round| normalized_outcome_to_pydict(py, round))
+        .collect::<PyResult<Vec<_>>>()?;
+    dict.set_item("rounds", PyList::new(py, rounds)?)?;
+    dict.set_item("winner_team", run.winner_team)?;
+    dict.set_item("guard_exhausted", run.guard_exhausted)?;
+    dict.set_item("total_score", run.total_score)?;
+    Ok(dict)
+}
+
+fn normalized_outcome_to_pydict<'py>(
+    py: Python<'py>,
+    outcome: JsonRuntimeNormalizedOutcome,
+) -> PyResult<pyo3::Bound<'py, PyDict>> {
+    let dict = PyDict::new(py);
+    dict.set_item("winner_team", outcome.winner_team)?;
+    dict.set_item("round", outcome.round)?;
+    dict.set_item("total_score", outcome.total_score)?;
+    dict.set_item("rng_i", outcome.rng_i)?;
+    dict.set_item("rng_j", outcome.rng_j)?;
+    dict.set_item("entity_ids", outcome.entity_ids)?;
+    dict.set_item("teams", outcome.teams)?;
+    dict.set_item("hp", outcome.hp)?;
+    dict.set_item("magic_point", outcome.magic_point)?;
+    dict.set_item("defense", outcome.defense)?;
+    dict.set_item("resistance", outcome.resistance)?;
+    dict.set_item("alive", outcome.alive)?;
+    dict.set_item("round_order", outcome.round_order)?;
+    dict.set_item("flat_alive", outcome.flat_alive)?;
+    dict.set_item("team_alive", outcome.team_alive)?;
+    dict.set_item("alive_group_count", outcome.alive_group_count)?;
+
+    let actions = outcome
+        .actions
+        .into_iter()
+        .map(|action| {
+            let action_dict = PyDict::new(py);
+            action_dict.set_item("round", action.round)?;
+            action_dict.set_item("actor", action.actor)?;
+            action_dict.set_item("target", action.target)?;
+            action_dict.set_item("amount", action.amount)?;
+            Ok(action_dict)
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    dict.set_item("actions", PyList::new(py, actions)?)?;
+
+    let frames = outcome
+        .frames
+        .into_iter()
+        .map(|frame| normalized_update_frame_to_pydict(py, frame))
+        .collect::<PyResult<Vec<_>>>()?;
+    dict.set_item("frames", PyList::new(py, frames)?)?;
+    Ok(dict)
+}
+
+fn normalized_update_frame_to_pydict<'py>(py: Python<'py>, frame: JsonRuntimeUpdateFrame) -> PyResult<pyo3::Bound<'py, PyDict>> {
+    let dict = PyDict::new(py);
+    dict.set_item("message", frame.message)?;
+    dict.set_item("caster", frame.caster)?;
+    dict.set_item("target", frame.target)?;
+    dict.set_item("targets", frame.targets)?;
+    dict.set_item("param", frame.param)?;
+    dict.set_item("score", frame.score)?;
+    dict.set_item("delay0", frame.delay0)?;
+    dict.set_item("delay1", frame.delay1)?;
+    dict.set_item("update_type", frame.update_type)?;
+    Ok(dict)
+}
+
+#[pyfunction(signature = (raw, eval_rq=None, include_icons=false, max_rounds=None))]
+pub fn battle_replay(
+    py: Python<'_>,
+    raw: String,
+    eval_rq: Option<f64>,
+    include_icons: bool,
+    max_rounds: Option<usize>,
+) -> PyResult<Py<PyAny>> {
+    let options = crate::battle::options(eval_rq, include_icons, max_rounds);
+    let replay = core_cli_api::battle_replay(&raw, options).map_err(map_cli_error)?;
+    crate::battle::dto_to_python(py, &replay)
 }
 
 #[pyfunction(signature = (raw, n, eval_rq=None, thread=0))]
@@ -434,6 +559,29 @@ pub fn batch_rate(
         .map_err(map_cli_error)
 }
 
+#[pyfunction(signature = (target_groups, target_factors, player_groups, n, player_labels=None, keep_rq=false, thread=0))]
+pub fn batch_rate_factored(
+    target_groups: Vec<String>,
+    target_factors: Vec<f64>,
+    player_groups: Vec<String>,
+    n: usize,
+    player_labels: Option<Vec<String>>,
+    keep_rq: bool,
+    thread: u32,
+) -> PyResult<Vec<PyBatchRateResult>> {
+    core_cli_api::batch_rate_factored(
+        &target_groups,
+        &target_factors,
+        &player_groups,
+        n,
+        player_labels,
+        keep_rq,
+        thread,
+    )
+    .map(|results| results.into_iter().map(Into::into).collect())
+    .map_err(map_cli_error)
+}
+
 #[pyfunction(signature = (target_groups, players, teammates, head, n, keep_rq=false, thread=0))]
 pub fn pair_rate(
     target_groups: Vec<String>,
@@ -445,6 +593,22 @@ pub fn pair_rate(
     thread: u32,
 ) -> PyResult<Vec<PyPairRateResult>> {
     core_cli_api::pair_rate(&target_groups, &players, &teammates, head, n, keep_rq, thread)
+        .map(|results| results.into_iter().map(Into::into).collect())
+        .map_err(map_cli_error)
+}
+
+#[pyfunction(signature = (target_groups, target_factors, players, teammates, head, n, keep_rq=false, thread=0))]
+pub fn pair_rate_factored(
+    target_groups: Vec<String>,
+    target_factors: Vec<f64>,
+    players: Vec<String>,
+    teammates: Vec<String>,
+    head: usize,
+    n: usize,
+    keep_rq: bool,
+    thread: u32,
+) -> PyResult<Vec<PyPairRateResult>> {
+    core_cli_api::pair_rate_factored(&target_groups, &target_factors, &players, &teammates, head, n, keep_rq, thread)
         .map(|results| results.into_iter().map(Into::into).collect())
         .map_err(map_cli_error)
 }
@@ -467,6 +631,12 @@ pub fn parse_group_lines(content: String, double_plus: bool) -> Vec<String> {
     core_cli_api::parse_group_lines(&content, double_plus)
 }
 
+#[pyfunction(signature = (raw, max_rounds))]
+pub fn default_custom_runtime_normalized_run(py: Python<'_>, raw: String, max_rounds: usize) -> PyResult<Py<PyAny>> {
+    let run = core_cli_api::default_custom_runtime_normalized_run(&raw, max_rounds).map_err(map_cli_error)?;
+    Ok(normalized_run_to_pydict(py, run.into())?.into_any().unbind())
+}
+
 fn format_rate(value: f64, precision: usize) -> String {
     let value = if value.abs() < 0.5_f64 * 10_f64.powi(-(precision as i32)) {
         0.0
@@ -474,4 +644,217 @@ fn format_rate(value: f64, precision: usize) -> String {
         value
     };
     format!("{value:.precision$}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pyo3::types::{PyAnyMethods, PyDict, PyDictMethods, PyList};
+
+    #[test]
+    fn default_custom_runtime_normalized_run_returns_python_dict_golden_shape() {
+        Python::initialize();
+        Python::attach(|py| {
+            let value = default_custom_runtime_normalized_run(py, "left@red\n\nright@blue\n".to_string(), 1)
+                .expect("default custom runtime normalized run should execute");
+            let dict = value.bind(py).cast::<PyDict>().expect("normalized run should be a dict");
+
+            assert_eq!(
+                dict.get_item("winner_team")
+                    .expect("winner_team key should exist")
+                    .expect("winner_team should not be missing")
+                    .is_none(),
+                true
+            );
+            assert!(
+                dict.get_item("guard_exhausted")
+                    .expect("guard_exhausted key should exist")
+                    .expect("guard_exhausted should not be missing")
+                    .extract::<bool>()
+                    .expect("guard_exhausted should be bool")
+            );
+            assert_eq!(
+                dict.get_item("total_score")
+                    .expect("total_score key should exist")
+                    .expect("total_score should not be None")
+                    .extract::<u64>()
+                    .expect("total_score should be u64"),
+                77
+            );
+
+            let rounds_item = dict
+                .get_item("rounds")
+                .expect("rounds key should exist")
+                .expect("rounds should not be None");
+            let rounds = rounds_item.cast::<PyList>().expect("rounds should be a list");
+            assert_eq!(rounds.len().expect("rounds should be sized"), 1);
+            let round = rounds.get_item(0).expect("first round should exist");
+            let round = round.cast::<PyDict>().expect("round should be a dict");
+
+            assert!(
+                round
+                    .get_item("winner_team")
+                    .expect("winner_team key should exist")
+                    .expect("winner_team should not be missing")
+                    .is_none()
+            );
+            assert_eq!(round.get_item("round").unwrap().unwrap().extract::<u64>().unwrap(), 1);
+            assert_eq!(round.get_item("total_score").unwrap().unwrap().extract::<u64>().unwrap(), 77);
+            assert_eq!(round.get_item("rng_i").unwrap().unwrap().extract::<u32>().unwrap(), 74);
+            assert_eq!(round.get_item("rng_j").unwrap().unwrap().extract::<u32>().unwrap(), 92);
+            assert_eq!(
+                round.get_item("entity_ids").unwrap().unwrap().extract::<Vec<usize>>().unwrap(),
+                vec![1, 2]
+            );
+            assert_eq!(
+                round.get_item("teams").unwrap().unwrap().extract::<Vec<usize>>().unwrap(),
+                vec![0, 1]
+            );
+            assert_eq!(
+                round.get_item("hp").unwrap().unwrap().extract::<Vec<i32>>().unwrap(),
+                vec![262, 288]
+            );
+            assert_eq!(
+                round.get_item("magic_point").unwrap().unwrap().extract::<Vec<i32>>().unwrap(),
+                vec![23, 16]
+            );
+            assert_eq!(
+                round.get_item("defense").unwrap().unwrap().extract::<Vec<i32>>().unwrap(),
+                vec![6, 56]
+            );
+            assert_eq!(
+                round.get_item("resistance").unwrap().unwrap().extract::<Vec<i32>>().unwrap(),
+                vec![52, 25]
+            );
+            assert_eq!(
+                round.get_item("alive").unwrap().unwrap().extract::<Vec<bool>>().unwrap(),
+                vec![true, true]
+            );
+            assert_eq!(
+                round.get_item("round_order").unwrap().unwrap().extract::<Vec<usize>>().unwrap(),
+                vec![0, 1]
+            );
+            assert_eq!(
+                round.get_item("flat_alive").unwrap().unwrap().extract::<Vec<usize>>().unwrap(),
+                vec![0, 1]
+            );
+            assert_eq!(
+                round.get_item("team_alive").unwrap().unwrap().extract::<Vec<Vec<usize>>>().unwrap(),
+                vec![vec![0], vec![1]]
+            );
+            assert_eq!(
+                round.get_item("alive_group_count").unwrap().unwrap().extract::<usize>().unwrap(),
+                2
+            );
+
+            let actions_item = round.get_item("actions").unwrap().unwrap();
+            let actions = actions_item.cast::<PyList>().unwrap();
+            assert_eq!(actions.len().expect("actions should be sized"), 1);
+            let action_item = actions.get_item(0).unwrap();
+            let action = action_item.cast::<PyDict>().unwrap();
+            assert_eq!(action.get_item("round").unwrap().unwrap().extract::<u64>().unwrap(), 1);
+            assert_eq!(action.get_item("actor").unwrap().unwrap().extract::<usize>().unwrap(), 1);
+            assert_eq!(action.get_item("target").unwrap().unwrap().extract::<usize>().unwrap(), 0);
+            assert_eq!(action.get_item("amount").unwrap().unwrap().extract::<i32>().unwrap(), 36);
+
+            let frames_item = round.get_item("frames").unwrap().unwrap();
+            let frames = frames_item.cast::<PyList>().unwrap();
+            assert_eq!(frames.len().expect("frames should be sized"), 3);
+            let frame_item = frames.get_item(0).unwrap();
+            let frame = frame_item.cast::<PyDict>().unwrap();
+            assert_eq!(
+                frame.get_item("message").unwrap().unwrap().extract::<String>().unwrap(),
+                "[0]发起攻击"
+            );
+            assert_eq!(frame.get_item("caster").unwrap().unwrap().extract::<usize>().unwrap(), 1);
+            assert_eq!(frame.get_item("target").unwrap().unwrap().extract::<usize>().unwrap(), 0);
+            assert!(frame.get_item("targets").unwrap().unwrap().extract::<Vec<usize>>().unwrap().is_empty());
+            assert!(frame.get_item("param").unwrap().unwrap().is_none());
+            assert_eq!(frame.get_item("score").unwrap().unwrap().extract::<u32>().unwrap(), 0);
+            assert_eq!(frame.get_item("delay0").unwrap().unwrap().extract::<i32>().unwrap(), 1000);
+            assert_eq!(frame.get_item("delay1").unwrap().unwrap().extract::<i32>().unwrap(), 100);
+            assert_eq!(
+                frame.get_item("update_type").unwrap().unwrap().extract::<String>().unwrap(),
+                "none"
+            );
+
+            let frame_item = frames.get_item(1).unwrap();
+            let frame = frame_item.cast::<PyDict>().unwrap();
+            assert_eq!(
+                frame.get_item("message").unwrap().unwrap().extract::<String>().unwrap(),
+                "[1]受到[2]点伤害"
+            );
+            assert_eq!(frame.get_item("caster").unwrap().unwrap().extract::<usize>().unwrap(), 1);
+            assert_eq!(frame.get_item("target").unwrap().unwrap().extract::<usize>().unwrap(), 0);
+            assert!(frame.get_item("targets").unwrap().unwrap().extract::<Vec<usize>>().unwrap().is_empty());
+            assert!(frame.get_item("param").unwrap().unwrap().is_none());
+            assert_eq!(frame.get_item("score").unwrap().unwrap().extract::<u32>().unwrap(), 77);
+            assert_eq!(frame.get_item("delay0").unwrap().unwrap().extract::<i32>().unwrap(), 1154);
+            assert_eq!(frame.get_item("delay1").unwrap().unwrap().extract::<i32>().unwrap(), 100);
+            assert_eq!(
+                frame.get_item("update_type").unwrap().unwrap().extract::<String>().unwrap(),
+                "none"
+            );
+
+            let frame_item = frames.get_item(2).unwrap();
+            let frame = frame_item.cast::<PyDict>().unwrap();
+            assert_eq!(frame.get_item("message").unwrap().unwrap().extract::<String>().unwrap(), "\n");
+            assert_eq!(frame.get_item("caster").unwrap().unwrap().extract::<usize>().unwrap(), 0);
+            assert_eq!(frame.get_item("target").unwrap().unwrap().extract::<usize>().unwrap(), 0);
+            assert!(frame.get_item("targets").unwrap().unwrap().extract::<Vec<usize>>().unwrap().is_empty());
+            assert!(frame.get_item("param").unwrap().unwrap().is_none());
+            assert_eq!(frame.get_item("score").unwrap().unwrap().extract::<u32>().unwrap(), 0);
+            assert_eq!(frame.get_item("delay0").unwrap().unwrap().extract::<i32>().unwrap(), 0);
+            assert_eq!(frame.get_item("delay1").unwrap().unwrap().extract::<i32>().unwrap(), 0);
+            assert_eq!(
+                frame.get_item("update_type").unwrap().unwrap().extract::<String>().unwrap(),
+                "next_line"
+            );
+        });
+    }
+
+    #[test]
+    fn default_custom_runtime_normalized_run_rejects_zero_max_rounds() {
+        Python::initialize();
+        Python::attach(|py| {
+            let err = default_custom_runtime_normalized_run(py, "left@red\n\nright@blue\n".to_string(), 0)
+                .expect_err("default custom runtime normalized run should reject zero max rounds");
+
+            assert_eq!(err.to_string(), "InvalidInputError: runtime max_rounds must be positive");
+            assert!(err.matches(py, py.get_type::<PyValueError>()).unwrap());
+        });
+    }
+}
+
+#[pyclass(extends=PyValueError)]
+#[pyo3(name = "InvalidArgumentError")]
+pub struct PyInvalidArgumentError;
+#[pymethods]
+impl PyInvalidArgumentError {
+    #[new]
+    fn new(_message: &pyo3::Bound<'_, PyAny>) -> Self { Self }
+    #[getter]
+    fn code(&self) -> &'static str { core_cli_api::CliApiErrorCode::InvalidArgument.as_str() }
+}
+
+#[pyclass(extends=PyValueError)]
+#[pyo3(name = "UnsupportedOptionError")]
+pub struct PyUnsupportedOptionError;
+#[pymethods]
+impl PyUnsupportedOptionError {
+    #[new]
+    fn new(_message: &pyo3::Bound<'_, PyAny>) -> Self { Self }
+    #[getter]
+    fn code(&self) -> &'static str { core_cli_api::CliApiErrorCode::UnsupportedOption.as_str() }
+}
+
+#[pyclass(extends=PyRuntimeError)]
+#[pyo3(name = "TswnInternalError")]
+pub struct PyInternalError;
+#[pymethods]
+impl PyInternalError {
+    #[new]
+    fn new(_message: &pyo3::Bound<'_, PyAny>) -> Self { Self }
+    #[getter]
+    fn code(&self) -> &'static str { core_cli_api::CliApiErrorCode::InternalError.as_str() }
 }

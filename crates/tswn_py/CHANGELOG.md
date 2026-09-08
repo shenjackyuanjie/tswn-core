@@ -1,6 +1,58 @@
 # 更新日志
 
+## 未发布
+
+- 新增 BattleSession `is_failed()` 查询 sticky Runtime failure；失败没有 result/stop_reason，is_done 仍为 false，不改变 DTO 或状态枚举。
+
+- 新增 BattleSession PyClass / 迭代器与完整 TypedDict；battle_replay 精确返回 BattleReplay，异常暴露统一错误码。
+
 ## [Unreleased]
+
+### 新增
+
+- 新增 `batch_rate_factored()` 与 `pair_rate_factored()`，支持按与靶子组等长的正数权重数组进行加权计算。
+
+## [0.5.2] - 2026-08-31
+
+### 新增
+
+- 新增 `battle_replay()` 推荐高层入口与带稳定 `.code` 的 `InvalidInputError` / `TswnRuntimeError`；PreparedRunner 增加只读 `eval_rq`。
+
+### 修复
+
+- 同步 core 的 Merge 状态刷新修复；`namer_pf()` / `score()` 在吞噬仅
+  合并技能的战斗中不再沿用旧的 Haste 生效倍率，Python API 形状不变。
+- 同步铁壁打破时立即注销状态，以及尾部空 `@` 按无队名解析的兼容修复。
+- 同步 `@team:metadata` 按 Bun 解析为无队名的修复，并修复目标与 score profile
+  同 clan 时的 core panic；Python API 形状不变。
+- 同步嵌套自定义幻影的延迟蓝图修复；`namer_pf()` / `score()` 遇到带 `Clone`、
+  `Shadow` 的幻影不再触发 core panic，Python API 形状不变。
+
+## [0.5.1] - 2026-07-30
+
+### 修复
+
+- 同步 core 0.5.1 的 `namer_pf()` / `score()` 行为修复，覆盖 clone、状态刷新、
+  Protect 重定向和召唤物延迟死亡边界；Python API 形状不变。
+
+## [0.5.0] - 2026-07-18
+
+### ⚠️ Breaking Changes
+
+- `Runner` / `PreparedRunner` 会话切换到主 Runtime；删除 `Runner.round_tick*`、`Storage`、`WorldState`、`Player` 及 parity helper，保留 `main_round`、完成态、RC4、胜者、snapshot 与 replay 接口。
+- 未显式提供 guard 的完成与 replay 路径统一使用 20,000 主回合上限；replay clip 继续只从 `parts[]` 暴露渲染语义。
+- 迁移时使用 `snapshot_players()` 代替旧玩家/世界对象 getter，使用 `winner_team_index()` / `winner_team_indices()` 查询胜者，逐回合推进统一调用 `main_round()`。
+
+### 修复
+
+- 类型存根补齐 `ScoreResult.errors` 与 `default_custom_runtime_normalized_run()`，并同步扩展模块及包顶层的重导出和 `__all__`。
+
+## [0.4.0] - 2026-07-14
+
+### ⚠️ Breaking Changes
+
+- `Runner.build_replay()` 的 clip dict 与类型存根删除多项顶层渲染字段，调用方必须改读 `parts[]`。
+- 无 runtime 参数的评分、胜率、批量与 `namer_pf` 顶层 helper 默认改用 Runtime。
 
 ### 变更
 
@@ -207,6 +259,6 @@
 
 ## [0.1.2] - 2026-03-14
 
-### Fixed
+### 已修复
 
 - 修复了RunUpdates -> RunUpdate滚木的问题

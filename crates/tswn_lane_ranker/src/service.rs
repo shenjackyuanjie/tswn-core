@@ -1,27 +1,46 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::process::Command;
-use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+    mpsc,
+};
 use std::thread;
+use std::time::Instant;
 
 use anyhow::Context;
 use tokio::task;
 
 use crate::db::{Db, InsertGroupOutcome};
 use crate::model::{
-    AddGroupsRequest, AddGroupsResponse, AddWinratesRequest, AddWinratesResponse, AddedWinrateRow,
-    BlockGroupRequest, BlockGroupResponse, BlockGroupsByTextRequest, BlockGroupsByTextResponse,
-    ConstrainedSelectionRequest, ConstrainedSelectionResponse, IgnoredGroup, IgnoredWinratePair, JobId,
-    MergeTeamsRequest, MergeTeamsResponse, RecomputeLaneResponse, StoredGroup,
-    TargetGenerationRequest, TargetGenerationResponse, TargetGenerationRow, TargetGenerationSummary,
-    TargetReferenceAuditRow,
+    AddGroupsRequest, AddGroupsResponse, AddWinratesRequest, AddWinratesResponse, AddedWinrateRow, BlockGroupRequest,
+    BlockGroupResponse, BlockGroupsByTextRequest, BlockGroupsByTextResponse, ConstrainedSelectionRequest,
+    ConstrainedSelectionResponse, IgnoredGroup, IgnoredWinratePair, JobId, MergeTeamsRequest, MergeTeamsResponse,
+    RecomputeLaneResponse, StoredGroup, TargetGenerationRequest, TargetGenerationResponse, TargetGenerationRow,
+    TargetGenerationSummary, TargetReferenceAuditRow,
 };
-use crate::parser::{parse_group, parse_member_team};
 use crate::pairwise::{calibrate_saved_lane_results, default_selection_cqd_threshold, validate_saved_pair_strength_results};
+use crate::parser::{parse_group, parse_member_team};
 use crate::ranker::{RankerConfig, recompute_lane_until_stable};
 use crate::winrate::compute_rate_without_db;
 
 const TARGET_MILP_SOLVER: &str = include_str!("../tools/target_milp_solver.py");
+const RATE_PERSIST_CHECKPOINT_SIZE: usize = 100;
+
+fn persist_service_rate_checkpoint(
+    db: &Db,
+    pending: &mut Vec<(crate::model::GroupId, crate::model::GroupId, f64)>,
+    samples: usize,
+    force: bool,
+) -> anyhow::Result<()> {
+    if pending.len() < RATE_PERSIST_CHECKPOINT_SIZE && !force {
+        return Ok(());
+    }
+    db.save_rate_pairs_bulk(pending, samples)?;
+    pending.clear();
+    Ok(())
+}
 
 #[derive(Clone)]
 pub struct AppService {
@@ -30,9 +49,7 @@ pub struct AppService {
 }
 
 impl AppService {
-    pub fn new(db: Db, config: RankerConfig) -> Self {
-        Self { db, config }
-    }
+    pub fn new(db: Db, config: RankerConfig) -> Self { Self { db, config } }
 
     pub fn add_groups(&self, req: AddGroupsRequest) -> anyhow::Result<AddGroupsResponse> {
         let AddGroupsRequest {
@@ -41,11 +58,7 @@ impl AppService {
             inner_workers,
             skip_archived,
         } = req;
-        let config = self.config_with_run_options(
-            outer_workers,
-            inner_workers,
-            skip_archived,
-        )?;
+        let config = self.config_with_run_options(outer_workers, inner_workers, skip_archived)?;
 
         let mut added = Vec::new();
         let mut duplicated = Vec::new();
@@ -90,10 +103,7 @@ impl AppService {
             }
         }
 
-        let queued_lanes = self.queue_recompute_lanes_with_config(
-            dirty_lanes.into_iter().collect(),
-            config,
-        )?;
+        let queued_lanes = self.queue_recompute_lanes_with_config(dirty_lanes.into_iter().collect(), config)?;
 
         Ok(AddGroupsResponse {
             added,
@@ -102,7 +112,6 @@ impl AppService {
             queued_lanes,
         })
     }
-
 
     pub fn add_manual_winrates(&self, req: AddWinratesRequest) -> anyhow::Result<AddWinratesResponse> {
         let AddWinratesRequest {
@@ -117,11 +126,7 @@ impl AppService {
             anyhow::bail!("服务端 win_rate_samples 必须是正整数");
         }
 
-        let lines: Vec<String> = groups
-            .into_iter()
-            .map(|x| x.trim().to_string())
-            .filter(|x| !x.is_empty())
-            .collect();
+        let lines: Vec<String> = groups.into_iter().map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect();
 
         let requested_pairs = (lines.len() + 1) / 2;
         let mut ignored_pairs = Vec::new();
@@ -231,7 +236,12 @@ impl AppService {
         }
 
         let workers = resolve_manual_winrate_workers(config.outer_workers, total);
-        let mode = if config.outer_workers == 0 { "dynamic_queue" } else { "static_chunks" }.to_string();
+        let mode = if config.outer_workers == 0 {
+            "dynamic_queue"
+        } else {
+            "static_chunks"
+        }
+        .to_string();
         let pairs = Arc::new(pairs);
         let done = Arc::new(AtomicUsize::new(0));
         let mut handles = Vec::with_capacity(workers);
@@ -239,12 +249,14 @@ impl AppService {
         if config.outer_workers == 0 {
             let next_pair = Arc::new(AtomicUsize::new(0));
             for _ in 0..workers {
+                let db = self.db.clone();
                 let pairs = Arc::clone(&pairs);
                 let next_pair = Arc::clone(&next_pair);
                 let done = Arc::clone(&done);
                 let inner_workers = config.inner_workers;
                 handles.push(thread::spawn(move || -> anyhow::Result<Vec<ComputedManualWinrate>> {
                     let mut computed = Vec::new();
+                    let mut pending = Vec::with_capacity(RATE_PERSIST_CHECKPOINT_SIZE);
                     loop {
                         let idx = next_pair.fetch_add(1, Ordering::Relaxed);
                         let Some(pair) = pairs.get(idx) else {
@@ -252,13 +264,17 @@ impl AppService {
                         };
                         let rate = compute_rate_without_db(&pair.group_a, &pair.group_b, samples, inner_workers)?;
                         done.fetch_add(1, Ordering::Relaxed);
+                        pending.push((pair.group_a.id, pair.group_b.id, rate));
+                        persist_service_rate_checkpoint(&db, &mut pending, samples, false)?;
                         computed.push(ComputedManualWinrate::from_pair(pair, rate, samples));
                     }
+                    persist_service_rate_checkpoint(&db, &mut pending, samples, true)?;
                     Ok(computed)
                 }));
             }
         } else {
             for worker_id in 0..workers {
+                let db = self.db.clone();
                 let pairs = Arc::clone(&pairs);
                 let done = Arc::clone(&done);
                 let inner_workers = config.inner_workers;
@@ -266,14 +282,18 @@ impl AppService {
                 let end = total * (worker_id + 1) / workers;
                 handles.push(thread::spawn(move || -> anyhow::Result<Vec<ComputedManualWinrate>> {
                     let mut computed = Vec::with_capacity(end.saturating_sub(start));
+                    let mut pending = Vec::with_capacity(RATE_PERSIST_CHECKPOINT_SIZE);
                     for idx in start..end {
                         let Some(pair) = pairs.get(idx) else {
                             break;
                         };
                         let rate = compute_rate_without_db(&pair.group_a, &pair.group_b, samples, inner_workers)?;
                         done.fetch_add(1, Ordering::Relaxed);
+                        pending.push((pair.group_a.id, pair.group_b.id, rate));
+                        persist_service_rate_checkpoint(&db, &mut pending, samples, false)?;
                         computed.push(ComputedManualWinrate::from_pair(pair, rate, samples));
                     }
+                    persist_service_rate_checkpoint(&db, &mut pending, samples, true)?;
                     Ok(computed)
                 }));
             }
@@ -286,10 +306,7 @@ impl AppService {
         }
         computed.sort_by_key(|row| row.pair_index);
 
-        let db_rates: Vec<_> = computed
-            .iter()
-            .map(|row| (row.group_a_id, row.group_b_id, row.win_rate_a))
-            .collect();
+        let db_rates: Vec<_> = computed.iter().map(|row| (row.group_a_id, row.group_b_id, row.win_rate_a)).collect();
         self.db.save_rate_pairs_bulk(&db_rates, samples)?;
 
         let results = computed
@@ -321,11 +338,7 @@ impl AppService {
     }
 
     pub fn set_group_blocked(&self, group_id: i64, blocked: bool, req: BlockGroupRequest) -> anyhow::Result<BlockGroupResponse> {
-        let config = self.config_with_run_options(
-            req.outer_workers,
-            req.inner_workers,
-            req.skip_archived,
-        )?;
+        let config = self.config_with_run_options(req.outer_workers, req.inner_workers, req.skip_archived)?;
         let Some((lane_size, canonical)) = self.db.set_group_blocked(group_id, blocked)? else {
             anyhow::bail!("group id {group_id} not found");
         };
@@ -340,18 +353,18 @@ impl AppService {
         })
     }
 
-    pub fn set_groups_blocked_by_text(&self, blocked: bool, req: BlockGroupsByTextRequest) -> anyhow::Result<BlockGroupsByTextResponse> {
+    pub fn set_groups_blocked_by_text(
+        &self,
+        blocked: bool,
+        req: BlockGroupsByTextRequest,
+    ) -> anyhow::Result<BlockGroupsByTextResponse> {
         let BlockGroupsByTextRequest {
             groups,
             outer_workers,
             inner_workers,
             skip_archived,
         } = req;
-        let config = self.config_with_run_options(
-            outer_workers,
-            inner_workers,
-            skip_archived,
-        )?;
+        let config = self.config_with_run_options(outer_workers, inner_workers, skip_archived)?;
 
         let mut blocked_groups = BTreeSet::new();
         let mut unblocked_groups = BTreeSet::new();
@@ -399,10 +412,7 @@ impl AppService {
             }
         }
 
-        let queued_lanes = self.queue_recompute_lanes_with_config(
-            dirty_lanes.into_iter().collect(),
-            config,
-        )?;
+        let queued_lanes = self.queue_recompute_lanes_with_config(dirty_lanes.into_iter().collect(), config)?;
 
         Ok(BlockGroupsByTextResponse {
             blocked: blocked_groups.into_iter().collect(),
@@ -413,11 +423,7 @@ impl AppService {
     }
 
     pub fn merge_teams(&self, req: MergeTeamsRequest) -> anyhow::Result<MergeTeamsResponse> {
-        let config = self.config_with_run_options(
-            req.outer_workers,
-            req.inner_workers,
-            req.skip_archived,
-        )?;
+        let config = self.config_with_run_options(req.outer_workers, req.inner_workers, req.skip_archived)?;
 
         let mut dsu = self.db.load_team_dsu()?;
         let root = dsu.union(req.x.trim(), req.y.trim());
@@ -432,15 +438,7 @@ impl AppService {
         })
     }
 
-    pub fn queue_recompute_lanes(&self, lanes: Vec<usize>) -> anyhow::Result<Vec<usize>> {
-        self.queue_recompute_lanes_with_config(lanes, self.config.clone())
-    }
-
-    pub fn queue_recompute_lanes_with_config(
-        &self,
-        lanes: Vec<usize>,
-        config: RankerConfig,
-    ) -> anyhow::Result<Vec<usize>> {
+    pub fn queue_recompute_lanes_with_config(&self, lanes: Vec<usize>, config: RankerConfig) -> anyhow::Result<Vec<usize>> {
         let mut queued = Vec::new();
 
         for lane in lanes {
@@ -461,8 +459,16 @@ impl AppService {
                 &format!(
                     "queued job #{job_id}, stickiness={}, outer_workers={}, inner_threads={}, skip_archived={}",
                     config.effective_stickiness(lane),
-                    if config.outer_workers == 0 { "dynamic_auto".to_string() } else { format!("static({})", config.outer_workers) },
-                    if config.inner_workers == 0 { "auto(0)".to_string() } else { config.inner_workers.to_string() },
+                    if config.outer_workers == 0 {
+                        "dynamic_auto".to_string()
+                    } else {
+                        format!("static({})", config.outer_workers)
+                    },
+                    if config.inner_workers == 0 {
+                        "auto(0)".to_string()
+                    } else {
+                        config.inner_workers.to_string()
+                    },
                     config.skip_archived
                 ),
             )?;
@@ -486,11 +492,7 @@ impl AppService {
             anyhow::bail!("stickiness must be a positive integer");
         }
 
-        let mut config = self.config_with_run_options(
-            outer_workers,
-            inner_workers,
-            skip_archived,
-        )?;
+        let mut config = self.config_with_run_options(outer_workers, inner_workers, skip_archived)?;
         config.stickiness = stickiness;
         let queued_lanes = self.queue_recompute_lanes_with_config(vec![lane], config)?;
         Ok(RecomputeLaneResponse { queued_lanes })
@@ -501,14 +503,11 @@ impl AppService {
         lane: usize,
         req: ConstrainedSelectionRequest,
     ) -> anyhow::Result<ConstrainedSelectionResponse> {
-        let mut config = self.config_with_run_options(
-            req.outer_workers,
-            req.inner_workers,
-            None,
-        )?;
+        let mut config = self.config_with_run_options(req.outer_workers, req.inner_workers, None)?;
         config.inner_workers = 1;
 
-        let threshold = req.raw_score_threshold
+        let threshold = req
+            .raw_score_threshold
             .or(req.cqd_threshold)
             .unwrap_or_else(|| default_selection_cqd_threshold(lane));
         if !threshold.is_finite() || !(0.0..=100.0).contains(&threshold) {
@@ -532,7 +531,11 @@ impl AppService {
             0,
             &format!(
                 "queued calibration job #{job_id}, raw_score_threshold={threshold:.3}, outer_workers={}, inner_threads=1",
-                if config.outer_workers == 0 { "dynamic_auto".to_string() } else { format!("static({})", config.outer_workers) },
+                if config.outer_workers == 0 {
+                    "dynamic_auto".to_string()
+                } else {
+                    format!("static({})", config.outer_workers)
+                },
             ),
         )?;
 
@@ -544,20 +547,16 @@ impl AppService {
         })
     }
 
-
     pub fn validate_pair_strength_lane(
         &self,
         lane: usize,
         req: ConstrainedSelectionRequest,
     ) -> anyhow::Result<serde_json::Value> {
-        let mut config = self.config_with_run_options(
-            req.outer_workers,
-            req.inner_workers,
-            None,
-        )?;
+        let mut config = self.config_with_run_options(req.outer_workers, req.inner_workers, None)?;
         config.inner_workers = 1;
 
-        let threshold = req.raw_score_threshold
+        let threshold = req
+            .raw_score_threshold
             .or(req.cqd_threshold)
             .unwrap_or_else(|| default_selection_cqd_threshold(lane));
         if !threshold.is_finite() || !(0.0..=100.0).contains(&threshold) {
@@ -567,268 +566,566 @@ impl AppService {
         validate_saved_pair_strength_results(&self.db, lane, &config, threshold)
     }
 
+    pub fn generate_lane_targets(&self, lane: usize, req: TargetGenerationRequest) -> anyhow::Result<TargetGenerationResponse> {
+        #[cfg(any())]
+        const SUPPORT_COUNT: usize = 50;
 
-    pub fn generate_lane_targets(
-        &self,
-        lane: usize,
-        req: TargetGenerationRequest,
-    ) -> anyhow::Result<TargetGenerationResponse> {
-        const TARGET_TOTAL: usize = 50;
-        const DEFAULT_FIXED_MAIN_COUNT: usize = 40;
-        const PLAYER_CAP: usize = 5;
-        const TARGET_PLAYER_REPEAT_CAP: usize = 1;
-        const SEED_BEAM_WIDTH: usize = 18;
-        const LNS_BEAM_WIDTH: usize = 14;
-        const SWAP_PASSES: usize = 10;
-        const LNS_ROUNDS: usize = 42;
-        const WORST_GUIDED_REFS: usize = 16;
-        const TWO_SWAP_REMOVE_SHORTLIST: usize = 10;
-        const TWO_SWAP_ADD_SHORTLIST: usize = 32;
-        const TWO_SWAP_PASSES: usize = 2;
-        const FEASIBILITY_BEAM_WIDTH: usize = 512;
-        const TARGET_WEIGHT_MIN: f64 = 0.01;
-        const TARGET_WEIGHT_MAX: f64 = 10.0;
-        const PLAYER_WEIGHT_CAP: f64 = 5.0;
-
-        let cqd_threshold = req.cqd_threshold.unwrap_or(49.0);
-        if !cqd_threshold.is_finite() || !(0.0..=100.0).contains(&cqd_threshold) {
-            anyhow::bail!("靶子 C-Score 阈值必须是 0 到 100 之间的数字");
-        }
-
-        let fixed_main_count = req.fixed_main_count.unwrap_or(DEFAULT_FIXED_MAIN_COUNT);
-        if fixed_main_count > TARGET_TOTAL {
-            anyhow::bail!(
-                "固定主榜数量不能超过总靶子数 {TARGET_TOTAL}：当前 fixed_main_count={}",
-                fixed_main_count
-            );
-        }
-
-        let rows = self.db.lane_results(lane)?;
-        if rows.is_empty() {
+        // 仅为兼容旧的 target-bar 请求而保留。
+        let _ = (req.cqd_threshold, req.fixed_main_count);
+        let lane_rows = self.db.lane_results(lane)?;
+        if lane_rows.is_empty() {
             anyhow::bail!("该赛道还没有结果；请先读取/重算赛道");
         }
-
-        let mut rate_map = self.db.lane_rate_map(lane)?;
-        if rate_map.is_empty() {
-            anyhow::bail!("该赛道没有 group_rates；无法用胜率对生成靶子");
+        let lane_group_count = lane_rows.len();
+        self.db.set_lane_status(lane, "generating_targets", lane_group_count)?;
+        self.db.set_lane_progress(
+            lane,
+            "target_preparing",
+            0,
+            1,
+            0,
+            0,
+            0,
+            "preparing target candidates and checking required rate coverage; 0.00 pair/s",
+        )?;
+        let trace = self
+            .db
+            .correct_target_trace(lane)?
+            .ok_or_else(|| anyhow::anyhow!("该赛道没有与当前结果匹配的 Correct 追溯记录；请先运行一次 Correct 校准"))?;
+        let mut trace_metadata: serde_json::Value =
+            serde_json::from_str(&trace.metadata_json).context("数据库中的 Correct 追溯 metadata 不是有效 JSON")?;
+        let target_raw_min = trace_metadata
+            .get("calibration_raw_min")
+            .and_then(serde_json::Value::as_f64)
+            .filter(|value| value.is_finite())
+            .ok_or_else(|| anyhow::anyhow!("Correct 追溯缺少有限的 calibration_raw_min；请按当前阈值重新校准"))?;
+        if trace.weights.is_empty() {
+            anyhow::bail!("Correct 追溯记录为空；请重新运行 Correct 校准");
         }
 
-        let mut candidates: Vec<TargetCandidate> = rows
-            .into_iter()
-            .filter(|row| !row.is_blocked)
-            .filter(|row| row.pair_score.map(|x| x.is_finite()).unwrap_or(false))
-            .map(TargetCandidate::from_row)
-            .collect();
-
-        if candidates.len() < TARGET_TOTAL {
-            anyhow::bail!(
-                "可用校准候选不足 {TARGET_TOTAL} 个：当前只有 {} 个非 blocked 且有 C-Score 的组合",
-                candidates.len()
-            );
-        }
-
-        candidates.sort_by(compare_target_candidates);
-
-        // 主榜口径：Correct 排序后按玩家身份 greedy。fixed_main_count 只定义最终锁定前缀，
-        // 不再决定优化器从空集还是从强完整解启动。
-        let main_order = greedy_main_order(&candidates, None);
-        let reference_limit = if lane == 1 { 100 } else { 200 };
-        let reference_indices: Vec<usize> = main_order.iter().copied().take(reference_limit).collect();
-        if reference_indices.len() < 2 {
-            anyhow::bail!("主榜 reference 组合不足 2 个；无法生成 profile 靶子");
-        }
-
-        let threshold_main_order: Vec<usize> = main_order
+        let candidates: Vec<TargetCandidate> = lane_rows.into_iter().map(TargetCandidate::from_row).collect();
+        let index_by_group: HashMap<crate::model::GroupId, usize> = candidates
             .iter()
-            .copied()
-            .filter(|&idx| candidates[idx].correct_score() >= cqd_threshold)
+            .enumerate()
+            .map(|(idx, candidate)| (candidate.row.group_id, idx))
             .collect();
-
-        if threshold_main_order.len() < fixed_main_count {
-            anyhow::bail!(
-                "C-Score ≥ {:.3} 的主榜 greedy 组合不足 {} 个：当前只有 {} 个",
-                cqd_threshold,
-                fixed_main_count,
-                threshold_main_order.len()
-            );
-        }
-
-        let locked_prefix: Vec<usize> = threshold_main_order
-            .iter()
-            .copied()
-            .take(fixed_main_count)
-            .collect();
-
-        let fill_pool: Vec<usize> = (0..candidates.len())
-            .filter(|&idx| candidates[idx].correct_score() >= cqd_threshold)
-            .collect();
-
-        if fill_pool.len() < TARGET_TOTAL {
-            anyhow::bail!(
-                "C-Score ≥ {:.3} 的可用候选不足 {TARGET_TOTAL} 个：当前只有 {} 个",
-                cqd_threshold,
-                fill_pool.len()
-            );
-        }
-
-        // 缺失边是可测数据，不做 50% 填补、不在 objective 里当成常规误差。
-        // 这里先补齐 reference × candidate pool 的胜率矩阵，再进入优化。
-        let missing_rate_pairs = collect_missing_target_rate_pairs(
-            &reference_indices,
-            &fill_pool,
-            &candidates,
-            &rate_map,
-        );
-        if !missing_rate_pairs.is_empty() {
-            let computed = compute_missing_target_rates(
-                &self.db,
-                &self.config,
-                &missing_rate_pairs,
-                &candidates,
-            )?;
-            self.db.save_rate_pairs_bulk(&computed, self.config.win_rate_samples)?;
-            for (a, b, rate) in computed {
-                rate_map.insert((a, b), rate);
-                rate_map.insert((b, a), 100.0 - rate);
+        let mut merged_weights = vec![0.0_f64; candidates.len()];
+        let mut raw_weight_sum = 0.0_f64;
+        let mut raw_trace_count = 0usize;
+        for candidate in &candidates {
+            let weight = candidate.row.golden_rate;
+            if weight.is_finite() && weight > 0.0 {
+                raw_weight_sum += weight;
+                raw_trace_count += 1;
             }
         }
+        if raw_trace_count == 0 {
+            anyhow::bail!("当前结果没有正且有限的 Golden 权重，无法追溯 Raw");
+        }
 
-        let milp_solution = run_target_milp_solver(
-            &locked_prefix,
-            &fill_pool,
-            TARGET_TOTAL,
-            TARGET_PLAYER_REPEAT_CAP,
-            TARGET_WEIGHT_MIN,
-            TARGET_WEIGHT_MAX,
-            PLAYER_WEIGHT_CAP,
-            &reference_indices,
-            &candidates,
-            &rate_map,
-        )
-        .with_context(|| {
-            format!(
-                "weighted MILP 靶子生成失败：重复号上限={}、旧玩家计数上限={}、玩家权重上限={:.3}、C-Score≥{:.3}、fixed_main_count={}、target_total={TARGET_TOTAL}",
-                TARGET_PLAYER_REPEAT_CAP,
-                PLAYER_CAP,
-                PLAYER_WEIGHT_CAP,
-                cqd_threshold,
-                fixed_main_count
-            )
-        })?;
-
-        let selected = milp_solution.indices;
-        let target_weights = milp_solution.weights;
-        if selected.len() != TARGET_TOTAL || target_weights.len() != TARGET_TOTAL {
-            anyhow::bail!(
-                "weighted MILP 靶子生成返回数量错误：期望 {TARGET_TOTAL} 个，实际 selected={} weights={}",
-                selected.len(),
-                target_weights.len()
-            );
-        }
-        if let Some(error) = target_solution_feasibility_error(&selected, &candidates, TARGET_PLAYER_REPEAT_CAP) {
-            anyhow::bail!("weighted MILP 靶子生成返回非法解：{error}");
-        }
-        if let Some(error) = target_weight_feasibility_error(
-            &selected,
-            &target_weights,
-            &candidates,
-            TARGET_WEIGHT_MIN,
-            TARGET_WEIGHT_MAX,
-            TARGET_TOTAL as f64,
-            PLAYER_WEIGHT_CAP,
-        ) {
-            anyhow::bail!("weighted MILP 靶子生成返回非法权重：{error}");
-        }
-        for &locked in &locked_prefix {
-            if !selected.contains(&locked) {
+        let mut scope_sums: HashMap<String, f64> = HashMap::new();
+        let mut seen_correct = HashSet::new();
+        let mut correct_target_indices = Vec::new();
+        let mut correct_target_weights = Vec::new();
+        let mut correct_nominal_weight_sum = 0.0_f64;
+        let mut correct_target_weight_sum = 0.0_f64;
+        for weight in &trace.weights {
+            let Some(&candidate_idx) = index_by_group.get(&weight.group_id) else {
                 anyhow::bail!(
-                    "weighted MILP 靶子生成返回解缺少锁定靶子 group_id={}",
-                    candidates[locked].row.group_id
+                    "Correct 追溯引用了当前赛道不存在的 group_id={}；请重新运行 Correct 校准",
+                    weight.group_id
+                );
+            };
+            if !weight.reference_weight.is_finite()
+                || weight.reference_weight <= 0.0
+                || !weight.nominal_weight.is_finite()
+                || weight.nominal_weight.abs() <= 1e-15
+                || !weight.raw_golden_weight.is_finite()
+                || weight.raw_golden_weight < 0.0
+                || !weight.common_coefficient.is_finite()
+                || weight.common_coefficient.abs() <= 1e-15
+                || !weight.coefficient_mean.is_finite()
+                || !weight.coefficient_stddev.is_finite()
+                || weight.coefficient_stddev < 0.0
+                || !weight.correct_target_weight.is_finite()
+                || weight.correct_target_weight.abs() <= 1e-15
+                || (weight.nominal_weight - weight.correct_target_weight).abs() > 1e-10
+                || (50.0 * weight.common_coefficient - weight.correct_target_weight).abs() > 1e-8
+            {
+                anyhow::bail!(
+                    "Correct 追溯权重非法：scope={} group_id={}",
+                    weight.reference_scope,
+                    weight.group_id
+                );
+            }
+            if !seen_correct.insert((weight.reference_scope.clone(), weight.group_id)) {
+                anyhow::bail!(
+                    "Correct 追溯存在重复引用：scope={} group_id={}",
+                    weight.reference_scope,
+                    weight.group_id
+                );
+            }
+            *scope_sums.entry(weight.reference_scope.clone()).or_insert(0.0) += weight.reference_weight;
+            correct_nominal_weight_sum += weight.nominal_weight;
+            correct_target_weight_sum += weight.correct_target_weight;
+            if (candidates[candidate_idx].row.golden_rate - weight.raw_golden_weight).abs() > 1e-8 {
+                anyhow::bail!(
+                    "Correct 靶权重对应的 Golden 已变化：group_id={}；请重新运行 Correct 校准",
+                    weight.group_id
+                );
+            }
+            merged_weights[candidate_idx] += weight.correct_target_weight;
+            correct_target_indices.push(candidate_idx);
+            correct_target_weights.push(weight.correct_target_weight);
+        }
+        for (scope, sum) in &scope_sums {
+            if (*sum - 1.0).abs() > 1e-8 {
+                anyhow::bail!(
+                    "Correct 追溯 scope={} 的 reference_weight 总和应为 1，实际为 {:.12}",
+                    scope,
+                    sum
                 );
             }
         }
+        let mut rate_map = self.db.lane_rate_map(lane)?;
+        let all_candidate_indices = (0..candidates.len()).collect::<Vec<_>>();
+        let compression_target_indices = candidates
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, candidate)| target_candidate_is_eligible(candidate, target_raw_min).then_some(idx))
+            .collect::<Vec<_>>();
+        if compression_target_indices.len() < 50 {
+            anyhow::bail!("Raw 阈值内合法靶候选不足 50 个：{}", compression_target_indices.len(),);
+        }
+        let mut required_rate_target_indices = compression_target_indices.clone();
+        required_rate_target_indices.extend(
+            merged_weights
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, weight)| (weight.abs() > 1e-15).then_some(idx)),
+        );
+        required_rate_target_indices.sort_unstable();
+        required_rate_target_indices.dedup();
+        // 每个已保存行仍是误差审计行。矩阵列由满足阈值的支持候选项和非零 Correct 谱系列的并集构成
+        // （Raw Golden 可能贡献低于阈值的列）。零质量、低于阈值的侦察列无法被使用。
+        let missing_correct_pairs =
+            collect_missing_target_rate_pairs(&all_candidate_indices, &required_rate_target_indices, &candidates, &rate_map);
+        fill_missing_target_rates_with_checkpoints(
+            &self.db,
+            &self.config,
+            lane,
+            &missing_correct_pairs,
+            &candidates,
+            &mut rate_map,
+        )?;
+        let mut correct_forward_diffs = Vec::with_capacity(candidates.len());
+        for candidate in &candidates {
+            let mut weighted_rate_sum = 0.0_f64;
+            for (&target_idx, &target_weight) in correct_target_indices.iter().zip(correct_target_weights.iter()) {
+                let rate =
+                    rate_between(&rate_map, candidate.row.group_id, candidates[target_idx].row.group_id).with_context(|| {
+                        format!(
+                            "Correct 靶权重前向重放缺少胜率：score_group_id={} target_group_id={}",
+                            candidate.row.group_id, candidates[target_idx].row.group_id
+                        )
+                    })?;
+                weighted_rate_sum += target_weight * rate;
+            }
+            let replay_score = weighted_rate_sum / 50.0;
+            let saved_score = candidate
+                .row
+                .pair_score
+                .filter(|score| score.is_finite())
+                .unwrap_or(candidate.row.raw_average_cqd);
+            correct_forward_diffs.push(replay_score - saved_score);
+        }
+        let correct_forward_replay_mean_abs_diff =
+            correct_forward_diffs.iter().map(|diff| diff.abs()).sum::<f64>() / correct_forward_diffs.len().max(1) as f64;
+        let correct_forward_replay_max_abs_diff = correct_forward_diffs.iter().map(|diff| diff.abs()).fold(0.0_f64, f64::max);
+        let correct_forward_replay_rmse = (correct_forward_diffs.iter().map(|diff| diff * diff).sum::<f64>()
+            / correct_forward_diffs.len().max(1) as f64)
+            .sqrt();
+        let row_coefficient_replay_mean_abs_diff = trace_metadata
+            .pointer("/rowwise_correct_component/row_replay_mean_abs_diff")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(0.0);
+        let row_coefficient_replay_max_abs_diff = trace_metadata
+            .pointer("/rowwise_correct_component/row_replay_max_abs_diff")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(0.0);
 
-        let final_obj = target_objective_weighted(
+        let reference_indices = all_candidate_indices.clone();
+        let big_target_weight_sum = merged_weights.iter().sum::<f64>();
+        let compression_target_set = compression_target_indices.iter().copied().collect::<HashSet<_>>();
+
+        // 从实际浏览器 Top50 开始，并为替换一次性冻结其 C-Score Top30。较低的 20 项按低 C-Score 优先搜索；
+        // 删除阶段一次性冻结自己的替换后 Top30。
+        self.db.set_lane_progress(
+            lane,
+            "target_compression",
+            0,
+            1,
+            required_rate_target_indices.len(),
+            required_rate_target_indices.len(),
+            0,
+            "target rate matrix ready; optimizing initial support, weights, replacements, deletion path, and final support",
+        )?;
+        let compression = run_inherited_big_target_compression_solver(
+            &merged_weights,
             &reference_indices,
-            &selected,
-            &target_weights,
+            &compression_target_set,
+            target_raw_min,
             &candidates,
             &rate_map,
-        );
-        let reference_audit_rows =
-            target_reference_audit_rows_weighted(&reference_indices, &selected, &target_weights, &candidates, &rate_map, &final_obj);
-        let audit_stats = audit_diff_stats(&reference_audit_rows);
-        let mut rows = Vec::with_capacity(selected.len());
-        let target_config_text = build_target_config_text(&selected, &target_weights, &candidates);
-        let target_weight_sum = target_weights.iter().copied().sum::<f64>();
-        let target_weight_min = target_weights.iter().copied().fold(f64::INFINITY, f64::min);
-        let target_weight_max = target_weights.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        )?;
+        let mut selected_records = compression
+            .selected_indices
+            .iter()
+            .copied()
+            .zip(compression.base_weights.iter().copied())
+            .zip(compression.final_seed_anchor_weights.iter().copied())
+            .zip(compression.fitted_additions.iter().copied())
+            .zip(compression.lineage_weights.iter().copied())
+            .zip(compression.selected_weights.iter().copied())
+            .map(|(((((idx, base), seed), addition), lineage), weight)| (idx, base, seed, addition, lineage, weight))
+            .collect::<Vec<_>>();
+        selected_records.sort_by(|a, b| compare_target_candidates(&candidates[a.0], &candidates[b.0]));
+        let selected_indices = selected_records.iter().map(|record| record.0).collect::<Vec<_>>();
+        let selected_weights = selected_records.iter().map(|record| record.5).collect::<Vec<_>>();
+        let support_base_weight_sum = selected_records.iter().map(|record| record.1).sum::<f64>();
+        let target_weight_sum = selected_weights.iter().sum::<f64>();
+        let target_weight_min = selected_weights.iter().copied().fold(f64::INFINITY, f64::min);
+        let target_weight_max = selected_weights.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        let target_weight_mean = target_weight_sum / selected_weights.len().max(1) as f64;
+        let target_weight_max_deviation = selected_weights
+            .iter()
+            .map(|weight| (*weight - target_weight_mean).abs())
+            .fold(0.0_f64, f64::max);
 
-        for (rank, &idx) in selected.iter().enumerate() {
-            let target_weight = target_weights[rank];
+        let mut output_rows = Vec::with_capacity(selected_records.len());
+        for (slot, &(idx, inherited_base, seed_initial_weight, transported_addition, lineage_weight, target_weight)) in
+            selected_records.iter().enumerate()
+        {
             let candidate = &candidates[idx];
-            let (avg_reference_winrate, reference_rate_count) =
+            let (average_reference_winrate, reference_rate_count) =
                 average_reference_winrate_for_target(&reference_indices, idx, &candidates, &rate_map);
             let raw_rank = candidate.row.rank;
             let correct_rank = candidate.row.pair_rank;
-            let delta_rank = correct_rank.map(|c| raw_rank as i64 - c as i64);
-            rows.push(TargetGenerationRow {
-                target_rank: rank + 1,
+            output_rows.push(TargetGenerationRow {
+                target_rank: slot + 1,
                 target_weight,
-                phase: if rank < fixed_main_count {
-                    "fixed_main_prefix".to_string()
-                } else {
-                    "weighted_milp_fill".to_string()
-                },
+                base_weight: Some(inherited_base),
+                seed_initial_weight: Some(seed_initial_weight),
+                fitted_tail_weight: Some(transported_addition),
+                lineage_weight: Some(lineage_weight),
+                phase: "fixed_c_score_top30_replace_and_delete_collective_absorption".to_string(),
+                trace_component: "VariableCountCorrectCompressedTarget".to_string(),
+                trace_scope: "browser_top50_then_collective_absorption_with_fixed_c_score_top30_delete_lock".to_string(),
+                trace_source: "big_target_lineage_collectively_absorbed_then_exported_at_n_over_total_mass".to_string(),
+                reference_weight: None,
                 group_id: candidate.row.group_id,
                 canonical: candidate.row.canonical.clone(),
                 team_name: candidate.row.team_name.clone(),
                 root_team_name: candidate.row.root_team_name.clone(),
                 correct_rank,
-                correct_score: candidate.correct_score(),
+                correct_score: candidate
+                    .row
+                    .pair_score
+                    .filter(|score| score.is_finite())
+                    .unwrap_or(candidate.row.raw_average_cqd),
                 raw_rank,
                 raw_score: candidate.row.raw_average_cqd,
-                delta_rank,
+                delta_rank: correct_rank.map(|rank| raw_rank as i64 - rank as i64),
                 selection_status: candidate.row.selection_status.clone(),
                 type_label: candidate.row.type_label.clone(),
                 simple_type_label: candidate.row.simple_type_label.clone(),
-                average_reference_winrate: avg_reference_winrate,
+                average_reference_winrate,
                 reference_rate_count,
                 player_keys: candidate.player_keys.clone(),
             });
         }
 
+        let cqd_threshold = trace_metadata
+            .get("calibration_raw_min")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(0.0);
+        let target_config_text = build_target_config_text(&selected_indices, &selected_weights, &candidates);
+        let initial_group_ids = compression
+            .initial_indices
+            .iter()
+            .map(|&idx| candidates[idx].row.group_id)
+            .collect::<Vec<_>>();
+        let browser_initial_group_ids = compression
+            .browser_initial_indices
+            .iter()
+            .map(|&idx| candidates[idx].row.group_id)
+            .collect::<Vec<_>>();
+        let locked_group_ids = compression
+            .locked_indices
+            .iter()
+            .map(|&idx| candidates[idx].row.group_id)
+            .collect::<Vec<_>>();
+        let pre_deletion_group_ids = compression
+            .pre_deletion_selected_indices
+            .iter()
+            .map(|&idx| candidates[idx].row.group_id)
+            .collect::<Vec<_>>();
+        let deletion_locked_group_ids = compression
+            .deletion_locked_indices
+            .iter()
+            .map(|&idx| candidates[idx].row.group_id)
+            .collect::<Vec<_>>();
+        let final_group_ids = selected_indices.iter().map(|&idx| candidates[idx].row.group_id).collect::<Vec<_>>();
+        let replacement_audit = compression.replacements.clone();
+        let deletion_audit = compression.deletions.clone();
+        let deletion_path = compression.deletion_path.clone();
+        let final_tail_swap_audit = compression.final_tail_swaps.clone();
+        let final_support_edit_audit = compression.final_support_edits.clone();
+        let final_support_search_audit = compression.final_support_search.clone();
+        let seed_selection_audit = compression.seed_selection_steps.clone();
+        let initial_transport = compression.initial_transport.clone();
+        let final_transport = compression.final_transport.clone();
+        let regularization_path = compression.regularization_path.clone();
+        if let Some(metadata) = trace_metadata.as_object_mut() {
+            // 保持每个 json! 片段较小。单个过大的对象会耗尽 rustc 默认的宏递归限制。
+            let generation_parts = [
+                serde_json::json!({
+                    "version": "variable_count_reset_support_search_v21",
+                    "compression_applied": true,
+                    "support_count": compression.output_target_count,
+                    "pre_deletion_support_count": 50,
+                    "browser_seed_rule": "browser_c_score_main_board_with_account_uniqueness_and_merged_team_cap_5_is_the_reset_top50",
+                    "initial_support_rule": "use_actual_browser_top50_without_supplement_reselection",
+                    "account_uniqueness_rule": "one_normalized_account_may_appear_in_only_one_selected_combination",
+                    "owner_cap_rule": "at_most_5_combinations_per_root_team_name",
+                    "rate_coverage_rule": "all_audit_rows_cross_union_of_threshold_eligible_support_columns_and_nonzero_correct_lineage_columns;zero_mass_below_threshold_scout_columns_are_not_required",
+                    "replacement_locked_rule": "fixed_c_score_top30_of_browser_initial_top50_without_dynamic_replenishment",
+                    "deletion_locked_rule": "fixed_c_score_top30_of_post_replacement_top50",
+                    "deletion_rank_recompute_rule": "the_pre_deletion_top30_is_frozen_once_and_is_not_recomputed_after_deletion",
+                    "locked_initial_weight_rule": "every_selected_row_starts_from_its_own_complete_big_target_base_weight_without_uniform_locked_scaling",
+                    "unlocked_initial_weight_rule": "golden_equals_one_anchor_is_a_soft_cohesion_prior;golden_nonunit_rows_are_free_forward_fit_variables",
+                    "flattening_rule": "positive_affine_audit_with_golden_equals_one_soft_cohesion_not_hard_equality",
+                    "front_priority_rule": "c_score_is_a_soft_preference_and_low_c_score_rows_are_considered_first_for_replacement",
+                    "base_weight_rule": "selected_base_weight_equals_that_rows_complete_big_target_weight",
+                    "tail_rule": "every_omitted_big_target_weight_is_transported_to_selected_support",
+                    "transport_rule": "golden_equals_one_complete_weights_use_soft_cohesion;golden_nonunit_weights_are_allocated_by_forward_error_fit",
+                    "deletion_absorption_rule": "each_stage_returns_to_the_single_predeletion_base;golden_equals_one_rows_use_soft_cohesion_and_nonunit_rows_refit_freely",
+                    "deletion_path_selection_rule": "continuous_82pct_error_15pct_structure_3pct_target_count_without_hard_max_diff_threshold",
+                    "final_weight_rule": "only_absorption_additions_of_the_fixed_non_deletable_c_score_top30_are_nonincreasing_by_c_score; final_weights_and_the_removable_tail_have_no_hard_order",
+                    "output_weight_rule": "exported_weight=lineage_weight*final_target_count/big_target_mass_so_exported_weight_sum_equals_n",
+                    "score_comparison_rule": "flattened_z=a*(sum_rate_times_exported_weight_over_n)+b_with_a_positive_is_compared_to_c_score",
+                    "raw_direct_equality_rule": "raw_direct_score_vs_c_score_or_big_target_is_audit_only_not_the_primary_objective",
+                    "replacement_rule": "low_c_score_first_one_swap_search_with_error_and_low_effective_slot_frontiers_full_weight_refit_and_incumbent_guards_without_text_type_features",
+                    "final_support_search_rule": "reset_add_remove_swap_edits_across_40_to_50_with_fixed_deletion_top30",
+                }),
+                serde_json::json!({
+                    "max_replacements": 8,
+                    "replacement_count": replacement_audit.len(),
+                    "max_deletions": 10,
+                    "deletion_count": deletion_audit.len(),
+                    "max_final_support_edits": 4,
+                    "final_support_edit_count": final_support_edit_audit.len(),
+                    "final_tail_swap_count": final_tail_swap_audit.len(),
+                    "deletion_lock_count": compression.deletion_lock_count,
+                    "score_denominator": compression.score_denominator,
+                    "big_target_weight_sum": big_target_weight_sum,
+                    "target_weight_sum": target_weight_sum,
+                    "lineage_weight_sum": compression.lineage_weights.iter().sum::<f64>(),
+                    "support_inherited_base_weight_sum": support_base_weight_sum,
+                    "tail_group_count": compression.tail_group_count,
+                    "tail_weight_sum": compression.tail_weight_sum,
+                    "tail_l1_weight_sum": compression.tail_l1_weight_sum,
+                    "transported_addition_sum": compression.fitted_additions.iter().sum::<f64>(),
+                    "initial_anchor_weight_sum": compression.initial_anchor_weights.iter().sum::<f64>(),
+                    "final_support_seed_anchor_weight_sum": compression.final_seed_anchor_weights.iter().sum::<f64>(),
+                    "c_score_aware_seed_added_count": seed_selection_audit.len(),
+                    "profile_seed_added_count": seed_selection_audit.len(),
+                    "locked_seed_original_weight_sum": compression.locked_seed_original_weight_sum,
+                    "locked_seed_target_weight_sum": compression.locked_seed_target_weight_sum,
+                    "locked_seed_weight_scale": compression.locked_seed_weight_scale,
+                    "supplement_seed_target_weight_sum": big_target_weight_sum - compression.locked_seed_target_weight_sum,
+                }),
+                serde_json::json!({
+                    "initial_support_big_replay_mean_abs_diff": compression.initial_metrics.big_mean_abs_diff,
+                    "initial_support_big_replay_max_abs_diff": compression.initial_metrics.big_max_abs_diff,
+                    "initial_support_big_replay_rmse": compression.initial_metrics.big_rmse,
+                    "final_big_replay_mean_abs_diff": compression.final_metrics.big_mean_abs_diff,
+                    "final_big_replay_max_abs_diff": compression.final_metrics.big_max_abs_diff,
+                    "final_big_replay_p95_abs_diff": compression.final_metrics.big_p95_abs_diff,
+                    "final_big_replay_rmse": compression.final_metrics.big_rmse,
+                    "final_correct_replay_mean_abs_diff": compression.final_metrics.correct_mean_abs_diff,
+                    "final_correct_replay_max_abs_diff": compression.final_metrics.correct_max_abs_diff,
+                    "final_correct_replay_p95_abs_diff": compression.final_metrics.correct_p95_abs_diff,
+                    "final_correct_replay_rmse": compression.final_metrics.correct_rmse,
+                    "initial_affine_aligned_c_score_mean_abs_diff": compression.initial_metrics.aligned_mean_abs_diff,
+                    "initial_affine_aligned_c_score_max_abs_diff": compression.initial_metrics.aligned_max_abs_diff,
+                    "initial_affine_aligned_c_score_rmse": compression.initial_metrics.aligned_rmse,
+                    "pre_deletion_affine_aligned_c_score_mean_abs_diff": compression.pre_deletion_metrics.aligned_mean_abs_diff,
+                    "pre_deletion_affine_aligned_c_score_max_abs_diff": compression.pre_deletion_metrics.aligned_max_abs_diff,
+                    "pre_deletion_affine_aligned_c_score_rmse": compression.pre_deletion_metrics.aligned_rmse,
+                    "final_affine_aligned_c_score_mean_abs_diff": compression.final_metrics.aligned_mean_abs_diff,
+                    "final_affine_aligned_c_score_max_abs_diff": compression.final_metrics.aligned_max_abs_diff,
+                    "final_affine_aligned_c_score_p95_abs_diff": compression.final_metrics.aligned_p95_abs_diff,
+                    "final_affine_aligned_c_score_rmse": compression.final_metrics.aligned_rmse,
+                    "flattened_c_score_raw_mean_abs_diff": compression.final_metrics.flat_raw_mean_abs_diff,
+                    "flattened_c_score_raw_max_abs_diff": compression.final_metrics.flat_raw_max_abs_diff,
+                    "flattened_c_score_raw_rmse": compression.final_metrics.flat_raw_rmse,
+                    "positive_affine_slope": compression.final_metrics.affine_slope,
+                    "positive_affine_intercept": compression.final_metrics.affine_intercept,
+                    "direct_score_c_score_spearman": compression.final_metrics.score_spearman,
+                    "flattened_max_diff_target": compression.final_metrics.max_diff_target,
+                    "flattened_max_diff_target_met": compression.final_metrics.max_diff_target_met,
+                    "flattened_max_diff_target_margin": compression.final_metrics.max_diff_target_margin,
+                    "path_selection_error_cost_normalized": compression.final_metrics.selection_error_cost_normalized,
+                    "path_selection_structure_cost_normalized": compression.final_metrics.selection_structure_cost_normalized,
+                    "path_selection_score": compression.final_metrics.selection_score,
+                    "path_selection_rule": compression.final_metrics.selection_rule.clone(),
+                }),
+                serde_json::json!({
+                    "selected_regularization_factor": compression.final_metrics.regularization_factor,
+                    "pure_structural_prior_selected": compression.final_metrics.pure_structural_prior,
+                    "structure_score": compression.final_metrics.structure_score,
+                    "anchor_distance_l2": compression.final_metrics.anchor_distance_l2,
+                    "transported_addition_l2": compression.final_metrics.addition_l2,
+                    "transported_addition_max_abs": compression.final_metrics.addition_max_abs,
+                    "similar_type_addition_rms": compression.final_metrics.similar_addition_rms,
+                    "local_c_score_addition_inversion_rms": compression.final_metrics.local_order_inversion_rms,
+                    "local_c_score_addition_inversion_rate": compression.final_metrics.local_order_inversion_rate,
+                    "addition_cancellation_ratio": compression.final_metrics.addition_cancellation_ratio,
+                    "weight_cancellation_ratio": compression.final_metrics.weight_cancellation_ratio,
+                    "final_weight_c_score_spearman": compression.final_metrics.final_weight_c_score_spearman,
+                    "final_weight_monotonic_violation_count": compression.final_metrics.final_weight_monotonic_violation_count,
+                    "final_weight_monotonic_violation_max": compression.final_metrics.final_weight_monotonic_violation_max,
+                    "adjacent_weight_gap_rms": compression.final_metrics.adjacent_weight_gap_rms,
+                    "adjacent_weight_gap_max": compression.final_metrics.adjacent_weight_gap_max,
+                    "weight_gap_second_difference_rms": compression.final_metrics.weight_gap_second_difference_rms,
+                    "tail_weight_monotonic_violation_count": compression.final_metrics.tail_weight_monotonic_violation_count,
+                    "tail_weight_monotonic_violation_rms": compression.final_metrics.tail_weight_monotonic_violation_rms,
+                    "tail_low_effective_slot_penalty": compression.final_metrics.tail_low_effective_slot_penalty,
+                    "compressed_corr_to_big": compression.final_metrics.compressed_corr_to_big,
+                    "compressed_corr_to_correct": compression.final_metrics.compressed_corr_to_correct,
+                    "golden_unit_equalization_count": compression.final_metrics.golden_unit_equalization_count,
+                    "golden_unit_final_spread": compression.final_metrics.golden_unit_final_spread,
+                    "golden_unit_projection_l2": compression.final_metrics.golden_unit_projection_l2,
+                    "golden_nonunit_free_count": compression.final_metrics.golden_nonunit_free_count,
+                }),
+                serde_json::json!({
+                    "browser_initial_group_ids": browser_initial_group_ids,
+                    "initial_group_ids": initial_group_ids,
+                    "locked_group_ids": locked_group_ids,
+                    "pre_deletion_group_ids": pre_deletion_group_ids,
+                    "deletion_locked_group_ids": deletion_locked_group_ids,
+                    "initial_anchor_weights": compression.initial_anchor_weights.clone(),
+                    "final_seed_anchor_weights": compression.final_seed_anchor_weights.clone(),
+                    "seed_selection_steps": seed_selection_audit,
+                    "final_group_ids": final_group_ids,
+                    "replacements": replacement_audit,
+                    "deletions": deletion_audit,
+                    "deletion_path": deletion_path,
+                    "final_tail_swaps": final_tail_swap_audit,
+                    "final_support_edits": final_support_edit_audit,
+                    "final_support_search": final_support_search_audit,
+                    "initial_transport": initial_transport,
+                    "pre_deletion_transport": compression.pre_deletion_transport.clone(),
+                    "final_transport": final_transport,
+                    "regularization_path": regularization_path,
+                }),
+            ];
+            let mut generation = serde_json::Map::new();
+            for part in generation_parts {
+                if let serde_json::Value::Object(object) = part {
+                    generation.extend(object);
+                }
+            }
+            metadata.insert("generation".to_string(), serde_json::Value::Object(generation));
+        }
+
+        self.db.set_lane_progress(
+            lane,
+            "target_generation_ready",
+            1,
+            1,
+            required_rate_target_indices.len(),
+            required_rate_target_indices.len(),
+            0,
+            &format!("target generation complete: {} exported targets", output_rows.len()),
+        )?;
+        self.db.set_lane_status(lane, "ready", lane_group_count)?;
         Ok(TargetGenerationResponse {
             summary: TargetGenerationSummary {
+                algorithm: "variable_count_reset_support_search_v21".to_string(),
+                trace_version: trace.trace_version.clone(),
+                score_mode: "variable_denominator_n_positive_affine_c_score_alignment".to_string(),
                 lane_size: lane,
-                target_count: rows.len(),
-                fixed_main_count,
-                optimized_count: rows.len().saturating_sub(fixed_main_count),
-                player_cap: TARGET_PLAYER_REPEAT_CAP,
+                target_count: output_rows.len(),
+                score_denominator: compression.score_denominator,
+                unique_group_count: output_rows.len(),
+                raw_trace_count,
+                correct_trace_count: trace.weights.len(),
+                correct_reference_scope_count: scope_sums.len(),
+                raw_weight_sum,
+                correct_nominal_weight_sum,
+                correct_target_weight_sum,
+                correct_target_candidate_count: correct_target_indices.len(),
+                correct_target_nonzero_count: correct_target_indices.len(),
+                correct_forward_replay_mean_abs_diff,
+                correct_forward_replay_max_abs_diff,
+                correct_forward_replay_rmse,
+                row_coefficient_replay_mean_abs_diff,
+                row_coefficient_replay_max_abs_diff,
+                exact_replay_requires_trace_semantics: true,
+                merged_weight_sum_before_normalization: big_target_weight_sum,
+                merged_normalization_scale: compression.output_target_count as f64 / big_target_weight_sum,
+                support_base_weight_sum,
+                tail_group_count: compression.tail_group_count,
+                tail_weight_sum: compression.tail_weight_sum,
+                fitted_addition_sum: compression.fitted_additions.iter().sum::<f64>(),
+                fit_baseline_mean_abs_diff: compression.initial_metrics.aligned_mean_abs_diff,
+                fit_baseline_max_abs_diff: compression.initial_metrics.aligned_max_abs_diff,
+                fit_baseline_rmse: compression.initial_metrics.aligned_rmse,
+                fit_optimized_mean_abs_diff: compression.final_metrics.aligned_mean_abs_diff,
+                fit_optimized_max_abs_diff: compression.final_metrics.aligned_max_abs_diff,
+                fit_optimized_rmse: compression.final_metrics.aligned_rmse,
+                fit_weight_regularization_applied: compression.final_metrics.regularization_factor > 0.0,
+                fit_baseline_addition_l2_norm: compression.initial_metrics.addition_l2,
+                fit_optimized_addition_l2_norm: compression.final_metrics.addition_l2,
+                fit_optimized_addition_max_abs: compression.final_metrics.addition_max_abs,
+                fit_optimized_distance_from_proportional_l2: compression.final_metrics.anchor_distance_l2,
+                fit_final_weight_std_limit: 0.0,
+                fit_final_weight_max_deviation_limit: 0.0,
+                fit_optimized_final_weight_std: compression.final_metrics.final_weight_std,
+                fit_optimized_final_weight_max_deviation: target_weight_max_deviation,
+                compressed_replay_mean_abs_diff: compression.final_metrics.aligned_mean_abs_diff,
+                compressed_replay_max_abs_diff: compression.final_metrics.aligned_max_abs_diff,
+                compressed_replay_rmse: compression.final_metrics.aligned_rmse,
+                fixed_main_count: compression.deletion_locked_indices.len(),
+                optimized_count: output_rows.len().saturating_sub(compression.deletion_locked_indices.len()),
+                player_cap: compression.owner_cap,
                 target_weight_sum,
                 target_weight_min,
                 target_weight_max,
-                player_weight_cap: PLAYER_WEIGHT_CAP,
+                player_weight_cap: 0.0,
                 cqd_threshold,
-                reference_limit,
+                reference_limit: reference_indices.len(),
                 reference_count: reference_indices.len(),
-                candidate_count: fill_pool.len(),
-                objective_mse: final_obj.mse,
-                objective_corr: final_obj.corr,
-                reference_avg_winrate_mean: final_obj.avg_mean,
-                reference_avg_winrate_std: final_obj.avg_std,
-                reference_c_score_mean: final_obj.score_mean,
-                reference_c_score_std: final_obj.score_std,
-                audit_reference_rows: audit_stats.count,
-                audit_mean_diff: audit_stats.mean_diff,
-                audit_mean_abs_diff: Some(final_obj.mean_abs_diff),
-                audit_max_abs_diff: Some(final_obj.max_abs_diff),
-                audit_rmse: Some(final_obj.rmse),
-                audit_p95_abs_diff: Some(final_obj.p95_abs_diff),
+                candidate_count: candidates.len(),
+                objective_mse: compression.final_metrics.aligned_rmse * compression.final_metrics.aligned_rmse,
+                objective_corr: compression.final_metrics.score_spearman,
+                reference_avg_winrate_mean: 0.0,
+                reference_avg_winrate_std: 0.0,
+                reference_c_score_mean: 0.0,
+                reference_c_score_std: 0.0,
+                audit_reference_rows: reference_indices.len(),
+                audit_mean_diff: None,
+                audit_mean_abs_diff: Some(compression.final_metrics.aligned_mean_abs_diff),
+                audit_max_abs_diff: Some(compression.final_metrics.aligned_max_abs_diff),
+                audit_rmse: Some(compression.final_metrics.aligned_rmse),
+                audit_p95_abs_diff: Some(compression.final_metrics.aligned_p95_abs_diff),
             },
             target_config_text,
-            rows,
-            reference_audit_rows,
+            trace_metadata,
+            rows: output_rows,
+            reference_audit_rows: Vec::<TargetReferenceAuditRow>::new(),
         })
     }
 
@@ -851,10 +1148,11 @@ impl AppService {
     }
 }
 
-
 #[derive(Debug, Clone)]
 struct TargetCandidate {
     row: crate::model::LaneResultRow,
+    /// 归一化账户键（`name@root_team`），仅用于全局账户不重复规则。每位玩家/所有者上限由
+    /// `row.root_team_name` 单独跟踪。
     player_keys: Vec<String>,
 }
 
@@ -864,175 +1162,308 @@ impl TargetCandidate {
         Self { row, player_keys }
     }
 
-    fn correct_score(&self) -> f64 {
-        self.row.pair_score.unwrap_or(f64::NEG_INFINITY)
-    }
+    fn correct_score(&self) -> f64 { self.row.pair_score.unwrap_or(f64::NEG_INFINITY) }
 }
 
-#[derive(Debug, Clone)]
-struct TargetObjective {
-    /// Mean squared error after the affine Chebyshev alignment; kept as a late tie-breaker.
-    mse: f64,
-    corr: Option<f64>,
-    /// Primary minimax objective on the C-Score scale after positive-slope affine alignment.
-    max_abs_diff: f64,
-    p95_abs_diff: f64,
-    mean_abs_diff: f64,
-    rmse: f64,
-    avg_mean: f64,
-    avg_std: f64,
-    score_mean: f64,
-    score_std: f64,
-    align_slope: f64,
-    align_intercept: f64,
+fn target_candidate_is_eligible(candidate: &TargetCandidate, raw_min: f64) -> bool {
+    !candidate.row.is_blocked
+        && candidate.row.raw_average_cqd >= raw_min
+        && candidate.row.selection_status != "below_threshold"
+        && candidate.row.selection_status != "blocked"
+        && candidate.row.pair_rank.is_some()
+        && candidate.correct_score().is_finite()
 }
 
-#[derive(Debug, Clone)]
-struct TargetSearchResult {
-    indices: Vec<usize>,
-    objective: TargetObjective,
+fn target_rate_column_requires_observed(target_idx: usize, big_weight: f64, compression_target_indices: &HashSet<usize>) -> bool {
+    compression_target_indices.contains(&target_idx) || big_weight.abs() > 1e-15
 }
 
-#[derive(Debug, Clone)]
-struct TargetAuditStats {
-    count: usize,
-    mean_diff: Option<f64>,
-    mean_abs_diff: Option<f64>,
-    max_abs_diff: Option<f64>,
-    rmse: Option<f64>,
-    p95_abs_diff: Option<f64>,
+#[derive(Debug, Clone, serde::Deserialize)]
+struct InheritedCompressionMetrics {
+    big_mean_abs_diff: f64,
+    big_max_abs_diff: f64,
+    big_p95_abs_diff: f64,
+    big_rmse: f64,
+    correct_mean_abs_diff: f64,
+    correct_max_abs_diff: f64,
+    correct_p95_abs_diff: f64,
+    correct_rmse: f64,
+    aligned_mean_abs_diff: f64,
+    aligned_max_abs_diff: f64,
+    aligned_p95_abs_diff: f64,
+    aligned_rmse: f64,
+    flat_raw_mean_abs_diff: f64,
+    flat_raw_max_abs_diff: f64,
+    flat_raw_rmse: f64,
+    affine_slope: f64,
+    affine_intercept: f64,
+    score_spearman: Option<f64>,
+    anchor_distance_l2: f64,
+    addition_l2: f64,
+    addition_max_abs: f64,
+    similar_addition_rms: f64,
+    local_order_inversion_rms: f64,
+    local_order_inversion_rate: f64,
+    addition_cancellation_ratio: f64,
+    weight_cancellation_ratio: f64,
+    final_weight_std: f64,
+    final_weight_sum: f64,
+    final_weight_monotonic_violation_count: usize,
+    final_weight_monotonic_violation_max: f64,
+    final_weight_c_score_spearman: Option<f64>,
+    adjacent_weight_gap_rms: f64,
+    adjacent_weight_gap_max: f64,
+    weight_gap_second_difference_rms: f64,
+    #[serde(default)]
+    tail_weight_monotonic_violation_count: usize,
+    #[serde(default)]
+    tail_weight_monotonic_violation_rms: f64,
+    #[serde(default)]
+    tail_low_effective_slot_penalty: f64,
+    compressed_corr_to_big: Option<f64>,
+    compressed_corr_to_correct: Option<f64>,
+    regularization_factor: f64,
+    pure_structural_prior: bool,
+    structure_score: f64,
+    max_diff_target: f64,
+    max_diff_target_met: bool,
+    max_diff_target_margin: f64,
+    selection_error_cost_normalized: f64,
+    selection_structure_cost_normalized: f64,
+    selection_score: f64,
+    selection_rule: String,
+    #[serde(default)]
+    golden_unit_equalization_count: usize,
+    #[serde(default)]
+    golden_unit_final_spread: f64,
+    #[serde(default)]
+    golden_unit_projection_l2: f64,
+    #[serde(default)]
+    golden_nonunit_free_count: usize,
 }
 
-#[derive(Debug, Clone)]
-struct TargetResidual {
-    ref_idx: usize,
-    avg_winrate: f64,
-    diff: f64,
-    abs_diff: f64,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct TargetMilpSolverResponse {
+#[derive(Debug, Clone, serde::Deserialize)]
+struct InheritedCompressionSolverResponse {
+    status: String,
+    browser_initial_indices: Vec<usize>,
+    initial_indices: Vec<usize>,
+    locked_indices: Vec<usize>,
+    pre_deletion_selected_indices: Vec<usize>,
+    deletion_locked_indices: Vec<usize>,
+    locked_seed_weight_scale: f64,
+    locked_seed_original_weight_sum: f64,
+    locked_seed_target_weight_sum: f64,
+    initial_anchor_weights: Vec<f64>,
+    final_seed_anchor_weights: Vec<f64>,
+    seed_selection_steps: Vec<serde_json::Value>,
     selected_indices: Vec<usize>,
+    #[serde(default)]
+    effective_big_weights: Option<Vec<f64>>,
+    base_weights: Vec<f64>,
+    fitted_additions: Vec<f64>,
+    lineage_weights: Vec<f64>,
     selected_weights: Vec<f64>,
-    status: Option<String>,
-    max_abs_diff: Option<f64>,
-    p95_abs_diff: Option<f64>,
-    slope: Option<f64>,
-    intercept: Option<f64>,
-}
-
-#[derive(Debug, Clone)]
-struct TargetMilpSolution {
-    indices: Vec<usize>,
-    weights: Vec<f64>,
-}
-
-fn run_target_milp_solver(
-    locked_prefix: &[usize],
-    fill_pool: &[usize],
+    replacements: Vec<serde_json::Value>,
+    deletions: Vec<serde_json::Value>,
+    deletion_path: Vec<serde_json::Value>,
+    #[serde(default)]
+    final_tail_swaps: Vec<serde_json::Value>,
+    #[serde(default)]
+    final_support_edits: Vec<serde_json::Value>,
+    #[serde(default)]
+    final_support_search: serde_json::Value,
+    owner_cap: usize,
     target_total: usize,
-    player_cap: usize,
-    weight_min: f64,
-    weight_max: f64,
-    player_weight_cap: f64,
+    deletion_lock_count: usize,
+    output_target_count: usize,
+    score_denominator: usize,
+    tail_group_count: usize,
+    tail_weight_sum: f64,
+    tail_l1_weight_sum: f64,
+    big_target_weight_sum: f64,
+    initial_metrics: InheritedCompressionMetrics,
+    initial_transport: serde_json::Value,
+    pre_deletion_metrics: InheritedCompressionMetrics,
+    pre_deletion_transport: serde_json::Value,
+    final_metrics: InheritedCompressionMetrics,
+    final_transport: serde_json::Value,
+    regularization_path: Vec<serde_json::Value>,
+}
+
+fn inherited_target_feasibility_error(
+    indices: &[usize],
+    candidates: &[TargetCandidate],
+    raw_min: f64,
+    owner_cap: usize,
+) -> Option<String> {
+    let mut seen_groups = HashSet::new();
+    let mut seen_accounts = HashSet::new();
+    let mut owner_counts: HashMap<&str, usize> = HashMap::new();
+    for &idx in indices {
+        let Some(candidate) = candidates.get(idx) else {
+            return Some(format!("靶子索引越界：{idx}"));
+        };
+        if !seen_groups.insert(idx) {
+            return Some(format!("重复靶子 group_id={}", candidate.row.group_id));
+        }
+        if !target_candidate_is_eligible(candidate, raw_min) {
+            return Some(format!(
+                "非法靶子 group_id={} status={} blocked={}",
+                candidate.row.group_id, candidate.row.selection_status, candidate.row.is_blocked,
+            ));
+        }
+        for key in &candidate.player_keys {
+            if !seen_accounts.insert(key.as_str()) {
+                return Some(format!("重复号约束失败：账号 {key} 同时出现在多个靶子中"));
+            }
+        }
+        let count = owner_counts.entry(candidate.row.root_team_name.as_str()).or_insert(0);
+        *count += 1;
+        if *count > owner_cap {
+            return Some(format!(
+                "合并战队 {} 的靶子数 {} 超过上限 {}",
+                candidate.row.root_team_name, *count, owner_cap,
+            ));
+        }
+    }
+    None
+}
+
+fn run_inherited_big_target_compression_solver(
+    big_weights: &[f64],
     reference_indices: &[usize],
+    compression_target_indices: &HashSet<usize>,
+    target_raw_min: f64,
     candidates: &[TargetCandidate],
     rate_map: &HashMap<(crate::model::GroupId, crate::model::GroupId), f64>,
-) -> anyhow::Result<TargetMilpSolution> {
-    if locked_prefix.len() > target_total {
-        anyhow::bail!(
-            "MILP 靶子生成输入非法：locked_prefix={} > target_total={}",
-            locked_prefix.len(),
-            target_total
-        );
+) -> anyhow::Result<InheritedCompressionSolverResponse> {
+    const TARGET_TOTAL: usize = 50;
+    const OWNER_CAP: usize = 5;
+    if big_weights.len() != candidates.len() {
+        anyhow::bail!("大靶权重与候选数不一致：{} vs {}", big_weights.len(), candidates.len(),);
     }
-    if fill_pool.len() < target_total {
-        anyhow::bail!(
-            "weighted MILP 靶子生成输入非法：候选池只有 {} 个，小于 target_total={}",
-            fill_pool.len(),
-            target_total
-        );
-    }
-    if !weight_min.is_finite() || !weight_max.is_finite() || weight_min < 0.0 || weight_max < weight_min {
-        anyhow::bail!(
-            "weighted MILP 靶子生成输入非法：weight_min={:.6}, weight_max={:.6}",
-            weight_min,
-            weight_max
-        );
-    }
-    if !player_weight_cap.is_finite() || player_weight_cap <= 0.0 {
-        anyhow::bail!("weighted MILP 靶子生成输入非法：player_weight_cap={:.6}", player_weight_cap);
-    }
-    if let Some(error) = target_solution_feasibility_error(locked_prefix, candidates, player_cap) {
-        anyhow::bail!("MILP 靶子生成输入的 locked_prefix 已违反约束：{error}");
+    if candidates.len() < TARGET_TOTAL || reference_indices.is_empty() {
+        anyhow::bail!("继承式压缩需要至少 {} 个候选和非空 reference", TARGET_TOTAL);
     }
 
-    let pool_set: HashSet<usize> = fill_pool.iter().copied().collect();
-    if locked_prefix.iter().any(|idx| !pool_set.contains(idx)) {
-        anyhow::bail!("MILP 靶子生成输入非法：locked_prefix 中存在不在 fill_pool 内的候选");
-    }
-
-    let mut rate_matrix: Vec<Vec<f64>> = Vec::with_capacity(reference_indices.len());
+    let mut rate_matrix = Vec::with_capacity(reference_indices.len());
+    let mut reference_scores = Vec::with_capacity(reference_indices.len());
     for &ref_idx in reference_indices {
         let ref_gid = candidates[ref_idx].row.group_id;
-        let mut row = Vec::with_capacity(fill_pool.len());
-        for &target_idx in fill_pool {
-            let target_gid = candidates[target_idx].row.group_id;
-            let Some(rate) = rate_between(rate_map, ref_gid, target_gid) else {
-                anyhow::bail!(
-                    "MILP 靶子生成缺少 reference×candidate 胜率边：ref_group_id={} target_group_id={}",
-                    ref_gid,
-                    target_gid
-                );
+        let mut row_rates = Vec::with_capacity(candidates.len());
+        for (target_idx, candidate) in candidates.iter().enumerate() {
+            let rate = if target_rate_column_requires_observed(target_idx, big_weights[target_idx], compression_target_indices) {
+                rate_between(rate_map, ref_gid, candidate.row.group_id).with_context(|| {
+                    format!(
+                        "继承式可变数量压缩缺少必要胜率：ref_group_id={} target_group_id={}",
+                        ref_gid, candidate.row.group_id,
+                    )
+                })?
+            } else {
+                // 此列在结构上不合资格且 Correct 质量为零，因而求解器绝不会使用它。中性的有限占位符可保持
+                // 全候选元数据索引稳定，而不凭空制造 low×low 模拟需求。
+                rate_between(rate_map, ref_gid, candidate.row.group_id).unwrap_or(50.0)
             };
-            row.push(rate);
+            row_rates.push(rate);
         }
-        rate_matrix.push(row);
+        rate_matrix.push(row_rates);
+        reference_scores.push(
+            candidates[ref_idx]
+                .row
+                .pair_score
+                .filter(|score| score.is_finite())
+                .unwrap_or(candidates[ref_idx].row.raw_average_cqd),
+        );
     }
 
-    let ref_scores: Vec<f64> = reference_indices
+    let candidate_correct_scores = candidates
         .iter()
-        .map(|&idx| candidates[idx].correct_score())
-        .collect();
-    let player_keys: Vec<Vec<String>> = fill_pool
+        .map(|candidate| {
+            candidate
+                .row
+                .pair_score
+                .filter(|score| score.is_finite())
+                .unwrap_or(candidate.row.raw_average_cqd)
+        })
+        .collect::<Vec<_>>();
+    let golden_weights = candidates.iter().map(|candidate| candidate.row.golden_rate).collect::<Vec<_>>();
+    if golden_weights.iter().any(|weight| !weight.is_finite() || *weight < 0.0) || golden_weights.iter().sum::<f64>() <= 1e-12 {
+        anyhow::bail!("继承式压缩缺少有效的非负 Golden 吸收权重");
+    }
+    let pair_ranks = candidates.iter().map(|candidate| candidate.row.pair_rank).collect::<Vec<_>>();
+    let raw_ranks = candidates.iter().map(|candidate| candidate.row.rank).collect::<Vec<_>>();
+    let group_ids = candidates.iter().map(|candidate| candidate.row.group_id).collect::<Vec<_>>();
+    let selection_status = candidates
         .iter()
-        .map(|&idx| candidates[idx].player_keys.clone())
-        .collect();
+        .map(|candidate| candidate.row.selection_status.clone())
+        .enumerate()
+        .map(|(idx, status)| {
+            if compression_target_indices.contains(&idx) {
+                status
+            } else {
+                "below_threshold".to_string()
+            }
+        })
+        .collect::<Vec<_>>();
+    let blocked = candidates.iter().map(|candidate| candidate.row.is_blocked).collect::<Vec<_>>();
+    let raw_members = candidates
+        .iter()
+        .map(|candidate| {
+            candidate
+                .row
+                .canonical
+                .split('+')
+                .map(str::trim)
+                .filter(|member| !member.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let account_keys = candidates.iter().map(|candidate| candidate.player_keys.clone()).collect::<Vec<_>>();
+    let owner_keys = candidates
+        .iter()
+        .map(|candidate| candidate.row.root_team_name.clone())
+        .collect::<Vec<_>>();
 
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
+        .map(|duration| duration.as_millis())
         .unwrap_or(0);
-    let out_dir = std::env::temp_dir().join(format!(
-        "tswn_target_milp_{}_{}",
-        std::process::id(),
-        stamp
-    ));
-    fs::create_dir_all(&out_dir)
-        .with_context(|| format!("create target MILP temp dir: {}", out_dir.display()))?;
-
+    let out_dir = std::env::temp_dir().join(format!("tswn_inherited_target_compression_{}_{}", std::process::id(), stamp));
+    fs::create_dir_all(&out_dir).with_context(|| format!("create inherited compression temp dir: {}", out_dir.display()))?;
     let script_path = out_dir.join("target_milp_solver.py");
-    let input_path = out_dir.join("target_milp_input.json");
-    let output_path = out_dir.join("target_milp_output.json");
+    let input_path = out_dir.join("inherited_compression_input.json");
+    let output_path = out_dir.join("inherited_compression_output.json");
     fs::write(&script_path, TARGET_MILP_SOLVER)
-        .with_context(|| format!("write target MILP solver: {}", script_path.display()))?;
-
+        .with_context(|| format!("write inherited compression solver: {}", script_path.display()))?;
     let payload = serde_json::json!({
-        "target_total": target_total,
-        "player_cap": player_cap,
-        "weight_min": weight_min,
-        "weight_max": weight_max,
-        "player_weight_cap": player_weight_cap,
-        "pool_indices": fill_pool,
-        "locked_indices": locked_prefix,
-        "reference_indices": reference_indices,
-        "ref_scores": ref_scores,
+        "mode": "compress_inherited_big_target_to_top50",
+        "big_weights": big_weights,
+        "golden_weights": golden_weights,
         "rate_matrix": rate_matrix,
-        "player_keys": player_keys,
+        "reference_scores": reference_scores,
+        "candidate_correct_scores": candidate_correct_scores,
+        "pair_ranks": pair_ranks,
+        "raw_ranks": raw_ranks,
+        "group_ids": group_ids,
+        "selection_status": selection_status,
+        "blocked": blocked,
+        "raw_members": raw_members,
+        "account_keys": account_keys,
+        "owner_keys": owner_keys,
+        "target_total": TARGET_TOTAL,
+        "owner_cap": OWNER_CAP,
+        "max_replacements": 8,
+        "max_deletions": 10,
+        "max_final_edits": 4,
+        "deletion_lock_count": 30,
+        "compression_algorithm": "big_weight_top40_dynamic10_normalized_delta_minimax_v1",
+        "locked_big_weight_count": 40,
+        "dynamic_big_weight_count": 10,
+        "delta_limit": 0.1,
     });
     fs::write(&input_path, serde_json::to_vec(&payload)?)
-        .with_context(|| format!("write target MILP input: {}", input_path.display()))?;
+        .with_context(|| format!("write inherited compression input: {}", input_path.display()))?;
 
     let mut last_error = None;
     for exe in ["python3", "python"] {
@@ -1043,71 +1474,261 @@ fn run_target_milp_solver(
             .arg("--output")
             .arg(&output_path)
             .output();
-
         match output {
-            Ok(out) if out.status.success() && output_path.exists() => {
-                let bytes = fs::read(&output_path)
-                    .with_context(|| format!("read target MILP output: {}", output_path.display()))?;
-                let response: TargetMilpSolverResponse = serde_json::from_slice(&bytes)
-                    .with_context(|| format!("parse target MILP output: {}", output_path.display()))?;
-                let selected = response.selected_indices;
-                let weights = response.selected_weights;
-                if selected.len() != target_total || weights.len() != target_total {
+            Ok(process) if process.status.success() && output_path.exists() => {
+                let response: InheritedCompressionSolverResponse = serde_json::from_slice(
+                    &fs::read(&output_path)
+                        .with_context(|| format!("read inherited compression output: {}", output_path.display()))?,
+                )
+                .with_context(|| format!("parse inherited compression output: {}", output_path.display()))?;
+                if !response.status.starts_with("ok")
+                    || response.target_total != TARGET_TOTAL
+                    || response.owner_cap != OWNER_CAP
+                    || response.deletion_lock_count != 30
+                    || response.browser_initial_indices.len() != TARGET_TOTAL
+                    || response.initial_indices.len() != TARGET_TOTAL
+                    || response.initial_anchor_weights.len() != TARGET_TOTAL
+                    || response.pre_deletion_selected_indices.len() != TARGET_TOTAL
+                    || response.output_target_count != response.selected_indices.len()
+                    || response.output_target_count > TARGET_TOTAL
+                    || response.output_target_count < TARGET_TOTAL.saturating_sub(10)
+                    || response.score_denominator != response.output_target_count
+                    || response.base_weights.len() != response.output_target_count
+                    || response.final_seed_anchor_weights.len() != response.output_target_count
+                    || response.fitted_additions.len() != response.output_target_count
+                    || response.lineage_weights.len() != response.output_target_count
+                    || response.selected_weights.len() != response.output_target_count
+                {
                     anyhow::bail!(
-                        "weighted MILP solver 返回数量错误：期望 {} 个，实际 selected={} weights={}；status={:?}",
-                        target_total,
-                        selected.len(),
-                        weights.len(),
-                        response.status
+                        "继承式可变数量压缩器返回非法状态或长度：status={} selected={} denominator={}",
+                        response.status,
+                        response.selected_indices.len(),
+                        response.score_denominator,
                     );
                 }
-                if selected.iter().any(|idx| !pool_set.contains(idx)) {
-                    anyhow::bail!("weighted MILP solver 返回了不在 fill_pool 中的候选；status={:?}", response.status);
+                if let Some(error) =
+                    inherited_target_feasibility_error(&response.selected_indices, candidates, target_raw_min, OWNER_CAP)
+                {
+                    anyhow::bail!("继承式可变数量约束校验失败：{error}");
                 }
-                for &locked in locked_prefix {
-                    if !selected.contains(&locked) {
+                let selected_set = response.selected_indices.iter().copied().collect::<HashSet<_>>();
+                if response.deletion_locked_indices.iter().any(|idx| !selected_set.contains(idx)) {
+                    anyhow::bail!("可变数量删除移除了初版靶子 C-Score 前30组合");
+                }
+                let pre_deletion_set = response.pre_deletion_selected_indices.iter().copied().collect::<HashSet<_>>();
+                if response.locked_indices.iter().any(|idx| !pre_deletion_set.contains(idx)) {
+                    anyhow::bail!("继承式 Top50 替换移除了初版锁定组合");
+                }
+                let initial_set = response.initial_indices.iter().copied().collect::<HashSet<_>>();
+                if response.locked_indices.iter().any(|idx| !initial_set.contains(idx)) {
+                    anyhow::bail!("C-Score 感知初始选号遗漏了锁定组合");
+                }
+                let validation_big_weights = response
+                    .effective_big_weights
+                    .as_deref()
+                    .filter(|weights| weights.len() == big_weights.len())
+                    .unwrap_or(big_weights);
+                let total_weight = validation_big_weights.iter().sum::<f64>();
+                let locked_original_weight_sum =
+                    response.locked_indices.iter().map(|&idx| validation_big_weights[idx]).sum::<f64>();
+                let initial_selected_original_weight_sum =
+                    response.initial_indices.iter().map(|&idx| validation_big_weights[idx]).sum::<f64>();
+                let initial_tail_weight_sum = total_weight - initial_selected_original_weight_sum;
+                let locked_target_weight_sum = response
+                    .initial_indices
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(slot, &idx)| {
+                        response.locked_indices.contains(&idx).then_some(response.initial_anchor_weights[slot])
+                    })
+                    .sum::<f64>();
+                if !response.locked_seed_weight_scale.is_finite()
+                    || (response.locked_seed_original_weight_sum - locked_original_weight_sum).abs() > 1e-8
+                    || (response.locked_seed_target_weight_sum - locked_target_weight_sum).abs() > 1e-8
+                    || (response.locked_seed_weight_scale - 1.0).abs() > 1e-12
+                {
+                    anyhow::bail!(
+                        "初版组合大靶基础权重/共同吸收审计失败：original={} selected_original={} target={} scale={}",
+                        response.locked_seed_original_weight_sum,
+                        initial_selected_original_weight_sum,
+                        response.locked_seed_target_weight_sum,
+                        response.locked_seed_weight_scale,
+                    );
+                }
+                let mut initial_absorption_sum = 0.0;
+                for (slot, &idx) in response.initial_indices.iter().enumerate() {
+                    let base = validation_big_weights
+                        .get(idx)
+                        .copied()
+                        .ok_or_else(|| anyhow::anyhow!("压缩器返回越界初始索引 {idx}"))?;
+                    let weight = response.initial_anchor_weights[slot];
+                    let addition = weight - base;
+                    if !weight.is_finite() || !addition.is_finite() {
                         anyhow::bail!(
-                            "weighted MILP solver 返回解缺少锁定候选 group_id={}；status={:?}",
-                            candidates[locked].row.group_id,
-                            response.status
+                            "C-Score 感知初始权重或共同吸收增量含非有限值：group_id={}",
+                            candidates[idx].row.group_id,
+                        );
+                    }
+                    initial_absorption_sum += addition;
+                }
+                if (initial_absorption_sum - initial_tail_weight_sum).abs() > 1e-7 {
+                    anyhow::bail!(
+                        "初版支持集共同吸收尾部质量不守恒：selected_original={} tail={} absorbed={}",
+                        initial_selected_original_weight_sum,
+                        initial_tail_weight_sum,
+                        initial_absorption_sum,
+                    );
+                }
+                for (slot, &idx) in response.selected_indices.iter().enumerate() {
+                    let expected_base = validation_big_weights
+                        .get(idx)
+                        .copied()
+                        .ok_or_else(|| anyhow::anyhow!("压缩器返回越界索引 {idx}"))?;
+                    let base = response.base_weights[slot];
+                    let addition = response.fitted_additions[slot];
+                    let lineage = response.lineage_weights[slot];
+                    let selected = response.selected_weights[slot];
+                    let seed = response.final_seed_anchor_weights[slot];
+                    if !base.is_finite()
+                        || !seed.is_finite()
+                        || !addition.is_finite()
+                        || !lineage.is_finite()
+                        || !selected.is_finite()
+                        || (base - expected_base).abs() > 1e-9
+                        || (lineage - base - addition).abs() > 1e-8
+                    {
+                        anyhow::bail!(
+                            "继承式可变数量权重血缘校验失败：slot={} group_id={}",
+                            slot,
+                            candidates[idx].row.group_id,
+                        );
+                    }
+                    let expected_selected = lineage * response.output_target_count as f64 / response.big_target_weight_sum;
+                    if (selected - expected_selected).abs() > 1e-8 {
+                        anyhow::bail!(
+                            "导出权重 /n 缩放校验失败：slot={} group_id={} selected={} expected={}",
+                            slot,
+                            candidates[idx].row.group_id,
+                            selected,
+                            expected_selected,
                         );
                     }
                 }
-                if let Some(error) = target_solution_feasibility_error(&selected, candidates, player_cap) {
-                    anyhow::bail!("weighted MILP solver 返回解违反计数约束：{error}; status={:?}", response.status);
+                let initial_anchor_sum = response.initial_anchor_weights.iter().sum::<f64>();
+                let final_seed_anchor_sum = response.final_seed_anchor_weights.iter().sum::<f64>();
+                let lineage_sum = response.lineage_weights.iter().sum::<f64>();
+                let selected_sum = response.selected_weights.iter().sum::<f64>();
+                let addition_sum = response.fitted_additions.iter().sum::<f64>();
+                if (response.big_target_weight_sum - total_weight).abs() > 1e-8
+                    || (initial_anchor_sum - total_weight).abs() > 1e-7
+                    || (final_seed_anchor_sum - total_weight).abs() > 1e-7
+                    || (lineage_sum - total_weight).abs() > 1e-7
+                    || (selected_sum - response.output_target_count as f64).abs() > 1e-7
+                    || (addition_sum - response.tail_weight_sum).abs() > 1e-7
+                {
+                    anyhow::bail!(
+                        "继承式可变数量权重不守恒：big={} initial_seed={} final_seed={} lineage={} selected={} target_count={} tail={} additions={}",
+                        total_weight,
+                        initial_anchor_sum,
+                        final_seed_anchor_sum,
+                        lineage_sum,
+                        selected_sum,
+                        response.output_target_count,
+                        response.tail_weight_sum,
+                        addition_sum,
+                    );
                 }
-                if let Some(error) = target_weight_feasibility_error(
-                    &selected,
-                    &weights,
-                    candidates,
-                    weight_min,
-                    weight_max,
-                    target_total as f64,
-                    player_weight_cap,
-                ) {
-                    anyhow::bail!("weighted MILP solver 返回权重违反约束：{error}; status={:?}", response.status);
+                let deletion_locked_set = response.deletion_locked_indices.iter().copied().collect::<HashSet<_>>();
+                let mut priority_slots = response
+                    .selected_indices
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(slot, idx)| deletion_locked_set.contains(idx).then_some(slot))
+                    .collect::<Vec<_>>();
+                priority_slots.sort_by(|&left, &right| {
+                    compare_target_candidates(
+                        &candidates[response.selected_indices[left]],
+                        &candidates[response.selected_indices[right]],
+                    )
+                });
+                let priority_count = priority_slots.len();
+                if priority_count != response.deletion_lock_count {
+                    anyhow::bail!(
+                        "最终支持集遗漏固定删除锁定项：expected={} actual={}",
+                        response.deletion_lock_count,
+                        priority_count,
+                    );
                 }
-                return Ok(TargetMilpSolution { indices: selected, weights });
+                let metrics = [
+                    response.initial_metrics.big_mean_abs_diff,
+                    response.initial_metrics.big_max_abs_diff,
+                    response.initial_metrics.big_rmse,
+                    response.final_metrics.big_mean_abs_diff,
+                    response.final_metrics.big_max_abs_diff,
+                    response.final_metrics.big_rmse,
+                    response.final_metrics.correct_mean_abs_diff,
+                    response.final_metrics.correct_max_abs_diff,
+                    response.final_metrics.correct_p95_abs_diff,
+                    response.final_metrics.correct_rmse,
+                    response.initial_metrics.aligned_mean_abs_diff,
+                    response.initial_metrics.aligned_max_abs_diff,
+                    response.initial_metrics.aligned_rmse,
+                    response.pre_deletion_metrics.aligned_mean_abs_diff,
+                    response.pre_deletion_metrics.aligned_max_abs_diff,
+                    response.pre_deletion_metrics.aligned_rmse,
+                    response.final_metrics.aligned_mean_abs_diff,
+                    response.final_metrics.aligned_max_abs_diff,
+                    response.final_metrics.aligned_p95_abs_diff,
+                    response.final_metrics.aligned_rmse,
+                    response.final_metrics.flat_raw_mean_abs_diff,
+                    response.final_metrics.flat_raw_max_abs_diff,
+                    response.final_metrics.flat_raw_rmse,
+                    response.final_metrics.affine_slope,
+                    response.final_metrics.affine_intercept,
+                    response.final_metrics.anchor_distance_l2,
+                    response.final_metrics.similar_addition_rms,
+                    response.final_metrics.local_order_inversion_rms,
+                    response.final_metrics.final_weight_monotonic_violation_max,
+                    response.final_metrics.adjacent_weight_gap_rms,
+                    response.final_metrics.adjacent_weight_gap_max,
+                    response.final_metrics.weight_gap_second_difference_rms,
+                    response.final_metrics.final_weight_sum,
+                    response.final_metrics.max_diff_target,
+                    response.final_metrics.max_diff_target_margin,
+                    response.final_metrics.selection_error_cost_normalized,
+                    response.final_metrics.selection_structure_cost_normalized,
+                    response.final_metrics.selection_score,
+                    response.final_metrics.golden_unit_final_spread,
+                    response.final_metrics.golden_unit_projection_l2,
+                ];
+                if metrics.iter().any(|value| !value.is_finite()) {
+                    anyhow::bail!("继承式可变数量压缩器返回非有限指标");
+                }
+                if response.final_metrics.affine_slope <= 0.0 {
+                    anyhow::bail!(
+                        "仿射压平可变数量靶校验失败：slope={}（必须为正）",
+                        response.final_metrics.affine_slope,
+                    );
+                }
+                return Ok(response);
             }
-            Ok(out) => {
-                let stderr = String::from_utf8_lossy(&out.stderr).to_string();
-                let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+            Ok(process) => {
                 last_error = Some(format!(
-                    "{exe} failed with status {:?}; stdout={}; stderr={}",
-                    out.status.code(),
-                    stdout,
-                    stderr
+                    "{} exited with {:?}; stdout={}; stderr={}",
+                    exe,
+                    process.status.code(),
+                    String::from_utf8_lossy(&process.stdout).trim(),
+                    String::from_utf8_lossy(&process.stderr).trim(),
                 ));
             }
-            Err(err) => {
-                last_error = Some(format!("{exe} failed to start: {err}"));
+            Err(error) => {
+                last_error = Some(format!("failed to start {exe}: {error}"));
             }
         }
     }
-
     anyhow::bail!(
-        "weighted MILP solver 不可用或未产生合法解：{}",
-        last_error.unwrap_or_else(|| "python3/python 均不可用或没有返回错误信息".to_string())
+        "继承式可变数量压缩器不可用：{}",
+        last_error.unwrap_or_else(|| "python3/python 均未返回具体错误".to_string())
     )
 }
 
@@ -1141,35 +1762,6 @@ fn compare_target_candidates(a: &TargetCandidate, b: &TargetCandidate) -> std::c
         .then_with(|| a.row.group_id.cmp(&b.row.group_id))
 }
 
-fn greedy_main_order(candidates: &[TargetCandidate], min_score: Option<f64>) -> Vec<usize> {
-    let mut order: Vec<usize> = (0..candidates.len()).collect();
-    order.sort_by(|&a, &b| compare_target_candidates(&candidates[a], &candidates[b]));
-
-    let mut used_players = HashSet::new();
-    let mut out = Vec::new();
-
-    'candidate: for idx in order {
-        if let Some(min_score) = min_score {
-            if candidates[idx].correct_score() < min_score {
-                continue;
-            }
-        }
-
-        for player in &candidates[idx].player_keys {
-            if used_players.contains(player) {
-                continue 'candidate;
-            }
-        }
-
-        for player in &candidates[idx].player_keys {
-            used_players.insert(player.clone());
-        }
-        out.push(idx);
-    }
-
-    out
-}
-
 fn rate_between(
     rate_map: &HashMap<(crate::model::GroupId, crate::model::GroupId), f64>,
     a: crate::model::GroupId,
@@ -1185,1261 +1777,12 @@ fn rate_between(
     }
 }
 
-fn mean_std(values: &[f64]) -> (f64, f64) {
-    if values.is_empty() {
-        return (f64::NAN, f64::NAN);
-    }
-    let mean = values.iter().sum::<f64>() / values.len() as f64;
-    let var = values
-        .iter()
-        .map(|x| {
-            let d = *x - mean;
-            d * d
-        })
-        .sum::<f64>() / values.len().max(1) as f64;
-    (mean, var.max(0.0).sqrt())
-}
-
-fn correlation(a: &[f64], b: &[f64]) -> Option<f64> {
-    if a.len() != b.len() || a.len() < 2 {
-        return None;
-    }
-    let (am, asd) = mean_std(a);
-    let (bm, bsd) = mean_std(b);
-    if !asd.is_finite() || !bsd.is_finite() || asd <= 1e-12 || bsd <= 1e-12 {
-        return None;
-    }
-    let cov = a.iter()
-        .zip(b.iter())
-        .map(|(x, y)| (*x - am) * (*y - bm))
-        .sum::<f64>() / a.len() as f64;
-    Some(cov / (asd * bsd))
-}
-
-fn fixed_slope_chebyshev_fit(avg_values: &[f64], score_values: &[f64], slope: f64) -> (f64, f64) {
-    let mut min_resid = f64::INFINITY;
-    let mut max_resid = f64::NEG_INFINITY;
-    for (avg, score) in avg_values.iter().zip(score_values.iter()) {
-        let resid = *score - slope * *avg;
-        min_resid = min_resid.min(resid);
-        max_resid = max_resid.max(resid);
-    }
-    let intercept = (min_resid + max_resid) / 2.0;
-    let max_abs = (max_resid - min_resid).abs() / 2.0;
-    (intercept, max_abs)
-}
-
-fn affine_chebyshev_fit(avg_values: &[f64], score_values: &[f64]) -> (f64, f64, Vec<f64>) {
-    if avg_values.len() != score_values.len() || avg_values.len() < 2 {
-        return (1.0, 0.0, Vec::new());
-    }
-
-    let (avg_mean, avg_std) = mean_std(avg_values);
-    let (score_mean, score_std) = mean_std(score_values);
-    let avg_min = avg_values.iter().copied().fold(f64::INFINITY, f64::min);
-    let avg_max = avg_values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    let score_min = score_values.iter().copied().fold(f64::INFINITY, f64::min);
-    let score_max = score_values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-
-    if !avg_std.is_finite()
-        || !score_std.is_finite()
-        || avg_std <= 1e-12
-        || score_std <= 1e-12
-        || (avg_max - avg_min).abs() <= 1e-12
-    {
-        let intercept = score_mean - avg_mean;
-        let diffs = avg_values
-            .iter()
-            .zip(score_values.iter())
-            .map(|(avg, score)| *avg + intercept - *score)
-            .collect();
-        return (1.0, intercept, diffs);
-    }
-
-    let range_slope = ((score_max - score_min).abs() / (avg_max - avg_min).abs()).max(1e-6);
-    let std_slope = (score_std / avg_std).max(1e-6);
-    let corr_slope = correlation(avg_values, score_values)
-        .map(|corr| (corr * score_std / avg_std).abs())
-        .unwrap_or(std_slope)
-        .max(1e-6);
-
-    let mut lo = 0.0_f64;
-    let mut hi = range_slope.max(std_slope).max(corr_slope).max(1.0) * 4.0;
-    let mut last_hi_score = fixed_slope_chebyshev_fit(avg_values, score_values, hi).1;
-
-    for _ in 0..8 {
-        let mid = hi / 2.0;
-        let mid_score = fixed_slope_chebyshev_fit(avg_values, score_values, mid).1;
-        if last_hi_score + 1e-12 >= mid_score {
-            break;
-        }
-        hi *= 2.0;
-        last_hi_score = fixed_slope_chebyshev_fit(avg_values, score_values, hi).1;
-    }
-
-    // z(a) is convex piecewise-linear; ternary search is deterministic and accurate enough here.
-    for _ in 0..80 {
-        let m1 = lo + (hi - lo) / 3.0;
-        let m2 = hi - (hi - lo) / 3.0;
-        let z1 = fixed_slope_chebyshev_fit(avg_values, score_values, m1).1;
-        let z2 = fixed_slope_chebyshev_fit(avg_values, score_values, m2).1;
-        if z1 <= z2 {
-            hi = m2;
-        } else {
-            lo = m1;
-        }
-    }
-
-    let slope = ((lo + hi) / 2.0).max(0.0);
-    let (intercept, _) = fixed_slope_chebyshev_fit(avg_values, score_values, slope);
-    let diffs = avg_values
-        .iter()
-        .zip(score_values.iter())
-        .map(|(avg, score)| slope * *avg + intercept - *score)
-        .collect();
-
-    (slope, intercept, diffs)
-}
-
-fn target_objective(
-    reference_indices: &[usize],
-    target_indices: &[usize],
-    candidates: &[TargetCandidate],
-    rate_map: &HashMap<(crate::model::GroupId, crate::model::GroupId), f64>,
-) -> TargetObjective {
-    let mut avg_values = Vec::new();
-    let mut score_values = Vec::new();
-    let mut missing_edges = 0usize;
-    let mut missing_refs = 0usize;
-
-    for &ref_idx in reference_indices {
-        let ref_gid = candidates[ref_idx].row.group_id;
-        let mut sum = 0.0;
-        let mut count = 0usize;
-        let mut missing_for_ref = 0usize;
-
-        for &target_idx in target_indices {
-            let target_gid = candidates[target_idx].row.group_id;
-            if let Some(rate) = rate_between(rate_map, ref_gid, target_gid) {
-                sum += rate;
-                count += 1;
-            } else {
-                missing_edges += 1;
-                missing_for_ref += 1;
-            }
-        }
-
-        if count == 0 {
-            missing_refs += 1;
-            continue;
-        }
-
-        // Production target generation should have complete reference × target coverage.
-        // If an unexpected missing edge remains, keep the row but penalize the objective.
-        let denominator = count + missing_for_ref;
-        avg_values.push(sum / denominator.max(1) as f64);
-        score_values.push(candidates[ref_idx].correct_score());
-    }
-
-    let (avg_mean, avg_std) = mean_std(&avg_values);
-    let (score_mean, score_std) = mean_std(&score_values);
-    let corr = correlation(&avg_values, &score_values);
-    let (align_slope, align_intercept, diffs) = affine_chebyshev_fit(&avg_values, &score_values);
-    let penalty = (missing_edges + missing_refs) as f64 * 1.0e6;
-    let (mut max_abs_diff, mut p95_abs_diff, mut mean_abs_diff, mut rmse) = diff_summary_metrics(&diffs);
-    max_abs_diff += penalty;
-    p95_abs_diff += penalty;
-    mean_abs_diff += penalty;
-    rmse += penalty;
-    let mse = if diffs.is_empty() {
-        1.0e9 + penalty
-    } else {
-        diffs.iter().map(|x| x * x).sum::<f64>() / diffs.len() as f64 + penalty
-    };
-
-    TargetObjective {
-        mse,
-        corr,
-        max_abs_diff,
-        p95_abs_diff,
-        mean_abs_diff,
-        rmse,
-        avg_mean,
-        avg_std,
-        score_mean,
-        score_std,
-        align_slope,
-        align_intercept,
-    }
-}
-
-
-fn target_objective_weighted(
-    reference_indices: &[usize],
-    target_indices: &[usize],
-    target_weights: &[f64],
-    candidates: &[TargetCandidate],
-    rate_map: &HashMap<(crate::model::GroupId, crate::model::GroupId), f64>,
-) -> TargetObjective {
-    if target_indices.len() != target_weights.len() {
-        let mut obj = target_objective(reference_indices, target_indices, candidates, rate_map);
-        obj.max_abs_diff += 1.0e9;
-        obj.p95_abs_diff += 1.0e9;
-        obj.mean_abs_diff += 1.0e9;
-        obj.rmse += 1.0e9;
-        obj.mse += 1.0e9;
-        return obj;
-    }
-
-    let weight_sum = target_weights.iter().copied().sum::<f64>();
-    if !weight_sum.is_finite() || weight_sum <= 0.0 {
-        let mut obj = target_objective(reference_indices, target_indices, candidates, rate_map);
-        obj.max_abs_diff += 1.0e9;
-        obj.p95_abs_diff += 1.0e9;
-        obj.mean_abs_diff += 1.0e9;
-        obj.rmse += 1.0e9;
-        obj.mse += 1.0e9;
-        return obj;
-    }
-
-    let mut avg_values = Vec::new();
-    let mut score_values = Vec::new();
-    let mut missing_edges = 0usize;
-    let mut missing_refs = 0usize;
-
-    for &ref_idx in reference_indices {
-        let ref_gid = candidates[ref_idx].row.group_id;
-        let mut weighted_sum = 0.0;
-        let mut present_weight_sum = 0.0;
-
-        for (&target_idx, &weight) in target_indices.iter().zip(target_weights.iter()) {
-            let target_gid = candidates[target_idx].row.group_id;
-            if let Some(rate) = rate_between(rate_map, ref_gid, target_gid) {
-                weighted_sum += rate * weight;
-                present_weight_sum += weight;
-            } else {
-                missing_edges += 1;
-            }
-        }
-
-        if present_weight_sum <= 0.0 {
-            missing_refs += 1;
-            continue;
-        }
-
-        avg_values.push(weighted_sum / weight_sum);
-        score_values.push(candidates[ref_idx].correct_score());
-    }
-
-    let (avg_mean, avg_std) = mean_std(&avg_values);
-    let (score_mean, score_std) = mean_std(&score_values);
-    let corr = correlation(&avg_values, &score_values);
-    let (align_slope, align_intercept, diffs) = affine_chebyshev_fit(&avg_values, &score_values);
-    let penalty = (missing_edges + missing_refs) as f64 * 1.0e6;
-    let (mut max_abs_diff, mut p95_abs_diff, mut mean_abs_diff, mut rmse) = diff_summary_metrics(&diffs);
-    max_abs_diff += penalty;
-    p95_abs_diff += penalty;
-    mean_abs_diff += penalty;
-    rmse += penalty;
-    let mse = if diffs.is_empty() {
-        1.0e9 + penalty
-    } else {
-        diffs.iter().map(|x| x * x).sum::<f64>() / diffs.len() as f64 + penalty
-    };
-
-    TargetObjective {
-        mse,
-        corr,
-        max_abs_diff,
-        p95_abs_diff,
-        mean_abs_diff,
-        rmse,
-        avg_mean,
-        avg_std,
-        score_mean,
-        score_std,
-        align_slope,
-        align_intercept,
-    }
-}
-
-fn diff_summary_metrics(diffs: &[f64]) -> (f64, f64, f64, f64) {
-    if diffs.is_empty() {
-        let penalty = 1.0e6;
-        return (penalty, penalty, penalty, penalty);
-    }
-
-    let mut abs: Vec<f64> = diffs
-        .iter()
-        .copied()
-        .filter(|x| x.is_finite())
-        .map(|x| x.abs())
-        .collect();
-
-    if abs.is_empty() {
-        let penalty = 1.0e6;
-        return (penalty, penalty, penalty, penalty);
-    }
-
-    abs.sort_by(|a, b| a.total_cmp(b));
-    let n = abs.len();
-    let max_abs_diff = abs[n - 1];
-    let p95_idx = ((n.saturating_sub(1)) as f64 * 0.95).round() as usize;
-    let p95_abs_diff = abs[p95_idx.min(n - 1)];
-    let mean_abs_diff = abs.iter().sum::<f64>() / n as f64;
-    let rmse = (diffs.iter().map(|x| x * x).sum::<f64>() / diffs.len() as f64).sqrt();
-
-    (max_abs_diff, p95_abs_diff, mean_abs_diff, rmse)
-}
-
-fn objective_loss_key(value: f64) -> f64 {
-    if value.is_finite() {
-        value
-    } else {
-        f64::INFINITY
-    }
-}
-
-fn objective_corr_key(value: Option<f64>) -> f64 {
-    match value {
-        Some(x) if x.is_finite() => x,
-        _ => f64::NEG_INFINITY,
-    }
-}
-
-fn compare_target_objectives(a: &TargetObjective, b: &TargetObjective) -> std::cmp::Ordering {
-    // IMPORTANT: this comparator is used by Rust's slice::sort_by.  It must be a
-    // strict total order.  Do not use EPS/tolerance comparisons here: approximate
-    // equality is not transitive, so sort_by may panic with:
-    // "user-provided comparison function does not correctly implement a total order".
-    //
-    // If two objective values should be treated as practically equal, keep the
-    // exact total order here and express the tolerance in the objective itself
-    // before sorting, e.g. by rounded/quantized metrics.
-    objective_loss_key(a.max_abs_diff)
-        .total_cmp(&objective_loss_key(b.max_abs_diff))
-        .then_with(|| objective_loss_key(a.p95_abs_diff).total_cmp(&objective_loss_key(b.p95_abs_diff)))
-        .then_with(|| objective_loss_key(a.mean_abs_diff).total_cmp(&objective_loss_key(b.mean_abs_diff)))
-        .then_with(|| objective_loss_key(a.rmse).total_cmp(&objective_loss_key(b.rmse)))
-        .then_with(|| objective_loss_key(a.mse).total_cmp(&objective_loss_key(b.mse)))
-        // Higher correlation is better, so reverse the order.
-        .then_with(|| objective_corr_key(b.corr).total_cmp(&objective_corr_key(a.corr)))
-}
-
-fn objective_is_better(
-    idx: usize,
-    obj: &TargetObjective,
-    best_idx: usize,
-    best_obj: &TargetObjective,
-    candidates: &[TargetCandidate],
-) -> bool {
-    match compare_target_objectives(obj, best_obj) {
-        std::cmp::Ordering::Less => true,
-        std::cmp::Ordering::Greater => false,
-        std::cmp::Ordering::Equal => compare_target_candidates(&candidates[idx], &candidates[best_idx]).is_lt(),
-    }
-}
-
-fn target_solution_is_better(
-    lhs: &TargetSearchResult,
-    rhs: &TargetSearchResult,
-    candidates: &[TargetCandidate],
-) -> bool {
-    match compare_target_objectives(&lhs.objective, &rhs.objective) {
-        std::cmp::Ordering::Less => true,
-        std::cmp::Ordering::Greater => false,
-        std::cmp::Ordering::Equal => compare_solution_order(&lhs.indices, &rhs.indices, candidates).is_lt(),
-    }
-}
-
-fn compare_solution_order(
-    lhs: &[usize],
-    rhs: &[usize],
-    candidates: &[TargetCandidate],
-) -> std::cmp::Ordering {
-    for (&a, &b) in lhs.iter().zip(rhs.iter()) {
-        let ord = compare_target_candidates(&candidates[a], &candidates[b]);
-        if !ord.is_eq() {
-            return ord;
-        }
-    }
-    lhs.len().cmp(&rhs.len())
-}
-
-fn has_duplicate_indices(indices: &[usize]) -> bool {
-    let mut seen = HashSet::new();
-    for idx in indices {
-        if !seen.insert(*idx) {
-            return true;
-        }
-    }
-    false
-}
-
-fn violates_player_cap(indices: &[usize], candidates: &[TargetCandidate], cap: usize) -> bool {
-    let mut counts: HashMap<&str, usize> = HashMap::new();
-    for &idx in indices {
-        for key in &candidates[idx].player_keys {
-            let count = counts.entry(key.as_str()).or_insert(0);
-            *count += 1;
-            if *count > cap {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-fn target_solution_feasibility_error(indices: &[usize], candidates: &[TargetCandidate], cap: usize) -> Option<String> {
-    let mut seen = HashSet::new();
-    for &idx in indices {
-        if !seen.insert(idx) {
-            return Some(format!("重复靶子 group_id={}", candidates[idx].row.group_id));
-        }
-    }
-
-    let mut player_counts: HashMap<&str, usize> = HashMap::new();
-    for &idx in indices {
-        for key in &candidates[idx].player_keys {
-            let count = player_counts.entry(key.as_str()).or_insert(0);
-            *count += 1;
-            if *count > cap {
-                return Some(format!("重复号约束失败：玩家/成员 {key} 出现 {count} 次，超过上限 {cap}"));
-            }
-        }
-    }
-
-    None
-}
-
-fn target_solution_is_feasible(indices: &[usize], candidates: &[TargetCandidate], cap: usize) -> bool {
-    target_solution_feasibility_error(indices, candidates, cap).is_none()
-}
-
-fn target_solution_can_add(indices: &[usize], idx: usize, candidates: &[TargetCandidate], cap: usize) -> bool {
-    if indices.contains(&idx) {
-        return false;
-    }
-    let mut proposed = indices.to_vec();
-    proposed.push(idx);
-    target_solution_is_feasible(&proposed, candidates, cap)
-}
-
-fn target_weight_feasibility_error(
-    indices: &[usize],
-    weights: &[f64],
-    candidates: &[TargetCandidate],
-    weight_min: f64,
-    weight_max: f64,
-    expected_weight_sum: f64,
-    player_weight_cap: f64,
-) -> Option<String> {
-    if indices.len() != weights.len() {
-        return Some(format!("indices/weights 长度不一致：{} vs {}", indices.len(), weights.len()));
-    }
-
-    let mut weight_sum = 0.0;
-    let mut player_weight: HashMap<&str, f64> = HashMap::new();
-    for (&idx, &weight) in indices.iter().zip(weights.iter()) {
-        if !weight.is_finite() {
-            return Some(format!("group_id={} 的权重不是有限数：{}", candidates[idx].row.group_id, weight));
-        }
-        if weight + 1e-7 < weight_min || weight > weight_max + 1e-7 {
-            return Some(format!(
-                "group_id={} 的权重 {:.9} 超出范围 [{:.3}, {:.3}]",
-                candidates[idx].row.group_id,
-                weight,
-                weight_min,
-                weight_max
-            ));
-        }
-        weight_sum += weight;
-        for key in &candidates[idx].player_keys {
-            let entry = player_weight.entry(key.as_str()).or_insert(0.0);
-            *entry += weight;
-            if *entry > player_weight_cap + 1e-6 {
-                return Some(format!(
-                    "玩家 {key} 的靶子权重和 {:.9} 超过上限 {:.3}",
-                    *entry,
-                    player_weight_cap
-                ));
-            }
-        }
-    }
-
-    if (weight_sum - expected_weight_sum).abs() > 1e-5 {
-        return Some(format!(
-            "靶子权重总和 {:.9} 不等于期望 {:.9}",
-            weight_sum,
-            expected_weight_sum
-        ));
-    }
-
-    None
-}
-
 fn build_target_config_text(indices: &[usize], weights: &[f64], candidates: &[TargetCandidate]) -> String {
     let mut lines = Vec::with_capacity(indices.len());
     for (&idx, &weight) in indices.iter().zip(weights.iter()) {
         lines.push(format!("{:.12}\t{}", weight, candidates[idx].row.canonical));
     }
     lines.join("\n")
-}
-
-fn feasibility_beam_refill_solution(
-    start: Vec<usize>,
-    pool: &[usize],
-    target_total: usize,
-    player_cap: usize,
-    candidates: &[TargetCandidate],
-    beam_width: usize,
-) -> Option<Vec<usize>> {
-    if !target_solution_is_feasible(&start, candidates, player_cap) || start.len() > target_total {
-        return None;
-    }
-
-    let mut beam = vec![start];
-    while beam.first().map(|x| x.len()).unwrap_or(0) < target_total {
-        let mut next: Vec<Vec<usize>> = Vec::new();
-
-        for partial in &beam {
-            let selected_set: HashSet<usize> = partial.iter().copied().collect();
-            for &idx in pool {
-                if selected_set.contains(&idx) {
-                    continue;
-                }
-                let mut proposed = partial.clone();
-                proposed.push(idx);
-                if !target_solution_is_feasible(&proposed, candidates, player_cap) {
-                    continue;
-                }
-                next.push(proposed);
-            }
-        }
-
-        if next.is_empty() {
-            return None;
-        }
-
-        // This fallback is only about proving/finding feasibility, so rank by
-        // stable main-list order and by remaining player-cap slack instead of
-        // residual objective.  That avoids falsely reporting "cannot fill" just
-        // because the minimax beam pruned into a dead basin.
-        next.sort_by(|a, b| {
-            compare_solution_order(a, b, candidates)
-                .then_with(|| b.len().cmp(&a.len()))
-        });
-        next.dedup_by(|a, b| solution_signature(a) == solution_signature(b));
-        next.truncate(beam_width.max(1));
-        beam = next;
-    }
-
-    beam.into_iter().next()
-}
-
-fn greedy_refill_solution(
-    start: Vec<usize>,
-    pool: &[usize],
-    target_total: usize,
-    player_cap: usize,
-    candidates: &[TargetCandidate],
-) -> Option<Vec<usize>> {
-    if !target_solution_is_feasible(&start, candidates, player_cap) {
-        return None;
-    }
-
-    let mut selected = start;
-    let mut selected_set: HashSet<usize> = selected.iter().copied().collect();
-    for &idx in pool {
-        if selected.len() >= target_total {
-            break;
-        }
-        if selected_set.contains(&idx) {
-            continue;
-        }
-        selected.push(idx);
-        if !target_solution_is_feasible(&selected, candidates, player_cap) {
-            selected.pop();
-            continue;
-        }
-        selected_set.insert(idx);
-    }
-
-    if selected.len() == target_total {
-        Some(selected)
-    } else {
-        None
-    }
-}
-
-fn target_reference_residuals(
-    reference_indices: &[usize],
-    target_indices: &[usize],
-    candidates: &[TargetCandidate],
-    rate_map: &HashMap<(crate::model::GroupId, crate::model::GroupId), f64>,
-) -> Vec<TargetResidual> {
-    if target_indices.is_empty() {
-        return Vec::new();
-    }
-
-    let objective = target_objective(reference_indices, target_indices, candidates, rate_map);
-    if !objective.align_slope.is_finite() || !objective.align_intercept.is_finite() {
-        return Vec::new();
-    }
-
-    let mut out = Vec::new();
-    for &ref_idx in reference_indices {
-        let ref_gid = candidates[ref_idx].row.group_id;
-        let mut sum = 0.0;
-        let mut count = 0usize;
-        let mut missing_for_ref = 0usize;
-
-        for &target_idx in target_indices {
-            let target_gid = candidates[target_idx].row.group_id;
-            if let Some(rate) = rate_between(rate_map, ref_gid, target_gid) {
-                sum += rate;
-                count += 1;
-            } else {
-                missing_for_ref += 1;
-            }
-        }
-
-        if count == 0 {
-            continue;
-        }
-
-        let denominator = count + missing_for_ref;
-        let avg = sum / denominator.max(1) as f64;
-        let aligned = objective.align_slope * avg + objective.align_intercept;
-        let diff = aligned - candidates[ref_idx].correct_score();
-        if diff.is_finite() {
-            out.push(TargetResidual {
-                ref_idx,
-                avg_winrate: avg,
-                diff,
-                abs_diff: diff.abs(),
-            });
-        }
-    }
-
-    out.sort_by(|a, b| {
-        b.abs_diff
-            .total_cmp(&a.abs_diff)
-            .then_with(|| a.ref_idx.cmp(&b.ref_idx))
-    });
-    out
-}
-
-fn repair_gain_for_candidate(
-    residuals: &[TargetResidual],
-    target_idx: usize,
-    candidates: &[TargetCandidate],
-    rate_map: &HashMap<(crate::model::GroupId, crate::model::GroupId), f64>,
-    worst_ref_limit: usize,
-) -> f64 {
-    let target_gid = candidates[target_idx].row.group_id;
-    let mut gain = 0.0;
-
-    for residual in residuals.iter().take(worst_ref_limit.max(1)) {
-        let ref_gid = candidates[residual.ref_idx].row.group_id;
-        let Some(rate) = rate_between(rate_map, ref_gid, target_gid) else {
-            continue;
-        };
-        let centered = rate - residual.avg_winrate;
-        let weight = residual.abs_diff * residual.abs_diff;
-        gain += -residual.diff.signum() * centered * weight;
-    }
-
-    gain
-}
-
-fn removal_harm_for_target(
-    residuals: &[TargetResidual],
-    target_idx: usize,
-    candidates: &[TargetCandidate],
-    rate_map: &HashMap<(crate::model::GroupId, crate::model::GroupId), f64>,
-    worst_ref_limit: usize,
-) -> f64 {
-    let target_gid = candidates[target_idx].row.group_id;
-    let mut harm = 0.0;
-
-    for residual in residuals.iter().take(worst_ref_limit.max(1)) {
-        let ref_gid = candidates[residual.ref_idx].row.group_id;
-        let Some(rate) = rate_between(rate_map, ref_gid, target_gid) else {
-            continue;
-        };
-        let centered = rate - residual.avg_winrate;
-        let weight = residual.abs_diff * residual.abs_diff;
-        harm += residual.diff.signum() * centered * weight;
-    }
-
-    harm
-}
-
-fn projected_refill_objective(
-    partial: &[usize],
-    pool: &[usize],
-    target_total: usize,
-    player_cap: usize,
-    reference_indices: &[usize],
-    candidates: &[TargetCandidate],
-    rate_map: &HashMap<(crate::model::GroupId, crate::model::GroupId), f64>,
-) -> TargetObjective {
-    if partial.len() >= target_total {
-        return target_objective(reference_indices, partial, candidates, rate_map);
-    }
-
-    if !target_solution_is_feasible(partial, candidates, player_cap) {
-        let mut obj = target_objective(reference_indices, partial, candidates, rate_map);
-        obj.max_abs_diff += 1.0e9;
-        obj.p95_abs_diff += 1.0e9;
-        obj.mean_abs_diff += 1.0e9;
-        obj.rmse += 1.0e9;
-        obj.mse += 1.0e9;
-        return obj;
-    }
-
-    // Dynamic lookahead: estimate the remaining fill from the current worst
-    // residuals, not from a static pool mean.  This keeps partial beam states
-    // from being scored as if their current incomplete profile were final.
-    let residuals = target_reference_residuals(reference_indices, partial, candidates, rate_map);
-    let mut ranked_pool: Vec<(usize, f64)> = pool
-        .iter()
-        .copied()
-        .filter(|idx| !partial.contains(idx))
-        .map(|idx| {
-            let gain = repair_gain_for_candidate(&residuals, idx, candidates, rate_map, residuals.len().min(16));
-            (idx, gain)
-        })
-        .collect();
-
-    ranked_pool.sort_by(|(idx_a, gain_a), (idx_b, gain_b)| {
-        gain_b
-            .total_cmp(gain_a)
-            .then_with(|| compare_target_candidates(&candidates[*idx_a], &candidates[*idx_b]))
-    });
-
-    let mut projected = partial.to_vec();
-    for (idx, _) in ranked_pool {
-        if projected.len() >= target_total {
-            break;
-        }
-        if target_solution_can_add(&projected, idx, candidates, player_cap) {
-            projected.push(idx);
-        }
-    }
-
-    // If the residual-guided projection cannot complete the target set, use a
-    // feasibility-only completion as a second lookahead.  If even that cannot
-    // complete, penalize the partial heavily so the beam does not keep a dead
-    // branch just because its incomplete profile looks good.
-    if projected.len() < target_total {
-        if let Some(completed) = feasibility_beam_refill_solution(
-            partial.to_vec(),
-            pool,
-            target_total,
-            player_cap,
-            candidates,
-            64,
-        ) {
-            projected = completed;
-        } else {
-            let mut obj = target_objective(reference_indices, &projected, candidates, rate_map);
-            obj.max_abs_diff += 1.0e9;
-            obj.p95_abs_diff += 1.0e9;
-            obj.mean_abs_diff += 1.0e9;
-            obj.rmse += 1.0e9;
-            obj.mse += 1.0e9;
-            return obj;
-        }
-    }
-
-    target_objective(reference_indices, &projected, candidates, rate_map)
-}
-
-fn beam_refill_solution(
-    start: Vec<usize>,
-    pool: &[usize],
-    target_total: usize,
-    player_cap: usize,
-    reference_indices: &[usize],
-    candidates: &[TargetCandidate],
-    rate_map: &HashMap<(crate::model::GroupId, crate::model::GroupId), f64>,
-    beam_width: usize,
-) -> Option<Vec<usize>> {
-    if !target_solution_is_feasible(&start, candidates, player_cap) {
-        return None;
-    }
-    if start.len() > target_total {
-        return None;
-    }
-
-    let mut beam = vec![start];
-    while beam.first().map(|x| x.len()).unwrap_or(0) < target_total {
-        let mut next: Vec<TargetSearchResult> = Vec::new();
-        for partial in &beam {
-            let selected_set: HashSet<usize> = partial.iter().copied().collect();
-            for &idx in pool {
-                if selected_set.contains(&idx) {
-                    continue;
-                }
-                let mut proposed = partial.clone();
-                proposed.push(idx);
-                if !target_solution_is_feasible(&proposed, candidates, player_cap) {
-                    continue;
-                }
-                let objective = projected_refill_objective(&proposed, pool, target_total, player_cap, reference_indices, candidates, rate_map);
-                next.push(TargetSearchResult { indices: proposed, objective });
-            }
-        }
-
-        if next.is_empty() {
-            return feasibility_beam_refill_solution(
-                beam.into_iter().next().unwrap_or_default(),
-                pool,
-                target_total,
-                player_cap,
-                candidates,
-                beam_width.max(64),
-            );
-        }
-
-        next.sort_by(|a, b| match compare_target_objectives(&a.objective, &b.objective) {
-            std::cmp::Ordering::Equal => compare_solution_order(&a.indices, &b.indices, candidates),
-            ord => ord,
-        });
-        next.truncate(beam_width.max(1));
-        beam = next.into_iter().map(|x| x.indices).collect();
-    }
-
-    beam.into_iter().next()
-}
-
-fn repair_solution_for_locked_prefix(
-    seed: Vec<usize>,
-    locked_prefix: &[usize],
-    pool: &[usize],
-    target_total: usize,
-    player_cap: usize,
-    reference_indices: &[usize],
-    candidates: &[TargetCandidate],
-    rate_map: &HashMap<(crate::model::GroupId, crate::model::GroupId), f64>,
-    beam_width: usize,
-) -> Option<Vec<usize>> {
-    let mut repaired = locked_prefix.to_vec();
-    let mut seen: HashSet<usize> = repaired.iter().copied().collect();
-
-    for idx in seed {
-        if repaired.len() >= target_total {
-            break;
-        }
-        if seen.contains(&idx) {
-            continue;
-        }
-        repaired.push(idx);
-        if !target_solution_is_feasible(&repaired, candidates, player_cap) {
-            repaired.pop();
-            continue;
-        }
-        seen.insert(idx);
-    }
-
-    beam_refill_solution(
-        repaired,
-        pool,
-        target_total,
-        player_cap,
-        reference_indices,
-        candidates,
-        rate_map,
-        beam_width,
-    )
-}
-
-fn polish_target_solution(
-    selected: Vec<usize>,
-    locked_count: usize,
-    pool: &[usize],
-    target_total: usize,
-    player_cap: usize,
-    reference_indices: &[usize],
-    candidates: &[TargetCandidate],
-    rate_map: &HashMap<(crate::model::GroupId, crate::model::GroupId), f64>,
-    max_passes: usize,
-) -> TargetSearchResult {
-    let mut selected = selected;
-    if selected.len() != target_total {
-        let objective = target_objective(reference_indices, &selected, candidates, rate_map);
-        return TargetSearchResult { indices: selected, objective };
-    }
-
-    let mut current_obj = target_objective(reference_indices, &selected, candidates, rate_map);
-    for _ in 0..max_passes {
-        let mut best_swap: Option<(usize, usize, TargetObjective)> = None;
-        for slot in locked_count..selected.len() {
-            for &idx in pool {
-                if selected[slot] == idx {
-                    continue;
-                }
-                if selected.contains(&idx) {
-                    continue;
-                }
-                let mut proposed = selected.clone();
-                proposed[slot] = idx;
-                if !target_solution_is_feasible(&proposed, candidates, player_cap) {
-                    continue;
-                }
-                let obj = target_objective(reference_indices, &proposed, candidates, rate_map);
-                if !matches!(compare_target_objectives(&obj, &current_obj), std::cmp::Ordering::Less) {
-                    continue;
-                }
-                if best_swap
-                    .as_ref()
-                    .map(|(_, best_idx, best_obj)| objective_is_better(idx, &obj, *best_idx, best_obj, candidates))
-                    .unwrap_or(true)
-                {
-                    best_swap = Some((slot, idx, obj));
-                }
-            }
-        }
-
-        let Some((slot, idx, obj)) = best_swap else {
-            break;
-        };
-        selected[slot] = idx;
-        current_obj = obj;
-    }
-
-    TargetSearchResult { indices: selected, objective: current_obj }
-}
-
-fn two_swap_polish_target_solution(
-    initial: TargetSearchResult,
-    locked_count: usize,
-    pool: &[usize],
-    player_cap: usize,
-    reference_indices: &[usize],
-    candidates: &[TargetCandidate],
-    rate_map: &HashMap<(crate::model::GroupId, crate::model::GroupId), f64>,
-    remove_shortlist: usize,
-    add_shortlist: usize,
-    max_passes: usize,
-) -> TargetSearchResult {
-    let mut selected = initial.indices;
-    let mut current_obj = target_objective(reference_indices, &selected, candidates, rate_map);
-
-    if selected.len() <= locked_count + 1 || !target_solution_is_feasible(&selected, candidates, player_cap) {
-        return TargetSearchResult { indices: selected, objective: current_obj };
-    }
-
-    for _ in 0..max_passes {
-        let residuals = target_reference_residuals(reference_indices, &selected, candidates, rate_map);
-        let mut remove_candidates: Vec<(usize, usize, f64)> = selected
-            .iter()
-            .copied()
-            .enumerate()
-            .skip(locked_count)
-            .map(|(slot, idx)| {
-                let harm = removal_harm_for_target(&residuals, idx, candidates, rate_map, residuals.len().min(16));
-                (slot, idx, harm)
-            })
-            .collect();
-        remove_candidates.sort_by(|(slot_a, idx_a, harm_a), (slot_b, idx_b, harm_b)| {
-            harm_b
-                .total_cmp(harm_a)
-                .then_with(|| compare_target_candidates(&candidates[*idx_b], &candidates[*idx_a]))
-                .then_with(|| slot_a.cmp(slot_b))
-        });
-        remove_candidates.truncate(remove_shortlist.max(2));
-
-        let selected_set: HashSet<usize> = selected.iter().copied().collect();
-        let mut add_candidates: Vec<(usize, f64)> = pool
-            .iter()
-            .copied()
-            .filter(|idx| !selected_set.contains(idx))
-            .map(|idx| {
-                let gain = repair_gain_for_candidate(&residuals, idx, candidates, rate_map, residuals.len().min(16));
-                (idx, gain)
-            })
-            .collect();
-        add_candidates.sort_by(|(idx_a, gain_a), (idx_b, gain_b)| {
-            gain_b
-                .total_cmp(gain_a)
-                .then_with(|| compare_target_candidates(&candidates[*idx_a], &candidates[*idx_b]))
-        });
-        add_candidates.truncate(add_shortlist.max(2));
-
-        let mut best_swap: Option<(usize, usize, usize, usize, TargetObjective)> = None;
-
-        for i in 0..remove_candidates.len() {
-            for j in (i + 1)..remove_candidates.len() {
-                let slot_a = remove_candidates[i].0;
-                let slot_b = remove_candidates[j].0;
-                if slot_a == slot_b {
-                    continue;
-                }
-
-                for add_i in 0..add_candidates.len() {
-                    for add_j in (add_i + 1)..add_candidates.len() {
-                        let idx_a = add_candidates[add_i].0;
-                        let idx_b = add_candidates[add_j].0;
-                        if idx_a == idx_b {
-                            continue;
-                        }
-
-                        let mut proposed = selected.clone();
-                        proposed[slot_a] = idx_a;
-                        proposed[slot_b] = idx_b;
-                        if !target_solution_is_feasible(&proposed, candidates, player_cap) {
-                            continue;
-                        }
-
-                        let obj = target_objective(reference_indices, &proposed, candidates, rate_map);
-                        if !matches!(compare_target_objectives(&obj, &current_obj), std::cmp::Ordering::Less) {
-                            continue;
-                        }
-
-                        let should_replace = best_swap
-                            .as_ref()
-                            .map(|(_, _, _, _, best_obj)| matches!(compare_target_objectives(&obj, best_obj), std::cmp::Ordering::Less))
-                            .unwrap_or(true);
-
-                        if should_replace {
-                            best_swap = Some((slot_a, slot_b, idx_a, idx_b, obj));
-                        }
-                    }
-                }
-            }
-        }
-
-        let Some((slot_a, slot_b, idx_a, idx_b, obj)) = best_swap else {
-            break;
-        };
-
-        selected[slot_a] = idx_a;
-        selected[slot_b] = idx_b;
-        current_obj = obj;
-    }
-
-    TargetSearchResult { indices: selected, objective: current_obj }
-}
-
-fn lns_target_search(
-    initial: TargetSearchResult,
-    locked_count: usize,
-    pool: &[usize],
-    target_total: usize,
-    player_cap: usize,
-    reference_indices: &[usize],
-    candidates: &[TargetCandidate],
-    rate_map: &HashMap<(crate::model::GroupId, crate::model::GroupId), f64>,
-    beam_width: usize,
-    rounds: usize,
-    worst_ref_limit: usize,
-    two_swap_remove_shortlist: usize,
-    two_swap_add_shortlist: usize,
-    two_swap_passes: usize,
-    seen_solutions: &mut HashSet<String>,
-) -> TargetSearchResult {
-    let mut best = initial.clone();
-    seen_solutions.insert(solution_signature(&best.indices));
-    let remove_sizes = [3usize, 5, 8, 12, 16];
-
-    for round in 0..rounds {
-        let remove_count = remove_sizes[round % remove_sizes.len()];
-        let base = if round % 3 == 0 { &best.indices } else { &initial.indices };
-        let partial = if round % 4 == 3 {
-            remove_unlocked_targets(
-                base,
-                locked_count,
-                remove_count,
-                round as u64 + 17,
-                candidates,
-            )
-        } else {
-            remove_worst_guided_unlocked_targets(
-                base,
-                locked_count,
-                remove_count,
-                round as u64 + 17,
-                reference_indices,
-                candidates,
-                rate_map,
-                worst_ref_limit,
-            )
-        };
-
-        let Some(refilled) = beam_refill_solution(
-            partial,
-            pool,
-            target_total,
-            player_cap,
-            reference_indices,
-            candidates,
-            rate_map,
-            beam_width,
-        ) else {
-            continue;
-        };
-
-        let sig = solution_signature(&refilled);
-        if seen_solutions.contains(&sig) {
-            continue;
-        }
-        seen_solutions.insert(sig);
-
-        let candidate = polish_target_solution(
-            refilled,
-            locked_count,
-            pool,
-            target_total,
-            player_cap,
-            reference_indices,
-            candidates,
-            rate_map,
-            4,
-        );
-        let candidate = two_swap_polish_target_solution(
-            candidate,
-            locked_count,
-            pool,
-            player_cap,
-            reference_indices,
-            candidates,
-            rate_map,
-            two_swap_remove_shortlist,
-            two_swap_add_shortlist,
-            two_swap_passes,
-        );
-
-        if target_solution_is_better(&candidate, &best, candidates) {
-            best = candidate;
-        }
-    }
-
-    best
-}
-
-fn remove_worst_guided_unlocked_targets(
-    selected: &[usize],
-    locked_count: usize,
-    remove_count: usize,
-    salt: u64,
-    reference_indices: &[usize],
-    candidates: &[TargetCandidate],
-    rate_map: &HashMap<(crate::model::GroupId, crate::model::GroupId), f64>,
-    worst_ref_limit: usize,
-) -> Vec<usize> {
-    if selected.len() <= locked_count {
-        return selected.to_vec();
-    }
-
-    let unlocked_len = selected.len() - locked_count;
-    let actual_remove = remove_count.min(unlocked_len);
-    let residuals = target_reference_residuals(reference_indices, selected, candidates, rate_map);
-    if residuals.is_empty() {
-        return remove_unlocked_targets(selected, locked_count, remove_count, salt, candidates);
-    }
-
-    let mut unlocked: Vec<(usize, usize, f64)> = selected
-        .iter()
-        .copied()
-        .enumerate()
-        .skip(locked_count)
-        .map(|(slot, idx)| {
-            let harm = removal_harm_for_target(&residuals, idx, candidates, rate_map, worst_ref_limit);
-            (slot, idx, harm)
-        })
-        .collect();
-
-    unlocked.sort_by(|(slot_a, idx_a, harm_a), (slot_b, idx_b, harm_b)| {
-        harm_b
-            .total_cmp(harm_a)
-            .then_with(|| {
-                let ha = splitmix64((*idx_a as u64).wrapping_add(salt).wrapping_add(*slot_a as u64));
-                let hb = splitmix64((*idx_b as u64).wrapping_add(salt).wrapping_add(*slot_b as u64));
-                ha.cmp(&hb)
-            })
-            .then_with(|| slot_a.cmp(slot_b))
-    });
-
-    let remove_slots: HashSet<usize> = unlocked
-        .into_iter()
-        .take(actual_remove)
-        .map(|(slot, _, _)| slot)
-        .collect();
-
-    selected
-        .iter()
-        .copied()
-        .enumerate()
-        .filter_map(|(slot, idx)| if remove_slots.contains(&slot) { None } else { Some(idx) })
-        .collect()
-}
-
-fn remove_unlocked_targets(
-    selected: &[usize],
-    locked_count: usize,
-    remove_count: usize,
-    salt: u64,
-    candidates: &[TargetCandidate],
-) -> Vec<usize> {
-    if selected.len() <= locked_count {
-        return selected.to_vec();
-    }
-
-    let unlocked_len = selected.len() - locked_count;
-    let actual_remove = remove_count.min(unlocked_len);
-    let mut unlocked: Vec<(usize, usize)> = selected
-        .iter()
-        .copied()
-        .enumerate()
-        .skip(locked_count)
-        .collect();
-
-    unlocked.sort_by(|(slot_a, idx_a), (slot_b, idx_b)| {
-        let ha = splitmix64((*idx_a as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(salt).wrapping_add(*slot_a as u64));
-        let hb = splitmix64((*idx_b as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(salt).wrapping_add(*slot_b as u64));
-        ha.cmp(&hb)
-            .then_with(|| compare_target_candidates(&candidates[*idx_b], &candidates[*idx_a]))
-    });
-
-    let remove_slots: HashSet<usize> = unlocked
-        .into_iter()
-        .take(actual_remove)
-        .map(|(slot, _)| slot)
-        .collect();
-
-    selected
-        .iter()
-        .copied()
-        .enumerate()
-        .filter_map(|(slot, idx)| if remove_slots.contains(&slot) { None } else { Some(idx) })
-        .collect()
-}
-
-fn solution_signature(indices: &[usize]) -> String {
-    let mut sorted = indices.to_vec();
-    sorted.sort_unstable();
-    sorted
-        .iter()
-        .map(|idx| idx.to_string())
-        .collect::<Vec<_>>()
-        .join(",")
-}
-
-fn splitmix64(mut x: u64) -> u64 {
-    x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    let mut z = x;
-    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    z ^ (z >> 31)
-}
-
-fn deterministic_shuffled_pool(pool: &[usize], salt: u64) -> Vec<usize> {
-    let mut out = pool.to_vec();
-    out.sort_by_key(|idx| splitmix64((*idx as u64).wrapping_add(salt.wrapping_mul(0xD1B5_4A32_D192_ED03))));
-    out
 }
 
 fn collect_missing_target_rate_pairs(
@@ -2468,264 +1811,168 @@ fn collect_missing_target_rate_pairs(
     out
 }
 
-fn compute_missing_target_rates(
+fn format_target_rate_duration(seconds: f64) -> String {
+    if seconds < 60.0 {
+        format!("{seconds:.1}s")
+    } else if seconds < 3600.0 {
+        format!("{:.1}m", seconds / 60.0)
+    } else {
+        format!("{:.1}h", seconds / 3600.0)
+    }
+}
+
+fn fill_missing_target_rates_with_checkpoints(
     db: &Db,
     config: &RankerConfig,
+    lane_size: usize,
     missing_pairs: &[(usize, usize)],
     candidates: &[TargetCandidate],
-) -> anyhow::Result<Vec<(crate::model::GroupId, crate::model::GroupId, f64)>> {
-    if missing_pairs.is_empty() {
-        return Ok(Vec::new());
+    rate_map: &mut HashMap<(crate::model::GroupId, crate::model::GroupId), f64>,
+) -> anyhow::Result<()> {
+    let total = missing_pairs.len();
+    if total == 0 {
+        return Ok(());
     }
 
     let mut group_cache: HashMap<crate::model::GroupId, StoredGroup> = HashMap::new();
-    let mut pairs = Vec::with_capacity(missing_pairs.len());
-
+    let mut pairs = Vec::with_capacity(total);
     for (pair_index, &(a_idx, b_idx)) in missing_pairs.iter().enumerate() {
         let a_id = candidates[a_idx].row.group_id;
         let b_id = candidates[b_idx].row.group_id;
-
         let group_a = if let Some(group) = group_cache.get(&a_id) {
             group.clone()
         } else {
             let group = db
                 .get_group(a_id)?
-                .with_context(|| format!("missing group_id {} while computing target rate coverage", a_id))?;
+                .with_context(|| format!("missing group_id {a_id} while computing target rate coverage"))?;
             group_cache.insert(a_id, group.clone());
             group
         };
-
         let group_b = if let Some(group) = group_cache.get(&b_id) {
             group.clone()
         } else {
             let group = db
                 .get_group(b_id)?
-                .with_context(|| format!("missing group_id {} while computing target rate coverage", b_id))?;
+                .with_context(|| format!("missing group_id {b_id} while computing target rate coverage"))?;
             group_cache.insert(b_id, group.clone());
             group
         };
-
         pairs.push(ManualWinratePair {
             pair_index,
             group_a,
             group_b,
         });
     }
-
-    let total = pairs.len();
     let workers = resolve_manual_winrate_workers(config.outer_workers, total);
-    let pairs = Arc::new(pairs);
-    let mut handles = Vec::with_capacity(workers);
+    let mode = if config.outer_workers == 0 {
+        "dynamic_queue"
+    } else {
+        "static_chunks"
+    };
+    let checkpoint_size = RATE_PERSIST_CHECKPOINT_SIZE;
+    let started = Instant::now();
+    db.set_lane_progress(
+        lane_size,
+        "target_rate_coverage",
+        0,
+        1,
+        0,
+        total,
+        0,
+        &format!("computing missing target-matrix rates 0/{total}, 0.00 pair/s, workers={workers}, mode={mode}"),
+    )?;
 
+    let pairs = Arc::new(pairs);
+    let (sender, receiver) = mpsc::channel::<anyhow::Result<(crate::model::GroupId, crate::model::GroupId, f64)>>();
+    let mut handles = Vec::with_capacity(workers);
     if config.outer_workers == 0 {
         let next_pair = Arc::new(AtomicUsize::new(0));
         for _ in 0..workers {
             let pairs = Arc::clone(&pairs);
             let next_pair = Arc::clone(&next_pair);
+            let sender = sender.clone();
             let samples = config.win_rate_samples;
             let inner_workers = config.inner_workers;
-            handles.push(thread::spawn(move || -> anyhow::Result<Vec<(crate::model::GroupId, crate::model::GroupId, f64)>> {
-                let mut computed = Vec::new();
+            handles.push(thread::spawn(move || {
                 loop {
                     let idx = next_pair.fetch_add(1, Ordering::Relaxed);
                     let Some(pair) = pairs.get(idx) else {
                         break;
                     };
-                    let rate = compute_rate_without_db(&pair.group_a, &pair.group_b, samples, inner_workers)?;
-                    computed.push((pair.group_a.id, pair.group_b.id, rate));
+                    let result = compute_rate_without_db(&pair.group_a, &pair.group_b, samples, inner_workers)
+                        .map(|rate| (pair.group_a.id, pair.group_b.id, rate));
+                    if sender.send(result).is_err() {
+                        break;
+                    }
                 }
-                Ok(computed)
             }));
         }
     } else {
         for worker_id in 0..workers {
             let pairs = Arc::clone(&pairs);
+            let sender = sender.clone();
             let samples = config.win_rate_samples;
             let inner_workers = config.inner_workers;
             let start = total * worker_id / workers;
             let end = total * (worker_id + 1) / workers;
-            handles.push(thread::spawn(move || -> anyhow::Result<Vec<(crate::model::GroupId, crate::model::GroupId, f64)>> {
-                let mut computed = Vec::with_capacity(end.saturating_sub(start));
+            handles.push(thread::spawn(move || {
                 for idx in start..end {
                     let Some(pair) = pairs.get(idx) else {
                         break;
                     };
-                    let rate = compute_rate_without_db(&pair.group_a, &pair.group_b, samples, inner_workers)?;
-                    computed.push((pair.group_a.id, pair.group_b.id, rate));
+                    let result = compute_rate_without_db(&pair.group_a, &pair.group_b, samples, inner_workers)
+                        .map(|rate| (pair.group_a.id, pair.group_b.id, rate));
+                    if sender.send(result).is_err() {
+                        break;
+                    }
                 }
-                Ok(computed)
             }));
         }
     }
+    drop(sender);
 
-    let mut computed = Vec::with_capacity(total);
+    let mut completed = 0usize;
+    let mut persisted = 0usize;
+    let mut pending = Vec::with_capacity(checkpoint_size);
+    for result in receiver {
+        pending.push(result?);
+        completed += 1;
+        if pending.len() >= checkpoint_size || completed == total {
+            pending.sort_by_key(|(a, b, _)| (*a, *b));
+            db.save_rate_pairs_bulk(&pending, config.win_rate_samples)?;
+            for &(a, b, rate) in &pending {
+                rate_map.insert((a, b), rate);
+                rate_map.insert((b, a), 100.0 - rate);
+            }
+            persisted += pending.len();
+            pending.clear();
+        }
+        if completed != total && completed % 10 != 0 {
+            continue;
+        }
+        let elapsed = started.elapsed().as_secs_f64().max(0.001);
+        let pairs_per_sec = completed as f64 / elapsed;
+        let remaining_seconds = (total - completed) as f64 / pairs_per_sec.max(f64::EPSILON);
+        db.set_lane_progress(
+            lane_size,
+            "target_rate_coverage",
+            0,
+            1,
+            completed,
+            total,
+            0,
+            &format!(
+                "computing missing target-matrix rates {completed}/{total}, {pairs_per_sec:.2} pair/s, elapsed {}, eta {}, persisted={persisted}, workers={workers}, mode={mode}",
+                format_target_rate_duration(elapsed),
+                format_target_rate_duration(remaining_seconds),
+            ),
+        )?;
+    }
     for handle in handles {
-        computed.extend(handle.join().expect("target rate worker thread panicked")?);
-    }
-    computed.sort_by_key(|(a, b, _)| (*a, *b));
-    Ok(computed)
-}
-
-fn target_reference_audit_rows(
-    reference_indices: &[usize],
-    target_indices: &[usize],
-    candidates: &[TargetCandidate],
-    rate_map: &HashMap<(crate::model::GroupId, crate::model::GroupId), f64>,
-    objective: &TargetObjective,
-) -> Vec<TargetReferenceAuditRow> {
-    let can_align = objective.align_slope.is_finite() && objective.align_intercept.is_finite();
-    let mut out = Vec::with_capacity(reference_indices.len());
-
-    for (rank, &ref_idx) in reference_indices.iter().enumerate() {
-        let candidate = &candidates[ref_idx];
-        let ref_gid = candidate.row.group_id;
-        let mut sum = 0.0;
-        let mut count = 0usize;
-
-        for &target_idx in target_indices {
-            let target_gid = candidates[target_idx].row.group_id;
-            if let Some(rate) = rate_between(rate_map, ref_gid, target_gid) {
-                sum += rate;
-                count += 1;
-            }
-        }
-
-        let average_winrate_vs_targets = if count == 0 { None } else { Some(sum / count as f64) };
-        let aligned_c_score_from_targets = average_winrate_vs_targets.and_then(|avg| {
-            if can_align {
-                Some(objective.align_slope * avg + objective.align_intercept)
-            } else {
-                None
-            }
-        });
-        let aligned_minus_c_score = aligned_c_score_from_targets.map(|aligned| aligned - candidate.correct_score());
-        let abs_aligned_minus_c_score = aligned_minus_c_score.map(|x| x.abs());
-
-        out.push(TargetReferenceAuditRow {
-            reference_rank: rank + 1,
-            group_id: candidate.row.group_id,
-            canonical: candidate.row.canonical.clone(),
-            team_name: candidate.row.team_name.clone(),
-            root_team_name: candidate.row.root_team_name.clone(),
-            correct_rank: candidate.row.pair_rank,
-            correct_score: candidate.correct_score(),
-            raw_rank: candidate.row.rank,
-            raw_score: candidate.row.raw_average_cqd,
-            average_winrate_vs_targets,
-            target_rate_count: count,
-            aligned_c_score_from_targets,
-            aligned_minus_c_score,
-            abs_aligned_minus_c_score,
-            type_label: candidate.row.type_label.clone(),
-            simple_type_label: candidate.row.simple_type_label.clone(),
-        });
+        handle.join().expect("target rate worker thread panicked");
     }
 
-    out
-}
-
-fn target_reference_audit_rows_weighted(
-    reference_indices: &[usize],
-    target_indices: &[usize],
-    target_weights: &[f64],
-    candidates: &[TargetCandidate],
-    rate_map: &HashMap<(crate::model::GroupId, crate::model::GroupId), f64>,
-    objective: &TargetObjective,
-) -> Vec<TargetReferenceAuditRow> {
-    let can_align = objective.align_slope.is_finite() && objective.align_intercept.is_finite();
-    let weight_sum = target_weights.iter().copied().sum::<f64>();
-    let mut out = Vec::with_capacity(reference_indices.len());
-
-    for (rank, &ref_idx) in reference_indices.iter().enumerate() {
-        let candidate = &candidates[ref_idx];
-        let ref_gid = candidate.row.group_id;
-        let mut weighted_sum = 0.0;
-        let mut count = 0usize;
-
-        for (&target_idx, &weight) in target_indices.iter().zip(target_weights.iter()) {
-            let target_gid = candidates[target_idx].row.group_id;
-            if let Some(rate) = rate_between(rate_map, ref_gid, target_gid) {
-                weighted_sum += rate * weight;
-                count += 1;
-            }
-        }
-
-        let average_winrate_vs_targets = if count == 0 || weight_sum <= 0.0 {
-            None
-        } else {
-            Some(weighted_sum / weight_sum)
-        };
-        let aligned_c_score_from_targets = average_winrate_vs_targets.and_then(|avg| {
-            if can_align {
-                Some(objective.align_slope * avg + objective.align_intercept)
-            } else {
-                None
-            }
-        });
-        let aligned_minus_c_score = aligned_c_score_from_targets.map(|aligned| aligned - candidate.correct_score());
-        let abs_aligned_minus_c_score = aligned_minus_c_score.map(|x| x.abs());
-
-        out.push(TargetReferenceAuditRow {
-            reference_rank: rank + 1,
-            group_id: candidate.row.group_id,
-            canonical: candidate.row.canonical.clone(),
-            team_name: candidate.row.team_name.clone(),
-            root_team_name: candidate.row.root_team_name.clone(),
-            correct_rank: candidate.row.pair_rank,
-            correct_score: candidate.correct_score(),
-            raw_rank: candidate.row.rank,
-            raw_score: candidate.row.raw_average_cqd,
-            average_winrate_vs_targets,
-            target_rate_count: count,
-            aligned_c_score_from_targets,
-            aligned_minus_c_score,
-            abs_aligned_minus_c_score,
-            type_label: candidate.row.type_label.clone(),
-            simple_type_label: candidate.row.simple_type_label.clone(),
-        });
-    }
-
-    out
-}
-
-
-fn audit_diff_stats(rows: &[TargetReferenceAuditRow]) -> TargetAuditStats {
-    let mut diffs: Vec<f64> = rows
-        .iter()
-        .filter_map(|row| row.aligned_minus_c_score)
-        .filter(|x| x.is_finite())
-        .collect();
-
-    if diffs.is_empty() {
-        return TargetAuditStats {
-            count: 0,
-            mean_diff: None,
-            mean_abs_diff: None,
-            max_abs_diff: None,
-            rmse: None,
-            p95_abs_diff: None,
-        };
-    }
-
-    let count = diffs.len();
-    let mean_diff = diffs.iter().sum::<f64>() / count as f64;
-    let abs: Vec<f64> = diffs.iter().map(|x| x.abs()).collect();
-    let mean_abs_diff = abs.iter().sum::<f64>() / count as f64;
-    let max_abs_diff = abs.iter().copied().fold(0.0_f64, f64::max);
-    let rmse = (diffs.iter().map(|x| x * x).sum::<f64>() / count as f64).sqrt();
-
-    diffs.sort_by(|a, b| a.abs().total_cmp(&b.abs()));
-    let p95_idx = ((count.saturating_sub(1)) as f64 * 0.95).round() as usize;
-    let p95_abs_diff = diffs[p95_idx.min(count - 1)].abs();
-
-    TargetAuditStats {
-        count,
-        mean_diff: Some(mean_diff),
-        mean_abs_diff: Some(mean_abs_diff),
-        max_abs_diff: Some(max_abs_diff),
-        rmse: Some(rmse),
-        p95_abs_diff: Some(p95_abs_diff),
-    }
+    Ok(())
 }
 
 fn average_reference_winrate_for_target(
@@ -2795,11 +2042,7 @@ fn resolve_manual_winrate_workers(requested_outer_workers: usize, total: usize) 
         return requested_outer_workers.max(1).min(total.max(1));
     }
 
-    thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4)
-        .max(1)
-        .min(total.max(1))
+    thread::available_parallelism().map(|n| n.get()).unwrap_or(4).max(1).min(total.max(1))
 }
 
 fn spawn_recompute_job(db: Db, config: RankerConfig, lane: usize, job_id: JobId) {
@@ -2809,24 +2052,14 @@ fn spawn_recompute_job(db: Db, config: RankerConfig, lane: usize, job_id: JobId)
             let _ = db.set_job_status(job_id, "failed", Some(&error));
             let group_count = db.load_groups_by_lane_for_run(lane, config.skip_archived).map(|x| x.len()).unwrap_or(0);
             let _ = db.set_lane_status(lane, "error", group_count);
-            let _ = db.set_lane_progress(
-                lane,
-                "error",
-                0,
-                config.total_rounds,
-                0,
-                0,
-                0,
-                &error,
-            );
+            let _ = db.set_lane_progress(lane, "error", 0, config.total_rounds, 0, 0, 0, &error);
         }
     });
 }
 
 fn run_recompute_job(db: &Db, config: &RankerConfig, lane: usize, job_id: JobId) -> anyhow::Result<()> {
     db.set_job_status(job_id, "running", None)?;
-    recompute_lane_until_stable(db, lane, config)
-        .with_context(|| format!("recompute lane {lane}, job #{job_id}"))?;
+    recompute_lane_until_stable(db, lane, config).with_context(|| format!("recompute lane {lane}, job #{job_id}"))?;
     db.set_job_status(job_id, "done", None)?;
     Ok(())
 }
@@ -2838,16 +2071,7 @@ fn spawn_constrained_selection_job(db: Db, config: RankerConfig, lane: usize, jo
             let _ = db.set_job_status(job_id, "failed", Some(&error));
             let group_count = db.lane_results(lane).map(|x| x.len()).unwrap_or(0);
             let _ = db.set_lane_status(lane, "error", group_count);
-            let _ = db.set_lane_progress(
-                lane,
-                "error",
-                0,
-                config.total_rounds,
-                0,
-                0,
-                0,
-                &error,
-            );
+            let _ = db.set_lane_progress(lane, "error", 0, config.total_rounds, 0, 0, 0, &error);
         }
     });
 }
@@ -2864,4 +2088,25 @@ fn run_constrained_selection_job(
         .with_context(|| format!("calibration lane {lane}, job #{job_id}"))?;
     db.set_job_status(job_id, "done", None)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod target_rate_scope_tests {
+    use super::target_rate_column_requires_observed;
+    use std::collections::HashSet;
+
+    #[test]
+    fn below_threshold_zero_mass_columns_do_not_require_low_by_low_rates() {
+        let eligible = HashSet::from([0usize, 1usize]);
+
+        // 所有评分行仍要求对合资格目标列的观测（high×high 和 low×high 均使用这一列规则）。
+        assert!(target_rate_column_requires_observed(0, 0.0, &eligible));
+        assert!(target_rate_column_requires_observed(1, 0.0, &eligible));
+
+        // 没有 Correct 质量的低于阈值列无法被选中，因而不得凭空制造 low×low 模拟需求。
+        assert!(!target_rate_column_requires_observed(2, 0.0, &eligible));
+
+        // 防御性不变式：绝不以占位率静默替换意外的非零大目标列。
+        assert!(target_rate_column_requires_observed(2, 0.25, &eligible));
+    }
 }

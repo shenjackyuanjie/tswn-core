@@ -1,4 +1,4 @@
-//! Preset loading from `setting/settings.toml`.
+//! 从 `setting/settings.toml` 加载预设。
 
 use std::fs;
 use std::io::ErrorKind;
@@ -16,6 +16,8 @@ const DEFAULT_SETTING_FILES: &[(&str, &str)] = &[
     ("targets/target1.txt", include_str!("../../assets/targets/target1.txt")),
     ("targets/target2.txt", include_str!("../../assets/targets/target2.txt")),
     ("targets/target3.txt", include_str!("../../assets/targets/target3.txt")),
+    ("targets/newTarget1.toml", include_str!("../../assets/targets/newTarget1.toml")),
+    ("targets/newTarget2.toml", include_str!("../../assets/targets/newTarget2.toml")),
     (
         "teammates/teammate_fz.txt",
         include_str!("../../assets/teammates/teammate_fz.txt"),
@@ -44,6 +46,7 @@ pub struct TargetPreset {
     pub name: String,
     pub path: PathBuf,
     pub diy: bool,
+    pub factor_enabled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -58,6 +61,7 @@ pub struct TeammatePreset {
     pub head: usize,
     pub name: String,
     pub path: PathBuf,
+    pub factor_enabled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -161,6 +165,8 @@ struct TargetPresetEntry {
     file: PathBuf,
     #[serde(default)]
     diy: bool,
+    #[serde(default)]
+    factor_enabled: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -168,6 +174,8 @@ struct TeammatePresetEntry {
     head: usize,
     name: String,
     file: PathBuf,
+    #[serde(default)]
+    factor_enabled: bool,
 }
 
 pub fn load_selected_target_text(state: &TargetPresetState) -> Result<String, String> {
@@ -195,6 +203,7 @@ fn load_target_presets(loaded: LoadedSettingFile) -> Vec<TargetPreset> {
             name: entry.name,
             path: normalize_relative_path(&loaded.setting_dir, &entry.file),
             diy: entry.diy,
+            factor_enabled: entry.factor_enabled,
         });
     }
     items
@@ -210,6 +219,7 @@ fn load_teammate_presets(loaded: LoadedSettingFile) -> Vec<TeammatePreset> {
             head: entry.head.max(1),
             name: entry.name,
             path: normalize_relative_path(&loaded.setting_dir, &entry.file),
+            factor_enabled: entry.factor_enabled,
         });
     }
     items

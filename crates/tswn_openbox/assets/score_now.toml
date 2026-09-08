@@ -1,3 +1,8 @@
+[lessskl]
+pp = 8542
+qp = 6357
+qd = 6819
+
 [sklfire]
 pp = 8674
 qp = 6461
@@ -13,19 +18,19 @@ all = 31562
 [sklthunder]
 pp = 8633
 qp = 6469
-qd = 7025
-all = 30681
+qd = 7122
+all = 31349
 
 [sklquake]
 pp = 8630
-qp = 6445
+qp = 6455
 qd = 7084
 all = 30971
 
 [sklabsorb]
 pp = 8806
 qp = 6415
-qd = 7198
+qd = 7369
 all = 31509
 
 [sklpoison]
@@ -64,9 +69,10 @@ qd = 7225
 all = 31248
 
 [sklcharm]
-pp = 8365
+pp = 8466
 qp = 6458
-qd = 7037
+qd = 7060
+all = 30451
 
 [sklhaste]
 pp = 8439
@@ -82,9 +88,9 @@ all = 31655
 
 [sklcurse]
 pp = 8613
-qp = 6309
+qp = 6328
 qd = 7140
-all = 30820
+all = 31323
 
 [sklheal]
 pp = 8788
@@ -167,14 +173,14 @@ all = 30625
 
 [sklshield]
 pp = 8683
-qp = 6501
+qp = 6568
 qd = 7362
 all = 31364
 
 [sklcounter]
-pp = 8589
+pp = 8591
 qp = 6340
-qd = 7256
+qd = 7402
 all = 30820
 
 [sklmerge]
@@ -196,4 +202,4 @@ all = 31920
 [sklhide]
 pp = 8491
 qp = 6200
-qd = 6599
+qd = 6699

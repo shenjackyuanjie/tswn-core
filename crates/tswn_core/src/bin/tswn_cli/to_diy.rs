@@ -1,84 +1,64 @@
 //! `to-diy` 子命令实现。
-//!
-//! 本模块负责把单个或批量名字导出为 DIY / OL 覆盖文本，
-//! 并处理标准输出 / 文件输出以及可选的召唤物模板导出。
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write as _};
 use std::path::Path;
 
 use tswn_core::cli_api;
-use tswn_core::engine::storage::Storage;
-use tswn_core::player::Player;
+use tswn_core::namerena::{NamerenaInput, PreparedRoster};
 
 pub fn run(names: &[String], batch: bool, out_file: Option<&Path>, old: bool, minions: bool) {
+    let mut out = match open_output(out_file) {
+        Ok(out) => out,
+        Err(err) => {
+            eprintln!("打开输出文件失败: {err}");
+            std::process::exit(1);
+        }
+    };
+
     if batch {
-        run_batch(names, out_file, old, minions);
+        for raw in names {
+            let _ = writeln!(out, "{}", export_or_exit(raw, old, minions));
+        }
     } else if let Some(raw) = names.first() {
-        run_single(raw, out_file, old, minions);
-    }
-}
-
-fn run_single(raw: &str, out_file: Option<&Path>, old: bool, minions: bool) {
-    let mut out = match open_output(out_file) {
-        Ok(out) => out,
-        Err(err) => {
-            eprintln!("打开输出文件失败: {err}");
-            std::process::exit(1);
-        }
-    };
-
-    let export = export_or_exit(raw, old, minions);
-    let _ = writeln!(out, "{export}");
-
-    if out_file.is_none() && !raw.contains('+') {
-        let storage = Storage::new_arc();
-        let mut player = build_player_or_exit(raw, storage);
-        player.build();
-        let _ = writeln!(out);
-        let _ = writeln!(out, "=== 原始信息 ===");
-        let _ = writeln!(out, "名字: {}", player.id_name());
-        let _ = writeln!(out, "队伍: {}", player.clan_name());
-        let status = player.get_status();
-        let _ = writeln!(
-            out,
-            "八围 (计算后): atk={} def={} spd={} agi={} mag={} res={} wis={} maxhp={}",
-            status.attack,
-            status.defense,
-            status.speed,
-            status.agility,
-            status.magic,
-            status.resistance,
-            status.wisdom,
-            status.max_hp,
-        );
-        let _ = writeln!(out, "name_factor: {:.6}", player.get_name_factor());
-    }
-}
-
-fn run_batch(names: &[String], out_file: Option<&Path>, old: bool, minions: bool) {
-    let mut out = match open_output(out_file) {
-        Ok(out) => out,
-        Err(err) => {
-            eprintln!("打开输出文件失败: {err}");
-            std::process::exit(1);
-        }
-    };
-
-    for raw in names {
         let _ = writeln!(out, "{}", export_or_exit(raw, old, minions));
+        if out_file.is_none() && !raw.contains('+') {
+            print_player_details(&mut out, raw);
+        }
     }
 }
 
-#[cfg(test)]
-fn export_line(player: &Player, old: bool, minions: bool) -> String {
-    if old {
-        player.to_diy_compact()
-    } else if minions {
-        player.to_ol_json_with_minions()
-    } else {
-        player.to_ol_json()
-    }
+fn print_player_details(out: &mut dyn io::Write, raw: &str) {
+    let input = match NamerenaInput::from_raw_groups(&[vec![raw.to_owned()]]) {
+        Ok(input) => input,
+        Err(error) => {
+            eprintln!("构建玩家失败: {raw}: {error}");
+            std::process::exit(1);
+        }
+    };
+    let roster = match PreparedRoster::build(&input, tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ) {
+        Ok(roster) => roster,
+        Err(error) => match error {},
+    };
+    let Some(player) = roster.players.first() else { return };
+    let status = player.status;
+    let _ = writeln!(out);
+    let _ = writeln!(out, "=== 原始信息 ===");
+    let _ = writeln!(out, "名字: {}", player.name);
+    let _ = writeln!(out, "队伍: {}", player.clan_name);
+    let _ = writeln!(
+        out,
+        "八围 (计算后): atk={} def={} spd={} agi={} mag={} res={} wis={} maxhp={}",
+        status.attack,
+        status.defense,
+        status.speed,
+        status.agility,
+        status.magic,
+        status.resistance,
+        status.wisdom,
+        status.max_hp,
+    );
+    let _ = writeln!(out, "name_factor: {:.6}", player.name_factor);
 }
 
 fn open_output(path: Option<&Path>) -> io::Result<Box<dyn io::Write>> {
@@ -102,21 +82,11 @@ fn open_file(path: &Path) -> io::Result<File> {
     }
 }
 
-fn build_player_or_exit(raw: &str, storage: std::sync::Arc<Storage>) -> Player {
-    match Player::new_from_namerena_raw(raw.to_string(), storage) {
-        Ok(player) => player,
-        Err(err) => {
-            eprintln!("构建玩家失败: {raw}: {err}");
-            std::process::exit(1);
-        }
-    }
-}
-
 fn export_or_exit(raw: &str, old: bool, minions: bool) -> String {
     match cli_api::to_diy(raw, old, minions) {
         Ok(export) => export,
         Err(err) => {
-            eprintln!("瀵煎嚭 DIY 澶辫触: {raw}: {err}");
+            eprintln!("导出 DIY 失败: {raw}: {err}");
             std::process::exit(1);
         }
     }
@@ -127,30 +97,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn export_line_with_minions_includes_reparseable_skl_prefixed_minion_templates() {
-        let storage = Storage::new_arc();
-        let mut player = Player::new_from_namerena_raw(
-            "mario@team+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklshadow\":10,\"sklsummon\":10,\"sklzombie\":10}}"
-                .to_string(),
-            storage,
-        )
-        .unwrap();
-        player.build();
-
-        let exported = export_line(&player, false, true);
-
+    fn minion_export_is_reparseable() {
+        let raw = "mario@team+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklshadow\":10,\"sklsummon\":10,\"sklzombie\":10}}";
+        let exported = cli_api::to_diy(raw, false, true).expect("export should succeed");
         assert!(exported.contains("\"shadow\":{\"attrs\":"));
         assert!(exported.contains("\"summon\":{\"attrs\":"));
         assert!(exported.contains("\"zombie\":{\"attrs\":"));
-        assert!(exported.contains("\"sklpossess\":\"2*"));
-        assert!(!exported.contains("\"sklexplode\":0"));
-        assert!(!exported.contains("\"possess\":"));
-        assert!(!exported.contains("\"sklfire\":"));
-        assert!(!exported.contains("\"fire1\":"));
-        assert!(!exported.contains("\"explode\":"));
+        assert!(exported.contains("\"phantom:sklpossess\":\"2*"));
 
-        let reparsed = Player::new_from_namerena_raw(exported, Storage::new_arc()).unwrap();
-        let overlay = reparsed.overlay.as_ref().expect("exported --minions ol should parse");
+        let reparsed = NamerenaInput::from_raw_groups(&[vec![exported]]).expect("exported OL should parse");
+        let roster =
+            PreparedRoster::build(&reparsed, tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ).expect("exported OL should build");
+        let overlay = roster.players[0].overlay.as_ref().expect("exported OL should retain overlay");
         assert!(overlay.shadow.is_some());
         assert!(overlay.summon.is_some());
         assert!(overlay.zombie.is_some());

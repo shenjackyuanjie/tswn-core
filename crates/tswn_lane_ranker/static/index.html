@@ -40,7 +40,6 @@
       <h2>添加胜率</h2>
       <p>每两行组成一组：测第 1 行组合对战第 2 行组合的胜率、第 3 行组合对战第 4 行组合的胜率……只测并写入数据库中已存在的组合；任一组合不存在则该 pair 跳过。</p>
       <textarea id="manualWinratesInput" rows="8" placeholder="aaa@A+bbb@A&#10;ccc@C+ddd@C&#10;eee@E+fff@E&#10;ggg@G+hhh@G"></textarea>
-      <p class="hint">胜率写入固定使用服务端配置 <code>win_rate_samples</code>。</p>
       <button id="addWinratesBtn" type="button">测胜率并写入数据库</button>
       <pre id="addWinratesOutput"></pre>
     </section>
@@ -72,7 +71,7 @@
       <div class="constrained-selection-panel">
         <strong>校准</strong>
         <label class="selection-threshold-option">校准池 R-Score ≥
-          <input id="selectionCqdThresholdInput" type="number" min="0" max="100" step="0.001" value="47.5" />
+          <input id="selectionCqdThresholdInput" type="number" min="0" max="100" step="0.001" value="48.0" />
         </label>
         <label class="show-constrained-option">
           <input id="showConstrainedResultsInput" type="checkbox" />
@@ -84,13 +83,6 @@
       </div>
       <div class="target-generation-panel">
         <strong>靶子</strong>
-        <label class="target-threshold-option">靶子池 C-Score ≥
-          <input id="targetCqdThresholdInput" type="number" min="0" max="100" step="0.001" value="49.0" />
-        </label>
-        <label class="target-threshold-option">固定前
-          <input id="targetFixedMainCountInput" type="number" min="0" max="50" step="1" value="40" />
-          个
-        </label>
         <button id="generateTargetsBtn" type="button">生成靶子</button>
         <button id="exportTargetsBtn" type="button">导出靶子</button>
         <span id="targetGenerationOutput" class="inline-output"></span>
@@ -100,6 +92,6 @@
     </section>
   </main>
 
-  <script src="./app.js?v=crossfit-betabinomial-lowrank-eb-anysize-targets-minimax-lns-prefix"></script>
+  <script src="./app.js?v=target-rate-progress-every10-v33"></script>
 </body>
 </html>

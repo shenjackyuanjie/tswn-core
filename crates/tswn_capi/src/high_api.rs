@@ -1,11 +1,11 @@
 use std::ffi::c_char;
 
 use serde::Serialize;
-use tswn_core::cli_api::{self as core_cli_api, CliApiError};
+use tswn_core::cli_api::{self as core_cli_api, CliApiError, JsonRuntimeNormalizedRun};
 
 use crate::{
-    FfiError, ffi_boundary, ffi_error, read_utf8, read_utf8_array, tswn_status_t, tswn_str_t, write_json_result,
-    write_string_result,
+    FfiError, ffi_boundary, ffi_error_with_code, read_f64_array, read_utf8, read_utf8_array, tswn_status_t, tswn_str_t,
+    write_json_result, write_string_result,
 };
 
 #[derive(Serialize)]
@@ -89,11 +89,14 @@ struct JsonIconInfo {
 
 fn nanos_to_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
 
-fn cli_api_error(err: CliApiError) -> FfiError {
-    match err {
-        CliApiError::InvalidInput(message) => ffi_error(tswn_status_t::TSWN_ERR_INVALID_ARGUMENT, message),
-        CliApiError::Runner(err) => ffi_error(tswn_status_t::TSWN_ERR_RUNNER, err.to_string()),
-    }
+pub(crate) fn cli_api_error(err: CliApiError) -> FfiError {
+    let status = match &err {
+        CliApiError::InvalidInput(_) | CliApiError::InvalidArgument(_) | CliApiError::UnsupportedOption(_) => {
+            tswn_status_t::TSWN_ERR_INVALID_ARGUMENT
+        }
+        _ => tswn_status_t::TSWN_ERR_RUNNER,
+    };
+    ffi_error_with_code(status, err.code().as_str(), err.to_string())
 }
 
 impl From<core_cli_api::WinRateResult> for JsonWinRateResult {
@@ -377,7 +380,43 @@ pub unsafe extern "C" fn tswn_batch_rate_json(
             &target_groups,
             &player_groups,
             n,
-            if player_labels.is_empty() { None } else { Some(player_labels) },
+            (!player_labels_utf8.is_null()).then_some(player_labels),
+            keep_rq != 0,
+            thread,
+        )
+        .map_err(cli_api_error)?;
+        let json = result.into_iter().map(JsonBatchRateResult::from).collect::<Vec<_>>();
+        write_json_result(out_json, &json)
+    })
+}
+
+/// # Safety
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tswn_batch_rate_factored_json(
+    target_groups_utf8: *const *const c_char,
+    target_groups_len: usize,
+    target_factors: *const f64,
+    target_factors_len: usize,
+    player_groups_utf8: *const *const c_char,
+    player_groups_len: usize,
+    n: usize,
+    player_labels_utf8: *const *const c_char,
+    player_labels_len: usize,
+    keep_rq: u8,
+    thread: u32,
+    out_json: *mut tswn_str_t,
+) -> tswn_status_t {
+    ffi_boundary(|| {
+        let target_groups = unsafe { read_utf8_array(target_groups_utf8, target_groups_len, "target_groups_utf8")? };
+        let target_factors = unsafe { read_f64_array(target_factors, target_factors_len, "target_factors")? };
+        let player_groups = unsafe { read_utf8_array(player_groups_utf8, player_groups_len, "player_groups_utf8")? };
+        let player_labels = unsafe { read_utf8_array(player_labels_utf8, player_labels_len, "player_labels_utf8")? };
+        let result = core_cli_api::batch_rate_factored(
+            &target_groups,
+            &target_factors,
+            &player_groups,
+            n,
+            (!player_labels_utf8.is_null()).then_some(player_labels),
             keep_rq != 0,
             thread,
         )
@@ -408,6 +447,44 @@ pub unsafe extern "C" fn tswn_pair_rate_json(
         let teammates = unsafe { read_utf8_array(teammates_utf8, teammates_len, "teammates_utf8")? };
         let result = core_cli_api::pair_rate(&target_groups, &players, &teammates, head, n, keep_rq != 0, thread)
             .map_err(cli_api_error)?;
+        let json = result.into_iter().map(JsonPairRateResult::from).collect::<Vec<_>>();
+        write_json_result(out_json, &json)
+    })
+}
+
+/// # Safety
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tswn_pair_rate_factored_json(
+    target_groups_utf8: *const *const c_char,
+    target_groups_len: usize,
+    target_factors: *const f64,
+    target_factors_len: usize,
+    players_utf8: *const *const c_char,
+    players_len: usize,
+    teammates_utf8: *const *const c_char,
+    teammates_len: usize,
+    head: usize,
+    n: usize,
+    keep_rq: u8,
+    thread: u32,
+    out_json: *mut tswn_str_t,
+) -> tswn_status_t {
+    ffi_boundary(|| {
+        let target_groups = unsafe { read_utf8_array(target_groups_utf8, target_groups_len, "target_groups_utf8")? };
+        let target_factors = unsafe { read_f64_array(target_factors, target_factors_len, "target_factors")? };
+        let players = unsafe { read_utf8_array(players_utf8, players_len, "players_utf8")? };
+        let teammates = unsafe { read_utf8_array(teammates_utf8, teammates_len, "teammates_utf8")? };
+        let result = core_cli_api::pair_rate_factored(
+            &target_groups,
+            &target_factors,
+            &players,
+            &teammates,
+            head,
+            n,
+            keep_rq != 0,
+            thread,
+        )
+        .map_err(cli_api_error)?;
         let json = result.into_iter().map(JsonPairRateResult::from).collect::<Vec<_>>();
         write_json_result(out_json, &json)
     })
@@ -466,4 +543,188 @@ pub unsafe extern "C" fn tswn_parse_group_lines_json(
         let value = core_cli_api::parse_group_lines(&content, double_plus != 0);
         write_json_result(out_json, &value)
     })
+}
+
+/// # Safety
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tswn_default_custom_runtime_normalized_run_json(
+    raw_text_utf8: *const c_char,
+    max_rounds: usize,
+    out_json: *mut tswn_str_t,
+) -> tswn_status_t {
+    ffi_boundary(|| {
+        let raw = unsafe { read_utf8(raw_text_utf8, "raw_text_utf8")? };
+        let value = core_cli_api::default_custom_runtime_normalized_run(&raw, max_rounds).map_err(cli_api_error)?;
+        write_json_result(out_json, &JsonRuntimeNormalizedRun::from(value))
+    })
+}
+
+/// # Safety
+///
+/// `raw_text_utf8` 必须是有效的 UTF-8 C 字符串，且 `out_json` 必须可写。
+/// 返回的 JSON 字符串必须用 `tswn_str_free` 释放。
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tswn_battle_replay_json(
+    raw_text_utf8: *const c_char,
+    max_rounds: usize,
+    eval_rq: f64,
+    include_icons: u8,
+    out_json: *mut tswn_str_t,
+) -> tswn_status_t {
+    ffi_boundary(|| {
+        let raw = unsafe { read_utf8(raw_text_utf8, "raw_text_utf8")? };
+        let result = core_cli_api::battle_replay(
+            &raw,
+            core_cli_api::BattleOptions {
+                eval_rq,
+                include_icons: include_icons != 0,
+                max_rounds,
+            },
+        )
+        .map_err(cli_api_error)?;
+        write_json_result(out_json, &result)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runtime_normalized_run_json_matches_default_run_golden_shape() {
+        let run = core_cli_api::default_custom_runtime_normalized_run("left@red\n\nright@blue\n", 1)
+            .expect("default custom runtime run should execute");
+        let json = JsonRuntimeNormalizedRun::from(run);
+
+        assert_eq!(json.rounds.len(), 1);
+        assert_eq!(json.winner_team, None);
+        assert_eq!(json.guard_exhausted, true);
+        assert_eq!(json.total_score, 77);
+
+        let round = &json.rounds[0];
+        assert_eq!(round.winner_team, None);
+        assert_eq!(round.round, 1);
+        assert_eq!(round.total_score, 77);
+        assert_eq!(round.rng_i, 74);
+        assert_eq!(round.rng_j, 92);
+        assert_eq!(round.entity_ids, vec![1, 2]);
+        assert_eq!(round.teams, vec![0, 1]);
+        assert_eq!(round.hp, vec![262, 288]);
+        assert_eq!(round.magic_point, vec![23, 16]);
+        assert_eq!(round.defense, vec![6, 56]);
+        assert_eq!(round.resistance, vec![52, 25]);
+        assert_eq!(round.alive, vec![true, true]);
+        assert_eq!(round.round_order, vec![0, 1]);
+        assert_eq!(round.flat_alive, vec![0, 1]);
+        assert_eq!(round.team_alive, vec![vec![0], vec![1]]);
+        assert_eq!(round.alive_group_count, 2);
+
+        assert_eq!(round.actions.len(), 1);
+        let action = &round.actions[0];
+        assert_eq!(action.round, 1);
+        assert_eq!(action.actor, 1);
+        assert_eq!(action.target, 0);
+        assert_eq!(action.amount, 36);
+
+        assert_eq!(round.frames.len(), 3);
+        let frame = &round.frames[0];
+        assert_eq!(frame.message, "[0]发起攻击");
+        assert_eq!(frame.caster, 1);
+        assert_eq!(frame.target, 0);
+        assert_eq!(frame.targets, Vec::<usize>::new());
+        assert_eq!(frame.param, None);
+        assert_eq!(frame.score, 0);
+        assert_eq!(frame.delay0, 1000);
+        assert_eq!(frame.delay1, 100);
+        assert_eq!(frame.update_type, "none");
+
+        let frame = &round.frames[1];
+        assert_eq!(frame.message, "[1]受到[2]点伤害");
+        assert_eq!(frame.caster, 1);
+        assert_eq!(frame.target, 0);
+        assert_eq!(frame.targets, Vec::<usize>::new());
+        assert_eq!(frame.param, None);
+        assert_eq!(frame.score, 77);
+        assert_eq!(frame.delay0, 1154);
+        assert_eq!(frame.delay1, 100);
+        assert_eq!(frame.update_type, "none");
+
+        let frame = &round.frames[2];
+        assert_eq!(frame.message, "\n");
+        assert_eq!(frame.caster, 0);
+        assert_eq!(frame.target, 0);
+        assert_eq!(frame.targets, Vec::<usize>::new());
+        assert_eq!(frame.param, None);
+        assert_eq!(frame.score, 0);
+        assert_eq!(frame.delay0, 0);
+        assert_eq!(frame.delay1, 0);
+        assert_eq!(frame.update_type, "next_line");
+    }
+
+    #[test]
+    fn runtime_normalized_run_json_rejects_zero_max_rounds() {
+        let raw = std::ffi::CString::new("left@red\n\nright@blue\n").unwrap();
+        let mut out = tswn_str_t::default();
+
+        let status = unsafe { tswn_default_custom_runtime_normalized_run_json(raw.as_ptr(), 0, &mut out) };
+
+        assert_eq!(status, tswn_status_t::TSWN_ERR_INVALID_ARGUMENT);
+        assert_eq!(out.len, 0);
+        assert!(out.ptr.is_null());
+
+        let err = crate::tswn_last_error_message();
+        let message =
+            unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(err.ptr as *const u8, err.len)).to_owned() };
+        unsafe { crate::tswn_str_free(err) };
+        assert_eq!(message, "runtime max_rounds must be positive");
+    }
+
+    #[test]
+    fn battle_replay_json_exposes_shared_render_shape() {
+        let raw = std::ffi::CString::new("left@red\n\nright@blue\n").unwrap();
+        let mut out = tswn_str_t::default();
+
+        let status = unsafe {
+            tswn_battle_replay_json(
+                raw.as_ptr(),
+                tswn_core::runtime::BINDING_COMPLETION_MAX_ROUNDS,
+                crate::tswn_default_eval_rq(),
+                0,
+                &mut out,
+            )
+        };
+
+        assert_eq!(status, tswn_status_t::TSWN_OK);
+        let json = unsafe { std::str::from_utf8(std::slice::from_raw_parts(out.ptr as *const u8, out.len)).unwrap() };
+        let value: serde_json::Value = serde_json::from_str(json).unwrap();
+        assert_eq!(value["finished"], true);
+        assert!(value["frames"].as_array().is_some_and(|frames| !frames.is_empty()));
+        assert!(value["initial_states"].as_array().is_some_and(|states| states.len() == 2));
+        unsafe { crate::tswn_str_free(out) };
+    }
+
+    #[test]
+    fn public_c_header_declares_all_user_replay_exports() {
+        let header = include_str!("../include/tswn_capi.h");
+        assert!(header.contains("tswn_battle_replay_json"));
+        assert!(header.contains("tswn_default_custom_runtime_normalized_run_json"));
+        assert!(header.contains("tswn_last_error_code"));
+    }
+
+    #[test]
+    fn battle_replay_exposes_stable_c_error_code() {
+        let raw = std::ffi::CString::new("left\n\nright").unwrap();
+        let mut out = tswn_str_t::default();
+        let status = unsafe { tswn_battle_replay_json(raw.as_ptr(), 0, crate::tswn_default_eval_rq(), 0, &mut out) };
+
+        assert_eq!(status, tswn_status_t::TSWN_ERR_INVALID_ARGUMENT);
+        let code_value = crate::tswn_last_error_code();
+        let code = unsafe {
+            std::str::from_utf8(std::slice::from_raw_parts(code_value.ptr as *const u8, code_value.len))
+                .unwrap()
+                .to_owned()
+        };
+        unsafe { crate::tswn_str_free(code_value) };
+        assert_eq!(code, "INVALID_ARGUMENT");
+    }
 }

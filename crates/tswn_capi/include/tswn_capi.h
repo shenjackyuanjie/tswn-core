@@ -12,6 +12,7 @@
  * - 库返回的动态字节统一使用 `tswn_bytes_t`
  * - `tswn_str_t` / `tswn_bytes_t` 必须分别通过 `tswn_str_free` / `tswn_bytes_free` 释放
  * - `win_rate` 相关接口只返回 `wins` / `total`，百分比由调用方自行计算
+ * - 推荐新调用方优先使用下方“CLI 对齐高层接口”与 `tswn_battle_replay_json`
  */
 
 #include <stddef.h>
@@ -90,6 +91,45 @@ typedef struct tswn_update_snapshot_t {
     tswn_update_type_t update_type;
 } tswn_update_snapshot_t;
 
+/* 规范用户 API。通过追加导出保持 ABI 4 兼容。 */
+typedef struct tswn_battle_session_t tswn_battle_session_t;
+typedef struct tswn_battle_options_t {
+    uint32_t struct_size;
+    double eval_rq;
+    size_t max_rounds;
+    uint8_t include_icons;
+} tswn_battle_options_t;
+typedef enum tswn_battle_status_t {
+    TSWN_BATTLE_RUNNING = 0, TSWN_BATTLE_FINISHED = 1, TSWN_BATTLE_TRUNCATED = 2
+} tswn_battle_status_t;
+typedef enum tswn_battle_stop_reason_t {
+    TSWN_BATTLE_STOP_NONE = 0, TSWN_BATTLE_STOP_WINNER = 1,
+    TSWN_BATTLE_STOP_MAX_ROUNDS = 2, TSWN_BATTLE_STOP_NO_PROGRESS = 3
+} tswn_battle_stop_reason_t;
+
+/* 覆写字段前先初始化。default 永久仅写 V1，并设置 struct_size=V1_SIZE；
+ * 未来扩展须新增带容量参数的初始化接口，禁止扩大此函数的写入范围。
+ * new 接受 NULL options 以使用默认值。
+ * struct_size 小于 V1 最小结构尺寸会被拒绝；历史 V1 prefix 永久有效。
+ * 旧 caller 可调用新 library：未提供的新尾字段使用默认值；未知尾部由旧 library 忽略。
+ * 未来字段 offset 必须 >= V1_SIZE，禁止复用 V1 tail padding，必要时增加显式 padding。
+ * 每个存活句柄必须释放一次，且不得并发使用。
+ * 所有返回字符串归调用方所有；使用 tswn_str_free 释放。
+ * 可选输出在缺失时使用 has=0 和 {NULL,0}，包括重复的终止调用。
+ */
+void tswn_battle_options_default(tswn_battle_options_t* options);
+tswn_status_t tswn_battle_session_new(const char* raw_text_utf8, const tswn_battle_options_t* options, tswn_battle_session_t** out_session);
+void tswn_battle_session_free(tswn_battle_session_t* session);
+/* Runtime error 后为 1，result/stop_reason 不存在且后续推进返回相同 sticky error。
+ * 失败不属于 truncated，调用方应停止推进并释放 session。NULL 返回 0，不修改 last_error。 */
+uint8_t tswn_battle_session_is_failed(const tswn_battle_session_t* session);
+tswn_status_t tswn_battle_session_initial_states_json(const tswn_battle_session_t* session, tswn_str_t* out_json);
+tswn_status_t tswn_battle_session_current_states_json(const tswn_battle_session_t* session, tswn_str_t* out_json);
+tswn_status_t tswn_battle_session_next_frame_json(tswn_battle_session_t* session, uint8_t* out_has_frame, tswn_str_t* out_json);
+tswn_status_t tswn_battle_session_result_json(const tswn_battle_session_t* session, uint8_t* out_has_result, tswn_str_t* out_json);
+tswn_status_t tswn_battle_session_status(const tswn_battle_session_t* session, tswn_battle_status_t* out_value);
+tswn_status_t tswn_battle_session_stop_reason(const tswn_battle_session_t* session, tswn_battle_stop_reason_t* out_value);
+
 typedef struct tswn_runner_t tswn_runner_t;
 typedef struct tswn_prepared_runner_t tswn_prepared_runner_t;
 typedef struct tswn_updates_t tswn_updates_t;
@@ -113,6 +153,9 @@ double tswn_win_rate_eval_rq(void);
 
 /* 返回当前线程上最近一次错误消息。结果需用 `tswn_str_free` 释放。 */
 tswn_str_t tswn_last_error_message(void);
+
+/* 返回当前线程上最近一次错误的稳定错误码。结果需用 `tswn_str_free` 释放。 */
+tswn_str_t tswn_last_error_code(void);
 
 /* 清除当前线程上的最近一次错误消息。 */
 void tswn_clear_error(void);
@@ -252,7 +295,7 @@ tswn_status_t tswn_group_win_rate_with_eval_rq(
 tswn_status_t tswn_prepared_win_rate(const tswn_prepared_runner_t* prepared, size_t n, uint32_t thread, tswn_win_rate_result_t* out_result);
 
 /*
- * 基于 PreparedRunner 按显式 eval_rq 计算第一组对其余组的胜率统计。
+ * 基于 PreparedRunner 计算第一组对其余组的胜率统计，并验证 eval_rq 与创建模板时一致。
  * `thread` 语义：0=自动线程数，1=单线程，n=指定线程数。
  */
 tswn_status_t tswn_prepared_win_rate_with_eval_rq(
@@ -364,6 +407,37 @@ tswn_status_t tswn_pair_rate_json(
 );
 
 tswn_status_t tswn_to_diy(const char* name_utf8, uint8_t old, uint8_t minions, tswn_str_t* out_result);
+
+tswn_status_t tswn_batch_rate_factored_json(
+    const char* const* target_groups_utf8,
+    size_t target_groups_len,
+    const double* target_factors,
+    size_t target_factors_len,
+    const char* const* player_groups_utf8,
+    size_t player_groups_len,
+    size_t n,
+    const char* const* player_labels_utf8,
+    size_t player_labels_len,
+    uint8_t keep_rq,
+    uint32_t thread,
+    tswn_str_t* out_json
+);
+
+tswn_status_t tswn_pair_rate_factored_json(
+    const char* const* target_groups_utf8,
+    size_t target_groups_len,
+    const double* target_factors,
+    size_t target_factors_len,
+    const char* const* players_utf8,
+    size_t players_len,
+    const char* const* teammates_utf8,
+    size_t teammates_len,
+    size_t head,
+    size_t n,
+    uint8_t keep_rq,
+    uint32_t thread,
+    tswn_str_t* out_json
+);
 tswn_status_t tswn_to_diy_batch_json(
     const char* const* names_utf8,
     size_t names_len,
@@ -373,6 +447,26 @@ tswn_status_t tswn_to_diy_batch_json(
 );
 tswn_status_t tswn_icon_info_json(const char* name_utf8, tswn_str_t* out_json);
 tswn_status_t tswn_parse_group_lines_json(const char* content_utf8, uint8_t double_plus, tswn_str_t* out_json);
+
+/*
+ * 使用主 Runtime 跑完整场对局，并返回可直接渲染的结构化回放 JSON。
+ * `max_rounds` 必须为正数；建议传入 20000。`include_icons != 0` 时嵌入 PNG Base64 图标。
+ * 结果需用 `tswn_str_free` 释放。失败后可通过 tswn_last_error_code/message 查询详情。
+ */
+tswn_status_t tswn_battle_replay_json(
+    const char* raw_text_utf8,
+    size_t max_rounds,
+    double eval_rq,
+    uint8_t include_icons,
+    tswn_str_t* out_json
+);
+
+/* 返回默认 custom Runtime 的标准化执行轨迹 JSON。结果需用 `tswn_str_free` 释放。 */
+tswn_status_t tswn_default_custom_runtime_normalized_run_json(
+    const char* raw_text_utf8,
+    size_t max_rounds,
+    tswn_str_t* out_json
+);
 
 /* 图标辅助接口 */
 

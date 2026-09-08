@@ -11,6 +11,8 @@ use eframe::egui;
 
 use tswn_openbox::backend::{NamerPfMetric, OutputMode, PairDetailMode, ProgressEvent};
 
+use super::help::HelpTopic;
+
 use super::source::TextSource;
 use super::target_presets::{TargetPresetState, TeammatePresetState};
 use super::widgets::{BenchOutputConfig, OptionalFileOutput};
@@ -197,9 +199,11 @@ pub struct PairState {
     pub target_presets: TargetPresetState,
     pub manual_targets: bool,
     pub players: TextSource,
+    pub player_double_plus: bool,
     pub teammates: TextSource,
     pub teammate_presets: TeammatePresetState,
     pub manual_teammates: bool,
+    pub teammate_double_plus: bool,
     pub head: usize,
     pub count_mode: CountMode,
     pub accuracy: AccuracyPreset,
@@ -220,9 +224,11 @@ impl Default for PairState {
             target_presets: TargetPresetState::load_with_preferred_id(Some(2)),
             manual_targets: false,
             players: TextSource::inline("mario\nbowser"),
+            player_double_plus: false,
             teammates: TextSource::inline("yoshi\ntoad"),
             teammate_presets: TeammatePresetState::load(),
             manual_teammates: false,
+            teammate_double_plus: true,
             head: 3,
             count_mode: CountMode::Accuracy,
             accuracy: AccuracyPreset::Ten,
@@ -250,6 +256,8 @@ pub struct OpenboxApp {
     pub theme_preference: egui::ThemePreference,
     pub tool: Tool,
     pub more_settings_open: bool,
+    pub about_open: bool,
+    pub(crate) active_help: Option<HelpTopic>,
     pub log: String,
     pub log_line_count: usize,
     pub highlight_lines: HashSet<usize>,
@@ -276,6 +284,8 @@ impl Default for OpenboxApp {
             theme_preference: egui::ThemePreference::System,
             tool: Tool::ToDiy,
             more_settings_open: false,
+            about_open: false,
+            active_help: None,
             log: String::new(),
             log_line_count: 0,
             highlight_lines: HashSet::new(),

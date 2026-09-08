@@ -1,73 +1,40 @@
-# docs/ 文档目录状态评估
+# 文档中心
 
-本文档对 `docs/` 下所有文件及子目录进行状态分类。
+按用途选择入口。接口接入以 [公共 API](reference/public-api.md)、各 crate README 和源码类型为准；设计规格、机制分析与历史记录不等同于当前接口承诺。
 
----
+## 从这里开始
 
-## 一、当前有用且不过时的文档 ✅
+- 构建与打包：[全量构建](guides/build-all.md)、[OpenHarmony 交叉编译](guides/openharmony.md)。
+- 接入对局：[公共 API 与跨语言契约](reference/public-api.md)、[Windows C/C++ 接入](guides/c-api-cpp-windows.md)。
+- 自定义角色：[DIY / OL 格式](reference/diy-overlay.md)、[往返验证](guides/diy-validation.md)。
+- 从旧版本迁移：[Runtime 0.5 迁移指南](guides/runtime-0.5-migration.md)。
+- 查看 BattleSession 工作规格：[重构计划](design/battle-session-plan.md)、[API 冻结前加固要求](design/battle-session-hardening.md)。
+- 性能测量与历史结果：[性能索引](perf/README.md)。
 
-| 文件                           | 内容                            | 说明                                                                           |
-| ------------------------------ | ------------------------------- | ------------------------------------------------------------------------------ |
-| `build_all.md`                 | 聚合构建流程                    | 当前构建流程的完整指南（Windows wheel、WSL、CLI、WASM、聚合包）                |
-| `perf/benchmark_tracking.md`   | 性能追踪表                      | 持续更新的基准测试结果，含各版本横向对比                                       |
-| `perf/opt_target_selection.md` | 目标选择优化移植报告            | 已完成并合入主线的优化报告                                                     |
-| `perf/ub_fix_no_debug.md`      | UB 修复 + no_debug 泄漏修复报告 | 已完成并合入主线的修复报告                                                     |
-| `storage_refactor_analysis.md` | Storage 内部可变性方案分析      | 当前架构的内部可变性方案分析，与实际代码一致                                   |
-| `analysis/core_runtime_refactor_plan.md` | 下一代核心重构计划 | `engine / player / skill` 激进高性能重构方案，包含扩展 API 与 custom branch 迁移策略 |
-| `DIY.md`                       | DIY / OL overlay 使用说明       | 当前代码通过 `PlayerOverlay` 支持玩家与召唤物的 `diy[...]` / `ol:{...}` 覆盖   |
-| `howto/README.md`              | 项目概况                        | 简要说明项目目标和起源                                                         |
-| `howto/capi_cpp_windows.md`    | C API C++ Windows 使用指南      | C++ 编译/链接指南，与当前 bundle 产物一致                                      |
+## 目录导航
 
----
+| 目录 | 内容与适用范围 |
+| --- | --- |
+| [guides/](guides/README.md) | 使用、构建、验证与迁移指南 |
+| [reference/](reference/README.md) | 公共 API 契约与输入输出格式 |
+| [design/](design/README.md) | 实施计划、加固要求与验收规格；状态以正文为准 |
+| [mechanics/](mechanics/README.md) | 分身、技能衰减、name_factor / rq 等机制分析 |
+| [perf/](perf/README.md) | 性能方法、调查报告、历史基线、固定输入与原始数据 |
+| [diff/](diff/README.md) | JS / Rust 差分报告与样例 |
+| [releases/](releases/README.md) | 按版本保存的更新记录，包括标为开发中的记录 |
+| [archive/](archive/README.md) | 项目起源、已淘汰架构与历史分析；不作为当前实现说明 |
 
-## 二、历史/已完成/已删除的文档 ❌
+## 文档约定
 
-| 文件                             | 处理      | 原因                                                              |
-| -------------------------------- | --------- | ----------------------------------------------------------------- |
-| `rust_design.md`                 | ❌ 已删除 | 早期 Rust 设计文档，描述 `Rc<RefCell>` 等方案，与当前架构严重不符 |
-| `plr.md`                         | ❌ 已删除 | 基于 Dart 源码的 Plr 设计文档，当前架构已完全不同                 |
-| `proc_registration_locations.md` | ❌ 已删除 | 基于 Dart 源码的注册点清单，无法映射到当前 Rust 实现              |
-| `verify_checklist.md`            | ❌ 已删除 | 重写验证清单，大部分检查项已被更现代的方法覆盖                    |
-| `00_summary.md`                  | ❌ 已删除 | 时序图汇总，描述的是 Dart API 和 Dart 架构                        |
-| `mermaid/`                       | ❌ 已删除 | 5 个时序图均基于 Dart 源码，函数名/签名/架构与 Rust 实现不符      |
-| `diff/`                          | ❌ 已删除 | 空目录                                                            |
+- 除入口 `README.md` 和版本号文件外，手写文档使用小写英文、连字符分词，例如 `battle-session-hardening.md`；不使用序号前缀、含糊的 `original` / `short` 或重复的 `tswn_` 前缀。
+- 文件名说明主题；标题使用清晰的中文或 API 名称。一个文档只有一个一级标题，正文逐级分节。
+- 每篇文档从所属分类索引可达。新增或移动文档时，同时更新索引、相对链接、仓库内引用和读取该文档的脚本。
+- 设计和历史文档保留当时结论、状态与证据；归档不表示重新验收。旧源码路径、旧命令与历史外部链接可能失效。
+- `perf/` 和 `diff/` 的固定输入、原始 JSON、图片及工具生成报告保留原文件名与路径，不套用手写文档命名规则，不重生成基线。性能报告中的测量值、版本、提交与原始数据内容不因整理而改写。
+- 示例命令默认从仓库根目录执行；Markdown 链接相对当前文档。
 
----
+主 Runtime 独立性与 release corpus 的验证入口：
 
-## 三、计划中但尚未实现的文档 📋
-
-| 文件 | 内容 | 现状 |
-| ---- | ---- | ---- |
-| 无   | -    | -    |
-
----
-
-## 四、统计摘要
-
-| 类别                | 数量                       |
-| ------------------- | -------------------------- |
-| ✅ 当前有用且不过时 | **9** 个文件               |
-| ❌ 已删除的过时文档 | **10** 个文件 + 1 个空目录 |
-| 📋 计划中未实现     | **0** 个文件               |
-
----
-
-## 五、现状
-
-```text
-docs/
-├── README.md                       # ← 本文档
-├── build_all.md                    # 构建流程
-├── DIY.md                          # DIY / OL overlay 使用说明
-├── storage_refactor_analysis.md    # 内部可变性分析
-├── analysis/
-│   └── core_runtime_refactor_plan.md # 下一代核心重构计划
-├── howto/
-│   ├── README.md                   # 项目概况
-│   └── capi_cpp_windows.md         # C API 使用指南
-├── perf/
-│   ├── benchmark_tracking.md       # 性能追踪表
-│   ├── opt_target_selection.md     # 目标选择优化报告
-│   └── ub_fix_no_debug.md          # UB 修复报告
-└── update/                         # 27 个版本日志（历史存档）
+```powershell
+python scripts/check_runtime_release.py --corpus
 ```

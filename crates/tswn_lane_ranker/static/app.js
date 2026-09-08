@@ -34,7 +34,7 @@ function readWorkerSettings() {
 }
 
 function defaultCalibrationThresholdForLane(laneSize) {
-  return Number(laneSize) === 1 ? 47.5 : 48.5;
+  return Number(laneSize) === 1 ? 48 : 48.7;
 }
 
 function syncDefaultCalibrationThreshold(force = false) {
@@ -68,8 +68,7 @@ function readSelectionSettings() {
   return {
     outer_workers: outerRaw ? Number(outerRaw) : 0,
     raw_score_threshold: rawScoreThreshold,
-    // Legacy compatibility for older backend builds. New strict Python calibration
-    // uses raw_score_threshold and passes the same value to --raw-min.
+    // 与旧版后端构建兼容。新的严格 Python 校准使用 raw_score_threshold，并将相同值传给 --raw-min。
     cqd_threshold: rawScoreThreshold,
   };
 }
@@ -187,6 +186,20 @@ async function loadLanes() {
   if (!lanes.length) {
     el.textContent = "暂无赛道";
     return;
+  }
+
+  const selectedLaneSize = Number(document.getElementById("laneSize").value || 1);
+  const selectedLane = lanes.find(lane => Number(lane.lane_size) === selectedLaneSize);
+  const selectedProgress = selectedLane && selectedLane.progress;
+  if (selectedProgress && String(selectedProgress.phase || "").startsWith("target_")
+      && selectedProgress.phase !== "target_generation_ready") {
+    const targetOut = document.getElementById("targetGenerationOutput");
+    const done = Number(selectedProgress.rate_done || 0);
+    const total = Number(selectedProgress.rate_total || 0);
+    const message = String(selectedProgress.message || "");
+    if (targetOut) {
+      targetOut.textContent = `生成靶子中：${selectedProgress.phase} ${done}/${total}${message ? " — " + message : ""}`;
+    }
   }
 
   el.innerHTML = lanes.map(lane => {
@@ -921,7 +934,7 @@ function statusBadge(row) {
   if (!row) {
     return "";
   }
-  // Active-environment non-selected rows are displayed like normal rows.
+  // 活跃环境中未选中的行按普通行显示。
   if (isBlockedRow(row)) {
     return `<span class="blocked-badge">blocked</span>`;
   }
@@ -1012,66 +1025,55 @@ function exportConstrainedResults() {
 
 
 function readTargetSettings() {
-  const raw = document.getElementById("targetCqdThresholdInput").value.trim();
-  if (raw && !/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(raw)) {
-    throw new Error("靶子 C-Score 阈值必须是数字，例如 49.0。");
-  }
-  const threshold = raw ? Number(raw) : 49.0;
-  if (!Number.isFinite(threshold) || threshold < 0 || threshold > 100) {
-    throw new Error("靶子 C-Score 阈值必须在 0 到 100 之间。");
-  }
-
-  const fixedRaw = document.getElementById("targetFixedMainCountInput").value.trim();
-  if (fixedRaw && !/^\d+$/.test(fixedRaw)) {
-    throw new Error("固定主榜数量必须是 0 到 50 之间的整数。");
-  }
-  const fixedMainCount = fixedRaw ? Number(fixedRaw) : 40;
-  if (!Number.isInteger(fixedMainCount) || fixedMainCount < 0 || fixedMainCount > 50) {
-    throw new Error("固定主榜数量必须是 0 到 50 之间的整数。");
-  }
-
-  return {
-    cqd_threshold: threshold,
-    fixed_main_count: fixedMainCount,
-  };
+  return {};
 }
 
 
-function ensureTargetResultsContainer() {
-  let el = document.getElementById("targetResults");
-  if (el) {
-    return el;
-  }
-
-  el = document.createElement("div");
-  el.id = "targetResults";
-
-  const results = document.getElementById("results");
-  if (results && results.parentNode) {
-    results.parentNode.insertBefore(el, results);
-    return el;
-  }
-
-  const panel = document.querySelector(".target-generation-panel")
-    || document.querySelector(".constrained-selection-panel")
-    || document.body;
-  panel.insertAdjacentElement("afterend", el);
-  return el;
-}
 
 
 async function generateTargets() {
   const laneSize = document.getElementById("laneSize").value;
   const out = document.getElementById("targetGenerationOutput");
+  const button = document.getElementById("generateTargetsBtn");
+  let finished = false;
+  const progressTask = (async () => {
+    while (!finished) {
+      await sleep(1000);
+      if (finished) break;
+      try {
+        const progress = await loadLaneProgress(laneSize);
+        if (finished) break;
+        const phase = progress && progress.phase ? String(progress.phase) : "";
+        const message = progress && progress.message ? String(progress.message) : "";
+        if (phase.startsWith("target_") && phase !== "target_generation_ready") {
+          const done = Number(progress.rate_done || 0);
+          const total = Number(progress.rate_total || 0);
+          const countText = total > 0 ? ` ${done}/${total}` : "";
+          out.textContent = `生成靶子中：${phase}${countText}${message ? " — " + message : ""}`;
+        }
+        await loadLanes();
+      } catch (_) {
+        // 目标请求仍具有权威性。短暂的进度轮询失败不得取消生成或隐藏其最终响应。
+      }
+    }
+  })();
   try {
-    out.textContent = "generating targets...";
+    button.disabled = true;
+    // 此次点击从全新的零开始，而非短暂重放被中断的目标生成请求遗留的进度。
+    out.textContent = "generating targets: target_preparing 0/0, 0.00 pair/s";
     const data = await postJson(`/api/lanes/${laneSize}/targets`, readTargetSettings());
     currentTargets = data;
     clearTargetPreview();
-    const s = data.summary || {};
-    out.textContent = `靶子完成：${s.target_count || 0} 个；fixed ${s.fixed_main_count || 0} + optimized ${s.optimized_count || 0}；${targetReferenceScopeLabel(s)} 审计 ${s.audit_reference_rows ?? 0} 行；mean abs diff=${formatMetric(s.audit_mean_abs_diff)}；max abs diff=${formatMetric(s.audit_max_abs_diff)}；p95=${formatMetric(s.audit_p95_abs_diff)}；corr=${formatMetric(s.objective_corr)}`;
+    finished = true;
+    out.textContent = "靶子生成完成，可点击“导出靶子”下载。";
   } catch (err) {
+    finished = true;
     out.textContent = String(err);
+  } finally {
+    finished = true;
+    button.disabled = false;
+    await progressTask;
+    await loadLanes();
   }
 }
 
@@ -1083,37 +1085,14 @@ function clearTargetPreview() {
 }
 
 
-function targetPhaseLabel(phase) {
-  if (phase === "fixed_main_prefix") return "fixed";
-  if (phase === "minimax_lns_fill") return "minimax";
-  if (phase === "weighted_milp_fill") return "weighted-milp";
-  if (phase === "fixed_main_top40") return "main40";
-  if (phase === "optimized_profile_fill") return "fit";
-  return phase || "";
-}
 
-function formatMetric(value) {
-  if (value === null || value === undefined || !Number.isFinite(Number(value))) return "—";
-  return Number(value).toFixed(6);
-}
 
 function formatWeight(value) {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return "";
   return Number(value).toFixed(12);
 }
 
-function formatPercent(value) {
-  if (value === null || value === undefined || !Number.isFinite(Number(value))) return "";
-  return `${Number(value).toFixed(3)}%`;
-}
 
-function targetReferenceScopeLabel(summary) {
-  const lane = Number(summary && summary.lane_size);
-  const limit = Number(summary && summary.reference_limit);
-  if (lane === 1) return `Single main Top${Number.isFinite(limit) ? limit : 100}`;
-  if (Number.isFinite(lane) && lane > 1) return `Multi main Top${Number.isFinite(limit) ? limit : 200}`;
-  return `Main Top${Number.isFinite(limit) ? limit : ""}`;
-}
 
 
 function exportTargets() {
@@ -1123,84 +1102,21 @@ function exportTargets() {
   }
 
   const laneSize = document.getElementById("laneSize").value;
-  const s = currentTargets.summary || {};
-  const auditRows = Array.isArray(currentTargets.reference_audit_rows)
-    ? currentTargets.reference_audit_rows
-    : [];
-
-  const configText = typeof currentTargets.target_config_text === "string"
-    ? currentTargets.target_config_text.trim()
-    : currentTargets.rows.map(row => `${formatWeight(row.target_weight)}\t${row.canonical || ""}`).join("\n");
-
-  const lines = [
-    "# Weighted target config: weight<TAB>combination",
-    ...configText.split(/\r?\n/).filter(Boolean),
-    "",
-    "# Target generation summary",
-    `lane_size\t${s.lane_size ?? ""}`,
-    `target_count\t${s.target_count ?? ""}`,
-    `fixed_main_count\t${s.fixed_main_count ?? ""}`,
-    `optimized_count\t${s.optimized_count ?? ""}`,
-    `player_cap\t${s.player_cap ?? ""}`,
-    `player_weight_cap\t${formatMetric(s.player_weight_cap)}`,
-    `target_weight_sum\t${formatMetric(s.target_weight_sum)}`,
-    `target_weight_min\t${formatMetric(s.target_weight_min)}`,
-    `target_weight_max\t${formatMetric(s.target_weight_max)}`,
-    `cqd_threshold\t${formatScore(s.cqd_threshold)}`,
-    `reference_scope\t${targetReferenceScopeLabel(s)}`,
-    `reference_limit\t${s.reference_limit ?? ""}`,
-    `reference_count\t${s.reference_count ?? ""}`,
-    `candidate_count\t${s.candidate_count ?? ""}`,
-    `objective_mode\tweighted_milp_minimax_abs_aligned_diff_then_p95_mean_rmse_mse`,
-    `objective_mse\t${formatMetric(s.objective_mse)}`,
-    `objective_corr\t${formatMetric(s.objective_corr)}`,
-    `reference_avg_winrate_mean\t${formatScore(s.reference_avg_winrate_mean)}%`,
-    `reference_avg_winrate_std\t${formatScore(s.reference_avg_winrate_std)}`,
-    `reference_c_score_mean\t${formatScore(s.reference_c_score_mean)}`,
-    `reference_c_score_std\t${formatScore(s.reference_c_score_std)}`,
-    `audit_reference_rows\t${s.audit_reference_rows ?? ""}`,
-    `audit_mean_diff\t${formatMetric(s.audit_mean_diff)}`,
-    `audit_mean_abs_diff\t${formatMetric(s.audit_mean_abs_diff)}`,
-    `audit_max_abs_diff\t${formatMetric(s.audit_max_abs_diff)}`,
-    `audit_rmse\t${formatMetric(s.audit_rmse)}`,
-    `audit_p95_abs_diff\t${formatMetric(s.audit_p95_abs_diff)}`,
-    "",
-    "# Target rows",
-    "T-Rank\tWeight\tPhase\tC-Rank\tC-Score\tR-Rank\tR-Score\tRef Avg\tRef N\tStatus\tType\tName",
-    ...currentTargets.rows.map(row => [
-      row.target_rank ?? "",
-      formatWeight(row.target_weight),
-      targetPhaseLabel(row.phase),
-      row.correct_rank ?? "",
-      formatScore(row.correct_score),
-      row.raw_rank ?? "",
-      formatScore(row.raw_score),
-      formatPercent(row.average_reference_winrate),
-      row.reference_rate_count ?? "",
-      row.selection_status || "",
-      row.type_label || "",
-      row.canonical || "",
-    ].map(value => String(value).replace(/\t/g, " ")).join("\t")),
-    "",
-    `# ${targetReferenceScopeLabel(s)} audit rows: each reference row's weighted winrate against the 50 targets`,
-    "Ref-Rank-in-Scope\tC-Rank\tC-Score\tR-Rank\tR-Score\tWeighted Avg Winrate vs Targets\tTarget N\tAligned C-Score From Targets\tAligned-C minus C-Score\tAbs Diff\tType\tName",
-    ...auditRows.map(row => [
-      row.reference_rank ?? "",
-      row.correct_rank ?? "",
-      formatScore(row.correct_score),
-      row.raw_rank ?? "",
-      formatScore(row.raw_score),
-      formatPercent(row.average_winrate_vs_targets),
-      row.target_rate_count ?? "",
-      formatScore(row.aligned_c_score_from_targets),
-      formatSigned(row.aligned_minus_c_score),
-      formatScore(row.abs_aligned_minus_c_score),
-      row.type_label || "",
-      row.canonical || "",
-    ].map(value => String(value).replace(/\t/g, " ")).join("\t")),
-  ];
-
-  downloadText(`lane_${laneSize}_targets.txt`, lines.join("\n"));
+  // Openbox 目标预设格式（TOML 风格表格）。请求的扩展名是 .html，但载荷有意匹配 newTarget2.toml。
+  const tomlString = value => JSON.stringify(String(value));
+  const targetLines = [];
+  for (const row of currentTargets.rows) {
+    // 导出原始显示身份。`player_keys` 有意将 DSU/root-team 名称用于内部所有权约束（例如 Squall 可能归一化为
+    // Asunder）；暴露这些键会改写用户在目标文件中看到的名称。仅在内部保留归一化键。
+    const players = String(row.canonical || "").split("+").map(s => s.trim()).filter(Boolean);
+    targetLines.push(
+      "[[targets]]",
+      `factor = ${formatWeight(row.target_weight)}`,
+      `players = [${players.map(tomlString).join(", ")}]`,
+      "",
+    );
+  }
+  downloadText(`Target${laneSize}.html`, targetLines.join("\n"));
 }
 
 

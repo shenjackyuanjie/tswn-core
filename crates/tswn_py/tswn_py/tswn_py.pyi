@@ -1,7 +1,6 @@
 """tswn_py 扩展模块公开 API 的汇总存根。"""
 
-from ._types_engine import Storage, WorldState
-from ._types_player import Player
+from ._types_battle import BattlePlayerState, BattleReplayFrame, BattleReplay, BattleResult, BattleStatus, BattleStopReason
 from ._types_rc4 import RC4
 from ._types_replay import TimedEvent
 from ._types_runner import PreparedRunner, Runner
@@ -40,7 +39,7 @@ def group_win_rate(
     ...
 
 def prepared_win_rate(prepared: PreparedRunner, n: int, eval_rq: float | None = None, thread: int = 0) -> float:
-    """基于 PreparedRunner 计算第一组对其余组的胜率百分比。thread: 0=自动, 1=单线程, n=指定线程数。"""
+    """基于 PreparedRunner 计算胜率；eval_rq 只能省略或与创建值相同。"""
     ...
 
 def compute_show_timeline(updates: list[RunUpdate], player_count: int, scale: bool = True) -> list[TimedEvent]:
@@ -59,6 +58,14 @@ class WinRateResult:
     @property
     def fight_nanos(self) -> int: ...
 
+class InvalidInputError(ValueError):
+    @property
+    def code(self) -> str: ...
+
+class TswnRuntimeError(RuntimeError):
+    @property
+    def code(self) -> str: ...
+
 class ScoreResult:
     @property
     def score(self) -> float: ...
@@ -66,6 +73,8 @@ class ScoreResult:
     def wins(self) -> int: ...
     @property
     def total(self) -> int: ...
+    @property
+    def errors(self) -> int: ...
     @property
     def init_nanos(self) -> int: ...
     @property
@@ -204,6 +213,19 @@ def icon_info(name: str) -> IconInfo:
 def parse_group_lines(content: str, double_plus: bool = False) -> list[str]:
     ...
 
+def default_custom_runtime_normalized_run(raw: str, max_rounds: int) -> dict[str, object]:
+    """使用默认 custom Runtime profile 运行输入并返回 normalized-run 数据。"""
+    ...
+
+def battle_replay(
+    raw: str,
+    eval_rq: float | None = None,
+    include_icons: bool = False,
+    max_rounds: int | None = None,
+) -> BattleReplay:
+    """运行完整对局并返回 UI 可直接消费的结构化回放。"""
+    ...
+
 def name_to_png_base64(name: str) -> str:
     """将名字渲染为 PNG 并返回 Base64 字符串。"""
     ...
@@ -213,6 +235,11 @@ def name_to_png_bytes(name: str) -> bytes:
     ...
 
 __all__ = [
+    "BattleSession",
+    "InvalidArgumentError",
+    "UnsupportedOptionError",
+    "TswnInternalError",
+
     "RunnerError",
     "PreparedRunner",
     "WinRateResult",
@@ -224,9 +251,6 @@ __all__ = [
     "RunUpdate",
     "RunUpdates",
     "Runner",
-    "WorldState",
-    "Storage",
-    "Player",
     "RC4",
     "DEFAULT_EVAL_RQ",
     "WIN_RATE_EVAL_RQ",
@@ -245,9 +269,38 @@ __all__ = [
     "to_diy_batch",
     "icon_info",
     "parse_group_lines",
+    "default_custom_runtime_normalized_run",
+    "battle_replay",
     "name_to_icon_rgba",
     "name_to_png_base64",
     "name_to_png_bytes",
     "win_rate",
     "wrapper_version_str",
 ]
+
+class BattleSession:
+    def __init__(self, raw: str, eval_rq: float | None = None, include_icons: bool = False, max_rounds: int | None = None) -> None: ...
+    def initial_states(self) -> list[BattlePlayerState]: ...
+    def current_states(self) -> list[BattlePlayerState]: ...
+    def next_frame(self) -> BattleReplayFrame | None: ...
+    def status(self) -> BattleStatus: ...
+    def stop_reason(self) -> BattleStopReason | None: ...
+    def is_done(self) -> bool: ...
+    def is_failed(self) -> bool: ...
+    def is_finished(self) -> bool: ...
+    def is_truncated(self) -> bool: ...
+    def rounds_advanced(self) -> int: ...
+    def frames_emitted(self) -> int: ...
+    def result(self) -> BattleResult | None: ...
+    def __iter__(self) -> BattleSession: ...
+    def __next__(self) -> BattleReplayFrame: ...
+
+class InvalidArgumentError(ValueError):
+    @property
+    def code(self) -> str: ...
+class UnsupportedOptionError(ValueError):
+    @property
+    def code(self) -> str: ...
+class TswnInternalError(RuntimeError):
+    @property
+    def code(self) -> str: ...

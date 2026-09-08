@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from ._types_engine import Storage, WorldState
 from ._types_rc4 import RC4
 from ._types_replay import BattleReplay, PlayerSnapshot
 from ._types_update import RunUpdates
@@ -10,8 +9,13 @@ from ._types_update import RunUpdates
 class PreparedRunner:
     """预处理后的分组输入，可重复用于构造 Runner。"""
 
+    @property
+    def eval_rq(self) -> float:
+        """创建该模板时固定的名称评分参数。"""
+        ...
+
     def win_rate(self, n: int, eval_rq: float | None = None, thread: int = 0) -> float:
-        """基于当前 prepared 模板计算第一组对其余组的胜率百分比。"""
+        """基于当前 prepared 模板计算胜率；eval_rq 只能省略或与创建值相同。"""
         ...
 
 class Runner:
@@ -53,25 +57,8 @@ class Runner:
     def main_round(self) -> RunUpdates:
         """推进到下一个主回合并返回更新。"""
         ...
-    def round_tick(self, update: RunUpdates) -> None:
-        """执行一个 tick，并把结果追加到给定容器。"""
-        ...
-    def round_tick_new_update(self) -> RunUpdates:
-        """执行一个 tick 并返回新建的更新容器。"""
-        ...
-    def round_tick_new_update_no_capture(self) -> RunUpdates:
-        """执行一个不采集详细帧的 tick。"""
-        ...
     def run_to_completion(self) -> bool:
-        """一直运行到结束，返回是否分出胜者。"""
-        ...
-    @property
-    def storage(self) -> Storage:
-        """底层存储接口。"""
-        ...
-    @property
-    def world_state(self) -> WorldState:
-        """当前世界状态。"""
+        """运行至胜者产生或达到 20,000 主回合 guard。"""
         ...
     @property
     def input_groups(self) -> list[list[int]]:

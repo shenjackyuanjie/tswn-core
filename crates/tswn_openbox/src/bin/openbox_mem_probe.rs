@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use tswn_openbox::backend::{BatchRateInput, CommonBenchOptions, OutputMode, ProgressEvent, run_batch_rate};
@@ -38,6 +38,7 @@ fn main() {
     let input = BatchRateInput {
         target_text: targets,
         player_text: players,
+        target_factor_enabled: false,
         target_double_plus: false,
         player_double_plus: false,
         show_matchups: args.show_matchups,
@@ -116,7 +117,9 @@ impl Args {
                 "--players" => parsed.players = PathBuf::from(args.next().expect("--players needs a path")),
                 "--targets" => parsed.targets = PathBuf::from(args.next().expect("--targets needs a path")),
                 "--limit" => parsed.limit = parse_optional_usize(args.next().expect("--limit needs a value")),
-                "--target-limit" => parsed.target_limit = parse_optional_usize(args.next().expect("--target-limit needs a value")),
+                "--target-limit" => {
+                    parsed.target_limit = parse_optional_usize(args.next().expect("--target-limit needs a value"))
+                }
                 "--count" => parsed.count = args.next().expect("--count needs a value").parse().expect("invalid --count"),
                 "--threads" => parsed.threads = parse_optional_usize(args.next().expect("--threads needs a value")),
                 "--show-matchups" => parsed.show_matchups = true,
@@ -152,7 +155,7 @@ fn read_limited_lines(path: &PathBuf, limit: Option<usize>) -> String {
 
 fn report(started: Instant, stats: &Stats) {
     eprintln!(
-        "t={:.1}s rss_kb={} progress={}/{} events={} logs={} log_kb={} highlights={}",
+        "t={:.6}s rss_kb={} progress={}/{} events={} logs={} log_kb={} highlights={}",
         started.elapsed().as_secs_f64(),
         current_rss_kb(),
         stats.last_done,
@@ -168,11 +171,7 @@ fn report(started: Instant, stats: &Stats) {
 fn current_rss_kb() -> u64 {
     let pid = std::process::id();
     let output = std::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-Command",
-            &format!("(Get-Process -Id {pid}).WorkingSet64"),
-        ])
+        .args(["-NoProfile", "-Command", &format!("(Get-Process -Id {pid}).WorkingSet64")])
         .output();
     output
         .ok()

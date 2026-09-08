@@ -5,6 +5,26 @@
 从仓库根目录运行时，推荐命令形式为 `uv run scripts/<name>.py ...`（Windows 侧使用 `uv` 管理环境），
 也可用 `python scripts/<name>.py ...`（需确保已激活虚拟环境）。
 
+## read_winprob_dataset.py
+
+使用 `pyarrow` 读取战斗状态 Parquet，只向调用方提供 `state` 和 `winner_team_index`，默认排除空标签。
+先用 `tswn-winprob-dataset validate` 校验完整性，再运行 `python scripts/read_winprob_dataset.py target/winprob-demo`。
+生成命令和数据契约见 [生成器说明](../crates/tswn_winprob_dataset/README.md)。
+
+## check_runtime_release.py
+
+验证主 Runtime 的 release 独立性与行为回归：
+
+- 检查已删除的 `engine` / `player` 源码路径和旧 Rust/CLI API 没有回流；
+- 校验 corpus 清单固定为 87 个 JS exact trace 与 37 个压力 golden；
+- 运行 release 与 `no_debug` 的主 Runtime 定向测试；
+- 传入 `--corpus` 时实际执行全部 124 项 corpus，否则只编译 corpus 测试目标。
+
+```powershell
+python scripts/check_runtime_release.py
+python scripts/check_runtime_release.py --corpus
+```
+
 ## build_all.py
 
 一次性聚合打包以下内容，并生成最终 zip：
@@ -177,35 +197,25 @@
 - `--release`: 构建并导入 release 产物
 - `--skip-build`: 复用上一次生成的 `target/py_cli_api_verify/import/`，用于快速重跑断言
 
-## find_bun_tswn_reply_mismatches.py
+## tswn_diff.py
 
-查找 bun / tswn 胜率不一致的消息，并回查回复的原始消息内容。
+统一查询和复核历史 Bun / tswn 差异。旧的 `find_bun_tswn_*_mismatches.py` 脚本已删除；从仓库根目录运行：
 
-从 PostgreSQL 数据库中查询包含 bun 和 tswn 胜率结果的消息，比较两者胜率是否一致，筛出不一致的记录。
+```powershell
+uv run scripts/tswn_diff.py rate --json
+uv run scripts/tswn_diff.py pf --tswn-version 0.3.12
+uv run scripts/tswn_diff.py round --case-id MESSAGE_ID
+```
 
-典型用法：
+三个子命令均通过 `--dsn` 或环境变量 `TSWN_PG_DSN` 连接 PostgreSQL；默认 schema、table 和 senderId 保持原来的值。
 
-- `uv run scripts/find_bun_tswn_reply_mismatches.py --dsn postgresql://...`
-- `uv run scripts/find_bun_tswn_reply_mismatches.py --json`
+| 子命令 | 用途 | 常用参数 |
+| --- | --- | --- |
+| `rate` | 查找 Bun / tswn 胜率不一致的消息并回查回复原文。 | `--json`、`--output PATH`、`--retest`、`--retest-rounds N` |
+| `pf` | 查找 `/namer-pf` 的 pp/pd/qp/qd 评分差异。保留 `--mode new/old/all`，可处理旧版 bun-only 记录。 | `--mode all`、`--tswn-version VERSION`、`--dedup`、`--retest` |
+| `round` | 调用 Bun trace 与当前 tswn，定位胜负发生分叉的具体 round。 | `--case-id ID`、`--rounds N`、`--md5-path PATH`、`--md5-fallback PATH` |
 
-常用参数：
-
-- `--dsn DSN`: PostgreSQL 连接串（默认读取环境变量 `TSWN_PG_DSN`）
-- `--schema SCHEMA`: schema 名（默认 `eqq3695888`）
-- `--table TABLE`: table 名（默认 `messages`）
-- `--sender-id ID`: senderId 过滤值（默认 `45620725`）
-- `--content-like PATTERN`: content LIKE 条件（默认 `最终胜率%tswn:%`）
-- `--json`: 输出 JSON 格式
-- `--output PATH`: 将结果写到指定文件
-
-**--retest 模式**：对每个 mismatch 用当前 `tswn-cli` 重跑胜率，对比是否仍然不一致。
-
-- `--retest`: 启用 retest 模式
-- `--tswn-bin PATH`: tswn-cli 可执行文件路径（默认使用 `cargo run --release --bin tswn-cli --`）
-- `--retest-rounds N`: 重测场数（默认取各 mismatch 的 bun_buckets 最大轮数）
-- `--retest-timeout SEC`: 单次 tswn 调用超时秒数（默认 60）
-- `--retest-only-diff`: 只显示重测后依然 diff != 0 的 case
-- `--retest-buckets-step N`: 重测时启用分段胜率输出，每 N 场输出一次累积胜率（默认 1000；设为 0 禁用）
+所有子命令的完整参数由 `python scripts/tswn_diff.py <rate|pf|round> --help` 查看。`round` 还需要 Bun 和可用的 `md5.js`；主 md5 路径失败时会使用 `--md5-fallback`。
 
 ## bun_profile_trace.js
 
@@ -232,3 +242,16 @@ Bun 脚本，用于对 tswn-md5 模块进行 profile trace。
 - `.venv`（Windows 侧）由 `uv` 创建，`uv run` 会自动使用该环境
 - `.venv-wsl`（WSL 侧）是独立的 Linux 虚拟环境
 - 所有 `python scripts/...` 命令均可替换为 `uv run scripts/...`（Windows 侧推荐）
+
+## BattleSession 验收
+
+- `verify_py_cli_api.py`：构建 Python 扩展并检查 TypedDict、迭代器、错误码与 session/replay 一致性。
+- `verify_wasm_battle.test.mjs`：真实 Node WASM 包的 canonical DTO、错误与旧 FightSession 兼容测试。
+- `verify_cli_battle.py`：CLI JSONL、stdin、人类输出与删除命令的错误路径。
+- `verify_battle_cross_binding.py`：真实 Rust CLI / Python / C / WASM 的完整 payload 精确对比；调用 `dump_battle_wasm.mjs` 读取 Node WASM 输出。
+- `verify_web_playback.mjs`：真实页面模块与 DOM 的延迟 source 测试，需 `--experimental-vm-modules` 和 target/web-test-tools 下的 linkedom。
+- `benchmark_web_streaming.mjs`：独立桌面浏览器四组各 20 次性能测试，生成 timing JSON、表格和截图。
+- `benchmark_py_battle_session.py`：构建本地 release Python 扩展，测量 `BattleSession.next_frame()` 的端到端 DTO 开销；传入 Node WASM 包时同时按相同输入比较两端结果。基线与复现口径见 [Python BattleSession DTO 转换基线](../docs/perf/reports/python-battle-session-baseline.md)。
+- `verify_battle_docs.py`：从公共 API 文档提取 Rust / Python / WASM 示例并实际运行。
+
+完整构建与复现步骤见 [Web streaming 基线](../docs/perf/reports/web-streaming-baseline.md)。

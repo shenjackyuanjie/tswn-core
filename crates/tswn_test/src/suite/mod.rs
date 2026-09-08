@@ -1,12 +1,12 @@
-//! Shared replay test suite.
+//! 共用回放测试套件。
 //!
-//! The files in this module are engine-agnostic fixtures. They only consume
-//! raw input, rendered update snapshots, winners, and scores.
+//! 本模块中的 fixture 不依赖具体引擎，只读取原始输入、渲染后的更新快照、胜者和分数。
 
 use std::collections::HashMap;
 
-use crate::{CoreEngine, EngineAdapter, EventSnapshot, SnapshotKind};
-use tswn_core::engine::update::{RunUpdate, UpdateType};
+use crate::{EngineAdapter, EventSnapshot, RuntimeEngine, SnapshotKind};
+use tswn_core::runtime::update::{RunUpdate, UpdateType};
+use tswn_core::runtime::{EntityIdx, RuntimeRunner, default_custom_runtime_import_config};
 
 pub mod fight_large;
 pub mod fight_multi_1;
@@ -32,59 +32,50 @@ pub mod large_71_80;
 pub mod simple;
 pub mod small;
 
-fn format_core_update_message(runner: &tswn_core::Runner, update: &RunUpdate) -> String {
-    let caster = runner
-        .storage
-        .get_player(&update.caster)
-        .map(|plr| plr.display_name())
-        .unwrap_or_else(|| format!("#{}", update.caster));
-    let target = runner
-        .storage
-        .get_player(&update.target)
-        .map(|plr| plr.display_name())
-        .unwrap_or_else(|| format!("#{}", update.target));
+fn runtime_entity_name(runner: &RuntimeRunner, id: usize) -> String {
+    u32::try_from(id)
+        .ok()
+        .and_then(|id| runner.runtime().entities.get(EntityIdx(id)))
+        .map(|entity| entity.template.display_name.clone())
+        .unwrap_or_else(|| format!("#{id}"))
+}
+
+fn format_runtime_update_message(runner: &RuntimeRunner, update: &RunUpdate) -> String {
+    let caster = runtime_entity_name(runner, update.caster);
+    let target = runtime_entity_name(runner, update.target);
     let mut msg = update.message.to_string();
     msg = msg.replace("[0]", &caster);
     msg = msg.replace("[1]", &target);
-    let param = if let Some(p) = update.param {
-        p.to_string()
+    let param = if let Some(param) = update.param {
+        param.to_string()
     } else if update.targets.is_empty() {
         update.score.to_string()
     } else {
         update
             .targets
             .iter()
-            .map(|id| {
-                runner
-                    .storage
-                    .get_player(id)
-                    .map(|plr| plr.display_name())
-                    .unwrap_or_else(|| format!("#{id}"))
-            })
-            .collect::<Vec<String>>()
+            .map(|id| runtime_entity_name(runner, *id))
+            .collect::<Vec<_>>()
             .join(",")
     };
     msg.replace("[2]", &param)
 }
 
-fn core_caster_name(runner: &tswn_core::Runner, update: &RunUpdate) -> String {
-    runner
-        .storage
-        .get_player(&update.caster)
-        .map(|plr| plr.display_name())
-        .unwrap_or_else(|| format!("#{}", update.caster))
-}
-
-impl EngineAdapter for CoreEngine {
-    type Runner = tswn_core::Runner;
+impl EngineAdapter for RuntimeEngine {
+    type Runner = RuntimeRunner;
 
     fn new_from_raw(raw: String) -> Result<Self::Runner, String> {
-        tswn_core::Runner::new_from_namerena_raw(raw).map_err(|err| err.to_string())
+        let config = default_custom_runtime_import_config().map_err(|err| format!("{err:?}"))?;
+        RuntimeRunner::from_custom_mixed_namerena_raw(raw, config).map_err(|err| format!("{err:?}"))
     }
 
     fn main_round(runner: &mut Self::Runner) -> Vec<EventSnapshot> {
-        runner
-            .main_round()
+        let outcome = runner.run_round();
+        let Some(frame) = outcome.frame else {
+            return Vec::new();
+        };
+        frame
+            .updates
             .updates
             .into_iter()
             .map(|update| {
@@ -94,8 +85,8 @@ impl EngineAdapter for CoreEngine {
                     UpdateType::None => SnapshotKind::Event,
                 };
                 EventSnapshot {
-                    message: format_core_update_message(runner, &update),
-                    caster_name: core_caster_name(runner, &update),
+                    message: format_runtime_update_message(runner, &update),
+                    caster_name: runtime_entity_name(runner, update.caster),
                     score: update.score,
                     kind,
                 }
@@ -103,27 +94,27 @@ impl EngineAdapter for CoreEngine {
             .collect()
     }
 
-    fn have_winner(runner: &Self::Runner) -> bool { runner.have_winner() }
+    fn have_winner(runner: &Self::Runner) -> bool { runner.runtime().world.winner_team().is_some() }
 
     fn winner_names(runner: &Self::Runner) -> Vec<String> {
+        let Some(team) = runner.runtime().world.winner_team() else {
+            return Vec::new();
+        };
         runner
+            .runtime()
             .world
-            .winner
-            .clone()
+            .team_alive(team)
             .unwrap_or_default()
-            .into_iter()
-            .map(|id| {
-                runner
-                    .storage
-                    .get_player(&id)
-                    .map(|plr| plr.id_name())
-                    .unwrap_or_else(|| format!("#{id}"))
-            })
-            .collect::<Vec<String>>()
+            .iter()
+            .filter_map(|entity| runner.runtime().entities.get(*entity))
+            .map(|entity| entity.template.name.clone())
+            .collect()
     }
 
+    fn winner_team_index(runner: &Self::Runner) -> Option<usize> { runner.runtime().world.winner_team() }
+
     fn rc4_state(runner: &Self::Runner) -> Option<(usize, usize)> {
-        Some((runner.randomer.i as usize, runner.randomer.j as usize))
+        Some((runner.runtime().rng.i as usize, runner.runtime().rng.j as usize))
     }
 }
 
@@ -273,6 +264,14 @@ fn parse_embedded_fight_case(case_text: &str, split_err: &str, empty_err: &str) 
 }
 
 pub fn winner_names<E: EngineAdapter>(runner: &E::Runner) -> Vec<String> { E::winner_names(runner) }
+
+pub fn assert_runtime_matches_frozen_golden(raw: &str, case_name: &str) {
+    crate::golden::assert_runtime_matches_frozen_golden(raw, case_name);
+}
+
+pub fn assert_runtime_matches_frozen_golden_with_eval_rq(raw: &str, case_name: &str, eval_rq: f64) {
+    crate::golden::assert_runtime_matches_frozen_golden_with_eval_rq(raw, case_name, eval_rq);
+}
 
 fn assert_trace_with_context(case_name: &str, actual_lines: &[String], expected_lines: &[String]) {
     if actual_lines == expected_lines {

@@ -1,5 +1,93 @@
 # 更新日志
 
+## [Unreleased]
+
+### 新增
+
+- `namer-pf` 技能榜新增 `[lessskl]` 白板号阈值；待评名字或组合的全部技能熟练度均小于 30 时，会按该阈值额外筛选输出。
+- `pair` 队友预设新增可选 `factor_enabled`；启用后读取与带权靶子相同格式的 TOML 队友文件，将每个队友组合的平均胜率乘以对应 `factor` 后再按 `head` 取高分求和。
+
+### 调整
+
+- 从 `tests/jnb.txt` 导入当前技能榜阈值，并用白板号行初始化 `[lessskl]` 的 `pp`、`qp`、`qd`。
+
+### 文档
+
+- 补充 `namer-pf` 技能榜低熟练度白板号筛选规则，以及 `[lessskl]` 阈值配置示例。
+- 补充 `pair` 带权队友的配置示例、靶子权重与队友权重的计算顺序，以及手动队友模式下权重配置不生效的说明。
+
+### 验证
+
+- `cargo check -p tswn_openbox`
+- `cargo test -p tswn_openbox`
+- `cargo +nightly fmt --check -p tswn_openbox`
+- `cargo +nightly fmt --check`
+
+## [0.4.2] - 2026-09-01
+
+### 新增
+
+- `pair` 选择 `factor_enabled = true` 的靶子预设时，支持带权 TOML 靶子，并按 `sum(胜率 * factor) / sum(factor)` 计算每个队友组合的平均 cqp。
+- `pair` 的选手和队友输入支持一行多个玩家，可分别在更多设置中启用 `++` 分割；默认选手使用单个 `+`，队友使用 `++`。
+- `pair` 支持将多名选手、多名队友与多玩家靶子正确拼接为同一场对局，并保留原始输入行作为日志和文件标签。
+
+## [0.4.1] - 2026-08-31
+
+### 新增
+
+- 顶部新增“关于”弹窗，显示 `tswn_openbox` 与 `tswn_core` 的当前版本，并链接到项目 GitHub 仓库。
+- 窗口标题与顶部栏标题旁直接显示 `tswn_openbox` 与 `tswn_core` 的版本号（构建时读取，无需手动维护）。
+- 默认靶子预设新增 50 组带权单人组，并以更新后的 50 组带权双人组替换旧数据；首次启动写出默认配置时会一并生成两份新版预设文件。
+
+### 验证
+
+- `cargo +nightly fmt --check -p tswn_openbox`（`rustfmt.toml` 使用 nightly 专属选项，仓库新增 `AGENTS.md` 记录该约定）
+- `cargo check -p tswn_openbox`
+
+## [0.4.0] - 2026-08-30
+
+### 新增
+
+- `cqd/cqp` 靶子预设新增可选配置 `factor_enabled`；启用后从 TOML 靶子文件读取每组 `factor` 与 `players`，并提供内嵌的 50 组带权二人靶子预设。
+
+### 调整
+
+- 升级 GUI 框架至 `eframe`/`egui` 0.36.1，并更新 lockfile 中所有兼容依赖。
+- 带权 `cqd/cqp` 按 `sum(胜率 * factor) / sum(factor)` 计算平均胜率；完全相同的双方阵容按 50% 参与加权，部分重名仍正常计算。
+
+## [0.3.13] - 2026-07-19
+
+### 新增
+
+- 为 `namer-pf`、`cqd/cqp` 和 `pair` 的常用设置、更多设置与输出选项增加圆形 `i` 上下文帮助图标；鼠标悬浮可快速查看说明，点击后可固定为独立说明窗口。
+- 将原界面标注中的精确度/场数对应关系、评分参考范围、技能榜条件、分组格式、队友与 cqp 规则、阈值和高亮逻辑整理为控件就近帮助。
+
+### 调整
+
+- 按当前实现校正帮助文案：空阈值表述为“不限制”，高亮条件明确为 `分数 >= 日志阈值 + 高亮增量`，经验分数明确标记为参考范围而非默认阈值。
+- 帮助图标由 egui 直接绘制，不新增图标或字体依赖；帮助功能不改变评分、筛选、默认设置和输出格式。
+
+### 验证
+
+- `cargo fmt --check -p tswn_openbox`
+- `cargo check -p tswn_openbox`
+- `cargo test -p tswn_openbox --lib --bin tswn_openbox`
+
+## [0.3.12] - 2026-07-14
+
+### 调整
+
+- `cqd/cqp` 从 legacy `PreparedRunner` 切换到与 CLI 共用的 Runtime matchup 矩阵执行器；单人和双人输入都按 `player × target` 动态派发，输出仍按原始选手顺序汇总，显式线程数、重复号跳过、详情和取消语义保持不变。
+- 原生默认启用 `mimalloc_alloc`，并将自动线程分为短任务 1.5 倍逻辑核、中长任务 2 倍逻辑核；仍可在更多设置中显式指定线程数。
+- `openbox_mem_probe` 的最终耗时改为输出 6 位小数，便于稳定记录 1% 短档基线。
+
+### 测试
+
+- 新增 OpenBox Runtime 矩阵与 legacy 小样本平均胜率、选手输出顺序和进度终点对照。
+- `cargo test -p tswn_openbox`
+- `cargo check -p tswn_openbox --all-targets`
+- CQP/CQD 单人 1%/10%/100% 相对 Runtime v1 快 49.64%/51.30%/40.78%，双人快 44.52%/43.39%/39.89%。
+
 ## [0.3.11] - 2026-06-25
 
 ### 新增

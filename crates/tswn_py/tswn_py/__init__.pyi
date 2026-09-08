@@ -8,6 +8,11 @@ tswn_py 包顶层类型存根。
 
 from ._version import __version__ as __version__
 from .tswn_py import (
+    BattleSession as BattleSession,
+    InvalidArgumentError as InvalidArgumentError,
+    UnsupportedOptionError as UnsupportedOptionError,
+    TswnInternalError as TswnInternalError,
+
     DEFAULT_EVAL_RQ as DEFAULT_EVAL_RQ,
     PreparedRunner as PreparedRunner,
     WinRateResult as WinRateResult,
@@ -16,13 +21,12 @@ from .tswn_py import (
     BatchRateResult as BatchRateResult,
     PairRateResult as PairRateResult,
     IconInfo as IconInfo,
+    InvalidInputError as InvalidInputError,
+    TswnRuntimeError as TswnRuntimeError,
     RunnerError as RunnerError,
     RunUpdate as RunUpdate,
     RunUpdates as RunUpdates,
     Runner as Runner,
-    WorldState as WorldState,
-    Storage as Storage,
-    Player as Player,
     RC4 as RC4,
     WIN_RATE_EVAL_RQ as WIN_RATE_EVAL_RQ,
     core_version_str as core_version_str,
@@ -40,6 +44,8 @@ from .tswn_py import (
     to_diy_batch as to_diy_batch,
     icon_info as icon_info,
     parse_group_lines as parse_group_lines,
+    default_custom_runtime_normalized_run as default_custom_runtime_normalized_run,
+    battle_replay as battle_replay,
     name_to_icon_rgba as name_to_icon_rgba,
     name_to_png_base64 as name_to_png_base64,
     name_to_png_bytes as name_to_png_bytes,
@@ -48,6 +54,11 @@ from .tswn_py import (
 )
 
 __all__ = [
+    "BattleSession",
+    "InvalidArgumentError",
+    "UnsupportedOptionError",
+    "TswnInternalError",
+
     "__version__",
     "RunnerError",
     "PreparedRunner",
@@ -57,12 +68,11 @@ __all__ = [
     "BatchRateResult",
     "PairRateResult",
     "IconInfo",
+    "InvalidInputError",
+    "TswnRuntimeError",
     "RunUpdate",
     "RunUpdates",
     "Runner",
-    "WorldState",
-    "Storage",
-    "Player",
     "RC4",
     "DEFAULT_EVAL_RQ",
     "WIN_RATE_EVAL_RQ",
@@ -81,6 +91,8 @@ __all__ = [
     "to_diy_batch",
     "icon_info",
     "parse_group_lines",
+    "default_custom_runtime_normalized_run",
+    "battle_replay",
     "name_to_icon_rgba",
     "name_to_png_base64",
     "name_to_png_bytes",

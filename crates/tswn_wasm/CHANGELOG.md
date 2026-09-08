@@ -1,9 +1,91 @@
 # 更新日志
 
+## 未发布
+
+- 收紧 canonical TypeScript minion kind、update type、tone 和 text part kind 的 literal union，增加源码和生成声明的 contract tests。
+- 修复 legacy FightSession 状态的 owner_id 映射，保留直接 owner，避免误用 root source_id。
+
+- 新增 BattleSession `is_failed()` 查询 sticky Runtime failure；失败没有 result/stop_reason，is_done 仍为 false，不改变 DTO 或状态枚举。
+
+- 新增 canonical BattleSession 与 plain JS/TS DTO；旧 FightSession 委托 core；网页改为真实 streaming、两帧预取、显示层昵称图标和性能计时。
+
 ## [Unreleased]
+
+### 修复
+
+- 同步公共 replay view 的苏生 HP 修复：复活句固定为 `0 -> 0`，回血句从 `0 -> x`，show 只渲染回复段。
+- 同步实体转化句的结构化文本修复：“`[2]变成了[1]`”现在同时提供旧对象与新对象的 `player` part，召唤亡灵时被转化对象恢复普通名字效果。
+- 修复白天模式角色详情面板文字与浅色背景同为白色的问题；详情名称、说明文字和属性值现在使用主题变量保持可读对比度。
+
+## [0.5.3] - 2026-09-05
+
+### 新增
+
+- 新增 `batch_rate_factored()` 与 `pair_rate_factored()`，接受与靶子组一一对应的权重数组并返回加权结果。
 
 ### 变更
 
+- show 示例改为直接调用公共 `battle_replay()` 接口，仅补充输入、种子与耗时等页面元数据；
+  正文的行、片段、HP、死亡效果和侧栏快照均透传 replay view，不再从 runtime normalized run 重建。
+- show 示例按 `ReplayRow.indent` 渲染缩进，并保留回放状态快照的完整属性供左侧角色详情使用。
+
+### 修复
+
+- 修复苏生时绿色当前血量段与蓝色回复段重叠的问题：`0 -> x` 仅显示完整的回复段。
+- 修复被召唤为丧尸等仍存活实体因 `alive == false` 推断而错误使用阵亡名字样式的问题；
+  名字死亡效果现在只读取底层 `ReplayTextPart.death_effect`。
+
+## [0.5.2] - 2026-08-31
+
+### 新增
+
+- 新增 `battle_replay()` 高层入口，返回与 C/Python 对齐的完整 UI 回放结构。
+
+### 修复
+
+- `WinRateSession.thread > 1` 现在返回 `UNSUPPORTED_OPTION`，不再静默降级。
+
+- 同步 core 的 Merge 状态刷新修复；吞噬只合并技能时也会按旧版时机
+  提交 Haste 倍率，WASM 导出与 JSON shape 不变。
+- 同步铁壁打破时立即注销状态，以及尾部空 `@` 按无队名解析的兼容修复。
+- 同步 `@team:metadata` 按 Bun 解析为无队名的修复，并修复目标与 score profile
+  同 clan 时的 core panic；WASM 导出与 JSON shape 不变。
+- 同步嵌套自定义幻影的延迟蓝图修复；`namer_pf()` / `score()` 遇到带 `Clone`、
+  `Shadow` 的幻影不再触发 core panic，WASM 导出与 JSON shape 不变。
+
+## [0.5.1] - 2026-07-30
+
+### 新增
+
+- show 示例新增深色模式：首次打开默认跟随系统 `prefers-color-scheme`，右下角控制栏提供明暗切换按钮；手动选择会保存到 `localStorage`，未手动覆盖时仍会随系统主题变化。
+- 深色模式覆盖战斗列表、回放正文、输入面板、角色详情和结算表，并为窄屏控制栏增加换行布局。
+
+### 修复
+
+- 同步 core 0.5.1 的评分和战斗边界修复，覆盖 clone、状态刷新、Protect 重定向
+  与召唤物延迟死亡顺序；WASM 导出和 JSON shape 不变。
+
+## [0.5.0] - 2026-07-18
+
+### 变更
+
+- `FightSession` 的构造、逐帧推进、状态快照和胜者查询全部切换到主 Runtime；`WinRateSession` 移除最后一处旧 Runner 解析依赖。
+- `FightSession` / `WinRateSession`、`ReplayClip` 与 `ReplayTextPart` 的 JS/JSON shape 保持不变，clip 仍只通过 `parts[]` 表达文本、血条和死亡特效；无显式回放 guard 时上限为 20,000 主回合。
+- 包版本进入 `0.5.0`；本轮不新增执行器选择项，也不恢复任何 clip 顶层渲染字段。
+
+## [0.4.0] - 2026-07-14
+
+### ⚠️ Breaking Changes
+
+- `ReplayClip` typed view 删除多项顶层渲染字段，调用方必须改读 `parts[]` 中的 `ReplayTextPart`。
+- 完整回放页面入口由 `examples/show.html` 改为 `examples/index.html`，并删除 legacy runtime URL fallback。
+- 无 runtime 参数的评分、胜率与 `WinRateSession` 默认改用 Runtime。
+
+### 变更
+
+- `win_rate_sync`、`group_win_rate` 与 `WinRateSession` 内部改用 Runtime prepared 批量执行；原有 JS 类名、进度和结果结构保持不变。
+- 完整回放示例从 `show.html` 重命名为 `examples/index.html`，并移除 `FightSession` / legacy runtime URL fallback；页面只调用 runtime normalized run，分享链接会清理历史 `engine` / `runtime` 参数。
+- 同步 `main` 在 `d266cfe` 之后的 replay part 语义与页面配色，覆盖生命之轮、机制死亡、死亡特效、百分比伤害 HP 条和最新调色板。
 - 精简 `ReplayClip` 导出字段，移除 `text_template`、`player_id`、`data`、`show_hp`、`hp_before`、`hp_after`、`death_effect` 与 `emoji`；这些渲染语义统一由 `parts[]` 中的 `ReplayTextPart` 表达，clip 只保留 delay、颜色/语义、关联 id、侧栏快照和胜利标记。
 - show 示例同步适配新 replay view：规范 `parts[]`、`caster_ids[]`、`target_ids[]` 与侧栏快照数组，并明确正文渲染只消费 `clip.parts[]` 的结构化语义。
 - replay view 同步修复生命之轮体力互换的血条数据：互换句中的两个玩家 part 都会携带各自正确的帧前/帧后 HP，并强制展示血条，即使血量没有实际变化。
@@ -28,18 +110,6 @@
 ### 修复
 
 - 修复 show 示例自定义昵称会通过 `owner_id` 误应用到幻影、使魔、丧尸等固定显示名召唤物的问题；昵称仍应用于本体和分身。
-
-### 验证
-
-- `bun --check crates/tswn_wasm/examples/show-render.js crates/tswn_wasm/examples/show-replay.js crates/tswn_wasm/examples/show-utils.js crates/tswn_wasm/examples/show-wasm.js crates/tswn_wasm/examples/show.js`
-- `python scripts/build_wasm.py --release`
-
-## [0.3.12] - 2026-07-06
-
-### 新增
-
-- show 示例支持通过 `?input=<url-safe-base64>` 传入 UTF-8 对局输入并自动播放；兼容 `replay` / `data` 参数别名，解码失败时会停留在输入面板并显示错误。
-- show 示例右下角控制栏新增分享按钮，可复制当前对局对应的 `input` 链接；复制成功时会在控制栏上方显示短暂提示。
 
 ### 验证
 

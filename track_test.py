@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-测试回归追踪工具
-功能：记录测试失败idx，与上次比较，辅助判断修改是否有效
+主 Runtime corpus 回归追踪工具。
+
+默认运行完整 124-case release corpus；可用 -f 显式筛选测试。
 """
 
 import argparse
@@ -13,11 +14,25 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-RECORD_FILE = PROJECT_ROOT / "target" / "test_regression.json"
-LOG_FILE = PROJECT_ROOT / "target" / "test_regression.log"
-CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints"
-DEFAULT_FILTER = "large large_full small_seed fight_multi"
+RECORD_FILE = PROJECT_ROOT / "target" / "test_regression_runtime.json"
+LOG_FILE = PROJECT_ROOT / "target" / "test_regression_runtime.log"
+CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints_runtime"
+DEFAULT_FILTER = None
 DEFAULT_PACKAGE = "tswn_test"
+
+
+def cargo_test_base() -> list[str]:
+    return [
+        "cargo",
+        "test",
+        "-p",
+        DEFAULT_PACKAGE,
+        "--features",
+        "runtime-corpus",
+        "--test",
+        "runtime",
+        "--release",
+    ]
 
 
 def load_previous_records() -> dict:
@@ -430,7 +445,7 @@ def main():
         "-f",
         "--filter",
         default=DEFAULT_FILTER,
-        help=f"测试过滤表达式 (default: {DEFAULT_FILTER})",
+        help="测试名过滤表达式（默认运行完整 124-case corpus）",
     )
     parser.add_argument(
         "-s", "--show", action="store_true", help="只显示当前失败状态，不运行测试"
@@ -488,32 +503,46 @@ def main():
                 print(f"  {test} => idx={idx}")
         return
 
+    base_cmd = cargo_test_base()
+    command_display = " ".join(base_cmd)
+    if args.filter:
+        command_display += f" -- {args.filter}"
     if not args.quiet:
-        print(f"运行测试: -p {DEFAULT_PACKAGE} -- {args.filter}")
+        print(f"运行测试: {command_display}")
         print()
     elif args.quiet:
-        print(f"[track_test] 运行测试: -p {DEFAULT_PACKAGE} -- {args.filter}")
+        print(f"[track_test] 运行测试: {command_display}")
 
-    test_args = args.filter.split() if args.filter else []
-    cmd = f"cargo test -p {DEFAULT_PACKAGE} -- " + " ".join(test_args)
-
-    result = subprocess.run(
-        cmd,
-        cwd=str(PROJECT_ROOT),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        shell=True,
-    )
-    output = (result.stdout or "") + "\n" + (result.stderr or "")
+    test_filters = args.filter.split() if args.filter else [None]
+    outputs = []
+    command_failed = False
+    for test_filter in test_filters:
+        cmd = [*base_cmd]
+        if test_filter:
+            cmd.append(test_filter)
+        cmd.append("--")
+        result = subprocess.run(
+            cmd,
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            shell=False,
+        )
+        command_failed |= result.returncode != 0
+        outputs.append((result.stdout or "") + "\n" + (result.stderr or ""))
+    output = "\n".join(outputs)
 
     current_records = parse_cargo_test_output(output)
+    parsed_test_failure = any(r.get("status") == "FAILED" for r in current_records.values())
+    if command_failed and not parsed_test_failure:
+        current_records["__cargo__"] = {"status": "FAILED", "idx": -1}
+        if not args.quiet:
+            print("cargo test 未生成可解析的失败测试；按编译/执行失败处理。")
+            print(output)
 
-    has_failure = any(
-        r.get("status") == "FAILED" and r.get("idx", -1) >= 0
-        for r in current_records.values()
-    )
+    has_failure = any(r.get("status") == "FAILED" for r in current_records.values())
 
     if not has_failure:
         if not args.quiet:

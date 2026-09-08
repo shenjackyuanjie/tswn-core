@@ -1,7 +1,7 @@
-//! 回归追踪工具的统一入口。
+//! 测试回归追踪工具的短命令入口。
 //!
-//! 将 `track test`、`track miner`、`track diy` 分发到相邻的专用二进制；
-//! 如果当前目录下没有已构建的 sibling executable，则回退到 `cargo run` 启动。
+//! 将 `track test` 分发到相邻的 `track_test` 二进制；如果当前目录下没有
+//! 已构建的 sibling executable，则回退到 `cargo run` 启动。
 
 use std::env;
 use std::path::PathBuf;
@@ -24,8 +24,6 @@ fn try_main() -> Result<(), String> {
     let target = args.remove(0);
     let bin = match target.as_str() {
         "test" => "track_test",
-        "miner" => "track_case_miner",
-        "diy" | "diy-roundtrip" => "track_diy_roundtrip",
         other => return Err(format!("未知 track 子命令: {other}")),
     };
 
@@ -45,12 +43,10 @@ fn try_main() -> Result<(), String> {
 fn print_usage() {
     println!(
         r#"用法:
-  track <test|miner|diy> [args...]
+  track test [args...]
 
 对应关系:
   track test   -> track_test
-  track miner  -> track_case_miner
-  track diy    -> track_diy_roundtrip
 "#
     );
 }

@@ -66,11 +66,9 @@ pub fn run_pair_mode(
                 }
             }
         }
-        // Match C++ two_*.cpp task loop off-by-one behavior for TYPE=0:
-        // one extra pair is evaluated at (last_left, tot_1). When a second
-        // file has at least one parsed row, tot_1 maps to right[0]; otherwise
-        // it reads out-of-bounds memory. We emulate the empty-right case with
-        // a deterministic zeroed ghost row.
+        // 匹配 TYPE=0 时 C++ two_*.cpp 任务循环的差一行为：在 (last_left, tot_1) 处评估一个额外配对。
+        // 当第二个文件至少有一条已解析行时，tot_1 映射至 right[0]；否则会读取越界内存。我们使用确定性的
+        // 全零幽灵行模拟右侧为空的情形。
         if !left.is_empty() {
             let li = left.len() - 1;
             let r0 = right.first().cloned().unwrap_or_else(ghost_row);
@@ -317,8 +315,7 @@ fn pair_output_name_like_cpp(raw: &str) -> String {
         return String::new();
     }
 
-    // C++ stores NAME_SELF starting at original indices. If l > 0, the
-    // output C string starts with '\0', so printf("%s") prints empty.
+    // C++ 从原始下标开始存储 NAME_SELF。若 l > 0，输出 C 字符串以 '\0' 开头，因此 printf("%s") 打印为空。
     if l > 0 {
         return String::new();
     }

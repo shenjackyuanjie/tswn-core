@@ -39,7 +39,7 @@ export CXXFLAGS_aarch64_unknown_linux_ohos="-target aarch64-linux-ohos --sysroot
 export CMAKE_TOOLCHAIN_FILE_aarch64_unknown_linux_ohos=$cmake_toolchain
 
 sep=$(printf '\037')
-ohos_rustflags="-Z${sep}mutable-noalias=no${sep}-Clink-arg=-target${sep}-Clink-arg=aarch64-linux-ohos${sep}-Clink-arg=--sysroot=$sysroot${sep}-Clink-arg=-D__MUSL__"
+ohos_rustflags="-Clink-arg=-target${sep}-Clink-arg=aarch64-linux-ohos${sep}-Clink-arg=--sysroot=$sysroot${sep}-Clink-arg=-D__MUSL__"
 if [ -n "${CARGO_ENCODED_RUSTFLAGS:-}" ]; then
     export CARGO_ENCODED_RUSTFLAGS="${ohos_rustflags}${sep}${CARGO_ENCODED_RUSTFLAGS}"
 else
