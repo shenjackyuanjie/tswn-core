@@ -101,11 +101,19 @@ unsafe fn reset_optional(out_has: *mut u8, out_json: *mut tswn_str_t) -> FfiResu
 }
 
 /// # Safety
-/// `options` 为 null，或指向当前选项结构的可写存储。
+/// `options` 为 null，或至少指向 V1_SIZE 字节可写存储。
+/// 此历史初始化函数永久只写 V1；未来更大的选项需新增带容量参数的初始化接口。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_battle_options_default(options: *mut tswn_battle_options_t) {
     if !options.is_null() {
-        unsafe { options.write(tswn_battle_options_t::default()) };
+        let defaults = BattleOptions::default();
+        let v1 = BattleOptionsV1 {
+            struct_size: BATTLE_OPTIONS_V1_SIZE as u32,
+            eval_rq: defaults.eval_rq,
+            max_rounds: defaults.max_rounds,
+            include_icons: u8::from(defaults.include_icons),
+        };
+        unsafe { options.cast::<BattleOptionsV1>().write_unaligned(v1) };
     }
 }
 
@@ -269,6 +277,19 @@ mod tests {
         eval_rq: f64,
         max_rounds: usize,
         include_icons: u8,
+    }
+
+    #[test]
+    fn legacy_options_initializer_only_writes_frozen_v1() {
+        let mut buffer = vec![0xA5u8; BATTLE_OPTIONS_V1_SIZE + 65];
+        unsafe {
+            let options = buffer.as_mut_ptr().add(1).cast();
+            tswn_battle_options_default(options);
+            assert_eq!(read_options(options).ok(), Some(BattleOptions::default()));
+            assert_eq!(options.cast::<u32>().read_unaligned() as usize, BATTLE_OPTIONS_V1_SIZE);
+        }
+        assert_eq!(buffer[0], 0xA5);
+        assert!(buffer[BATTLE_OPTIONS_V1_SIZE + 1..].iter().all(|&byte| byte == 0xA5));
     }
 
     #[test]
