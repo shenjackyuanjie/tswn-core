@@ -203,7 +203,7 @@
 | `skills.lanes[].boost` | `lane_num_present` u8 `[B,L_max,4]` | `[0,1]` 等于 lane_mask；`[2,3]` 等于 boost.is_some；boost=None 时 lane_boost_kind=1，不是 PAD |
 | `state.extension_state_id`、`legacy_order_key` | `state_cat_present` u8 `[B,S_max,2]` | `[1]` 为 extension_state_id.is_some；`[0]` 等于 state_mask；Some(0) 与 None 区分 |
 | `state.priority`、各有效 payload 数值 | `state_num_present` u8 `[B,S_max,9]` | `[0]` 等于 state_mask；`[1..8]` 仅对第 8 节当前 kind 实际使用的字段为 1，其他为 0 |
-| `poison.caster/target`、`charm.target` | `state_ref_present` u8 `[B,S_max,4]` | poison 的 `[0,1]` 分别取 is_some；charm 的 `[0]` 取 is_some；其他未使用槽为 0，不能仅凭 kind 把可空引用全部置 1 |
+| `poison.caster/target`、`charm.target`、`charm.group_id` | `state_ref_present` u8 `[B,S_max,4]` | poison 的 `[0,1]` 分别取 is_some；charm 的 `[0]` 取 `target.is_some()`、`[1]` 恒为 1（`group_id` 不可空）；其他未使用槽为 0，不能仅凭 kind 把可空引用全部置 1 |
 | `charm.group_id/effective_team_idx/source_team_idx` | `state_group_present` u8 `[B,S_max,3]` | charm 的 `[0]` 必为 1；`[1,2]` 分别取两路 Option 的 is_some；非 charm 行全部为 0 |
 | `slot.bool_value/i64_value/u64_value/template` | `slot_field_present` u8 `[B,Q_max,4]` | 依此顺序逐项 is_some；真实槽行恰一项为 1，padding 全 0；与第 14 节 value_type 一一对应 |
 | `slot_value` 的数值／bool、`slot_template` 的模板引用 | `slot_value_present` u8 `[B,Q_max,1]`；`slot_template_present` u8 `[B,Q_max]` | 前者仅在标量或 bool 语义分派时为 1，ref/标志 bits 分派为 0；后者等于 `slot_field_present[3]` |
@@ -270,7 +270,7 @@ P:160 的样本轮数 p99=61、max=146 来自 `SampleRow.rounds_advanced`（S:18
 | 输入队伍 `t` | `0 ≤ t < input_teams.len()`，是输出轴与 `winner_team_index`；不学习绝对 t 的 embedding |
 | runtime team `r` | `template.team/runtime.team` 与 `world.team_*` 的关系轴；建立独立映射，禁止强制 `r=t` |
 | charm 临时阵营 | `group_id` 为局内关系键；`effective_team_idx/source_team_idx` 各保留独立可空关系，不能改写输入队伍归属（M:579–584；D:44） |
-| `clan_group`、`PlrId` | 前者仅相等关系；后者单独相等关系域，不使用名字哈希重建；PlrId 是否还有相对次序用途待确认 |
+| `clan_group`、`PlrId` | 前者仅相等关系；`PlrId` 是实体槽下标 + 1 的派生值（`K:entity_runtime:732`），只作局内键，不进模型、不送 embedding。初始行动顺序虽由名字派生键排序（`K:roster:386–425`），但结果已完整落在 `round_order`／`team_roster`／`runtime.team` 中，encoder 只读这些列表，不需要名字或 `PlrId` 数值 |
 | `skill_id` | 固定 1–50，当前 1–42，43–50 预留；0 只作 PAD（M:281–325）；遇到未启用预留项报错 |
 | fixed lane、legacy key、extension、slot ID | 分离词表；fixed lane 只在所属模板内解引用，slot ID 必须同时携带作用域（M:391、420、428） |
 
@@ -282,7 +282,7 @@ P:160 的样本轮数 p99=61、max=146 来自 `SampleRow.rounds_advanced`（S:18
 
 `lane_skill_id` 供分类 embedding；`lane_num=[level,build_level,boost.base,boost.extra]`，四项分别按第 5 节归一化。`lane_bool=boosted`，`lane_boost_kind` 的 0=PAD、1=None、2=normal、3=last_boost、4=slot_boost；`lane_num_present[2,3]` 在 boost=None 时为 0，Some 时即使 base/extra 为 0 仍为 1；`[0,1]` 跟随 lane_mask（M:15–37）。
 
-每行带 `lane_template`；模板内原 lane 序号仅由该 lane 唯一一条 `list(lanes)` 记录的 `ordinal` 表示，不另设序号张量，也不从全样本打包行号推断原序。该记录的 owner 必须等于 `lane_template`，target 指向 lane 行；这是归属校验与显式有序关系，不是另复制一份 lane 内容。`fixed_lane_key` 建立独立局内键表；四种执行列表和 deferred 通过类型化引用连接 lane，不拿 skill_id 替代 lane。源字段分别见 M:37–49、413–417；执行列表整数究竟指 lane 下标还是 fixed key 的逐项解引用规则在该文件没有定义，须补审计后冻结。
+每行带 `lane_template`；模板内原 lane 序号仅由该 lane 唯一一条 `list(lanes)` 记录的 `ordinal` 表示，不另设序号张量，也不从全样本打包行号推断原序。该记录的 owner 必须等于 `lane_template`，target 指向 lane 行；这是归属校验与显式有序关系，不是另复制一份 lane 内容。`fixed_lane_key` 建立独立局内键表；四种执行列表和 deferred 通过类型化引用连接 lane，不拿 skill_id 替代 lane。源字段分别见 M:37–49、413–417；**执行列表的整数已核对为同一模板内 lane 数组的下标**（`K:scheduler:257–275`、`K:round:640–670` 都直接用它索引 `skills()` 与 `level_at()`），不是 `fixed_lane_key` 的值；`fixed_lane_key` 只用于跨局稳定键（`lane_key`），两者不能互换。
 
 deferred 保存原列表顺序和精确 `state_cursor`，与实体状态注册序生成比较关系。对于非实体模板（槽内蓝图），没有当前实体状态时不得编造关联。lane 的 PAD 行 level=0、mask=0；真实零等级 lane 的 mask=1。未知技能、未解析 fixed key、顺序引用越界均拒绝。
 
@@ -290,7 +290,7 @@ deferred 保存原列表顺序和精确 `state_cursor`，与实体状态注册�
 
 ## 8. 状态载荷方案
 
-`state_entity` 指向承载该 states 条目的实体行；`state_num[0]` 是 priority，以下 `p0..p7` 对应 `[1..8]`；`r0..r3` 对应 `state_ref[0..3]` 的实体引用，`g0..g2` 对应 `state_group[0..2]` 的关系键。`state_num_present/state_ref_present/state_group_present` 与三个值族同 shape；数值 unused=0/presence=0，引用和关系键 unused=-1/presence=0。kind=0 为 PAD，真实 `none`=1。投影分支由 M:628–753 穷举，规定词表如下。
+`state_entity` 指向承载该 states 条目的实体行；`state_num[0]` 是 priority，以下 `p0..p7` 对应 `[1..8]`；`r0..r3` 对应 `state_ref[0..3]` 的实体引用（charm 的 `group_id` 也走这里，见下表），`g0..g2` 对应 `state_group[0..2]` 的关系键，当前只有 charm 的 `effective_team_idx`／`source_team_idx` 使用 `g0,g1`。`state_num_present/state_ref_present/state_group_present` 与三个值族同 shape；数值 unused=0/presence=0，引用和关系键 unused=-1/presence=0。kind=0 为 PAD，真实 `none`=1。投影分支由 M:628–753 穷举，规定词表如下。
 
 | kind 编号／字符串 | payload 字段 → 槽位 | 来源 |
 | --- | --- | --- |
@@ -302,7 +302,7 @@ deferred 保存原列表顺序和精确 `state_cursor`，与实体状态注册�
 | 6 `poison` | `caster,target` → r0,r1；`atp_bits` 还原后 → p0；`count` → p1 | M:559–564 |
 | 7 `haste` | `faster,effective_faster,step` → p0,p1,p2 | M:567–571 |
 | 8 `berserk` | `step` → p0 | M:574–576 |
-| 9 `charm` | `group_id,effective_team_idx,source_team_idx` → g0,g1,g2；`target` → r0；`step` → p0 | M:579–585 |
+| 9 `charm` | `group_id` → r1（**它是施法者的 `EntityIdx`，必须按实体引用重映射**）；`target` → r0；`effective_team_idx,source_team_idx` → g0,g1（runtime team 关系键）；`step` → p0 | M:579–585；K:skills_team:208–219 |
 | 10 `slow` | `step` → p0 | M:588–590 |
 | 11 `iron` | `protect,step` → p0,p1 | M:593–596 |
 | 12 `covid_boss` | 本轮不映射（Boss 专属）；遇到该 kind 返回 `UnsupportedPayloadKind` | M:599–601 |
@@ -443,7 +443,7 @@ features、精确旁路、labels、审计关联表四个清单分开：labels �
 | list field_class | 字段、owner 与 target 域 |
 | --- | --- |
 | 256 | `lanes`；template owner→lane，owner 必须等于该 lane 的 `lane_template`；每条 lane 恰一条记录，ordinal 是该模板内原数组下标 |
-| 257、258、259、260 | `merge_lane_order`、`active_order`、`pre_action_order`、`post_damage_order`；template owner→lane，保留原序及重复项，解引用语义仍按第 7／16 节审计 |
+| 257、258、259、260 | `merge_lane_order`、`active_order`、`pre_action_order`、`post_damage_order`；template owner→lane，值已核对为模板内 lane 数组下标（第 7 节），保留原序及重复项 |
 | 261 | `deferred`；template owner→lane；ordinal 为 post_action_after_states 原下标，同一行的 order_key 保存 deferred.state_cursor |
 | 262 | `round_order`；global owner→entity |
 | 263、264 | `team_roster`、`team_alive`；runtime_team owner→entity，各队内部顺序独立保留 |
@@ -514,7 +514,7 @@ git diff --check
 | 问题 | 选项 | 建议及冻结条件 |
 | --- | --- | --- |
 | 槽编号及整数语义 | 按注册表白名单分 num/ref/bits；或按 U64 一律数值化 | **已按默认注册表逐槽核对，结论见第 3.2 节**。`U64` 槽同时存在实体引用（`summoned_entity`）、计数（`minion_counter`）与浮点 bit（`lazy_blueprint_rq`）三种语义，按存储类型数值化会在第一类上泄漏原始实体编号；自定义注册表不在支持域（M:83），新增槽须先更新 3.2 表并重算 `Q_max` |
-| 顺序、身份和阵营域 | 保留精确键并补查消费者；或假定所有编号都是下标 | 建议前者；确认各技能顺序整数域、PlrId 是否参与排序／出生、charm.group_id 与 clan/runtime team 是否同域，不能猜 |
+| 顺序、身份和阵营域 | 保留精确键并补查消费者；或假定所有编号都是下标 | **已逐项核对**：执行列表整数是模板内 lane 数组下标，不是 `fixed_lane_key`（第 7 节）；`PlrId` 是实体槽下标 + 1 的派生值，不参与模型输入（第 6 节）；`charm.group_id` 是施法者 `EntityIdx`，与 `clan_group`／runtime team 都不同域，必须按实体引用重映射（第 8 节） |
 | 浮点产生式 | 尺度按 train 实测拟合（已定）；仍须核对各 `*_bits` 的 f64 产生式与 millionths 关系 | 无观测即 `MissingCalibration`，不登记人工常数；不假定 `bits == millionths/1e6` |
 | 容量 profile | baseline-32；或补测后单独推出更大 profile | 建议先评估第 4 节修订的 E/T/R/H/L/S/Q/V/X=32/32/32/512/4096/32/256/32768/65536 预算，实体／蓝图／slot／X 峰值及内存全量统计后冻结；不使用静默截断 |
 | 资格 mask | 全部输入队伍；或证明复活／召唤不可达后屏蔽 | 建议全部保留，采用第 10 节公式；避免把本池 `0/40000` 的未见事件当引擎保证（W:169） |
@@ -555,4 +555,4 @@ git diff --check
 | S 统计口径 | `crates/tswn_winprob_dataset/src/stats.rs:45`（Series）、`:130`（collect）、`:187`（实体／状态／技能计数） |
 | F 抽样 | `crates/tswn_winprob_dataset/src/sampling.rs:5`（select，排终局与最终轮数分桶） |
 | G 生成 | `crates/tswn_winprob_dataset/src/generate.rs:138`（write_shard）、`:186`（generate_battle）、`:202`（标签）、`:211`（样本） |
-| K 槽语义证据 | 前缀均为 `crates/tswn_core/src/`：`runtime/prepared_init/init.rs`（init）、`runtime/prepared_init/seed.rs`（seed）、`runtime/plain_summon.rs`（summon）、`runtime/plain_zombie.rs`（zombie）、`runtime/handlers/mod.rs`（handlers）、`runtime/handlers/minions.rs`（minions）、`runtime/combat/skills_control.rs`（skills_control）、`runtime/profile/import.rs`（import）、`runtime/prepared_init.rs`（prepared） |
+| K 槽语义与顺序证据 | 前缀均为 `crates/tswn_core/src/`：`runtime/prepared_init/init.rs`（init）、`runtime/prepared_init/seed.rs`（seed）、`runtime/prepared_init/roster.rs`（roster）、`runtime/plain_summon.rs`（summon）、`runtime/plain_zombie.rs`（zombie）、`runtime/handlers/mod.rs`（handlers）、`runtime/handlers/minions.rs`（minions）、`runtime/combat/skills_control.rs`（skills_control）、`runtime/combat/skills_team.rs`（skills_team）、`runtime/combat/round.rs`（round）、`runtime/scheduler.rs`（scheduler）、`runtime/entity/runtime.rs`（entity_runtime）、`runtime/profile/import.rs`（import）、`runtime/prepared_init.rs`（prepared） |
