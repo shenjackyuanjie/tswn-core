@@ -82,6 +82,8 @@ impl Default for PhaseScheduler {
 }
 
 impl PhaseScheduler {
+    pub(crate) fn model_ice_events(&self) -> Vec<EntityIdx> { self.ice_release_events.to_vec() }
+
     pub fn from_entities(entities: &EntityArena) -> Self {
         Self {
             action_mode: Self::infer_action_mode(entities),

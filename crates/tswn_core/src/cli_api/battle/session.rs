@@ -9,52 +9,28 @@ use crate::runtime::update::{RunUpdates, UpdateType};
 use crate::runtime::{PlrId, RuntimeMinionKind, RuntimePlayerSnapshot, RuntimeRunner};
 
 use super::dto::*;
-use crate::cli_api::{CliApiError, CliApiResult, invalid_input};
+use crate::cli_api::CliApiResult;
 
 /// 有状态、增量式用户 API。所有回合限制和终止决策均在此处处理。
 #[derive(Debug)]
 pub struct BattleSession {
-    runner: RuntimeRunner,
+    driver: super::driver::BattleDriver,
     options: BattleOptions,
     initial_states: Vec<BattlePlayerState>,
     current_states: Vec<BattlePlayerState>,
-    rounds_advanced: usize,
-    frames_emitted: usize,
-    no_progress_rounds: usize,
-    stop_reason: Option<BattleStopReason>,
-    failure: Option<CliApiError>,
     icon_cache: HashMap<String, String>,
 }
 
-const NO_PROGRESS_ROUNDS_PER_ENTITY: usize = 16;
-
 impl BattleSession {
     pub fn new(raw: &str, options: BattleOptions) -> CliApiResult<Self> {
-        if raw.trim().is_empty() {
-            return Err(invalid_input("raw_input is empty"));
-        }
-        if options.max_rounds == 0 {
-            return Err(CliApiError::InvalidArgument("battle max_rounds must be positive".into()));
-        }
-        if !options.eval_rq.is_finite() {
-            return Err(CliApiError::InvalidArgument("battle eval_rq must be finite".into()));
-        }
-        let (groups, seed) = RuntimeRunner::split_namerena_into_groups(raw.to_owned());
-        let runner = RuntimeRunner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, options.eval_rq)
-            .map_err(|err| CliApiError::RunnerInit(err.to_string()))?;
+        let driver = super::driver::BattleDriver::from_raw(raw, options)?;
         let mut icon_cache = HashMap::new();
-        let initial_states = states_from_runner(&runner, options.include_icons, &mut icon_cache);
-        let stop_reason = runner.have_winner().then_some(BattleStopReason::Winner);
+        let initial_states = states_from_runner(&driver.runner, options.include_icons, &mut icon_cache);
         Ok(Self {
-            runner,
+            driver,
             options,
             current_states: initial_states.clone(),
             initial_states,
-            rounds_advanced: 0,
-            frames_emitted: 0,
-            no_progress_rounds: 0,
-            stop_reason,
-            failure: None,
             icon_cache,
         })
     }
@@ -62,67 +38,54 @@ impl BattleSession {
     /// 仅用于测试：破坏 skill handlers，让下一次推进经过真实 Runtime validation 失败。
     #[cfg(any(test, feature = "battle-test-support"))]
     #[doc(hidden)]
-    pub fn invalidate_runtime_for_test(&mut self) { self.runner.runtime_mut().skill_handlers = Default::default(); }
+    pub fn invalidate_runtime_for_test(&mut self) { self.driver.runner.runtime_mut().skill_handlers = Default::default(); }
+
+    /// 读取当前机制状态，不消耗随机数，也不构造展示数据。
+    pub fn model_state(
+        &self,
+    ) -> Result<crate::runtime::model_state::BattleModelState, crate::runtime::model_state::ModelStateError> {
+        self.driver.model_state()
+    }
 
     pub fn initial_states(&self) -> &[BattlePlayerState] { &self.initial_states }
     pub fn current_states(&self) -> &[BattlePlayerState] { &self.current_states }
     pub fn status(&self) -> BattleStatus {
-        match self.stop_reason {
+        match self.driver.stop_reason {
             None => BattleStatus::Running,
             Some(BattleStopReason::Winner) => BattleStatus::Finished,
             Some(_) => BattleStatus::Truncated,
         }
     }
-    pub fn stop_reason(&self) -> Option<BattleStopReason> { self.stop_reason }
+    pub fn stop_reason(&self) -> Option<BattleStopReason> { self.driver.stop_reason }
     /// 是否已产生正常 terminal BattleResult；Runtime failure 不属于正常终止。
-    pub fn is_done(&self) -> bool { self.stop_reason.is_some() }
+    pub fn is_done(&self) -> bool { self.driver.stop_reason.is_some() }
     /// Runtime error 后为 true；后续推进返回相同错误，调用方应停止推进并释放会话。
-    pub fn is_failed(&self) -> bool { self.failure.is_some() }
+    pub fn is_failed(&self) -> bool { self.driver.failure.is_some() }
     pub fn is_finished(&self) -> bool { self.status() == BattleStatus::Finished }
     pub fn is_truncated(&self) -> bool { self.status() == BattleStatus::Truncated }
-    pub fn rounds_advanced(&self) -> usize { self.rounds_advanced }
-    pub fn frames_emitted(&self) -> usize { self.frames_emitted }
+    pub fn rounds_advanced(&self) -> usize { self.driver.rounds_advanced }
+    pub fn frames_emitted(&self) -> usize { self.driver.frames_emitted }
 
     /// 推进经过空的 Runtime 回合，直至出现可见帧或终止结果。
     pub fn next_frame(&mut self) -> CliApiResult<Option<BattleReplayFrame>> {
-        if let Some(error) = &self.failure {
+        if let Some(error) = &self.driver.failure {
             return Err(error.clone());
         }
         if self.is_done() {
             return Ok(None);
         }
         loop {
-            // Runtime 的检查入口会在无效处理器配置时 panic；进入它之前先转换该校验失败。
-            if let Err(error) = self.runner.validate_ready() {
-                let error = CliApiError::Runtime(error.to_string());
-                self.failure = Some(error.clone());
-                return Err(error);
-            }
-            let round_index = self.rounds_advanced;
-            let updates = self.runner.main_round();
-            self.rounds_advanced += 1;
-            let states = states_from_runner(&self.runner, self.options.include_icons, &mut self.icon_cache);
-            let visible = !updates.updates.is_empty() || self.runner.have_winner();
-            if visible {
-                self.no_progress_rounds = 0;
-            } else {
-                self.no_progress_rounds += 1;
-            }
-            // 即使是允许的最后一回合或空更新，胜者也优先。
-            self.stop_reason = if self.runner.have_winner() {
-                Some(BattleStopReason::Winner)
-            } else if self.rounds_advanced >= self.options.max_rounds {
-                Some(BattleStopReason::MaxRounds)
-            } else if self.no_progress_rounds >= states.len().max(1).saturating_mul(NO_PROGRESS_ROUNDS_PER_ENTITY) {
-                Some(BattleStopReason::NoProgress)
-            } else {
-                None
+            let Some(step) = self.driver.advance_round()? else {
+                return Ok(None);
             };
+            let round_index = step.round_index;
+            let updates = step.updates;
+            let visible = step.frame_index.is_some();
+            let states = states_from_runner(&self.driver.runner, self.options.include_icons, &mut self.icon_cache);
             let frame = visible.then(|| {
-                let mut frame = build_frame(&updates, &self.current_states, &states, &self.runner);
-                frame.frame_index = self.frames_emitted;
+                let mut frame = build_frame(&updates, &self.current_states, &states, &self.driver.runner);
+                frame.frame_index = step.frame_index.unwrap();
                 frame.round_index = round_index;
-                self.frames_emitted += 1;
                 frame
             });
             self.current_states = states;
@@ -135,18 +98,18 @@ impl BattleSession {
     pub fn result(&self) -> Option<BattleResult> {
         Some(BattleResult {
             status: self.status(),
-            stop_reason: self.stop_reason?,
+            stop_reason: self.driver.stop_reason?,
             finished: self.is_finished(),
             truncated: self.is_truncated(),
-            rounds_advanced: self.rounds_advanced,
-            frames_emitted: self.frames_emitted,
+            rounds_advanced: self.driver.rounds_advanced,
+            frames_emitted: self.driver.frames_emitted,
             winner_ids: if self.is_finished() {
-                self.runner.winner_ids()
+                self.driver.runner.winner_ids()
             } else {
                 Vec::new()
             },
             winner_team_indices: if self.is_finished() {
-                self.runner.winner_team_indices()
+                self.driver.runner.winner_team_indices()
             } else {
                 Vec::new()
             },
@@ -397,8 +360,8 @@ mod tests {
     }
 
     fn remove_round_actors(session: &mut BattleSession) {
-        for id in session.runner.all_player_ids() {
-            session.runner.runtime_mut().world.remove_round_actor(EntityIdx(id as u32));
+        for id in session.driver.runner.all_player_ids() {
+            session.driver.runner.runtime_mut().world.remove_round_actor(EntityIdx(id as u32));
         }
     }
 
@@ -461,7 +424,7 @@ mod tests {
     #[test]
     fn winner_on_empty_update_emits_frame_and_beats_round_limit() {
         let mut session = session(1);
-        let runtime = session.runner.runtime_mut();
+        let runtime = session.driver.runner.runtime_mut();
         let loser = runtime.entities.get_mut(EntityIdx(1)).unwrap();
         loser.runtime.hp = 0;
         loser.runtime.alive = false;
@@ -547,7 +510,7 @@ mod tests {
         assert!(!session.is_failed());
         session.invalidate_runtime_for_test();
         // 同时安排一个胜者：无效 Runtime 配置必须具有优先级。
-        session.runner.runtime_mut().entities.get_mut(EntityIdx(1)).unwrap().runtime.alive = false;
+        session.driver.runner.runtime_mut().entities.get_mut(EntityIdx(1)).unwrap().runtime.alive = false;
         let mut previous_error = None;
         for _ in 0..2 {
             let error = session.next_frame().unwrap_err();

@@ -124,6 +124,36 @@ impl PreparedBattleSeed {
 impl CombatRuntime {
     /// 为 score 的动态 profile 按需生成一类召唤物蓝图，并写回实体槽供本场复用。
     pub(crate) fn ensure_plain_minion_blueprint(&mut self, actor: EntityIdx, kind: crate::namerena::MinionKind) -> bool {
+        let export = match kind {
+            crate::namerena::MinionKind::Shadow => DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT,
+            crate::namerena::MinionKind::Summon => DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT,
+            crate::namerena::MinionKind::Zombie => DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT,
+        };
+        let slot = self.registry.entity_slot_id_by_export_name(export).expect("默认蓝图槽必须存在");
+        if matches!(
+            self.entities.get(actor).and_then(|e| e.slots.get(slot)),
+            Some(SlotValue::PlayerTemplate(_))
+        ) {
+            return true;
+        }
+        let Some(template) = self.preview_plain_minion_blueprint(actor, kind) else {
+            return false;
+        };
+        self.entities
+            .get_mut(actor)
+            .unwrap()
+            .slots
+            .set(slot, SlotValue::PlayerTemplate(Box::new(template)))
+            .expect("默认蓝图槽必须存在");
+        true
+    }
+
+    /// 纯计算蓝图：可读取现有缓存，但不写槽位、不使用战斗随机数。
+    pub(crate) fn preview_plain_minion_blueprint(
+        &self,
+        actor: EntityIdx,
+        kind: crate::namerena::MinionKind,
+    ) -> Option<PlayerTemplate> {
         use crate::namerena::MinionKind;
 
         let blueprint_export = match kind {
@@ -136,7 +166,7 @@ impl CombatRuntime {
             .entity_slot_id_by_export_name(blueprint_export)
             .unwrap_or_else(|| panic!("default runtime profile must register {blueprint_export}"));
         match self.entities.get(actor).and_then(|entity| entity.slots.get(blueprint_slot)) {
-            Some(SlotValue::PlayerTemplate(_)) => return true,
+            Some(SlotValue::PlayerTemplate(template)) => return Some((**template).clone()),
             Some(_) => panic!("runtime core minion blueprint slot has invalid value"),
             None => {}
         }
@@ -166,7 +196,7 @@ impl CombatRuntime {
                         );
                     }
                 }
-                None => return false,
+                None => return None,
             }
             let clone_build = entity
                 .template
@@ -204,12 +234,6 @@ impl CombatRuntime {
             child_clone_name_factor,
             kind,
         );
-        self.entities
-            .get_mut(actor)
-            .unwrap()
-            .slots
-            .set(blueprint_slot, SlotValue::PlayerTemplate(Box::new(template)))
-            .expect("runtime core minion blueprint slot must exist");
-        true
+        Some(template)
     }
 }

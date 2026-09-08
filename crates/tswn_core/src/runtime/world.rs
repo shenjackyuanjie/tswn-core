@@ -12,6 +12,18 @@ pub struct WorldArena {
 }
 
 impl WorldArena {
+    pub(crate) fn model_state(&self) -> super::model_state::ModelWorld {
+        super::model_state::ModelWorld {
+            round_order: self.round_order.clone(),
+            team_roster: self.team_roster.clone(),
+            team_alive: self.team_alive.clone(),
+            flat_alive: self.flat_alive.clone(),
+            alive_group_count: self.alive_group_count,
+            round_pos: self.round_pos,
+            winner_team: self.winner_team,
+        }
+    }
+
     pub fn from_entities(entities: &EntityArena) -> Self {
         let round_order = entities.iter().map(|(idx, _)| idx).collect();
         let team_count = entities.iter().map(|(_, entity)| entity.runtime.team).max().map_or(0, |team| team + 1);

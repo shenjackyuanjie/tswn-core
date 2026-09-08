@@ -3,7 +3,7 @@ use std::fmt::{Display, Formatter};
 
 use crate::runtime::profile::BuiltinActiveSkill;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PlayerKindId(pub u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -105,7 +105,7 @@ pub enum SkillPostActionPhase {
     Late,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PlayerKindFlags(pub u64);
 
 impl PlayerKindFlags {
@@ -131,14 +131,14 @@ impl std::ops::BitOrAssign for PlayerKindFlags {
     fn bitor_assign(&mut self, rhs: Self) { self.0 |= rhs.0; }
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum OwnerResolutionPolicy {
     #[default]
     SelfEntity,
     RootOwner,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum DamageSharePolicy {
     #[default]
     None,
@@ -146,7 +146,7 @@ pub enum DamageSharePolicy {
     ShareToSummons,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum MergePolicy {
     None,
     #[default]
@@ -154,7 +154,7 @@ pub enum MergePolicy {
     DropUnmappedSkills,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PlayerKindPolicies {
     pub owner_resolution: OwnerResolutionPolicy,
     pub damage_share: DamageSharePolicy,

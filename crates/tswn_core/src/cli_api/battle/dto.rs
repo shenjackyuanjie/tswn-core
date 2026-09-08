@@ -164,6 +164,7 @@ pub enum BattleStatus {
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(serde::Deserialize)]
 pub enum BattleStopReason {
     Winner,
     MaxRounds,

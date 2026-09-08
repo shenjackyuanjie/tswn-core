@@ -6,6 +6,7 @@ pub mod entity;
 pub mod extension;
 mod handlers;
 pub mod lang;
+pub mod model_state;
 mod normalized;
 mod plain_assassinate;
 mod plain_summon;

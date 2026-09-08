@@ -29,12 +29,12 @@ fn median_i32_3(mut a: i32, mut b: i32, mut c: i32) -> i32 {
     b
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MoveState {
     pub speed_points: i32,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PlayerPolicyOverrides {
     pub owner_resolution: Option<OwnerResolutionPolicy>,
     pub damage_share: Option<DamageSharePolicy>,
@@ -70,13 +70,13 @@ impl PlayerPolicyOverrides {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProtectLinkRuntime {
     pub owner: EntityIdx,
     pub level: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HideRuntime {
     pub level: u32,
     pub attract_bits: u64,
@@ -85,21 +85,21 @@ pub struct HideRuntime {
     pub resistance: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AssassinateRuntime {
     pub fixed_lane: usize,
     pub target: EntityIdx,
     pub break_on_damage: bool,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CounterRuntime {
     pub pending: bool,
     pub last_target: Option<EntityIdx>,
     pub last_updates_id: Option<u64>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RuntimeCorpseKind {
     #[default]
     None,
@@ -107,7 +107,7 @@ pub enum RuntimeCorpseKind {
     Zombie,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PlayerRuntime {
     pub hp: i32,
     pub alive: bool,
@@ -355,14 +355,14 @@ mod median_tests {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ChargeRuntime {
     pub active: bool,
     pub post_action_active: bool,
     pub step: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AccumulateRuntime {
     pub active: bool,
     pub acc_bits: u64,

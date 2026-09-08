@@ -24,7 +24,7 @@ const CLONE_ATTR_DECAY: f64 = 0.7799999713897705;
 
 pub fn at_boost_to_millionths(at_boost: f64) -> i64 { (at_boost * DEFAULT_AT_BOOST_MILLIONTHS as f64).round() as i64 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct CloneStatAdjustments {
     max_hp: i32,
     attack: i32,
@@ -57,13 +57,13 @@ pub struct CloneDerivedStats {
     pub attract_bits: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ScoreCloneSkillBoostPlan {
     pub(crate) initially_boosted_mask: u64,
     pub(crate) slot_boosts: [Option<(u8, u8)>; 2],
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CloneBuildData {
     attrs: [u32; 8],
     weapon_attr_bonus: [i32; 8],

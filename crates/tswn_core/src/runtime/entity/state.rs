@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
 pub struct EntityIdx(pub u32);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,7 +13,7 @@ pub struct StateEntry {
     pub payload: StatePayload,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CovidInfectionEntry {
     pub boss: EntityIdx,
     pub mutation: i32,
@@ -686,6 +686,8 @@ impl PartialEq for StateStore {
 impl Eq for StateStore {}
 
 impl StateStore {
+    pub(crate) fn model_compressed_flags(&self) -> u8 { self.compressed_legacy_states }
+
     pub fn entries(&self) -> &[StateEntry] { &self.entries }
 
     /// 恢复场前状态并复用现有 SmallVec 容量，避免通用 Clone 反复切换内联/堆存储。
