@@ -168,10 +168,6 @@ python scripts/check_runtime_release.py --corpus
 - 聚合打包脚本会直接收集这里已有的内容
 - 脚本会自动检测并安装 `build` 包（通过 `uv pip install build`）
 
-## gen_test_case.py
-
-生成随机文本用作测试 case 的辅助脚本。
-
 ## verify_py_cli_api.py
 
 验证 `tswn_py` 中与 `tswn-cli` 对齐的 Python helper。
@@ -247,7 +243,7 @@ Bun 脚本，用于对 tswn-md5 模块进行 profile trace。
 
 - `verify_py_cli_api.py`：构建 Python 扩展并检查 TypedDict、迭代器、错误码与 session/replay 一致性。
 - `verify_wasm_battle.test.mjs`：真实 Node WASM 包的 canonical DTO、错误与旧 FightSession 兼容测试。
-- `verify_cli_battle.py`：CLI JSONL、stdin、人类输出与删除命令的错误路径。
+- `verify_cli_battle.py`：CLI JSONL、stdin、人类输出与删除命令的错误路径。已迁移为 Rust 集成测试 `crates/tswn_core/tests/cli_battle.rs`，运行 `cargo test -p tswn_core --test cli_battle`。
 - `verify_battle_cross_binding.py`：真实 Rust CLI / Python / C / WASM 的完整 payload 精确对比；调用 `dump_battle_wasm.mjs` 读取 Node WASM 输出。
 - `verify_web_playback.mjs`：真实页面模块与 DOM 的延迟 source 测试，需 `--experimental-vm-modules` 和 target/web-test-tools 下的 linkedom。
 - `benchmark_web_streaming.mjs`：独立桌面浏览器四组各 20 次性能测试，生成 timing JSON、表格和截图。

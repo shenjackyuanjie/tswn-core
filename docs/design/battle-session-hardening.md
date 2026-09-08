@@ -1154,7 +1154,7 @@ Hardening 完成后必须重新跑：
 ```text
 scripts/verify_battle_cross_binding.py
 scripts/verify_py_cli_api.py
-scripts/verify_cli_battle.py
+cargo test -p tswn_core --test cli_battle
 scripts/verify_wasm_battle.test.mjs
 
 crates/tswn_wasm/examples/show-*.test.mjs

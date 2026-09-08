@@ -17,6 +17,8 @@ __pycache__
 tests
 !crates/tswn_core/src/runtime/tests/
 !crates/tswn_core/src/runtime/tests/*.rs
+!crates/tswn_core/tests/
+!crates/tswn_core/tests/*.rs
 .claude
 dist
 md5.js
