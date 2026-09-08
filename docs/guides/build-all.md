@@ -149,28 +149,31 @@ dist/all/tswn_core_0_3_11_capi_0_4_0_py_0_2_1_wasm_0_2_9_openbox_0_3_6_bundle.zi
 ### 聚合包内容
 
 - `capi/`
-  - Windows `dll` / `lib`
+  - `lib/`：Windows `dll`、Windows staticlib `.lib` 与已存在的 Linux `.so`
   - `include/tswn_capi.h`
   - `examples/`
+  - `changelog/CHANGELOG.md`
 - `cli/`
-  - Windows `tswn-cli_alpha_*.exe`
+  - `bin/`：Windows `tswn-cli_alpha_*.exe`
   - 若已存在，也会额外收集 Linux `tswn-cli_alpha_*.bin`
   - 传 `--include-ohos-cli` 时会额外构建 OHOS `tswn-cli_alpha_*_aarch64_unknown_linux_ohos_unsigned.bin`
+  - `changelog/CHANGELOG.md`
 - `openbox/`
-  - Windows `tswn_openbox_alpha_*.exe`
+  - `bin/`：Windows `tswn_openbox_alpha_*.exe`
   - 若已存在，也会额外收集 Linux `tswn_openbox_alpha_*.bin`
-  - `changelog/`
+  - `changelog/CHANGELOG.md`
   - `tswn_openbox` 首次启动会在当前工作目录自动生成 `setting/` 默认预设目录
 - `py/`
-  - 已有的 Windows / Linux wheel
+  - `dist/`：已有的 Windows / Linux wheel（`*.whl` / `*.tar.gz`）与 `tswn_py/`
   - `examples/`
-  - `CHANGELOG`
+  - `changelog/CHANGELOG.md`
 - `wasm/`
   - `pkg/tswn_wasm.js`
   - `pkg/tswn_wasm_bg.wasm`
   - `raw/tswn_wasm.wasm`
   - `examples/demo.html`
-  - `CHANGELOG`
+  - `changelog/CHANGELOG.md`
+- 包根与每个子目录另含 `README.txt` 与 `MANIFEST.txt`
 
 ## 一次跑完的命令清单（完整版）
 
