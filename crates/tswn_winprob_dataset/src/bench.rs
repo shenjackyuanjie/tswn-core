@@ -153,8 +153,13 @@ pub struct BenchReport {
     pub dataset: DatasetStats,
 }
 
+/// 单个叶子列的（压缩字节，未压缩字节）。
+type ColumnBytes = (u64, u64);
+/// 列路径到字节数的映射。
+type ColumnMap = BTreeMap<String, ColumnBytes>;
+
 /// 读取单个 Parquet 文件的元数据，按叶子列聚合压缩字节。
-fn table_stats(path: &Path) -> Result<(TableStats, BTreeMap<String, (u64, u64)>)> {
+fn table_stats(path: &Path) -> Result<(TableStats, ColumnMap)> {
     let builder = ParquetRecordBatchReaderBuilder::try_new(File::open(path)?)?;
     let metadata = builder.metadata();
     let mut stats = TableStats {
@@ -193,7 +198,7 @@ fn analyze_dataset(out: &Path, top: usize) -> Result<DatasetStats> {
         shards: shards.len(),
         ..DatasetStats::default()
     };
-    let mut merged: BTreeMap<String, (u64, u64)> = BTreeMap::new();
+    let mut merged: ColumnMap = BTreeMap::new();
     for shard in &shards {
         for name in ["battles.parquet", "samples.parquet"] {
             let (table, columns) = table_stats(&shard.join(name))?;
@@ -235,7 +240,7 @@ fn analyze_dataset(out: &Path, top: usize) -> Result<DatasetStats> {
                 share_of_samples_columns: share(compressed_bytes, sample_columns),
             })
             .collect();
-        items.sort_by(|left, right| right.compressed_bytes.cmp(&left.compressed_bytes));
+        items.sort_by_key(|item| std::cmp::Reverse(item.compressed_bytes));
         items.truncate(top);
         stats.groups.insert(depth.to_string(), items);
     }
@@ -248,7 +253,7 @@ fn analyze_dataset(out: &Path, top: usize) -> Result<DatasetStats> {
             share_of_samples_columns: share(compressed_bytes, sample_columns),
         })
         .collect();
-    leaves.sort_by(|left, right| right.compressed_bytes.cmp(&left.compressed_bytes));
+    leaves.sort_by_key(|item| std::cmp::Reverse(item.compressed_bytes));
     leaves.truncate(top);
     stats.top_columns = leaves;
     Ok(stats)

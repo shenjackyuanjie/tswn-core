@@ -160,7 +160,6 @@ fn wide_state_rows_share_row_groups_instead_of_one_per_append() {
         1,
         "每局一个行组会把压缩比与回读开销放大两个数量级"
     );
-    assert!(storage::ROW_GROUP_ROWS > 16);
 }
 
 #[test]
