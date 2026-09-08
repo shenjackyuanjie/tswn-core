@@ -164,6 +164,29 @@ fn wide_state_rows_share_row_groups_instead_of_one_per_append() {
 }
 
 #[test]
+fn stats_reports_distributions_without_touching_dataset() {
+    let root = TempDir::new().unwrap();
+    let options = args(root.path());
+    generate::generate(&options).unwrap();
+    let before = storage::file_hash(&options.out.join("shard-000000/samples.parquet")).unwrap();
+    let stats = stats::collect(&options.out).unwrap();
+    assert_eq!(stats.battles.total, 4);
+    assert_eq!(stats.battles.resolved + stats.battles.truncated, 4);
+    assert_eq!(stats.battles.rounds_advanced.count, 4);
+    assert_eq!(stats.samples.total, sample_rows(&options.out).len());
+    assert_eq!(stats.samples.entity_count.count, stats.samples.total);
+    assert_eq!(stats.samples.progress_buckets.values().sum::<usize>(), stats.samples.total);
+    assert!(!stats.content.player_kind.is_empty());
+    assert!(!stats.content.skill_id.is_empty());
+    // 统计只读：再次汇总不得改变分片内容。
+    stats::collect(&options.out).unwrap();
+    assert_eq!(
+        storage::file_hash(&options.out.join("shard-000000/samples.parquet")).unwrap(),
+        before
+    );
+}
+
+#[test]
 fn cli_rejects_ambiguous_input_modes() {
     use clap::Parser;
     assert!(

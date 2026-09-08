@@ -15,6 +15,7 @@ arrow-schema = "59.3"
 parquet = { version = "59.3", default-features = false, features = ["arrow", "zstd"] }
 serde_arrow = { version = "0.15", features = ["arrow-59"] }
 fs2 = "0.4"
+sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
 
 [dev-dependencies]
 tempfile = "3"
