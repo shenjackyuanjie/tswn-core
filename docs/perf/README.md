@@ -13,6 +13,7 @@
 ## 调查报告
 
 - [Web Streaming 基线](reports/web-streaming-baseline.md)。
+- [Python BattleSession DTO 转换基线](reports/python-battle-session-baseline.md)。
 - [RC4 热点与优化调查（2026-09-05）](reports/rc4-profile-2026-09-05.md)。
 - [0.5.3 优化机会](reports/optimization-opportunities-0.5.3.md)。
 - [目标选择优化](reports/target-selection-optimization.md)。
@@ -39,4 +40,5 @@
 | [score/](score/)、[cqp/](cqp/)、[win_rate/](win_rate/)、[pgo_training/](pgo_training/) | score、CQP、胜率与 PGO 输入 |
 | `runtime_*.json` | 对应 Runtime 报告的原始结果；从报告内链接进入 |
 | [rc4_20260905_profile.json](rc4_20260905_profile.json) | RC4 调查数据 |
+| [python_battle_session_samples.json](python_battle_session_samples.json) | Python BattleSession DTO 转换基线的逐次样本 |
 | [web_streaming_result.png](web_streaming_result.png) | Web Streaming 页面截图 |

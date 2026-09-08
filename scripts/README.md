@@ -251,6 +251,7 @@ Bun 脚本，用于对 tswn-md5 模块进行 profile trace。
 - `verify_battle_cross_binding.py`：真实 Rust CLI / Python / C / WASM 的完整 payload 精确对比；调用 `dump_battle_wasm.mjs` 读取 Node WASM 输出。
 - `verify_web_playback.mjs`：真实页面模块与 DOM 的延迟 source 测试，需 `--experimental-vm-modules` 和 target/web-test-tools 下的 linkedom。
 - `benchmark_web_streaming.mjs`：独立桌面浏览器四组各 20 次性能测试，生成 timing JSON、表格和截图。
+- `benchmark_py_battle_session.py`：构建本地 release Python 扩展，测量 `BattleSession.next_frame()` 的端到端 DTO 开销；传入 Node WASM 包时同时按相同输入比较两端结果。基线与复现口径见 [Python BattleSession DTO 转换基线](../docs/perf/reports/python-battle-session-baseline.md)。
 - `verify_battle_docs.py`：从公共 API 文档提取 Rust / Python / WASM 示例并实际运行。
 
 完整构建与复现步骤见 [Web streaming 基线](../docs/perf/reports/web-streaming-baseline.md)。
