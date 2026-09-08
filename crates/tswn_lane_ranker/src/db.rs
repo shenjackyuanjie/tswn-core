@@ -454,24 +454,6 @@ impl Db {
         Ok(rate)
     }
 
-    pub fn save_rate_pair(&self, a: GroupId, b: GroupId, win_rate_a: f64, samples: usize) -> anyhow::Result<()> {
-        if a == b {
-            return Ok(());
-        }
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "INSERT OR REPLACE INTO group_rates (group_a, group_b, win_rate_a, samples, updated_at)
-             VALUES (?1, ?2, ?3, ?4, CURRENT_TIMESTAMP)",
-            params![a, b, win_rate_a, samples as i64],
-        )?;
-        conn.execute(
-            "INSERT OR REPLACE INTO group_rates (group_a, group_b, win_rate_a, samples, updated_at)
-             VALUES (?1, ?2, ?3, ?4, CURRENT_TIMESTAMP)",
-            params![b, a, 100.0 - win_rate_a, samples as i64],
-        )?;
-        Ok(())
-    }
-
     pub fn save_rate_pairs_bulk(&self, rates: &[(GroupId, GroupId, f64)], samples: usize) -> anyhow::Result<()> {
         if rates.is_empty() {
             return Ok(());
@@ -497,28 +479,6 @@ impl Db {
             )?;
         }
 
-        tx.commit()?;
-        Ok(())
-    }
-
-    pub fn delete_group_and_rates(&self, group_id: GroupId) -> anyhow::Result<()> {
-        let mut conn = self.conn.lock().unwrap();
-        let tx = conn.transaction()?;
-        let lane_size = tx
-            .query_row("SELECT lane_size FROM groups WHERE id = ?1", params![group_id], |row| {
-                row.get::<_, i64>(0)
-            })
-            .optional()?;
-        if let Some(lane_size) = lane_size {
-            tx.execute(
-                "DELETE FROM correct_target_trace_weights WHERE lane_size = ?1",
-                params![lane_size],
-            )?;
-            tx.execute("DELETE FROM correct_target_trace_meta WHERE lane_size = ?1", params![lane_size])?;
-        }
-        tx.execute("DELETE FROM group_rates WHERE group_a = ?1 OR group_b = ?1", params![group_id])?;
-        tx.execute("DELETE FROM lane_results WHERE group_id = ?1", params![group_id])?;
-        tx.execute("DELETE FROM groups WHERE id = ?1", params![group_id])?;
         tx.commit()?;
         Ok(())
     }

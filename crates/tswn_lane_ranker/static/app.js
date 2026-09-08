@@ -1029,27 +1029,6 @@ function readTargetSettings() {
 }
 
 
-function ensureTargetResultsContainer() {
-  let el = document.getElementById("targetResults");
-  if (el) {
-    return el;
-  }
-
-  el = document.createElement("div");
-  el.id = "targetResults";
-
-  const results = document.getElementById("results");
-  if (results && results.parentNode) {
-    results.parentNode.insertBefore(el, results);
-    return el;
-  }
-
-  const panel = document.querySelector(".target-generation-panel")
-    || document.querySelector(".constrained-selection-panel")
-    || document.body;
-  panel.insertAdjacentElement("afterend", el);
-  return el;
-}
 
 
 async function generateTargets() {
@@ -1106,37 +1085,14 @@ function clearTargetPreview() {
 }
 
 
-function targetPhaseLabel(phase) {
-  if (phase === "fixed_main_prefix") return "fixed";
-  if (phase === "minimax_lns_fill") return "minimax";
-  if (phase === "weighted_milp_fill") return "weighted-milp";
-  if (phase === "fixed_main_top40") return "main40";
-  if (phase === "optimized_profile_fill") return "fit";
-  return phase || "";
-}
 
-function formatMetric(value) {
-  if (value === null || value === undefined || !Number.isFinite(Number(value))) return "—";
-  return Number(value).toFixed(6);
-}
 
 function formatWeight(value) {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return "";
   return Number(value).toFixed(12);
 }
 
-function formatPercent(value) {
-  if (value === null || value === undefined || !Number.isFinite(Number(value))) return "";
-  return `${Number(value).toFixed(3)}%`;
-}
 
-function targetReferenceScopeLabel(summary) {
-  const lane = Number(summary && summary.lane_size);
-  const limit = Number(summary && summary.reference_limit);
-  if (lane === 1) return `Single main Top${Number.isFinite(limit) ? limit : 100}`;
-  if (Number.isFinite(lane) && lane > 1) return `Multi main Top${Number.isFinite(limit) ? limit : 200}`;
-  return `Main Top${Number.isFinite(limit) ? limit : ""}`;
-}
 
 
 function exportTargets() {
@@ -1161,193 +1117,6 @@ function exportTargets() {
     );
   }
   downloadText(`Target${laneSize}.html`, targetLines.join("\n"));
-  return;
-
-  /* 下方旧版诊断导出仅供参考而保留。
-  const s = currentTargets.summary || {};
-  const configText = typeof currentTargets.target_config_text === "string"
-    ? currentTargets.target_config_text.trim()
-    : "";
-  const metadataText = JSON.stringify(currentTargets.trace_metadata || {}, null, 2);
-  const commonTrace = (
-    currentTargets.trace_metadata
-    && currentTargets.trace_metadata.common_correct_component
-  ) || {};
-  const generation = (
-    currentTargets.trace_metadata
-    && currentTargets.trace_metadata.generation
-  ) || {};
-  const goldenDeltaGuard = commonTrace.golden_delta_guard || {};
-  const priorityAbsorption = (
-    generation.initial_transport
-    && generation.initial_transport.priority_absorption_projection
-  ) || {};
-
-  const lines = [
-    "# Weighted target config: weight<TAB>combination",
-    ...configText.split(/\r?\n/).filter(Boolean),
-    "",
-    "# Variable-count direct targets with flattened-Z error summary",
-    `algorithm\t${s.algorithm ?? ""}`,
-    `trace_version\t${s.trace_version ?? ""}`,
-    `score_mode\t${s.score_mode ?? ""}`,
-    `lane_size\t${s.lane_size ?? ""}`,
-    `target_count\t${s.target_count ?? ""}`,
-    `score_denominator_n\t${s.score_denominator ?? generation.score_denominator ?? ""}`,
-    `unique_group_count\t${s.unique_group_count ?? ""}`,
-    `raw_trace_count\t${s.raw_trace_count ?? ""}`,
-    `raw_weight_sum\t${formatMetric(s.raw_weight_sum)}`,
-    `correct_trace_count\t${s.correct_trace_count ?? ""}`,
-    `correct_reference_scope_count\t${s.correct_reference_scope_count ?? ""}`,
-    `correct_nominal_weight_sum\t${formatMetric(s.correct_nominal_weight_sum)}`,
-    `correct_target_weight_sum\t${formatMetric(s.correct_target_weight_sum)}`,
-    `correct_target_candidate_count\t${s.correct_target_candidate_count ?? ""}`,
-    `correct_target_nonzero_count\t${s.correct_target_nonzero_count ?? ""}`,
-    `row_coefficient_replay_avg_abs_diff\t${formatMetric(s.row_coefficient_replay_mean_abs_diff)}`,
-    `row_coefficient_replay_max_abs_diff\t${formatMetric(s.row_coefficient_replay_max_abs_diff)}`,
-    `common_correct_replay_avg_abs_diff\t${formatMetric(s.correct_forward_replay_mean_abs_diff)}`,
-    `common_correct_replay_max_abs_diff\t${formatMetric(s.correct_forward_replay_max_abs_diff)}`,
-    `common_correct_replay_rmse\t${formatMetric(s.correct_forward_replay_rmse)}`,
-    `complete_big_target_weight_sum\t${formatMetric(s.merged_weight_sum_before_normalization)}`,
-    `selected_inherited_base_weight_sum\t${formatMetric(s.support_base_weight_sum)}`,
-    `tail_group_count\t${s.tail_group_count ?? ""}`,
-    `tail_weight_sum\t${formatMetric(s.tail_weight_sum)}`,
-    `transported_tail_addition_sum\t${formatMetric(s.fitted_addition_sum)}`,
-    `initial_flattened_z_vs_c_score_avg_abs_diff\t${formatMetric(s.fit_baseline_mean_abs_diff)}`,
-    `initial_flattened_z_vs_c_score_max_abs_diff\t${formatMetric(s.fit_baseline_max_abs_diff)}`,
-    `initial_flattened_z_vs_c_score_rmse\t${formatMetric(s.fit_baseline_rmse)}`,
-    `final_flattened_z_vs_c_score_avg_abs_diff\t${formatMetric(s.fit_optimized_mean_abs_diff)}`,
-    `final_flattened_z_vs_c_score_max_abs_diff\t${formatMetric(s.fit_optimized_max_abs_diff)}`,
-    `final_flattened_z_vs_c_score_rmse\t${formatMetric(s.fit_optimized_rmse)}`,
-    `flattened_max_diff_target\t${formatMetric(generation.flattened_max_diff_target)}`,
-    `flattened_max_diff_target_met\t${generation.flattened_max_diff_target_met ?? ""}`,
-    `flattened_max_diff_target_margin\t${formatMetric(generation.flattened_max_diff_target_margin)}`,
-    `path_selection_error_cost_normalized\t${formatMetric(generation.path_selection_error_cost_normalized)}`,
-    `path_selection_structure_cost_normalized\t${formatMetric(generation.path_selection_structure_cost_normalized)}`,
-    `path_selection_score\t${formatMetric(generation.path_selection_score)}`,
-    `path_selection_rule\t${generation.path_selection_rule ?? ""}`,
-    `z_flatten_slope\t${formatMetric(generation.positive_affine_slope)}`,
-    `z_flatten_intercept\t${formatMetric(generation.positive_affine_intercept)}`,
-    `direct_weighted_score_vs_flattened_c_score_avg_abs_diff\t${formatMetric(generation.flattened_c_score_raw_mean_abs_diff)}`,
-    `direct_weighted_score_vs_flattened_c_score_max_abs_diff\t${formatMetric(generation.flattened_c_score_raw_max_abs_diff)}`,
-    `direct_weighted_score_vs_flattened_c_score_rmse\t${formatMetric(generation.flattened_c_score_raw_rmse)}`,
-    `direct_score_c_score_spearman\t${formatMetric(generation.direct_score_c_score_spearman)}`,
-    `raw_direct_score_vs_c_score_avg_abs_diff_audit\t${formatMetric(generation.final_correct_replay_mean_abs_diff)}`,
-    `raw_direct_score_vs_c_score_max_abs_diff_audit\t${formatMetric(generation.final_correct_replay_max_abs_diff)}`,
-    `raw_direct_score_vs_c_score_rmse_audit\t${formatMetric(generation.final_correct_replay_rmse)}`,
-    `raw_direct_score_vs_big_target_avg_abs_diff_audit\t${formatMetric(generation.final_big_replay_mean_abs_diff)}`,
-    `raw_direct_score_vs_big_target_max_abs_diff_audit\t${formatMetric(generation.final_big_replay_max_abs_diff)}`,
-    `raw_direct_score_vs_big_target_rmse_audit\t${formatMetric(generation.final_big_replay_rmse)}`,
-    `stability_regularization_applied\t${Boolean(s.fit_weight_regularization_applied)}`,
-    `selected_regularization_alpha\t${formatMetric(commonTrace.selected_regularization_alpha)}`,
-    `pareto_selection_reason\t${commonTrace.selection_reason ?? ""}`,
-    `pareto_frontier_count\t${commonTrace.pareto_frontier_count ?? ""}`,
-    `pareto_plateau_fraction\t${formatMetric(commonTrace.pareto_plateau_fraction)}`,
-    `pareto_plateau_count\t${commonTrace.pareto_plateau_count ?? ""}`,
-    `pareto_best_knee_score\t${formatMetric(commonTrace.pareto_best_knee_score)}`,
-    `pareto_replay_gain\t${formatMetric(commonTrace.pareto_replay_gain)}`,
-    `pareto_structural_cost\t${formatMetric(commonTrace.pareto_structural_cost)}`,
-    `pareto_knee_score\t${formatMetric(commonTrace.pareto_knee_score)}`,
-    `target_score_spearman\t${formatMetric(commonTrace.target_score_spearman)}`,
-    `weight_cancellation_ratio\t${formatMetric(commonTrace.cancellation_ratio)}`,
-    `big_target_golden_delta_cap_rule\t${goldenDeltaGuard.rule ?? ""}`,
-    `big_target_golden_delta_cap_min\t${formatMetric(goldenDeltaGuard.minimum_cap)}`,
-    `big_target_golden_delta_cap_max\t${formatMetric(goldenDeltaGuard.maximum_cap)}`,
-    `big_target_golden_delta_cap_max_usage\t${formatMetric(goldenDeltaGuard.selected_max_usage)}`,
-    `big_target_golden_delta_cap_binding_count\t${goldenDeltaGuard.selected_binding_count ?? ""}`,
-    `similar_increment_rms\t${formatMetric(commonTrace.similar_increment_rms)}`,
-    `local_c_score_order_similarity_threshold\t${formatMetric(commonTrace.c_score_order_similarity_threshold)}`,
-    `local_c_score_order_pair_count\t${commonTrace.c_score_order_pair_count ?? ""}`,
-    `local_c_score_weight_inversion_rms\t${formatMetric(commonTrace.local_c_score_weight_inversion_rms)}`,
-    `local_c_score_weight_inversion_rate\t${formatMetric(commonTrace.local_c_score_weight_inversion_rate)}`,
-    `transported_addition_l2_norm\t${formatMetric(s.fit_optimized_addition_l2_norm)}`,
-    `transported_addition_max_abs\t${formatMetric(s.fit_optimized_addition_max_abs)}`,
-    `transport_anchor_distance_l2\t${formatMetric(s.fit_optimized_distance_from_proportional_l2)}`,
-    `replacement_count\t${generation.replacement_count ?? ""}`,
-    `replacement_locked_c_score_top30_count\t${Array.isArray(generation.locked_group_ids) ? generation.locked_group_ids.length : ""}`,
-    `deletion_count\t${generation.deletion_count ?? ""}`,
-    `deletion_locked_initial_c_score_top30_count\t${generation.deletion_lock_count ?? (Array.isArray(generation.deletion_locked_group_ids) ? generation.deletion_locked_group_ids.length : "")}`,
-    `final_support_edit_count\t${generation.final_support_edit_count ?? (Array.isArray(generation.final_support_edits) ? generation.final_support_edits.length : "")}`,
-    `final_tail_swap_count\t${generation.final_tail_swap_count ?? (Array.isArray(generation.final_tail_swaps) ? generation.final_tail_swaps.length : "")}`,
-    `final_support_search_evaluated_count\t${generation.final_support_search?.evaluated_support_count ?? ""}`,
-    `final_support_search_start_count\t${generation.final_support_search?.start_target_count ?? ""}`,
-    `final_support_search_final_count\t${generation.final_support_search?.final_target_count ?? ""}`,
-    `final_support_search_start_avg_diff\t${formatMetric(generation.final_support_search?.start_aligned_mean_abs_diff)}`,
-    `final_support_search_final_avg_diff\t${formatMetric(generation.final_support_search?.final_aligned_mean_abs_diff)}`,
-    `final_support_search_start_max_diff\t${formatMetric(generation.final_support_search?.start_aligned_max_abs_diff)}`,
-    `final_support_search_final_max_diff\t${formatMetric(generation.final_support_search?.final_aligned_max_abs_diff)}`,
-    `c_score_aware_seed_added_count\t${generation.c_score_aware_seed_added_count ?? generation.profile_seed_added_count ?? ""}`,
-    `profile_seed_added_count\t${generation.profile_seed_added_count ?? ""}`,
-    `initial_anchor_weight_sum\t${formatMetric(generation.initial_anchor_weight_sum)}`,
-    `final_support_seed_anchor_weight_sum\t${formatMetric(generation.final_support_seed_anchor_weight_sum)}`,
-    `locked_seed_original_weight_sum\t${formatMetric(generation.locked_seed_original_weight_sum)}`,
-    `locked_seed_target_weight_sum\t${formatMetric(generation.locked_seed_target_weight_sum)}`,
-    `supplement_seed_target_weight_sum\t${formatMetric(generation.supplement_seed_target_weight_sum)}`,
-    `collective_absorption_receiver_count\t${generation.initial_transport?.transport_receiver_count ?? ""}`,
-    `golden_unit_equalization_count\t${generation.initial_transport?.golden_unit_count ?? ""}`,
-    `golden_nonunit_free_count\t${generation.initial_transport?.golden_nonunit_free_count ?? ""}`,
-    `golden_unit_common_anchor_weight\t${formatMetric(generation.initial_transport?.golden_unit_common_anchor_weight)}`,
-    `golden_unit_anchor_spread\t${formatMetric(generation.initial_transport?.golden_unit_anchor_spread)}`,
-    `golden_unit_final_spread\t${formatMetric(generation.golden_unit_final_spread)}`,
-    `golden_unit_projection_l2\t${formatMetric(generation.golden_unit_projection_l2)}`,
-    `supplement_absorption_addition_mean\t${formatMetric(generation.initial_transport?.supplement_absorption_addition_mean)}`,
-    `supplement_absorption_addition_max\t${formatMetric(generation.initial_transport?.supplement_absorption_addition_max)}`,
-    `global_mean_weight_centering_applied\t${generation.initial_transport?.global_mean_weight_centering_applied ?? ""}`,
-    `fixed_front_absorption_priority_count\t${priorityAbsorption.priority_count ?? ""}`,
-    `fixed_front_absorption_projection_l2\t${formatMetric(priorityAbsorption.projection_l2)}`,
-    `fixed_front_absorption_inversion_count_before\t${priorityAbsorption.before_front_inversion_count ?? ""}`,
-    `fixed_front_absorption_inversion_count_after\t${priorityAbsorption.after_front_inversion_count ?? ""}`,
-    `locked_seed_absorption_max_abs\t${formatMetric(generation.initial_transport?.locked_anchor_max_abs_diff)}`,
-    `seed_big_replay_rmse\t${formatMetric(generation.initial_transport?.initial_weight_big_replay_rmse)}`,
-    `seed_big_replay_max_abs_diff\t${formatMetric(generation.initial_transport?.initial_weight_big_replay_max_abs_diff)}`,
-    `seed_initial_weight_std\t${formatMetric(generation.initial_transport?.initial_weight_std)}`,
-    `seed_initial_weight_c_score_spearman\t${formatMetric(generation.initial_transport?.initial_weight_c_score_spearman)}`,
-    `flattened_structural_prior_std\t${formatMetric(generation.initial_transport?.flattened_structural_prior_std)}`,
-    `similar_type_addition_rms\t${formatMetric(generation.similar_type_addition_rms)}`,
-    `local_c_score_addition_inversion_rms\t${formatMetric(generation.local_c_score_addition_inversion_rms)}`,
-    `local_c_score_addition_inversion_rate\t${formatMetric(generation.local_c_score_addition_inversion_rate)}`,
-    `addition_cancellation_ratio\t${formatMetric(generation.addition_cancellation_ratio)}`,
-    `final_weight_c_score_spearman\t${formatMetric(generation.final_weight_c_score_spearman)}`,
-    `all_rows_c_score_order_inversion_count_audit\t${generation.final_weight_monotonic_violation_count ?? ""}`,
-    `all_rows_c_score_order_inversion_max_audit\t${formatMetric(generation.final_weight_monotonic_violation_max)}`,
-    `adjacent_weight_gap_rms\t${formatMetric(generation.adjacent_weight_gap_rms)}`,
-    `adjacent_weight_gap_max\t${formatMetric(generation.adjacent_weight_gap_max)}`,
-    `weight_gap_second_difference_rms\t${formatMetric(generation.weight_gap_second_difference_rms)}`,
-    `unregularized_replay_avg_abs_diff\t${formatMetric(commonTrace.unregularized_benchmark?.forward_replay_mean_abs_diff)}`,
-    `unregularized_replay_max_abs_diff\t${formatMetric(commonTrace.unregularized_benchmark?.forward_replay_max_abs_diff)}`,
-    `unregularized_replay_rmse\t${formatMetric(commonTrace.unregularized_benchmark?.forward_replay_rmse)}`,
-    `unregularized_delta_l2_norm\t${formatMetric(commonTrace.unregularized_benchmark?.delta_from_golden_l2)}`,
-    `unregularized_delta_max_abs\t${formatMetric(commonTrace.unregularized_benchmark?.delta_from_golden_max_abs)}`,
-    `unregularized_negative_weight_count\t${commonTrace.unregularized_benchmark?.negative_weight_count ?? ""}`,
-    `unregularized_cancellation_ratio\t${formatMetric(commonTrace.unregularized_benchmark?.cancellation_ratio)}`,
-    `final_target_weight_std\t${formatMetric(s.fit_optimized_final_weight_std)}`,
-    `final_target_weight_max_deviation\t${formatMetric(s.fit_optimized_final_weight_max_deviation)}`,
-    "",
-    "# Trace metadata JSON",
-    metadataText,
-    "",
-    "# Final variable-count direct target rows",
-    "T-Rank\tDirect Weight (/n)\tLineage Weight\tBig-Target Base Weight\tAbsorption Anchor Weight\tLineage Minus Big-Target Base\tGroup ID\tC-Rank\tC-Score\tR-Rank\tR-Score\tStatus\tType\tName",
-    ...currentTargets.rows.map(row => [
-      row.target_rank ?? "",
-      formatWeight(row.target_weight),
-      formatWeight(row.lineage_weight),
-      formatWeight(row.big_target_base_weight),
-      formatWeight(row.seed_initial_weight),
-      formatWeight(row.transported_tail_addition),
-      row.group_id ?? "",
-      row.correct_rank ?? "",
-      formatScore(row.correct_score),
-      row.raw_rank ?? "",
-      formatScore(row.raw_score),
-      row.selection_status || "",
-      row.type_label || "",
-      row.canonical || "",
-    ].map(value => String(value).replace(/\t/g, " ")).join("\t")),
-  ];
-
-  downloadText(`lane_${laneSize}_targets.txt`, lines.join("\n"));
-  */
 }
 
 

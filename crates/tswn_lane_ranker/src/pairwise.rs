@@ -14,14 +14,9 @@ use rusqlite::Connection;
 use serde_json::{Value, json};
 
 use crate::db::Db;
-use crate::model::{CorrectTargetTrace, CorrectTargetTraceWeight, GroupId, LaneResultRow, RankNode, StoredGroup};
+use crate::model::{CorrectTargetTrace, CorrectTargetTraceWeight, GroupId, LaneResultRow, StoredGroup};
 use crate::ranker::RankerConfig;
-use crate::team::TeamDsu;
 use crate::winrate::compute_rate_without_db;
-
-/// 为向后兼容调用方保留的默认阈值。新的 UI/service 调用 `default_selection_cqd_threshold(lane_size)`，
-/// 使单人和双人 lane 无需在前端硬编码即可使用不同默认值。
-pub const DEFAULT_SELECTION_CQD_THRESHOLD: f64 = 48.7;
 
 pub fn default_selection_cqd_threshold(lane_size: usize) -> f64 { if lane_size == 1 { 48.0 } else { 48.7 } }
 
@@ -42,7 +37,6 @@ fn correct_score_mode(k: f64) -> String { format!("exact_k{}_replacement_correct
 pub struct PairwiseCalibrationReport {
     pub candidate_count: usize,
     pub edge_count: usize,
-    pub selected_count: usize,
     pub skipped_reason: Option<String>,
     target_trace: CorrectTargetTrace,
 }
@@ -253,7 +247,6 @@ fn run_fast_correct(
     Ok(PairwiseCalibrationReport {
         candidate_count: eligible_count,
         edge_count: refs.len() * rows.len(),
-        selected_count: rows.iter().filter(|r| !r.is_blocked && r.raw_average_cqd >= threshold).count(),
         skipped_reason: Some(format!("fast_closed_form_k{}", format_k_label(replacement_k))),
         target_trace: trace,
     })
@@ -261,7 +254,6 @@ fn run_fast_correct(
 
 #[derive(Debug, Clone)]
 struct CalibGroup {
-    row_idx: usize,
     group_id: GroupId,
     raw_score: f64,
     is_blocked: bool,
@@ -278,21 +270,13 @@ struct Edge {
 struct StrictPythonScoreRow {
     group_id: GroupId,
     correct_score: f64,
-    raw_score: Option<f64>,
-    rsw_type: Option<String>,
-    uncertainty_cqd: Option<f64>,
     resolver_selected: bool,
-    candidate_model_missing: bool,
-    diagnostic_row_type: Option<String>,
-    scout_candidate: bool,
 }
 
 #[derive(Debug, Clone)]
 struct StrictPythonRun {
     out_dir: PathBuf,
     scores: Vec<StrictPythonScoreRow>,
-    stdout: String,
-    target_trace: CorrectTargetTrace,
 }
 
 #[derive(Debug, Clone)]
@@ -397,15 +381,9 @@ fn run_strict_python_calibrator(
             .output();
         match output {
             Ok(out) if out.status.success() => {
-                let stdout = String::from_utf8_lossy(&out.stdout).to_string();
                 let scores = read_strict_python_scores(&out_dir)?;
-                let target_trace = read_strict_python_target_trace(&out_dir, lane_size)?;
-                return Ok(StrictPythonRun {
-                    out_dir,
-                    scores,
-                    stdout,
-                    target_trace,
-                });
+                read_strict_python_target_trace(&out_dir, lane_size)?;
+                return Ok(StrictPythonRun { out_dir, scores });
             }
             Ok(out) => {
                 let stderr = String::from_utf8_lossy(&out.stderr).to_string();
@@ -456,13 +434,7 @@ fn read_strict_python_scores(out_dir: &Path) -> anyhow::Result<Vec<StrictPythonS
                 "strict Python final_total_table_ALL_GROUPS.csv is missing selection_weight_cqd / Selection Weight Cqd Display; refusing to display/export model Correct Cqd as C-Score"
             )
         })?;
-    let idx_raw = csv_col(header, "Raw Cqd Display").or_else(|_| csv_col(header, "raw_cqd")).ok();
-    let idx_rsw = csv_col(header, "RSW-Type").ok();
-    let idx_uncertainty = csv_col(header, "stability_strength_sd_cqd").ok();
     let idx_selected = csv_col(header, "resolver_selected").ok();
-    let idx_model_missing = csv_col(header, "candidate_model_missing").ok();
-    let idx_diag = csv_col(header, "diagnostic_row_type").ok();
-    let idx_scout = csv_col(header, "scout_candidate").ok();
 
     let mut out = Vec::new();
     for (line_idx, rec) in records.iter().enumerate().skip(1) {
@@ -480,38 +452,14 @@ fn read_strict_python_scores(out_dir: &Path) -> anyhow::Result<Vec<StrictPythonS
         if !correct_score.is_finite() {
             anyhow::bail!("strict Python produced non-finite corrected score for group_id={group_id}");
         }
-        let raw_score = idx_raw.and_then(|i| rec.get(i)).and_then(|s| parse_optional_f64(s));
-        let rsw_type = idx_rsw
-            .and_then(|i| rec.get(i))
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty() && s != "nan");
-        let uncertainty_cqd = idx_uncertainty.and_then(|i| rec.get(i)).and_then(|s| parse_optional_f64(s));
         let resolver_selected = idx_selected
-            .and_then(|i| rec.get(i))
-            .map(|s| matches!(s.trim(), "1" | "1.0" | "true" | "True"))
-            .unwrap_or(false);
-        let candidate_model_missing = idx_model_missing
-            .and_then(|i| rec.get(i))
-            .map(|s| matches!(s.trim(), "1" | "1.0" | "true" | "True"))
-            .unwrap_or(false);
-        let diagnostic_row_type = idx_diag
-            .and_then(|i| rec.get(i))
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty() && s != "nan");
-        let scout_candidate = idx_scout
             .and_then(|i| rec.get(i))
             .map(|s| matches!(s.trim(), "1" | "1.0" | "true" | "True"))
             .unwrap_or(false);
         out.push(StrictPythonScoreRow {
             group_id,
             correct_score,
-            raw_score,
-            rsw_type,
-            uncertainty_cqd,
             resolver_selected,
-            candidate_model_missing,
-            diagnostic_row_type,
-            scout_candidate,
         });
     }
     if out.is_empty() {
@@ -759,23 +707,6 @@ fn parse_csv_records(text: &str) -> Vec<Vec<String>> {
     records
 }
 
-/// 旧重算路径使用的兼容入口。新校准有意由已保存的 Raw lane 结果驱动；`nodes` 和 `dsu` 不属于评分模型，
-/// 从而将 Raw 生成与修正分开。
-pub fn calibrate_lane_rows(
-    db: &Db,
-    lane_size: usize,
-    _nodes: &[RankNode],
-    rows: &mut Vec<LaneResultRow>,
-    _dsu: &TeamDsu,
-    config: &RankerConfig,
-    _final_round: usize,
-    cqd_threshold: f64,
-) -> anyhow::Result<PairwiseCalibrationReport> {
-    // 兼容调用方现在使用与已保存 lane 校准相同的 lane 特定生产路径。旧版 Python 校验器仅能通过下方明确的
-    // 配对校验/审计端点使用。
-    run_fast_correct(db, lane_size, rows, config, cqd_threshold)
-}
-
 pub fn calibrate_saved_lane_results(
     db: &Db,
     lane_size: usize,
@@ -801,7 +732,6 @@ pub fn calibrate_saved_lane_results(
             && rows.iter().all(|row| row.pair_score.is_some_and(f64::is_finite));
         if trace_is_current {
             let candidate_count = rows.iter().filter(|row| !row.is_blocked && row.raw_average_cqd >= cqd_threshold).count();
-            let selected_count = rows.iter().filter(|row| row.selection_status == "calibrated").count();
             db.set_lane_status(lane_size, "ready", rows.len())?;
             db.set_lane_progress(
                 lane_size,
@@ -816,7 +746,6 @@ pub fn calibrate_saved_lane_results(
             return Ok(PairwiseCalibrationReport {
                 candidate_count,
                 edge_count: 0,
-                selected_count,
                 skipped_reason: Some("unchanged_exact_trace_reused".to_string()),
                 target_trace: trace,
             });
@@ -925,156 +854,6 @@ pub fn validate_saved_pair_strength_results(
             "blocked_affects_fit": false
         }
     }))
-}
-
-fn run_crossfit_betabinomial_lowrank_calibration(
-    db: &Db,
-    lane_size: usize,
-    rows: &mut Vec<LaneResultRow>,
-    config: &RankerConfig,
-    cqd_threshold: f64,
-) -> anyhow::Result<PairwiseCalibrationReport> {
-    let groups = build_groups(rows, cqd_threshold);
-    let train: HashSet<usize> = groups.iter().enumerate().filter_map(|(idx, g)| g.train_eligible.then_some(idx)).collect();
-    let computed_rate_count = ensure_required_winrates_for_strict_python(db, lane_size, &groups, config, cqd_threshold)?;
-    let edges = load_edges(db, &groups)?;
-    let train_edges: Vec<Edge> = edges.iter().filter(|e| train.contains(&e.ia) && train.contains(&e.ib)).cloned().collect();
-
-    if train.len() < 2 || train_edges.is_empty() {
-        anyhow::bail!(
-            "strict Python calibration aborted: not_enough_fit_edges; fit_candidates={}, fit_edges={}. Correct Score was not copied from Raw Score because strict mode forbids silent fallback.",
-            train.len(),
-            train_edges.len()
-        );
-    }
-
-    db.set_lane_progress(
-        lane_size,
-        "calibration_fitting_strict_python",
-        0,
-        config.total_rounds,
-        train_edges.len(),
-        train.len(),
-        0,
-        &format!(
-            "running strict Python exact beta-binomial + RSW counter + lowrank calibrator; Rust approximation disabled; newly_computed_rate_pairs_before_python={computed_rate_count}; dynamic Python rate requests enabled"
-        ),
-    )?;
-
-    let (py, dynamic_rate_count) =
-        run_strict_python_calibrator_with_dynamic_rate_fill(db, lane_size, cqd_threshold, 5, 123, config)?;
-    let py_out_dir = py.out_dir.clone();
-    let py_stdout_last = py.stdout.lines().last().unwrap_or("").to_string();
-    let mut by_gid: HashMap<GroupId, StrictPythonScoreRow> = HashMap::new();
-    for score in py.scores.iter().cloned() {
-        by_gid.insert(score.group_id, score);
-    }
-
-    let mut scores = vec![0.0; groups.len()];
-    let mut selected_count = 0usize;
-    for (idx, g) in groups.iter().enumerate() {
-        let Some(score) = by_gid.get(&g.group_id) else {
-            anyhow::bail!(
-                "strict Python output missing group_id={} from final_total_table_ALL_GROUPS.csv; refusing partial calibration",
-                g.group_id
-            );
-        };
-        scores[idx] = score.correct_score;
-        if score.resolver_selected {
-            selected_count += 1;
-        }
-    }
-
-    let max_fit_abs_delta = groups
-        .iter()
-        .enumerate()
-        .filter(|(idx, _)| train.contains(idx))
-        .map(|(idx, g)| (scores[idx] - g.raw_score).abs())
-        .fold(0.0_f64, f64::max);
-    if max_fit_abs_delta <= 1e-10 {
-        anyhow::bail!(
-            "strict Python calibration produced Correct Score == Raw Score for every fit candidate (max_abs_delta={:.12}). This is treated as a failed calibration instead of silently accepting raw-as-correct. Python out_dir={}",
-            max_fit_abs_delta,
-            py_out_dir.display()
-        );
-    }
-
-    let mut order: Vec<usize> = groups
-        .iter()
-        .enumerate()
-        .filter(|(_, g)| {
-            if g.raw_score >= cqd_threshold {
-                return true;
-            }
-            by_gid.get(&g.group_id).map(|score| !score.candidate_model_missing).unwrap_or(false)
-        })
-        .map(|(idx, _)| idx)
-        .collect();
-    order.sort_by(|&a, &b| {
-        scores[b]
-            .total_cmp(&scores[a])
-            .then_with(|| groups[b].raw_score.total_cmp(&groups[a].raw_score))
-    });
-    let mut pair_rank = vec![None; groups.len()];
-    for (rank, idx) in order.iter().enumerate() {
-        pair_rank[*idx] = Some(rank + 1);
-    }
-
-    for (idx, g) in groups.iter().enumerate() {
-        let row = &mut rows[g.row_idx];
-        let score = by_gid.get(&g.group_id).expect("checked above");
-        reset_calibration_fields(row);
-        row.raw_average_cqd = score.raw_score.unwrap_or(g.raw_score);
-
-        if g.raw_score < cqd_threshold && score.candidate_model_missing {
-            // 低于阈值的行保持隐藏，除非 Python 已通过 Raw 低于阈值侦察/救援挑战者路径明确为其评分。
-            row.selection_status = "below_threshold".to_string();
-            continue;
-        }
-
-        row.pair_score = Some(round_to_6(scores[idx]));
-        row.pair_rank = pair_rank[idx];
-        row.raw_delta = Some(round_to_6(scores[idx] - g.raw_score));
-        row.uncertainty = score.uncertainty_cqd.map(round_to_6);
-        row.residual_type_label = score.rsw_type.clone();
-        row.selection_status = if g.is_blocked {
-            "blocked".to_string()
-        } else if g.raw_score < cqd_threshold && score.resolver_selected {
-            "rescued_scout".to_string()
-        } else if g.raw_score < cqd_threshold {
-            "scout_score_only".to_string()
-        } else if score.resolver_selected {
-            "calibrated".to_string()
-        } else {
-            "not_selected_by_active_set".to_string()
-        };
-    }
-
-    db.set_lane_progress(
-        lane_size,
-        "calibration_applying_strict_python",
-        0,
-        config.total_rounds,
-        train_edges.len(),
-        train.len(),
-        0,
-        &format!(
-            "strict Python calibration applied; out_dir={}; max_fit_abs_delta={:.9}; newly_computed_rate_pairs_before_python={}; newly_computed_dynamic_rate_pairs={}; stdout={}",
-            py_out_dir.display(),
-            max_fit_abs_delta,
-            computed_rate_count,
-            dynamic_rate_count,
-            py_stdout_last
-        ),
-    )?;
-
-    Ok(PairwiseCalibrationReport {
-        candidate_count: train.len(),
-        edge_count: train_edges.len(),
-        selected_count,
-        skipped_reason: None,
-        target_trace: py.target_trace,
-    })
 }
 
 fn read_strict_python_missing_rate_request(path: &Path) -> anyhow::Result<StrictPythonMissingRateRequest> {
@@ -1688,15 +1467,13 @@ fn format_calibration_duration(seconds: f64) -> String {
 
 fn build_groups(rows: &[LaneResultRow], threshold: f64) -> Vec<CalibGroup> {
     rows.iter()
-        .enumerate()
-        .map(|(row_idx, row)| {
+        .map(|row| {
             let raw_score = if row.raw_average_cqd.is_finite() {
                 row.raw_average_cqd
             } else {
                 row.average_cqd
             };
             CalibGroup {
-                row_idx,
                 group_id: row.group_id,
                 raw_score,
                 is_blocked: row.is_blocked,
