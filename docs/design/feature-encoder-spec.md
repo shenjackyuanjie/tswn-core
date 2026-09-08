@@ -377,12 +377,12 @@ deferred 保存原列表顺序和精确 `state_cursor`，与实体状态注册�
 
 | 字段类别 | 精度与还原规则 |
 | --- | --- |
-| `template/runtime.at_boost_bits, attract_bits`、`accumulate.acc_bits, charge_bonus_bits`、`hide.attract_bits`、`poison.atp_bits`、`clone.name_factor_bits, child_name_factor_bits`、`adjustments.at_boost_delta_bits, attract_delta_bits` | 契约采用 `f64::from_bits(u)` 后归一化，同时保留原始 bit 旁路；poison 的 f64 实例见 M:906；`clone.name_factor` 的还原实例见 C:208；其余底层产生式须在实施前核对，不能仅凭字段名完成验收 |
+| `template/runtime.at_boost_bits, attract_bits`、`accumulate.acc_bits, charge_bonus_bits`、`hide.attract_bits`、`poison.atp_bits`、`clone.name_factor_bits, child_name_factor_bits`、`adjustments.at_boost_delta_bits, attract_delta_bits` | 契约采用 `f64::from_bits(u)` 后归一化，同时保留原始 bit 旁路；poison 的 f64 实例见 M:906；`clone.name_factor` 的还原实例见 C:208；**产生式已逐字段核对：以上字段全部由 `f64::to_bits()` 写入**（`C:85–86/96/99/196/200/353/357`、`K:entity_runtime:376–377/387/389/464`、`K:state:160`、`K:handlers:112`），因此统一按 `f64::from_bits` 还原。注意 `hide.attract_bits` 是进入隐藏时对 `runtime.attract_bits` 的拷贝，而 `runtime.attract_bits` 随后被除以 10（`K:entity_runtime:464–469`），两者语义不同，不能互相替代 |
 | `PlayerKindFlags` 原始 u64、`score_skill_boost_plan.initially_boosted_mask` | 只走精确旁路与 X 的 bits 通道，不作为数值特征；具名位另由 `entity_kind_flags` 表达 |
 | 上述原始 bit、registration_order／runtime_registration_order／state_registration_cursor／deferred.state_cursor | `extra_bits` 与 `order_key` 的第 3 轴统一为 0=lo、1=hi；`lo=(u & 0xffffffff), hi=(u >> 32)`，还原 `u=(u64(hi)<<32) \| u64(lo)`。registration_order 为 u32，hi 恒 0；其余三个顺序字段为 u64，按同一公式拆分。分类原始 u32 也以 lo 保存、hi=0；禁止经 JS Number／f32 中转 |
 | `hook_mask`、`compressed_state_flags` | 分别展开 64／8 个 0/1，`bit_i=(u>>i)&1`；compressed_state_flags 的低 5 位依次为 Shield/Protect/Upgrade/Corpse/Minion，高 3 位必须为 0，`u & 0b1110_0000 != 0` 返回 `ReservedFlagBitSet{path}`，不得静默清除；二者均不得压成一个 f32 标量 |
 | `ModelSlot.i64_value/u64_value`、外部复合类型的 bit／整数 | 先查语义表；槽内标量在 `slot_value` 用 N，ref 重映射后进 X，浮点 bits 先 from_bits 再归一化并另存 raw，标志进 X 逐位展开；需精确保留的 i64 按二补码 u64 拆分。身份引用只保留重映射关系，不将原始 EntityIdx 偷渡进 raw 槽；value_type 不能取代语义白名单 |
-| `at_boost_millionths` | 精确整数可从旁路还原；本稿不假定 `bits == millionths/1e6`，不使用近似列反推原 bits（M:455–456、776–777） |
+| `at_boost_millionths` | `millionths = round(at_boost * 1e6)`（`C:25`）是有损整数；生产路径只从 f64 生成 bits，反向构造器 `with_at_boost_millionths`（`C:418–426`）只被测试使用，所以**不假定 `bits == millionths/1e6`**，也不使用近似列反推原 bits（M:455–456、776–777） |
 
 精确旁路是编码包的校验／关系计算通道，不直接作为数值特征；原始 state 仍负责无损追溯。正负零原 bit 可区分；非有限浮点保留诊断 bit 并拒绝编码。`extra_bits` 可运输精确值，但未列入字段白名单的 bit 禁止送入模型，尤其不能用它绕过身份／随机数禁令。
 
@@ -515,7 +515,7 @@ git diff --check
 | --- | --- | --- |
 | 槽编号及整数语义 | 按注册表白名单分 num/ref/bits；或按 U64 一律数值化 | **已按默认注册表逐槽核对，结论见第 3.2 节**。`U64` 槽同时存在实体引用（`summoned_entity`）、计数（`minion_counter`）与浮点 bit（`lazy_blueprint_rq`）三种语义，按存储类型数值化会在第一类上泄漏原始实体编号；自定义注册表不在支持域（M:83），新增槽须先更新 3.2 表并重算 `Q_max` |
 | 顺序、身份和阵营域 | 保留精确键并补查消费者；或假定所有编号都是下标 | **已逐项核对**：执行列表整数是模板内 lane 数组下标，不是 `fixed_lane_key`（第 7 节）；`PlrId` 是实体槽下标 + 1 的派生值，不参与模型输入（第 6 节）；`charm.group_id` 是施法者 `EntityIdx`，与 `clan_group`／runtime team 都不同域，必须按实体引用重映射（第 8 节） |
-| 浮点产生式 | 尺度按 train 实测拟合（已定）；仍须核对各 `*_bits` 的 f64 产生式与 millionths 关系 | 无观测即 `MissingCalibration`，不登记人工常数；不假定 `bits == millionths/1e6` |
+| 浮点产生式 | 尺度按 train 实测拟合（已定）；各 `*_bits` 的 f64 产生式与 millionths 关系 | **产生式已逐字段核对，见第 13 节**：全部由 `f64::to_bits()` 写入，`millionths` 是有损整数且反向构造器仅测试使用。无观测即 `MissingCalibration`，不登记人工常数；仍不假定 `bits == millionths/1e6` |
 | 容量 profile | baseline-32；或补测后单独推出更大 profile | 建议先评估第 4 节修订的 E/T/R/H/L/S/Q/V/X=32/32/32/512/4096/32/256/32768/65536 预算，实体／蓝图／slot／X 峰值及内存全量统计后冻结；不使用静默截断 |
 | 资格 mask | 全部输入队伍；或证明复活／召唤不可达后屏蔽 | 建议全部保留，采用第 10 节公式；避免把本池 `0/40000` 的未见事件当引擎保证（W:169） |
 | 导出容器 | typed bin + manifest；或后续绑定直接返回 buffers | 建议先提供可重建离线包，绑定复用同一布局；两者不得产生第二份编码算法 |
@@ -555,4 +555,4 @@ git diff --check
 | S 统计口径 | `crates/tswn_winprob_dataset/src/stats.rs:45`（Series）、`:130`（collect）、`:187`（实体／状态／技能计数） |
 | F 抽样 | `crates/tswn_winprob_dataset/src/sampling.rs:5`（select，排终局与最终轮数分桶） |
 | G 生成 | `crates/tswn_winprob_dataset/src/generate.rs:138`（write_shard）、`:186`（generate_battle）、`:202`（标签）、`:211`（样本） |
-| K 槽语义与顺序证据 | 前缀均为 `crates/tswn_core/src/`：`runtime/prepared_init/init.rs`（init）、`runtime/prepared_init/seed.rs`（seed）、`runtime/prepared_init/roster.rs`（roster）、`runtime/plain_summon.rs`（summon）、`runtime/plain_zombie.rs`（zombie）、`runtime/handlers/mod.rs`（handlers）、`runtime/handlers/minions.rs`（minions）、`runtime/combat/skills_control.rs`（skills_control）、`runtime/combat/skills_team.rs`（skills_team）、`runtime/combat/round.rs`（round）、`runtime/scheduler.rs`（scheduler）、`runtime/entity/runtime.rs`（entity_runtime）、`runtime/profile/import.rs`（import）、`runtime/prepared_init.rs`（prepared） |
+| K 槽语义与顺序证据 | 前缀均为 `crates/tswn_core/src/`：`runtime/prepared_init/init.rs`（init）、`runtime/prepared_init/seed.rs`（seed）、`runtime/prepared_init/roster.rs`（roster）、`runtime/plain_summon.rs`（summon）、`runtime/plain_zombie.rs`（zombie）、`runtime/handlers/mod.rs`（handlers）、`runtime/handlers/minions.rs`（minions）、`runtime/handlers/states.rs`（states）、`runtime/combat/skills_control.rs`（skills_control）、`runtime/combat/skills_team.rs`（skills_team）、`runtime/combat/round.rs`（round）、`runtime/scheduler.rs`（scheduler）、`runtime/entity/runtime.rs`（entity_runtime）、`runtime/entity/state.rs`（state）、`runtime/profile/import.rs`（import）、`runtime/prepared_init.rs`（prepared） |
