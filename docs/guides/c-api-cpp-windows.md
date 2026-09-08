@@ -16,19 +16,19 @@
 
 假设当前仓库根目录为：
 
-```/dev/null/repo_root.txt#L1-1
+```text
 tswn-core
 ```
 
 假设当前工作目录为：
 
-```/dev/null/cwd.txt#L1-1
+```text
 tswn-core/dist/all
 ```
 
 此时关键文件路径如下：
 
-```/dev/null/layout.txt#L1-8
+```text
 dist/all/
   openbox_capi.cpp
   openbox_capi_prepare.cpp
@@ -49,19 +49,19 @@ dist/all/
 
 推荐直接写：
 
-```/dev/null/include.txt#L1-1
+```cpp
 #include "tswn_capi.h"
 ```
 
 然后在编译命令里传：
 
-```/dev/null/include_flag.txt#L1-1
+```text
 -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
 ```
 
 不推荐再写这种相对路径 include：
 
-```/dev/null/bad_include.txt#L1-1
+```cpp
 #include "capi/include/tswn_capi.h"
 ```
 
@@ -73,7 +73,7 @@ dist/all/
 
 不推荐：
 
-```/dev/null/bad_pragma.txt#L1-1
+```cpp
 #pragma comment(lib, "capi/lib/tswn_capi.lib")
 ```
 
@@ -100,7 +100,7 @@ dist/all/
 
 错误地把 seed 当作裸值传入：
 
-```/dev/null/wrong_seed.txt#L1-1
+```text
 33554431@!
 ```
 
@@ -113,7 +113,7 @@ dist/all/
 
 `tswn_runner_new_from_prepared()` 的 seed 参数应传入**完整 seed 行**：
 
-```/dev/null/correct_seed.txt#L1-1
+```text
 seed:33554431@!
 ```
 
@@ -126,7 +126,7 @@ seed:33554431@!
 
 `raw` 路径本质上是在原始输入文本里追加一整行：
 
-```/dev/null/raw_seed_line.txt#L1-1
+```text
 seed:33554431@!
 ```
 
@@ -178,7 +178,7 @@ seed:33554431@!
 
 当前 Windows 打包结果中通常包含：
 
-```/dev/null/windows_outputs.txt#L1-5
+```text
 tswn_capi.dll
 tswn_capi.dll.lib
 tswn_capi.lib
@@ -203,19 +203,19 @@ tswn_capi.pdb
 
 假设当前在：
 
-```/dev/null/cwd.txt#L1-1
+```text
 dist/all
 ```
 
 ### 6.1 编译 `raw` 版
 
-```/dev/null/clang_raw_dynamic.txt#L1-1
+```powershell
 clang++ openbox_capi.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.dll.lib -o openbox_capi.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
 ```
 
 ### 6.2 编译 `prepared` 版
 
-```/dev/null/clang_prepared_dynamic.txt#L1-1
+```powershell
 clang++ openbox_capi_prepare.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.dll.lib -o openbox_capi_prepare.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
 ```
 
@@ -225,17 +225,17 @@ clang++ openbox_capi_prepare.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/cap
 
 最简单做法是把 DLL 复制到当前目录：
 
-```/dev/null/copy_dll.txt#L1-1
+```powershell
 copy tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle\capi\lib\tswn_capi.dll .
 ```
 
 然后运行：
 
-```/dev/null/run_raw.txt#L1-1
+```powershell
 .\openbox_capi.exe
 ```
 
-```/dev/null/run_prepared.txt#L1-1
+```powershell
 .\openbox_capi_prepare.exe
 ```
 
@@ -255,13 +255,13 @@ copy tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle\capi\lib\tswn_capi.dll .
 
 ### 7.1 编译 `raw` 版
 
-```/dev/null/clang_raw_static.txt#L1-1
+```powershell
 clang++ openbox_capi.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.lib "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64\ntdll.lib" -o openbox_capi.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
 ```
 
 ### 7.2 编译 `prepared` 版
 
-```/dev/null/clang_prepared_static.txt#L1-1
+```powershell
 clang++ openbox_capi_prepare.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.lib "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64\ntdll.lib" -o openbox_capi_prepare.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
 ```
 
@@ -269,7 +269,7 @@ clang++ openbox_capi_prepare.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/cap
 
 如果不补 `ntdll.lib`，可能会看到类似错误：
 
-```/dev/null/ntdll_missing.txt#L1-3
+```text
 unresolved external symbol __imp_NtWriteFile
 unresolved external symbol __imp_RtlNtStatusToDosError
 fatal error LNK1120
@@ -283,11 +283,11 @@ fatal error LNK1120
 
 ### 8.1 可尝试命令
 
-```/dev/null/gpp_raw_dynamic.txt#L1-1
+```powershell
 g++ openbox_capi.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.dll.lib -o openbox_capi.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
 ```
 
-```/dev/null/gpp_prepared_dynamic.txt#L1-1
+```powershell
 g++ openbox_capi_prepare.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.dll.lib -o openbox_capi_prepare.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
 ```
 
@@ -312,7 +312,7 @@ g++ openbox_capi_prepare.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/li
 
 如果想让 MinGW / `g++` 更稳妥地动态链接，最好先把 DLL 转成 MinGW 风格 import lib，例如：
 
-```/dev/null/mingw_lib.txt#L1-1
+```text
 libtswn_capi.dll.a
 ```
 
@@ -320,23 +320,23 @@ libtswn_capi.dll.a
 
 ### 9.1 从 DLL 生成 `.def`
 
-```/dev/null/gendef_cmd.txt#L1-1
+```powershell
 gendef tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle\capi\lib\tswn_capi.dll
 ```
 
 ### 9.2 从 `.def` 生成 `.dll.a`
 
-```/dev/null/dlltool_cmd.txt#L1-1
+```powershell
 dlltool -d tswn_capi.def -l libtswn_capi.dll.a -D tswn_capi.dll
 ```
 
 ### 9.3 然后再用 `g++`
 
-```/dev/null/gpp_raw_dlla.txt#L1-1
+```powershell
 g++ openbox_capi.cpp libtswn_capi.dll.a -o openbox_capi.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
 ```
 
-```/dev/null/gpp_prepared_dlla.txt#L1-1
+```powershell
 g++ openbox_capi_prepare.cpp libtswn_capi.dll.a -o openbox_capi_prepare.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
 ```
 
@@ -378,20 +378,20 @@ g++ openbox_capi_prepare.cpp libtswn_capi.dll.a -o openbox_capi_prepare.exe -O3 
 
 示例程序通常从当前目录读取：
 
-```/dev/null/input_file.txt#L1-1
+```text
 input.txt
 ```
 
 例如：
 
-```/dev/null/input_example.txt#L1-2
+```text
 喘际瞬爆@昀澤
 蕾蒂·怀特洛可-65HEZHB264LFPFQ@Squall
 ```
 
 运行后再从标准输入输入测试次数，例如：
 
-```/dev/null/input_count.txt#L1-1
+```text
 10000
 ```
 
@@ -429,7 +429,7 @@ input.txt
 
 若报：
 
-```/dev/null/header_not_found.txt#L1-1
+```text
 fatal error: 'tswn_capi.h' file not found
 ```
 
@@ -455,7 +455,7 @@ fatal error: 'tswn_capi.h' file not found
 
 补：
 
-```/dev/null/ntdll_path.txt#L1-1
+```text
 "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64\ntdll.lib"
 ```
 
@@ -475,27 +475,27 @@ fatal error: 'tswn_capi.h' file not found
 
 ### `clang++` 动态链接
 
-```/dev/null/quick_clang_raw.txt#L1-1
+```powershell
 clang++ openbox_capi.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.dll.lib -o openbox_capi.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
 ```
 
-```/dev/null/quick_clang_prepared.txt#L1-1
+```powershell
 clang++ openbox_capi_prepare.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.dll.lib -o openbox_capi_prepare.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
 ```
 
 运行前：
 
-```/dev/null/quick_copy_dll.txt#L1-1
+```powershell
 copy tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle\capi\lib\tswn_capi.dll .
 ```
 
 ### `clang++` 静态链接
 
-```/dev/null/quick_static_raw.txt#L1-1
+```powershell
 clang++ openbox_capi.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.lib "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64\ntdll.lib" -o openbox_capi.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
 ```
 
-```/dev/null/quick_static_prepared.txt#L1-1
+```powershell
 clang++ openbox_capi_prepare.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.lib "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64\ntdll.lib" -o openbox_capi_prepare.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
 ```
 

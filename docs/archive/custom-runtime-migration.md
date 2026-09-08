@@ -4,7 +4,7 @@
 > 范围：`github/main..github/custom` 中与 custom 产品线相关的行为差异
 > 目标：把 custom 分支的行为改动逐项落到 runtime extension / policy / renderer / fixture 验收面
 
-当前主 Runtime 已通过原生 `namerena` 数据准备链承接这些行为；公开迁移说明见 [`../runtime-0.5-migration.md`](../guides/runtime-0.5-migration.md)。下文原样保留实施阶段的证据与术语。
+当前主 Runtime 已通过原生 `namerena` 数据准备链承接这些行为；公开迁移说明见 [`docs/guides/runtime-0.5-migration.md`](../guides/runtime-0.5-migration.md)。下文原样保留实施阶段的证据与术语。
 
 ---
 
