@@ -107,8 +107,12 @@ typedef enum tswn_battle_stop_reason_t {
     TSWN_BATTLE_STOP_MAX_ROUNDS = 2, TSWN_BATTLE_STOP_NO_PROGRESS = 3
 } tswn_battle_stop_reason_t;
 
-/* 覆写字段前先初始化。new 接受 NULL options 以使用默认值。
- * 小于当前版本的 struct_size 会被拒绝；更大的未来尾部会被忽略。
+/* 覆写字段前先初始化。default 永久仅写 V1，并设置 struct_size=V1_SIZE；
+ * 未来扩展须新增带容量参数的初始化接口，禁止扩大此函数的写入范围。
+ * new 接受 NULL options 以使用默认值。
+ * struct_size 小于 V1 最小结构尺寸会被拒绝；历史 V1 prefix 永久有效。
+ * 旧 caller 可调用新 library：未提供的新尾字段使用默认值；未知尾部由旧 library 忽略。
+ * 未来字段 offset 必须 >= V1_SIZE，禁止复用 V1 tail padding，必要时增加显式 padding。
  * 每个存活句柄必须释放一次，且不得并发使用。
  * 所有返回字符串归调用方所有；使用 tswn_str_free 释放。
  * 可选输出在缺失时使用 has=0 和 {NULL,0}，包括重复的终止调用。

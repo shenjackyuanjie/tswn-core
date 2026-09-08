@@ -88,11 +88,15 @@ WASM 对象 handle 必须显式 `free()`。网页 source 在复制 terminal resu
 
 ## C ABI 4
 
-使用 `tswn_battle_options_default(&options)` 初始化版本化 `tswn_battle_options_t` 后修改参数；传 NULL 使用默认值。`struct_size` 小于当前结构尺寸会拒绝，较大的未来尾部会忽略，`include_icons` 只接受 0 / 1。
+使用 `tswn_battle_options_default(&options)` 初始化版本化 `tswn_battle_options_t` 后修改参数；传 NULL 使用默认值。`struct_size` 小于 V1 最小结构尺寸会拒绝，`include_icons` 只接受 0 / 1。
+
+V1 prefix 的字段顺序、类型和尺寸永久冻结，旧 caller 的已知 prefix 在新 library 中继续有效；新 library 对未提供的新尾字段使用 `BattleOptions::default()` 的默认值，旧 library 忽略未知尾部。未来每个版本都须永久保留其 prefix size 常量；新增字段的 offset 必须至少为 V1_SIZE，禁止复用 V1 tail padding，必要时显式增加 padding / reserved 区域。每个扩展字段按 `struct_size >= field_end_offset` 判断存在性并单独读取，不能读取整个未来 public struct。ABI 保持 4。
 
 `tswn_battle_session_new()` 创建 opaque handle；`tswn_battle_session_initial_states_json()` / `current_states_json()` 返回快照；`next_frame_json()` / `result_json()` 通过 `has` 标志区分有无数据。没有值时输出 `{NULL, 0}`，终止后的重复读取也如此。状态和原因另有 `status()` / `stop_reason()` enum 查询。
 
 所有成功返回的 JSON 用 `tswn_str_free()` 释放，handle 用 `tswn_battle_session_free()` 释放。调用方不得并发操作同一 handle。完整可编译示例：[battle_session.c](../crates/tswn_capi/examples/battle_session.c)。
+
+`tswn_battle_options_default()` 永久只写入 V1 并将 `struct_size` 设置为 V1_SIZE，避免新 library 覆盖旧 caller 的小缓冲区。未来扩展选项需另增带容量参数的初始化接口；不能扩大此历史函数的写入范围。
 
 ## CLI JSONL 输出
 

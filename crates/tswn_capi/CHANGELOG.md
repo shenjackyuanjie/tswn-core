@@ -2,6 +2,10 @@
 
 ## 未发布
 
+- 旧 options 初始化函数永久仅写 V1，避免未来扩展向旧 caller 的小缓冲区越界写入。
+
+- 冻结 BattleOptions V1 prefix，按非对齐前缀读取选项；兼容旧 caller 与未知未来尾部，明确禁止复用 V1 tail padding。现有布局和 ABI 4 不变。
+
 - ABI 4 新增 BattleSession opaque handle、版本化 options、逐帧/快照/result JSON 与状态查询。
 
 ## [Unreleased]
