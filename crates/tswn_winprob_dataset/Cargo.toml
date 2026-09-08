@@ -1,0 +1,24 @@
+[package]
+name = "tswn_winprob_dataset"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tswn_core = { path = "../tswn_core", default-features = false, features = ["png_render"] }
+anyhow = "1"
+clap = { version = "4.6.1", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+arrow-array = "59.2"
+arrow-schema = "59.2"
+parquet = { version = "59.2", default-features = false, features = ["arrow", "zstd"] }
+serde_arrow = { version = "0.15", features = ["arrow-59"] }
+fs2 = "0.4"
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "tswn-winprob-dataset"
+path = "src/main.rs"

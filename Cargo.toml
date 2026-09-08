@@ -10,6 +10,7 @@ members = [
   "crates/tswn_openbox",
   "crates/tswn_lane_ranker",
   "crates/tswn_ladder",
+  "crates/tswn_winprob_dataset",
 ]
 # 单号排名工具依赖独立校准数据，暂不参与主 workspace 构建与测试。
 exclude = ["crates/tswn_name_ranker"]
