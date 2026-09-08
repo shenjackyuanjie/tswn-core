@@ -213,6 +213,26 @@ uv run scripts/tswn_diff.py round --case-id MESSAGE_ID
 
 所有子命令的完整参数由 `python scripts/tswn_diff.py <rate|pf|round> --help` 查看。`round` 还需要 Bun 和可用的 `md5.js`；主 md5 路径失败时会使用 `--md5-fallback`。
 
+## md5_winner_probe.cjs
+
+Node 脚本，用于核对 legacy `md5.js` 的判胜语义：只在内存中对源码打补丁，在
+`Grp.dj`（移出存活）与 `Grp.aZ`（复活 / 加入存活）里记录真实存活队伍数、`Q`
+（`Engine.y.a.Q`，即 Rust 侧 `alive_group_count`）以及判胜时使用的比较值。
+
+典型用法：
+
+- `node scripts/md5_winner_probe.cjs ..\fast-namerena\md5.js --case-dir crates/tswn_test/cases/runtime_stress`
+- `node scripts/md5_winner_probe.cjs ..\fast-namerena\md5.js --names tests/sqp5900.txt --battles 10000`
+
+参数：
+
+- 第一个位置参数：`md5.js` 路径（本仓库根目录的 `md5.js` 与 `fast-namerena/md5.js` 代码相同，只差版本号常量）
+- `--case-dir DIR`：逐个跑目录下的 `*.txt` 对局输入
+- `--names PATH`：从名字池按 2v2v2 抽样，配合 `--battles N` 指定局数（默认 2000）
+
+输出为 JSON，包含清空次数、复活次数、`q_stale_after_wipe`、`q_eq_1_but_two_teams_alive`、
+`winner_with_mismatched_counts` 与残留样本。结论与解读见 [判胜语义](../docs/mechanics/winner.md)。
+
 ## bun_profile_trace.js
 
 Bun 脚本，用于对 tswn-md5 模块进行 profile trace。
