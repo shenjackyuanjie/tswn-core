@@ -83,7 +83,9 @@ target/release/tswn-winprob-dataset.exe bench --out target/winprob-demo `
   --matchups 10 --games-per-matchup 20 --seed demo
 ```
 
-两条子命令都不修改数据。10k/100k 规模的实际结果见
+`stats` 只读已提交的数据分片；`bench` 会在 `--out` 指定目录内运行 `generate`/`validate`，**会写入数据**。
+首次生成可以使用新目录或已有空目录；已有 `manifest.json` 时需要 `--resume`，且输入、配置和可执行文件摘要必须匹配，否则应换目录。非空但没有 manifest 的目录不能通过 `--resume` 接续。
+10k/100k 规模的实际结果见
 [winprob 数据集生成规模基线](../../docs/perf/reports/winprob-dataset-scale-baseline.md)。
 
 ## Python 读取
