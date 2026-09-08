@@ -34,6 +34,8 @@
 
 ### BattleSession（正式对局 API）
 
+Runtime error 后会话进入 sticky failure（poisoned）：`is_failed() = true`，`is_done() = false`，`result()` 与 `stop_reason()` 为 None / null，`status()` 仍为 running，不是 truncated。`is_done()` 只表示已产生正常 terminal BattleResult；后续 `next_frame()` 返回同一错误 code 和 message。调用方应停止推进并释放 session；`is_failed()` 是查询方法，不增加 DTO 字段或 BattleStatus 枚举值。
+
 ```js
 const session = new wasm.BattleSession("alpha\n\nbeta", { include_icons: false, max_rounds: 20_000 });
 try {

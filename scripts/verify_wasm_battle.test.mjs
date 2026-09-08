@@ -28,6 +28,7 @@ for (const fixture of fixtures) {
       const session = new wasm.BattleSession(raw, options);
       try {
         assert.equal(session.status(), "running");
+        assert.equal(session.is_failed(), false);
         assert.equal(session.stop_reason(), null);
         assert.equal(session.result(), null);
         const replay = wasm.battle_replay(raw, options);
@@ -42,6 +43,7 @@ for (const fixture of fixtures) {
         for (const [key, value] of Object.entries(result)) assert.deepEqual(value, replay[key], key);
         assert.deepEqual(session.current_states(), result.final_states);
         assert.equal(session.is_done(), true);
+        assert.equal(session.is_failed(), false);
         assert.equal(session.is_finished(), result.finished);
         assert.equal(session.is_truncated(), result.truncated);
         assert.equal(session.status(), result.status);
@@ -81,6 +83,7 @@ test("generated TypeScript declares precise canonical DTOs and methods", () => {
     "next_frame(): BattleReplayFrame | null",
     "result(): BattleResult | null",
     "status(): BattleStatus",
+    "is_failed(): boolean",
     "stop_reason(): BattleStopReason | null",
     "frame_index: number", "round_index: number",
     "export interface BattleResult", "export interface BattleReplayFrame",

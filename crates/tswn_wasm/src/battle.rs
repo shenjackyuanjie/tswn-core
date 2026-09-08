@@ -40,10 +40,43 @@ impl BattleSession {
     #[wasm_bindgen(unchecked_return_type = "BattleStopReason | null")]
     pub fn stop_reason(&self) -> WasmResult<JsValue> { dto_to_js(&self.inner.stop_reason()) }
     pub fn is_done(&self) -> bool { self.inner.is_done() }
+    pub fn is_failed(&self) -> bool { self.inner.is_failed() }
     pub fn is_finished(&self) -> bool { self.inner.is_finished() }
     pub fn is_truncated(&self) -> bool { self.inner.is_truncated() }
     pub fn rounds_advanced(&self) -> usize { self.inner.rounds_advanced() }
     pub fn frames_emitted(&self) -> usize { self.inner.frames_emitted() }
     #[wasm_bindgen(unchecked_return_type = "BattleResult | null")]
     pub fn result(&self) -> WasmResult<JsValue> { dto_to_js(&self.inner.result()) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tswn_core::cli_api::BattleOptions;
+
+    #[test]
+    fn wasm_session_query_exposes_real_sticky_runtime_failure() {
+        let mut session = BattleSession {
+            inner: CoreBattleSession::new("alpha@red+bed2[3000]\n\nbeta@blue", BattleOptions::default()).unwrap(),
+        };
+        assert!(!session.is_failed());
+        session.inner.invalidate_runtime_for_test();
+        let mut previous_error = None;
+        for _ in 0..2 {
+            // 原生测试不能构造 JsValue；经真实 Runtime 失败后调用同一个导出的 boolean query。
+            let error = session.inner.next_frame().unwrap_err();
+            let error = crate::error::cli_api_tswn_error(error);
+            assert_eq!(error.code, "RUNTIME_FAILED");
+            let current = (error.code, error.message);
+            if let Some(previous) = &previous_error {
+                assert_eq!(&current, previous);
+            }
+            previous_error = Some(current);
+            assert!(session.is_failed());
+            assert!(!session.is_done());
+            assert!(!session.is_truncated());
+            assert!(session.inner.result().is_none());
+            assert!(session.inner.stop_reason().is_none());
+        }
+    }
 }

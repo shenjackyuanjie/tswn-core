@@ -120,6 +120,9 @@ typedef enum tswn_battle_stop_reason_t {
 void tswn_battle_options_default(tswn_battle_options_t* options);
 tswn_status_t tswn_battle_session_new(const char* raw_text_utf8, const tswn_battle_options_t* options, tswn_battle_session_t** out_session);
 void tswn_battle_session_free(tswn_battle_session_t* session);
+/* Runtime error 后为 1，result/stop_reason 不存在且后续推进返回相同 sticky error。
+ * 失败不属于 truncated，调用方应停止推进并释放 session。NULL 返回 0，不修改 last_error。 */
+uint8_t tswn_battle_session_is_failed(const tswn_battle_session_t* session);
 tswn_status_t tswn_battle_session_initial_states_json(const tswn_battle_session_t* session, tswn_str_t* out_json);
 tswn_status_t tswn_battle_session_current_states_json(const tswn_battle_session_t* session, tswn_str_t* out_json);
 tswn_status_t tswn_battle_session_next_frame_json(tswn_battle_session_t* session, uint8_t* out_has_frame, tswn_str_t* out_json);

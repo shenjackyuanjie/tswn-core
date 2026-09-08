@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 新增 BattleSession `is_failed()` 查询 sticky Runtime failure；失败没有 result/stop_reason，is_done 仍为 false，不改变 DTO 或状态枚举。
+
 - 新增 BattleSession PyClass / 迭代器与完整 TypedDict；battle_replay 精确返回 BattleReplay，异常暴露统一错误码。
 
 ## [Unreleased]

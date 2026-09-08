@@ -59,6 +59,11 @@ impl BattleSession {
         })
     }
 
+    /// 仅用于测试：破坏 skill handlers，让下一次推进经过真实 Runtime validation 失败。
+    #[cfg(any(test, feature = "battle-test-support"))]
+    #[doc(hidden)]
+    pub fn invalidate_runtime_for_test(&mut self) { self.runner.runtime_mut().skill_handlers = Default::default(); }
+
     pub fn initial_states(&self) -> &[BattlePlayerState] { &self.initial_states }
     pub fn current_states(&self) -> &[BattlePlayerState] { &self.current_states }
     pub fn status(&self) -> BattleStatus {
@@ -69,7 +74,10 @@ impl BattleSession {
         }
     }
     pub fn stop_reason(&self) -> Option<BattleStopReason> { self.stop_reason }
+    /// 是否已产生正常 terminal BattleResult；Runtime failure 不属于正常终止。
     pub fn is_done(&self) -> bool { self.stop_reason.is_some() }
+    /// Runtime error 后为 true；后续推进返回相同错误，调用方应停止推进并释放会话。
+    pub fn is_failed(&self) -> bool { self.failure.is_some() }
     pub fn is_finished(&self) -> bool { self.status() == BattleStatus::Finished }
     pub fn is_truncated(&self) -> bool { self.status() == BattleStatus::Truncated }
     pub fn rounds_advanced(&self) -> usize { self.rounds_advanced }
@@ -536,11 +544,22 @@ mod tests {
             },
         )
         .unwrap();
-        session.runner.runtime_mut().skill_handlers = Default::default();
+        assert!(!session.is_failed());
+        session.invalidate_runtime_for_test();
         // 同时安排一个胜者：无效 Runtime 配置必须具有优先级。
         session.runner.runtime_mut().entities.get_mut(EntityIdx(1)).unwrap().runtime.alive = false;
+        let mut previous_error = None;
         for _ in 0..2 {
             let error = session.next_frame().unwrap_err();
+            assert!(session.is_failed());
+            assert!(!session.is_done());
+            assert_eq!(session.status(), BattleStatus::Running);
+            assert!(!session.is_truncated());
+            let current_error = (error.code().as_str(), error.to_string());
+            if let Some(previous) = &previous_error {
+                assert_eq!(&current_error, previous);
+            }
+            previous_error = Some(current_error);
             assert_eq!(error.code().as_str(), "RUNTIME_FAILED");
             assert_eq!(session.result(), None);
             assert_eq!(session.stop_reason(), None);

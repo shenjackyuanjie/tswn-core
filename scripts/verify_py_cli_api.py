@@ -340,6 +340,7 @@ def verify_battle_session(tswn_py: Any) -> None:
         raw = (fixture_dir / fixture).read_text(encoding="utf-8")
         for budget in [1, 20_000]:
             session = tswn_py.BattleSession(raw, max_rounds=budget)
+            assert_equal(session.is_failed(), False, "new session has no failure")
             assert_equal(session.status(), "running", "initial status")
             assert_equal(session.stop_reason(), None, "initial reason")
             assert_equal(session.result(), None, "initial result")
@@ -358,6 +359,7 @@ def verify_battle_session(tswn_py: Any) -> None:
             assert_equal(session.frames_emitted(), len(frames), "frame count")
             assert_equal(session.rounds_advanced(), result["rounds_advanced"], "round count")
             assert_equal(session.is_done(), True, "terminal")
+            assert_equal(session.is_failed(), False, "normal terminal has no failure")
             assert_equal(session.is_finished(), result["finished"], "finished")
             assert_equal(session.is_truncated(), result["truncated"], "truncated")
             assert_equal(session.status(), result["status"], "status")

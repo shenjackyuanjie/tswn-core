@@ -48,10 +48,44 @@ impl PyBattleSession {
     fn status(&self, py: Python<'_>) -> PyResult<Py<PyAny>> { dto_to_python(py, &self.inner.status()) }
     fn stop_reason(&self, py: Python<'_>) -> PyResult<Py<PyAny>> { dto_to_python(py, &self.inner.stop_reason()) }
     fn is_done(&self) -> bool { self.inner.is_done() }
+    fn is_failed(&self) -> bool { self.inner.is_failed() }
     fn is_finished(&self) -> bool { self.inner.is_finished() }
     fn is_truncated(&self) -> bool { self.inner.is_truncated() }
     fn rounds_advanced(&self) -> usize { self.inner.rounds_advanced() }
     fn frames_emitted(&self) -> usize { self.inner.frames_emitted() }
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> { slf }
     fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> { self.next_frame(py) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn python_session_exposes_real_sticky_runtime_failure() {
+        Python::initialize();
+        Python::attach(|py| {
+            let mut session = PyBattleSession::new("alpha@red+bed2[3000]\n\nbeta@blue", None, false, None).unwrap();
+            session.inner.invalidate_runtime_for_test();
+            let object = Py::new(py, session).unwrap();
+            let object = object.bind(py);
+            assert!(!object.call_method0("is_failed").unwrap().extract::<bool>().unwrap());
+            let mut previous_error = None;
+            for _ in 0..2 {
+                let error = object.call_method0("next_frame").unwrap_err();
+                let code = error.value(py).getattr("code").unwrap().extract::<String>().unwrap();
+                assert_eq!(code, "RUNTIME_FAILED");
+                let current = (code, error.to_string());
+                if let Some(previous) = &previous_error {
+                    assert_eq!(&current, previous);
+                }
+                previous_error = Some(current);
+                assert!(object.call_method0("is_failed").unwrap().extract::<bool>().unwrap());
+                assert!(!object.call_method0("is_done").unwrap().extract::<bool>().unwrap());
+                assert!(object.call_method0("result").unwrap().is_none());
+                assert!(object.call_method0("stop_reason").unwrap().is_none());
+                assert_eq!(object.call_method0("status").unwrap().extract::<String>().unwrap(), "running");
+            }
+        });
+    }
 }

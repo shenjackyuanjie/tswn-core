@@ -58,6 +58,10 @@ pub enum tswn_battle_stop_reason_t {
     TSWN_BATTLE_STOP_NO_PROGRESS = 3,
 }
 
+#[allow(
+    clippy::field_reassign_with_default,
+    reason = "历史 prefix 未包含的未来字段必须保留 core 默认值"
+)]
 unsafe fn read_options(options: *const tswn_battle_options_t) -> FfiResult<BattleOptions> {
     if options.is_null() {
         return Ok(BattleOptions::default());
@@ -146,6 +150,14 @@ pub unsafe extern "C" fn tswn_battle_session_free(session: *mut tswn_battle_sess
     if !session.is_null() {
         unsafe { drop(Box::from_raw(session)) };
     }
+}
+
+/// 查询 sticky Runtime failure；NULL 返回 0，不修改 last_error。
+/// # Safety
+/// session 为 NULL 或存活且可共享借用的句柄。
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tswn_battle_session_is_failed(session: *const tswn_battle_session_t) -> u8 {
+    u8::from(unsafe { session.as_ref() }.is_some_and(|session| session.inner.is_failed()))
 }
 
 /// # Safety
@@ -269,6 +281,55 @@ mod tests {
     use super::*;
     use serde_json::Value;
     use std::ffi::CString;
+
+    #[test]
+    fn c_session_exposes_real_sticky_runtime_failure() {
+        let raw = CString::new("alpha@red+bed2[3000]\n\nbeta@blue").unwrap();
+        let mut handle = ptr::null_mut();
+        unsafe {
+            assert_eq!(tswn_battle_session_is_failed(ptr::null()), 0);
+            assert_eq!(
+                tswn_battle_session_new(raw.as_ptr(), ptr::null(), &mut handle),
+                tswn_status_t::TSWN_OK
+            );
+            assert_eq!(tswn_battle_session_is_failed(handle), 0);
+            (*handle).inner.invalidate_runtime_for_test();
+            let mut previous_error = None;
+            for _ in 0..2 {
+                let mut has = 99;
+                let mut json = tswn_str_t::default();
+                assert_eq!(
+                    tswn_battle_session_next_frame_json(handle, &mut has, &mut json),
+                    tswn_status_t::TSWN_ERR_RUNNER
+                );
+                assert_eq!(tswn_battle_session_is_failed(handle), 1);
+                assert_eq!(has, 0);
+                assert!(json.ptr.is_null() && json.len == 0);
+                let code = crate::tswn_last_error_code();
+                assert_eq!(std::slice::from_raw_parts(code.ptr.cast::<u8>(), code.len), b"RUNTIME_FAILED");
+                crate::tswn_str_free(code);
+                let message = crate::tswn_last_error_message();
+                let text = std::slice::from_raw_parts(message.ptr.cast::<u8>(), message.len).to_vec();
+                crate::tswn_str_free(message);
+                if let Some(previous) = &previous_error {
+                    assert_eq!(&text, previous);
+                }
+                previous_error = Some(text);
+                assert_eq!(
+                    tswn_battle_session_result_json(handle, &mut has, &mut json),
+                    tswn_status_t::TSWN_OK
+                );
+                assert_eq!(has, 0);
+                assert!(json.ptr.is_null() && json.len == 0);
+                let mut reason = tswn_battle_stop_reason_t::TSWN_BATTLE_STOP_WINNER;
+                assert_eq!(tswn_battle_session_stop_reason(handle, &mut reason), tswn_status_t::TSWN_OK);
+                assert_eq!(reason, tswn_battle_stop_reason_t::TSWN_BATTLE_STOP_NONE);
+                assert!(!(*handle).inner.is_done());
+                assert_eq!((*handle).inner.status(), BattleStatus::Running);
+            }
+            tswn_battle_session_free(handle);
+        }
+    }
 
     // 保持独立于 public struct；以后 public struct 扩展也必须接受此历史 caller。
     #[repr(C)]

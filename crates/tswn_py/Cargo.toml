@@ -13,3 +13,6 @@ tswn_core = { path = "../tswn_core", features = ["no_debug", "mimalloc_alloc"] }
 [lib]
 name = "tswn_py"
 crate-type = ["cdylib"]
+
+[dev-dependencies]
+tswn_core = { path = "../tswn_core", default-features = false, features = ["battle-test-support"] }

@@ -26,6 +26,8 @@ png_render = ["dep:png"]
 aux_bins = []
 mimalloc_alloc = ["dep:mimalloc"]
 no_debug = []
+# 仅供绑定的 dev-dependency 注入 Runtime validation 故障，不默认启用。
+battle-test-support = []
 
 [[bin]]
 name = "tswn-cli"

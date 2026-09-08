@@ -11,3 +11,6 @@ tswn_core = { path = "../tswn_core", features = ["no_debug", "mimalloc_alloc"] }
 [lib]
 name = "tswn_capi"
 crate-type = ["cdylib", "staticlib"]
+
+[dev-dependencies]
+tswn_core = { path = "../tswn_core", default-features = false, features = ["battle-test-support"] }

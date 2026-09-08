@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 新增 BattleSession `is_failed()` 查询 sticky Runtime failure；失败没有 result/stop_reason，is_done 仍为 false，不改变 DTO 或状态枚举。
+
 - 正式 BattleSession 与统一 DTO/错误码；battle_replay 收集 session；CLI 新增 fight --jsonl，诊断迁至 runtime diff，移除 raw/--out-raw/!test! 自动路由。
 
 ## [Unreleased]

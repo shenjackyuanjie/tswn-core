@@ -40,6 +40,8 @@ rate = prepared.win_rate(1000)
 
 ## BattleSession
 
+Runtime error 后会话进入 sticky failure（poisoned）：`is_failed() = true`，`is_done() = false`，`result()` 与 `stop_reason()` 为 None / null，`status()` 仍为 running，不是 truncated。`is_done()` 只表示已产生正常 terminal BattleResult；后续 `next_frame()` 返回同一错误 code 和 message。调用方应停止推进并释放 session；`is_failed()` 是查询方法，不增加 DTO 字段或 BattleStatus 枚举值。
+
 `BattleSession(raw, eval_rq=None, include_icons=False, max_rounds=None)` 支持迭代器和 `next_frame()`；初始/当前快照用 `initial_states()` / `current_states()` 获取。`status()`、`stop_reason()`、完成标记、轮次/帧计数和 `result()` 与 [公共 API](../../docs/reference/public-api.md) 一致。终止后 `next_frame()` 返回 None；运行中没有 result。
 
 `max_rounds` 默认 20,000，统计真实 Runtime round，包括空轮；frame_index / round_index 均从零开始。正式 `BattleReplay` / `BattleResult` 等 TypedDict 位于 `_types_battle.pyi`。错误异常携带 core 的稳定 `.code`。

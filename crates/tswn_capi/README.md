@@ -25,6 +25,8 @@
 
 ## BattleSession（ABI 4）
 
+Runtime error 后会话进入 sticky failure（poisoned）：`is_failed() = true`，`is_done() = false`，`result()` 与 `stop_reason()` 为 None / null，`status()` 仍为 running，不是 truncated。`is_done()` 只表示已产生正常 terminal BattleResult；后续 `next_frame()` 返回同一错误 code 和 message。调用方应停止推进并释放 session；`is_failed()` 是查询方法，不增加 DTO 字段或 BattleStatus 枚举值。 C 使用 `tswn_battle_session_is_failed()` 返回 uint8_t（0/1），NULL 返回 0 且不修改 last_error；result 的 has=0，stop_reason=TSWN_BATTLE_STOP_NONE。
+
 `tswn_battle_options_default()` 初始化包含 `struct_size` 的 options，默认 include_icons=0、max_rounds=20,000。`tswn_battle_session_new()` 也接受 NULL options。尺寸小于永久冻结的 V1 最小尺寸、零轮数、非有限 eval_rq 或非 0/1 图标开关会拒绝。
 
 V1 prefix 永久兼容，旧 caller -> 新 library 继续可用：未提供的新尾字段使用 core 默认值，未知尾部由旧 library 忽略。实现只读取冻结的 `BattleOptionsV1`，不能随 public struct 的尺寸增长提高最小要求。

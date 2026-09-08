@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-三端方法保持一致：`initial_states()`、`current_states()`、`next_frame()`、`status()`、`stop_reason()`、`is_done()`、`is_finished()`、`is_truncated()`、`rounds_advanced()`、`frames_emitted()`、`result()`。C 通过对应 JSON / enum 输出参数提供这些状态；计数和完成标记包含在 result JSON 中。
+三端方法保持一致：`initial_states()`、`current_states()`、`next_frame()`、`status()`、`stop_reason()`、`is_done()`、`is_failed()`、`is_finished()`、`is_truncated()`、`rounds_advanced()`、`frames_emitted()`、`result()`。C 通过对应 JSON / enum 输出参数提供这些状态；计数和完成标记包含在 result JSON 中。
 
 | 参数 | 默认值 | 语义 |
 | --- | --- | --- |
@@ -36,6 +36,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 | `truncated` | `max_rounds` / `no_progress` | false | true | 空数组 |
 
 优先级为 Runtime 错误、winner、max_rounds、no_progress。连续无可见进展的轮次达到 `max(1, 当前实体数) * 16` 时停止；该策略只在 core 实现。终止后重复 `next_frame()` 总是返回空；运行中 `result()` 为 null，终止后返回稳定的 `BattleResult`。Runtime 错误以异常/错误码返回，不伪装为截断结果。
+
+Runtime error 后会话进入 sticky failure（poisoned）：`is_failed() = true`，`is_done() = false`，`result()` 与 `stop_reason()` 为 None / null，`status()` 仍为 running，不是 truncated。`is_done()` 只表示已产生正常 terminal BattleResult；后续 `next_frame()` 返回同一错误 code 和 message。调用方应停止推进并释放 session；`is_failed()` 是查询方法，不增加 DTO 字段或 BattleStatus 枚举值。
 
 ## 规范 DTO
 
@@ -92,7 +94,7 @@ WASM 对象 handle 必须显式 `free()`。网页 source 在复制 terminal resu
 
 V1 prefix 的字段顺序、类型和尺寸永久冻结，旧 caller 的已知 prefix 在新 library 中继续有效；新 library 对未提供的新尾字段使用 `BattleOptions::default()` 的默认值，旧 library 忽略未知尾部。未来每个版本都须永久保留其 prefix size 常量；新增字段的 offset 必须至少为 V1_SIZE，禁止复用 V1 tail padding，必要时显式增加 padding / reserved 区域。每个扩展字段按 `struct_size >= field_end_offset` 判断存在性并单独读取，不能读取整个未来 public struct。ABI 保持 4。
 
-`tswn_battle_session_new()` 创建 opaque handle；`tswn_battle_session_initial_states_json()` / `current_states_json()` 返回快照；`next_frame_json()` / `result_json()` 通过 `has` 标志区分有无数据。没有值时输出 `{NULL, 0}`，终止后的重复读取也如此。状态和原因另有 `status()` / `stop_reason()` enum 查询。
+`tswn_battle_session_new()` 创建 opaque handle；`tswn_battle_session_initial_states_json()` / `current_states_json()` 返回快照；`next_frame_json()` / `result_json()` 通过 `has` 标志区分有无数据。没有值时输出 `{NULL, 0}`，终止后的重复读取也如此。状态和原因另有 `status()` / `stop_reason()` enum 查询。`tswn_battle_session_is_failed()` 返回 uint8_t（0/1），NULL 返回 0 且不修改 last_error。失败后 result 的 has=0、stop_reason=TSWN_BATTLE_STOP_NONE。
 
 所有成功返回的 JSON 用 `tswn_str_free()` 释放，handle 用 `tswn_battle_session_free()` 释放。调用方不得并发操作同一 handle。完整可编译示例：[battle_session.c](../../crates/tswn_capi/examples/battle_session.c)。
 

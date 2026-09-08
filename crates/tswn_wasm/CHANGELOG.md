@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 新增 BattleSession `is_failed()` 查询 sticky Runtime failure；失败没有 result/stop_reason，is_done 仍为 false，不改变 DTO 或状态枚举。
+
 - 新增 canonical BattleSession 与 plain JS/TS DTO；旧 FightSession 委托 core；网页改为真实 streaming、两帧预取、显示层昵称图标和性能计时。
 
 ## [Unreleased]
