@@ -1,21 +1,27 @@
 # 更新日志
 
-## 未发布
-
-- 收紧 canonical TypeScript minion kind、update type、tone 和 text part kind 的 literal union，增加源码和生成声明的 contract tests。
-- 修复 legacy FightSession 状态的 owner_id 映射，保留直接 owner，避免误用 root source_id。
-
-- 新增 BattleSession `is_failed()` 查询 sticky Runtime failure；失败没有 result/stop_reason，is_done 仍为 false，不改变 DTO 或状态枚举。
-
-- 新增 canonical BattleSession 与 plain JS/TS DTO；旧 FightSession 委托 core；网页改为真实 streaming、两帧预取、显示层昵称图标和性能计时。
-
 ## [Unreleased]
+
+## [0.5.4] - 2026-09-08
+
+### 新增
+
+- 新增 canonical `BattleSession` 与 plain JS/TS DTO；旧 `FightSession` 保留为委托 core 的兼容包装。
+- `BattleSession.is_failed()` 可查询粘性 Runtime failure；失败时没有 result/stop_reason，`is_done` 仍为 false。
+- show 页面改为真实 streaming：异步帧源、两帧预取、可订阅流控制、逐帧历史回看、显示层昵称与图标隔离，并记录首屏和逐帧性能。
+
+### 变更
+
+- 收紧 canonical TypeScript 的 minion kind、update type、tone 和 text part kind literal union，并为源码声明与生成声明增加 contract tests。
+- 通用错误构造器统一复用 core 的稳定错误码，避免 WASM 包装层自行推断错误分类。
 
 ### 修复
 
 - 同步公共 replay view 的苏生 HP 修复：复活句固定为 `0 -> 0`，回血句从 `0 -> x`，show 只渲染回复段。
 - 同步实体转化句的结构化文本修复：“`[2]变成了[1]`”现在同时提供旧对象与新对象的 `player` part，召唤亡灵时被转化对象恢复普通名字效果。
 - 修复白天模式角色详情面板文字与浅色背景同为白色的问题；详情名称、说明文字和属性值现在使用主题变量保持可读对比度。
+- 修复兼容 `FightSession` 状态的 `owner_id` 映射，保留直接 owner，避免误用 root `source_id`。
+- 同步 core 的批量判胜修复：队伍被清空后重新复活时，`batch_rate()`、`pair_rate()` 及带权变体不再误判胜者。
 
 ## [0.5.3] - 2026-09-05
 

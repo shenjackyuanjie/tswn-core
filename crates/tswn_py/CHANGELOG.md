@@ -1,16 +1,19 @@
 # 更新日志
 
-## 未发布
-
-- 新增 BattleSession `is_failed()` 查询 sticky Runtime failure；失败没有 result/stop_reason，is_done 仍为 false，不改变 DTO 或状态枚举。
-
-- 新增 BattleSession PyClass / 迭代器与完整 TypedDict；battle_replay 精确返回 BattleReplay，异常暴露统一错误码。
-
 ## [Unreleased]
+
+## [0.5.3] - 2026-09-08
 
 ### 新增
 
 - 新增 `batch_rate_factored()` 与 `pair_rate_factored()`，支持按与靶子组等长的正数权重数组进行加权计算。
+- 新增 `BattleSession` PyClass、迭代器和完整 TypedDict；`battle_replay()` 精确返回 `BattleReplay`，异常暴露统一错误码。
+- `BattleSession.is_failed()` 可查询粘性 Runtime failure；失败时没有 result/stop_reason，`is_done` 仍为 false。
+
+### 修复
+
+- 同步 core 的批量判胜修复：队伍被清空后重新复活时，`batch_rate()`、`pair_rate()` 及带权变体不再误判胜者。
+- 同步公共 replay view 的苏生 HP 与亡灵转化文本修复；`battle_replay()` 和 BattleSession 迭代结果保持一致。
 
 ## [0.5.2] - 2026-08-31
 

@@ -4547,7 +4547,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_capi"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -4556,7 +4556,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_core"
-version = "0.5.3"
+version = "0.6.0"
 dependencies = [
  "clap",
  "foldhash",
@@ -4606,7 +4606,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_openbox"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "eframe",
  "rfd",
@@ -4618,7 +4618,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_py"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "pyo3",
  "serde",
@@ -4639,7 +4639,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_wasm"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",

@@ -1,12 +1,20 @@
 # 更新日志
 
-## 未发布
-
-- 新增 BattleSession `is_failed()` 查询 sticky Runtime failure；失败没有 result/stop_reason，is_done 仍为 false，不改变 DTO 或状态枚举。
-
-- 正式 BattleSession 与统一 DTO/错误码；battle_replay 收集 session；CLI 新增 fight --jsonl，诊断迁至 runtime diff，移除 raw/--out-raw/!test! 自动路由。
-
 ## [Unreleased]
+
+## [0.6.0] - 2026-09-08
+
+### ⚠️ 破坏性变更
+
+- `tswn-cli` 删除顶层 `raw`、`diff` 和 `fight --out-raw`；诊断入口迁至 `runtime diff`，机器可读的逐帧输出改用 `fight --jsonl`，`!test!` 不再自动切换基准路径。
+- `CliApiError::Runner` 更名为 `RunnerInit`，并新增 `InvalidArgument`、`UnsupportedOption`、`Internal` 等稳定分类；穷举匹配公开错误枚举的 Rust 调用方需要同步调整。
+
+### 新增
+
+- 新增正式 `BattleSession`、统一战斗 DTO 与公共错误码；`battle_replay()` 改为收集同一会话状态机，CLI 的普通输出与 JSONL 流也复用同一推进语义。
+- `BattleSession::is_failed()` 暴露粘性 Runtime failure；失败时没有 result/stop_reason，`is_done()` 仍为 false，调用方可明确区分未完成与执行失败。
+- 新增只读类型化机制状态、稳定技能映射与实体引用校验，并提供不构造回放和展示快照的 `BattleModelSession`，供数据生成等无界面调用方逐帧导出模型状态。
+- 新增 `cli_api::to_diy_prepared()`，允许直接导出已构建角色，避免调用方为分类和导出重复解析、构建同一角色。
 
 ### 修复
 
@@ -17,6 +25,10 @@
   判胜定义、源码定位与实测见 `docs/mechanics/winner.md`。
 - 修复公共 replay view 在苏生帧沿用动作前快照 HP 的问题：复活句固定重置目标为 `0 -> 0`，后续回复句正确从 `0` 推演回血。
 - 修复“召唤亡灵”中的“`[2]变成了[1]`”将旧对象误输出为 `data` 的问题；转化句现为旧对象和新对象分别输出 `player` part，保留旧对象的普通名字展示。
+
+### 性能与诊断
+
+- 受伤被动技能计划复用固定容量缓冲，减少常见战斗热路径的临时堆分配；新增 `perf_runtime` 基准入口和 AMD uProf 采样流程，正式 `no_debug` 路径不引入诊断分支。
 
 ## [0.5.3] - 2026-09-01
 
