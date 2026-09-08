@@ -5,6 +5,12 @@
 从仓库根目录运行时，推荐命令形式为 `uv run scripts/<name>.py ...`（Windows 侧使用 `uv` 管理环境），
 也可用 `python scripts/<name>.py ...`（需确保已激活虚拟环境）。
 
+## read_winprob_dataset.py
+
+使用 `pyarrow` 读取战斗状态 Parquet，只向调用方提供 `state` 和 `winner_team_index`，默认排除空标签。
+先用 `tswn-winprob-dataset validate` 校验完整性，再运行 `python scripts/read_winprob_dataset.py target/winprob-demo`。
+生成命令和数据契约见 [生成器说明](../crates/tswn_winprob_dataset/README.md)。
+
 ## check_runtime_release.py
 
 验证主 Runtime 的 release 独立性与行为回归：
