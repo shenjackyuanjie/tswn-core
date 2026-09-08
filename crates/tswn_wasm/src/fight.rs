@@ -17,7 +17,7 @@ fn state_from_core(state: &BattlePlayerState) -> PlayerState {
         display_name: state.display_name.clone(),
         display_index: state.display_index,
         icon_png_base64: state.icon_png_base64.clone(),
-        owner_id: state.source_id,
+        owner_id: state.owner_id,
         minion_kind: match state.minion_kind {
             Some("clone") => Some(MinionKindView::Clone),
             Some("summon") => Some(MinionKindView::Summon),
@@ -229,6 +229,50 @@ pub fn fight_summary_impl(raw_input: String, options: FightOptions) -> WasmResul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_player_state_preserves_direct_owner_id() {
+        let state = BattlePlayerState {
+            id: 9,
+            team_index: 0,
+            input_team_index: Some(0),
+            owner_id: Some(7),
+            source_id: Some(3),
+            id_name: "minion".into(),
+            id_key_name: "minion".into(),
+            icon_key: "minion".into(),
+            display_name: "minion".into(),
+            display_index: 0,
+            base_name: "minion".into(),
+            player_type: "minion".into(),
+            minion_kind: Some("clone"),
+            icon_png_base64: None,
+            hp: 100,
+            max_hp: 100,
+            magic_point: 0,
+            move_point: 0,
+            attack: 0,
+            defense: 0,
+            speed: 0,
+            agility: 0,
+            magic: 0,
+            resistance: 0,
+            wisdom: 0,
+            point: 0,
+            all_sum: 0,
+            name_factor: 1.0,
+            at_boost: 1.0,
+            attract: 0.0,
+            frozen: false,
+            alive: true,
+            active: true,
+            status_labels: Vec::new(),
+        };
+        let original = state.clone();
+        let legacy = state_from_core(&state);
+        assert_eq!(legacy.owner_id, Some(7));
+        assert_eq!(state, original);
+    }
 
     #[test]
     fn fight_session_uses_runtime_and_keeps_parts_only_clip_contract() {
