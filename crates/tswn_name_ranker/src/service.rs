@@ -8,12 +8,13 @@ use std::time::Instant;
 use std::{fs, process::Command};
 
 use anyhow::Context;
-use tswn_core::{engine::storage::Storage, player::Player};
+use tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ;
 
 use crate::{
     abcp_calibration::Calibrator,
     db::Db,
     model::{NameRow, RecomputeRequest, Status, TargetRow},
+    name_profile::{build_player, export_player, player_text_type},
     parser, ranker,
 };
 
@@ -51,11 +52,9 @@ impl Service {
     pub fn add_names(&self, text: &str) -> anyhow::Result<usize> {
         let mut count = 0;
         for raw in parser::parse_names(text)? {
-            let storage = Storage::new_arc();
-            let mut player = Player::new_from_namerena_raw(raw.clone(), storage).with_context(|| format!("解析号：{raw}"))?;
-            player.build();
+            let player = build_player(&raw).with_context(|| format!("解析号：{raw}"))?;
             let text_type = player_text_type(&player);
-            let diy = player.to_ol_json_with_minions();
+            let diy = export_player(&raw).with_context(|| format!("导出号：{raw}"))?;
             if self.db.add_name(&raw, &diy, &text_type)? {
                 count += 1;
             }
@@ -440,13 +439,8 @@ impl Service {
                 vec![names[i].1.clone(), names[j].1.clone()],
                 vec![target.left_name.clone(), target.right_name.clone()],
             ];
-            let summary = tswn_core::win_rate::groups_win_rate(
-                &groups,
-                WIN_RATE_SAMPLES,
-                tswn_core::player::eval_name::WIN_RATE_EVAL_RQ,
-                1,
-            )
-            .with_context(|| format!("评分 {} + {} 对 {}", names[i].0.raw, names[j].0.raw, target.raw))?;
+            let summary = tswn_core::win_rate::groups_win_rate(&groups, WIN_RATE_SAMPLES, WIN_RATE_EVAL_RQ, 1)
+                .with_context(|| format!("评分 {} + {} 对 {}", names[i].0.raw, names[j].0.raw, target.raw))?;
             weighted += target.weight * summary.win_rate_percent();
         }
         let score = weighted / weight_sum;
@@ -579,80 +573,13 @@ fn format_duration(seconds: f64) -> String {
     }
 }
 
-fn player_text_type(player: &Player) -> String {
-    const LABELS: [&str; 35] = [
-        "火球", "冰冻", "雷击", "地裂", "吸血", "投毒", "连击", "会心", "瘟疫", "命轮", "狂暴", "魅惑", "加速", "减速", "诅咒",
-        "治愈", "苏生", "净化", "铁壁", "蓄力", "聚气", "背刺", "血祭", "分身", "幻术", "防御", "守护", "反弹", "护符", "护盾",
-        "反击", "吞噬", "召灵", "垂死", "隐匿",
-    ];
-    let effective = player_effective_skill_values(player);
-    let mut skills = (0..35)
-        .filter_map(|id| (effective[id] >= 25.0).then_some((id, effective[id])))
-        .collect::<Vec<_>>();
-    skills.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    if skills.is_empty() {
-        "高八维".into()
-    } else {
-        skills.into_iter().map(|(id, _)| LABELS[id]).collect::<Vec<_>>().join("")
-    }
-}
-
-fn player_effective_skill_values(player: &Player) -> [f64; 35] {
-    let storage = player.skill_storage();
-    let mut values = [0.0; 35];
-    let mut action_mass = 1.0;
-    let mut kill_mass = 1.0;
-
-    for &skill_id in storage.skill.iter().take(16) {
-        if skill_id >= 35 {
-            continue;
-        }
-        let level = storage.skill_by_id(skill_id).level() as f64;
-        if skill_id == 9 || skill_id == 16 {
-            values[skill_id] = action_mass * level;
-            action_mass *= 1.0 - level * 0.3 / 128.0;
-        } else if skill_id == 18 {
-            values[skill_id] = action_mass * level;
-            action_mass *= 1.0 - level * 0.35 / 128.0;
-        } else if skill_id == 19 || skill_id == 23 {
-            values[skill_id] = action_mass * level;
-            action_mass *= 1.0 - level * 0.6 / 128.0;
-        } else if skill_id == 20 || skill_id == 22 {
-            values[skill_id] = action_mass * level;
-            action_mass *= 1.0 - level * 0.7 / 128.0;
-        } else if skill_id < 25 {
-            values[skill_id] = action_mass * level;
-            action_mass *= 1.0 - level / 128.0;
-        } else if skill_id == 31 || skill_id == 32 {
-            values[skill_id] = kill_mass * level;
-            kill_mass *= 1.0 - level / 128.0;
-        } else {
-            values[skill_id] = level;
-        }
-    }
-
-    values[29] = if values[29] <= 70.0 {
-        values[29] * values[29] / 70.0
-    } else {
-        values[29] * 2.0 - 70.0
-    };
-    // Text-Type 的被动技能采用等效熟练度的 85%，再与统一的 25 阈值比较。
-    for value in &mut values[25..35] {
-        *value *= 0.85;
-    }
-    values
-}
-
 fn refresh_text_types_if_needed(db: &Db) -> anyhow::Result<()> {
     if db.text_type_version()?.as_deref() == Some(TEXT_TYPE_VERSION) {
         return Ok(());
     }
     let mut updates = Vec::new();
     for (row, _) in db.names()? {
-        let storage = Storage::new_arc();
-        let mut player = Player::new_from_namerena_raw(row.raw.clone(), storage)
-            .with_context(|| format!("解析已有号以更新 Text-Type：{}", row.raw))?;
-        player.build();
+        let player = build_player(&row.raw).with_context(|| format!("解析已有号以更新 Text-Type：{}", row.raw))?;
         updates.push((row.id, player_text_type(&player)));
     }
     db.replace_text_types(&updates, TEXT_TYPE_VERSION)

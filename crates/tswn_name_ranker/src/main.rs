@@ -1,6 +1,7 @@
 mod abcp_calibration;
 mod db;
 mod model;
+mod name_profile;
 mod parser;
 mod ranker;
 mod service;
