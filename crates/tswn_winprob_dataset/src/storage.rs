@@ -62,6 +62,14 @@ fn portable_field(field: &FieldRef) -> FieldRef {
     Arc::new(field.as_ref().clone().with_data_type(data_type))
 }
 
+/// 单个行组的最大行数。
+///
+/// 行组只用行数控制，不能用 `max_row_group_bytes`：`SampleRow.state` 是约 450 个叶子列的
+/// 超宽嵌套结构，parquet 的字节估算按每个列写入器的缓冲容量累加，一次 append（一局 8 个样本）
+/// 就会被判为超过 16 MiB，于是每局都新开一个行组。实测每局一个行组时列块数量放大到
+/// 每分片约 11 万个，压缩比从约 20 倍降到 1.28 倍，写入与回读都被拖慢两个数量级。
+pub const ROW_GROUP_ROWS: usize = 1024;
+
 pub struct TableWriter<T> {
     writer: ArrowWriter<File>,
     fields: Vec<FieldRef>,
@@ -73,8 +81,8 @@ impl<T: Serialize + DeserializeOwned> TableWriter<T> {
         let fields = fields::<T>()?;
         let properties = WriterProperties::builder()
             .set_compression(Compression::ZSTD(ZstdLevel::try_new(3)?))
-            .set_max_row_group_row_count(Some(10_000))
-            .set_max_row_group_bytes(Some(16 * 1024 * 1024))
+            .set_max_row_group_row_count(Some(ROW_GROUP_ROWS))
+            .set_max_row_group_bytes(None)
             .build();
         let writer = ArrowWriter::try_new(File::create(path)?, Arc::new(Schema::new(fields.clone())), Some(properties))?;
         Ok(Self {
@@ -91,9 +99,6 @@ impl<T: Serialize + DeserializeOwned> TableWriter<T> {
         let batch = serde_arrow::to_record_batch(&self.fields, &rows)?;
         self.writer.write(&batch)?;
         self.rows += rows.len();
-        if self.writer.memory_size() >= 16 * 1024 * 1024 {
-            self.writer.flush()?;
-        }
         Ok(())
     }
     pub fn finish(self) -> Result<usize> {
