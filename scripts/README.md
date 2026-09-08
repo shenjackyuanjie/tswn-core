@@ -11,6 +11,16 @@
 先用 `tswn-winprob-dataset validate` 校验完整性，再运行 `python scripts/read_winprob_dataset.py target/winprob-demo`。
 生成命令和数据契约见 [生成器说明](../crates/tswn_winprob_dataset/README.md)。
 
+## measure_encoder_capacity.py
+
+按 [FeatureEncoder 规格](../docs/design/feature-encoder-spec.md) 第 4 节的计费公式，统计数据集每样本的容量峰值
+（模板数、lane 总数、五类 lane list 条目、世界列表、状态、保护链、槽条目与 X 记录数），
+用于冻结 profile 的 `H_max` / `L_max` / `Q_max` / `V_max` / `X_max`。只读，不修改数据集。
+
+```powershell
+python scripts/measure_encoder_capacity.py --dataset target/winprob-100k --out target/caps-100k.json
+```
+
 ## check_runtime_release.py
 
 验证主 Runtime 的 release 独立性与行为回归：
