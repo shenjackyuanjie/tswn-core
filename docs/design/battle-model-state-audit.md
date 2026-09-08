@@ -17,7 +17,7 @@
 | `StateStore` | 保留所有条目、运行期注册顺序、下次注册游标和压缩状态位；压缩的 Shield/Protect/Upgrade/Corpse/Minion 不会因不在 entries 中而丢失 |
 | `StateEntry` | 保留 legacy key、extension state ID、hook mask、priority、注册顺序及完整 payload |
 | `StatePayload` | 16 个分支穷尽匹配，含毒、魅惑、加速、Boss 感染记录、恢复标志、一拳超人命中者/使魔关系等；Rust 增加新分支会使投影匹配无法编译 |
-| `EntitySlotStorage` | 按已审计注册槽导出 Bool/I64/U64/模板；包括召唤计数、记忆目标、蓝图及延迟蓝图参数 |
+| `EntitySlotStorage` | 按已审计注册槽导出 Bool/I64/U64/模板；包括召唤计数、记忆目标、蓝图及延迟蓝图参数；逐槽语义与张量通道见 [FeatureEncoder 规格 §3.2](feature-encoder-spec.md) |
 | `TemplateSlotStorage` / `BattleSlotStorage` | 导出实际存在的机制值，保留槽 ID；未知文本不能静默进入特征 |
 | `PhaseScheduler` | 保留 Minimal/LegacyStep 模式和待处理 ice_release_events；读取不清空事件 |
 | `EffectQueue` | 边界必须排空；非空时拒绝导出，不将中途执行队列伪装为完整帧末状态 |

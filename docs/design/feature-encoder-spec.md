@@ -81,7 +81,7 @@
 | Skills `post_action_after_states`；Deferred `state_cursor, fixed_lane` | `list(deferred)` 的序号、精确 cursor 和 fixed-lane 引用 | M:406–408、417 |
 | StateEntry `legacy_order_key, extension_state_id, priority, registration_order, runtime_registration_order` | `state_cat[0,1]`、`state_num[0]`、两个精确 `order_key`；`state_cat_present[0,1]` 分别为真实 state 存在性和 extension Option presence | M:429–434 |
 | StateEntry `hook_mask, payload` | `state_hook[0..63]`；kind 分类和通用 payload 槽，见第 8 节 | M:431、435 |
-| Slot `slot_id, bool_value, i64_value, u64_value, template` | `slot_index=(scope,owner,slot_id,value_type)`；`slot_id` 经第 4 节重映射，四分支 presence 进 `slot_field_present`；值与语义分派见第 14 节，不能按存储类型猜 U64 的含义 | M:420–425、56–70 |
+| Slot `slot_id, bool_value, i64_value, u64_value, template` | `slot_index=(scope,owner,slot_id,value_type)`；`slot_id` 经第 4 节重映射，四分支 presence 进 `slot_field_present`；值与语义分派见第 14 节与第 3.2 节白名单，不能按存储类型猜 U64 的含义 | M:420–425、56–70 |
 | Payload `kind` 及可空载荷字段（Boss 分支除外） | `state_kind` 与第 8 节逐字段表；不丢弃低频分支 | M:528–625 |
 
 根/world 列表的长度、实体存在数、模板和记录存在性均由对应 mask 表达；额外 `global_num[5]=entities.len()/15`，与 `entity_slot_count/16` 一样只用第 5 节固定计数尺度。嵌套模板通过同一模板表编码，不用第二套属性／技能规则。没有被表中规则消费的已知字段必须导致字段覆盖测试失败。
@@ -115,6 +115,27 @@
 | `ScoreCloneSkillBoostPlan`（C:63） | `initially_boosted_mask`、`slot_boosts: [Option<(u8,u8)>;2]` | 计划为 Some 时必有 `clone_initial_boosted_mask` 的 X bits 记录，即使值为 0；每个 `slot_boosts[i]` 为 Some 才同时产生该 i 的两个 X num 记录，None 时该对都不存在 |
 
 `CloneBuildData` 及其两个嵌套类型的字段已公开（`pub`），encoder 直接读取，不需要投影访问器；相关访问器 `derive_stats`（C:182）、`name_factor`（C:208）、`all_sum`（C:211）只作交叉校验。任何复合类型新增叶子都必须同步本表，否则字段覆盖测试失败。
+
+### 3.2 槽语义白名单（默认注册表）
+
+默认注册表只登记 7 个实体槽、3 个全局模板槽和 0 个 battle 槽（J:265–277），而 encoder 只接受该注册表（M:83），所以下表对支持域是封闭的。**同一个 `U64` 存储槽在本仓库里同时表示实体引用、计数和浮点 bit 三种语义**，因此不能按 `SlotValue` 的存储类型推断用途；逐槽核对结果如下。
+
+| scope | slot_id | export_name | 存储类型 | 机制语义 | encoder 通道 |
+| --- | --- | --- | --- | --- | --- |
+| entity | 0 | `core.entity.shadow_blueprint` | `PlayerTemplate` | 幻影蓝图缓存（预览结果） | `slot_template` → 同一模板表 |
+| entity | 1 | `core.entity.summon_blueprint` | `PlayerTemplate` | 使魔蓝图缓存 | 同上 |
+| entity | 2 | `core.entity.zombie_blueprint` | `PlayerTemplate` | 丧尸蓝图缓存 | 同上 |
+| entity | 3 | `core.entity.lazy_blueprint_rq` | `U64` = `f64::to_bits(eval_rq)` | 延迟蓝图构造用的运行配置值，不是战斗机制状态 | **排除数值**：整份数据同一常量，且存在性已被 `template_bool[4]` 覆盖；若保留只能作控制字段并先 `from_bits` |
+| entity | 4 | `core.entity.summoned_entity` | `U64` = `EntityIdx.0` | “记住的召唤物”实体引用 | X 的 `slot_entity_ref`（重映射），**禁止当数值** |
+| entity | 5 | `core.entity.minion_counter` | `U64` 计数 | 召唤／分身命名计数器，单调递增 | `slot_value` 走 `N_f`，原值另走 `raw.slot.u64_value` |
+| entity | 6 | `custom.bed2.summoned_entity` | — | 已登记但全仓无读写 | 恒缺失；若将来写入按 entity ref 处理 |
+| template | 0 | `custom.bed2.summon_template` | `PlayerTemplate` | bed2 使魔模板 | `slot_template` |
+| template | 1 | `custom.bed2.shadow_template` | `PlayerTemplate` | bed2 幻影模板 | `slot_template` |
+| template | 2 | `custom.bed2.zombie_template` | `PlayerTemplate` | bed2 丧尸模板 | `slot_template` |
+
+证据：槽登记 J:265–277；蓝图槽写入 `K:init:209–223`、`K:seed:146`，读取 `K:seed:169`、`K:summon:179`、`K:zombie:62`、`K:handlers:47/137`；延迟蓝图 rq 写入 `K:init:172–181`，值来自 `K:prepared:312/359` 的 `eval_rq.to_bits()`；记忆召唤物写入 `K:summon:93`、`K:handlers:124`，读取 `K:summon:12–25/45–50`；命名计数写入 `K:summon:283–293`、`K:minions:11–17`，读取 `K:skills_control:360–370`；bed2 模板槽写入 `K:import:203–221`。
+
+未登记的槽、未知 export_name 或存储类型与本表不符时返回 `UnknownSlotSemantics{path}`（第 14 节）；新增槽必须先更新本表并重算 `Q_max`。
 
 ## 4. 张量契约
 
@@ -397,7 +418,7 @@ features、精确旁路、labels、审计关联表四个清单分开：labels �
 | 3 | `u64`：u64_value | 同样先查语义白名单；不能仅因存储为 U64 就当连续数值。浮点 bit 语义先 from_bits 后进 slot_value，并另走 raw；实体 ref 与标志 bit 走 X |
 | 4 | `template`：template | `slot_template` 指向同一模板表，`slot_template_present=1`；不向 slot_value 写模板编号 |
 
-每个真实槽行的 `value_type` 唯一对应 `slot_field_present[value_type-1]=1`；`slot_value_present` 仅对 bool／标量分派为 1，`slot_template_present` 等于第四路分支 presence。引用／标志分派的 slot_value 为 0/presence=0；未用 slot_template 为 -1/presence=0。四个存储分支已定，**每个 slot_id 的整数机制语义仍是第 16 节待确认项**；manifest 中缺少该语义时返回 `UnknownSlotSemantics{path}`，不得以本表冒充已审计所有槽。
+每个真实槽行的 `value_type` 唯一对应 `slot_field_present[value_type-1]=1`；`slot_value_present` 仅对 bool／标量分派为 1，`slot_template_present` 等于第四路分支 presence。引用／标志分派的 slot_value 为 0/presence=0；未用 slot_template 为 -1/presence=0。四个存储分支与默认注册表每个 `slot_id` 的整数机制语义均已冻结，逐槽白名单见第 3.2 节；未登记槽、未知 export_name 或与本表不符时返回 `UnknownSlotSemantics{path}`，不得按存储类型冒充已审计所有槽。
 
 **field_class 共用一张冻结字段表，list 与 X 不是两个独立编号空间。** 0 永远保留为 PAD；字段表同时登记编号、完整字段路径、owner_scope、target／值类型与可空条件。已发布编号只能追加，不能改义、回收或跨段复用；以下编号是本稿契约分配，不再使用“暂定 1–7”让实现自行决定。
 
@@ -492,7 +513,7 @@ git diff --check
 
 | 问题 | 选项 | 建议及冻结条件 |
 | --- | --- | --- |
-| 槽编号及整数语义 | 按注册表白名单分 num/ref/bits；或按 U64 一律数值化 | 建议白名单；M:56 仅证明存储类型，未给每个 slot_id 含义，冻结前逐槽核对 |
+| 槽编号及整数语义 | 按注册表白名单分 num/ref/bits；或按 U64 一律数值化 | **已按默认注册表逐槽核对，结论见第 3.2 节**。`U64` 槽同时存在实体引用（`summoned_entity`）、计数（`minion_counter`）与浮点 bit（`lazy_blueprint_rq`）三种语义，按存储类型数值化会在第一类上泄漏原始实体编号；自定义注册表不在支持域（M:83），新增槽须先更新 3.2 表并重算 `Q_max` |
 | 顺序、身份和阵营域 | 保留精确键并补查消费者；或假定所有编号都是下标 | 建议前者；确认各技能顺序整数域、PlrId 是否参与排序／出生、charm.group_id 与 clan/runtime team 是否同域，不能猜 |
 | 浮点产生式 | 尺度按 train 实测拟合（已定）；仍须核对各 `*_bits` 的 f64 产生式与 millionths 关系 | 无观测即 `MissingCalibration`，不登记人工常数；不假定 `bits == millionths/1e6` |
 | 容量 profile | baseline-32；或补测后单独推出更大 profile | 建议先评估第 4 节修订的 E/T/R/H/L/S/Q/V/X=32/32/32/512/4096/32/256/32768/65536 预算，实体／蓝图／slot／X 峰值及内存全量统计后冻结；不使用静默截断 |
@@ -534,3 +555,4 @@ git diff --check
 | S 统计口径 | `crates/tswn_winprob_dataset/src/stats.rs:45`（Series）、`:130`（collect）、`:187`（实体／状态／技能计数） |
 | F 抽样 | `crates/tswn_winprob_dataset/src/sampling.rs:5`（select，排终局与最终轮数分桶） |
 | G 生成 | `crates/tswn_winprob_dataset/src/generate.rs:138`（write_shard）、`:186`（generate_battle）、`:202`（标签）、`:211`（样本） |
+| K 槽语义证据 | 前缀均为 `crates/tswn_core/src/`：`runtime/prepared_init/init.rs`（init）、`runtime/prepared_init/seed.rs`（seed）、`runtime/plain_summon.rs`（summon）、`runtime/plain_zombie.rs`（zombie）、`runtime/handlers/mod.rs`（handlers）、`runtime/handlers/minions.rs`（minions）、`runtime/combat/skills_control.rs`（skills_control）、`runtime/profile/import.rs`（import）、`runtime/prepared_init.rs`（prepared） |
