@@ -12,6 +12,12 @@
 
 ### 性能
 
+- 依赖 `tswn_core` 时启用 `no_debug` 与 `mimalloc_alloc`，与 `tswn_wasm`、`tswn_capi` 等调用方保持一致；逐分片 `complete.json` 摘要与关闭该特性的构建完全一致。
+- 同一批 1000 局 2v2v2 的 8 线程生成由 14.7 s 降到 2.0 s，5000 局由 88 s 降到 11.7 s。主要来源是 `tswn_core` 不再逐 tick 读环境变量（见该 crate 更新日志），以及本 crate 的下述改动。
+- `active-battle.json` 改为只在失败或 panic 时落盘。此前每局写一次并 `sync_all`，1000 局就是 1000 次卷级刷盘；多 worker 并行时这些刷盘互相排队。
+- 样本行攒到 256 行再转一次 `RecordBatch`，摊薄约 450 列嵌套结构的固定转换开销。
+- `validate_dataset` 按分片并行；`generate` 覆盖全部分片时直接合并各 worker 已回读校验的分片摘要，不再让整库 Parquet 重解一遍。续跑仍有完整校验。
+- 分片数少于可用逻辑 CPU 时打印提示，说明并行度受 `--battles-per-shard` 限制。
 - 按目标行数切分 Parquet 行组，降低大分片的峰值内存并保留稳定分片边界。
 - 记录 10k/100k 规模生成和校验基线，供后续编码器与训练管线比较。
 

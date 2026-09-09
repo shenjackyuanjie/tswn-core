@@ -23,7 +23,7 @@ pub struct Summary {
 }
 
 impl Summary {
-    fn add(&mut self, other: Self) {
+    pub(crate) fn add(&mut self, other: Self) {
         self.battles += other.battles;
         self.samples += other.samples;
         self.resolved += other.resolved;
@@ -43,6 +43,44 @@ impl Summary {
 
 pub fn validate_dataset(out: &Path) -> Result<Summary> {
     let config: DatasetConfig = storage::read_json(&out.join("manifest.json"))?;
+    let total = check_config(&config)?;
+    let shard_count = total.div_ceil(config.battles_per_shard);
+    check_layout(out, shard_count)?;
+    let mut summary = Summary::default();
+    // 逐分片校验彼此独立，且每一步都要重新解 Parquet 的宽嵌套状态；串行回读在
+    // 8 分片规模下要 3.2 s，占 `generate` 总墙钟的一半以上，因此按分片并行。
+    let workers = std::thread::available_parallelism().map_or(1, usize::from).min(shard_count.max(1));
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let results = std::sync::Mutex::new(Vec::<(usize, Result<Summary>)>::with_capacity(shard_count));
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| {
+                loop {
+                    let index = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    if index >= shard_count {
+                        break;
+                    }
+                    let (first, end) = crate::generate::range(&config, index, total);
+                    let dir = out.join(format!("shard-{index:06}"));
+                    let result = storage::check_receipt(&dir, first, end)
+                        .with_context(|| format!("检查分片 {index}"))
+                        .and_then(|receipt| validate_shard(&dir, &config, &receipt));
+                    results.lock().unwrap_or_else(|poison| poison.into_inner()).push((index, result));
+                }
+            });
+        }
+    });
+    let mut collected = results.into_inner().unwrap_or_else(|poison| poison.into_inner());
+    collected.sort_by_key(|(index, _)| *index);
+    for (index, result) in collected {
+        summary.add(result.with_context(|| format!("校验分片 {index}"))?);
+    }
+    ensure!(summary.battles == total, "总对局数不匹配");
+    Ok(summary)
+}
+
+/// 校验 manifest 内容并返回总对局数。
+fn check_config(config: &DatasetConfig) -> Result<usize> {
     ensure!(
         config.format_version == 1 && config.state_schema_version == tswn_core::runtime::model_state::MODEL_STATE_SCHEMA_VERSION,
         "不支持的数据版本"
@@ -63,22 +101,36 @@ pub fn validate_dataset(out: &Path) -> Result<Summary> {
         );
         ensure!(case.matchup_id == input::matchup_id(&case.groups), "阵容哈希不匹配");
     }
-    let total = config.cases.len().checked_mul(config.games_per_matchup).context("对局数溢出")?;
-    let shard_count = total.div_ceil(config.battles_per_shard);
-    let expected_dirs: BTreeSet<_> = (0..shard_count).map(|index| format!("shard-{index:06}")).collect();
+    config.cases.len().checked_mul(config.games_per_matchup).context("对局数溢出")
+}
+
+/// 输出目录里不能出现 manifest 之外的分片目录。
+fn check_layout(out: &Path, shard_count: usize) -> Result<()> {
+    let expected: BTreeSet<_> = (0..shard_count).map(|index| format!("shard-{index:06}")).collect();
     for entry in std::fs::read_dir(out)? {
         let entry = entry?;
         let name = entry.file_name().to_string_lossy().into_owned();
         if name.starts_with("shard-") {
-            ensure!(expected_dirs.contains(&name), "发现 manifest 之外的分片 {name}");
+            ensure!(expected.contains(&name), "发现 manifest 之外的分片 {name}");
         }
     }
+    Ok(())
+}
+
+/// 汇总本轮各 worker 已回读校验过的分片摘要。
+///
+/// `generate` 覆盖全部分片时，每个分片在提交前都已由 `validate_shard` 回读校验；
+/// 这里只做数据集级检查并合并摘要，不再让 `validate_dataset` 把全部 Parquet
+/// 重解一遍。已有分片来自续跑时没有本轮摘要，仍必须走完整校验。
+pub(crate) fn summarize_fresh(config: &DatasetConfig, out: &Path, total: usize, parts: Vec<(usize, Summary)>) -> Result<Summary> {
+    let shard_count = total.div_ceil(config.battles_per_shard);
+    let expected_total = check_config(config)?;
+    ensure!(expected_total == total, "总对局数不匹配");
+    check_layout(out, shard_count)?;
+    ensure!(parts.len() == shard_count, "本轮分片摘要数量不匹配");
     let mut summary = Summary::default();
-    for index in 0..shard_count {
-        let (first, end) = crate::generate::range(&config, index, total);
-        let dir = out.join(format!("shard-{index:06}"));
-        let receipt = storage::check_receipt(&dir, first, end).with_context(|| format!("检查分片 {index}"))?;
-        summary.add(validate_shard(&dir, &config, &receipt)?);
+    for (_, part) in parts {
+        summary.add(part);
     }
     ensure!(summary.battles == total, "总对局数不匹配");
     Ok(summary)

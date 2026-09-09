@@ -33,6 +33,8 @@ cargo run -p tswn_winprob_dataset --bin tswn-winprob-dataset -- generate --names
 | `--eval-rq` | 沿用核心默认值，实际值写入 manifest |
 | `--resume` | 校验输入、配置和可执行文件摘要后跳过已完成分片 |
 
+并行度取 `--threads`（默认可用逻辑 CPU 数）与待生成分片数的较小值，因此小规模数据集要靠减小 `--battles-per-shard` 才能吃满 CPU；分片数成为瓶颈时生成器会打印提示。分片边界只由对局编号范围决定，不随机器或线程数变化。
+
 续跑时保持原命令参数，只增加 `--resume`；可以调整 `--threads`。重新编译导致可执行文件摘要变化时，需要使用新的输出目录。校验已有数据不要求使用原可执行文件。
 
 ## 抽样和标签

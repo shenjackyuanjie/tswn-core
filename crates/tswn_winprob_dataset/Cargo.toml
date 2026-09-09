@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tswn_core = { path = "../tswn_core", default-features = false, features = ["png_render"] }
+tswn_core = { path = "../tswn_core", default-features = false, features = ["no_debug", "mimalloc_alloc", "png_render"] }
 anyhow = "1"
 clap = { version = "4.6.6", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
