@@ -417,8 +417,7 @@ impl EntityRecord {
 
     pub fn refresh_runtime_stats_from_template(&mut self) {
         #[cfg(not(feature = "no_debug"))]
-        let probe_pending_haste = std::env::var("TSWN_PROBE_REFRESH")
-            .ok()
+        let probe_pending_haste = crate::debug::probe_refresh()
             .filter(|needle| self.template.name.contains(needle))
             .and_then(|_| {
                 self.states

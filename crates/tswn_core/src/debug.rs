@@ -25,7 +25,10 @@
 //! | `TSWN_DEBUG_DAMAGE` | 调试伤害计算 |
 //! | `TSWN_TRACE_RC4` | 追踪 RC4 随机数状态 |
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{
+    OnceLock,
+    atomic::{AtomicBool, Ordering},
+};
 
 static DEBUG_ACTION: AtomicBool = AtomicBool::new(false);
 static DEBUG_STATS: AtomicBool = AtomicBool::new(false);
@@ -204,3 +207,91 @@ pub fn trace_rc4() -> bool {
     init_once();
     TRACE_RC4.load(Ordering::Relaxed)
 }
+
+/// 缓存一次性的 `TSWN_PROBE_*` / `TSWN_DEBUG_*` 探针取值。
+///
+/// 这些探针只在手动排障时开启，但调用点在每 tick、每次技能结算等热路径上。
+/// 直接调用 `std::env::var` 每次都会进内核并取进程级环境锁：8 个 worker 并行时
+/// 生成同一批对局的 CPU 时间从 21 s 涨到 61 s、墙钟从 21 s 只降到 14.7 s，
+/// 换成 8 个独立进程只要 4.9 s。缓存后热路径只剩一次原子读。
+macro_rules! cached_probe {
+    ($(#[$meta:meta])* $name:ident, $var:literal) => {
+        $(#[$meta])*
+        #[inline]
+        pub fn $name() -> Option<&'static str> {
+            static CACHE: OnceLock<Option<String>> = OnceLock::new();
+            CACHE.get_or_init(|| std::env::var($var).ok()).as_deref()
+        }
+    };
+}
+
+cached_probe!(
+    /// `TSWN_PROBE_STEP`：逐 tick 打印调度器步进。
+    probe_step,
+    "TSWN_PROBE_STEP"
+);
+cached_probe!(
+    /// `TSWN_PROBE_ACTION`：打印指定角色的普通行动准备过程。
+    probe_action,
+    "TSWN_PROBE_ACTION"
+);
+cached_probe!(
+    /// `TSWN_PROBE_DEFAULT_ATTACK`：打印默认攻击选目标过程。
+    probe_default_attack,
+    "TSWN_PROBE_DEFAULT_ATTACK"
+);
+cached_probe!(
+    /// `TSWN_PROBE_REFRESH`：打印待生效加速状态。
+    probe_refresh,
+    "TSWN_PROBE_REFRESH"
+);
+cached_probe!(
+    /// `TSWN_PROBE_RC4`：追踪 RC4 状态。
+    probe_rc4,
+    "TSWN_PROBE_RC4"
+);
+cached_probe!(
+    /// `TSWN_PROBE_PROTECT`：打印保护链判定。
+    probe_protect,
+    "TSWN_PROBE_PROTECT"
+);
+cached_probe!(
+    /// `TSWN_PROBE_COUNTER`：打印反击结算计划。
+    probe_counter,
+    "TSWN_PROBE_COUNTER"
+);
+cached_probe!(
+    /// `TSWN_PROBE_HIDE`：打印潜行结算。
+    probe_hide,
+    "TSWN_PROBE_HIDE"
+);
+cached_probe!(
+    /// `TSWN_PROBE_POSSESS`：打印附身结算。
+    probe_possess,
+    "TSWN_PROBE_POSSESS"
+);
+cached_probe!(
+    /// `TSWN_PROBE_CHARM`：打印魅惑选目标与结算。
+    probe_charm,
+    "TSWN_PROBE_CHARM"
+);
+cached_probe!(
+    /// `TSWN_PROBE_EXCHANGE`：打印交换结算。
+    probe_exchange,
+    "TSWN_PROBE_EXCHANGE"
+);
+cached_probe!(
+    /// `TSWN_PROBE_HEAL`：打印治疗结算。
+    probe_heal,
+    "TSWN_PROBE_HEAL"
+);
+cached_probe!(
+    /// `TSWN_PROBE_MINION_BLUEPRINT`：打印召唤物蓝图初始化。
+    probe_minion_blueprint,
+    "TSWN_PROBE_MINION_BLUEPRINT"
+);
+cached_probe!(
+    /// `TSWN_DEBUG_TICK_ORDER`：打印世界行动顺序。
+    debug_tick_order,
+    "TSWN_DEBUG_TICK_ORDER"
+);

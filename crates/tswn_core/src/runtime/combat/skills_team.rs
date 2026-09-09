@@ -87,7 +87,7 @@ impl CombatRuntime {
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
         let targets = scored.into_iter().map(|(target, _)| target).collect::<PreparedTargetList>();
         #[cfg(not(feature = "no_debug"))]
-        if std::env::var_os("TSWN_PROBE_CHARM").is_some() {
+        if crate::debug::probe_charm().is_some() {
             eprintln!(
                 "[charm_probe:runtime:select] actor={} smart={} candidates={:?} targets={:?} rc4=({},{}) -> ({},{})",
                 actor.0,
@@ -140,7 +140,7 @@ impl CombatRuntime {
 
     pub fn drain_plain_charm_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         #[cfg(not(feature = "no_debug"))]
-        if std::env::var_os("TSWN_PROBE_CHARM").is_some() {
+        if crate::debug::probe_charm().is_some() {
             eprintln!(
                 "[charm_probe:runtime:act_before] actor={} target={} rc4=({},{})",
                 actor.0, target.0, self.rng.i, self.rng.j,
@@ -191,7 +191,7 @@ impl CombatRuntime {
                 20,
             ));
             #[cfg(not(feature = "no_debug"))]
-            if std::env::var_os("TSWN_PROBE_CHARM").is_some() {
+            if crate::debug::probe_charm().is_some() {
                 eprintln!(
                     "[charm_probe:runtime:act_after] actor={} target={} dodged=true rc4=({},{})",
                     actor.0, target.0, self.rng.i, self.rng.j,
@@ -268,7 +268,7 @@ impl CombatRuntime {
             120,
         ));
         #[cfg(not(feature = "no_debug"))]
-        if std::env::var_os("TSWN_PROBE_CHARM").is_some() {
+        if crate::debug::probe_charm().is_some() {
             eprintln!(
                 "[charm_probe:runtime:act_after] actor={} target={} dodged=false rc4=({},{})",
                 actor.0, target.0, self.rng.i, self.rng.j,
@@ -280,7 +280,7 @@ impl CombatRuntime {
         let actor_team = self.plain_effective_team(actor);
         let candidates = self.world.team_alive(actor_team).unwrap_or_default();
         #[cfg(not(feature = "no_debug"))]
-        let probe_heal = std::env::var_os("TSWN_PROBE_HEAL").is_some();
+        let probe_heal = crate::debug::probe_heal().is_some();
         #[cfg(not(feature = "no_debug"))]
         if probe_heal {
             let described = candidates

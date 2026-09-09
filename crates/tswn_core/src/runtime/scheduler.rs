@@ -142,17 +142,15 @@ impl PhaseScheduler {
             let step_byte = randomer.next_u8();
             let step_roll = (step_byte & 3) as i32;
             #[cfg(not(feature = "no_debug"))]
-            let probe_step = std::env::var("TSWN_PROBE_STEP")
-                .map(|needle| {
-                    entities.get(actor).is_some_and(|entity| {
-                        needle == "*"
-                            || needle.strip_prefix("idx:").is_some_and(|idx| idx == actor.0.to_string())
-                            || needle.strip_prefix("id:").is_some_and(|id| id == entity.template.id.to_string())
-                            || entity.template.name.contains(&needle)
-                            || entity.template.display_name.contains(&needle)
-                    })
+            let probe_step = crate::debug::probe_step().is_some_and(|needle| {
+                entities.get(actor).is_some_and(|entity| {
+                    needle == "*"
+                        || needle.strip_prefix("idx:").is_some_and(|idx| idx == actor.0.to_string())
+                        || needle.strip_prefix("id:").is_some_and(|id| id == entity.template.id.to_string())
+                        || entity.template.name.contains(needle)
+                        || entity.template.display_name.contains(needle)
                 })
-                .unwrap_or(false);
+            });
             let (should_act, ice_released) = {
                 let actor = entities
                     .get_mut(actor)

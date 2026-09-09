@@ -144,7 +144,7 @@ impl WorldArena {
             let actor = self.round_order[self.round_pos as usize];
             if entities.get(actor).is_some_and(|entity| entity.runtime.alive) {
                 #[cfg(not(feature = "no_debug"))]
-                if std::env::var_os("TSWN_DEBUG_TICK_ORDER").is_some() {
+                if crate::debug::debug_tick_order().is_some() {
                     eprintln!(
                         "[runtime_tick_order] round_pos={} actor={} order={:?}",
                         self.round_pos,
@@ -184,7 +184,7 @@ impl WorldArena {
             return false;
         };
         #[cfg(not(feature = "no_debug"))]
-        let debug_order = std::env::var_os("TSWN_DEBUG_TICK_ORDER").is_some();
+        let debug_order = crate::debug::debug_tick_order().is_some();
         #[cfg(not(feature = "no_debug"))]
         if debug_order {
             eprintln!(

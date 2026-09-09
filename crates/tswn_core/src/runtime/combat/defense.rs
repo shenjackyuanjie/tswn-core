@@ -208,7 +208,7 @@ impl CombatRuntime {
             let protector_ready = trigger_ok && self.entity_mp_ready(link.owner);
 
             #[cfg(not(feature = "no_debug"))]
-            if std::env::var_os("TSWN_PROBE_PROTECT").is_some() {
+            if crate::debug::probe_protect().is_some() {
                 eprintln!(
                     "[protect_probe:runtime] target={} protector={} link_index={} links={} same_group={} level={} trigger_ok={} protector_ready={} rc4=({}, {})",
                     target.0,

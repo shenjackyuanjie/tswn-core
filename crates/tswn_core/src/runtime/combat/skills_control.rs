@@ -593,7 +593,7 @@ impl CombatRuntime {
             false
         };
         #[cfg(not(feature = "no_debug"))]
-        if std::env::var_os("TSWN_PROBE_EXCHANGE").is_some() {
+        if crate::debug::probe_exchange().is_some() {
             let owner = self.entities.get(actor).expect("runtime exchange owner missing for probe");
             let target_entity = self.entities.get(target).expect("runtime exchange target missing for probe");
             eprintln!(
@@ -663,7 +663,7 @@ impl CombatRuntime {
             }
         }
         #[cfg(not(feature = "no_debug"))]
-        if std::env::var_os("TSWN_PROBE_EXCHANGE").is_some() {
+        if crate::debug::probe_exchange().is_some() {
             let owner = self.entities.get(actor).expect("runtime exchange owner missing after probe");
             let target_entity = self.entities.get(target).expect("runtime exchange target missing after probe");
             eprintln!(

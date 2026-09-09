@@ -3,14 +3,14 @@ use super::*;
 impl CombatRuntime {
     #[cfg(not(feature = "no_debug"))]
     fn probe_default_attack_matches(&self, actor: EntityIdx) -> bool {
-        std::env::var("TSWN_PROBE_DEFAULT_ATTACK")
+        crate::debug::probe_default_attack()
             .map(|needle| {
                 if let Some(raw_idx) = needle.strip_prefix("idx:") {
                     return raw_idx.parse::<u32>().is_ok_and(|idx| actor.0 == idx);
                 }
-                self.entities.get(actor).is_some_and(|entity| {
-                    entity.template.name.contains(&needle) || entity.template.display_name.contains(&needle)
-                })
+                self.entities
+                    .get(actor)
+                    .is_some_and(|entity| entity.template.name.contains(needle) || entity.template.display_name.contains(needle))
             })
             .unwrap_or(false)
     }
