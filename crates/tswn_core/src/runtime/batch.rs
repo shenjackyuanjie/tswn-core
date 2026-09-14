@@ -129,12 +129,14 @@ fn prepared_runtime_win_rate_with_timing<const TIMED: bool>(
 
     let prepared = Arc::new(prepared.clone());
     let next = Arc::new(AtomicUsize::new(0));
+    // 小区间动态领取，减少逐场原子争用，同时为每个 worker 留出多次领取机会。
+    let chunk_size = n.div_ceil(workers.saturating_mul(8)).clamp(1, 32);
     let mut handles = Vec::with_capacity(workers);
     for _ in 0..workers {
         let prepared = Arc::clone(&prepared);
         let next = Arc::clone(&next);
         handles.push(std::thread::spawn(move || {
-            run_prepared_worker::<TIMED>(prepared.as_ref(), next.as_ref(), n)
+            run_prepared_worker::<TIMED>(prepared.as_ref(), next.as_ref(), n, chunk_size)
         }));
     }
 
@@ -212,6 +214,8 @@ fn runtime_score_with_timing<const TIMED: bool>(
     }
 
     let next = Arc::new(AtomicUsize::new(0));
+    // 小区间动态领取，减少逐场原子争用，同时为每个 worker 留出多次领取机会。
+    let chunk_size = n.div_ceil(workers.saturating_mul(8)).clamp(1, 32);
     let mut handles = Vec::with_capacity(workers);
     for _ in 0..workers {
         let target_group = target_group.to_vec();
@@ -219,7 +223,15 @@ fn runtime_score_with_timing<const TIMED: bool>(
         let next = Arc::clone(&next);
         let prepared = Arc::clone(&prepared);
         handles.push(std::thread::spawn(move || {
-            run_score_worker::<TIMED>(&target_group, &modifier, next.as_ref(), n, eval_rq, prepared.as_ref())
+            run_score_worker::<TIMED>(
+                &target_group,
+                &modifier,
+                next.as_ref(),
+                n,
+                eval_rq,
+                prepared.as_ref(),
+                chunk_size,
+            )
         }));
     }
 
@@ -283,16 +295,19 @@ fn run_prepared_worker<const TIMED: bool>(
     prepared: &PreparedRuntimeRunner,
     next: &AtomicUsize,
     end: usize,
+    chunk_size: usize,
 ) -> Result<RuntimeBatchSummary, RuntimeBatchError> {
     let mut summary = RuntimeBatchSummary::default();
     let mut seed = String::with_capacity(24);
     let mut runner = prepared.new_reusable_runner();
     loop {
-        let round = next.fetch_add(1, Ordering::Relaxed);
-        if round >= end {
+        let start = next.fetch_add(chunk_size, Ordering::Relaxed);
+        if start >= end {
             break;
         }
-        run_prepared_round::<TIMED>(prepared, &mut runner, profile_seed_for_round(&mut seed, round), &mut summary)?;
+        for round in start..start.saturating_add(chunk_size).min(end) {
+            run_prepared_round::<TIMED>(prepared, &mut runner, profile_seed_for_round(&mut seed, round), &mut summary)?;
+        }
     }
     Ok(summary)
 }
@@ -356,16 +371,19 @@ fn run_score_worker<const TIMED: bool>(
     end: usize,
     eval_rq: f64,
     prepared: &PreparedRuntimeRunner,
+    chunk_size: usize,
 ) -> RuntimeBatchSummary {
     let mut summary = RuntimeBatchSummary::default();
     let mut match_groups = ScoreMatchGroups::new(target_group, modifier);
     let mut runner = prepared.new_reusable_runner();
     loop {
-        let round = next.fetch_add(1, Ordering::Relaxed);
-        if round >= end {
+        let start = next.fetch_add(chunk_size, Ordering::Relaxed);
+        if start >= end {
             break;
         }
-        run_score_round::<TIMED>(round, eval_rq, prepared, &mut runner, &mut match_groups, &mut summary);
+        for round in start..start.saturating_add(chunk_size).min(end) {
+            run_score_round::<TIMED>(round, eval_rq, prepared, &mut runner, &mut match_groups, &mut summary);
+        }
     }
     summary
 }
@@ -761,5 +779,42 @@ mod tests {
                 vec![format!("{}@!", base + 1), format!("{}@!", base + 2)]
             ]
         );
+    }
+}
+
+#[cfg(test)]
+mod chunk_regressions {
+    use super::*;
+    #[test]
+    fn chunked_schedulers_preserve_counts_at_uneven_boundaries() {
+        let groups = vec![vec!["alpha@red".to_owned()], vec!["beta@blue".to_owned()]];
+        let targets = vec!["alpha@red".to_owned()];
+        let eval = crate::namerena::eval_name::WIN_RATE_EVAL_RQ;
+        for n in [99, 100, 101, 257, 1025] {
+            let expected_win = runtime_groups_win_rate(&groups, n, eval, 1).unwrap();
+            let expected_score = runtime_score(&targets, "!", n, eval, 1).unwrap();
+            for threads in [2, 4] {
+                for timed in [false, true] {
+                    let win = if timed {
+                        runtime_groups_win_rate_timed(&groups, n, eval, threads)
+                    } else {
+                        runtime_groups_win_rate(&groups, n, eval, threads)
+                    }
+                    .unwrap();
+                    let score = if timed {
+                        runtime_score_timed(&targets, "!", n, eval, threads)
+                    } else {
+                        runtime_score(&targets, "!", n, eval, threads)
+                    }
+                    .unwrap();
+                    for (actual, expected) in [(win, expected_win), (score, expected_score)] {
+                        assert_eq!(
+                            (actual.wins, actual.total, actual.errors, actual.guard_exhausted),
+                            (expected.wins, expected.total, expected.errors, expected.guard_exhausted)
+                        );
+                    }
+                }
+            }
+        }
     }
 }

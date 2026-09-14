@@ -1,7 +1,7 @@
 //! 从 `setting/settings.toml` 加载预设。
 
 use std::fs;
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -12,6 +12,26 @@ const SCORE_NOW_FILE_NAME: &str = "score_now.toml";
 const DEFAULT_SETTINGS_TOML: &str = include_str!("../../assets/settings.toml");
 const DEFAULT_SCORE_NOW_TOML: &str = include_str!("../../assets/score_now.toml");
 const DEFAULT_SETTING_FILES: &[(&str, &str)] = &[
+    (
+        "teammates/teammate_fz.toml",
+        include_str!("../../assets/teammates/teammate_fz.toml"),
+    ),
+    (
+        "teammates/teammate_bc.toml",
+        include_str!("../../assets/teammates/teammate_bc.toml"),
+    ),
+    (
+        "teammates/teammate_wc.toml",
+        include_str!("../../assets/teammates/teammate_wc.toml"),
+    ),
+    (
+        "teammates/teammate_pj.toml",
+        include_str!("../../assets/teammates/teammate_pj.toml"),
+    ),
+    (
+        "teammates/teammate_fs.toml",
+        include_str!("../../assets/teammates/teammate_fs.toml"),
+    ),
     (SCORE_NOW_FILE_NAME, DEFAULT_SCORE_NOW_TOML),
     ("targets/target1.txt", include_str!("../../assets/targets/target1.txt")),
     ("targets/target2.txt", include_str!("../../assets/targets/target2.txt")),
@@ -229,14 +249,15 @@ fn load_setting_file() -> Result<LoadedSettingFile, String> {
     let setting_dir = current_dir()?.join(SETTING_DIR_NAME);
     let config_path = setting_dir.join(SETTINGS_FILE_NAME);
     let raw = read_or_create_setting_file(&setting_dir, &config_path)?;
-    let config = toml::from_str(&raw).map_err(|err| format!("解析设置配置失败: {}: {err}", config_path.display()))?;
+    let config = toml::from_str(raw.trim_start_matches('\u{feff}'))
+        .map_err(|err| format!("解析设置配置失败: {}: {err}", config_path.display()))?;
     Ok(LoadedSettingFile { setting_dir, config })
 }
 
 fn read_or_create_setting_file(setting_dir: &Path, config_path: &Path) -> Result<String, String> {
     match fs::read_to_string(config_path) {
         Ok(raw) => {
-            write_default_score_now_file(setting_dir)?;
+            ensure_default_setting_files(setting_dir)?;
             Ok(raw)
         }
         Err(err) if err.kind() == ErrorKind::NotFound => {
@@ -247,28 +268,40 @@ fn read_or_create_setting_file(setting_dir: &Path, config_path: &Path) -> Result
     }
 }
 
+// 只补缺失资源；升级或重新加载不能覆盖用户修改过的配置和靶子。
 fn write_default_setting_tree(setting_dir: &Path, config_path: &Path) -> Result<(), String> {
-    fs::create_dir_all(setting_dir).map_err(|err| format!("创建设置目录失败: {}: {err}", setting_dir.display()))?;
-    for (relative_path, content) in DEFAULT_SETTING_FILES {
-        let path = setting_dir.join(relative_path);
-        if path.exists() {
-            continue;
-        }
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|err| format!("创建设置目录失败: {}: {err}", parent.display()))?;
-        }
-        fs::write(&path, content).map_err(|err| format!("写入默认预设失败: {}: {err}", path.display()))?;
-    }
-    fs::write(config_path, DEFAULT_SETTINGS_TOML).map_err(|err| format!("写入默认设置配置失败: {}: {err}", config_path.display()))
+    ensure_default_setting_files(setting_dir)?;
+    write_missing_file(config_path, DEFAULT_SETTINGS_TOML)
 }
 
-fn write_default_score_now_file(setting_dir: &Path) -> Result<(), String> {
-    let path = setting_dir.join(SCORE_NOW_FILE_NAME);
-    if path.exists() {
+fn ensure_default_setting_files(setting_dir: &Path) -> Result<(), String> {
+    for (relative_path, content) in DEFAULT_SETTING_FILES {
+        write_missing_file(&setting_dir.join(relative_path), content)?;
+    }
+    Ok(())
+}
+
+fn write_missing_file(path: &Path, content: &str) -> Result<(), String> {
+    // 常见的只读发布目录中，已有资源不需要写权限。
+    if path.is_file() {
         return Ok(());
     }
-    fs::create_dir_all(setting_dir).map_err(|err| format!("创建设置目录失败: {}: {err}", setting_dir.display()))?;
-    fs::write(&path, DEFAULT_SCORE_NOW_TOML).map_err(|err| format!("写入默认技能榜配置失败: {}: {err}", path.display()))
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| format!("创建设置目录失败: {}: {err}", parent.display()))?;
+    }
+    match fs::OpenOptions::new().write(true).create_new(true).open(path) {
+        Ok(mut file) => file
+            .write_all(content.as_bytes())
+            .map_err(|err| format!("写入默认预设失败: {}: {err}", path.display())),
+        // 两个预设面板同时初始化时，也不能截断另一个调用者刚写入的文件。
+        Err(err) if err.kind() == ErrorKind::AlreadyExists && path.is_file() => Ok(()),
+        Err(err) => Err(format!("创建默认预设失败: {}: {err}", path.display())),
+    }
+}
+
+#[cfg(test)]
+fn write_default_score_now_file(setting_dir: &Path) -> Result<(), String> {
+    write_missing_file(&setting_dir.join(SCORE_NOW_FILE_NAME), DEFAULT_SCORE_NOW_TOML)
 }
 
 fn current_dir() -> Result<PathBuf, String> { std::env::current_dir().map_err(|err| format!("读取当前目录失败: {err}")) }
@@ -304,5 +337,79 @@ mod tests {
         assert_eq!(content, DEFAULT_SCORE_NOW_TOML);
 
         fs::remove_dir_all(&dir).expect("remove temp dir");
+    }
+}
+
+#[cfg(test)]
+mod asset_regressions {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    struct TempDir(PathBuf);
+    impl TempDir {
+        fn new() -> Self {
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "tswn-presets-{}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+    impl Drop for TempDir {
+        fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); }
+    }
+
+    #[test]
+    fn clean_install_extracts_every_referenced_asset() {
+        let temp = TempDir::new();
+        let setting = temp.0.join("setting");
+        let raw = read_or_create_setting_file(&setting, &setting.join(SETTINGS_FILE_NAME)).unwrap();
+        let config: OpenboxSettingFile = toml::from_str(&raw).unwrap();
+        for entry in config.targets {
+            assert!(setting.join(entry.file).is_file());
+        }
+        let mut toml_count = 0;
+        for entry in config.teammate {
+            let content = fs::read_to_string(setting.join(&entry.file)).unwrap();
+            if entry.factor_enabled {
+                let value: toml::Value = toml::from_str(&content).unwrap();
+                assert!(!value["targets"].as_array().unwrap().is_empty());
+                toml_count += 1;
+            }
+        }
+        assert_eq!(toml_count, 5);
+    }
+
+    #[test]
+    fn existing_settings_repairs_missing_toml_without_overwriting_custom_files() {
+        let temp = TempDir::new();
+        let config_path = temp.0.join(SETTINGS_FILE_NAME);
+        let custom_settings = format!("# 用户自定义配置\n{DEFAULT_SETTINGS_TOML}");
+        fs::write(&config_path, &custom_settings).unwrap();
+        let custom_path = temp.0.join("teammates/teammate_fz.toml");
+        fs::create_dir_all(custom_path.parent().unwrap()).unwrap();
+        let custom = "[[targets]]\nfactor=3\nplayers=[\"custom\"]\n";
+        fs::write(&custom_path, custom).unwrap();
+        assert_eq!(read_or_create_setting_file(&temp.0, &config_path).unwrap(), custom_settings);
+        assert_eq!(fs::read_to_string(custom_path).unwrap(), custom);
+        for (relative, _) in DEFAULT_SETTING_FILES {
+            assert!(temp.0.join(relative).is_file());
+        }
+        fs::remove_file(temp.0.join("teammates/teammate_bc.toml")).unwrap();
+        read_or_create_setting_file(&temp.0, &config_path).unwrap();
+        assert!(temp.0.join("teammates/teammate_bc.toml").is_file());
+        assert_eq!(fs::read_to_string(config_path).unwrap(), custom_settings);
+    }
+
+    #[test]
+    fn conflicting_directory_is_reported_instead_of_silently_skipped() {
+        let temp = TempDir::new();
+        let path = temp.0.join("occupied.toml");
+        fs::create_dir(&path).unwrap();
+        assert!(write_missing_file(&path, "value=1").is_err());
     }
 }
