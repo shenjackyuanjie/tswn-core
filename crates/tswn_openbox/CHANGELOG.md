@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+### 修复
+
+- 修复默认 `settings.toml` 已引用五个新版 `teammates/*.toml`，但 release 内嵌资源释放清单仍只有旧 TXT 的问题；
+  首次启动与已有配置两条路径都会补齐缺失的默认资源，且不会覆盖用户已经修改或自行创建的文件。
+- 修复 `pair` 仍按“选手 → 队友 → 靶子”串行驱动大量独立 matchup，导致 Windows 等多核环境下
+  CPU 利用率受单个 matchup 内部线程创建/回收与任务尾部空洞限制的问题。
+
+### 性能与调度
+
+- `pair` 改为按当前选手构造有界的队友×靶子矩阵并复用 `tswn_core` 共享 CQP/CQD 调度器；
+  结果仍按原靶子顺序归约，队友权重、镜像 50%、重复名跳过、Top-K 与取消语义保持不变。
+- OpenBox 不再为无需读取逐场 timing 的批量胜率路径调用 `_timed` 接口，减少 Windows QPC 等计时开销。
+
+### 验证
+
+- 新增默认资源补齐且不覆盖用户文件、pair 新旧汇总一致性、权重/镜像/重复名、矩阵窗口边界、
+  取消以及共享调度器并发/回调边界回归测试。
+- 本次并行修复的复测口径与 worker 环境限制记录在
+  `docs/perf/reports/openbox-pair-parallelism-2026-09-15.md`。
+
 ## [0.4.3] - 2026-09-08
 
 ### 新增
@@ -347,7 +367,3 @@
 
 - 将 GUI 状态、输入源、控件和任务启动逻辑拆到 `src/app/`。
 - 将解析、评分、格式化和执行逻辑拆到 `src/backend/`。
-
-### Windows
-
-- Windows GUI 构建启用 `windows_subsystem = "windows"`。
