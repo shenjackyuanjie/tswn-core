@@ -367,3 +367,7 @@
 
 - 将 GUI 状态、输入源、控件和任务启动逻辑拆到 `src/app/`。
 - 将解析、评分、格式化和执行逻辑拆到 `src/backend/`。
+
+### Windows
+
+- Windows GUI 构建启用 `windows_subsystem = "windows"`。
