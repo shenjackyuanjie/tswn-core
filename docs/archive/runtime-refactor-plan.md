@@ -5,7 +5,7 @@
 > 第一优先级：消除 UB 风险，并与当前 legacy/md5.js 结果严格一致
 > 兼容策略：不保留旧 Rust/extension/CLI/wasm API 兼容，只保最终呈现结果与归一化帧级行为一致
 
-本文保留迁移过程中的决策与验收语境；当前 API 和替代关系见 [`../runtime-0.5-migration.md`](../guides/runtime-0.5-migration.md)。
+本文保留迁移过程中的决策与验收语境；当前 API 和替代关系见 [`docs/guides/runtime-0.5-migration.md`](../guides/runtime-0.5-migration.md)。
 
 ---
 

@@ -12,6 +12,7 @@
 
 ## 调查报告
 
+- [winprob 数据集生成规模基线](reports/winprob-dataset-scale-baseline.md)：10k/100k 局生成的吞吐、存储、内存与校验开销，含 Parquet 行组缺陷的修复前后对比。
 - [Web Streaming 基线](reports/web-streaming-baseline.md)。
 - [Python BattleSession DTO 转换基线](reports/python-battle-session-baseline.md)。
 - [RC4 热点与优化调查（2026-09-05）](reports/rc4-profile-2026-09-05.md)。

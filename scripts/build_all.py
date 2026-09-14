@@ -6,7 +6,7 @@
 1) `capi`：现场构建并打包
 2) `cli`：现场构建并打包
 3) `openbox`：现场构建并打包
-4) `py`：不现场构建，只收集当前仓库里已存在的 Python 分发产物
+4) `py`：不现场构建，只收集当前仓库里与 `tswn_py` 版本一致的 Python 分发产物
 5) `wasm`：现场构建 `tswn_wasm`，并用 `wasm-bindgen` 生成浏览器可直接消费的包
 6) 最终输出一个 zip
 
@@ -67,7 +67,7 @@ dist/all/tswn_core_x_y_z_capi_a_b_c_py_m_n_k_wasm_p_q_r_openbox_u_v_w_bundle/
   python scripts/build_all.py --skip-openbox
 
 说明：
-- `py` 部分只打包现有产物，不调用 Python wheel 构建流程。
+- `py` 部分只打包当前版本的现有产物，不调用 Python wheel 构建流程；旧版本 wheel 会跳过。
 - `capi` 部分优先复用 `scripts/build_capi.py`，以保证目录结构一致。
 - `wasm` 部分优先复用 `scripts/build_wasm.py`，以保证目录结构一致。
 - `cli` 部分直接执行 cargo build，然后把可执行文件及说明文件整理到结果目录。
@@ -103,7 +103,7 @@ CAPI_CHANGELOG = CRATE_CAPI_DIR / "CHANGELOG.md"
 PY_CHANGELOG = CRATE_PY_DIR / "CHANGELOG.md"
 WASM_CHANGELOG = CRATE_WASM_DIR / "CHANGELOG.md"
 OPENBOX_CHANGELOG = CRATE_OPENBOX_DIR / "CHANGELOG.md"
-UPDATE_DOCS_DIR = ROOT / "docs" / "update"
+RELEASE_DOCS_DIR = ROOT / "docs" / "releases"
 LINUX_CAPI_ARTIFACT = ROOT / "target" / "release" / "libtswn_capi.so"
 LINUX_CLI_ARTIFACT = ROOT / "target" / "release" / "tswn-cli"
 LINUX_OPENBOX_ARTIFACT = ROOT / "target" / "release" / "tswn_openbox"
@@ -881,9 +881,17 @@ def collect_py_artifacts(dst_dir: Path) -> tuple[list[Path], list[Path], list[Pa
 
     dst_dist.mkdir(parents=True, exist_ok=True)
 
+    current_dist_prefix = f"tswn_py-{tswn_py_version()}"
     if dist_src.exists():
         for item in sorted(dist_src.iterdir()):
             if item.is_file():
+                is_distribution = item.suffix == ".whl" or item.name.endswith(".tar.gz")
+                matches_current_version = item.name.startswith(
+                    f"{current_dist_prefix}-"
+                ) or item.name == f"{current_dist_prefix}.tar.gz"
+                if is_distribution and not matches_current_version:
+                    print(f"[skip] Python 分发产物版本不匹配：{item.name}（当前 {tswn_py_version()}）")
+                    continue
                 copy_file(item, dst_dist / item.name)
                 copied_files.append(Path("dist") / item.name)
                 source_hits.append(Path("dist") / item.name)
@@ -916,7 +924,7 @@ def write_py_readme(dst_dir: Path, copied_files: list[Path], copied_dirs: list[P
         "",
         "本目录由 `scripts/build_all.py` 生成。",
         "",
-        "注意：这里不会现场构建 Python 产物，只会收集仓库里当前已经存在的内容。",
+        "注意：这里不会现场构建 Python 产物，只会收集仓库里与当前 tswn_py 版本一致的内容。",
         "",
         "## 收集结果",
         "",
@@ -934,7 +942,7 @@ def write_py_readme(dst_dir: Path, copied_files: list[Path], copied_dirs: list[P
         "",
         "## 说明",
         "",
-        "- 若需要 wheel，请先单独执行 Python 构建流程。",
+        "- 若需要 wheel，请先单独执行 Python 构建流程；旧版本 wheel 不会进入当前版本聚合包。",
         "- `examples/` 会一并收集，方便直接参考 Python 用法。",
         "- `changelog/` 会附带 `tswn_py` 的 changelog，方便对外查看 Python 侧版本变化。",
         "- 本目录仅作为现有产物快照，不保证覆盖你需要的全部 Python/ABI 环境。",
@@ -1019,7 +1027,7 @@ def write_root_readme(bundle_dir: Path, enabled: list[str], skipped: list[str]) 
         "- `capi/`、`cli/`、`openbox/` 与 `wasm/` 可以现场构建。",
         "- 若仓库里已经存在 Linux `so` / `tswn-cli` / `tswn_openbox` 产物，聚合包也会一并收集。",
         "- OHOS CLI 需要显式传 `--include-ohos-cli`，并通过 `--ohos-sdk` 或 `OHOS_NATIVE_SDK` 指定 OpenHarmony native SDK。",
-        "- `py/` 只收集现有产物，不现场构建。",
+        "- `py/` 只收集与当前 `tswn_py` 版本一致的现有产物，不现场构建。",
         "- `wasm/` 依赖本机可用的 `wasm-bindgen-cli`。",
         "- 最终 zip 为整个 bundle 目录的压缩包。",
         "",
@@ -1155,7 +1163,7 @@ def main(argv: list[str]) -> int:
         package_component_changelog(
             cli_dir,
             changelog_src=CORE_CHANGELOG,
-            update_doc_src=UPDATE_DOCS_DIR / f"{tswn_core_version()}.md",
+            update_doc_src=RELEASE_DOCS_DIR / f"{tswn_core_version()}.md",
         )
         write_cli_readme(
             cli_dir,

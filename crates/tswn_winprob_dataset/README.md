@@ -33,6 +33,8 @@ cargo run -p tswn_winprob_dataset --bin tswn-winprob-dataset -- generate --names
 | `--eval-rq` | 沿用核心默认值，实际值写入 manifest |
 | `--resume` | 校验输入、配置和可执行文件摘要后跳过已完成分片 |
 
+并行度取 `--threads`（默认可用逻辑 CPU 数）与待生成分片数的较小值，因此小规模数据集要靠减小 `--battles-per-shard` 才能吃满 CPU；分片数成为瓶颈时生成器会打印提示。分片边界只由对局编号范围决定，不随机器或线程数变化。
+
 续跑时保持原命令参数，只增加 `--resume`；可以调整 `--threads`。重新编译导致可执行文件摘要变化时，需要使用新的输出目录。校验已有数据不要求使用原可执行文件。
 
 ## 抽样和标签
@@ -64,6 +66,29 @@ shard-000000/
 Runtime 错误、panic、导出失败和两遍不一致都会停止生成。已完成分片保留，`failure.json` 记录原因，临时分片的 `active-battle.json` 包含复现阵容、seed 和参数。部分低层自定义配置可以通过导入但在技能执行时报错，例如没有召唤模板的 bed2；这类失败不会变成未决样本。
 
 `validate` 回读所有行，校验文件摘要、对局顺序、标签、状态引用、抽样计数和切分。训练/验证/测试按规范化阵容哈希分为 80/10/10，同阵容的所有 seed 与队伍顺序变体不跨集合；小数据集不保证恰好达到此比例。
+
+## 分布统计与基准
+
+`stats` 只读取已提交分片，汇总对局轮数/帧数、胜者与终止原因、样本进度桶、实体与状态条目数量，
+以及技能 ID、载荷 kind、模板 kind、Boss 与阵营分组频次：
+
+```powershell
+target/release/tswn-winprob-dataset.exe stats --out target/winprob-demo --json-out target/stats.json
+```
+
+`bench` 在本进程内运行 `generate`/`validate` 并采样自身 RSS、线程数与 CPU 时间，再读产物
+Parquet 元数据，输出吞吐、存储、行组与列块压缩比、嵌套字段占比：
+
+```powershell
+target/release/tswn-winprob-dataset.exe bench --out target/winprob-demo `
+  --names crates/tswn_winprob_dataset/examples/names.txt --team-sizes 2,2,2 `
+  --matchups 10 --games-per-matchup 20 --seed demo
+```
+
+`stats` 只读已提交的数据分片；`bench` 会在 `--out` 指定目录内运行 `generate`/`validate`，**会写入数据**。
+首次生成可以使用新目录或已有空目录；已有 `manifest.json` 时需要 `--resume`，且输入、配置和可执行文件摘要必须匹配，否则应换目录。非空但没有 manifest 的目录不能通过 `--resume` 接续。
+10k/100k 规模的实际结果见
+[winprob 数据集生成规模基线](../../docs/perf/reports/winprob-dataset-scale-baseline.md)。
 
 ## Python 读取
 

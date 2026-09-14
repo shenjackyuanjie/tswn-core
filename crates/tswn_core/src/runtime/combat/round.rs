@@ -52,7 +52,7 @@ impl CombatRuntime {
         let legacy_plain_action = self.scheduler.uses_legacy_step_scheduler();
         self.scratch.selected_actor_round = self.round;
         #[cfg(not(feature = "no_debug"))]
-        let debug_tick = std::env::var_os("TSWN_DEBUG_TICK").is_some();
+        let debug_tick = crate::debug::debug_tick();
         #[cfg(not(feature = "no_debug"))]
         let tick_rng_before = (self.rng.i, self.rng.j);
         #[cfg(not(feature = "no_debug"))]
@@ -338,11 +338,11 @@ impl CombatRuntime {
 
     #[cfg(not(feature = "no_debug"))]
     pub fn probe_plain_action_matches(&self, actor: EntityIdx) -> bool {
-        std::env::var("TSWN_PROBE_ACTION")
+        crate::debug::probe_action()
             .map(|needle| {
-                self.entities.get(actor).is_some_and(|entity| {
-                    entity.template.name.contains(&needle) || entity.template.display_name.contains(&needle)
-                })
+                self.entities
+                    .get(actor)
+                    .is_some_and(|entity| entity.template.name.contains(needle) || entity.template.display_name.contains(needle))
             })
             .unwrap_or(false)
     }
@@ -419,7 +419,7 @@ impl CombatRuntime {
             );
         }
         #[cfg(not(feature = "no_debug"))]
-        if std::env::var_os("TSWN_PROBE_POSSESS").is_some() {
+        if crate::debug::probe_possess().is_some() {
             let entity = self
                 .entities
                 .get(actor)
@@ -897,7 +897,7 @@ impl CombatRuntime {
             );
         }
         #[cfg(not(feature = "no_debug"))]
-        if builtin_skill == BuiltinActiveSkill::Charm && std::env::var_os("TSWN_PROBE_CHARM").is_some() {
+        if builtin_skill == BuiltinActiveSkill::Charm && crate::debug::probe_charm().is_some() {
             eprintln!(
                 "[charm_probe:runtime:prob] actor={} level={} roll={} pass={} rc4=({},{}) -> ({},{})",
                 actor.0,
@@ -911,7 +911,7 @@ impl CombatRuntime {
             );
         }
         #[cfg(not(feature = "no_debug"))]
-        if builtin_skill == BuiltinActiveSkill::Possess && std::env::var_os("TSWN_PROBE_POSSESS").is_some() {
+        if builtin_skill == BuiltinActiveSkill::Possess && crate::debug::probe_possess().is_some() {
             let entity = self
                 .entities
                 .get(actor)

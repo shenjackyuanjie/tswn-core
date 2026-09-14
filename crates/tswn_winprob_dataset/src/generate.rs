@@ -1,12 +1,13 @@
 use crate::{
     BattleRow, DatasetConfig, GenerateArgs, SampleRow, input, random, sampling,
     storage::{self, ShardReceipt, TableWriter},
+    validate::Summary,
 };
 use anyhow::{Context, Result, bail, ensure};
 use fs2::FileExt;
 use std::{
     fs::{self, OpenOptions},
-    path::Path,
+    path::{Path, PathBuf},
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use tswn_core::{
@@ -77,13 +78,22 @@ pub fn generate(args: &GenerateArgs) -> Result<()> {
     };
     let workers = workers.min(pending.len());
     eprintln!("共 {total} 局，{} 个分片待生成，{workers} 个 worker", pending.len());
+    if let Some(available) = std::thread::available_parallelism().map(usize::from).ok()
+        && workers < available
+    {
+        eprintln!(
+            "提示：分片数限制了并行度（可用 {available} 个逻辑 CPU，当前 {workers} 个 worker）；\
+             需要更高并行度可减小 --battles-per-shard"
+        );
+    }
     let next = AtomicUsize::new(0);
     let stop = AtomicBool::new(false);
     let done = AtomicUsize::new(shard_count - pending.len());
     let results = std::thread::scope(|scope| {
         let mut handles = Vec::new();
         for _ in 0..workers {
-            handles.push(scope.spawn(|| -> Result<()> {
+            handles.push(scope.spawn(|| -> Result<Vec<(usize, Summary)>> {
+                let mut summaries = Vec::new();
                 while !stop.load(Ordering::Acquire) {
                     let position = next.fetch_add(1, Ordering::Relaxed);
                     let Some(index) = pending.get(position).copied() else {
@@ -100,13 +110,16 @@ pub fn generate(args: &GenerateArgs) -> Result<()> {
                             .unwrap_or_else(|| "未知 panic".into());
                         Err(anyhow::anyhow!("分片 {index} Runtime panic：{message}"))
                     });
-                    if let Err(error) = result {
-                        stop.store(true, Ordering::Release);
-                        return Err(error);
+                    match result {
+                        Ok(summary) => summaries.push((index, summary)),
+                        Err(error) => {
+                            stop.store(true, Ordering::Release);
+                            return Err(error);
+                        }
                     }
                     eprintln!("分片完成 {}/{}", done.fetch_add(1, Ordering::Relaxed) + 1, shard_count);
                 }
-                Ok(())
+                Ok(summaries)
             }));
         }
         handles
@@ -114,13 +127,21 @@ pub fn generate(args: &GenerateArgs) -> Result<()> {
             .map(|handle| handle.join().map_err(|_| anyhow::anyhow!("生成 worker 异常退出")).and_then(|value| value))
             .collect::<Vec<_>>()
     });
-    let errors: Vec<_> = results.into_iter().filter_map(Result::err).collect();
+    let errors: Vec<_> = results.iter().filter_map(|result| result.as_ref().err()).collect();
     if !errors.is_empty() {
         let message = errors.iter().map(|error| format!("{error:#}")).collect::<Vec<_>>().join("\n");
         storage::write_json(&args.out.join("failure.json"), &serde_json::json!({"errors": message}))?;
         bail!("生成停止；已完成分片保留。复现信息见临时分片 active-battle.json。\n{message}");
     }
-    let summary = crate::validate::validate_dataset(&args.out)?;
+    // 分片在 worker 内已经回读校验过一次；本次运行覆盖全部分片时直接汇总，
+    // 不再让 `validate_dataset` 把全部 Parquet 重解一遍（8 分片规模约省 1.1 s）。
+    // 续跑时已有分片没有本轮摘要，仍走完整校验。
+    let summary = if pending.len() == shard_count {
+        let fresh = results.into_iter().filter_map(Result::ok).flatten().collect();
+        crate::validate::summarize_fresh(&config, &args.out, total, fresh)?
+    } else {
+        crate::validate::validate_dataset(&args.out)?
+    };
     storage::write_json(&args.out.join("summary.json"), &summary)?;
     let failure = args.out.join("failure.json");
     if failure.try_exists()? {
@@ -135,7 +156,14 @@ pub(crate) fn range(config: &DatasetConfig, index: usize, total: usize) -> (usiz
     (first, first.saturating_add(config.battles_per_shard).min(total))
 }
 
-fn write_shard(out: &Path, config: &DatasetConfig, index: usize, total: usize, stop: &AtomicBool) -> Result<()> {
+/// 样本行转 Parquet 的批量大小。
+///
+/// 每个 `SampleRow.state` 约有 450 个叶子列，逐局（8 行）调用一次 `serde_arrow`
+/// 时，schema 遍历和列缓冲的固定开销要摊在 8 行上。攒到 256 行再转一次
+/// `RecordBatch`，同样的数据量下写入阶段的开销明显下降。
+const APPEND_BATCH_ROWS: usize = 256;
+
+fn write_shard(out: &Path, config: &DatasetConfig, index: usize, total: usize, stop: &AtomicBool) -> Result<Summary> {
     let name = format!(".shard-{index:06}.tmp");
     storage::remove_incomplete(out, &name)?;
     let temp = out.join(&name);
@@ -143,16 +171,15 @@ fn write_shard(out: &Path, config: &DatasetConfig, index: usize, total: usize, s
     let mut battles = TableWriter::<BattleRow>::create(&temp.join("battles.parquet"))?;
     let mut samples = TableWriter::<SampleRow>::create(&temp.join("samples.parquet"))?;
     let (first, end) = range(config, index, total);
+    let mut active = ActiveBattle::new(temp.join("active-battle.json"), config);
     let mut prepared: Option<(usize, PreparedRuntimeRunner)> = None;
+    let mut pending: Vec<SampleRow> = Vec::new();
     for battle_id in first..end {
         ensure!(!stop.load(Ordering::Acquire), "其他分片失败，当前分片停止");
         let case_index = battle_id / config.games_per_matchup;
         let case = &config.cases[case_index];
         let seed = random::battle_seed(&config.seed, &case.matchup_id, battle_id as u64);
-        storage::write_json(
-            &temp.join("active-battle.json"),
-            &serde_json::json!({ "battle_id": battle_id, "groups": case.groups, "seed": seed, "max_rounds": config.max_rounds, "eval_rq": config.eval_rq }),
-        )?;
+        active.set(battle_id, case_index, &seed);
         if prepared.as_ref().is_none_or(|(previous, _)| *previous != case_index) {
             prepared = Some((
                 case_index,
@@ -161,10 +188,18 @@ fn write_shard(out: &Path, config: &DatasetConfig, index: usize, total: usize, s
         }
         let (battle, rows) = generate_battle(config, battle_id, &prepared.as_ref().unwrap().1, &seed)
             .with_context(|| format!("battle_id={battle_id}, seed={seed}, source={}", case.source))?;
-        samples.append(&rows)?;
+        pending.extend(rows);
+        if pending.len() >= APPEND_BATCH_ROWS {
+            samples.append(&pending)?;
+            pending.clear();
+        }
         battles.append(&[battle])?;
     }
+    active.defuse();
     ensure!(!stop.load(Ordering::Acquire), "其他分片失败，当前分片停止");
+    if !pending.is_empty() {
+        samples.append(&pending)?;
+    }
     let battles = battles.finish()?;
     let samples = samples.finish()?;
     let receipt = ShardReceipt {
@@ -177,10 +212,61 @@ fn write_shard(out: &Path, config: &DatasetConfig, index: usize, total: usize, s
     };
     storage::write_json(&temp.join("complete.json"), &receipt)?;
     // 在提交目录前回读并验证所有引用、标签和分片行序。
-    crate::validate::validate_shard(&temp, config, &receipt)?;
-    fs::remove_file(temp.join("active-battle.json"))?;
+    let summary = crate::validate::validate_shard(&temp, config, &receipt)?;
+    let active_battle = temp.join("active-battle.json");
+    if active_battle.try_exists()? {
+        fs::remove_file(active_battle)?;
+    }
     fs::rename(temp, out.join(format!("shard-{index:06}")))?;
-    Ok(())
+    Ok(summary)
+}
+
+/// 分片在飞对局记录：只在失败或 panic 时落盘，避免每局一次卷级刷盘。
+///
+/// 旧实现每局都写一次 `active-battle.json` 并 `sync_all`，1000 局就是 1000 次
+/// `FlushFileBuffers`；多 worker 并行时这些刷盘互相排队，实测同一批对局在 4 分片
+/// 并行下的墙钟比 4 个独立进程慢 70%，CPU 时间也多 24%。失败复现信息只在真正
+/// 出错时才有用，因此改为在内存里记住当前对局，`Drop` 时再写。
+struct ActiveBattle<'a> {
+    path: PathBuf,
+    config: &'a DatasetConfig,
+    current: Option<(usize, usize, String)>,
+}
+
+impl<'a> ActiveBattle<'a> {
+    fn new(path: PathBuf, config: &'a DatasetConfig) -> Self {
+        Self {
+            path,
+            config,
+            current: None,
+        }
+    }
+
+    fn set(&mut self, battle_id: usize, case_index: usize, seed: &str) {
+        self.current = Some((battle_id, case_index, seed.to_owned()));
+    }
+
+    /// 分片正常收尾后调用：不再需要写失败现场。
+    fn defuse(&mut self) { self.current = None; }
+}
+
+impl Drop for ActiveBattle<'_> {
+    fn drop(&mut self) {
+        let Some((battle_id, case_index, seed)) = self.current.take() else {
+            return;
+        };
+        let case = &self.config.cases[case_index];
+        let payload = serde_json::json!({
+            "battle_id": battle_id,
+            "groups": case.groups,
+            "seed": seed,
+            "max_rounds": self.config.max_rounds,
+            "eval_rq": self.config.eval_rq,
+        });
+        if let Err(error) = storage::write_json(&self.path, &payload) {
+            eprintln!("写入 {} 失败：{error:#}", self.path.display());
+        }
+    }
 }
 
 pub(crate) fn generate_battle(

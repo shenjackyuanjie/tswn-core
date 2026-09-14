@@ -2972,7 +2972,7 @@ result
 | 20：Python | `src/battle.rs`、`_types_battle.pyi`、`verify_py_cli_api.py` | 实际扩展的迭代器、全部 DTO keys、结果、ownership 与错误码验证通过 |
 | 21–22：WASM | `src/battle.rs`、`battle_types.d.ts`、兼容 FightSession | 原生测试、wasm32 build、真实 Node 包 7 项测试通过 |
 | 23：C | `src/battle_api.rs`、头文件、`examples/battle_session.c` | ABI 4、版本化 options、NULL/短结构/未来尾部/输出所有权、C 示例编译运行通过 |
-| 24–25：CLI | fight driver、runtime 子命令、`verify_cli_battle.py` | human / JSONL / stdin / 非零错误退出 / 已删除路由验证通过；writer 测试验证逐行 flush |
+| 24–25：CLI | fight driver、runtime 子命令、`crates/tswn_core/tests/cli_battle.rs` | human / JSONL / stdin / 非零错误退出 / 已删除路由验证通过；writer 测试验证逐行 flush |
 | 26–39：网页 source / controller / plan | `show-wasm.js`、`show-stream.js`、`show-replay.js` | 不调用 eager replay；首屏先于 pull；2 帧 buffer、observer 顺序、追加区间、terminal/dispose 测试通过 |
 | 40–49：播放、导航、结算、重播、分享 | `show.js`、`verify_web_playback.mjs`、routing tests | normal/fast/turbo、pause/resume、单事件/单帧、回退、20 帧 checkpoint、历史续播、结算等待暂停恢复、重播不新建 source 均通过 |
 | 50–54：显示层与 renderer | `show-display.js`、display tests、canonical clip tests | frozen DTO 不变、昵称重建/未来帧、icon 去重、动态实体、HP/死亡/恢复/多目标/延时验证通过；真实浏览器截图检查通过 |
@@ -2992,7 +2992,7 @@ cargo test
 cargo clippy -p tswn_core -p tswn_py -p tswn_wasm -p tswn_capi
 cargo +nightly fmt --check
 python scripts/verify_py_cli_api.py
-python scripts/verify_cli_battle.py
+cargo test -p tswn_core --test cli_battle
 node --test scripts/verify_wasm_battle.test.mjs
 python scripts/verify_battle_cross_binding.py
 node --test crates/tswn_wasm/examples/show-*.test.mjs

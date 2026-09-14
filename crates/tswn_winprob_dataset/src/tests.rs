@@ -131,6 +131,61 @@ fn runtime_panic_preserves_reproduction_and_never_commits_shard() {
 }
 
 #[test]
+fn wide_state_rows_share_row_groups_instead_of_one_per_append() {
+    // 超宽嵌套 state 的字节估算会被列缓冲容量放大；回归保护：行组按行数切分。
+    use tswn_core::runtime::RuntimeRunner;
+    let runner = RuntimeRunner::new_from_namerena_raw("left\n\nright".into()).unwrap();
+    let row = SampleRow {
+        battle_id: 0,
+        matchup_id: "row-group-probe".into(),
+        split: "train".into(),
+        frame: None,
+        rounds_advanced: 0,
+        progress: 0.0,
+        winner_team_index: Some(0),
+        state: runner.model_state().unwrap(),
+    };
+    let root = TempDir::new().unwrap();
+    let file = root.path().join("samples.parquet");
+    let mut writer = storage::TableWriter::<SampleRow>::create(&file).unwrap();
+    // 生成器每局调用一次 append；修复前列数估算会让每次 append 都新开一个行组。
+    for _ in 0..16 {
+        writer.append(std::slice::from_ref(&row)).unwrap();
+    }
+    writer.finish().unwrap();
+    let builder = parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder::try_new(fs::File::open(&file).unwrap()).unwrap();
+    assert_eq!(builder.metadata().file_metadata().num_rows(), 16);
+    assert_eq!(
+        builder.metadata().num_row_groups(),
+        1,
+        "每局一个行组会把压缩比与回读开销放大两个数量级"
+    );
+}
+
+#[test]
+fn stats_reports_distributions_without_touching_dataset() {
+    let root = TempDir::new().unwrap();
+    let options = args(root.path());
+    generate::generate(&options).unwrap();
+    let before = storage::file_hash(&options.out.join("shard-000000/samples.parquet")).unwrap();
+    let stats = stats::collect(&options.out).unwrap();
+    assert_eq!(stats.battles.total, 4);
+    assert_eq!(stats.battles.resolved + stats.battles.truncated, 4);
+    assert_eq!(stats.battles.rounds_advanced.count, 4);
+    assert_eq!(stats.samples.total, sample_rows(&options.out).len());
+    assert_eq!(stats.samples.entity_count.count, stats.samples.total);
+    assert_eq!(stats.samples.progress_buckets.values().sum::<usize>(), stats.samples.total);
+    assert!(!stats.content.player_kind.is_empty());
+    assert!(!stats.content.skill_id.is_empty());
+    // 统计只读：再次汇总不得改变分片内容。
+    stats::collect(&options.out).unwrap();
+    assert_eq!(
+        storage::file_hash(&options.out.join("shard-000000/samples.parquet")).unwrap(),
+        before
+    );
+}
+
+#[test]
 fn cli_rejects_ambiguous_input_modes() {
     use clap::Parser;
     assert!(

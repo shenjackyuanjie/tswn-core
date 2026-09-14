@@ -90,7 +90,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--md-output",
-        default=str(repo_root / "docs" / "diff" / "bun_tswn_round_mismatches.md"),
+        default=str(repo_root / "docs" / "diff" / "bun-tswn-round-mismatches.md"),
         help="Markdown 报告输出路径。",
     )
     parser.add_argument(

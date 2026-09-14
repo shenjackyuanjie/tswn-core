@@ -7,7 +7,7 @@
 > 状态: 历史架构分析；`tswn_core 0.5.0` 已删除 `Storage`、旧 `Player` 与对应源码路径
 > 代码基线: 0.4.x 旧对象模型（下文“当前”均指当时基线）
 
-当前主 Runtime 的迁移结果见 [`../runtime-0.5-migration.md`](../guides/runtime-0.5-migration.md)。
+当前主 Runtime 的迁移结果见 [`docs/guides/runtime-0.5-migration.md`](../guides/runtime-0.5-migration.md)。
 
 ---
 

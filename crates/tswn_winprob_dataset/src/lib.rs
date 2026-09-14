@@ -1,8 +1,10 @@
 //! 确定性的战斗状态生成、Parquet 分片与完整性校验。
+mod bench;
 mod generate;
 mod input;
 mod random;
 mod sampling;
+mod stats;
 mod storage;
 mod validate;
 
@@ -30,6 +32,10 @@ pub enum Command {
         #[arg(long)]
         out: PathBuf,
     },
+    /// 汇总已完成数据集的分布统计，不修改数据。
+    Stats(stats::StatsArgs),
+    /// 采集生成与校验的规模基准，不修改数据。
+    Bench(bench::BenchArgs),
 }
 
 #[derive(Debug, Clone, Args)]
@@ -120,6 +126,8 @@ pub fn run(cli: Cli) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&summary)?);
             Ok(())
         }
+        Command::Stats(args) => stats::run(&args),
+        Command::Bench(args) => bench::run(&args),
     }
 }
 

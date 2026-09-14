@@ -487,7 +487,7 @@ impl RC4 {
         let val = self.next_u8_untracked();
         #[cfg(not(feature = "no_debug"))]
         {
-            if std::env::var("TSWN_PROBE_RC4").is_ok() {
+            if crate::debug::probe_rc4().is_some() {
                 self.byte_count += 1;
                 let loc = std::panic::Location::caller();
                 let file = loc.file();

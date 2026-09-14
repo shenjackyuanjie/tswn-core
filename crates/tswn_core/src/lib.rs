@@ -49,6 +49,34 @@ pub mod debug {
     pub const fn debug_damage() -> bool { false }
     #[inline(always)]
     pub const fn trace_rc4() -> bool { false }
+    #[inline(always)]
+    pub const fn probe_step() -> Option<&'static str> { None }
+    #[inline(always)]
+    pub const fn probe_action() -> Option<&'static str> { None }
+    #[inline(always)]
+    pub const fn probe_default_attack() -> Option<&'static str> { None }
+    #[inline(always)]
+    pub const fn probe_refresh() -> Option<&'static str> { None }
+    #[inline(always)]
+    pub const fn probe_rc4() -> Option<&'static str> { None }
+    #[inline(always)]
+    pub const fn probe_protect() -> Option<&'static str> { None }
+    #[inline(always)]
+    pub const fn probe_counter() -> Option<&'static str> { None }
+    #[inline(always)]
+    pub const fn probe_hide() -> Option<&'static str> { None }
+    #[inline(always)]
+    pub const fn probe_possess() -> Option<&'static str> { None }
+    #[inline(always)]
+    pub const fn probe_charm() -> Option<&'static str> { None }
+    #[inline(always)]
+    pub const fn probe_exchange() -> Option<&'static str> { None }
+    #[inline(always)]
+    pub const fn probe_heal() -> Option<&'static str> { None }
+    #[inline(always)]
+    pub const fn probe_minion_blueprint() -> Option<&'static str> { None }
+    #[inline(always)]
+    pub const fn debug_tick_order() -> Option<&'static str> { None }
 }
 
 pub mod bench_sched;

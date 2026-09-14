@@ -49,7 +49,7 @@
 
 **实测例 1**：`涵虚不等式 PFVKEUPBU@TigerStar` 的幻术
 
-```
+```text
 初始熟练度: 92
 使用多次幻术
 衰减到: 50
@@ -60,7 +60,7 @@
 
 **实测例 2**：`G-Force #8W6dyD0vG@Shabby_fish` 的护符
 
-```
+```text
 初始熟练度: 66
 使用多次护符
 衰减到: 40
@@ -86,7 +86,7 @@
 
 以 `涵虚不等式 PFVKEUPBU@TigerStar` 的幻术为例：
 
-```
+```text
 name_base 解析:
   #08 幻术: 56 62 56 60 → 基础 46 / 加成后 92
     ↑ 末尾主动技：基础 46，boost_last() 翻倍 → 92
@@ -96,7 +96,7 @@ name_base 解析:
 
 **衰减行为**：
 
-```
+```text
 初始: 92（46 × 2）
 衰减到 40（低于初始基础 46）
 
@@ -111,7 +111,7 @@ name_base 解析:
 
 以 `G-Force #8W6dyD0vG@Shabby_fish` 的护符为例：
 
-```
+```text
 name_base 解析:
   #15 护符: 55 63 62 44 → 基础 34 / 加成后 66
     ↑ 末尾座位加成: slot 15, name_base[62]=32, name_base[63]=44
@@ -122,7 +122,7 @@ name_base 解析:
 
 **衰减行为**：
 
-```
+```text
 初始: 66（34 + 32）
 衰减到 25（低于初始基础 34）
 
@@ -137,7 +137,7 @@ name_base 解析:
 
 `boost_level()` 的实际公式并非简单的 `level + boost`，而是：
 
-```
+```text
 boost_amount = min( name_base[src], name_base[src+1] )  // 原始加成量
 actual_boost = min( boost_amount, skill.level() )        // 受当前等级上限
 new_level    = skill.level() + actual_boost
@@ -147,7 +147,7 @@ new_level    = skill.level() + actual_boost
 
 **实测例**：`以剑之名 #eEV76fMOX@Shabby_fish` 的护符
 
-```
+```text
 原始护符: base=41, boost=min(name_base[62],name_base[63])=41 → 41+41=82
 衰减到: 21
 
@@ -169,7 +169,7 @@ new_level    = skill.level() + actual_boost
 
 衰减下限的存在解释了为什么 **DIY 拟合长期无法完全精准**：
 
-```
+```text
 "SklShadow": 40 的可能来源：
   ├── 无任何加成，原始熟练度就是 40（无衰减下限）
   ├── 末尾主动技：20 × 2 = 40

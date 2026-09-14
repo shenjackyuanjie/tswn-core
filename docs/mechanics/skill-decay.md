@@ -18,7 +18,7 @@
 
 ### 衰减公式
 
-```
+```text
 new_level = (level + 1) / 2     （整数除法，向下取整）
 ```
 
@@ -48,7 +48,7 @@ new_level = (level + 1) / 2     （整数除法，向下取整）
 
 ### 衰减公式
 
-```
+```text
 if level > 8 {
     new_level = level - 1
 } else {
@@ -79,7 +79,7 @@ if level > 8 {
 
 ### 衰减公式
 
-```
+```text
 new_level = (level + 1) / 2     （整数除法，向下取整）
 ```
 
@@ -108,7 +108,7 @@ new_level = (level + 1) / 2     （整数除法，向下取整）
 
 ### 4.1 第一阶段：随机衰减
 
-```
+```text
 f = rand(0, 63) + 64          // f ∈ [64, 127]
 new_level = ceil(level * f / 128)
 ```
@@ -121,13 +121,13 @@ new_level = ceil(level * f / 128)
 
 当本体满足以下条件时，额外衰减：
 
-```
+```text
 owner.hp + owner.magic_point < rand(0, 255)
 ```
 
 若条件成立：
 
-```
+```text
 new_level = (new_level / 2) + 1
 ```
 
@@ -137,7 +137,7 @@ new_level = (new_level / 2) + 1
 
 克隆体（cloned）的技能等级不是直接继承，而是基于本体的衰减后等级**开根号**：
 
-```
+```text
 cloned_level = ceil(sqrt(owner_current_level))
 ```
 
@@ -149,7 +149,7 @@ cloned_level = ceil(sqrt(owner_current_level))
 
 ### 衰减公式
 
-```
+```text
 new_level = floor(level * 0.75)       // 向下取整
 if new_level < 1 { new_level = 1 }    // 最低为 1
 ```
@@ -187,8 +187,8 @@ if new_level < 1 { new_level = 1 }    // 最低为 1
 | 生命之轮     | 9   | 半衰     | level ≥ 2 | `(level + 1) / 2`                             |
 | 治愈魔法     | 15  | 线性     | level ≥ 9 | `level - 1`                                   |
 | 苏生术       | 16  | 半衰     | level ≥ 2 | `(level + 1) / 2`                             |
-| 分身(本体)   | 23  | 随机     | 每次使用  | `ceil(level * rand[64,127] / 128)` + 条件减半 |
-| 分身(克隆体) | 23  | 开根号   | 创建时    | `ceil(sqrt(owner_level))`                     |
+| 分身（本体）   | 23  | 随机     | 每次使用  | `ceil(level * rand[64,127] / 128)` + 条件减半 |
+| 分身（克隆体） | 23  | 开根号   | 创建时    | `ceil(sqrt(owner_level))`                     |
 | 幻术         | 24  | 等比     | level ≥ 4 | `floor(level * 0.75)`, 最低 1                 |
 
 这些衰减机制解释了为什么在高技能等级下某些技能的实际发动次数会受限——每次使用后熟练度下降，可能导致后续回合不再满足发动条件。

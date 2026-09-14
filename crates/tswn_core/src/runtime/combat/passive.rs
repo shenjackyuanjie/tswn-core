@@ -72,7 +72,7 @@ impl CombatRuntime {
         // 原本为零级的槽位，因此固定槽位顺序和主动行动顺序都不足以复现该事件列表。
         plan.sort_by_key(|(_, _, priority, registration_order)| (*priority, *registration_order));
         #[cfg(not(feature = "no_debug"))]
-        let debug_counter = std::env::var_os("TSWN_PROBE_COUNTER").is_some();
+        let debug_counter = crate::debug::probe_counter().is_some();
         #[cfg(not(feature = "no_debug"))]
         if debug_counter {
             eprintln!(
@@ -150,7 +150,7 @@ impl CombatRuntime {
             .runtime
             .counter;
         #[cfg(not(feature = "no_debug"))]
-        if std::env::var_os("TSWN_PROBE_COUNTER").is_some() {
+        if crate::debug::probe_counter().is_some() {
             eprintln!(
                 "[counter_probe:runtime:state] target={} caster={} updates_id={} last_updates_id={:?} pending={} last_target={:?}",
                 target.0,
@@ -311,7 +311,7 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
     ) {
         #[cfg(not(feature = "no_debug"))]
-        let probe_hide = std::env::var_os("TSWN_PROBE_HIDE").is_some();
+        let probe_hide = crate::debug::probe_hide().is_some();
         let (already_active, owner_active) = self
             .entities
             .get(target)

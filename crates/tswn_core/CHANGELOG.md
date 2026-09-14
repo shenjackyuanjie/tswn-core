@@ -1,18 +1,44 @@
 # 更新日志
 
-## 未发布
-
-- 新增 BattleSession `is_failed()` 查询 sticky Runtime failure；失败没有 result/stop_reason，is_done 仍为 false，不改变 DTO 或状态枚举。
-
-- 正式 BattleSession 与统一 DTO/错误码；battle_replay 收集 session；CLI 新增 fight --jsonl，诊断迁至 runtime diff，移除 raw/--out-raw/!test! 自动路由。
-
 ## [Unreleased]
+
+### 性能与诊断
+
+- 调试探针的环境变量改为缓存读取。调度器逐 tick、行动准备、逐技能结算、保护链、
+  RC4 追踪等热路径此前每次都直接调用 `std::env::var*`，每次都要进内核并取进程级
+  环境锁；多 worker 并行时这条锁把吞吐压到单线程水平。同一批 1000 局 2v2v2（8 分片）
+  实测：8 线程并行 CPU 时间 61.4 s、墙钟 14.7 s（1 线程 21.2 s，8 个独立进程 4.9 s），
+  缓存后降到 CPU 17.8 s、墙钟 5.4 s；单线程下战斗模拟阶段从每分片 1.2 s 降到 0.13 s。
+  探针语义不变：仍读同名环境变量，只在首次访问时读一次，取值按进程缓存。
+
+## [0.6.0] - 2026-09-08
+
+### ⚠️ 破坏性变更
+
+- `tswn-cli` 删除顶层 `raw`、`diff` 和 `fight --out-raw`；诊断入口迁至 `runtime diff`，机器可读的逐帧输出改用 `fight --jsonl`，`!test!` 不再自动切换基准路径。
+- `CliApiError::Runner` 更名为 `RunnerInit`，并新增 `InvalidArgument`、`UnsupportedOption`、`Internal` 等稳定分类；穷举匹配公开错误枚举的 Rust 调用方需要同步调整。
+
+### 新增
+
+- 新增正式 `BattleSession`、统一战斗 DTO 与公共错误码；`battle_replay()` 改为收集同一会话状态机，CLI 的普通输出与 JSONL 流也复用同一推进语义。
+- `BattleSession::is_failed()` 暴露粘性 Runtime failure；失败时没有 result/stop_reason，`is_done()` 仍为 false，调用方可明确区分未完成与执行失败。
+- 新增只读类型化机制状态、稳定技能映射与实体引用校验，并提供不构造回放和展示快照的 `BattleModelSession`，供数据生成等无界面调用方逐帧导出模型状态。
+- 新增 `cli_api::to_diy_prepared()`，允许直接导出已构建角色，避免调用方为分类和导出重复解析、构建同一角色。
 
 ### 修复
 
 - Bed2 召唤物吞噬时只获得目标一半的 MP 差值与行动点，并继续按固定槽位合并技能；补齐 `custom` 分支最后两次资源收益调整在 Runtime 中的对应策略。
+- 修复批量胜率路径在“某队被清空后又复活”的残局里误判胜者：`run_to_completion_prevalidated`
+  曾用 legacy 粘性计数 `alive_group_count == 1` 判胜，现改为按 `team_alive` 非空槽位计数，
+  与全量扫描的可交互 / 数据集路径一致；`alive_group_count` 的 legacy 语义与技能目标选择不受影响。
+  名字池 10000 局里该类判胜分歧由 2 局降为 0，legacy `md5.js` 对照侧胜者 10000/10000 正确。
+  判胜定义、源码定位与实测见 `docs/mechanics/winner.md`。
 - 修复公共 replay view 在苏生帧沿用动作前快照 HP 的问题：复活句固定重置目标为 `0 -> 0`，后续回复句正确从 `0` 推演回血。
 - 修复“召唤亡灵”中的“`[2]变成了[1]`”将旧对象误输出为 `data` 的问题；转化句现为旧对象和新对象分别输出 `player` part，保留旧对象的普通名字展示。
+
+### 性能与诊断
+
+- 受伤被动技能计划复用固定容量缓冲，减少常见战斗热路径的临时堆分配；新增 `perf_runtime` 基准入口和 AMD uProf 采样流程，正式 `no_debug` 路径不引入诊断分支。
 
 ## [0.5.3] - 2026-09-01
 

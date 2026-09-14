@@ -1,6 +1,19 @@
-# 对外 API 对齐约定
+# 公共 API 与跨语言契约
 
 `BattleSession` 是 Rust、Python、WASM、C 的正式增量对局 API；`battle_replay` 收集同一个 session 的完整结果。`Runner`、`PreparedRunner`、WASM `FightSession` 和 `WinRateSession` 属于 Advanced / Compatibility API。
+
+## 入口选择
+
+| 场景 | 入口 | 说明 |
+| --- | --- | --- |
+| 逐帧播放、交互、跨语言 UI | `cli_api::BattleSession` | 正式增量 API，四端一致；结果由 `result()` / `battle_replay` 收集 |
+| 一次性跑完、胜率评分 | 根级 `Runner`（即 `RuntimeRunner`） | `run_to_completion(max_rounds)`，不收集逐回合结果 |
+| 数据集生成、训练样本导出 | `cli_api::battle::BattleModelSession` | 生成器在 `PreparedRunner` 之上以相同 seed 两遍运行；`next_frame()` 给可见帧边界，`model_state()` 导出当前机制状态 |
+| 同一模板按 seed 大批量复用 | 根级 `PreparedRunner` | 批量热路径用 `run_to_completion_prevalidated`，跳过 immutable handler 就绪扫描 |
+
+`Advanced / Compatibility` 描述的是调用方需要自己承担的部分（seed 行格式、模板复用与生命周期、批量并行策略），不是“不推荐使用”。根级 `Runner` / `PreparedRunner` 是唯一执行内核入口；CLI 和胜率评分使用这层入口，数据集生成则在其之上通过 `cli_api::battle::BattleModelSession` 驱动两遍运行与状态采样，不能概括为直接调用 `Runner` 导出训练样本。[主 Runtime 0.5 迁移指南](../guides/runtime-0.5-migration.md)中“根级 `Runner` 与 `PreparedRunner` 是唯一正式执行入口”指执行内核层，与上层会话驱动的分工不冲突。
+
+两条执行路径的判胜实现不同：`run_until_winner` 走 `sync_winner`（全量扫描实体表），`run_to_completion` / `run_to_completion_prevalidated` 走 `sync_winner_from_alive_views`（只读存活视图）。两者结论必须一致；语义、历史缺陷与回归测试见[判胜语义](../mechanics/winner.md)。任何入口都不要用 `alive_group_count()` 判断胜负，它只服务于多人模式的目标选择。
 
 ## 会话与结果
 

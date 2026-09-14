@@ -1,20 +1,19 @@
 # 更新日志
 
-## 未发布
-
-- 新增 BattleSession `is_failed()` 查询 sticky Runtime failure；失败没有 result/stop_reason，is_done 仍为 false，不改变 DTO 或状态枚举。
-
-- 旧 options 初始化函数永久仅写 V1，避免未来扩展向旧 caller 的小缓冲区越界写入。
-
-- 冻结 BattleOptions V1 prefix，按非对齐前缀读取选项；兼容旧 caller 与未知未来尾部，明确禁止复用 V1 tail padding。现有布局和 ABI 4 不变。
-
-- ABI 4 新增 BattleSession opaque handle、版本化 options、逐帧/快照/result JSON 与状态查询。
-
 ## [Unreleased]
+
+## [0.6.2] - 2026-09-08
 
 ### 新增
 
 - 新增 `tswn_batch_rate_factored_json()` 与 `tswn_pair_rate_factored_json()`；调用方通过 `double` 权重数组传入带权靶子组。
+- ABI 4 新增 BattleSession opaque handle、版本化 options、逐帧/快照/result JSON 与状态查询；`is_failed()` 可区分粘性 Runtime failure 与尚未完成的正常会话。
+
+### 修复
+
+- 永久冻结 BattleOptions V1 prefix，按非对齐前缀读取已知字段并忽略未知未来尾部，明确禁止复用 V1 tail padding；旧 options 初始化函数只写 V1，避免未来扩展向旧 caller 的小缓冲区越界。现有布局和 ABI 4 不变。
+- 同步 core 的批量判胜修复：队伍被清空后重新复活时，`tswn_batch_rate_json()`、`tswn_pair_rate_json()` 及带权变体不再沿用粘性存活组计数误判胜者。
+- 同步公共 replay view 的苏生 HP 与亡灵转化文本修复；BattleSession result JSON 和 `tswn_battle_replay_json()` 返回一致的玩家 part 与血量推演。
 
 ## [0.6.1] - 2026-08-31
 

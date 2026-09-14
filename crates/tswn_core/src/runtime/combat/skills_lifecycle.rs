@@ -471,7 +471,7 @@ impl CombatRuntime {
             )
         };
         #[cfg(not(feature = "no_debug"))]
-        if std::env::var_os("TSWN_PROBE_POSSESS").is_some() {
+        if crate::debug::probe_possess().is_some() {
             eprintln!(
                 "[possess_probe:runtime:act_before] actor={} target={} target_name={} flags={:?} rc4=({},{})",
                 actor.0, target.0, target_name, target_flags, self.rng.i, self.rng.j,
@@ -487,7 +487,7 @@ impl CombatRuntime {
         };
         let dodged = immune || (target_active && PlayerRuntime::dodge(caster_magic, target_resistance, &mut self.rng));
         #[cfg(not(feature = "no_debug"))]
-        if std::env::var_os("TSWN_PROBE_POSSESS").is_some() {
+        if crate::debug::probe_possess().is_some() {
             eprintln!(
                 "[possess_probe:runtime:act_after] actor={} target={} immune={} dodged={} rc4=({},{})",
                 actor.0, target.0, immune, dodged, self.rng.i, self.rng.j,

@@ -40,9 +40,10 @@ pub use effect::{
     ShowRendererFn, ShowRenderers, SkillContext, SkillHandlerFn, SkillHandlers, StateContext, StateHandlerFn, StateHandlers,
 };
 pub use entity::{
-    AssassinateRuntime, CloneBuildData, CloneDerivedStats, CompressedLegacyState, CounterRuntime, CovidInfectionEntry,
-    EntityArena, EntityIdx, EntityRecord, HideRuntime, MoveState, PlayerPolicyOverrides, PlayerRuntime, PlayerTemplate,
-    ProtectLinkRuntime, RuntimeCorpseKind, SkillLoadout, StateEntry, StatePayload, StatePayloadKind, StateStore,
+    AssassinateRuntime, CloneBuildData, CloneDerivedStats, CloneStatAdjustments, CompressedLegacyState, CounterRuntime,
+    CovidInfectionEntry, EntityArena, EntityIdx, EntityRecord, HideRuntime, MoveState, PlayerPolicyOverrides, PlayerRuntime,
+    PlayerTemplate, ProtectLinkRuntime, RuntimeCorpseKind, ScoreCloneSkillBoostPlan, SkillLoadout, StateEntry, StatePayload,
+    StatePayloadKind, StateStore,
 };
 pub use extension::{
     BattleSlotId, BattleSlotSpec, DamageSharePolicy, EffectHandlerId, EffectHandlerSpec, EntitySlotId, EntitySlotSpec,

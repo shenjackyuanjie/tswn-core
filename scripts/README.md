@@ -11,6 +11,16 @@
 先用 `tswn-winprob-dataset validate` 校验完整性，再运行 `python scripts/read_winprob_dataset.py target/winprob-demo`。
 生成命令和数据契约见 [生成器说明](../crates/tswn_winprob_dataset/README.md)。
 
+## measure_encoder_capacity.py
+
+按 [FeatureEncoder 规格](../docs/design/feature-encoder-spec.md) 第 4 节的计费公式，统计数据集每样本的容量峰值
+（模板数、lane 总数、五类 lane list 条目、世界列表、状态、保护链、槽条目与 X 记录数），
+用于冻结 profile 的 `H_max` / `L_max` / `Q_max` / `V_max` / `X_max`。只读，不修改数据集。
+
+```powershell
+python scripts/measure_encoder_capacity.py --dataset target/winprob-100k --out target/caps-100k.json
+```
+
 ## check_runtime_release.py
 
 验证主 Runtime 的 release 独立性与行为回归：
@@ -168,10 +178,6 @@ python scripts/check_runtime_release.py --corpus
 - 聚合打包脚本会直接收集这里已有的内容
 - 脚本会自动检测并安装 `build` 包（通过 `uv pip install build`）
 
-## gen_test_case.py
-
-生成随机文本用作测试 case 的辅助脚本。
-
 ## verify_py_cli_api.py
 
 验证 `tswn_py` 中与 `tswn-cli` 对齐的 Python helper。
@@ -217,6 +223,26 @@ uv run scripts/tswn_diff.py round --case-id MESSAGE_ID
 
 所有子命令的完整参数由 `python scripts/tswn_diff.py <rate|pf|round> --help` 查看。`round` 还需要 Bun 和可用的 `md5.js`；主 md5 路径失败时会使用 `--md5-fallback`。
 
+## md5_winner_probe.cjs
+
+Node 脚本，用于核对 legacy `md5.js` 的判胜语义：只在内存中对源码打补丁，在
+`Grp.dj`（移出存活）与 `Grp.aZ`（复活 / 加入存活）里记录真实存活队伍数、`Q`
+（`Engine.y.a.Q`，即 Rust 侧 `alive_group_count`）以及判胜时使用的比较值。
+
+典型用法：
+
+- `node scripts/md5_winner_probe.cjs ..\fast-namerena\md5.js --case-dir crates/tswn_test/cases/runtime_stress`
+- `node scripts/md5_winner_probe.cjs ..\fast-namerena\md5.js --names tests/sqp5900.txt --battles 10000`
+
+参数：
+
+- 第一个位置参数：`md5.js` 路径（本仓库根目录的 `md5.js` 与 `fast-namerena/md5.js` 代码相同，只差版本号常量）
+- `--case-dir DIR`：逐个跑目录下的 `*.txt` 对局输入
+- `--names PATH`：从名字池按 2v2v2 抽样，配合 `--battles N` 指定局数（默认 2000）
+
+输出为 JSON，包含清空次数、复活次数、`q_stale_after_wipe`、`q_eq_1_but_two_teams_alive`、
+`winner_with_mismatched_counts` 与残留样本。结论与解读见 [判胜语义](../docs/mechanics/winner.md)。
+
 ## bun_profile_trace.js
 
 Bun 脚本，用于对 tswn-md5 模块进行 profile trace。
@@ -247,7 +273,7 @@ Bun 脚本，用于对 tswn-md5 模块进行 profile trace。
 
 - `verify_py_cli_api.py`：构建 Python 扩展并检查 TypedDict、迭代器、错误码与 session/replay 一致性。
 - `verify_wasm_battle.test.mjs`：真实 Node WASM 包的 canonical DTO、错误与旧 FightSession 兼容测试。
-- `verify_cli_battle.py`：CLI JSONL、stdin、人类输出与删除命令的错误路径。
+- `verify_cli_battle.py`：CLI JSONL、stdin、人类输出与删除命令的错误路径。已迁移为 Rust 集成测试 `crates/tswn_core/tests/cli_battle.rs`，运行 `cargo test -p tswn_core --test cli_battle`。
 - `verify_battle_cross_binding.py`：真实 Rust CLI / Python / C / WASM 的完整 payload 精确对比；调用 `dump_battle_wasm.mjs` 读取 Node WASM 输出。
 - `verify_web_playback.mjs`：真实页面模块与 DOM 的延迟 source 测试，需 `--experimental-vm-modules` 和 target/web-test-tools 下的 linkedom。
 - `benchmark_web_streaming.mjs`：独立桌面浏览器四组各 20 次性能测试，生成 timing JSON、表格和截图。

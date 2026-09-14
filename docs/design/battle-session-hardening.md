@@ -956,7 +956,7 @@ battle_replay one-shot total_ms
 基线写入：
 
 ```text
-docs/perf/python_battle_session_baseline.md
+docs/perf/reports/python-battle-session-baseline.md
 ```
 
 本轮只在满足以下任一条件时，才允许继续做 DTO conversion 重写：
@@ -1114,7 +1114,7 @@ crates/tswn_py/README.md
 
 关键文档必须写明：
 
-#### C options
+### C options
 
 ```text
 V1 prefix 永久兼容
@@ -1124,7 +1124,7 @@ V1 prefix 永久兼容
 未来字段不得复用 V1 tail padding
 ```
 
-#### Session failure
+### Session failure
 
 ```text
 Runtime error 后 session is_failed = true
@@ -1133,16 +1133,16 @@ Runtime error 后 session is_failed = true
 调用方停止推进并释放
 ```
 
-#### TS DTO
+### TS DTO
 
 列出 stable literal enum。
 
-#### Python perf
+### Python perf
 
 链接：
 
 ```text
-docs/perf/python_battle_session_baseline.md
+docs/perf/reports/python-battle-session-baseline.md
 ```
 
 ---
@@ -1154,7 +1154,7 @@ Hardening 完成后必须重新跑：
 ```text
 scripts/verify_battle_cross_binding.py
 scripts/verify_py_cli_api.py
-scripts/verify_cli_battle.py
+cargo test -p tswn_core --test cli_battle
 scripts/verify_wasm_battle.test.mjs
 
 crates/tswn_wasm/examples/show-*.test.mjs
@@ -1312,7 +1312,7 @@ perf: record Python BattleSession DTO conversion baseline
 
 ```text
 benchmark_py_battle_session.py
-python_battle_session_baseline.md
+docs/perf/reports/python-battle-session-baseline.md
 结果与优化 gate 结论
 ```
 

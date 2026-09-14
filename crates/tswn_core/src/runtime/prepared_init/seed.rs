@@ -189,7 +189,7 @@ impl CombatRuntime {
                 None if entity.runtime.is_combat_minion() =>
                 {
                     #[cfg(not(feature = "no_debug"))]
-                    if std::env::var_os("TSWN_PROBE_MINION_BLUEPRINT").is_some() {
+                    if crate::debug::probe_minion_blueprint().is_some() {
                         eprintln!(
                             "[probe:minion-blueprint] actor={} kind={kind:?} name={} source=combat-minion",
                             actor.0, entity.template.name

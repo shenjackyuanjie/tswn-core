@@ -24,20 +24,21 @@ const CLONE_ATTR_DECAY: f64 = 0.7799999713897705;
 
 pub fn at_boost_to_millionths(at_boost: f64) -> i64 { (at_boost * DEFAULT_AT_BOOST_MILLIONTHS as f64).round() as i64 }
 
+/// 分身相对本体模板的逐项修正量；字段公开供状态导出读取，不表示可变。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-struct CloneStatAdjustments {
-    max_hp: i32,
-    attack: i32,
-    magic: i32,
-    wisdom: i32,
-    speed: i32,
-    defense: i32,
-    resistance: i32,
-    agility: i32,
-    at_boost_delta_bits: u64,
-    attr_sum: i64,
-    atk_sum: i32,
-    attract_delta_bits: u64,
+pub struct CloneStatAdjustments {
+    pub max_hp: i32,
+    pub attack: i32,
+    pub magic: i32,
+    pub wisdom: i32,
+    pub speed: i32,
+    pub defense: i32,
+    pub resistance: i32,
+    pub agility: i32,
+    pub at_boost_delta_bits: u64,
+    pub attr_sum: i64,
+    pub atk_sum: i32,
+    pub attract_delta_bits: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,20 +58,22 @@ pub struct CloneDerivedStats {
     pub attract_bits: u64,
 }
 
+/// 分身评分时的初始强化位与槽位强化计划；字段公开供状态导出读取。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub(crate) struct ScoreCloneSkillBoostPlan {
-    pub(crate) initially_boosted_mask: u64,
-    pub(crate) slot_boosts: [Option<(u8, u8)>; 2],
+pub struct ScoreCloneSkillBoostPlan {
+    pub initially_boosted_mask: u64,
+    pub slot_boosts: [Option<(u8, u8)>; 2],
 }
 
+/// 分身的构造参数；字段公开供状态导出读取，语义与生成顺序见 `derive_raw` / `derive_stats`。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CloneBuildData {
-    attrs: [u32; 8],
-    weapon_attr_bonus: [i32; 8],
-    name_factor_bits: u64,
-    child_name_factor_bits: u64,
-    adjustments: CloneStatAdjustments,
-    score_skill_boost_plan: Option<ScoreCloneSkillBoostPlan>,
+    pub attrs: [u32; 8],
+    pub weapon_attr_bonus: [i32; 8],
+    pub name_factor_bits: u64,
+    pub child_name_factor_bits: u64,
+    pub adjustments: CloneStatAdjustments,
+    pub score_skill_boost_plan: Option<ScoreCloneSkillBoostPlan>,
 }
 
 impl CloneBuildData {

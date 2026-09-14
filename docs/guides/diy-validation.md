@@ -4,7 +4,7 @@
 
 ## 核心概念
 
-```
+```text
 原始玩家:  PlayerA @Team  --build-->  attrs=[47,60,48,...], skills={fire:5,...}
               ↓ to-diy
 DIY 玩家:   PlayerA+diy[83,96,84,...]{...} @Team  --build-->  attrs=[47,60,48,...], skills={fire:5,...}
@@ -65,7 +65,7 @@ python track_diy_roundtrip.py -q --max-cases 64 --skip-fight
 
 ### 3. 查看结果
 
-```
+```text
 target/diy_roundtrip/
 ├── summary.json              # 总体统计
 └── <case-id>/
@@ -166,7 +166,7 @@ target/diy_roundtrip/
 
 | 维度         | sby_test.md         | diy-validation.md      |
 | ------------ | ------------------- | ---------------------- |
-| 比对对象     | TS(JS) vs Rust      | 原始 vs DIY(均为 Rust) |
+| 比对对象     | TS（JS）vs Rust     | 原始 vs DIY（均为 Rust） |
 | 比对内容     | 对局 round-by-round | build 后初始状态       |
 | 工具         | bun + out_md5.ts    | tswn-cli to-diy        |
 | 目标         | Rust 对齐 JS 行为   | DIY 还原初始状态       |

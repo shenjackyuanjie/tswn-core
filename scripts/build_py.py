@@ -53,8 +53,9 @@ def ensure_build_frontend() -> None:
 
 
 def find_latest_wheel(output_dir: Path) -> Path | None:
-    wheels = sorted(output_dir.glob("tswn_py-*.whl"))
-    return wheels[-1] if wheels else None
+    wheels = list(output_dir.glob("tswn_py-*.whl"))
+    # 同一目录可能同时保留 Windows 与 Linux wheel；文件名字典序不能代表本次产物。
+    return max(wheels, key=lambda path: path.stat().st_mtime_ns) if wheels else None
 
 
 def verify_wheel(wheel: Path) -> None:
