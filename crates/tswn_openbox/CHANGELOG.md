@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-09-15
+
 ### 修复
 
 - 修复默认 `settings.toml` 已引用五个新版 `teammates/*.toml`，但 release 内嵌资源释放清单仍只有旧 TXT 的问题；
