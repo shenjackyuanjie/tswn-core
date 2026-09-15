@@ -14,13 +14,17 @@
 - `pair` 改为按当前选手构造有界的队友×靶子矩阵并复用 `tswn_core` 共享 CQP/CQD 调度器；
   结果仍按原靶子顺序归约，队友权重、镜像 50%、重复名跳过、Top-K 与取消语义保持不变。
 - OpenBox 不再为无需读取逐场 timing 的批量胜率路径调用 `_timed` 接口，减少 Windows QPC 等计时开销。
+- 本机（Ryzen 7 5800X / 16 逻辑处理器）同机交替 A/B 实测：自动线程下 OpenBox pair 全网格
+  `count=100` 由 24.13 s 降到 4.74 s（5.09×），CLI `bench pair` 全网格由 20.89 s 降到 4.61 s（4.53×），
+  少 matchup × 长轮次由 0.111 s 降到 0.029 s；`fixed30` 与共享 CQP/CQD 矩阵未测到回退。
 
 ### 验证
 
 - 新增默认资源补齐且不覆盖用户文件、pair 新旧汇总一致性、权重/镜像/重复名、矩阵窗口边界、
   取消以及共享调度器并发/回调边界回归测试。
-- 本次并行修复的复测口径与 worker 环境限制记录在
-  `docs/perf/reports/openbox-pair-parallelism-2026-09-15.md`。
+- 本次并行修复的复测环境、逐档中位数与仪表伪影结论记录在
+  `docs/perf/reports/openbox-pair-parallelism-2026-09-15.md`，原始样本见同目录
+  `openbox_pair_parallelism_9b07a04e_ab_samples.json`。
 
 ## [0.4.3] - 2026-09-08
 
