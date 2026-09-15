@@ -25,3 +25,21 @@
 ## 提交与 PR
 
 近期历史采用 Conventional Commit 风格，如 `feat(openbox): 添加版本信息弹窗`、`docs(repo): 添加 Agent 工作约定`。使用 `feat`、`fix`、`docs`、`chore` 等类型和简短 scope；提交主题和正文均使用中文。PR 应说明动机、关键实现与验证命令；关联 issue；若更改 Openbox 或 WASM 可见界面，附截图或录屏。避免混入无关格式化、构建产物或本地配置。
+
+## 远程仓库与推送
+
+仓库同时配置两个 remote，两边内容必须保持一致：
+
+- `github`：`git@github.com:shenjackyuanjie/tswn-core.git`
+- `gitea`：`ssh://git@git.shenjack.top:5101/shenjack/tswn-core.git`
+
+**推送任何一个分支或 main 时，两个 remote 都要推**，不要只推 GitHub：
+
+```powershell
+git push github <branch>
+git push gitea <branch>
+```
+
+main 与 tag 同理（例如 `git push github main; git push gitea main`）。只推一边会让两个远端分叉，
+之后 fetch 会出现“本地看起来落后或领先”的假象，也会让 clone 来源不同的人看到不同历史。
+推送后可用 `git ls-remote github <ref>` 与 `git ls-remote gitea <ref>` 核对两边指向同一个 commit。
