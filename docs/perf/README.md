@@ -9,9 +9,13 @@
 - [性能追踪与历史比较](benchmark-history.md)：含当前 `perf_runtime` 复测入口。
 - [AMD uProf 采样指南](guides/amd-uprof.md)。
 - [fixed30 固定输入与历史工具口径](guides/fixed30-benchmark.md)。
+- [OpenBox pair 并行基准（`openbox_pair_probe`）](guides/openbox-pair-probe.md)：
+  headless 复测 OpenBox `pair` 后端的入口、参数、输出约定与同机 A/B 流程。
 
 ## 调查报告
 
+- [OpenBox pair 并行修复复测（2026-09-15）](reports/openbox-pair-parallelism-2026-09-15.md)：
+  fixed30 / CQP / CQD / pair 的同机交替 A/B，含仪表伪影排查与原始样本。
 - [winprob 数据集生成规模基线](reports/winprob-dataset-scale-baseline.md)：10k/100k 局生成的吞吐、存储、内存与校验开销，含 Parquet 行组缺陷的修复前后对比。
 - [Web Streaming 基线](reports/web-streaming-baseline.md)。
 - [Python BattleSession DTO 转换基线](reports/python-battle-session-baseline.md)。
@@ -40,6 +44,7 @@
 | [fixed_cases_30_results/](fixed_cases_30_results/) | 工具生成的 [初始](fixed_cases_30_results/perf_cases.md)、[0.3.8](fixed_cases_30_results/perf_cases_0.3.8.md)、[0.3.10](fixed_cases_30_results/perf_cases_0.3.10.md) 报告与同名 JSON |
 | [score/](score/)、[cqp/](cqp/)、[win_rate/](win_rate/)、[pgo_training/](pgo_training/) | score、CQP、胜率与 PGO 输入 |
 | `runtime_*.json` | 对应 Runtime 报告的原始结果；从报告内链接进入 |
+| [openbox_pair_parallelism_9b07a04e_ab_samples.json](openbox_pair_parallelism_9b07a04e_ab_samples.json) | OpenBox pair 并行修复复测的逐轮样本与输入哈希 |
 | [rc4_20260905_profile.json](rc4_20260905_profile.json) | RC4 调查数据 |
 | [python_battle_session_samples.json](python_battle_session_samples.json) | Python BattleSession DTO 转换基线的逐次样本 |
 | [web_streaming_result.png](web_streaming_result.png) | Web Streaming 页面截图 |

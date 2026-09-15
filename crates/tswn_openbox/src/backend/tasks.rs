@@ -20,11 +20,14 @@ use tswn_core::runtime::{RuntimeCqpMatchup, runtime_cqp_matchups};
 use super::format::{
     format_batch_file_record, format_batch_screen_log, format_pair_file_record, format_pair_screen_log, format_rate,
 };
+use super::pair::{PairMatrixInput, run_pair_matrix};
 use super::parse::{
     first_duplicate_name_in_matchup, groups_have_same_players, parse_factored_target_groups, parse_line_list,
     parse_namer_pf_groups, parse_player_groups_with_labels, parse_target_groups,
 };
-use super::score::{BatchRateSummary, bench_batch_rate_for_group, namer_pf_score};
+#[cfg(test)]
+use super::score::bench_batch_rate_for_group;
+use super::score::{BatchRateSummary, namer_pf_score};
 use super::skill_board::{SkillBoardConfig, evaluate_skill_board};
 use super::types::{BatchRateInput, NamerPfInput, NamerPfMetric, NamerPfMetricOptions, OutputMode, PairInput, ProgressEvent};
 
@@ -692,102 +695,98 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
     let head = input.head.max(1);
     let eval_rq = eval_rq(input.options.keep_rq);
     let precision = input.options.wr_precision.min(9);
-    let total = player_groups.len() * teammate_groups.len() * target_groups.len();
-    let mut done = 0usize;
-
-    for (player_group, player_label) in player_groups.iter().zip(player_labels.iter()) {
-        let started = Instant::now();
-        let converted_player = match player_group_to_ol(player_group) {
-            Ok(value) => value,
-            Err(err) => {
-                send(ProgressEvent::Done(Err(err)));
-                return;
-            }
-        };
-        let mut pair_rates = Vec::with_capacity(teammate_groups.len());
-        let mut total_wins = 0usize;
-        let mut total_battles = 0usize;
-        let mut _total_valid_matchups = 0usize;
-        let mut _total_skipped_matchups = 0usize;
-        let mut verbose = String::new();
-
-        for (teammate_index, (teammate_group, teammate_label)) in teammate_groups.iter().zip(teammate_labels.iter()).enumerate() {
-            let pair_group = format!("{converted_player}\n{teammate_group}");
-            if input.options.verbose {
-                let _ = writeln!(verbose, "teammate: {teammate_label}");
-            }
-            let summary = bench_batch_rate_for_group(
-                &pair_group,
-                &target_groups,
-                input.target_factor_enabled.then_some(target_factors.as_slice()),
-                n,
-                input.options.threads,
-                eval_rq,
-                input.options.verbose,
-                &mut verbose,
-                &input.cancel,
-                |_, _, _, _| {
-                    done += 1;
-                    send(ProgressEvent::Progress { done, total });
-                },
-            );
-            if summary.valid_matchups > 0 {
-                let score = teammate_score(summary.avg, teammate_factors[teammate_index], input.teammate_factor_enabled);
-                pair_rates.push((score, teammate_label.clone()));
-            }
-            total_wins += summary.wins;
-            total_battles += summary.total;
-            _total_valid_matchups += summary.valid_matchups;
-            _total_skipped_matchups += summary.skipped_matchups;
-            if input.cancel.load(Ordering::Relaxed) {
-                break;
-            }
-        }
-
-        pair_rates.sort_by(|a, b| b.0.total_cmp(&a.0));
-        let selected_count = head.min(pair_rates.len());
-        let final_score = pair_rates.iter().take(selected_count).map(|(rate, _)| *rate).sum::<f64>();
-        let _elapsed = started.elapsed();
-        let _aggregate_rate = total_wins as f64 * 100.0 / total_battles.max(1) as f64;
-
-        if input.options.min_file.is_none_or(|limit| final_score >= limit)
-            && let Some(output) = output.as_mut()
-        {
-            let line = format_pair_file_record(
-                input.output_mode,
-                player_label,
-                final_score,
-                selected_count,
-                head,
-                &pair_rates,
-                precision,
-            );
-            if let Err(err) = writeln!(output, "{line}") {
-                send(ProgressEvent::Done(Err(format!("写入输出文件失败: {err}"))));
-                return;
-            }
-        }
-
-        if input.options.min_screen.is_none_or(|limit| final_score >= limit) {
-            let log = format_pair_screen_log(
-                player_label,
-                final_score,
-                selected_count,
-                &pair_rates,
-                input.detail_mode,
-                input.detail_min,
-                precision,
-            );
-            if should_highlight(final_score, input.options.min_screen, input.highlight_delta) {
-                send(ProgressEvent::HighlightLog(log));
-            } else {
-                send(ProgressEvent::Log(log));
-            }
-        }
-        if input.cancel.load(Ordering::Relaxed) {
-            send(ProgressEvent::Done(Ok("已停止。".to_string())));
+    let Some(total) = player_groups
+        .len()
+        .checked_mul(teammate_groups.len())
+        .and_then(|n| n.checked_mul(target_groups.len()))
+    else {
+        send(ProgressEvent::Done(Err("pair: 配队矩阵大小溢出。".to_owned())));
+        return;
+    };
+    let converted_players = match player_groups
+        .iter()
+        .map(|player| player_group_to_ol(player))
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(players) => players,
+        Err(err) => {
+            send(ProgressEvent::Done(Err(err)));
             return;
         }
+    };
+    let matrix_input = PairMatrixInput {
+        players: &converted_players,
+        teammates: &teammate_groups,
+        targets: &target_groups,
+        target_factors: &target_factors,
+        teammate_factors: &teammate_factors,
+        target_factored: input.target_factor_enabled,
+        teammate_factored: input.teammate_factor_enabled,
+        n,
+        eval_rq,
+        threads: outer_thread_spec(input.options.threads),
+        cancel: &input.cancel,
+    };
+    let mut last_progress = Instant::now();
+    send(ProgressEvent::Progress { done: 0, total });
+    let result = run_pair_matrix(
+        &matrix_input,
+        |done| {
+            // 短 matchup 可能每秒完成数万次；不让 GUI 消息积压反过来限制计算吞吐。
+            if done == total || last_progress.elapsed() >= std::time::Duration::from_millis(40) {
+                send(ProgressEvent::Progress { done, total });
+                last_progress = Instant::now();
+            }
+        },
+        |player_index, rates| {
+            let player_label = &player_labels[player_index];
+            let mut pair_rates = rates
+                .into_iter()
+                .map(|(rate, index)| (rate, teammate_labels[index].clone()))
+                .collect::<Vec<_>>();
+            pair_rates.sort_by(|a, b| b.0.total_cmp(&a.0));
+            let selected_count = head.min(pair_rates.len());
+            let final_score = pair_rates.iter().take(selected_count).map(|(rate, _)| *rate).sum::<f64>();
+            if input.options.min_file.is_none_or(|limit| final_score >= limit)
+                && let Some(output) = output.as_mut()
+            {
+                let line = format_pair_file_record(
+                    input.output_mode,
+                    player_label,
+                    final_score,
+                    selected_count,
+                    head,
+                    &pair_rates,
+                    precision,
+                );
+                writeln!(output, "{line}").map_err(|err| format!("写入输出文件失败: {err}"))?;
+            }
+            if input.options.min_screen.is_none_or(|limit| final_score >= limit) {
+                let log = format_pair_screen_log(
+                    player_label,
+                    final_score,
+                    selected_count,
+                    &pair_rates,
+                    input.detail_mode,
+                    input.detail_min,
+                    precision,
+                );
+                if should_highlight(final_score, input.options.min_screen, input.highlight_delta) {
+                    send(ProgressEvent::HighlightLog(log));
+                } else {
+                    send(ProgressEvent::Log(log));
+                }
+            }
+            Ok(())
+        },
+    );
+    if let Err(err) = result {
+        send(ProgressEvent::Done(Err(err)));
+        return;
+    }
+    if input.cancel.load(Ordering::Relaxed) {
+        send(ProgressEvent::Done(Ok("已停止。".to_owned())));
+        return;
     }
 
     if let Err(err) = finalize_sorted_output_file(output.take(), input.output_file.as_deref(), input.output_mode) {
@@ -829,6 +828,7 @@ fn parse_pair_teammate_groups(
     }
 }
 
+#[cfg(test)]
 fn teammate_score(average_rate: f64, factor: f64, factor_enabled: bool) -> f64 {
     if factor_enabled { average_rate * factor } else { average_rate }
 }

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-15
+
 ### 性能与诊断
 
 - 调试探针的环境变量改为缓存读取。调度器逐 tick、行动准备、逐技能结算、保护链、
@@ -10,6 +12,24 @@
   实测：8 线程并行 CPU 时间 61.4 s、墙钟 14.7 s（1 线程 21.2 s，8 个独立进程 4.9 s），
   缓存后降到 CPU 17.8 s、墙钟 5.4 s；单线程下战斗模拟阶段从每分片 1.2 s 降到 0.13 s。
   探针语义不变：仍读同名环境变量，只在首次访问时读一次，取值按进程缓存。
+
+### 性能与调度
+
+- CQP/CQD 矩阵执行器不再让一个 matchup 独占全部轮次：matchup 与轮次区间统一动态派发给
+  一组常驻 worker，matchup 数少于 worker 数时不再被 matchup 数限制并行度，长轮次 matchup
+  也能吃满线程池。每个 worker 只缓存当前 matchup 的准备结果，分片一律沿用原始轮次编号，
+  结果仍按输入顺序归约，取消语义不变；完成事件经按 worker 数配置的有界队列回传。
+  同机实测（16 逻辑处理器、`openbox_mem_probe --count 10000`）：2 个 matchup 由 `0.111 s`
+  降到 `0.029 s`，8 个 matchup 由 `0.326 s` 降到 `0.135 s`；700 / 1312 个 matchup 的常规
+  矩阵未测到方向性回退。复测口径与原始样本见
+  `docs/perf/reports/openbox-pair-parallelism-2026-09-15.md`。
+- `prepared_runtime_win_rate` 与 `runtime_score` 的 worker 改为按小区间领取轮次
+  （`ceil(n / (workers * 8))`，上限 32），降低逐场原子争用，并让每个 worker 有多次领取机会。
+- 外层批量调度器（`bench_sched`）改为常驻 worker 池：进度 tick 由 worker 累加到原子计数、
+  调用线程按 40 ms 间隔排空，不再为每个 tick 走一次 channel，worker 也不会因为调用方进度
+  回调变慢而阻塞；worker 完成事件队列容量按 worker 数配置。高精度但 item 数足以填满 worker
+  时同样走外层池，单线程与 WASM 直接在调用线程执行、不再创建 OS 线程；item 不足以填满
+  worker 时仍回退内层并行。
 
 ## [0.6.0] - 2026-09-08
 

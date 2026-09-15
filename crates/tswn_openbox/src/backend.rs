@@ -4,6 +4,7 @@
 //! 供 `app::actions` 在独立线程中调用后端计算并通过 channel 回传进度事件。
 
 mod format;
+mod pair;
 mod parse;
 mod score;
 mod skill_board;

@@ -1,6 +1,6 @@
 # tswn_openbox
 
-当前版本：`0.4.3`
+当前版本：`0.4.4`
 
 `tswn_openbox` 是一个带 GUI 的本地交互面板，把常用 `tswn-cli` 工作流做成点击即用的界面。目标是能跑、无使用门槛、界面简洁。
 
@@ -314,3 +314,21 @@ cargo run -p tswn_openbox --bin openbox_mem_probe -- --players tests/allCO3pure.
 ```
 
 `0.3.9` 修复后，`allCO3pure.txt` 取 10000 组、`target2.txt` 全 41 个靶子、共 410000 个 matchup 的测试中，RSS 运行中稳定在约 `15-16 MB`，结束约 `9.1 MB`。
+
+## pair 并行基准
+
+`openbox_pair_probe` 是 `pair` 后端的 headless 基准入口，用于在没有 GUI 的条件下比较两个提交的
+pair 路径：
+
+```powershell
+cargo run --release -p tswn_openbox --bin openbox_pair_probe -- `
+  --players docs/perf/cqp/sqp6000_first20.txt `
+  --teammates crates/tswn_openbox/assets/teammates/teammate_fz.txt `
+  --targets crates/tswn_openbox/assets/targets/target2.txt `
+  --count 100 --threads auto --head 5
+```
+
+stdout 是该路径的日志行（可用于新旧输出哈希对账），stderr 是 `elapsed_s` 等摘要。
+`--count` 对应 1% / 10% / 100%（100 / 1000 / 10000），`--threads auto` 为自动线程。
+参数、输出约定与同机交替 A/B 的完整口径见
+[`docs/perf/guides/openbox-pair-probe.md`](../../docs/perf/guides/openbox-pair-probe.md)。

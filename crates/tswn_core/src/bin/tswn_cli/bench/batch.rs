@@ -8,12 +8,14 @@
 //! 因此这里把批量控制流、进度条和文件输出调度集中在一起，避免和底层单场 benchmark 细节混杂。
 
 use std::cell::Cell;
+use std::cell::RefCell;
 use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{self, IsTerminal, Write as _};
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
+use tswn_core::bench_sched::{low_accuracy_outer_workers, run_outer_parallel_ordered};
 
 use tswn_core::runtime::{RuntimeCqpMatchup, runtime_cqp_matchups};
 use tswn_core::win_rate::{WinRateTiming, resolve_win_rate_workers};
@@ -815,35 +817,39 @@ pub fn run_bench_pair(
     }
 
     let total_matchups_per_player = teammates.len().saturating_mul(target_groups.len());
-    let mut progress = BatchProgress::new(players.len(), total_matchups_per_player);
-    progress.draw();
+    let progress = RefCell::new(BatchProgress::new(players.len(), total_matchups_per_player));
+    progress.borrow_mut().draw();
+    let jobs = (0..players.len())
+        .flat_map(|pi| (0..teammates.len()).map(move |ti| (pi, ti)))
+        .collect::<Vec<_>>();
+    let requested = if mode == BenchThreadMode::SingleThread {
+        1
+    } else {
+        thread_spec(threads)
+    };
+    let workers = low_accuracy_outer_workers(n, jobs.len(), requested);
+    let inner_threads = if workers > 1 { Some(1) } else { threads };
+    let converted = players.iter().map(|player| player_group_to_ol_or_exit(player)).collect::<Vec<_>>();
+    let cancel = AtomicBool::new(false);
+    let mut pair_rates = Vec::new();
+    let mut total_wins = 0;
+    let mut total_battles = 0;
+    let mut total_valid_matchups = 0;
+    let mut total_skipped_matchups = 0;
+    let mut total_timing = WinRateTiming::default();
+    let mut verbose_buf = String::new();
+    let mut overall_started = Instant::now();
 
-    for (pi, (player, player_label)) in players.iter().zip(player_labels.iter()).enumerate() {
-        let overall_started = Instant::now();
-        let converted_player = player_group_to_ol_or_exit(player);
-        let mut pair_rates = Vec::with_capacity(teammates.len());
-        let mut total_wins = 0usize;
-        let mut total_battles = 0usize;
-        let mut total_valid_matchups = 0usize;
-        let mut total_skipped_matchups = 0usize;
-        let mut total_timing = WinRateTiming::default();
-        let mut verbose_buf = String::new();
-
-        if verbose {
-            let _ = writeln!(&mut verbose_buf);
-            let _ = writeln!(
-                &mut verbose_buf,
-                "━━━━━━━━ [{}/{}] {} ━━━━━━━━",
-                pi + 1,
-                players.len(),
-                player_label
-            );
-        }
-
-        for (teammate, teammate_label) in teammates.iter().zip(teammate_labels.iter()) {
-            let pair_group = format!("{converted_player}\n{teammate}");
+    let result = run_outer_parallel_ordered(
+        &jobs,
+        workers,
+        &cancel,
+        |_, &(pi, ti), tick| {
+            let started = Instant::now();
+            let pair_group = format!("{}\n{}", converted[pi], teammates[ti]);
+            let mut detail = String::new();
             if verbose {
-                let _ = writeln!(&mut verbose_buf, "  teammate: {teammate}");
+                let _ = writeln!(detail, "  teammate: {}", teammates[ti]);
             }
             let summary = bench_batch_rate_for_group(
                 &pair_group,
@@ -852,128 +858,161 @@ pub fn run_bench_pair(
                 target_factored,
                 n,
                 mode,
-                threads,
+                inner_threads,
                 eval_rq,
                 verbose,
-                &mut verbose_buf,
-                |_, _| progress.tick_target(),
+                &mut detail,
+                |_, _| tick(),
             );
-            if summary.valid_matchups > 0 {
-                pair_rates.push((summary.avg, teammate_label.clone()));
-            }
-            total_wins += summary.wins;
-            total_battles += summary.total;
-            total_valid_matchups += summary.valid_matchups;
-            total_skipped_matchups += summary.skipped_matchups;
-            total_timing.merge(summary.timing);
             if verbose {
                 let _ = writeln!(
-                    &mut verbose_buf,
+                    detail,
                     "  teammate avg: {}%  (有效 {}, 跳过 {})",
                     format_rate(summary.avg, wr_precision),
                     summary.valid_matchups,
                     summary.skipped_matchups
                 );
             }
-        }
-
-        pair_rates.sort_by(|a, b| b.0.total_cmp(&a.0));
-        let selected_count = head.min(pair_rates.len());
-        let final_score = pair_rates.iter().take(selected_count).map(|(rate, _)| *rate).sum::<f64>();
-        let elapsed = overall_started.elapsed();
-        let elapsed_secs = elapsed.as_secs_f64();
-        let throughput = if elapsed_secs > 0.0 {
-            total_battles as f64 / elapsed_secs
-        } else {
-            0.0
-        };
-        let aggregate_rate = total_wins as f64 * 100.0 / total_battles.max(1) as f64;
-        let summary_json = format_pair_rate_record(
-            player_label,
-            final_score,
-            selected_count,
-            head,
-            &pair_rates,
-            aggregate_rate,
-            total_wins,
-            total_battles,
-            elapsed,
-            throughput,
-            total_valid_matchups,
-            total_skipped_matchups,
-            wr_precision,
-        );
-        let summary_log = format_batch_rate_log_record(player_label, final_score, wr_precision);
-        let summary_pure = format_batch_rate_pure_record(player_label);
-
-        progress.complete_player(elapsed);
-
-        let passes_screen = min_screen.is_none_or(|t| final_score >= t);
-        let passes_file = min_file.is_none_or(|t| final_score >= t);
-
-        if passes_screen {
-            progress.clear();
-            if verbose {
-                print!("{verbose_buf}");
-                println!("top {}:", selected_count);
-                for (index, (rate, teammate)) in pair_rates.iter().take(selected_count).enumerate() {
-                    println!("  #{} {}% {}", index + 1, format_rate(*rate, wr_precision), teammate);
+            (pi, ti, summary, detail, started)
+        },
+        || progress.borrow_mut().tick_target(),
+        |(pi, ti, summary, detail, started)| {
+            let player_label = &player_labels[pi];
+            if ti == 0 {
+                pair_rates.clear();
+                total_wins = 0;
+                total_battles = 0;
+                total_valid_matchups = 0;
+                total_skipped_matchups = 0;
+                total_timing = WinRateTiming::default();
+                verbose_buf.clear();
+                overall_started = started;
+                if verbose {
+                    let _ = writeln!(
+                        verbose_buf,
+                        "\n━━━━━━━━ [{}/{}] {} ━━━━━━━━",
+                        pi + 1,
+                        players.len(),
+                        player_label
+                    );
                 }
-                println!(
-                    "最终分数: {}  (head={}, 有效组合 {}, 有效靶子 {}, 跳过 {} 场重复号)",
-                    format_rate(final_score, wr_precision),
-                    head,
-                    pair_rates.len(),
-                    total_valid_matchups,
-                    total_skipped_matchups
-                );
-                println!(
-                    "汇总胜率: {}%  ({}/{})",
-                    format_rate(aggregate_rate, wr_precision),
-                    total_wins,
-                    total_battles
-                );
-                println!(
-                    "用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
-                    elapsed_secs,
-                    elapsed.as_micros() as f64 / total_battles.max(1) as f64,
-                    throughput
-                );
+            }
+            overall_started = overall_started.min(started);
+            verbose_buf.push_str(&detail);
+            if summary.valid_matchups > 0 {
+                pair_rates.push((summary.avg, teammate_labels[ti].clone()));
+            }
+            total_wins += summary.wins;
+            total_battles += summary.total;
+            total_valid_matchups += summary.valid_matchups;
+            total_skipped_matchups += summary.skipped_matchups;
+            total_timing.merge(summary.timing);
+            if ti + 1 != teammates.len() {
+                return Ok(());
+            }
+            pair_rates.sort_by(|a, b| b.0.total_cmp(&a.0));
+            let selected_count = head.min(pair_rates.len());
+            let final_score = pair_rates.iter().take(selected_count).map(|(rate, _)| *rate).sum::<f64>();
+            let elapsed = overall_started.elapsed();
+            let elapsed_secs = elapsed.as_secs_f64();
+            let throughput = if elapsed_secs > 0.0 {
+                total_battles as f64 / elapsed_secs
             } else {
-                println!(
-                    "{}\t最终分数: {}\ttop: {}/{}\t有效靶子: {}\t跳过重复: {}\t用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
-                    player_label,
-                    format_rate(final_score, wr_precision),
-                    selected_count,
-                    head,
-                    total_valid_matchups,
-                    total_skipped_matchups,
-                    elapsed_secs,
-                    elapsed.as_micros() as f64 / total_battles.max(1) as f64,
-                    throughput
-                );
-            }
-        }
-
-        if passes_file && let Some(file) = out_file.as_mut() {
-            let line = match file_mode {
-                BatchFileOutputMode::Log => &summary_log,
-                BatchFileOutputMode::Json => &summary_json,
-                BatchFileOutputMode::Pure => &summary_pure,
+                0.0
             };
-            if let Err(err) = write_batch_rate_record(file, line) {
-                eprintln!("写入 pair 结果输出文件失败: {err}");
-                std::process::exit(1);
+            let aggregate_rate = total_wins as f64 * 100.0 / total_battles.max(1) as f64;
+            let summary_json = format_pair_rate_record(
+                player_label,
+                final_score,
+                selected_count,
+                head,
+                &pair_rates,
+                aggregate_rate,
+                total_wins,
+                total_battles,
+                elapsed,
+                throughput,
+                total_valid_matchups,
+                total_skipped_matchups,
+                wr_precision,
+            );
+            let summary_log = format_batch_rate_log_record(player_label, final_score, wr_precision);
+            let summary_pure = format_batch_rate_pure_record(player_label);
+
+            progress.borrow_mut().complete_player(elapsed);
+
+            let passes_screen = min_screen.is_none_or(|t| final_score >= t);
+            let passes_file = min_file.is_none_or(|t| final_score >= t);
+
+            if passes_screen {
+                progress.borrow_mut().clear();
+                if verbose {
+                    print!("{verbose_buf}");
+                    println!("top {}:", selected_count);
+                    for (index, (rate, teammate)) in pair_rates.iter().take(selected_count).enumerate() {
+                        println!("  #{} {}% {}", index + 1, format_rate(*rate, wr_precision), teammate);
+                    }
+                    println!(
+                        "最终分数: {}  (head={}, 有效组合 {}, 有效靶子 {}, 跳过 {} 场重复号)",
+                        format_rate(final_score, wr_precision),
+                        head,
+                        pair_rates.len(),
+                        total_valid_matchups,
+                        total_skipped_matchups
+                    );
+                    println!(
+                        "汇总胜率: {}%  ({}/{})",
+                        format_rate(aggregate_rate, wr_precision),
+                        total_wins,
+                        total_battles
+                    );
+                    println!(
+                        "用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
+                        elapsed_secs,
+                        elapsed.as_micros() as f64 / total_battles.max(1) as f64,
+                        throughput
+                    );
+                } else {
+                    println!(
+                        "{}\t最终分数: {}\ttop: {}/{}\t有效靶子: {}\t跳过重复: {}\t用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
+                        player_label,
+                        format_rate(final_score, wr_precision),
+                        selected_count,
+                        head,
+                        total_valid_matchups,
+                        total_skipped_matchups,
+                        elapsed_secs,
+                        elapsed.as_micros() as f64 / total_battles.max(1) as f64,
+                        throughput
+                    );
+                }
             }
-        }
 
-        if perf && passes_screen {
-            progress.clear();
-            print_perf_lines(elapsed, total_timing, total_battles);
-        }
+            if passes_file && let Some(file) = out_file.as_mut() {
+                let line = match file_mode {
+                    BatchFileOutputMode::Log => &summary_log,
+                    BatchFileOutputMode::Json => &summary_json,
+                    BatchFileOutputMode::Pure => &summary_pure,
+                };
+                if let Err(err) = write_batch_rate_record(file, line) {
+                    eprintln!("写入 pair 结果输出文件失败: {err}");
+                    std::process::exit(1);
+                }
+            }
 
-        progress.draw();
+            if perf && passes_screen {
+                progress.borrow_mut().clear();
+                print_perf_lines(elapsed, total_timing, total_battles);
+            }
+
+            progress.borrow_mut().draw();
+            Ok(())
+        },
+    );
+    if let Err(err) = result {
+        eprintln!("pair 执行失败: {err}");
+        std::process::exit(1);
     }
 
-    progress.finish();
+    progress.borrow_mut().finish();
 }

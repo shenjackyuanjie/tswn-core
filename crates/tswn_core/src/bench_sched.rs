@@ -15,33 +15,37 @@
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
+use std::time::Duration;
 
 use crate::win_rate::resolve_win_rate_workers;
 
 /// 低精度外层并行的场数上限：单局场数 ≤ 此值时才考虑走外层并行。
 pub const LOW_ACCURACY_OUTER_PARALLEL_LIMIT: usize = 1000;
 
-/// worker 事件 channel 容量。给细粒度 tick 留足缓冲，避免 worker 频繁阻塞在 `send` 上。
-const OUTER_EVENT_CHANNEL_CAPACITY: usize = 4096;
+/// 进度回调最迟每个间隔被调用线程排空，worker 不为每个 tick 等待 channel。
+const PROGRESS_POLL_INTERVAL: Duration = Duration::from_millis(40);
 
 /// 计算外层并行应使用的 worker 数。
 ///
 /// 返回 `1` 表示“无需外层并行，上层应回退到原有内层并行/串行路径”。
-/// 仅当单局场数足够小（`n <= LOW_ACCURACY_OUTER_PARALLEL_LIMIT`）且 item 数大于 1 时才并行；
+/// 低精度或 item 足够填满 worker 时使用外层并行；
 /// `thread` 的语义与 [`resolve_win_rate_workers`] 一致（`0` = 自动）。
 pub fn low_accuracy_outer_workers(n: usize, item_count: usize, thread: u32) -> usize {
-    if n > LOW_ACCURACY_OUTER_PARALLEL_LIMIT || item_count <= 1 {
+    if item_count <= 1 {
         return 1;
     }
-    resolve_win_rate_workers(thread, item_count)
+    let requested = resolve_win_rate_workers(thread, usize::MAX);
+    // 高精度且 item 足够多时同样使用外层池，避免每个 item/评分项反复建线程。
+    // item 不足以填满 worker 时保留内层并行回退。
+    if n > LOW_ACCURACY_OUTER_PARALLEL_LIMIT && item_count < requested {
+        return 1;
+    }
+    requested.min(item_count)
 }
 
-/// worker → 主线程的事件。
-enum OuterEvent<R> {
-    /// 细粒度进度 +1（由 `compute` 主动调用 tick 触发）。
-    Tick,
-    /// 某个 item 计算完成。
-    Done { index: usize, result: R },
+struct OuterEvent<R> {
+    index: usize,
+    result: R,
 }
 
 /// 外层并行执行器：把 `items` 派发给 `workers` 个 worker 并行计算，按 item 原始顺序 emit。
@@ -72,16 +76,41 @@ where
         return Ok(0);
     }
 
-    let next = AtomicUsize::new(0);
-    let worker_count = workers.min(len).max(1);
-    let (tx, rx) = mpsc::sync_channel::<OuterEvent<R>>(OUTER_EVENT_CHANNEL_CAPACITY);
+    let worker_count = if cfg!(target_family = "wasm") {
+        1
+    } else {
+        workers.min(len).max(1)
+    };
+    if worker_count == 1 {
+        // 单线程直接在调用线程执行，避免纯单线程/WASM 路径也创建 OS 线程。
+        let ticks = std::cell::RefCell::new(&mut on_tick);
+        let tick = || (*ticks.borrow_mut())();
+        let mut completed = 0;
+        for (index, item) in items.iter().enumerate() {
+            if cancel.load(Ordering::Relaxed) {
+                break;
+            }
+            let result = compute(index, item, &tick);
+            completed += 1;
+            if let Err(err) = emit(result) {
+                cancel.store(true, Ordering::Relaxed);
+                return Err(err);
+            }
+        }
+        return Ok(completed);
+    }
 
+    let next = AtomicUsize::new(0);
+    let pending_ticks = AtomicUsize::new(0);
+    let (tx, rx) = mpsc::sync_channel::<OuterEvent<R>>(worker_count.saturating_mul(2));
     std::thread::scope(|scope| {
+        // 回调 panic 时先析构接收器，防止 worker 卡在有界 send 而 scope 等待 join。
+        let rx = rx;
         for _ in 0..worker_count {
             let tx = tx.clone();
             let next = &next;
+            let pending_ticks = &pending_ticks;
             let compute = &compute;
-            let cancel = &*cancel;
             scope.spawn(move || {
                 loop {
                     if cancel.load(Ordering::Relaxed) {
@@ -92,32 +121,31 @@ where
                         break;
                     }
                     let tick = || {
-                        let _ = tx.send(OuterEvent::Tick);
+                        pending_ticks.fetch_add(1, Ordering::Relaxed);
                     };
                     let result = compute(index, &items[index], &tick);
-                    if tx.send(OuterEvent::Done { index, result }).is_err() {
+                    if tx.send(OuterEvent { index, result }).is_err() {
                         break;
                     }
                 }
             });
         }
-        // 主线程不再持有 tx；channel 在所有 worker 结束、丢弃各自 tx 后自然关闭。
         drop(tx);
-
         let mut pending: Vec<Option<R>> = (0..len).map(|_| None).collect();
-        let mut next_emit = 0usize;
-        let mut completed = 0usize;
-        let mut first_error: Option<String> = None;
-
-        while let Ok(event) = rx.recv() {
+        let mut next_emit = 0;
+        let mut completed = 0;
+        let mut first_error = None;
+        loop {
+            let event = rx.recv_timeout(PROGRESS_POLL_INTERVAL);
+            // 保持一次 tick 对应一次回调的既有契约，但不让 worker 阻塞于 GUI 进度。
+            for _ in 0..pending_ticks.swap(0, Ordering::Relaxed) {
+                on_tick();
+            }
             match event {
-                OuterEvent::Tick => on_tick(),
-                OuterEvent::Done { index, result } => {
+                Ok(OuterEvent { index, result }) => {
                     completed += 1;
-                    if index < pending.len() {
-                        pending[index] = Some(result);
-                    }
-                    while next_emit < pending.len() {
+                    pending[index] = Some(result);
+                    while next_emit < len {
                         let Some(result) = pending[next_emit].take() else {
                             break;
                         };
@@ -130,9 +158,10 @@ where
                         next_emit += 1;
                     }
                 }
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
             }
         }
-
         match first_error {
             Some(err) => Err(err),
             None => Ok(completed),
@@ -220,5 +249,76 @@ mod tests {
 
         assert_eq!(result, Err("boom".to_string()));
         assert!(cancel.load(Ordering::Relaxed));
+    }
+}
+
+#[cfg(test)]
+mod parallel_regressions {
+    use super::*;
+    #[test]
+    fn high_accuracy_uses_outer_workers_when_items_fill_budget() {
+        if !cfg!(target_family = "wasm") {
+            assert_eq!(low_accuracy_outer_workers(10_000, 32, 4), 4);
+        }
+        assert_eq!(low_accuracy_outer_workers(10_000, 2, 4), 1);
+        assert_eq!(low_accuracy_outer_workers(100, 1, 4), 1);
+    }
+    #[test]
+    fn single_worker_runs_on_caller_and_preserves_ticks() {
+        let caller = std::thread::current().id();
+        let mut ticks = 0;
+        run_outer_parallel_ordered(
+            &[1, 2],
+            1,
+            &AtomicBool::new(false),
+            |_, item, tick| {
+                assert_eq!(std::thread::current().id(), caller);
+                tick();
+                tick();
+                *item
+            },
+            || ticks += 1,
+            |_| Ok(()),
+        )
+        .unwrap();
+        assert_eq!(ticks, 4);
+    }
+    #[test]
+    fn heavy_ticks_are_not_lost() {
+        let mut ticks = 0;
+        let completed = run_outer_parallel_ordered(
+            &[1; 16],
+            4,
+            &AtomicBool::new(false),
+            |_, _, tick| {
+                for _ in 0..5000 {
+                    tick();
+                }
+            },
+            || ticks += 1,
+            |_| Ok(()),
+        )
+        .unwrap();
+        assert_eq!(completed, 16);
+        assert_eq!(ticks, 80_000);
+    }
+    #[test]
+    fn progress_panic_does_not_deadlock_bounded_results() {
+        let result = std::panic::catch_unwind(|| {
+            run_outer_parallel_ordered(
+                &[1; 128],
+                4,
+                &AtomicBool::new(false),
+                |_, _, tick| {
+                    for _ in 0..100 {
+                        tick();
+                    }
+                },
+                || panic!("测试进度异常"),
+                |_| Ok(()),
+            )
+            .unwrap();
+        });
+        assert!(result.is_err());
     }
 }
