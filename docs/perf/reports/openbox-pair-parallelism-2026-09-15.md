@@ -65,14 +65,16 @@ cargo build --release -p tswn_core --bin tswn-cli --example perf_runtime --featu
 
 ### 2.1 OpenBox pair 后端探针
 
-OpenBox 的 `pair` 只在 GUI 里被调用，仓库没有现成的 headless 入口。本轮在两侧
-**使用同一份未提交探针源码**（附录 A）直接驱动 `tswn_openbox::backend::run_pair`，
-在业务调用外层计时并把该路径产生的日志行按原顺序打印，再做哈希比较。
-两侧的 `PairInput` / `CommonBenchOptions` 字段一致，探针可以逐字复用。
+OpenBox 的 `pair` 只在 GUI 里被调用，仓库原先没有 headless 入口。本轮用
+`crates/tswn_openbox/src/bin/openbox_pair_probe.rs` 直接驱动 `tswn_openbox::backend::run_pair`，
+在业务调用外层计时并把该路径产生的日志行按原顺序打印，再做哈希比较。该入口随后与本文一起
+提交进仓库，参数、输出约定与复测流程见 [`guides/openbox-pair-probe.md`](../guides/openbox-pair-probe.md)。
+两侧的 `PairInput` / `CommonBenchOptions` 字段一致，同一份源码可以在两个提交上逐字复用。
 
 ### 2.2 派生输入
 
-为控制单轮时长，部分配置使用固定输入的确定性子集（hash 见随附 JSON，两侧字节相同）：
+为控制单轮时长，部分配置使用固定输入的确定性子集（hash 见随附 JSON，两侧字节相同；
+这些子集不被仓库跟踪，生成命令见第 7 节）：
 
 | 文件 | 派生方式 |
 | --- | --- |
@@ -260,6 +262,18 @@ let parts = requested.div_ceil(matchups).clamp(1, 8).min(usize::MAX / matchups);
 cargo build --release -p tswn_openbox --bins
 cargo build --release -p tswn_core --bin tswn-cli --example perf_runtime --features no_debug
 
+# 派生输入（仓库不跟踪这些子集，按需生成；哈希见第 2.2 节）
+Get-Content .\docs\perf\cqp\sqp6000_first20.txt | Select-Object -First 8 |
+  Set-Content .\docs\perf\cqp\sqp6000_first8.txt -Encoding utf8
+Get-Content .\docs\perf\cqp\sqp6000_first20.txt | Select-Object -First 2 |
+  Set-Content .\docs\perf\cqp\sqp6000_first2.txt -Encoding utf8
+Get-Content .\crates\tswn_openbox\assets\teammates\teammate_fz.txt | Select-Object -First 4 |
+  Set-Content .\crates\tswn_openbox\assets\teammates\teammate_fz4.txt -Encoding utf8
+Get-Content .\crates\tswn_openbox\assets\targets\target1.txt | Select-Object -First 1 |
+  Set-Content .\crates\tswn_openbox\assets\targets\target1_first1.txt -Encoding utf8
+# teammate_fz4.toml = teammate_fz.toml 的前 4 个 [[targets]] 块
+git show d9dcba0d^:cqp_double_target.txt | Out-File .\cqp_double_target.txt -Encoding utf8
+
 # fixed30
 .\target\release\examples\perf_runtime.exe --input docs\perf\fixed_cases_30 --runs 13000 --threads 1
 .\target\release\examples\perf_runtime.exe --input docs\perf\fixed_cases_30 --runs 13000 --threads 0
@@ -279,7 +293,7 @@ cargo build --release -p tswn_core --bin tswn-cli --example perf_runtime --featu
   --targets .\crates\tswn_openbox\assets\targets\target1_first1.txt --limit all --target-limit all `
   --count 10000 --threads 0 --report-ms 3600000
 
-# OpenBox pair 后端（探针源码见附录 A；-t 依次 1 / 2 / 4 / auto）
+# OpenBox pair 后端（入口见附录 A 与 guides/openbox-pair-probe.md；-t 依次 1 / 2 / 4 / auto）
 .\target\release\openbox_pair_probe.exe --players .\docs\perf\cqp\sqp6000_first8.txt `
   --teammates .\crates\tswn_openbox\assets\teammates\teammate_fz4.txt `
   --targets .\crates\tswn_openbox\assets\targets\target2.txt --count 100 --threads auto --head 5
@@ -315,153 +329,33 @@ A/B 驱动脚本（本机临时工具，未提交）：预热 1 轮 + 3 轮交�
   完成队列的相互作用，见第 5 节），已通过复测参数避免；`RangePlan` 分片公式经对照实验
   确认利大于弊，无需改动（见第 6 节）。
 
-## 附录 A：OpenBox pair 探针源码（本机临时工具，未提交）
+## 附录 A：OpenBox pair 探针
 
-放在 `crates/tswn_openbox/src/bin/openbox_pair_probe.rs`，两侧使用同一份源码：
+探针已提交为 `crates/tswn_openbox/src/bin/openbox_pair_probe.rs`，参数、输出约定与复测流程见
+[`docs/perf/guides/openbox-pair-probe.md`](../guides/openbox-pair-probe.md)。
+stdout 是该路径的日志行（两侧逐字节比较），stderr 的 `elapsed_s` 就是表中的内部计时。
 
-```rust
-//! OpenBox pair 后端 A/B 探针（本地复测临时工具，不随仓库提交）。
-//!
-//! 直接驱动 `tswn_openbox::backend::run_pair`，在业务调用外层记录整批墙钟，
-//! 并把该路径产生的日志行按原顺序打印到 stdout，便于新旧输出逐字节比较。
+本轮测量使用的参数组合：
 
-use std::cell::{Cell, RefCell};
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
-use std::time::Instant;
+```powershell
+# 小网格：8 选手 × 4 队友 × 41 靶子 = 1312 matchup
+.\target\release\openbox_pair_probe.exe `
+  --players .\docs\perf\cqp\sqp6000_first8.txt `
+  --teammates .\crates\tswn_openbox\assets\teammates\teammate_fz4.txt `
+  --targets .\crates\tswn_openbox\assets\targets\target2.txt `
+  --count 100 --threads 1 --head 5          # --threads 依次 1 / 2 / 4 / auto
 
-use tswn_openbox::backend::{CommonBenchOptions, OutputMode, PairDetailMode, PairInput, ProgressEvent, run_pair};
+# 全网格：20 选手 × 16 队友 × 41 靶子 = 13120 matchup
+.\target\release\openbox_pair_probe.exe `
+  --players .\docs\perf\cqp\sqp6000_first20.txt `
+  --teammates .\crates\tswn_openbox\assets\teammates\teammate_fz.txt `
+  --targets .\crates\tswn_openbox\assets\targets\target2.txt `
+  --count 100 --threads auto --head 5       # --count 依次 100 / 1000
 
-struct Args {
-    players: PathBuf,
-    teammates: PathBuf,
-    targets: PathBuf,
-    count: usize,
-    threads: Option<usize>,
-    head: usize,
-    detail_mode: PairDetailMode,
-    teammate_factored: bool,
-    target_factored: bool,
-}
-
-impl Args {
-    fn parse() -> Self {
-        let mut args = std::env::args().skip(1);
-        let mut parsed = Self {
-            players: PathBuf::from("docs/perf/cqp/sqp6000_first20.txt"),
-            teammates: PathBuf::from("crates/tswn_openbox/assets/teammates/teammate_fz.txt"),
-            targets: PathBuf::from("crates/tswn_openbox/assets/targets/target2.txt"),
-            count: 100,
-            threads: Some(1),
-            head: 5,
-            detail_mode: PairDetailMode::Top,
-            teammate_factored: false,
-            target_factored: false,
-        };
-        while let Some(arg) = args.next() {
-            match arg.as_str() {
-                "--players" => parsed.players = PathBuf::from(args.next().expect("--players needs a path")),
-                "--teammates" => parsed.teammates = PathBuf::from(args.next().expect("--teammates needs a path")),
-                "--targets" => parsed.targets = PathBuf::from(args.next().expect("--targets needs a path")),
-                "--count" => parsed.count = args.next().expect("--count needs a value").parse().expect("invalid --count"),
-                "--threads" => {
-                    let raw = args.next().expect("--threads needs a value");
-                    parsed.threads = match raw.as_str() {
-                        "auto" | "0" => None,
-                        _ => Some(raw.parse().expect("invalid --threads")),
-                    };
-                }
-                "--head" => parsed.head = args.next().expect("--head needs a value").parse().expect("invalid --head"),
-                "--detail" => {
-                    parsed.detail_mode = match args.next().expect("--detail needs a value").as_str() {
-                        "none" => PairDetailMode::None,
-                        "top" => PairDetailMode::Top,
-                        "every" => PairDetailMode::Every,
-                        other => panic!("invalid --detail: {other}"),
-                    }
-                }
-                "--teammate-factored" => parsed.teammate_factored = true,
-                "--target-factored" => parsed.target_factored = true,
-                other => panic!("unknown arg: {other}"),
-            }
-        }
-        parsed
-    }
-}
-
-fn read_all(path: &PathBuf) -> String {
-    std::fs::read_to_string(path).unwrap_or_else(|err| panic!("read failed {}: {err}", path.display()))
-}
-
-fn main() {
-    let args = Args::parse();
-    let cancel = Arc::new(AtomicBool::new(false));
-    let input = PairInput {
-        target_text: read_all(&args.targets),
-        target_factor_enabled: args.target_factored,
-        player_text: read_all(&args.players),
-        player_double_plus: false,
-        teammate_text: read_all(&args.teammates),
-        teammate_double_plus: false,
-        teammate_factor_enabled: args.teammate_factored,
-        head: args.head,
-        detail_mode: args.detail_mode,
-        detail_min: None,
-        highlight_delta: None,
-        output_mode: OutputMode::Log,
-        output_file: None,
-        options: CommonBenchOptions {
-            count: args.count,
-            threads: args.threads,
-            keep_rq: true,
-            verbose: false,
-            min_screen: None,
-            min_file: None,
-            wr_precision: 3,
-        },
-        cancel: Arc::clone(&cancel),
-    };
-
-    let lines = RefCell::new(Vec::<String>::new());
-    let ticks = Cell::new(0usize);
-    let last = Cell::new(0usize);
-    let done = RefCell::new(None::<Result<String, String>>);
-    let start = Instant::now();
-    run_pair(input, |event| match event {
-        ProgressEvent::Log(line) | ProgressEvent::HighlightLog(line) | ProgressEvent::SkillBoardLog(line) => {
-            lines.borrow_mut().push(line);
-        }
-        ProgressEvent::Progress { done, .. } => {
-            ticks.set(ticks.get() + 1);
-            last.set(done);
-        }
-        ProgressEvent::Done(result) => *done.borrow_mut() = Some(result),
-    });
-    let elapsed = start.elapsed().as_secs_f64();
-
-    let lines = lines.into_inner();
-    for line in &lines {
-        println!("{line}");
-    }
-    let status = match done.into_inner() {
-        Some(Ok(message)) => message,
-        Some(Err(err)) => {
-            eprintln!("probe done=Err err={err}");
-            std::process::exit(2);
-        }
-        None => {
-            eprintln!("probe done=None");
-            std::process::exit(3);
-        }
-    };
-    eprintln!(
-        "probe elapsed_s={elapsed:.6} lines={} progress_ticks={} progress_last={} done={status}",
-        lines.len(),
-        ticks.get(),
-        last.get()
-    );
-}
+# 带权组合
+.\target\release\openbox_pair_probe.exe `
+  --players .\docs\perf\cqp\sqp6000_first8.txt `
+  --teammates .\crates\tswn_openbox\assets\teammates\teammate_fz4.toml --teammate-factored `
+  --targets .\crates\tswn_openbox\assets\targets\target2.txt `
+  --count 100 --threads auto --head 5
 ```
-
-探针把该路径的全部日志行按原顺序写到 stdout，两侧输出逐字节比较（第 4.4 节）。

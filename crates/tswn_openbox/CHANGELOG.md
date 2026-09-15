@@ -22,6 +22,8 @@
 
 - 新增默认资源补齐且不覆盖用户文件、pair 新旧汇总一致性、权重/镜像/重复名、矩阵窗口边界、
   取消以及共享调度器并发/回调边界回归测试。
+- 新增 `openbox_pair_probe` headless 基准入口，用于在没有 GUI 的条件下复测 `pair` 后端；
+  参数与同机 A/B 流程见 `docs/perf/guides/openbox-pair-probe.md`。
 - 本次并行修复的复测环境、逐档中位数与仪表伪影结论记录在
   `docs/perf/reports/openbox-pair-parallelism-2026-09-15.md`，原始样本见同目录
   `openbox_pair_parallelism_9b07a04e_ab_samples.json`。

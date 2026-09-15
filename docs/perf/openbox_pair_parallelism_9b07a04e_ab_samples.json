@@ -49,7 +49,8 @@
     "teammate_fz4.txt 是 teammate_fz.txt 的前 4 行，teammate_fz4.toml 是 teammate_fz.toml 的前 4 个 [[targets]] 块；",
     "cqp_double_target.txt 不在仓库中（d9dcba0d 删除且被 .gitignore 忽略），本次由 d9dcba0d^ 恢复，哈希与历史报告一致；",
     "CQP/CQD 系列样本关闭了 openbox_mem_probe 的周期性 RSS 上报（--report-ms 3600000）：该上报会在进度回调里 spawn powershell 并把约 0.3s 停顿计入被测量区间；",
-    "counterfactual_experiment 的 candidate 侧是本机打过 RangePlan 补丁的构建，补丁未提交，且其 baseline 列来自同一次会话，跨会话绝对值不可直接比较。"
+    "counterfactual_experiment 的 candidate 侧是本机打过 RangePlan 补丁的构建，补丁未提交，且其 baseline 列来自同一次会话，跨会话绝对值不可直接比较。",
+    "OpenBox pair 的测量入口已随报告提交为 crates/tswn_openbox/src/bin/openbox_pair_probe.rs，用法见 docs/perf/guides/openbox-pair-probe.md。"
   ],
   "workloads": {
     "check-cli-batch-double": {
