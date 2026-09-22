@@ -20,7 +20,7 @@ use tswn_openbox::backend::{
 };
 
 use super::state::{CountMode, OpenboxApp};
-use super::target_presets::{load_selected_target_text, load_selected_teammate_text};
+use tswn_openbox::presets::{load_selected_target_text, load_selected_teammate_text};
 use super::widgets::OptionalFileOutput;
 
 const MAX_EVENTS_PER_POLL: usize = 256;
@@ -157,6 +157,8 @@ impl OpenboxApp {
             skill_board: NamerPfSkillBoardOptions {
                 screen: self.namer_pf.skill_board.screen,
                 output_file: skill_board_output_file,
+                // GUI 始终走后端默认路径 ./setting/score_now.toml。
+                config: None,
             },
             cancel,
         };
@@ -538,7 +540,7 @@ fn resolve_output_path(output: &OptionalFileOutput) -> Result<Option<std::path::
 
 fn read_teammate_text(
     manual_source: &super::source::TextSource,
-    presets: &super::target_presets::TeammatePresetState,
+    presets: &tswn_openbox::presets::TeammatePresetState,
     manual_teammates: bool,
 ) -> Result<String, String> {
     if manual_teammates {

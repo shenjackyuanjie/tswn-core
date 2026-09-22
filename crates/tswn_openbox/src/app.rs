@@ -7,7 +7,6 @@ mod actions;
 mod help;
 mod source;
 mod state;
-mod target_presets;
 mod view;
 mod widgets;
 

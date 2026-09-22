@@ -475,7 +475,7 @@ fn highlight_delta_control(ui: &mut egui::Ui, value: &mut String, requested_help
     });
 }
 
-fn target_preset_controls(ui: &mut egui::Ui, state: &mut super::target_presets::TargetPresetState) {
+fn target_preset_controls(ui: &mut egui::Ui, state: &mut tswn_openbox::presets::TargetPresetState) {
     ui.horizontal(|ui| {
         ui.label("靶子");
         egui::ComboBox::from_id_salt(ui.next_auto_id())
@@ -496,7 +496,7 @@ fn target_preset_controls(ui: &mut egui::Ui, state: &mut super::target_presets::
 
 fn teammate_preset_controls(
     ui: &mut egui::Ui,
-    state: &mut super::target_presets::TeammatePresetState,
+    state: &mut tswn_openbox::presets::TeammatePresetState,
     requested_help: &Cell<Option<HelpTopic>>,
     show_help: bool,
 ) {

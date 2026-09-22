@@ -9,54 +9,54 @@ use serde::Deserialize;
 const SETTING_DIR_NAME: &str = "setting";
 const SETTINGS_FILE_NAME: &str = "settings.toml";
 const SCORE_NOW_FILE_NAME: &str = "score_now.toml";
-const DEFAULT_SETTINGS_TOML: &str = include_str!("../../assets/settings.toml");
-const DEFAULT_SCORE_NOW_TOML: &str = include_str!("../../assets/score_now.toml");
+const DEFAULT_SETTINGS_TOML: &str = include_str!("../assets/settings.toml");
+const DEFAULT_SCORE_NOW_TOML: &str = include_str!("../assets/score_now.toml");
 const DEFAULT_SETTING_FILES: &[(&str, &str)] = &[
     (
         "teammates/teammate_fz.toml",
-        include_str!("../../assets/teammates/teammate_fz.toml"),
+        include_str!("../assets/teammates/teammate_fz.toml"),
     ),
     (
         "teammates/teammate_bc.toml",
-        include_str!("../../assets/teammates/teammate_bc.toml"),
+        include_str!("../assets/teammates/teammate_bc.toml"),
     ),
     (
         "teammates/teammate_wc.toml",
-        include_str!("../../assets/teammates/teammate_wc.toml"),
+        include_str!("../assets/teammates/teammate_wc.toml"),
     ),
     (
         "teammates/teammate_pj.toml",
-        include_str!("../../assets/teammates/teammate_pj.toml"),
+        include_str!("../assets/teammates/teammate_pj.toml"),
     ),
     (
         "teammates/teammate_fs.toml",
-        include_str!("../../assets/teammates/teammate_fs.toml"),
+        include_str!("../assets/teammates/teammate_fs.toml"),
     ),
     (SCORE_NOW_FILE_NAME, DEFAULT_SCORE_NOW_TOML),
-    ("targets/target1.txt", include_str!("../../assets/targets/target1.txt")),
-    ("targets/target2.txt", include_str!("../../assets/targets/target2.txt")),
-    ("targets/target3.txt", include_str!("../../assets/targets/target3.txt")),
-    ("targets/newTarget1.toml", include_str!("../../assets/targets/newTarget1.toml")),
-    ("targets/newTarget2.toml", include_str!("../../assets/targets/newTarget2.toml")),
+    ("targets/target1.txt", include_str!("../assets/targets/target1.txt")),
+    ("targets/target2.txt", include_str!("../assets/targets/target2.txt")),
+    ("targets/target3.txt", include_str!("../assets/targets/target3.txt")),
+    ("targets/newTarget1.toml", include_str!("../assets/targets/newTarget1.toml")),
+    ("targets/newTarget2.toml", include_str!("../assets/targets/newTarget2.toml")),
     (
         "teammates/teammate_fz.txt",
-        include_str!("../../assets/teammates/teammate_fz.txt"),
+        include_str!("../assets/teammates/teammate_fz.txt"),
     ),
     (
         "teammates/teammate_bc.txt",
-        include_str!("../../assets/teammates/teammate_bc.txt"),
+        include_str!("../assets/teammates/teammate_bc.txt"),
     ),
     (
         "teammates/teammate_wc.txt",
-        include_str!("../../assets/teammates/teammate_wc.txt"),
+        include_str!("../assets/teammates/teammate_wc.txt"),
     ),
     (
         "teammates/teammate_pj.txt",
-        include_str!("../../assets/teammates/teammate_pj.txt"),
+        include_str!("../assets/teammates/teammate_pj.txt"),
     ),
     (
         "teammates/teammate_fs.txt",
-        include_str!("../../assets/teammates/teammate_fs.txt"),
+        include_str!("../assets/teammates/teammate_fs.txt"),
     ),
 ];
 
