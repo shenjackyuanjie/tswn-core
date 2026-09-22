@@ -7,7 +7,7 @@
 //! - JSONL / log / pure 三种记录格式如何编码。
 
 use std::collections::HashSet;
-use std::fs::{File, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Write as _};
 use std::path::Path;
 use std::time::Duration;
@@ -255,6 +255,58 @@ pub(super) fn format_pair_rate_record(
     )
 }
 
+/// 剥掉展示标签里的 overlay 后缀，只保留可读名字（对齐 openbox `clean_name_label`）。
+///
+/// `+ol:...` 与 `+diy[...]` 是给引擎用的覆盖数据，日志和输出文件里通常只需要名字本体。
+pub(super) fn clean_name_label(raw: &str) -> String {
+    raw.split('+')
+        .map(str::trim)
+        .filter(|part| !part.is_empty() && !part.starts_with("ol:") && !part.starts_with("diy["))
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+/// 多行分组的展示标签版本：逐行清洗后再用 `+` 拼回一行（对齐 openbox `clean_group_label`）。
+pub(super) fn clean_group_label(raw: &str) -> String {
+    raw.lines().map(clean_name_label).filter(|part| !part.is_empty()).collect::<Vec<_>>().join("+")
+}
+
+/// 把输出文件按分数降序重排（对齐 openbox `sort_score_output_file`）。
+///
+/// `pure` 模式不排序；Log 模式取每行行首的数字作为分数，JSONL 模式取
+/// `avg_win_rate`（batch-rate）或 `score`（pair）字段。无法解析分数的行
+/// 排在最后，同分按行文本字典序保证稳定。
+pub(super) fn sort_score_output_file(path: &Path, jsonl: bool, pure: bool) -> io::Result<()> {
+    if pure {
+        return Ok(());
+    }
+    let content = fs::read_to_string(path)?;
+    let mut lines = content.lines().filter(|line| !line.trim().is_empty()).collect::<Vec<_>>();
+    lines.sort_by(|left, right| compare_score_output_lines(left, right, jsonl));
+    let mut sorted = lines.join("\n");
+    if !sorted.is_empty() {
+        sorted.push('\n');
+    }
+    fs::write(path, sorted)
+}
+
+fn compare_score_output_lines(left: &&str, right: &&str, jsonl: bool) -> std::cmp::Ordering {
+    match (score_output_line_value(left, jsonl), score_output_line_value(right, jsonl)) {
+        (Some(left_score), Some(right_score)) => right_score.total_cmp(&left_score).then_with(|| left.cmp(right)),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => left.cmp(right),
+    }
+}
+
+fn score_output_line_value(line: &str, jsonl: bool) -> Option<f64> {
+    if !jsonl {
+        return line.split_whitespace().next()?.parse().ok();
+    }
+    let value: serde_json::Value = serde_json::from_str(line).ok()?;
+    value.get("avg_win_rate").or_else(|| value.get("score")).and_then(serde_json::Value::as_f64)
+}
+
 /// 统一处理小数位数和负零问题。
 pub(super) fn format_rate(value: f64, precision: usize) -> String {
     let value = if value.abs() < 0.5_f64 * 10_f64.powi(-(precision as i32)) {
@@ -317,5 +369,34 @@ mod tests {
     #[test]
     fn duplicate_name_check_allows_distinct_names() {
         assert_eq!(first_duplicate_name_in_matchup(&["alice\nbob", "carol\ndave"]), None);
+    }
+
+    #[test]
+    fn clean_name_label_strips_overlay_suffixes() {
+        let diy = r#"mario+diy[58,87,82,78,89,93,99,343]{"skldefend":13}"#;
+        assert_eq!(clean_name_label(diy), "mario");
+        assert_eq!(clean_name_label(r#"mario+ol:{"attrs":[]}"#), "mario");
+        assert_eq!(clean_name_label("mario+fire"), "mario+fire");
+    }
+
+    #[test]
+    fn clean_group_label_joins_cleaned_lines() {
+        assert_eq!(clean_group_label("mario+diy[1]\nluigi"), "mario+luigi");
+    }
+
+    #[test]
+    fn log_output_lines_sort_by_score_descending() {
+        let mut lines = vec!["12.000 beta", "99.500 alpha", "bad line", "99.500 gamma"];
+        lines.sort_by(|left, right| compare_score_output_lines(left, right, false));
+        assert_eq!(lines, vec!["99.500 alpha", "99.500 gamma", "12.000 beta", "bad line"]);
+    }
+
+    #[test]
+    fn jsonl_output_line_score_accepts_batch_and_pair_keys() {
+        assert_eq!(
+            score_output_line_value(r#"{"label":"a","avg_win_rate":64.25}"#, true),
+            Some(64.25)
+        );
+        assert_eq!(score_output_line_value(r#"{"label":"a","score":300.0}"#, true), Some(300.0));
     }
 }
