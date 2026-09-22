@@ -798,7 +798,6 @@ impl ParsedCli {
                         target_groups,
                         target_factors,
                         target_factored: cmd.target_factored,
-                        target_double_plus: cmd.target_list_double_plus,
                         player_groups,
                         player_labels,
                         n: cmd.options.count.max(1),

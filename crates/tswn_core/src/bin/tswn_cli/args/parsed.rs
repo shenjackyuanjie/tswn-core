@@ -189,8 +189,6 @@ pub enum ParsedCommand {
         target_factors: Vec<f64>,
         /// 是否按带权靶子规则处理重名与平均值。
         target_factored: bool,
-        /// 靶子列表是否使用 `++` 分隔组内成员（默认 `+`）。
-        target_double_plus: bool,
         /// 选手组列表；每项都已从 `+` 分隔行转换成 `\n` 分隔的 namerena 组字符串。
         player_groups: Vec<String>,
         /// 选手组展示标签，保留文件中的原始行文本。

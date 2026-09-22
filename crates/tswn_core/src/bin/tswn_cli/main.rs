@@ -266,14 +266,13 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        // TODO(to-diy 实现流): details 接入后去掉 `..`。
         ParsedCommand::ToDiy {
             names,
             from_file,
             out_file,
             old,
             minions,
-            ..
-        } => to_diy::run(&names, from_file, out_file.as_deref(), old, minions),
+            details,
+        } => to_diy::run(&names, from_file, out_file.as_deref(), old, minions, details),
     }
 }
