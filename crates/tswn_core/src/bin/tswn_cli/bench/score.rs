@@ -5,6 +5,9 @@
 //! - 单人、双同名目标在 profile 数量上有特殊规则；
 //! - 由于模板几乎不复用，必须避开全局缓存以免内存线性膨胀。
 
+use std::fs;
+use std::io::Write as _;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
@@ -15,10 +18,11 @@ use tswn_core::runtime::{
 };
 use tswn_core::win_rate::WinRateTiming;
 
-use crate::args::{BenchThreadMode, NamerPfMode};
+use crate::args::{BenchThreadMode, NamerPfMetric, NamerPfMetricSpec, NamerPfMode};
 
 use super::common::{BenchSummary, thread_spec};
 use super::output::{format_rate, print_perf_lines};
+use super::skill_board::{SkillBoardConfig, evaluate_skill_board};
 
 /// 标准 score benchmark 入口，同时输出普通评分与 `!评分`。
 pub(super) fn run_bench_score(
@@ -182,72 +186,276 @@ fn run_bench_score_inner(
     }
 }
 
-/// `namer-pf` 入口。
-pub fn run_namer_pf(raw: &str, n: usize, threads: Option<usize>, eval_rq: f64, precision: usize, modes: &[NamerPfMode]) {
+/// `namer-pf` 的输出行为：屏幕总开关与技能榜配置 / 输出文件。
+///
+/// 对应 openbox GUI 里 namer-pf 面板的输出区；屏幕输出由 `no_screen` 统一开关，
+/// 不逐指标配置（对齐既定设计）。
+#[derive(Debug, Clone)]
+pub struct NamerPfOutputOptions {
+    pub no_screen: bool,
+    pub skill_board_config: Option<PathBuf>,
+    pub skill_board_output: Option<PathBuf>,
+}
+
+/// `namer-pf` 入口，输出形态与 tswn_openbox GUI 的 `run_namer_pf` 对齐。
+///
+/// 与 GUI 的差异只在交互层：GUI 的停止按钮/取消语义在 CLI 不适用；
+/// 屏幕输出由顶层 `no_screen` 统一开关，不做逐指标屏幕复选框。
+pub fn run_namer_pf(
+    raw: &str,
+    n: usize,
+    threads: Option<usize>,
+    eval_rq: f64,
+    precision: usize,
+    metrics: &[NamerPfMetricSpec],
+    output: NamerPfOutputOptions,
+) {
+    let NamerPfOutputOptions {
+        no_screen,
+        skill_board_config,
+        skill_board_output,
+    } = output;
     let groups = parse_plus_separated_groups(raw);
     if groups.is_empty() {
         eprintln!("namer-pf: 输入为空或无有效玩家");
-        return;
+        std::process::exit(1);
     }
-    let default_modes;
-    let modes = if modes.is_empty() {
-        default_modes = NamerPfMode::ALL;
-        &default_modes[..]
-    } else {
-        modes
+
+    // args 层已把 `--metric` 归一化为 pp/pd/qp/qd/sum 顺序；这里再防御性排序一次，
+    // 保证输出顺序与命令行里的传入顺序无关（GUI 固定按 ALL 顺序输出）。
+    let mut ordered = metrics.iter().collect::<Vec<_>>();
+    ordered.sort_by_key(|spec| NamerPfMetric::ALL.iter().position(|metric| *metric == spec.metric).unwrap_or(usize::MAX));
+
+    // 输出文件统一在开跑前创建/截哑，语义与 GUI 的 create_output_file 一致：
+    // 路径缺文件名、指向目录或父目录不存在时直接失败退出；中途失败也会留下空文件。
+    let mut outputs = Vec::with_capacity(ordered.len());
+    for spec in &ordered {
+        let file = match spec.output_file.as_deref() {
+            Some(path) => match create_output_file(path) {
+                Ok(file) => Some(file),
+                Err(err) => {
+                    eprintln!("{err}");
+                    std::process::exit(1);
+                }
+            },
+            None => None,
+        };
+        outputs.push(file);
+    }
+    let mut skill_board_file = match skill_board_output.as_deref() {
+        Some(path) => match create_output_file(path) {
+            Ok(file) => Some(file),
+            Err(err) => {
+                eprintln!("{err}");
+                std::process::exit(1);
+            }
+        },
+        None => None,
+    };
+    let skill_board = match skill_board_config.as_deref() {
+        Some(path) => match SkillBoardConfig::load(path) {
+            Ok(config) => Some(config),
+            Err(err) => {
+                eprintln!("{err}");
+                std::process::exit(1);
+            }
+        },
+        None => None,
     };
 
-    println!("{}", modes.iter().map(|mode| mode.label()).collect::<Vec<_>>().join("|"));
+    // sum 被选中或技能榜开启时，四项基础评分必须全部计算（GUI needs_all_scores 语义）；
+    // 否则只算真正有出处的指标；既不写屏幕也不写文件的指标没有计算必要。
+    let needs_all = skill_board.is_some()
+        || ordered
+            .iter()
+            .any(|spec| spec.metric == NamerPfMetric::Sum && metric_emits(spec, no_screen));
+    let selected = |metric: NamerPfMetric| ordered.iter().any(|spec| spec.metric == metric && metric_emits(spec, no_screen));
+    let score_settings = NamerPfScoreSettings {
+        n,
+        threads,
+        eval_rq,
+        mode: BenchThreadMode::Parallel,
+        needs_pp: needs_all || selected(NamerPfMetric::Pp),
+        needs_pd: needs_all || selected(NamerPfMetric::Pd),
+        needs_qp: needs_all || selected(NamerPfMetric::Qp),
+        needs_qd: needs_all || selected(NamerPfMetric::Qd),
+    };
 
     // 低精度（1%/10%）档位且有多组输入时，外层按组并行、内层单线程，
     // 比让每组的 4 个 score 各自反复起线程更划算；其余情况维持原有内层并行。
     let outer_workers = low_accuracy_outer_workers(n, groups.len(), thread_spec(threads));
+    let mut emit_job = |result: NamerPfJobResult| -> Result<(), String> {
+        emit_namer_pf_result(
+            &result,
+            &ordered,
+            &mut outputs,
+            skill_board.as_ref(),
+            &mut skill_board_file,
+            precision,
+            no_screen,
+        )
+    };
     if outer_workers > 1 {
         let cancel = AtomicBool::new(false);
-        let _ = run_outer_parallel_ordered(
+        let completed = run_outer_parallel_ordered(
             &groups,
             outer_workers,
             &cancel,
-            |_, group, _| namer_pf_line(group, modes, n, BenchThreadMode::SingleThread, threads, eval_rq, precision),
+            |_, group, _| compute_namer_pf_result(group, score_settings.with_mode(BenchThreadMode::SingleThread)),
             || {},
-            |line| {
-                println!("{line}");
-                Ok(())
-            },
+            emit_job,
         );
+        if let Err(err) = completed {
+            eprintln!("{err}");
+            std::process::exit(1);
+        }
     } else {
         for group in &groups {
-            let line = namer_pf_line(group, modes, n, BenchThreadMode::Parallel, threads, eval_rq, precision);
-            println!("{line}");
+            let result = compute_namer_pf_result(group, score_settings);
+            if let Err(err) = emit_job(result) {
+                eprintln!("{err}");
+                std::process::exit(1);
+            }
         }
     }
 }
 
-/// 计算并格式化单组 `namer-pf` 输出行（含末尾 sum）。
-fn namer_pf_line(
-    group: &[String],
-    modes: &[NamerPfMode],
+/// `namer-pf` 单组计算的公共参数（对齐 GUI 的 NamerPfScoreSettings）。
+#[derive(Debug, Clone, Copy)]
+struct NamerPfScoreSettings {
     n: usize,
-    mode: BenchThreadMode,
     threads: Option<usize>,
     eval_rq: f64,
+    mode: BenchThreadMode,
+    needs_pp: bool,
+    needs_pd: bool,
+    needs_qp: bool,
+    needs_qd: bool,
+}
+
+impl NamerPfScoreSettings {
+    /// 外层并行时切换为内层单线程，避免 worker 之间再起线程互相干扰。
+    fn with_mode(self, mode: BenchThreadMode) -> Self { Self { mode, ..self } }
+}
+
+/// 单组名字的计算结果：原始组（供技能榜导出 DIY）、`+` 连接标签与五项评分。
+struct NamerPfJobResult {
+    group: Vec<String>,
+    label: String,
+    scores: NamerPfScores,
+}
+
+/// `namer-pf` 五项评分；未参与计算的项为 `0.0`（GUI 同样语义）。
+#[derive(Debug, Clone, Copy)]
+pub(super) struct NamerPfScores {
+    pub pp: f64,
+    pub pd: f64,
+    pub qp: f64,
+    pub qd: f64,
+    pub sum: f64,
+}
+
+impl NamerPfScores {
+    fn get(self, metric: NamerPfMetric) -> f64 {
+        match metric {
+            NamerPfMetric::Pp => self.pp,
+            NamerPfMetric::Pd => self.pd,
+            NamerPfMetric::Qp => self.qp,
+            NamerPfMetric::Qd => self.qd,
+            NamerPfMetric::Sum => self.sum,
+        }
+    }
+}
+
+/// 计算单组名字的四项基础评分与派生 `sum`（对齐 GUI compute_namer_pf_result）。
+fn compute_namer_pf_result(group: &[String], settings: NamerPfScoreSettings) -> NamerPfJobResult {
+    let NamerPfScoreSettings {
+        n,
+        threads,
+        eval_rq,
+        mode,
+        needs_pp,
+        needs_pd,
+        needs_qp,
+        needs_qd,
+    } = settings;
+    // 四个基础项的 modifier / duplicate 映射沿用 args 层 NamerPfMode 的单一出处，
+    // 取值与 GUI 硬编码的 ("\u{0002}", false) 等完全一致。
+    let run_base = |base: NamerPfMode| {
+        let (modifier, duplicate) = base.score_params();
+        namer_pf_score(group, modifier, duplicate, n, mode, threads, eval_rq)
+    };
+    let pp = if needs_pp { run_base(NamerPfMode::Pp) } else { 0.0 };
+    let pd = if needs_pd { run_base(NamerPfMode::Pd) } else { 0.0 };
+    let qp = if needs_qp { run_base(NamerPfMode::Qp) } else { 0.0 };
+    let qd = if needs_qd { run_base(NamerPfMode::Qd) } else { 0.0 };
+    NamerPfJobResult {
+        group: group.to_vec(),
+        label: group.join("+"),
+        scores: NamerPfScores {
+            pp,
+            pd,
+            qp,
+            qd,
+            sum: pp + pd + qp + qd,
+        },
+    }
+}
+
+/// 指标是否会产生任何输出：屏幕全局开启，或配置了输出文件。
+fn metric_emits(spec: &NamerPfMetricSpec, no_screen: bool) -> bool { !no_screen || spec.output_file.is_some() }
+
+/// 落地单组结果（对齐 GUI emit_namer_pf_result）：屏幕 `label metric:score`、
+/// 文件 `score label`、技能榜 `title score label`。
+fn emit_namer_pf_result(
+    result: &NamerPfJobResult,
+    metrics: &[&NamerPfMetricSpec],
+    outputs: &mut [Option<fs::File>],
+    skill_board: Option<&SkillBoardConfig>,
+    skill_board_output: &mut Option<fs::File>,
     precision: usize,
-) -> String {
-    let scores = modes
-        .iter()
-        .map(|m| {
-            let (modifier, duplicate) = m.score_params();
-            namer_pf_score(group, modifier, duplicate, n, mode, threads, eval_rq)
-        })
-        .collect::<Vec<_>>();
-    let sum = scores.iter().sum::<f64>();
-    scores
-        .iter()
-        .copied()
-        .chain(std::iter::once(sum))
-        .map(|score| format_rate(score, precision))
-        .collect::<Vec<_>>()
-        .join("|")
+    no_screen: bool,
+) -> Result<(), String> {
+    for (spec, output) in metrics.iter().zip(outputs.iter_mut()) {
+        let score = result.scores.get(spec.metric);
+        if !no_screen && spec.min_screen.is_none_or(|limit| score >= limit) {
+            println!("{} {}:{}", result.label, spec.metric.label(), format_rate(score, precision));
+        }
+        if spec.min_file.is_none_or(|limit| score >= limit)
+            && let Some(output) = output.as_mut()
+        {
+            writeln!(output, "{} {}", format_rate(score, precision), result.label)
+                .map_err(|err| format!("写入输出文件失败: {err}"))?;
+        }
+    }
+    if let Some(config) = skill_board {
+        for line in evaluate_skill_board(&result.group, &result.scores, config) {
+            let line_text = format!("{} {} {}", line.title, format_rate(line.score, precision), result.label);
+            if !no_screen {
+                println!("{line_text}");
+            }
+            if let Some(output) = skill_board_output.as_mut() {
+                writeln!(output, "{line_text}").map_err(|err| format!("写入输出文件失败: {err}"))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 创建/截哑输出文件，语义与 GUI 的 create_output_file 一致。
+fn create_output_file(path: &Path) -> Result<fs::File, String> {
+    if path.file_name().is_none() {
+        return Err(format!("输出路径必须包含文件名: {}", path.display()));
+    }
+    if path.exists() && path.is_dir() {
+        return Err(format!("输出路径不能是目录: {}", path.display()));
+    }
+    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty())
+        && !parent.exists()
+    {
+        fs::create_dir_all(parent).map_err(|err| format!("创建输出目录失败: {}: {err}", parent.display()))?;
+    }
+    fs::File::create(path).map_err(|err| format!("打开输出文件失败: {}: {err}", path.display()))
 }
 
 /// 解析 `namer-pf` 每行一组、组内 `+` 分隔的输入。
@@ -401,7 +609,30 @@ fn namer_pf_score(
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
     use super::*;
+
+    /// 测试用临时目录，Drop 时清理。
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "tswn-cli-{name}-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir_all(&path).expect("create temp dir");
+            Self(path)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); }
+    }
 
     #[test]
     fn namer_pf_parser_accepts_plus_groups() {
@@ -442,5 +673,64 @@ mod tests {
             parse_plus_separated_groups(&raw),
             vec![vec![diy.to_string(), "bbbbb".to_string(),]]
         );
+    }
+
+    #[test]
+    fn namer_pf_scores_get_maps_metric_to_score() {
+        let scores = NamerPfScores {
+            pp: 1.0,
+            pd: 2.0,
+            qp: 3.0,
+            qd: 4.0,
+            sum: 10.0,
+        };
+
+        assert_eq!(scores.get(NamerPfMetric::Pp), 1.0);
+        assert_eq!(scores.get(NamerPfMetric::Pd), 2.0);
+        assert_eq!(scores.get(NamerPfMetric::Qp), 3.0);
+        assert_eq!(scores.get(NamerPfMetric::Qd), 4.0);
+        assert_eq!(scores.get(NamerPfMetric::Sum), 10.0);
+    }
+
+    #[test]
+    fn metric_emits_respects_no_screen_and_output_file() {
+        let spec = NamerPfMetricSpec {
+            metric: NamerPfMetric::Pp,
+            min_screen: None,
+            output_file: None,
+            min_file: None,
+        };
+        let with_file = NamerPfMetricSpec {
+            output_file: Some(PathBuf::from("out.txt")),
+            ..spec.clone()
+        };
+
+        // 屏幕全局开启时一定有输出；--no-screen 后只有配了文件的指标才需要计算。
+        assert!(metric_emits(&spec, false));
+        assert!(!metric_emits(&spec, true));
+        assert!(metric_emits(&with_file, false));
+        assert!(metric_emits(&with_file, true));
+    }
+
+    #[test]
+    fn create_output_file_rejects_path_without_file_name() {
+        assert!(create_output_file(Path::new("")).is_err());
+    }
+
+    #[test]
+    fn create_output_file_rejects_directory() {
+        let dir = TempDir::new("namer-pf-out-dir");
+        assert!(create_output_file(&dir.0).is_err());
+    }
+
+    #[test]
+    fn create_output_file_creates_missing_parents() {
+        let dir = TempDir::new("namer-pf-out-nested");
+        let path = dir.0.join("nested").join("out.txt");
+
+        let file = create_output_file(&path).expect("create nested output file");
+        drop(file);
+
+        assert!(path.is_file());
     }
 }

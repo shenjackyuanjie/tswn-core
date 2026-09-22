@@ -27,17 +27,6 @@ pub enum NamerPfMode {
 }
 
 impl NamerPfMode {
-    pub const ALL: [Self; 4] = [Self::Pp, Self::Pd, Self::Qp, Self::Qd];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Pp => "pp",
-            Self::Pd => "pd",
-            Self::Qp => "qp",
-            Self::Qd => "qd",
-        }
-    }
-
     pub fn score_params(self) -> (&'static str, bool) {
         match self {
             Self::Pp => ("\u{0002}", false),
@@ -72,17 +61,6 @@ impl NamerPfMetric {
             Self::Qp => "qp",
             Self::Qd => "qd",
             Self::Sum => "sum",
-        }
-    }
-
-    /// 映射回可直接运行的基准项；`sum` 与技能榜派生数据返回 `None`。
-    pub fn base_mode(self) -> Option<NamerPfMode> {
-        match self {
-            Self::Pp => Some(NamerPfMode::Pp),
-            Self::Pd => Some(NamerPfMode::Pd),
-            Self::Qp => Some(NamerPfMode::Qp),
-            Self::Qd => Some(NamerPfMode::Qd),
-            Self::Sum => None,
         }
     }
 }

@@ -240,18 +240,28 @@ fn main() {
             keep_rq,
             precision,
             metrics,
-            ..
+            no_screen,
+            skill_board_config,
+            skill_board_output,
         } => {
             let eval_rq = if keep_rq {
                 tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ
             } else {
                 tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ
             };
-            // TODO(namer-pf 实现流): 切到 `label metric:score` 行格式、`--metric` 的
-            // 阈值/文件配置与 `--skill-board` 技能榜；落地前先按旧管道表兼容输出，
-            // sum 与技能榜相关字段暂不生效。
-            let modes = metrics.iter().filter_map(|spec| spec.metric.base_mode()).collect::<Vec<_>>();
-            bench::run_namer_pf(&raw, n, threads, eval_rq, precision, &modes);
+            bench::run_namer_pf(
+                &raw,
+                n,
+                threads,
+                eval_rq,
+                precision,
+                &metrics,
+                bench::NamerPfOutputOptions {
+                    no_screen,
+                    skill_board_config,
+                    skill_board_output,
+                },
+            );
         }
         ParsedCommand::IconShow { names } => icon::print_icons(&names),
         ParsedCommand::IconB64 { names } => {

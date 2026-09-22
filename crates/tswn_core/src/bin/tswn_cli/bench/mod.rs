@@ -14,8 +14,9 @@ mod batch;
 mod common;
 mod output;
 mod score;
+mod skill_board;
 mod winrate;
 
 pub use batch::{run_bench_batch_rate, run_bench_pair};
-pub use score::run_namer_pf;
+pub use score::{NamerPfOutputOptions, run_namer_pf};
 pub use winrate::{run_bench_group_win_rate, run_bench_winrate, run_benchmark};
