@@ -86,6 +86,7 @@ pub mod namerena;
 pub mod rc4;
 pub mod replay_view;
 pub mod runtime;
+pub(crate) mod time;
 pub mod win_rate;
 
 /// 主 Runtime 对局入口。

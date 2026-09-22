@@ -4560,6 +4560,7 @@ version = "0.6.1"
 dependencies = [
  "clap",
  "foldhash",
+ "js-sys",
  "mimalloc",
  "png",
  "serde",

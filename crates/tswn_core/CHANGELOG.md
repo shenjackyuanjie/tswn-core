@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### 修复
+
+- 修复 wasm32-unknown-unknown 上计时直接 panic、导致胜率与评分等批量接口整体不可用的问题。
+  `std::time::Instant::now()` 在该 target 上未实现（`library/std/src/sys/time/unsupported.rs`），
+  wasm 侧一旦走到 `_timed` 路径就 `RuntimeError: unreachable`，之后整个实例失效，
+  `win_rate_sync` / `group_win_rate` / `score` / `namer_pf` / `batch_rate` / `pair_rate`
+  等导出全部无法调用。新增 `time::Stopwatch`：native 仍走 `Instant`，wasm 改用 `js-sys` 的
+  `Date::now()`（毫秒精度、不保证严格单调），`runtime/batch.rs` 与 `runtime/cqp.rs` 的计时
+  统一改走该辅助类型。`init_nanos` / `fight_nanos` 与 matchup 墙钟耗时在 wasm 上恢复可用，
+  数值语义与 native 一致，仅精度回退；战斗与胜率计算不读取计时值，结果不变。
+
 ## [0.6.1] - 2026-09-15
 
 ### 性能与诊断

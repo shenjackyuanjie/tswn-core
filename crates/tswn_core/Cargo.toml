@@ -17,6 +17,11 @@ serde_json = "1.0"
 smallvec = "1.16.0"
 toml = "1.1.5"
 
+# wasm32-unknown-unknown 上 std::time::Instant 未实现，`src/time.rs` 改用 js-sys 的
+# Date::now()；该 target 由 tswn_wasm 经 wasm-bindgen 运行，链路里已有 js-sys。
+[target.'cfg(target_family = "wasm")'.dependencies]
+js-sys = "0.3.105"
+
 [dev-dependencies]
 png = "0.18"
 

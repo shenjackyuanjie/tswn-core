@@ -7,8 +7,8 @@
 use std::fmt::Write as _;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Instant;
 
+use crate::time::Stopwatch;
 use crate::win_rate::{WinRateTiming, resolve_win_rate_workers};
 
 use super::{
@@ -320,16 +320,16 @@ fn run_prepared_round<const TIMED: bool>(
 ) -> Result<(), CustomRuntimeImportError> {
     // 单场只有几微秒，逐场计时在 Windows 上是四次 QPC，占比可达 2%~3%；
     // 只有 `_timed` 入口会把 TIMED 打开，其余批量调用方完全不付这份开销。
-    let init_started = TIMED.then(Instant::now);
+    let init_started = TIMED.then(Stopwatch::now);
     prepared.reset_with_seed(runner, seed)?;
     if let Some(init_started) = init_started {
-        summary.timing.init_nanos += init_started.elapsed().as_nanos();
+        summary.timing.init_nanos += init_started.elapsed_nanos();
     }
 
-    let fight_started = TIMED.then(Instant::now);
+    let fight_started = TIMED.then(Stopwatch::now);
     let completion = runner.run_to_completion_prevalidated(BATCH_MAX_ROUNDS);
     if let Some(fight_started) = fight_started {
-        summary.timing.fight_nanos += fight_started.elapsed().as_nanos();
+        summary.timing.fight_nanos += fight_started.elapsed_nanos();
     }
     summary.total += 1;
     summary.guard_exhausted += usize::from(completion.guard_exhausted);
@@ -397,7 +397,7 @@ fn run_score_round<const TIMED: bool>(
     summary: &mut RuntimeBatchSummary,
 ) {
     match_groups.set_round(round);
-    let init_started = TIMED.then(Instant::now);
+    let init_started = TIMED.then(Stopwatch::now);
     if prepared
         .reset_score_groups_with_seed_and_eval_rq(
             runner,
@@ -418,13 +418,13 @@ fn run_score_round<const TIMED: bool>(
         return;
     }
     if let Some(init_started) = init_started {
-        summary.timing.init_nanos += init_started.elapsed().as_nanos();
+        summary.timing.init_nanos += init_started.elapsed_nanos();
     }
 
-    let fight_started = TIMED.then(Instant::now);
+    let fight_started = TIMED.then(Stopwatch::now);
     let completion = runner.run_to_completion_prevalidated(BATCH_MAX_ROUNDS);
     if let Some(fight_started) = fight_started {
-        summary.timing.fight_nanos += fight_started.elapsed().as_nanos();
+        summary.timing.fight_nanos += fight_started.elapsed_nanos();
     }
     summary.total += 1;
     summary.guard_exhausted += usize::from(completion.guard_exhausted);
