@@ -48,6 +48,68 @@ impl NamerPfMode {
     }
 }
 
+/// `namer-pf` 面向用户的评分项，含 openbox GUI 特有的 `sum` 总项。
+///
+/// 与 [`NamerPfMode`] 刻意分开：后者只表示四个可直接运行的基准项，
+/// 前者是五个输出项，其中 `sum` 由四项求和派生、不单独跑基准。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NamerPfMetric {
+    Pp,
+    Pd,
+    Qp,
+    Qd,
+    Sum,
+}
+
+impl NamerPfMetric {
+    /// openbox GUI 的固定输出顺序；`--metric` 的传入顺序不影响最终输出顺序。
+    pub const ALL: [Self; 5] = [Self::Pp, Self::Pd, Self::Qp, Self::Qd, Self::Sum];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Pp => "pp",
+            Self::Pd => "pd",
+            Self::Qp => "qp",
+            Self::Qd => "qd",
+            Self::Sum => "sum",
+        }
+    }
+
+    /// 映射回可直接运行的基准项；`sum` 与技能榜派生数据返回 `None`。
+    pub fn base_mode(self) -> Option<NamerPfMode> {
+        match self {
+            Self::Pp => Some(NamerPfMode::Pp),
+            Self::Pd => Some(NamerPfMode::Pd),
+            Self::Qp => Some(NamerPfMode::Qp),
+            Self::Qd => Some(NamerPfMode::Qd),
+            Self::Sum => None,
+        }
+    }
+}
+
+/// `namer-pf --metric` 的单项配置，对应 openbox GUI 中单个评分项的复选框行。
+///
+/// 由 `NAME[:MIN_SCREEN[:FILE[:MIN_FILE]]]` 语法解析而来。屏幕输出与否由顶层
+/// `--no-screen` 统一控制，不做逐项屏幕开关（对齐 GUI 复选框矩阵的常用子集）。
+#[derive(Debug, Clone)]
+pub struct NamerPfMetricSpec {
+    pub metric: NamerPfMetric,
+    pub min_screen: Option<f64>,
+    pub output_file: Option<PathBuf>,
+    pub min_file: Option<f64>,
+}
+
+/// `pair` 的 cqp 详情模式，对齐 openbox GUI 的三选一。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PairDetailMode {
+    /// 不输出 cqp 详情。
+    None,
+    /// 输出所有不低于 `--detail-min` 的队友组合。
+    Every,
+    /// 只输出最终取分的前 `head` 个队友组合。
+    Top,
+}
+
 /// 归一化后的 CLI 命令。
 ///
 /// 这里的每个字段都已经过输入来源统一、基础校验和必要的文本转换：
@@ -127,6 +189,8 @@ pub enum ParsedCommand {
         target_factors: Vec<f64>,
         /// 是否按带权靶子规则处理重名与平均值。
         target_factored: bool,
+        /// 靶子列表是否使用 `++` 分隔组内成员（默认 `+`）。
+        target_double_plus: bool,
         /// 选手组列表；每项都已从 `+` 分隔行转换成 `\n` 分隔的 namerena 组字符串。
         player_groups: Vec<String>,
         /// 选手组展示标签，保留文件中的原始行文本。
@@ -141,6 +205,8 @@ pub enum ParsedCommand {
         perf: bool,
         /// 是否输出逐个靶子的明细胜率。
         verbose: bool,
+        /// 是否以块状格式输出逐个靶子的胜率明细（对齐 openbox“每组胜率”）。
+        show_matchups: bool,
         /// 批量结果输出文件；未指定时输出到标准输出。
         out_file: Option<PathBuf>,
         /// 若输出文件已存在，是否直接覆盖而不再确认。
@@ -157,6 +223,10 @@ pub enum ParsedCommand {
         min_file: Option<f64>,
         /// 胜率小数位数。
         wr_precision: usize,
+        /// 输出文件是否按分数降序重排（对齐 openbox 的排序输出）。
+        sort: bool,
+        /// 展示标签是否剥掉 `+ol:` / `+diy[` 覆盖后缀（对齐 openbox 的标签清洗）。
+        clean_label: bool,
     },
     BenchPair {
         /// 靶子组列表；每项都已从 `+` 分隔行转换成 `\n` 分隔的 namerena 组字符串。
@@ -165,6 +235,10 @@ pub enum ParsedCommand {
         target_factors: Vec<f64>,
         /// 是否按带权靶子规则处理重名与平均值。
         target_factored: bool,
+        /// 队友列表是否按带权 TOML 解析（与 `--target-factored` 同款格式）。
+        teammate_factored: bool,
+        /// 与队友列表对应的权重；普通文本队友全部为 `1.0`。
+        teammate_factors: Vec<f64>,
         /// `player-list` 文件中的选手；每行一个名字。
         players: Vec<String>,
         /// 选手组合的原始行标签。
@@ -185,6 +259,10 @@ pub enum ParsedCommand {
         perf: bool,
         /// 是否输出逐个靶子的明细胜率。
         verbose: bool,
+        /// cqp 详情模式；`Every` 时按 `detail_min` 过滤，`Top` 时取前 `head` 个。
+        detail: PairDetailMode,
+        /// `detail = Every` 时的队友组合 cqp 阈值；其他模式下忽略。
+        detail_min: Option<f64>,
         /// 批量结果输出文件；未指定时只输出到终端。
         out_file: Option<PathBuf>,
         /// 若输出文件已存在，是否直接覆盖而不再确认。
@@ -201,6 +279,10 @@ pub enum ParsedCommand {
         min_file: Option<f64>,
         /// 胜率小数位数。
         wr_precision: usize,
+        /// 输出文件是否按最终分数降序重排（对齐 openbox 的排序输出）。
+        sort: bool,
+        /// 展示标签是否剥掉 `+ol:` / `+diy[` 覆盖后缀（对齐 openbox 的标签清洗）。
+        clean_label: bool,
     },
     NamerPf {
         /// 每行一个名字组，组内可用 `+` 分隔。
@@ -209,11 +291,18 @@ pub enum ParsedCommand {
         n: usize,
         /// 显式指定的基准测试线程数。
         threads: Option<usize>,
-        /// 需要运行的评分项；未显式传入时已归一化为四项全测。
+        /// 是否保持 `rq=4`，不模拟 JS `win_rate` 对 `rq` 的污染。
         keep_rq: bool,
         /// 输出保留的小数位数。
         precision: usize,
-        modes: Vec<NamerPfMode>,
+        /// 各评分项的输出配置；未显式传入时已归一化为五项全部输出到屏幕。
+        metrics: Vec<NamerPfMetricSpec>,
+        /// 是否只写文件、不在屏幕输出（需至少一个评分项配置了 FILE）。
+        no_screen: bool,
+        /// 技能榜阈值配置（TOML）；指定后强制计算全部四项评分。
+        skill_board_config: Option<PathBuf>,
+        /// 技能榜结果输出文件；未指定时只输出到屏幕。
+        skill_board_output: Option<PathBuf>,
     },
     IconShow {
         /// 要展示图标的玩家名字列表。
@@ -240,6 +329,8 @@ pub enum ParsedCommand {
         old: bool,
         /// 是否在 `+ol` 中附带幻影 / 使魔 / 丧尸模板。
         minions: bool,
+        /// 单号模式是否附加输出原始信息详情（默认开启，`--no-details` 可关闭）。
+        details: bool,
     },
 }
 

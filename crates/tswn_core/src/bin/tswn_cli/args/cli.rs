@@ -8,16 +8,17 @@
 //! `clap` 结构体需要围绕帮助文案、别名、冲突参数、默认值来设计；执行阶段则更关心
 //! 输入是否已经读好、文件是否已经展开、线程模式是否已经统一。
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 
-use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 use super::input::{
-    cli_error, decode_raw, parse_factored_target_groups, parse_non_negative_f64, parse_percent_0_100,
+    cli_error, decode_raw, parse_factored_target_groups, parse_metric_spec, parse_non_negative_f64, parse_percent_0_100,
     parse_player_groups_with_labels, parse_plus_separated_groups, parse_positive_usize, parse_thread_count,
     parse_to_diy_file_names, parse_win_rate_teams, parse_wr_precision, read_file, read_stdin,
 };
-use super::parsed::{BenchThreadMode, NamerPfMode, ParsedCli, ParsedCommand};
+use super::parsed::{BenchThreadMode, NamerPfMetric, NamerPfMetricSpec, PairDetailMode, ParsedCli, ParsedCommand};
 
 // ----------------------------------------------------------------------------
 // 顶层 CLI 结构。
@@ -53,7 +54,33 @@ enum CliCommand {
     Runtime(RuntimeCommand),
     /// 运行基准测试相关功能。
     Bench(BenchCommand),
-    /// 运行与 ica-plugin `/namer-pf` 相同的四项评分。
+    /// 运行与 ica-plugin `/namer-pf` 相同的五项评分（pp/pd/qp/qd/sum），可选技能榜。
+    ///
+    /// 每行一个名字组，组内用 `+` 分隔。默认五项全部输出到屏幕，屏幕行格式为
+    /// `名字组合 指标:分数`，例如 `mario+luigi pp:12345`。
+    ///
+    /// `--metric SPEC` 可重复传入，语法为 `NAME[:MIN_SCREEN[:FILE[:MIN_FILE]]]`：
+    /// - NAME：pp / pd / qp / qd / sum 之一（sum = 其余四项之和，需四项全算）；
+    /// - MIN_SCREEN：屏幕输出阈值（分），不低于才打印到屏幕；
+    /// - FILE：该指标的输出文件，每行格式为 `分数 名字组合`；
+    /// - MIN_FILE：文件写入阈值（分）。
+    /// 空段表示跳过该项，例如 `pp::pp.txt` 表示不设屏幕阈值但写入 pp.txt。
+    /// FILE 路径不要包含 `:`（Windows 盘符前缀如 `C:\out.txt` 除外）。
+    /// 指标固定按 pp/pd/qp/qd/sum 顺序输出，与传入顺序无关；同一指标或同一输出文件
+    /// 只能出现一次。配合 `--no-screen` 可只写文件不打印屏幕。
+    ///
+    /// `--skill-board FILE` 开启技能榜：FILE 是阈值 TOML，形如
+    /// `[sklfire]` / `[sklice]` 小节写 pp/qp/qd/all 阈值，`[lessskl]` 写白板号阈值。
+    /// 程序把每个名字导出 `+diy`、取熟练度最高的技能，分数超过该技能阈值时输出
+    /// `技能名指标 分数 名字`（如 `冰冻qp 6647 mario`）；全部技能等级小于 30 时改按
+    /// `[lessskl]` 阈值；`全能` 行还需同时满足 pp>=8000、pd>=9000、qp>=6000、qd>=7000。
+    /// 开启技能榜会强制计算全部四项评分。
+    ///
+    /// 示例:
+    ///   tswn-cli namer-pf -r "mario"
+    ///   tswn-cli namer-pf -f names.txt --metric sum --metric pp:8000
+    ///   tswn-cli namer-pf -f names.txt --metric pp:8000:pp.txt:7500 --no-screen
+    ///   tswn-cli namer-pf -f names.txt --skill-board score_now.toml --skill-board-out board.txt
     #[command(name = "namer-pf", verbatim_doc_comment)]
     NamerPf(NamerPfCommand),
     /// 玩家图标相关功能。
@@ -65,6 +92,10 @@ enum CliCommand {
     /// 默认输出 `+ol` 形式；`--old` 切换为旧版 `+diy` 形式。
     /// `--minions` 会在 `+ol` 中附带幻影/使魔/丧尸模板，方便继续 DIY 它们的属性和技能。
     /// `-o/--out-file FILE` 可将输出写入文件。
+    ///
+    /// 单号模式在未指定 `-o` 且名字不含 `+` 时，会附加输出一段原始信息详情
+    /// （名字/队伍/八围/技能/name_factor）；`--no-details` 可关闭。文件批量模式
+    /// 不输出详情。
     ///
     /// 示例:
     ///   tswn-cli to-diy -r "mario@team+fire"
@@ -170,9 +201,14 @@ enum BenchSubcommand {
     ///
     /// `cqp` 与 `batch-rate` 是同一个命令的两个名字，功能完全相同。
     ///
-    /// 靶子文件和选手文件每行一组，组内用 + 分隔，跳过空行。
+    /// 靶子文件和选手文件每行一组，组内默认用 + 分隔，跳过空行；靶子侧的组内分隔
+    /// 可用 `--target-list-double-plus` 改成 `++`，避免拆开名字里的 `+diy[...]` /
+    /// `+ol:...`。
     /// `--out-file` 默认输出 `winrate<space>name`；`--log` 切到 JSONL，`--pure` 切到仅名字。
     /// `--min-screen` 控制终端显示阈值；`--min-file` 控制文件写入阈值（均为 0~100）。
+    /// `--show-matchups` 以块状格式追加每个靶子的明细胜率（`平均胜率 名字` 下逐行
+    /// 缩进 `胜率 靶子组`）；`--sort` 让输出文件按分数降序重排（`--pure` 不排）；
+    /// `--clean-label` 把屏幕与文件标签里的 `+ol:` / `+diy[` 覆盖后缀剥掉。
     ///
     /// 示例:
     ///   tswn-cli bench batch-rate -l targets.txt -p players.txt -n 10000 -t 8
@@ -180,6 +216,7 @@ enum BenchSubcommand {
     ///   tswn-cli bench cqp -l targets.txt -p players.txt --min-screen 60.5
     ///   tswn-cli bench batch-rate -l targets.txt -p players.txt -o result.txt --min-file 65
     ///   tswn-cli bench batch-rate -l targets.txt -p players.txt -o result.jsonl --log
+    ///   tswn-cli bench cqp -l targets.txt -p players.txt --show-matchups --sort --clean-label
     #[command(
         name = "batch-rate",
         visible_alias = "cqp",
@@ -188,11 +225,27 @@ enum BenchSubcommand {
     BatchRate(BenchBatchRateCommand),
     /// 为每个选手和 teammate-list 中的每个队友组成二人组，计算各组合 batch rate 后取最高 head 个求和。
     ///
-    /// player-list 和 teammate-list 均为每行一个名字；player-list 不支持 `--player-list-double-plus`。
+    /// player-list 和 teammate-list 均为每行一个组合；player-list 组内默认用 `+` 分隔，
+    /// 可用 `--player-list-double-plus` 改成 `++`；teammate-list 组内默认用 `++`，
+    /// 可用 `--teammate-list-single-plus` 改成 `+`。
+    ///
+    /// `--teammate-factored` 把 teammate-list 按带权 TOML 解析（与 `--target-factored`
+    /// 的靶子文件同格式：`[[targets]]` 的 `factor` 与 `players`）：每个队友组合先按
+    /// 靶子权重得到平均胜率，再乘该队友组的 `factor`，然后按 head 取高分求和——
+    /// 队友权重影响排名与最终分数，不只是展示。
+    ///
+    /// `--detail` 控制 cqp 详情：`none`（默认）不输出；`every` 输出所有不低于
+    /// `--detail-min` 的队友组合；`top` 输出最终取分的前 head 个。详情行格式为
+    /// `最终分数 名字` 下逐行缩进 `cqp 队友组合`。`--detail-min` 只在 `every` 下生效。
+    /// `--sort` 让输出文件按最终分数降序重排（`--pure` 不排）；`--clean-label` 把屏幕与
+    /// 文件标签里的 `+ol:` / `+diy[` 覆盖后缀剥掉。
     ///
     /// 示例:
     ///   tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3 -n 10000
     ///   tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 5 -o result.txt
+    ///   tswn-cli bench pair -l targets.toml -p players.txt --teammate-list teammates.toml --target-factored --teammate-factored --head 4
+    ///   tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3 --detail top
+    ///   tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3 --detail every --detail-min 60
     #[command(name = "pair", verbatim_doc_comment)]
     Pair(BenchPairCommand),
 }
@@ -281,6 +334,10 @@ struct BenchBatchRateCommand {
     #[arg(long = "player-list-double-plus")]
     player_list_double_plus: bool,
 
+    /// 靶子列表也使用 `++` 分隔组内成员（默认 `+`）。
+    #[arg(long = "target-list-double-plus")]
+    target_list_double_plus: bool,
+
     /// 将 target-list 按带权 TOML 解析，并按 factor 计算加权平均值。
     #[arg(long = "target-factored", alias = "weighted-targets")]
     target_factored: bool,
@@ -292,6 +349,18 @@ struct BenchBatchRateCommand {
     /// 显示逐个靶子的明细胜率。
     #[arg(short = 'v', long = "verbose")]
     verbose: bool,
+
+    /// 以块状格式逐个靶子输出明细胜率（对齐 openbox 的“每组胜率”）。
+    #[arg(long = "show-matchups")]
+    show_matchups: bool,
+
+    /// 输出文件按平均胜率降序重排（对齐 openbox；`--pure` 模式下不排序）。
+    #[arg(long = "sort")]
+    sort: bool,
+
+    /// 屏幕与文件标签剥掉 `+ol:` / `+diy[` 覆盖后缀（对齐 openbox）。
+    #[arg(long = "clean-label")]
+    clean_label: bool,
 
     /// 将批量结果写入指定文件。
     #[arg(short = 'o', long = "out-file", value_name = "FILE")]
@@ -363,6 +432,10 @@ struct BenchPairCommand {
     #[arg(long = "target-factored", alias = "weighted-targets")]
     target_factored: bool,
 
+    /// 将 teammate-list 按带权 TOML 解析，队友组合的平均胜率先乘 factor 再按 head 取高分求和。
+    #[arg(long = "teammate-factored", alias = "weighted-teammates")]
+    teammate_factored: bool,
+
     /// 每名选手取最高的 N 个二人组 batch rate 求和。
     #[arg(long = "head", value_parser = parse_positive_usize, value_name = "N")]
     head: usize,
@@ -374,6 +447,28 @@ struct BenchPairCommand {
     /// 显示逐个队友和靶子的明细胜率。
     #[arg(short = 'v', long = "verbose")]
     verbose: bool,
+
+    /// cqp 详情模式：none 不输出；every 输出所有不低于 --detail-min 的队友组合；top 输出前 head 个。
+    #[arg(
+        long = "detail",
+        value_enum,
+        value_name = "MODE",
+        default_value = "none",
+        verbatim_doc_comment
+    )]
+    detail: PairDetailArg,
+
+    /// `--detail every` 的队友组合 cqp 阈值；其他 detail 模式下忽略。
+    #[arg(long = "detail-min", value_parser = parse_non_negative_f64, value_name = "N")]
+    detail_min: Option<f64>,
+
+    /// 输出文件按最终分数降序重排（对齐 openbox；`--pure` 模式下不排序）。
+    #[arg(long = "sort")]
+    sort: bool,
+
+    /// 屏幕与文件标签剥掉 `+ol:` / `+diy[` 覆盖后缀（对齐 openbox）。
+    #[arg(long = "clean-label")]
+    clean_label: bool,
 
     /// 将结果写入指定文件。
     #[arg(short = 'o', long = "out-file", value_name = "FILE")]
@@ -427,7 +522,7 @@ struct NamerPfCommand {
     #[arg(short = 't', long = "thread", value_parser = parse_thread_count, value_name = "N")]
     thread: Option<usize>,
 
-    /// 保留 rq=4，而不使用 win-rate/profile rq。
+    /// 保持 rq=4，而不使用 win-rate/profile rq。
     #[arg(long)]
     keep_rq: bool,
 
@@ -435,26 +530,42 @@ struct NamerPfCommand {
     #[arg(long = "precision", default_value_t = 0, value_parser = parse_wr_precision, value_name = "N")]
     precision: usize,
 
-    /// 只运行指定评分项；可重复传入或一次传多个，不传则运行 pp/pd/qp/qd 全部四项。
-    #[arg(long = "mode", value_enum, value_name = "MODE", num_args = 1.., value_delimiter = ',', action = ArgAction::Append)]
-    mode: Vec<NamerPfModeArg>,
+    /// 单个评分项的输出配置，可重复传入；语法 `NAME[:MIN_SCREEN[:FILE[:MIN_FILE]]]`。
+    ///
+    /// NAME 取 pp/pd/qp/qd/sum；MIN_SCREEN 是屏幕输出阈值（分），FILE 是输出文件，
+    /// MIN_FILE 是文件写入阈值（分）。空段表示跳过，如 `pp::pp.txt` 只写文件不设阈值。
+    /// 不传时默认 pp/pd/qp/qd/sum 五项全部输出到屏幕、无阈值、不写文件。
+    /// FILE 路径不要包含 `:`（Windows 盘符前缀除外）。
+    #[arg(long = "metric", value_name = "SPEC", value_parser = parse_metric_spec, verbatim_doc_comment)]
+    metrics: Vec<NamerPfMetricSpec>,
+
+    /// 只写文件、不在屏幕输出（需要至少一个 `--metric` 配置了 FILE）。
+    #[arg(long = "no-screen")]
+    no_screen: bool,
+
+    /// 技能榜阈值配置（TOML，形如 `[sklfire]`/`[lessskl]` 的 pp/qp/qd/all 阈值表）。
+    /// 指定后强制计算全部四项评分，并按阈值输出 `技能名指标 分数 名字` 行。
+    #[arg(long = "skill-board", value_name = "FILE")]
+    skill_board: Option<PathBuf>,
+
+    /// 技能榜结果输出文件；未指定时只输出到屏幕。需要同时指定 `--skill-board`。
+    #[arg(long = "skill-board-out", value_name = "FILE")]
+    skill_board_out: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-enum NamerPfModeArg {
-    Pp,
-    Pd,
-    Qp,
-    Qd,
+enum PairDetailArg {
+    None,
+    Every,
+    Top,
 }
 
-impl From<NamerPfModeArg> for NamerPfMode {
-    fn from(value: NamerPfModeArg) -> Self {
+impl From<PairDetailArg> for PairDetailMode {
+    fn from(value: PairDetailArg) -> Self {
         match value {
-            NamerPfModeArg::Pp => Self::Pp,
-            NamerPfModeArg::Pd => Self::Pd,
-            NamerPfModeArg::Qp => Self::Qp,
-            NamerPfModeArg::Qd => Self::Qd,
+            PairDetailArg::None => Self::None,
+            PairDetailArg::Every => Self::Every,
+            PairDetailArg::Top => Self::Top,
         }
     }
 }
@@ -601,6 +712,10 @@ struct ToDiyCommand {
         conflicts_with = "old"
     )]
     minions: bool,
+
+    /// 关闭单号模式的原始信息详情输出（默认开启）。
+    #[arg(long = "no-details")]
+    no_details: bool,
 }
 
 /// 解析命令行参数，并转换成内部使用的结构化命令。
@@ -672,7 +787,7 @@ impl ParsedCli {
                     let (target_groups, target_factors) = if cmd.target_factored {
                         parse_factored_target_groups(&target_content)?
                     } else {
-                        let groups = parse_plus_separated_groups(&target_content);
+                        let groups = parse_plus_separated_groups(&target_content, cmd.target_list_double_plus);
                         let factors = vec![1.0; groups.len()];
                         (groups, factors)
                     };
@@ -683,6 +798,7 @@ impl ParsedCli {
                         target_groups,
                         target_factors,
                         target_factored: cmd.target_factored,
+                        target_double_plus: cmd.target_list_double_plus,
                         player_groups,
                         player_labels,
                         n: cmd.options.count.max(1),
@@ -690,6 +806,7 @@ impl ParsedCli {
                         threads: cmd.options.thread,
                         perf: cmd.options.perf,
                         verbose: cmd.verbose,
+                        show_matchups: cmd.show_matchups,
                         out_file: cmd.out_file,
                         force: cmd.force,
                         keep_rq: cmd.keep_rq,
@@ -698,6 +815,8 @@ impl ParsedCli {
                         min_screen: cmd.min_screen,
                         min_file: cmd.min_file,
                         wr_precision: cmd.wr_precision,
+                        sort: cmd.sort,
+                        clean_label: cmd.clean_label,
                     }
                 }
                 BenchSubcommand::Pair(cmd) => {
@@ -705,21 +824,33 @@ impl ParsedCli {
                     let (target_groups, target_factors) = if cmd.target_factored {
                         parse_factored_target_groups(&target_content)?
                     } else {
-                        let groups = parse_plus_separated_groups(&target_content);
+                        let groups = parse_plus_separated_groups(&target_content, false);
                         let factors = vec![1.0; groups.len()];
                         (groups, factors)
                     };
                     let player_content = read_file(&cmd.player_list)?;
                     let teammate_content = read_file(&cmd.teammate_list)?;
                     let (players, player_labels) = parse_player_groups_with_labels(&player_content, cmd.player_list_double_plus);
-                    let (teammates, teammate_labels) = parse_player_groups_with_labels(
-                        &teammate_content,
-                        !cmd.teammate_list_single_plus || cmd.teammate_list_double_plus,
-                    );
+                    // 带权队友 TOML 复用靶子格式：先按 `\n` 拼组，标签再按 `+` 拼回一行，
+                    // 与 openbox `parse_pair_teammate_groups` 的处理一致。
+                    let (teammates, teammate_labels, teammate_factors) = if cmd.teammate_factored {
+                        let (groups, factors) = parse_factored_target_groups(&teammate_content)?;
+                        let labels = groups.iter().map(|group| group.lines().collect::<Vec<_>>().join("+")).collect();
+                        (groups, labels, factors)
+                    } else {
+                        let (groups, labels) = parse_player_groups_with_labels(
+                            &teammate_content,
+                            !cmd.teammate_list_single_plus || cmd.teammate_list_double_plus,
+                        );
+                        let factors = vec![1.0; groups.len()];
+                        (groups, labels, factors)
+                    };
                     ParsedCommand::BenchPair {
                         target_groups,
                         target_factors,
                         target_factored: cmd.target_factored,
+                        teammate_factored: cmd.teammate_factored,
+                        teammate_factors,
                         players,
                         player_labels,
                         teammates,
@@ -730,6 +861,8 @@ impl ParsedCli {
                         threads: cmd.options.thread,
                         perf: cmd.options.perf,
                         verbose: cmd.verbose,
+                        detail: cmd.detail.into(),
+                        detail_min: cmd.detail_min,
                         out_file: cmd.out_file,
                         force: cmd.force,
                         keep_rq: cmd.keep_rq,
@@ -738,17 +871,61 @@ impl ParsedCli {
                         min_screen: cmd.min_screen,
                         min_file: cmd.min_file,
                         wr_precision: cmd.wr_precision,
+                        sort: cmd.sort,
+                        clean_label: cmd.clean_label,
                     }
                 }
             },
-            CliCommand::NamerPf(cmd) => ParsedCommand::NamerPf {
-                raw: cmd.input.read_or_stdin()?,
-                n: cmd.count.max(1),
-                threads: cmd.thread,
-                keep_rq: cmd.keep_rq,
-                precision: cmd.precision,
-                modes: normalize_namer_pf_modes(&cmd.mode),
-            },
+            CliCommand::NamerPf(cmd) => {
+                // 默认五项全上屏；显式传入时按 GUI 的固定顺序归一化，并拒绝重复项与重复输出文件。
+                let mut metrics = cmd.metrics;
+                if metrics.is_empty() {
+                    metrics = NamerPfMetric::ALL
+                        .into_iter()
+                        .map(|metric| NamerPfMetricSpec {
+                            metric,
+                            min_screen: None,
+                            output_file: None,
+                            min_file: None,
+                        })
+                        .collect();
+                } else {
+                    let mut seen = HashSet::new();
+                    for spec in &metrics {
+                        if !seen.insert(spec.metric) {
+                            return Err(cli_error(format!("评分项重复: {}", spec.metric.label())));
+                        }
+                    }
+                    metrics.sort_by_key(|spec| {
+                        NamerPfMetric::ALL.iter().position(|metric| *metric == spec.metric).unwrap_or(usize::MAX)
+                    });
+                }
+                let mut output_files = HashSet::new();
+                for spec in &metrics {
+                    if let Some(path) = spec.output_file.as_ref()
+                        && !output_files.insert(path.clone())
+                    {
+                        return Err(cli_error(format!("输出文件被多个评分项引用: {}", path.display())));
+                    }
+                }
+                if cmd.skill_board_out.is_some() && cmd.skill_board.is_none() {
+                    return Err(cli_error("--skill-board-out 需要同时指定 --skill-board"));
+                }
+                if cmd.no_screen && metrics.iter().all(|spec| spec.output_file.is_none()) {
+                    return Err(cli_error("--no-screen 需要至少一个 --metric 配置 FILE 段"));
+                }
+                ParsedCommand::NamerPf {
+                    raw: cmd.input.read_or_stdin()?,
+                    n: cmd.count.max(1),
+                    threads: cmd.thread,
+                    keep_rq: cmd.keep_rq,
+                    precision: cmd.precision,
+                    metrics,
+                    no_screen: cmd.no_screen,
+                    skill_board_config: cmd.skill_board,
+                    skill_board_output: cmd.skill_board_out,
+                }
+            }
             CliCommand::Icon(IconCommand { command }) => match command {
                 IconSubcommand::Show(cmd) => ParsedCommand::IconShow { names: cmd.names },
                 IconSubcommand::B64(cmd) => ParsedCommand::IconB64 { names: cmd.names },
@@ -769,22 +946,12 @@ impl ParsedCli {
                     out_file: cmd.out_file,
                     old: cmd.old,
                     minions: cmd.minions,
+                    details: !cmd.no_details,
                 }
             }
         };
         Ok(Self { command })
     }
-}
-
-fn normalize_namer_pf_modes(modes: &[NamerPfModeArg]) -> Vec<NamerPfMode> {
-    if modes.is_empty() {
-        return NamerPfMode::ALL.to_vec();
-    }
-
-    NamerPfMode::ALL
-        .into_iter()
-        .filter(|mode| modes.iter().any(|arg| NamerPfMode::from(*arg) == *mode))
-        .collect()
 }
 
 impl BenchOptions {

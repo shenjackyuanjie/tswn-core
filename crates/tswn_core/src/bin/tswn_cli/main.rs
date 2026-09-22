@@ -24,7 +24,8 @@
 //! - `bench group-win-rate`: 目标组对多个对手组逐个统计并汇总平均胜率。
 //! - `bench batch-rate` / `bench cqp`: 批量计算选手组对靶子组列表的平均胜率。
 //! - `bench pair`: 评估选手与队友二人组的 top-head 胜率和。
-//! - `namer-pf`: 输出与 ica-plugin `/namer-pf` 对齐的四项评分，可用 `--mode` 只跑指定项。
+//! - `namer-pf`: 输出与 ica-plugin `/namer-pf` 对齐的五项评分（pp/pd/qp/qd/sum）；
+//!   `--metric` 逐项配置屏幕阈值与输出文件，`--skill-board` 输出技能榜。
 //! - `icon show|b64|save`: 预览、导出或保存玩家图标。
 //! - `to-diy`: 将名字导出为 DIY/OL overlay 格式。
 //!
@@ -48,7 +49,8 @@
 //! tswn-cli bench cqp -l targets.txt -p players.txt --min-screen 60.5
 //! tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3
 //! tswn-cli namer-pf -r "mario\nluigi"
-//! tswn-cli namer-pf -r "mario\nluigi" --mode pp qd
+//! tswn-cli namer-pf -r "mario\nluigi" --metric pp:8000 --metric sum
+//! tswn-cli namer-pf -f names.txt --skill-board score_now.toml
 //! tswn-cli to-diy -r "mario@team+fire" -o diy.txt
 //! tswn-cli icon show mario luigi
 //! ```
@@ -129,6 +131,7 @@ fn main() {
             };
             bench::run_bench_group_win_rate(&target, &against, n, mode, threads, eval_rq, perf);
         }
+        // TODO(batch-rate 实现流): target_double_plus / show_matchups / sort / clean_label 接入后去掉 `..`。
         ParsedCommand::BenchBatchRate {
             target_groups,
             target_factors,
@@ -148,6 +151,7 @@ fn main() {
             min_screen,
             min_file,
             wr_precision,
+            ..
         } => {
             let eval_rq = if keep_rq {
                 tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ
@@ -175,6 +179,7 @@ fn main() {
                 wr_precision,
             );
         }
+        // TODO(pair 实现流): teammate_factored / detail / detail_min / sort / clean_label 接入后去掉 `..`。
         ParsedCommand::BenchPair {
             target_groups,
             target_factors,
@@ -197,6 +202,7 @@ fn main() {
             min_screen,
             min_file,
             wr_precision,
+            ..
         } => {
             let eval_rq = if keep_rq {
                 tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ
@@ -233,13 +239,18 @@ fn main() {
             threads,
             keep_rq,
             precision,
-            modes,
+            metrics,
+            ..
         } => {
             let eval_rq = if keep_rq {
                 tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ
             } else {
                 tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ
             };
+            // TODO(namer-pf 实现流): 切到 `label metric:score` 行格式、`--metric` 的
+            // 阈值/文件配置与 `--skill-board` 技能榜；落地前先按旧管道表兼容输出，
+            // sum 与技能榜相关字段暂不生效。
+            let modes = metrics.iter().filter_map(|spec| spec.metric.base_mode()).collect::<Vec<_>>();
             bench::run_namer_pf(&raw, n, threads, eval_rq, precision, &modes);
         }
         ParsedCommand::IconShow { names } => icon::print_icons(&names),
@@ -255,12 +266,14 @@ fn main() {
                 std::process::exit(1);
             }
         }
+        // TODO(to-diy 实现流): details 接入后去掉 `..`。
         ParsedCommand::ToDiy {
             names,
             from_file,
             out_file,
             old,
             minions,
+            ..
         } => to_diy::run(&names, from_file, out_file.as_deref(), old, minions),
     }
 }

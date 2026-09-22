@@ -94,14 +94,112 @@ fn legacy_raw_entry_points_are_rejected() {
 }
 
 #[test]
-fn namer_pf_accepts_multiple_modes() {
-    let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario", "--mode", "pp", "qd"]).unwrap();
+fn namer_pf_accepts_metric_specs() {
+    let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario", "--metric", "pp:8000", "--metric", "sum"]).unwrap();
     match cli.command {
         CliCommand::NamerPf(cmd) => {
-            assert_eq!(cmd.mode, vec![NamerPfModeArg::Pp, NamerPfModeArg::Qd]);
+            assert_eq!(cmd.metrics.len(), 2);
+            assert_eq!(cmd.metrics[0].metric, NamerPfMetric::Pp);
+            assert_eq!(cmd.metrics[0].min_screen, Some(8000.0));
+            assert_eq!(cmd.metrics[1].metric, NamerPfMetric::Sum);
         }
         _ => panic!("unexpected command"),
     }
+}
+
+#[test]
+fn namer_pf_rejects_legacy_mode_flag() {
+    let err = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario", "--mode", "pp"]).unwrap_err();
+    assert_eq!(err.kind(), clap::error::ErrorKind::UnknownArgument);
+}
+
+#[test]
+fn namer_pf_rejects_unknown_metric_name() {
+    let err = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario", "--metric", "xp"]).unwrap_err();
+    assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
+}
+
+#[test]
+fn namer_pf_defaults_to_all_five_metrics_in_fixed_order() {
+    let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario"]).unwrap();
+    let parsed = ParsedCli::from_cli(cli).unwrap();
+    match parsed.command {
+        ParsedCommand::NamerPf {
+            metrics,
+            no_screen,
+            skill_board_config,
+            skill_board_output,
+            ..
+        } => {
+            let labels = metrics.iter().map(|spec| spec.metric.label()).collect::<Vec<_>>();
+            assert_eq!(labels, vec!["pp", "pd", "qp", "qd", "sum"]);
+            assert!(metrics.iter().all(|spec| spec.output_file.is_none() && spec.min_screen.is_none()));
+            assert!(!no_screen);
+            assert!(skill_board_config.is_none());
+            assert!(skill_board_output.is_none());
+        }
+        _ => panic!("unexpected command"),
+    }
+}
+
+#[test]
+fn namer_pf_metric_flag_order_does_not_change_output_order() {
+    let cli = Cli::try_parse_from([
+        "tswn-cli",
+        "namer-pf",
+        "-r",
+        "mario",
+        "--metric",
+        "sum:30000",
+        "--metric",
+        "pp:8000",
+    ])
+    .unwrap();
+    let parsed = ParsedCli::from_cli(cli).unwrap();
+    match parsed.command {
+        ParsedCommand::NamerPf { metrics, .. } => {
+            let labels = metrics.iter().map(|spec| spec.metric.label()).collect::<Vec<_>>();
+            assert_eq!(labels, vec!["pp", "sum"]);
+        }
+        _ => panic!("unexpected command"),
+    }
+}
+
+#[test]
+fn namer_pf_rejects_duplicate_metric() {
+    let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario", "--metric", "pp", "--metric", "pp:8000"]);
+    let err = ParsedCli::from_cli(cli.unwrap()).unwrap_err();
+    assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
+}
+
+#[test]
+fn namer_pf_rejects_shared_output_file() {
+    let cli = Cli::try_parse_from([
+        "tswn-cli",
+        "namer-pf",
+        "-r",
+        "mario",
+        "--metric",
+        "pp:8000:same.txt",
+        "--metric",
+        "sum::same.txt",
+    ]);
+    let err = ParsedCli::from_cli(cli.unwrap()).unwrap_err();
+    assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
+}
+
+#[test]
+fn namer_pf_skill_board_out_requires_skill_board() {
+    let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario", "--skill-board-out", "board.txt"]);
+    let err = ParsedCli::from_cli(cli.unwrap()).unwrap_err();
+    assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
+}
+
+#[test]
+fn namer_pf_no_screen_requires_metric_file() {
+    let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario", "--no-screen"]);
+    let err = ParsedCli::from_cli(cli.unwrap()).unwrap_err();
+    assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
 }
 
 #[test]
@@ -139,12 +237,115 @@ fn namer_pf_default_precision_is_zero() {
 }
 
 #[test]
-fn namer_pf_defaults_to_all_modes() {
-    let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario"]).unwrap();
+fn to_diy_command_accepts_no_details() {
+    let cli = Cli::try_parse_from(["tswn-cli", "to-diy", "-r", "mario@team", "--no-details"]).unwrap();
     let parsed = ParsedCli::from_cli(cli).unwrap();
     match parsed.command {
-        ParsedCommand::NamerPf { modes, .. } => {
-            assert_eq!(modes, NamerPfMode::ALL.to_vec());
+        ParsedCommand::ToDiy { details, .. } => assert!(!details),
+        _ => panic!("unexpected command"),
+    }
+}
+
+#[test]
+fn to_diy_command_details_default_on() {
+    let cli = Cli::try_parse_from(["tswn-cli", "to-diy", "-r", "mario@team"]).unwrap();
+    let parsed = ParsedCli::from_cli(cli).unwrap();
+    match parsed.command {
+        ParsedCommand::ToDiy { details, .. } => assert!(details),
+        _ => panic!("unexpected command"),
+    }
+}
+
+#[test]
+fn batch_rate_accepts_new_output_flags() {
+    let cli = Cli::try_parse_from([
+        "tswn-cli",
+        "bench",
+        "batch-rate",
+        "-l",
+        "targets.txt",
+        "-p",
+        "players.txt",
+        "--target-list-double-plus",
+        "--show-matchups",
+        "--sort",
+        "--clean-label",
+    ])
+    .unwrap();
+    match cli.command {
+        CliCommand::Bench(BenchCommand {
+            command: BenchSubcommand::BatchRate(cmd),
+        }) => {
+            assert!(cmd.target_list_double_plus);
+            assert!(cmd.show_matchups);
+            assert!(cmd.sort);
+            assert!(cmd.clean_label);
+        }
+        _ => panic!("unexpected command"),
+    }
+}
+
+#[test]
+fn pair_accepts_teammate_factored_and_detail_flags() {
+    let cli = Cli::try_parse_from([
+        "tswn-cli",
+        "bench",
+        "pair",
+        "-l",
+        "targets.toml",
+        "-p",
+        "players.txt",
+        "--teammate-list",
+        "teammates.toml",
+        "--head",
+        "3",
+        "--target-factored",
+        "--teammate-factored",
+        "--detail",
+        "every",
+        "--detail-min",
+        "60",
+        "--sort",
+        "--clean-label",
+    ])
+    .unwrap();
+    match cli.command {
+        CliCommand::Bench(BenchCommand {
+            command: BenchSubcommand::Pair(cmd),
+        }) => {
+            assert!(cmd.target_factored);
+            assert!(cmd.teammate_factored);
+            assert_eq!(cmd.detail, PairDetailArg::Every);
+            assert_eq!(cmd.detail_min, Some(60.0));
+            assert!(cmd.sort);
+            assert!(cmd.clean_label);
+        }
+        _ => panic!("unexpected command"),
+    }
+}
+
+#[test]
+fn pair_detail_defaults_to_none() {
+    let cli = Cli::try_parse_from([
+        "tswn-cli",
+        "bench",
+        "pair",
+        "-l",
+        "targets.txt",
+        "-p",
+        "players.txt",
+        "--teammate-list",
+        "teammates.txt",
+        "--head",
+        "3",
+    ])
+    .unwrap();
+    match cli.command {
+        CliCommand::Bench(BenchCommand {
+            command: BenchSubcommand::Pair(cmd),
+        }) => {
+            assert_eq!(cmd.detail, PairDetailArg::None);
+            assert_eq!(cmd.detail_min, None);
         }
         _ => panic!("unexpected command"),
     }
