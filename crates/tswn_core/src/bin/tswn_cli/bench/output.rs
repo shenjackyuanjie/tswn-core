@@ -268,7 +268,11 @@ pub(super) fn clean_name_label(raw: &str) -> String {
 
 /// 多行分组的展示标签版本：逐行清洗后再用 `+` 拼回一行（对齐 openbox `clean_group_label`）。
 pub(super) fn clean_group_label(raw: &str) -> String {
-    raw.lines().map(clean_name_label).filter(|part| !part.is_empty()).collect::<Vec<_>>().join("+")
+    raw.lines()
+        .map(clean_name_label)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("+")
 }
 
 /// 把输出文件按分数降序重排（对齐 openbox `sort_score_output_file`）。
@@ -304,7 +308,10 @@ fn score_output_line_value(line: &str, jsonl: bool) -> Option<f64> {
         return line.split_whitespace().next()?.parse().ok();
     }
     let value: serde_json::Value = serde_json::from_str(line).ok()?;
-    value.get("avg_win_rate").or_else(|| value.get("score")).and_then(serde_json::Value::as_f64)
+    value
+        .get("avg_win_rate")
+        .or_else(|| value.get("score"))
+        .and_then(serde_json::Value::as_f64)
 }
 
 /// 统一处理小数位数和负零问题。
