@@ -20,8 +20,8 @@ use tswn_openbox::backend::{
 };
 
 use super::state::{CountMode, OpenboxApp};
-use tswn_openbox::presets::{load_selected_target_text, load_selected_teammate_text};
 use super::widgets::OptionalFileOutput;
+use tswn_openbox::presets::{load_selected_target_text, load_selected_teammate_text};
 
 const MAX_EVENTS_PER_POLL: usize = 256;
 const EVENT_CHANNEL_CAPACITY: usize = MAX_EVENTS_PER_POLL * 16;

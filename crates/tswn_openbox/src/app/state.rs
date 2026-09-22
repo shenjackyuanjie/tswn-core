@@ -14,8 +14,8 @@ use tswn_openbox::backend::{NamerPfMetric, OutputMode, PairDetailMode, ProgressE
 use super::help::HelpTopic;
 
 use super::source::TextSource;
-use tswn_openbox::presets::{TargetPresetState, TeammatePresetState};
 use super::widgets::{BenchOutputConfig, OptionalFileOutput};
+use tswn_openbox::presets::{TargetPresetState, TeammatePresetState};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tool {

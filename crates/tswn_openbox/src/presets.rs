@@ -38,26 +38,11 @@ const DEFAULT_SETTING_FILES: &[(&str, &str)] = &[
     ("targets/target3.txt", include_str!("../assets/targets/target3.txt")),
     ("targets/newTarget1.toml", include_str!("../assets/targets/newTarget1.toml")),
     ("targets/newTarget2.toml", include_str!("../assets/targets/newTarget2.toml")),
-    (
-        "teammates/teammate_fz.txt",
-        include_str!("../assets/teammates/teammate_fz.txt"),
-    ),
-    (
-        "teammates/teammate_bc.txt",
-        include_str!("../assets/teammates/teammate_bc.txt"),
-    ),
-    (
-        "teammates/teammate_wc.txt",
-        include_str!("../assets/teammates/teammate_wc.txt"),
-    ),
-    (
-        "teammates/teammate_pj.txt",
-        include_str!("../assets/teammates/teammate_pj.txt"),
-    ),
-    (
-        "teammates/teammate_fs.txt",
-        include_str!("../assets/teammates/teammate_fs.txt"),
-    ),
+    ("teammates/teammate_fz.txt", include_str!("../assets/teammates/teammate_fz.txt")),
+    ("teammates/teammate_bc.txt", include_str!("../assets/teammates/teammate_bc.txt")),
+    ("teammates/teammate_wc.txt", include_str!("../assets/teammates/teammate_wc.txt")),
+    ("teammates/teammate_pj.txt", include_str!("../assets/teammates/teammate_pj.txt")),
+    ("teammates/teammate_fs.txt", include_str!("../assets/teammates/teammate_fs.txt")),
 ];
 
 #[derive(Debug, Clone)]
@@ -200,16 +185,24 @@ struct TeammatePresetEntry {
 
 pub fn load_selected_target_text(state: &TargetPresetState) -> Result<String, String> {
     let preset = state.selected().ok_or_else(|| "请先选择靶子预设。".to_string())?;
-    fs::read_to_string(&preset.path)
-        .map(|content| content.trim_start_matches('\u{feff}').to_string())
-        .map_err(|err| format!("读取靶子预设失败: {}: {err}", preset.path.display()))
+    load_target_preset_text(preset)
 }
+
+/// 读取指定靶子预设的文件内容（CLI 按 id 直接解析预设时使用）。
+pub fn load_target_preset_text(preset: &TargetPreset) -> Result<String, String> { read_preset_text(&preset.path) }
 
 pub fn load_selected_teammate_text(state: &TeammatePresetState) -> Result<String, String> {
     let preset = state.selected().ok_or_else(|| "请先选择队友预设。".to_string())?;
-    fs::read_to_string(&preset.path)
+    load_teammate_preset_text(preset)
+}
+
+/// 读取指定队友预设的文件内容（CLI 按名字直接解析预设时使用）。
+pub fn load_teammate_preset_text(preset: &TeammatePreset) -> Result<String, String> { read_preset_text(&preset.path) }
+
+fn read_preset_text(path: &Path) -> Result<String, String> {
+    fs::read_to_string(path)
         .map(|content| content.trim_start_matches('\u{feff}').to_string())
-        .map_err(|err| format!("读取队友预设失败: {}: {err}", preset.path.display()))
+        .map_err(|err| format!("读取预设失败: {}: {err}", path.display()))
 }
 
 fn load_target_presets(loaded: LoadedSettingFile) -> Vec<TargetPreset> {

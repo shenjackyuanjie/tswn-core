@@ -4609,6 +4609,7 @@ dependencies = [
 name = "tswn_openbox"
 version = "0.4.4"
 dependencies = [
+ "clap",
  "eframe",
  "rfd",
  "serde",
