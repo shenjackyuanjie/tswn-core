@@ -2,8 +2,14 @@
 //!
 //! 通过 `wasm-bindgen` 将战斗引擎的核心功能导出为 JavaScript 可调用的 API，
 //! 包括单次战斗回放、胜率统计及玩家图标生成。
+//!
+//! 导出边界统一用 `tsify::Ts<T>` 收发领域类型：参数收 `Option<Ts<T>>`，返回
+//! `Ts<T>` / `Vec<Ts<T>>`，并在函数体内经 [`convert`] 转成普通 Rust 类型。这样
+//! （反）序列化失败能按稳定错误码抛出，不会像旧的 ABI 边界转换那样 `throw_str`
+//! 并泄漏内存；生成的 TypeScript 声明与之前一致。
 
 mod battle;
+mod convert;
 mod error;
 mod fight;
 mod model;
@@ -11,8 +17,10 @@ mod render;
 mod win_rate;
 
 use std::sync::Once;
+use tsify::Ts;
 
 pub use battle::BattleSession;
+use convert::{ts_in, ts_out, ts_out_vec};
 use error::WasmResult;
 pub use fight::FightSession;
 use model::{
@@ -61,25 +69,28 @@ pub fn name_to_icon_rgba(name: String) -> Vec<u8> {
 }
 
 #[wasm_bindgen]
-pub fn fight(raw_input: String, options: Option<FightOptions>) -> WasmResult<FightReplay> {
+pub fn fight(raw_input: String, options: Option<Ts<FightOptions>>) -> WasmResult<Ts<FightReplay>> {
     install_panic_hook();
-    let options = options.unwrap_or_default();
-    fight::fight_impl(raw_input, options)
+    let options = ts_in(options)?;
+    fight::fight_impl(raw_input, options).and_then(|replay| ts_out(&replay))
 }
 
 #[wasm_bindgen]
-pub fn fight_summary(raw_input: String, options: Option<FightOptions>) -> WasmResult<FightSummary> {
+pub fn fight_summary(raw_input: String, options: Option<Ts<FightOptions>>) -> WasmResult<Ts<FightSummary>> {
     install_panic_hook();
-    let options = options.unwrap_or_default();
-    fight::fight_summary_impl(raw_input, options)
+    let options = ts_in(options)?;
+    fight::fight_summary_impl(raw_input, options).and_then(|summary| ts_out(&summary))
 }
 
 #[wasm_bindgen]
-pub fn win_rate_sync(raw_input: String, total_rounds: usize, options: Option<WinRateOptions>) -> WasmResult<WinRateResult> {
+pub fn win_rate_sync(
+    raw_input: String,
+    total_rounds: usize,
+    options: Option<Ts<WinRateOptions>>,
+) -> WasmResult<Ts<WinRateResult>> {
     install_panic_hook();
-    let options = options.unwrap_or_default();
-    let result = win_rate::run_win_rate_sync(raw_input, total_rounds, options)?;
-    Ok(result)
+    let options = ts_in(options)?;
+    win_rate::run_win_rate_sync(raw_input, total_rounds, options).and_then(|result| ts_out(&result))
 }
 
 #[wasm_bindgen]
@@ -87,10 +98,10 @@ pub fn group_win_rate(
     target: String,
     against: Vec<String>,
     total_rounds: usize,
-    options: Option<WinRateOptions>,
-) -> WasmResult<Vec<GroupWinRateResult>> {
+    options: Option<Ts<WinRateOptions>>,
+) -> WasmResult<Vec<Ts<GroupWinRateResult>>> {
     install_panic_hook();
-    let options = options.unwrap_or_default();
+    let options = ts_in(options)?;
 
     let mut results = Vec::with_capacity(against.len());
     for opponent in against {
@@ -99,7 +110,7 @@ pub fn group_win_rate(
         results.push(GroupWinRateResult { opponent, result });
     }
 
-    Ok(results)
+    ts_out_vec(&results)
 }
 
 #[wasm_bindgen]
@@ -108,11 +119,12 @@ pub fn win_rate_summary(
     total_rounds: usize,
     eval_rq: Option<f64>,
     thread: Option<u32>,
-) -> WasmResult<CliWinRateResult> {
+) -> WasmResult<Ts<CliWinRateResult>> {
     install_panic_hook();
     tswn_core::cli_api::win_rate_summary(&raw_input, total_rounds, eval_rq, thread.unwrap_or(0))
         .map(Into::into)
         .map_err(error::cli_api_error)
+        .and_then(|result| ts_out(&result))
 }
 
 #[wasm_bindgen]
@@ -122,11 +134,12 @@ pub fn team_win_rate_summary(
     total_rounds: usize,
     eval_rq: Option<f64>,
     thread: Option<u32>,
-) -> WasmResult<CliWinRateResult> {
+) -> WasmResult<Ts<CliWinRateResult>> {
     install_panic_hook();
     tswn_core::cli_api::team_win_rate_summary(&team1, &team2, total_rounds, eval_rq, thread.unwrap_or(0))
         .map(Into::into)
         .map_err(error::cli_api_error)
+        .and_then(|result| ts_out(&result))
 }
 
 #[wasm_bindgen]
@@ -136,11 +149,12 @@ pub fn group_win_rate_summary(
     total_rounds: usize,
     eval_rq: Option<f64>,
     thread: Option<u32>,
-) -> WasmResult<Vec<CliGroupWinRateResult>> {
+) -> WasmResult<Vec<Ts<CliGroupWinRateResult>>> {
     install_panic_hook();
     tswn_core::cli_api::group_win_rate_summary(&target, &against, total_rounds, eval_rq, thread.unwrap_or(0))
-        .map(|results| results.into_iter().map(Into::into).collect())
+        .map(|results| results.into_iter().map(Into::into).collect::<Vec<_>>())
         .map_err(error::cli_api_error)
+        .and_then(|results| ts_out_vec(&results))
 }
 
 #[wasm_bindgen]
@@ -150,12 +164,13 @@ pub fn score(
     mode: Option<String>,
     eval_rq: Option<f64>,
     thread: Option<u32>,
-) -> WasmResult<CliScoreResult> {
+) -> WasmResult<Ts<CliScoreResult>> {
     install_panic_hook();
     let mode = mode.unwrap_or_else(|| "normal".to_string());
     tswn_core::cli_api::score(&raw_input, total_rounds, &mode, eval_rq, thread.unwrap_or(0))
         .map(Into::into)
         .map_err(error::cli_api_error)
+        .and_then(|result| ts_out(&result))
 }
 
 #[wasm_bindgen]
@@ -165,11 +180,12 @@ pub fn namer_pf(
     modes: Option<Vec<String>>,
     keep_rq: Option<bool>,
     thread: Option<u32>,
-) -> WasmResult<Vec<CliNamerPfResult>> {
+) -> WasmResult<Vec<Ts<CliNamerPfResult>>> {
     install_panic_hook();
     tswn_core::cli_api::namer_pf(&raw_input, total_rounds, modes, keep_rq.unwrap_or(false), thread.unwrap_or(0))
-        .map(|results| results.into_iter().map(Into::into).collect())
+        .map(|results| results.into_iter().map(Into::into).collect::<Vec<_>>())
         .map_err(error::cli_api_error)
+        .and_then(|results| ts_out_vec(&results))
 }
 
 #[wasm_bindgen]
@@ -180,7 +196,7 @@ pub fn batch_rate(
     player_labels: Option<Vec<String>>,
     keep_rq: Option<bool>,
     thread: Option<u32>,
-) -> WasmResult<Vec<CliBatchRateResult>> {
+) -> WasmResult<Vec<Ts<CliBatchRateResult>>> {
     install_panic_hook();
     tswn_core::cli_api::batch_rate(
         &target_groups,
@@ -190,8 +206,9 @@ pub fn batch_rate(
         keep_rq.unwrap_or(false),
         thread.unwrap_or(0),
     )
-    .map(|results| results.into_iter().map(Into::into).collect())
+    .map(|results| results.into_iter().map(Into::into).collect::<Vec<_>>())
     .map_err(error::cli_api_error)
+    .and_then(|results| ts_out_vec(&results))
 }
 
 #[wasm_bindgen]
@@ -203,7 +220,7 @@ pub fn batch_rate_factored(
     player_labels: Option<Vec<String>>,
     keep_rq: Option<bool>,
     thread: Option<u32>,
-) -> WasmResult<Vec<CliBatchRateResult>> {
+) -> WasmResult<Vec<Ts<CliBatchRateResult>>> {
     install_panic_hook();
     tswn_core::cli_api::batch_rate_factored(
         &target_groups,
@@ -214,8 +231,9 @@ pub fn batch_rate_factored(
         keep_rq.unwrap_or(false),
         thread.unwrap_or(0),
     )
-    .map(|results| results.into_iter().map(Into::into).collect())
+    .map(|results| results.into_iter().map(Into::into).collect::<Vec<_>>())
     .map_err(error::cli_api_error)
+    .and_then(|results| ts_out_vec(&results))
 }
 
 #[wasm_bindgen]
@@ -227,7 +245,7 @@ pub fn pair_rate(
     total_rounds: usize,
     keep_rq: Option<bool>,
     thread: Option<u32>,
-) -> WasmResult<Vec<CliPairRateResult>> {
+) -> WasmResult<Vec<Ts<CliPairRateResult>>> {
     install_panic_hook();
     tswn_core::cli_api::pair_rate(
         &target_groups,
@@ -238,8 +256,9 @@ pub fn pair_rate(
         keep_rq.unwrap_or(false),
         thread.unwrap_or(0),
     )
-    .map(|results| results.into_iter().map(Into::into).collect())
+    .map(|results| results.into_iter().map(Into::into).collect::<Vec<_>>())
     .map_err(error::cli_api_error)
+    .and_then(|results| ts_out_vec(&results))
 }
 
 #[wasm_bindgen]
@@ -252,7 +271,7 @@ pub fn pair_rate_factored(
     total_rounds: usize,
     keep_rq: Option<bool>,
     thread: Option<u32>,
-) -> WasmResult<Vec<CliPairRateResult>> {
+) -> WasmResult<Vec<Ts<CliPairRateResult>>> {
     install_panic_hook();
     tswn_core::cli_api::pair_rate_factored(
         &target_groups,
@@ -264,13 +283,18 @@ pub fn pair_rate_factored(
         keep_rq.unwrap_or(false),
         thread.unwrap_or(0),
     )
-    .map(|results| results.into_iter().map(Into::into).collect())
+    .map(|results| results.into_iter().map(Into::into).collect::<Vec<_>>())
     .map_err(error::cli_api_error)
+    .and_then(|results| ts_out_vec(&results))
 }
 
 #[wasm_bindgen]
-pub fn default_custom_runtime_normalized_run(raw_input: String, max_rounds: usize) -> WasmResult<RuntimeNormalizedRunView> {
+pub fn default_custom_runtime_normalized_run(raw_input: String, max_rounds: usize) -> WasmResult<Ts<RuntimeNormalizedRunView>> {
     install_panic_hook();
+    default_custom_runtime_normalized_run_impl(raw_input, max_rounds).and_then(|run| ts_out(&run))
+}
+
+fn default_custom_runtime_normalized_run_impl(raw_input: String, max_rounds: usize) -> WasmResult<RuntimeNormalizedRunView> {
     tswn_core::cli_api::default_custom_runtime_normalized_run(&raw_input, max_rounds)
         .map(tswn_core::cli_api::JsonRuntimeNormalizedRun::from)
         .map(Into::into)
@@ -279,9 +303,9 @@ pub fn default_custom_runtime_normalized_run(raw_input: String, max_rounds: usiz
 
 /// 运行完整战斗，并返回共用、可供 UI 使用的回放 JSON 形状。
 #[wasm_bindgen(unchecked_return_type = "BattleReplay")]
-pub fn battle_replay(raw_input: String, options: Option<BattleReplayOptions>) -> WasmResult<JsValue> {
+pub fn battle_replay(raw_input: String, options: Option<Ts<BattleReplayOptions>>) -> WasmResult<JsValue> {
     install_panic_hook();
-    let options = options.unwrap_or_default();
+    let options = ts_in(options)?;
     let replay = tswn_core::cli_api::battle_replay(&raw_input, options.to_core()).map_err(error::cli_api_error)?;
     battle::dto_to_js(&replay)
 }
@@ -299,9 +323,10 @@ pub fn to_diy_batch(names: Vec<String>, old: Option<bool>, minions: Option<bool>
 }
 
 #[wasm_bindgen]
-pub fn icon_info(name: String) -> CliIconInfo {
+pub fn icon_info(name: String) -> WasmResult<Ts<CliIconInfo>> {
     install_panic_hook();
-    tswn_core::cli_api::icon_info(&name).into()
+    let info = tswn_core::cli_api::icon_info(&name).into();
+    ts_out(&info)
 }
 
 #[wasm_bindgen]
@@ -317,7 +342,7 @@ mod tests {
 
     #[test]
     fn default_custom_runtime_normalized_run_exposes_wasm_view_golden_shape() {
-        let run = default_custom_runtime_normalized_run("left@red\n\nright@blue\n".to_string(), 1)
+        let run = default_custom_runtime_normalized_run_impl("left@red\n\nright@blue\n".to_string(), 1)
             .expect("default custom runtime normalized run should execute");
 
         assert_eq!(run.rounds.len(), 1);

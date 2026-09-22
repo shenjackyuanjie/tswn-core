@@ -17,6 +17,8 @@ pub type WasmResult<T> = Result<T, JsValue>;
 
 pub fn invalid_input(message: impl Into<String>) -> JsValue { error_value(CliApiErrorCode::InvalidInput.as_str(), message) }
 
+pub fn invalid_argument(message: impl Into<String>) -> JsValue { error_value(CliApiErrorCode::InvalidArgument.as_str(), message) }
+
 pub fn runner_init_failed(message: impl Into<String>) -> JsValue {
     error_value(CliApiErrorCode::RunnerInitFailed.as_str(), message)
 }
