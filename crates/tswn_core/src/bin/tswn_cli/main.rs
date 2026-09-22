@@ -131,7 +131,6 @@ fn main() {
             };
             bench::run_bench_group_win_rate(&target, &against, n, mode, threads, eval_rq, perf);
         }
-        // TODO(batch-rate 实现流): target_double_plus / show_matchups / sort / clean_label 接入后去掉 `..`。
         ParsedCommand::BenchBatchRate {
             target_groups,
             target_factors,
@@ -151,7 +150,9 @@ fn main() {
             min_screen,
             min_file,
             wr_precision,
-            ..
+            show_matchups,
+            sort,
+            clean_label,
         } => {
             let eval_rq = if keep_rq {
                 tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ
@@ -177,13 +178,16 @@ fn main() {
                 min_screen,
                 min_file,
                 wr_precision,
+                show_matchups,
+                bench::ScoreOutputOptions { sort, clean_label },
             );
         }
-        // TODO(pair 实现流): teammate_factored / detail / detail_min / sort / clean_label 接入后去掉 `..`。
         ParsedCommand::BenchPair {
             target_groups,
             target_factors,
             target_factored,
+            teammate_factored,
+            teammate_factors,
             players,
             player_labels,
             teammates,
@@ -195,6 +199,8 @@ fn main() {
             perf,
             keep_rq,
             verbose,
+            detail,
+            detail_min,
             out_file,
             force,
             log,
@@ -202,7 +208,8 @@ fn main() {
             min_screen,
             min_file,
             wr_precision,
-            ..
+            sort,
+            clean_label,
         } => {
             let eval_rq = if keep_rq {
                 tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ
@@ -231,6 +238,13 @@ fn main() {
                 min_screen,
                 min_file,
                 wr_precision,
+                bench::PairOptions {
+                    teammate_factored,
+                    teammate_factors,
+                    detail,
+                    detail_min,
+                },
+                bench::ScoreOutputOptions { sort, clean_label },
             );
         }
         ParsedCommand::NamerPf {

@@ -314,6 +314,39 @@ fn score_output_line_value(line: &str, jsonl: bool) -> Option<f64> {
         .and_then(serde_json::Value::as_f64)
 }
 
+/// batch-rate / pair 共用的文件输出模式。
+#[derive(Debug, Clone, Copy)]
+pub(super) enum BatchFileOutputMode {
+    Log,
+    Json,
+    Pure,
+}
+
+/// batch-rate / pair 共用的输出行为开关（对齐 openbox 的排序与标签清洗选项）。
+#[derive(Debug, Clone, Copy)]
+pub struct ScoreOutputOptions {
+    /// 输出文件按分数降序重排（`--pure` 模式下不排）。
+    pub sort: bool,
+    /// 屏幕与文件标签剥掉 `+ol:` / `+diy[` 覆盖后缀。
+    pub clean_label: bool,
+}
+
+/// 输出落地：文件写完后按需按分数降序重排。
+///
+/// `sort = false` 或未指定输出文件时为空操作；`Pure` 模式由
+/// [`sort_score_output_file`] 内部跳过。错误信息带上路径，方便定位。
+pub(super) fn finalize_score_output(path: Option<&Path>, mode: BatchFileOutputMode, sort: bool) -> Result<(), String> {
+    let Some(path) = path.filter(|_| sort) else {
+        return Ok(());
+    };
+    sort_score_output_file(
+        path,
+        matches!(mode, BatchFileOutputMode::Json),
+        matches!(mode, BatchFileOutputMode::Pure),
+    )
+    .map_err(|err| format!("{}: {err}", path.display()))
+}
+
 /// 统一处理小数位数和负零问题。
 pub(super) fn format_rate(value: f64, precision: usize) -> String {
     let value = if value.abs() < 0.5_f64 * 10_f64.powi(-(precision as i32)) {
