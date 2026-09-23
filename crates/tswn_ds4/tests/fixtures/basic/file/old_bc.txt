@@ -1,0 +1,2 @@
+1000 1000 oldbc1@teamX
+1200 1300 oldbc2@teamY

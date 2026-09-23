@@ -3,7 +3,7 @@ resolver = "2"
 members = [
   "crates/tswn_capi",
   "crates/tswn_core",
-  "crates/tswn_ds3",
+  "crates/tswn_ds4",
   "crates/tswn_test",
   "crates/tswn_py",
   "crates/tswn_wasm",

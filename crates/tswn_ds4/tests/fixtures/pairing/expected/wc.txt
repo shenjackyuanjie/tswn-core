@@ -1,0 +1,4 @@
+2153 wc1@teamA+wc3@teamC
+2000 wc1@teamA+wc4@teamD
+3395 wc2@teamB+wc3@teamC
+2100 wc2@teamB+wc4@teamD

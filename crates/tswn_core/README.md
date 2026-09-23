@@ -10,7 +10,7 @@
 - **DIY 转换**：`tswn-cli to-diy -r NAME` 默认输出 `+ol`，加 `--old` 输出 `+diy`，也支持 `-f/--file` 和 `-o/--out-file`
 - **图标渲染**：玩家名称 → 16×16 像素头像（PNG / Base64 / RGBA）
 - **结构化回放视图**：`replay_view` 提供跨 WASM / Python / C 等包装层复用的分行、分帧、延迟、文本片段、血条和死亡特效规则
-- **DS3 兼容**：通过 `tswn_ds3` crate 提供 DS3_demo3 流程兼容
+- **DS4 流程**：通过 `tswn_ds4` crate 跟进 20260824 版本 ds4preview
 
 ## 快速开始
 

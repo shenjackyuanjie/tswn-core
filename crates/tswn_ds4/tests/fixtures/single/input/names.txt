@@ -1,0 +1,6 @@
+alpha@teamA
+beta@teamA
+gamma@teamB
++delta@teamC+
+epsilon@teamD
+zeta@teamE

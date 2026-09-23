@@ -1,0 +1,6 @@
+1111.000 1901.000 zeta@teamE
+1111.000 1939.000 gamma@teamB
+1111.000 1411.000 epsilon@teamD
+1111.000 2505.000 alpha@teamA
+1111.000 1855.000 +delta@teamC+
+800.000 810.000 oldfs1@teamX

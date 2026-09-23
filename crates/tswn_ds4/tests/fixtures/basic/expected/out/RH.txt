@@ -1,0 +1,11 @@
+2303 zeta@teamE+gamma@teamB
+2303 gamma@teamB+gamma@teamB
+2303 epsilon@teamD+gamma@teamB
+2316 alpha@teamA+gamma@teamB
+2303 +gamma@teamB
+700 zeta@teamE+oldpj1@teamX
+700 gamma@teamB+oldpj1@teamX
+700 epsilon@teamD+oldpj1@teamX
+700 alpha@teamA+oldpj1@teamX
+700 +oldpj1@teamX
+2303 oldfs1@teamX+gamma@teamB
