@@ -5,6 +5,7 @@
 
 mod actions;
 mod help;
+mod log;
 mod source;
 mod state;
 mod view;

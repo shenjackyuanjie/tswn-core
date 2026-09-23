@@ -3,7 +3,6 @@
 //! 定义工具枚举 [`Tool`] 及各工具的独立状态结构体（`ToDiyState`、`NamerPfState` 等），
 //! 以及聚合所有状态的顶层 [`OpenboxApp`] 结构体。
 
-use std::collections::HashSet;
 use std::sync::{Arc, atomic::AtomicBool, mpsc::Receiver};
 use std::time::Instant;
 
@@ -12,6 +11,7 @@ use egui;
 use tswn_openbox::backend::{NamerPfMetric, OutputMode, PairDetailMode, ProgressEvent};
 
 use super::help::HelpTopic;
+use super::log::LogBuffer;
 
 use super::source::TextSource;
 use super::widgets::{BenchOutputConfig, OptionalFileOutput};
@@ -258,10 +258,7 @@ pub struct OpenboxApp {
     pub more_settings_open: bool,
     pub about_open: bool,
     pub(crate) active_help: Option<HelpTopic>,
-    pub log: String,
-    pub log_line_count: usize,
-    pub highlight_lines: HashSet<usize>,
-    pub skill_board_lines: HashSet<usize>,
+    pub(crate) log: LogBuffer,
     pub status: String,
     pub running: bool,
     pub cancel_requested: bool,
@@ -286,10 +283,7 @@ impl Default for OpenboxApp {
             more_settings_open: false,
             about_open: false,
             active_help: None,
-            log: String::new(),
-            log_line_count: 0,
-            highlight_lines: HashSet::new(),
-            skill_board_lines: HashSet::new(),
+            log: LogBuffer::default(),
             status: "就绪".to_string(),
             running: false,
             cancel_requested: false,

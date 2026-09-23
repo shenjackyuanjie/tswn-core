@@ -19,13 +19,13 @@ use tswn_openbox::backend::{
     ProgressEvent,
 };
 
+use super::log::LogKind;
 use super::state::{CountMode, OpenboxApp};
 use super::widgets::OptionalFileOutput;
 use tswn_openbox::presets::{load_selected_target_text, load_selected_teammate_text};
 
 const MAX_EVENTS_PER_POLL: usize = 256;
 const EVENT_CHANNEL_CAPACITY: usize = MAX_EVENTS_PER_POLL * 16;
-const MAX_LOG_BYTES: usize = 4 * 1024 * 1024;
 const RUNNING_REPAINT_INTERVAL: Duration = Duration::from_millis(33);
 
 impl OpenboxApp {
@@ -373,9 +373,6 @@ impl OpenboxApp {
         self.rate_text = "--".to_string();
         self.eta_text = "--".to_string();
         self.log.clear();
-        self.log_line_count = 0;
-        self.highlight_lines.clear();
-        self.skill_board_lines.clear();
         self.status = "运行中".to_string();
     }
 
@@ -391,9 +388,6 @@ impl OpenboxApp {
         self.rx = None;
         self.status = "失败".to_string();
         self.log.clear();
-        self.log_line_count = 0;
-        self.highlight_lines.clear();
-        self.skill_board_lines.clear();
         self.append_log(&err);
     }
 
@@ -487,41 +481,11 @@ impl OpenboxApp {
         };
     }
 
-    pub fn append_log(&mut self, text: &str) { self.append_log_inner(text, false); }
+    pub fn append_log(&mut self, text: &str) { self.log.append(text, LogKind::Plain); }
 
-    pub fn append_highlight_log(&mut self, text: &str) { self.append_log_inner(text, true); }
+    pub fn append_highlight_log(&mut self, text: &str) { self.log.append(text, LogKind::Highlight); }
 
-    pub fn append_skill_board_log(&mut self, text: &str) {
-        let first_line = self.append_log_inner(text, false);
-        self.skill_board_lines.insert(first_line);
-    }
-
-    fn append_log_inner(&mut self, text: &str, highlight_first_line: bool) -> usize {
-        let trimmed = text.trim_end_matches('\n');
-        if trimmed.is_empty() {
-            return self.log_line_count;
-        }
-        if !self.log.is_empty() && !self.log.ends_with('\n') {
-            self.log.push('\n');
-        }
-        if !self.log.is_empty() && trimmed.lines().nth(1).is_some() && !self.log.ends_with("\n\n") {
-            self.log.push('\n');
-        }
-        let first_line_index = self.log_line_count;
-        if highlight_first_line {
-            self.highlight_lines.insert(first_line_index);
-        }
-        self.log.push_str(trimmed);
-        self.log.push('\n');
-        self.log_line_count += trimmed.lines().count();
-        let removed_lines = trim_log_to_limit(&mut self.log);
-        if removed_lines > 0 {
-            self.log_line_count = self.log_line_count.saturating_sub(removed_lines);
-            shift_line_indexes(&mut self.highlight_lines, removed_lines);
-            shift_line_indexes(&mut self.skill_board_lines, removed_lines);
-        }
-        first_line_index.saturating_sub(removed_lines)
-    }
+    pub fn append_skill_board_log(&mut self, text: &str) { self.log.append(text, LogKind::SkillBoard); }
 }
 
 impl OpenboxApp {
@@ -563,28 +527,6 @@ fn non_zero(value: usize) -> Option<usize> { if value == 0 { None } else { Some(
 
 fn progress_channel() -> (mpsc::SyncSender<ProgressEvent>, mpsc::Receiver<ProgressEvent>) {
     mpsc::sync_channel(EVENT_CHANNEL_CAPACITY)
-}
-
-fn trim_log_to_limit(log: &mut String) -> usize {
-    if log.len() <= MAX_LOG_BYTES {
-        return 0;
-    }
-    let mut min_cut = log.len() - MAX_LOG_BYTES;
-    while min_cut < log.len() && !log.is_char_boundary(min_cut) {
-        min_cut += 1;
-    }
-    let Some(newline_offset) = log[min_cut..].find('\n') else {
-        return 0;
-    };
-    let cut = min_cut + newline_offset + 1;
-    let removed_lines = log[..cut].lines().count();
-    log.drain(..cut);
-    removed_lines
-}
-
-fn shift_line_indexes(indexes: &mut std::collections::HashSet<usize>, removed_lines: usize) {
-    indexes.retain(|index| *index >= removed_lines);
-    *indexes = indexes.iter().map(|index| index - removed_lines).collect();
 }
 
 fn parse_optional_f64_in_range(raw: &str, field_name: &str, range: RangeInclusive<f64>) -> Result<Option<f64>, String> {
