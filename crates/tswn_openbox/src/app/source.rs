@@ -6,7 +6,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use eframe::egui;
+use egui;
 
 use super::widgets::multiline;
 

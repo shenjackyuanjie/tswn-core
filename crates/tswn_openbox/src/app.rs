@@ -10,7 +10,7 @@ mod state;
 mod view;
 mod widgets;
 
-use eframe::egui;
+use egui;
 
 pub use state::{OpenboxApp, Tool};
 

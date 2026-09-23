@@ -11,7 +11,7 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
-use eframe::egui;
+use egui;
 
 use tswn_openbox::backend::PairDetailMode;
 use tswn_openbox::backend::{

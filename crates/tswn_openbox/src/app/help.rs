@@ -2,7 +2,7 @@
 
 use std::cell::Cell;
 
-use eframe::egui;
+use egui;
 
 const HELP_ICON_SIZE: f32 = 18.0;
 const HELP_TOOLTIP_WIDTH: f32 = 380.0;

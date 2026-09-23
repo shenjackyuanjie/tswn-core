@@ -2,7 +2,7 @@
 
 use std::cell::Cell;
 
-use eframe::egui;
+use egui;
 
 use tswn_openbox::backend::PairDetailMode;
 

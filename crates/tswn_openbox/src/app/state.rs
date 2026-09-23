@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::sync::{Arc, atomic::AtomicBool, mpsc::Receiver};
 use std::time::Instant;
 
-use eframe::egui;
+use egui;
 
 use tswn_openbox::backend::{NamerPfMetric, OutputMode, PairDetailMode, ProgressEvent};
 
