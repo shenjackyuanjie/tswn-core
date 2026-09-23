@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### 依赖更新
+
+- 显式依赖 `egui` 并直接使用其 API；`eframe`、`egui` 及配套组件更新至 `0.36.2`。
+- 更新 `clap`、`toml` 等依赖至现有兼容范围内的最新版本。
+
 ### 新增
 
 - 新增 `openbox-cli` 无头命令行（`cargo run -p tswn_openbox --bin openbox-cli`）：

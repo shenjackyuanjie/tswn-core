@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### 依赖更新
+
+- 更新 `clap`、`smallvec`、`toml` 等依赖至现有兼容范围内的最新版本。
+
 ### 新增
 
 - `tswn-cli namer-pf` 对齐 openbox GUI 输出形态：屏幕行改为 `名字组合 指标:分数`，
