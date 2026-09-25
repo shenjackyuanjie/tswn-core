@@ -184,6 +184,31 @@ struct ListRecord {
     order_domain: Option<usize>,
 }
 
+impl ListRecord {
+    fn with_owner(mut self, owner: i32) -> Self {
+        self.owner = owner;
+        self
+    }
+}
+
+fn entity_list_record(
+    index: &SampleIndex<'_>,
+    id: EntityIdx,
+    field_class: i32,
+    ordinal: usize,
+    owner_scope: i32,
+) -> Result<ListRecord, EncodeError> {
+    Ok(ListRecord {
+        owner_scope,
+        owner: 0,
+        field_class,
+        ordinal: ordinal as i32,
+        target: index.entity_row(id, "list.target")? as i32,
+        order_key: None,
+        order_domain: None,
+    })
+}
+
 impl SampleIndex<'_> {
     fn entity_row(&self, id: EntityIdx, path: &str) -> Result<usize, EncodeError> {
         self.entity_rows.get(&id.0).copied().ok_or_else(|| EncodeError::InvalidReference {
@@ -282,7 +307,7 @@ impl FeatureEncoder {
             self.write_entity_family(state, &index, batch_index, out)?;
             self.write_template_family(&index, batch_index, out)?;
             self.write_lane_family(&index, batch_index, out)?;
-            self.write_list_family(&index, batch_index, out)?;
+            self.write_list_family(state, &index, batch_index, out)?;
             Ok(())
         })();
         if result.is_err() {
@@ -839,7 +864,13 @@ impl FeatureEncoder {
         Ok(())
     }
 
-    fn write_list_family(&self, index: &SampleIndex<'_>, batch_index: usize, out: &mut EncodedBatch) -> Result<(), EncodeError> {
+    fn write_list_family(
+        &self,
+        state: &BattleModelState,
+        index: &SampleIndex<'_>,
+        batch_index: usize,
+        out: &mut EncodedBatch,
+    ) -> Result<(), EncodeError> {
         let mut records = Vec::new();
         let mut lane_starts = Vec::with_capacity(index.template_rows.len());
         let mut next_lane = 0usize;
@@ -874,6 +905,58 @@ impl FeatureEncoder {
                     });
                 }
             }
+            for (ordinal, deferred) in template.skills.post_action_after_states.iter().enumerate() {
+                let target = lane_starts[template_row] + deferred.fixed_lane;
+                records.push(ListRecord {
+                    owner_scope: 9,
+                    owner: template_row as i32,
+                    field_class: 261,
+                    ordinal: ordinal as i32,
+                    target: target as i32,
+                    order_key: Some(deferred.state_cursor),
+                    order_domain: Some(template.skills.post_action_after_states.len()),
+                });
+            }
+        }
+        for (ordinal, id) in state.world.round_order.iter().enumerate() {
+            records.push(entity_list_record(index, *id, 262, ordinal, 1)?);
+        }
+        for (team, roster) in state.world.team_roster.iter().enumerate() {
+            for (ordinal, id) in roster.iter().enumerate() {
+                records.push(entity_list_record(index, *id, 263, ordinal, 8)?.with_owner(team as i32));
+            }
+        }
+        for (team, alive) in state.world.team_alive.iter().enumerate() {
+            for (ordinal, id) in alive.iter().enumerate() {
+                records.push(entity_list_record(index, *id, 264, ordinal, 8)?.with_owner(team as i32));
+            }
+        }
+        for (ordinal, id) in state.world.flat_alive.iter().enumerate() {
+            records.push(entity_list_record(index, *id, 265, ordinal, 1)?);
+        }
+        for (team, members) in state.input_teams.iter().enumerate() {
+            for (ordinal, id) in members.iter().enumerate() {
+                records.push(entity_list_record(index, *id, 268, ordinal, 7)?.with_owner(team as i32));
+            }
+        }
+        for (entity_row, entity) in state.entities.iter().enumerate() {
+            for (ordinal, _) in entity.states.iter().enumerate() {
+                records.push(ListRecord {
+                    owner_scope: 2,
+                    owner: entity_row as i32,
+                    field_class: 266,
+                    ordinal: ordinal as i32,
+                    target: (state.entities[..entity_row].iter().map(|e| e.states.len()).sum::<usize>() + ordinal) as i32,
+                    order_key: None,
+                    order_domain: Some(entity.states.len()),
+                });
+            }
+            for (ordinal, link) in entity.runtime.protect_from.iter().enumerate() {
+                records.push(entity_list_record(index, link.owner, 267, ordinal, 2)?.with_owner(entity_row as i32));
+            }
+        }
+        for (ordinal, id) in state.ice_release_events.iter().enumerate() {
+            records.push(entity_list_record(index, *id, 269, ordinal, 1)?);
         }
         if records.len() > self.profile.v_max {
             return Err(EncodeError::CapacityExceeded {
@@ -1295,9 +1378,10 @@ mod tests {
         assert!(list_mask[..list_count].iter().all(|value| *value == 1));
         assert!(list_mask[list_count..].iter().all(|value| *value == 0));
         for row in 0..list_count {
-            assert_eq!(list[row * 5], 9);
-            assert!((256..=260).contains(&list[row * 5 + 2]));
             assert!(list[row * 5 + 4] >= 0);
+            if (256..=261).contains(&list[row * 5 + 2]) {
+                assert_eq!(list[row * 5], 9);
+            }
         }
     }
 
