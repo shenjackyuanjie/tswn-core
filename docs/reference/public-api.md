@@ -165,6 +165,7 @@ Web streaming 架构（BattleStreamSource / BattleStreamController）
 BattleModelState（MODEL_STATE_SCHEMA_VERSION）
 BattleModelSession
 数据集格式（manifest 的 format_version / state_schema_version）
-FeatureEncoder 与 WinProbFeatures
+FeatureEncoder 与 WinProbFeatures（tswn_core::encoder；当前实现 global/entity/template 三族，
+                    其余族与离线导出器仍在分块实现中）
 模型结构与推理接口
 ```

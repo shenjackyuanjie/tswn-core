@@ -16,6 +16,10 @@
 - 新增 `calibrate` 子命令：只读 `train` 切分且标签非空的行，采集逐字段标量分布并拟合 `s_f`/`c_f`，作为 `encoder-manifest` 的数值来源；缺字段不写默认值，由 encoder 报 `MissingCalibration`。
 - 新增冻结的 `baseline-64` 容量档位（`E/T/R/H/L/S/Q/V/X = 64/32/32/512/4096/64/512/32768/65536`）；`stats` 按该档位报告九维上限、峰值与超限样本占比，上界计费（每槽 3 条 X 记录）。
 
+### 重构
+
+- 容量权威（`BASELINE_64`、`CapacityMeasure` 与九维计费式）随 encoder 迁到 `tswn_core::encoder::capacity`；本 crate 的 `capacity` 模块改为再导出，`stats` 等调用方不变。容量常量与计费规则只保留唯一实现，不在 core/pwp/WASM 各复制一份。
+
 ### 性能
 
 - 依赖 `tswn_core` 时启用 `no_debug` 与 `mimalloc_alloc`，与 `tswn_wasm`、`tswn_capi` 等调用方保持一致；逐分片 `complete.json` 摘要与关闭该特性的构建完全一致。

@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+### 新增
+
+- 新增 `encoder` 模块（FeatureEncoder 第一块，Experimental）：`EncoderManifest`（协议身份、容量
+  `ProfileSpec`、分类词表、逐槽归一化声明、校准证据、支持域、sha256 契约摘要）与两级门禁
+  （`validate` 查自洽性、`FeatureEncoder::new` 与实现交叉核对）；`from_calibration` 从
+  `tswn-pwp calibrate` 报告组装，固定计数槽不带拟合常数、缺字段返回 `MissingCalibration`。
+- 编码主路径：`FeatureEncoder::encode`（B=1）与 `encode_into`（批槽位写入），完成状态校验
+  （schema、终局门禁、输入队伍、实体唯一性、全部引用域含 charm `group_id` 与槽内 U64 实体引用、
+  压缩标志保留位、载荷 kind 与分支匹配、槽语义白名单、容量预检）、局内重映射（实体行、模板表、
+  runtime team、PlrId 相等键）与 global／entity／template 三族 28 个张量的写入与 presence。
+- 按张量分配的批缓冲 `EncodedBatch`：批槽位偏移为 `batch_index × 每样本元素数`，引用 padding 为 -1、
+  其余为 0，`clear_slot` 支持复用不留残值；`tensor_shape`/`tensor_byte_len` 供导出侧校验
+  `byte_length == product(shape) × sizeof(dtype)`。
+- 槽语义白名单（规格第 3.2 节）固化为数据表：未登记槽、存储类型不符、多分支同时为 Some 均拒绝。
+- 模块不依赖 Arrow/Parquet、文件系统或模型参数，已按 `tswn_wasm` 的特性组合在
+  `wasm32-unknown-unknown` 上编译验证；capacity 权威迁入本 crate（`tswn_pwp` 改为再导出）。
+
+### 重构
+
+- `tswn_pwp::capacity` 原容量实现迁到 `tswn_core::encoder::capacity`，调用方不变
+  （容量常量与计费规则只保留唯一权威）。
+
 ### 依赖更新
 
 - 更新 `clap`、`smallvec`、`toml` 等依赖至现有兼容范围内的最新版本。

@@ -4,7 +4,9 @@
 
 本文承接 [状态导出与数据生成契约](battle-analyze.md)，字段语义以 [BattleModelState Runtime 审计](battle-model-state-audit.md) 为准；生成器和 Parquet 文件说明见 [winprob 数据集 README](../../crates/tswn_pwp/README.md)。
 
-状态：容量档位 `baseline-64` 与三批未决项已冻结（见第 4／16 节），第 5 节的标量校准通道已实现为 `tswn-pwp calibrate`；**encoder 实现尚未开始**。输入 schema v1，encoder v1。本文是 **tswn-pwp（player winchance predictor）** 的特征编码层规格，不定义最终神经网络结构。
+状态：容量档位 `baseline-64` 与三批未决项已冻结（见第 4／16 节），第 5 节的标量校准通道已实现为 `tswn-pwp calibrate`；**encoder 实现已开始**：`tswn_core::encoder` 已落地 manifest／分类词表／数值变换／批缓冲，以及 global／entity／template 三族的字段写入、presence 与容量预检（第一块，见下文“实现状态”）；lane／state／slot／list／extra 四族张量与离线导出器按 handoff 的分块计划追加。输入 schema v1，encoder v1。本文是 **tswn-pwp（player winchance predictor）** 的特征编码层规格，不定义最终神经网络结构。
+
+**实现状态（第一块）。** 编码模块落位在 `crates/tswn_core/src/encoder/`：外部评审结论是 encoder 只在 Rust 实现一次、由离线导出器与 Python／WASM 绑定共享，因此该模块**不依赖 Arrow/Parquet、文件系统或模型参数**，并已在 `wasm32-unknown-unknown` 上按 `tswn_wasm` 的特性组合编译验证。容量权威随编码器迁到 `tswn_core::encoder::capacity`（`BASELINE_64` 与计费式），`tswn_pwp::capacity` 只做再导出，不保留第二份常量。批缓冲按张量分配（`encoder::batch`），批槽位偏移为 `batch_index × 该张量每样本元素数`；未写入位置按 0／-1 填充，复用前 `clear_slot` 恢复 padding。规格第 3.2 节白名单已固化为 `encoder::slots` 的数据表；第 16 节第 7 条指出的三处校验缺口（charm `group_id`、槽内 U64 实体引用、载荷 kind 与分支匹配）由 `FeatureEncoder::validate_state` 闭合，`BattleModelState::validate` 仍不是替代品。
 
 ## 1. 目标与边界
 
@@ -306,6 +308,8 @@ Felix CQACSVGRXSAT@nan
 
 行存在性张量逐名为：`entity_mask` u8 `[B,E_max]`、`template_mask` u8 `[B,H_max]`、`lane_mask` u8 `[B,L_max]`、`state_mask` u8 `[B,S_max]`、`slot_mask` u8 `[B,Q_max]`、`list_mask` u8 `[B,V_max]`、`extra_mask` u8 `[B,X_max]`。每个可空值的 presence 由下表唯一确定；数值 0、None 和 padding 是三种情况。bool 只取 0/1；分类 PAD=0，有效类从 1 起；引用有效值从 0 起，缺失／padding 填 -1，gather 必须先检查 presence 和目标 mask。
 
+**张量注册表与批布局已实现**（`crates/tswn_core/src/encoder/batch.rs`）：`TENSOR_SPECS` 当前登记 global／entity／template 三族共 28 个张量（含 mask 与 presence），`tensor_shape(profile, name)` 给出不含 batch 轴的具体 shape，分配时每样本元素数 = 各轴之积，字节数 = 元素数 × dtype 尺寸；引用张量的填充值为 -1，其余为 0。lane／state／slot／list／extra 各族张量随对应族追加，追加时必须同步本表与 manifest 的张量注册表。
+
 **presence 清单。** 表中的下标是最后一轴槽位，省略 batch 与所属行下标；所有 presence 均为 u8 0/1。父行 mask=0 时全部后代 presence=0；同一逻辑存在性在值族中的派生槽必须相等，不能由实现自行选择另一套判定。
 
 | 源字段／作用 | presence 张量与 shape | 槽位及判定规则 |
@@ -377,6 +381,8 @@ Felix CQACSVGRXSAT@nan
 P:160 的样本轮数 p99=61、max=146 来自 `SampleRow.rounds_advanced`（S:186），尚未核对它与 `state.round` 的偏移关系；它只提示采样范围，不能直接给 `state.round` 定归一化常数。
 
 拟议共享工件 `encoder-manifest.json` 保存 schema/encoder/profile 版本、完整字段表、分类词表、容量、每字段 `s_f/c_f`、样本数、min/max/p50/p99、裁剪率和来源摘要。由 Rust 校准／编码通道生成并读取；训练、原生推理、WASM 绑定加载同一工件及摘要，Python 不拟合或覆盖常数。
+
+**manifest 类型与组装已实现**（`crates/tswn_core/src/encoder/manifest.rs`）：`EncoderManifest` 登记协议身份（`ENCODER_MANIFEST_SCHEMA` 与 `encoder-v1`）、容量 `ProfileSpec`、分类词表、逐槽归一化声明、校准证据、支持域与契约摘要（sha256，摘录自身置空后计算）。`EncoderManifest::from_calibration` 从 `tswn-pwp calibrate` 的报告组装：固定计数槽写 `FixedCount` 声明、不要求观测，其余数值槽一律 `Fitted` 且常数来自报告；`validate()` 只查自洽性，与实现的交叉核对在 `FeatureEncoder::new` 完成。`s_f`/`c_f` 同时保存十进制与 f64 bit 表示，读取时校验一致，避免 JSON 重写工具改变数值身份。
 
 没有观测值的字段不能悄悄令 `s_f=c_f=1`，也不接受登记人工常数：只能补足 train 观测后重新拟合，否则返回 `MissingCalibration{path}`。所有有效 f32 必须有限，NaN/Inf 返回 `NonFiniteValue`；裁剪只作用数值特征，不改引用、mask、原始 bit。本轮已把公式与生成方法冻结，数值 manifest 的发布仍待校准。
 
@@ -511,6 +517,8 @@ deferred 保存原列表顺序和精确 `state_cursor`，与实体状态注册�
 
 拟议接口为 `FeatureEncoder::encode(&BattleModelState, &EncoderManifest) -> Result<EncodedState, EncodeError>`；批接口只重复相同编码与 padding，不接受 seed、winner、split 或当前 session。此为设计签名，不是已存在的公共 API（现有接口参见 A:17–23、API:3）。
 
+**接口已实现**（`crates/tswn_core/src/encoder/encode.rs`）：`FeatureEncoder::new(manifest)` 在初始化期校验 manifest 并冻结运行配置（版本身份、容量不变量、词表与默认注册表交叉核对、数值槽齐全、支持域匹配）；`encode(state)` 是 B=1 便捷入口；`encode_into(state, batch_index, &mut EncodedBatch)` 写批槽位，先恢复 padding 再填充，失败不留下半新半旧的槽位。错误类型为 `EncodeError`，全部变体带字段路径，容量与引用错误另带原始值。
+
 | 层 | 职责与边界 |
 | --- | --- |
 | 原始数据集 | 继续保存现有 state 和标签，不增加编码列；可重建的张量缓存不能反过来替代原始 state |
@@ -599,6 +607,8 @@ raw 路径的 runtime/template/state/slot/world 前缀指第 3 节相应结构�
 ## 15. 测试计划（先于实现）
 
 先准备下表的输入与期望，再实现 encoder；本轮不编写或执行 Rust 测试。以下是未来验收标准，不是测试已通过声明。
+
+**第一块的测试已落地**（`crates/tswn_core/src/encoder/` 内 `#[cfg(test)]`，共 57 项）：manifest 自洽性与门禁、词表与注册表交叉核对、`N_f` 与固定计数尺度、批缓冲布局（批槽位与 B=1 逐字节一致、复用不留残值、shape 之积与字节数）、容量边界（`E=64/65`、`T=32/33`、`R=32/33`、`Q=512/513`）、presence 与 mask 语义（`Some(0)`/`None`/padding、hide、可选引用 -1、clone 整体 presence）、压缩标志保留位、非有限值、未知分类、载荷 kind 与分支、槽白名单（未登记／类型不符／实体引用悬空）、charm `group_id` 引用、`team_mask` 不随存活与粘性计数变化、实体存储重排等变、原始 `EntityIdx` 不泄漏、跨技能池端到端冒烟（含终局帧必须被 `AlreadyDecided` 拒绝）、以及 state JSON 全字段覆盖（未登记字段即失败）。下表仍是后续各族与跨目标验收的完整标准。
 
 | 类别 | 必须覆盖与判定标准 |
 | --- | --- |
