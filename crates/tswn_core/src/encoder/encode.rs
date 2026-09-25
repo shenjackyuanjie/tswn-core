@@ -173,6 +173,17 @@ struct SampleIndex<'a> {
     player_keys: BTreeMap<PlrId, usize>,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ListRecord {
+    owner_scope: i32,
+    owner: i32,
+    field_class: i32,
+    ordinal: i32,
+    target: i32,
+    order_key: Option<u64>,
+    order_domain: Option<usize>,
+}
+
 impl SampleIndex<'_> {
     fn entity_row(&self, id: EntityIdx, path: &str) -> Result<usize, EncodeError> {
         self.entity_rows.get(&id.0).copied().ok_or_else(|| EncodeError::InvalidReference {
@@ -271,6 +282,7 @@ impl FeatureEncoder {
             self.write_entity_family(state, &index, batch_index, out)?;
             self.write_template_family(&index, batch_index, out)?;
             self.write_lane_family(&index, batch_index, out)?;
+            self.write_list_family(&index, batch_index, out)?;
             Ok(())
         })();
         if result.is_err() {
@@ -760,6 +772,12 @@ impl FeatureEncoder {
 
     fn write_lane_family(&self, index: &SampleIndex<'_>, batch_index: usize, out: &mut EncodedBatch) -> Result<(), EncodeError> {
         let mut lane_row = 0usize;
+        let mut lane_starts = Vec::with_capacity(index.template_rows.len());
+        let mut next_lane = 0usize;
+        for template in &index.template_rows {
+            lane_starts.push(next_lane);
+            next_lane += template.skills.lanes.len();
+        }
         for (template_row, template) in index.template_rows.iter().enumerate() {
             for (ordinal, lane) in template.skills.lanes.iter().enumerate() {
                 let prefix = format!("templates[{template_row}].skills.lanes[{ordinal}]");
@@ -816,6 +834,90 @@ impl FeatureEncoder {
                 }
                 out.u8_row_mut("lane_bool", batch_index)?[lane_row] = u8::from(lane.boosted);
                 lane_row += 1;
+            }
+        }
+        Ok(())
+    }
+
+    fn write_list_family(&self, index: &SampleIndex<'_>, batch_index: usize, out: &mut EncodedBatch) -> Result<(), EncodeError> {
+        let mut records = Vec::new();
+        let mut lane_starts = Vec::with_capacity(index.template_rows.len());
+        let mut next_lane = 0usize;
+        for template in &index.template_rows {
+            lane_starts.push(next_lane);
+            next_lane += template.skills.lanes.len();
+        }
+        for (template_row, template) in index.template_rows.iter().enumerate() {
+            let lists = [
+                (256, (0..template.skills.lanes.len()).collect::<Vec<_>>()),
+                (257, template.skills.merge_lane_order.clone()),
+                (258, template.skills.active_order.clone()),
+                (259, template.skills.pre_action_order.clone()),
+                (260, template.skills.post_damage_order.clone()),
+            ];
+            for (field_class, values) in lists {
+                let length = values.len();
+                for (ordinal, target_lane) in values.into_iter().enumerate() {
+                    let target = if field_class == 256 {
+                        lane_starts[template_row] + ordinal
+                    } else {
+                        lane_starts[template_row] + target_lane
+                    };
+                    records.push(ListRecord {
+                        owner_scope: 9,
+                        owner: template_row as i32,
+                        field_class,
+                        ordinal: ordinal as i32,
+                        target: target as i32,
+                        order_key: None,
+                        order_domain: Some(length),
+                    });
+                }
+            }
+        }
+        if records.len() > self.profile.v_max {
+            return Err(EncodeError::CapacityExceeded {
+                path: dim_path("v"),
+                actual: records.len(),
+                limit: self.profile.v_max,
+            });
+        }
+        {
+            let mask = out.u8_row_mut("list_mask", batch_index)?;
+            for row in 0..records.len() {
+                mask[row] = 1;
+            }
+        }
+        {
+            let indices = out.i32_row_mut("list_index", batch_index)?;
+            for (row, record) in records.iter().enumerate() {
+                indices[row * 5..row * 5 + 5].copy_from_slice(&[
+                    record.owner_scope,
+                    record.owner,
+                    record.field_class,
+                    record.ordinal,
+                    record.target,
+                ]);
+            }
+        }
+        {
+            let positions = out.f32_row_mut("list_position", batch_index)?;
+            for (row, record) in records.iter().enumerate() {
+                positions[row] = normalize_position(record.ordinal as usize, record.order_domain.unwrap_or(1));
+            }
+        }
+        let order_values: Vec<Option<u64>> = records.iter().map(|record| record.order_key).collect();
+        {
+            let keys = out.u32_row_mut("order_key", batch_index)?;
+            for (row, key) in order_values.iter().enumerate().filter_map(|(row, key)| key.map(|key| (row, key))) {
+                keys[row * 2] = key as u32;
+                keys[row * 2 + 1] = (key >> 32) as u32;
+            }
+        }
+        {
+            let present = out.u8_row_mut("order_key_present", batch_index)?;
+            for (row, key) in order_values.iter().enumerate() {
+                present[row] = u8::from(key.is_some());
             }
         }
         Ok(())
@@ -1001,6 +1103,8 @@ fn template_num_present(template: &ModelTemplate) -> [bool; 31] {
     present
 }
 
+fn normalize_position(ordinal: usize, length: usize) -> f32 { ordinal as f32 / length.saturating_sub(1).max(1) as f32 }
+
 /// `RuntimeCorpseKind` 的固定词表：枚举 `None` 是真实类 1，不是缺失。
 fn corpse_kind_id(corpse: RuntimeCorpseKind) -> i32 {
     match corpse {
@@ -1184,6 +1288,16 @@ mod tests {
         let presence = batch.u8_all("lane_num_present").unwrap();
         for row in 0..measure.l {
             assert_eq!(&presence[row * 4..row * 4 + 2], &[1, 1]);
+        }
+        let list = batch.i32_all("list_index").unwrap();
+        let list_mask = batch.u8_all("list_mask").unwrap();
+        let list_count = list_mask.iter().position(|value| *value == 0).unwrap_or(list_mask.len());
+        assert!(list_mask[..list_count].iter().all(|value| *value == 1));
+        assert!(list_mask[list_count..].iter().all(|value| *value == 0));
+        for row in 0..list_count {
+            assert_eq!(list[row * 5], 9);
+            assert!((256..=260).contains(&list[row * 5 + 2]));
+            assert!(list[row * 5 + 4] >= 0);
         }
     }
 

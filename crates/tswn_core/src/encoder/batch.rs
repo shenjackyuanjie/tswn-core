@@ -313,11 +313,54 @@ pub const TENSOR_SPECS: &[TensorSpec] = &[
         shape: "[L_max,1]",
         fill: Fill::Zero,
     },
+    // list/order
+    TensorSpec {
+        name: "list_mask",
+        dtype: Dtype::U8,
+        shape: "[V_max]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "list_index",
+        dtype: Dtype::I32,
+        shape: "[V_max,5]",
+        fill: Fill::RefMinusOne,
+    },
+    TensorSpec {
+        name: "list_position",
+        dtype: Dtype::F32,
+        shape: "[V_max]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "order_key",
+        dtype: Dtype::U32,
+        shape: "[V_max,2]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "order_key_present",
+        dtype: Dtype::U8,
+        shape: "[V_max]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "order_rank",
+        dtype: Dtype::F32,
+        shape: "[V_max]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "order_rank_present",
+        dtype: Dtype::U8,
+        shape: "[V_max]",
+        fill: Fill::Zero,
+    },
 ];
 
 /// 张量的具体 shape（不含 batch 轴）；用于推导每样本元素数与字节数。
 pub fn tensor_shape(dims: &[usize; 9], name: &str) -> Option<Vec<usize>> {
-    let [e, t, r, h, _l, _s, _q, _v, _x] = *dims;
+    let [e, t, r, h, l, _s, _q, v, _x] = *dims;
     Some(match name {
         "global_num" => vec![6],
         "team_mask" => vec![t],
@@ -336,9 +379,12 @@ pub fn tensor_shape(dims: &[usize; 9], name: &str) -> Option<Vec<usize>> {
         "template_clone_attr" | "template_clone_weapon_bonus" => vec![h, 8],
         "immunity_num" | "immunity_present" => vec![h, 9],
         "clan_equal" => vec![h, h],
-        "lane_mask" | "lane_skill_id" | "lane_boost_kind" | "lane_template" | "lane_key" => vec![_l],
-        "lane_num" | "lane_num_present" => vec![_l, 4],
-        "lane_bool" => vec![_l, 1],
+        "lane_mask" | "lane_skill_id" | "lane_boost_kind" | "lane_template" | "lane_key" => vec![l],
+        "lane_num" | "lane_num_present" => vec![l, 4],
+        "lane_bool" => vec![l, 1],
+        "list_mask" | "list_position" | "order_key_present" | "order_rank" | "order_rank_present" => vec![v],
+        "list_index" => vec![v, 5],
+        "order_key" => vec![v, 2],
         _ => return None,
     })
 }
