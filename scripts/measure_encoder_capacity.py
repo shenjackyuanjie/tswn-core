@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """按 FeatureEncoder 规格第 4 节的计费公式统计数据集的每样本容量峰值。
 
-用于冻结 `baseline-32` profile 的 `H_max` / `L_max` / `Q_max` / `V_max` / `X_max`：
+用于核对 `baseline-64` profile 的 `E_max` / `H_max` / `L_max` / `S_max` / `Q_max` / `V_max` / `X_max`：
 逐样本算出模板数、lane 总数、五类 lane list 条目、世界列表、状态及其注册序、保护链、
 输入成员、解冰事件、deferred、槽条目和 X 记录数，再报 min/p50/p99/max。
 
