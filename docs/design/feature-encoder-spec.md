@@ -147,7 +147,7 @@
 
 | 符号 | 拟议固定值 | 下界推导式、依据与限制 |
 | --- | --- | --- |
-| `E_max`（实体） | 32（**已被 8 人池实测打穿，见下文**） | `E_max ≥ e`。100k 池（2v2v2）实测 max=30，据此取 `ceil_pow2(30)=32`（P:161 的 p99=15、max=30）；但 8 人固定池的 FFA 6／7／8 实测 `e` 为 37／38／40，全部 8 人划分最高 46，支持域若含 8 人配置则须提到 64。本轮不擅自改值，见第 16 节 |
+| `E_max`（实体） | 32（**已被打穿；机制审计确认无常数上界，见下文两段**） | `E_max ≥ e`。100k 池（2v2v2）实测 max=30（P:161 的 p99=15）；8 人固定池 FFA 6／7／8 实测 `e` 为 37／38／40，全部 20 种划分最高 44，深测到 46。第三轮机制审计确认 `e` 无与输入无关的上界，因此该值只能按支持域声明与溢出率冻结：覆盖实测取 `ceil_pow2(46)=64` 是下界选择，不是机制证明。见下文与第 16 节 |
 | `T_max`（输入队伍） | 32 | `T_max ≥ input_teams.len()`；预算取 `E_max=32`，容纳每实体一队的目标规模；仅 3 队配置已实测（P:37），不是任意输入的保证 |
 | `R_max`（runtime team） | 32 | `R_max ≥` 第 6 节独立重映射后的 runtime team 行数；同样按 32 个关系行预算，不能用 `T_max` 的验收替代，本维峰值待实测 |
 | `H_max`（实体模板及槽内蓝图） | 512 | `H_max ≥ e+h_b`。每个 `ModelSlot` 最多含一个模板（M:420–425），按所有槽都可能持有模板的保守结构预算：`e+h_b ≤ 32+(7×32+3+0)=259`，取 `ceil_pow2(259)=512`；不假定每实体恰有三个蓝图，也不按 `PlrId` 去重。结构上界已推导，实际蓝图分布待实测 |
@@ -253,7 +253,25 @@ Felix CQACSVGRXSAT@nan
 1. `E_max=32` 不足：FFA 6／7／8 的 `e` 峰值 37／38／40，8 人划分里最高 46（3v2v2v1），按第 4 节的 `CapacityExceeded` 规则这些样本会被拒。`ceil_pow2(46)=64`，因此支持域含 8 人配置时 `E_max` 至少要 64。
 2. “按实测收紧”的候选值全部不成立：本池 `l=1560>1024`、`q=146>128`、`V=4868>4096`。本表的 `H_max=512`、`L_max=4096`、`Q_max=256`、`V_max=32768`、`X_max=65536` 在这些池下仍有余量。
 3. 峰值随玩家数近似线性（`h≈4e`、`l≈34e`、`V≈105e`、`X≈76e`），但两点会让线性外推失效：一是“每玩家实体数”由名字决定的 build 强烈影响（同一批 8 人在 3684 人池的 FFA8 只有 24 个实体）；二是队伍划分比玩家总数更影响峰值（同为 8 人，`7v1` 只有 `e=23`，`5v3` 到 44——多人同队能撑更久、召唤物累积更多）。**不能按单一名字池或单一样本量的最大值收紧容量。**
-4. 峰值不是“对局数越多越高”的单调函数，它同时取决于对局数与每局帧数：75600 局 × 16 帧到 `e=46`，而 210000 局 × 8 帧只有 `e=44`（但 `V` 升到 4868），“每局全部帧但只有 5040 局”也只有 `e=45`。因此实测最大值只是下界，不是上界。第 16 节“容量 profile”的冻结条件仍未满足：要么把 `E_max` 提到 64 并同步复核 `H_max`／`L_max`／`V_max`／`X_max`，要么先给出支持域内实体数的机制上界（例如每玩家召唤上限）再定 `E_max`。`baseline-32` 名字里的 32 已不再与实测自洽。
+4. 峰值不是“对局数越多越高”的单调函数，它同时取决于对局数与每局帧数：75600 局 × 16 帧到 `e=46`，而 210000 局 × 8 帧只有 `e=44`（但 `V` 升到 4868），“每局全部帧但只有 5040 局”也只有 `e=45`。因此实测最大值只是下界，不是上界。第 16 节“容量 profile”的冻结条件见下一段的机制审计结论。`baseline-32` 名字里的 32 已不再与实测自洽。
+
+**实体数的机制上界（第三轮审计）。** 逐个核对全部实体产生入口后的结论是：**本引擎没有与输入无关的实体数上界**，因此 `E_max` 只能按支持域声明与溢出率冻结，不能宣称机制保证。四类机制的约束性质并不相同：
+
+| 机制 | 入口 | 数量约束 |
+| --- | --- | --- |
+| 血祭（内置召唤） | `plain_summon.rs:28`，门控 `:4-26` | **每实体终生 +1 行**：记忆槽里的使魔存活即不再生成，死亡则原地复用同一实体行（`:52-70`） |
+| 亡灵（zombie） | `plain_zombie.rs:29-95`，`corpse` 标记 `:115-122` | **每具尸体至多 1 个**：`corpse != None` 后不能再被苏生或二次转化（`skills_lifecycle.rs:20-22`）；但一次 AoE 伤害可同时产生多个 |
+| 幻术／使魔（shadow） | 触发 `skills_offense.rs:61-63`，实现 `skills_lifecycle.rs:297-357` | **无上限**：每次成功施放都新增实体行，等级衰减下限钉在 1（`:360-369` 的 `saturating_mul(3).div_ceil(4).max(1)`），`roll<level` 永不归零 |
+| 分身（clone） | 触发 `skills_offense.rs:87-89`，实现 `skills_control.rs:226-417` | **无上限**：同上（`:337-345` 的 `ceil(sqrt(decayed)).max(1)`）；分身不登记为 `COMBAT_MINION`，其尸体还能被亡灵化 |
+| 扩展／bed2 handler | `handlers/mod.rs:41-192`、`handlers/minions.rs:21-121` | 每次调用都新增；计数器槽只用于命名 `owner?N`，不限制数量 |
+
+三条支撑事实：
+
+1. `EntityArena` 是 `Vec<Option<EntityRecord>>`（`entity/runtime.rs:621-623`），唯一写入点是 `spawn_from_template_with_owner`（`:720-763`），只做 `extend`、没有容量检查；唯一硬边界是 `EntityIdx(u32)` 溢出 panic（`:713`）。
+2. **递归无深度限制**：分身继承 owner 的全部 lane 与三类蓝图槽（`entity/skill_loadout.rs:501-518`、`skills_control.rs:423-440`），`prepared_init/seed.rs:186-199` 还会为战斗召唤物生成下一层蓝图；已有测试证明分身能召唤、幻影分身能再放幻术（`plain_clone_skill_tests.rs:3-44`、`:82-98`）。
+3. `reserved_player_ids_before_spawn` 最大值就是 1（只在 Summon／Zombie 上出现，`namerena/build.rs:181`），作用是给这类生成预留一个空槽；因此 `entity_slot_count` 含空洞、增长比实体行更快，不能当实体预算用。
+
+于是 `e` 只受 `max_rounds`（默认 20000）、行动点与 MP 约束，量级远大于任何可用预算。可选处置只有三种：(a) 按支持域取 `E_max`（覆盖实测取 64）并报告溢出率，接受超限样本被 `CapacityExceeded` 拒绝；(b) 抬到更大的 profile；(c) 在引擎层新增实体数约束（给 shadow／clone 加记忆槽，或加全局上限），但这会改变战斗语义与既有金标、数据集，不属于本轮范围。
 
 上述容量对应的固定缓冲足迹（`B=1`，按第 4 节张量族与 presence 清单逐项相加）约为 4.16 MiB／样本：`extra_*` 合计 2.38 MiB（其中 `extra_index` 1.00 MiB）、V 轴合计 1.22 MiB（`list_index` 640 KiB、`order_key` 256 KiB、`list_position/order_rank` 各 128 KiB）、`clan_equal` 256 KiB，其余各维合计不到 0.4 MiB。因此 `B=64` 时单批约 266 MiB、`B=512` 约 2.1 GiB；训练侧必须按批流式编码，不能把整库样本一次性物化成张量。这些数字是当前 profile 的 padding 预算，随容量或字段增减重算，不表示实际有效值占用。
 
@@ -353,7 +371,9 @@ P:160 的样本轮数 p99=61、max=146 来自 `SampleRow.rounds_advanced`（S:18
 
 拟议共享工件 `encoder-manifest.json` 保存 schema/encoder/profile 版本、完整字段表、分类词表、容量、每字段 `s_f/c_f`、样本数、min/max/p50/p99、裁剪率和来源摘要。由 Rust 校准／编码通道生成并读取；训练、原生推理、WASM 绑定加载同一工件及摘要，Python 不拟合或覆盖常数。
 
-没有观测值的字段不能悄悄令 `s_f=c_f=1`，也不接受登记人工常数：只能补足 train 观测后重新拟合，否则返回 `MissingCalibration{path}`。所有有效 f32 必须有限，NaN/Inf 返回 `NonFiniteValue`；裁剪只作用数值特征，不改引用、mask、原始 bit。当前缺少上述标量统计，因此本稿冻结公式和生成方法，数值 manifest 的发布仍待校准。
+没有观测值的字段不能悄悄令 `s_f=c_f=1`，也不接受登记人工常数：只能补足 train 观测后重新拟合，否则返回 `MissingCalibration{path}`。所有有效 f32 必须有限，NaN/Inf 返回 `NonFiniteValue`；裁剪只作用数值特征，不改引用、mask、原始 bit。本轮已把公式与生成方法冻结，数值 manifest 的发布仍待校准。
+
+**校准通道已落地**为 `tswn-pwp calibrate`（`crates/tswn_pwp/src/calibrate.rs`）：只读已提交分片，默认只用 train 且标签非空的行，逐字段输出 `count`／`min`／`max`／`p50`／`p99`／`abs_p50`／`abs_p99`／`s_f`／`c_f`；非有限值不入统计，缺字段不写默认值。当前覆盖第一批字段：全局机制计数、实体 runtime 与模板标量、lane 等级与 boost、状态 priority；分类、引用、bit、精确注册序与槽内数值不参与统计，未覆盖字段仍须按 `MissingCalibration` 处理。复现命令：`target/release/tswn-pwp.exe calibrate --out <dataset> --json-out <path> --print-fields`（`--keep-unlabeled` 可保留空标签行）。
 
 ## 6. 索引与 ID
 
@@ -596,6 +616,7 @@ raw 路径的 runtime/template/state/slot/world 前缀指第 3 节相应结构�
 rg -n '^pub struct|^pub const MODEL_' crates/tswn_core/src/runtime/model_state.rs
 rg -n 'state_entry_count|skill_count|lanes \+=' crates/tswn_pwp/src/stats.rs
 target/release/tswn-pwp.exe stats --out target/winprob-100k
+target/release/tswn-pwp.exe calibrate --out target/winprob-100k --json-out target/encoder-calibration.json
 git diff --check
 ```
 
@@ -610,7 +631,7 @@ git diff --check
 | 槽编号及整数语义 | 按注册表白名单分 num/ref/bits；或按 U64 一律数值化 | **已按默认注册表逐槽核对，结论见第 3.2 节**。`U64` 槽同时存在实体引用（`summoned_entity`）、计数（`minion_counter`）与浮点 bit（`lazy_blueprint_rq`）三种语义，按存储类型数值化会在第一类上泄漏原始实体编号；自定义注册表不在支持域（M:83），新增槽须先更新 3.2 表并重算 `Q_max` |
 | 顺序、身份和阵营域 | 保留精确键并补查消费者；或假定所有编号都是下标 | **已逐项核对**：执行列表整数是模板内 lane 数组下标，不是 `fixed_lane_key`（第 7 节）；`PlrId` 是实体槽下标 + 1 的派生值，不参与模型输入（第 6 节）；`charm.group_id` 是施法者 `EntityIdx`，与 `clan_group`／runtime team 都不同域，必须按实体引用重映射（第 8 节） |
 | 浮点产生式 | 尺度按 train 实测拟合（已定）；各 `*_bits` 的 f64 产生式与 millionths 关系 | **产生式已逐字段核对，见第 13 节**：全部由 `f64::to_bits()` 写入，`millionths` 是有损整数且反向构造器仅测试使用。无观测即 `MissingCalibration`，不登记人工常数；仍不假定 `bits == millionths/1e6` |
-| 容量 profile | baseline-32；或补测后单独推出更大 profile | **已实测三批峰值（第 4 节）**：100k 池（2v2v2）`e≤30`、`h≤120`、`l≤882`、`q≤96`、`V≤2800`、`X≤2271`；8 人池跨 1v1／2v2／2v2v2／FFA 3–8 与全部 20 种队伍划分（每模式约 5000 局）后最高 `e=44`、`h=176`、`l=1481`、`q=140`、`V=4630`、`X=3335`；把 3v2v2v1 扩到 75600 局 × 16 帧后 `e=46`、`h=184`、`l=1560`、`q=146`、`V=4846`、`X=3489`（210000 局 × 8 帧则 `e=44`、`V=4868`，说明峰值取决于对局数与帧数的组合而非单调上涨）。结论：`E_max=32` 不足以覆盖 8 人配置，且“按实测收紧”候选（`L_max=1024`、`V_max=4096`、`Q_max=128`）全部被打穿。**冻结条件**：先定 `E_max`（64，或先给出支持域内实体数的机制上界），再同步复核 `H_max`／`L_max`／`V_max`／`X_max` 并重算足迹；不使用静默截断 |
+| 容量 profile | baseline-32；或补测后单独推出更大 profile | **已实测三批峰值（第 4 节）**：100k 池（2v2v2）`e≤30`、`h≤120`、`l≤882`、`q≤96`、`V≤2800`、`X≤2271`；8 人池跨 1v1／2v2／2v2v2／FFA 3–8 与全部 20 种队伍划分（每模式约 5000 局）后最高 `e=44`、`h=176`、`l=1481`、`q=140`、`V=4630`、`X=3335`；把 3v2v2v1 扩到 75600 局 × 16 帧后 `e=46`、`h=184`、`l=1560`、`q=146`、`V=4846`、`X=3489`（210000 局 × 8 帧则 `e=44`、`V=4868`，说明峰值取决于对局数与帧数的组合而非单调上涨）。结论：`E_max=32` 不足以覆盖 8 人配置，且“按实测收紧”候选（`L_max=1024`、`V_max=4096`、`Q_max=128`）全部被打穿。**冻结条件**：实体数的机制审计已完成（第 4 节），结论是**不存在与输入无关的上界**，因此 `E_max` 只能按支持域声明 + 溢出率冻结：覆盖 8 人池实测取 64，或声明更窄的支持域并接受相应溢出率；定完后同步复核 `H_max`／`L_max`／`V_max`／`X_max` 与足迹。若要机制保证，必须在引擎层给 shadow／clone 加记忆槽或加全局实体上限，会改变战斗语义，本轮不做。不使用静默截断 |
 | 资格 mask | 全部输入队伍；或证明复活／召唤不可达后屏蔽 | 建议全部保留，采用第 10 节公式；避免把本池 `0/40000` 的未见事件当引擎保证（W:169） |
 | 导出容器 | typed bin + manifest；或后续绑定直接返回 buffers | 建议先提供可重建离线包，绑定复用同一布局；两者不得产生第二份编码算法 |
 
@@ -650,3 +671,4 @@ git diff --check
 | F 抽样 | `crates/tswn_pwp/src/sampling.rs:5`（select，排终局与最终轮数分桶） |
 | G 生成 | `crates/tswn_pwp/src/generate.rs:138`（write_shard）、`:186`（generate_battle）、`:202`（标签）、`:211`（样本） |
 | K 槽语义与顺序证据 | 前缀均为 `crates/tswn_core/src/`：`runtime/prepared_init/init.rs`（init）、`runtime/prepared_init/seed.rs`（seed）、`runtime/prepared_init/roster.rs`（roster）、`runtime/plain_summon.rs`（summon）、`runtime/plain_zombie.rs`（zombie）、`runtime/handlers/mod.rs`（handlers）、`runtime/handlers/minions.rs`（minions）、`runtime/handlers/states.rs`（states）、`runtime/combat/skills_control.rs`（skills_control）、`runtime/combat/skills_team.rs`（skills_team）、`runtime/combat/round.rs`（round）、`runtime/scheduler.rs`（scheduler）、`runtime/entity/runtime.rs`（entity_runtime）、`runtime/entity/state.rs`（state）、`runtime/profile/import.rs`（import）、`runtime/prepared_init.rs`（prepared） |
+| K2 实体产生入口（第三轮审计） | 前缀均为 `crates/tswn_core/src/`：`runtime/plain_summon.rs:28`、`runtime/plain_zombie.rs:29`、`runtime/combat/skills_lifecycle.rs:297`、`runtime/combat/skills_control.rs:226`、`runtime/combat/skills_offense.rs:61`、`runtime/combat/defense.rs:441`、`runtime/handlers/mod.rs:41`、`runtime/handlers/minions.rs:21`、`runtime/entity/skill_loadout.rs:501`、`runtime/prepared_init/seed.rs:186`、`namerena/build.rs:181`；测试 `runtime/tests/plain_clone_skill_tests.rs:3` |
