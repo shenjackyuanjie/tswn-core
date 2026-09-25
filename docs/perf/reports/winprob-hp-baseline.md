@@ -46,7 +46,8 @@ python scripts/winprob_hp_baseline.py --dataset target/winprob-100k --json-out t
 ## 标量校准
 
 `tswn-pwp calibrate --split train` 选中 **646400 / 800000** 行（其余是 validation/test 与空标签），
-输出 **99 个字段**的 `count`／`min`／`max`／`p50`／`p99`／`s_f`／`c_f`，
+输出 **104 个字段**的 `count`／`min`／`max`／`p50`／`p99`／`s_f`／`c_f`，并记录来源身份
+（`input_sha256`、`executable_sha256`、选中行 `selected_rows_digest`、`calibrator`），
 可作为 `encoder-manifest.json` 的数值来源。
 
 ## HP-only 基线结果

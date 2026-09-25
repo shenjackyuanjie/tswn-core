@@ -11,6 +11,7 @@ use crate::{DatasetConfig, SampleRow, storage};
 use anyhow::{Context, Result};
 use clap::Args;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::PathBuf};
 use tswn_core::runtime::{
     entity::CloneBuildData,
@@ -61,6 +62,14 @@ pub struct CalibrationReport {
     pub require_label: bool,
     pub samples_seen: usize,
     pub samples_selected: usize,
+    /// 原输入摘要（来自数据集 manifest）。
+    pub input_sha256: String,
+    /// 生成器可执行文件摘要；同时约束引擎、schema、依赖版本与构建选项。
+    pub executable_sha256: String,
+    /// 选中行序列（分片号 + 片内行号）的摘要，用来证明这批常数是从哪些行拟合的。
+    pub selected_rows_digest: String,
+    /// 采集器身份。
+    pub calibrator: String,
     pub fields: BTreeMap<String, CalibrationField>,
 }
 
@@ -403,11 +412,15 @@ pub fn run(args: &CalibrateArgs) -> Result<()> {
     let shard_count = total.div_ceil(config.battles_per_shard);
     let require_label = !args.keep_unlabeled;
     let mut scalars = Scalars::default();
+    let mut rows_hasher = Sha256::new();
     let mut samples_seen = 0usize;
     let mut samples_selected = 0usize;
     for index in 0..shard_count {
         let dir = args.out.join(format!("shard-{index:06}"));
+        let mut row_index = 0usize;
         storage::read_rows::<SampleRow>(&dir.join("samples.parquet"), |row| {
+            let current = row_index;
+            row_index += 1;
             samples_seen += 1;
             if row.split != args.split {
                 return Ok(());
@@ -416,6 +429,8 @@ pub fn run(args: &CalibrateArgs) -> Result<()> {
                 return Ok(());
             }
             samples_selected += 1;
+            rows_hasher.update((index as u64).to_le_bytes());
+            rows_hasher.update((current as u64).to_le_bytes());
             collect_state(&row.state, &mut scalars);
             Ok(())
         })
@@ -432,6 +447,10 @@ pub fn run(args: &CalibrateArgs) -> Result<()> {
         require_label,
         samples_seen,
         samples_selected,
+        input_sha256: config.input_sha256.clone(),
+        executable_sha256: config.executable_sha256.clone(),
+        selected_rows_digest: format!("{:x}", rows_hasher.finalize()),
+        calibrator: "tswn-pwp calibrate v1".to_owned(),
         fields,
     };
 

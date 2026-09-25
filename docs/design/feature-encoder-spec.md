@@ -380,7 +380,7 @@ P:160 的样本轮数 p99=61、max=146 来自 `SampleRow.rounds_advanced`（S:18
 
 没有观测值的字段不能悄悄令 `s_f=c_f=1`，也不接受登记人工常数：只能补足 train 观测后重新拟合，否则返回 `MissingCalibration{path}`。所有有效 f32 必须有限，NaN/Inf 返回 `NonFiniteValue`；裁剪只作用数值特征，不改引用、mask、原始 bit。本轮已把公式与生成方法冻结，数值 manifest 的发布仍待校准。
 
-**校准通道已落地**为 `tswn-pwp calibrate`（`crates/tswn_pwp/src/calibrate.rs`）：只读已提交分片，默认只用 train 且标签非空的行，逐字段输出 `count`／`min`／`max`／`p50`／`p99`／`abs_p50`／`abs_p99`／`s_f`／`c_f`；非有限值不入统计，缺字段不写默认值。已覆盖（当前 91 个字段）：全局机制计数、实体 runtime 与模板标量、lane 等级与 boost、状态 priority 与第 8 节各 payload 数值、第 3.2 节白名单里的 `core.entity.minion_counter` 计数，以及 `clone_build` 的 `attrs`／`weapon_attr_bonus`／`adjustments`／名称因子叶子；分类、引用、bit、精确注册序与其余槽值不参与统计，未覆盖字段仍须按 `MissingCalibration` 处理。复现命令：`target/release/tswn-pwp.exe calibrate --out <dataset> --json-out <path> --print-fields`（`--keep-unlabeled` 可保留空标签行）。
+**校准通道已落地**为 `tswn-pwp calibrate`（`crates/tswn_pwp/src/calibrate.rs`）：只读已提交分片，默认只用 train 且标签非空的行，逐字段输出 `count`／`min`／`max`／`p50`／`p99`／`abs_p50`／`abs_p99`／`s_f`／`c_f`；非有限值不入统计，缺字段不写默认值。报告同时记录来源身份：`input_sha256`、`executable_sha256`、被选中行的 `selected_rows_digest` 与 `calibrator`，便于证明这批常数由哪些行拟合而来。已覆盖（当前 104 个字段）：全局机制计数、实体 runtime 与模板标量（**含槽内蓝图模板与全局/battle 槽模板，共用同一套 `template.*` 路径**）、lane 等级与 boost、状态 priority 与第 8 节各 payload 数值、第 3.2 节白名单里的 `core.entity.minion_counter` 计数、`protect_pre_defend_skill_count`、模板 `move_state` 与 identity 数值，以及 `clone_build` 的 `attrs`／`weapon_attr_bonus`／`adjustments`／名称因子与评分计划 `slot_boosts` 叶子（`initially_boosted_mask` 属 bit 通道，不作数值采集）；分类、引用、bit、精确注册序与其余槽值不参与统计，未覆盖字段仍须按 `MissingCalibration` 处理。复现命令：`target/release/tswn-pwp.exe calibrate --out <dataset> --json-out <path> --print-fields`（`--keep-unlabeled` 可保留空标签行）。
 
 ## 6. 索引与 ID
 
