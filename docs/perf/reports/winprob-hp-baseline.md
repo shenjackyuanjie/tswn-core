@@ -96,6 +96,8 @@ python scripts/winprob_hp_baseline.py --dataset target/winprob-100k --json-out t
   「按实际 ref 槽计数（实测）」。
 - 顺带确认：`clone_build` 在**所有**模板上都存在（它是名字派生属性的构造参数，`attrs` 全非零），
   真正的可空项只有 `score_skill_boost_plan`；因此不存在 clone_build presence 丢失的问题。
-- 规格第 4 节里 8 人池与深测的 X 列尚未用修正脚本重测（方向上是被高估，不影响 `X_max` 冻结）。
+- 规格第 4 节的 8 人池两张表已按修正脚本重测（统一 `--matchups 200 --games-per-matchup 25`，每模式 5000 局）：
+  X 峰值由 3335 降为 **2465**（`3v1v1v1v1v1`），`e`／`h`／`l`／`q`／`V` 峰值与旧表基本一致；
+  深测表（2 万局以上的大数据集）本轮未重测，X 列仍是修正前数值（按 `5×h` 估算约低 900）。
 
 「零超限」结论在两种口径下都成立（都远低于 65536），不受影响。

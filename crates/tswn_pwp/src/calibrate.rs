@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::PathBuf};
 use tswn_core::runtime::{
     entity::CloneBuildData,
-    model_state::{BattleModelState, ModelPayload},
+    model_state::{BattleModelState, ModelPayload, ModelTemplate},
 };
 
 #[derive(Debug, Clone, Args)]
@@ -167,31 +167,20 @@ fn collect_state(state: &BattleModelState, scalars: &mut Scalars) {
         for link in &runtime.protect_from {
             scalars.push_int("entity.runtime.protect_from.level", link.level as i64);
         }
-
-        let template = &entity.template;
-        for (path, value) in TEMPLATE_INTS {
-            scalars.push_int(path, value(template));
+        if let Some(count) = runtime.protect_pre_defend_skill_count {
+            scalars.push_int("entity.runtime.protect_pre_defend_skill_count", count as i64);
         }
-        scalars.push_float("template.at_boost", f64::from_bits(template.at_boost_bits));
-        scalars.push_float("template.attract", f64::from_bits(template.attract_bits));
-        scalars.push_int(
-            "template.reserved_player_ids_before_spawn",
-            template.reserved_player_ids_before_spawn as i64,
-        );
 
-        for lane in &template.skills.lanes {
-            scalars.push_int("lane.level", lane.level as i64);
-            scalars.push_int("lane.build_level", lane.build_level as i64);
-            if let Some(boost) = &lane.boost {
-                scalars.push_int("lane.boost.base", boost.base as i64);
-                scalars.push_int("lane.boost.extra", boost.extra as i64);
-            }
-        }
+        collect_template(&entity.template, scalars);
         for entry in &entity.states {
             scalars.push_int("state.priority", entry.priority as i64);
             collect_payload(&entry.payload, scalars);
         }
         for slot in &entity.slots {
+            // 蓝图缓存槽里的模板与实体模板共用同一套 `template.*` 字段路径（模板轴同理）。
+            if let Some(template) = &slot.template {
+                collect_template(template, scalars);
+            }
             // 第 3.2 节白名单里唯一作为数值消费的槽；其余槽是模板、实体引用或排除项。
             if slot.slot_id == ENTITY_SLOT_MINION_COUNTER {
                 if let Some(value) = slot.u64_value {
@@ -199,9 +188,47 @@ fn collect_state(state: &BattleModelState, scalars: &mut Scalars) {
                 }
             }
         }
-        if let Some(clone_build) = &template.clone_build {
-            collect_clone_build(clone_build, scalars);
+    }
+    for slot in state.template_slots.iter().chain(state.battle_slots.iter()) {
+        if let Some(template) = &slot.template {
+            collect_template(template, scalars);
         }
+    }
+}
+
+/// 采集一个模板的数值字段；实体模板与槽内蓝图模板共用同一套字段路径。
+fn collect_template(template: &ModelTemplate, scalars: &mut Scalars) {
+    for (path, value) in TEMPLATE_INTS {
+        scalars.push_int(path, value(template));
+    }
+    scalars.push_float("template.at_boost", f64::from_bits(template.at_boost_bits));
+    scalars.push_float("template.attract", f64::from_bits(template.attract_bits));
+    scalars.push_int(
+        "template.reserved_player_ids_before_spawn",
+        template.reserved_player_ids_before_spawn as i64,
+    );
+    scalars.push_int("template.move_state.speed_points", template.move_state.speed_points as i64);
+    scalars.push_int(
+        "template.identity.boss_action_prob_count",
+        template.identity.boss_action_prob_count as i64,
+    );
+    scalars.push_int(
+        "template.identity.boost_immune_threshold",
+        template.identity.boost_immune_threshold as i64,
+    );
+    for immunity in &template.identity.immunity {
+        scalars.push_int("template.identity.immunity.threshold", immunity.threshold as i64);
+    }
+    for lane in &template.skills.lanes {
+        scalars.push_int("lane.level", lane.level as i64);
+        scalars.push_int("lane.build_level", lane.build_level as i64);
+        if let Some(boost) = &lane.boost {
+            scalars.push_int("lane.boost.base", boost.base as i64);
+            scalars.push_int("lane.boost.extra", boost.extra as i64);
+        }
+    }
+    if let Some(clone_build) = &template.clone_build {
+        collect_clone_build(clone_build, scalars);
     }
 }
 
@@ -280,7 +307,24 @@ fn collect_clone_build(clone_build: &CloneBuildData, scalars: &mut Scalars) {
         "template.clone_build.adjustments.attract_delta",
         f64::from_bits(adjustments.attract_delta_bits),
     );
+    if let Some(plan) = &clone_build.score_skill_boost_plan {
+        // `initially_boosted_mask` 属于 bit 通道（第 14 节 field_class 3），不作为数值采集。
+        for (index, boost) in plan.slot_boosts.iter().enumerate() {
+            if let Some((first, second)) = boost {
+                scalars.push(PLAN_SLOT_BOOST_PATHS[index * 2], f64::from(*first));
+                scalars.push(PLAN_SLOT_BOOST_PATHS[index * 2 + 1], f64::from(*second));
+            }
+        }
+    }
 }
+
+/// 分身评分计划的槽位强化数值；计划为 Some 且该槽元组存在时才采集（第 14 节 field_class 4–7）。
+const PLAN_SLOT_BOOST_PATHS: [&str; 4] = [
+    "template.clone_build.score_skill_boost_plan.slot_boosts.0.0",
+    "template.clone_build.score_skill_boost_plan.slot_boosts.0.1",
+    "template.clone_build.score_skill_boost_plan.slot_boosts.1.0",
+    "template.clone_build.score_skill_boost_plan.slot_boosts.1.1",
+];
 
 /// 状态载荷数值；按第 8 节的 kind 词表逐分支采集，Boss 分支（12–16）不映射。
 fn collect_payload(payload: &ModelPayload, scalars: &mut Scalars) {
