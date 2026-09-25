@@ -120,9 +120,10 @@ target/release/tswn-pwp.exe calibrate --out target/winprob-100k --json-out targe
 ```
 
 输出 JSON 记录每个字段的样本数、min/max/p50/p99 与 `s_f`/`c_f`。覆盖范围是
-[FeatureEncoder 规格](../../docs/design/feature-encoder-spec.md) 第 5 节"逐字段标量"的第一批：
-全局机制计数、实体 runtime 与模板标量、lane 等级与 boost、状态 priority。分类、引用、bit、
-精确注册序和槽内数值不参与统计。缺字段时不写默认值，由 encoder 返回 `MissingCalibration`；
+[FeatureEncoder 规格](../../docs/design/feature-encoder-spec.md) 第 5 节"逐字段标量"：全局机制计数、
+实体 runtime 与模板标量、lane 等级与 boost、状态 priority 与各 payload 数值、
+`core.entity.minion_counter` 计数、`clone_build` 的属性/修正/名称因子叶子。分类、引用、bit、
+精确注册序和其余槽值不参与统计。缺字段时不写默认值，由 encoder 返回 `MissingCalibration`；
 `--keep-unlabeled` 可保留空标签行，`--print-fields` 打印逐字段摘要。校准只使用 train 行，
 Python 训练侧只加载结果，不重新拟合。
 

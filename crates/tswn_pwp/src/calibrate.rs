@@ -12,7 +12,10 @@ use anyhow::{Context, Result};
 use clap::Args;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::PathBuf};
-use tswn_core::runtime::model_state::BattleModelState;
+use tswn_core::runtime::{
+    entity::CloneBuildData,
+    model_state::{BattleModelState, ModelPayload},
+};
 
 #[derive(Debug, Clone, Args)]
 pub struct CalibrateArgs {
@@ -186,7 +189,135 @@ fn collect_state(state: &BattleModelState, scalars: &mut Scalars) {
         }
         for entry in &entity.states {
             scalars.push_int("state.priority", entry.priority as i64);
+            collect_payload(&entry.payload, scalars);
         }
+        for slot in &entity.slots {
+            // 第 3.2 节白名单里唯一作为数值消费的槽；其余槽是模板、实体引用或排除项。
+            if slot.slot_id == ENTITY_SLOT_MINION_COUNTER {
+                if let Some(value) = slot.u64_value {
+                    scalars.push("slot.minion_counter", value as f64);
+                }
+            }
+        }
+        if let Some(clone_build) = &template.clone_build {
+            collect_clone_build(clone_build, scalars);
+        }
+    }
+}
+
+/// 默认注册表 entity 域 `core.entity.minion_counter` 的 `slot_id`（第 3.2 节白名单）。
+const ENTITY_SLOT_MINION_COUNTER: u32 = 5;
+
+const CLONE_ATTR_PATHS: [&str; 8] = [
+    "template.clone_build.attrs.0",
+    "template.clone_build.attrs.1",
+    "template.clone_build.attrs.2",
+    "template.clone_build.attrs.3",
+    "template.clone_build.attrs.4",
+    "template.clone_build.attrs.5",
+    "template.clone_build.attrs.6",
+    "template.clone_build.attrs.7",
+];
+
+const CLONE_WEAPON_PATHS: [&str; 8] = [
+    "template.clone_build.weapon_attr_bonus.0",
+    "template.clone_build.weapon_attr_bonus.1",
+    "template.clone_build.weapon_attr_bonus.2",
+    "template.clone_build.weapon_attr_bonus.3",
+    "template.clone_build.weapon_attr_bonus.4",
+    "template.clone_build.weapon_attr_bonus.5",
+    "template.clone_build.weapon_attr_bonus.6",
+    "template.clone_build.weapon_attr_bonus.7",
+];
+
+const CLONE_ADJUSTMENT_PATHS: [&str; 10] = [
+    "template.clone_build.adjustments.max_hp",
+    "template.clone_build.adjustments.attack",
+    "template.clone_build.adjustments.magic",
+    "template.clone_build.adjustments.wisdom",
+    "template.clone_build.adjustments.speed",
+    "template.clone_build.adjustments.defense",
+    "template.clone_build.adjustments.resistance",
+    "template.clone_build.adjustments.agility",
+    "template.clone_build.adjustments.attr_sum",
+    "template.clone_build.adjustments.atk_sum",
+];
+
+/// 分身构造参数；Boss 分支不在本轮映射范围，因此这里不处理。
+fn collect_clone_build(clone_build: &CloneBuildData, scalars: &mut Scalars) {
+    for (index, value) in clone_build.attrs.iter().enumerate() {
+        scalars.push(CLONE_ATTR_PATHS[index], f64::from(*value));
+    }
+    for (index, value) in clone_build.weapon_attr_bonus.iter().enumerate() {
+        scalars.push(CLONE_WEAPON_PATHS[index], f64::from(*value));
+    }
+    scalars.push_float("template.clone_build.name_factor", f64::from_bits(clone_build.name_factor_bits));
+    scalars.push_float(
+        "template.clone_build.child_name_factor",
+        f64::from_bits(clone_build.child_name_factor_bits),
+    );
+    let adjustments = &clone_build.adjustments;
+    let integers = [
+        i64::from(adjustments.max_hp),
+        i64::from(adjustments.attack),
+        i64::from(adjustments.magic),
+        i64::from(adjustments.wisdom),
+        i64::from(adjustments.speed),
+        i64::from(adjustments.defense),
+        i64::from(adjustments.resistance),
+        i64::from(adjustments.agility),
+        adjustments.attr_sum,
+        i64::from(adjustments.atk_sum),
+    ];
+    for (path, value) in CLONE_ADJUSTMENT_PATHS.iter().zip(integers) {
+        scalars.push(path, value as f64);
+    }
+    scalars.push_float(
+        "template.clone_build.adjustments.at_boost_delta",
+        f64::from_bits(adjustments.at_boost_delta_bits),
+    );
+    scalars.push_float(
+        "template.clone_build.adjustments.attract_delta",
+        f64::from_bits(adjustments.attract_delta_bits),
+    );
+}
+
+/// 状态载荷数值；按第 8 节的 kind 词表逐分支采集，Boss 分支（12–16）不映射。
+fn collect_payload(payload: &ModelPayload, scalars: &mut Scalars) {
+    if let Some(value) = payload.fire_mag_half_steps {
+        scalars.push_int("state.payload.fire_mag_half_steps", i64::from(value));
+    }
+    if let Some(ice) = &payload.ice {
+        scalars.push_int("state.payload.ice.frozen_step", i64::from(ice.frozen_step));
+    }
+    if let Some(value) = payload.shield_value {
+        scalars.push_int("state.payload.shield_value", i64::from(value));
+    }
+    if let Some(curse) = &payload.curse {
+        scalars.push_int("state.payload.curse.prob", i64::from(curse.prob));
+        scalars.push_int("state.payload.curse.multiply", i64::from(curse.multiply));
+    }
+    if let Some(poison) = &payload.poison {
+        scalars.push_float("state.payload.poison.atp", f64::from_bits(poison.atp_bits));
+        scalars.push_int("state.payload.poison.count", i64::from(poison.count));
+    }
+    if let Some(haste) = &payload.haste {
+        scalars.push_int("state.payload.haste.faster", i64::from(haste.faster));
+        scalars.push_int("state.payload.haste.effective_faster", i64::from(haste.effective_faster));
+        scalars.push_int("state.payload.haste.step", i64::from(haste.step));
+    }
+    if let Some(berserk) = &payload.berserk {
+        scalars.push_int("state.payload.berserk.step", i64::from(berserk.step));
+    }
+    if let Some(charm) = &payload.charm {
+        scalars.push_int("state.payload.charm.step", i64::from(charm.step));
+    }
+    if let Some(slow) = &payload.slow {
+        scalars.push_int("state.payload.slow.step", i64::from(slow.step));
+    }
+    if let Some(iron) = &payload.iron {
+        scalars.push_int("state.payload.iron.protect", i64::from(iron.protect));
+        scalars.push_int("state.payload.iron.step", i64::from(iron.step));
     }
 }
 
