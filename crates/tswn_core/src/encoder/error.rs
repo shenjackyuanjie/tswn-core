@@ -9,11 +9,7 @@ use std::fmt::{self, Display, Formatter};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EncodeError {
     /// schema 名称或版本不符（manifest 协议身份、state schema、encoder 语义版本）。
-    SchemaMismatch {
-        path: String,
-        expected: String,
-        actual: String,
-    },
+    SchemaMismatch { path: String, expected: String, actual: String },
     /// `world.winner_team` 非空的已决状态；结果泄漏门禁。
     AlreadyDecided { path: String },
     /// 容量超限；禁止截断实体、lane、状态或蓝图。

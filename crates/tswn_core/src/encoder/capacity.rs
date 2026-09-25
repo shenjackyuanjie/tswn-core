@@ -11,8 +11,8 @@
 //! 本模块是容量定义的**唯一权威**：`tswn_core::encoder` 的容量预检、`tswn_pwp` 的统计与
 //! `scripts/measure_encoder_capacity.py` 的公式都以这里为准，不允许在别处复制常量。
 
-use serde::Serialize;
 use crate::runtime::model_state::{BattleModelState, ModelSkills, ModelTemplate};
+use serde::Serialize;
 
 /// 容量维度名；顺序与规格第 4 节的容量表一致。
 pub const CAPACITY_DIMS: [&str; 9] = ["e", "t", "r", "h", "l", "s", "q", "v", "x"];

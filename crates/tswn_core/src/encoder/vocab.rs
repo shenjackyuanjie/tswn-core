@@ -62,10 +62,10 @@ impl Vocabulary {
 
     /// 查表；未知原值报 [`EncodeError::UnknownCategory`]，不折叠为 PAD。
     pub fn dense_id(&self, raw: u32, path: &str) -> Result<i32, EncodeError> {
-        self.entries
-            .get(&raw)
-            .copied()
-            .ok_or_else(|| EncodeError::UnknownCategory { path: path.to_owned(), raw: raw.to_string() })
+        self.entries.get(&raw).copied().ok_or_else(|| EncodeError::UnknownCategory {
+            path: path.to_owned(),
+            raw: raw.to_string(),
+        })
     }
 }
 
@@ -90,9 +90,7 @@ pub fn boss_kind_vocabulary() -> Vocabulary {
 mod tests {
     use super::*;
 
-    fn vocabulary(pairs: &[(u32, i32)]) -> Vocabulary {
-        Vocabulary::new(pairs.iter().copied().collect()).unwrap()
-    }
+    fn vocabulary(pairs: &[(u32, i32)]) -> Vocabulary { Vocabulary::new(pairs.iter().copied().collect()).unwrap() }
 
     #[test]
     fn dense_ids_must_start_at_one_without_holes() {

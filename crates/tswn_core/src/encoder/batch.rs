@@ -10,7 +10,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::encoder::capacity::{EncoderProfile, BASELINE_64};
+use crate::encoder::capacity::{BASELINE_64, EncoderProfile};
 use crate::encoder::error::EncodeError;
 use crate::encoder::manifest::ProfileSpec;
 
@@ -74,15 +74,7 @@ pub trait CapacityDims {
 impl CapacityDims for EncoderProfile {
     fn dims(&self) -> [usize; 9] {
         [
-            self.e_max,
-            self.t_max,
-            self.r_max,
-            self.h_max,
-            self.l_max,
-            self.s_max,
-            self.q_max,
-            self.v_max,
-            self.x_max,
+            self.e_max, self.t_max, self.r_max, self.h_max, self.l_max, self.s_max, self.q_max, self.v_max, self.x_max,
         ]
     }
 }
@@ -90,15 +82,7 @@ impl CapacityDims for EncoderProfile {
 impl CapacityDims for ProfileSpec {
     fn dims(&self) -> [usize; 9] {
         [
-            self.e_max,
-            self.t_max,
-            self.r_max,
-            self.h_max,
-            self.l_max,
-            self.s_max,
-            self.q_max,
-            self.v_max,
-            self.x_max,
+            self.e_max, self.t_max, self.r_max, self.h_max, self.l_max, self.s_max, self.q_max, self.v_max, self.x_max,
         ]
     }
 }
@@ -110,36 +94,176 @@ impl CapacityDims for ProfileSpec {
 /// 并保持“每个张量只登记一次、名称全局唯一”。
 pub const TENSOR_SPECS: &[TensorSpec] = &[
     // global
-    TensorSpec { name: "global_num", dtype: Dtype::F32, shape: "[6]", fill: Fill::Zero },
-    TensorSpec { name: "team_mask", dtype: Dtype::U8, shape: "[T_max]", fill: Fill::Zero },
-    TensorSpec { name: "runtime_team_mask", dtype: Dtype::U8, shape: "[R_max]", fill: Fill::Zero },
+    TensorSpec {
+        name: "global_num",
+        dtype: Dtype::F32,
+        shape: "[6]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "team_mask",
+        dtype: Dtype::U8,
+        shape: "[T_max]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "runtime_team_mask",
+        dtype: Dtype::U8,
+        shape: "[R_max]",
+        fill: Fill::Zero,
+    },
     // entity
-    TensorSpec { name: "entity_mask", dtype: Dtype::U8, shape: "[E_max]", fill: Fill::Zero },
-    TensorSpec { name: "entity_template", dtype: Dtype::I32, shape: "[E_max]", fill: Fill::RefMinusOne },
-    TensorSpec { name: "entity_team", dtype: Dtype::I32, shape: "[E_max,2]", fill: Fill::RefMinusOne },
-    TensorSpec { name: "entity_num", dtype: Dtype::F32, shape: "[E_max,24]", fill: Fill::Zero },
-    TensorSpec { name: "entity_num_present", dtype: Dtype::U8, shape: "[E_max,24]", fill: Fill::Zero },
-    TensorSpec { name: "entity_bool", dtype: Dtype::U8, shape: "[E_max,10]", fill: Fill::Zero },
-    TensorSpec { name: "entity_flags", dtype: Dtype::U8, shape: "[E_max,8]", fill: Fill::Zero },
-    TensorSpec { name: "entity_kind_flags", dtype: Dtype::U8, shape: "[E_max,6]", fill: Fill::Zero },
-    TensorSpec { name: "entity_cat", dtype: Dtype::I32, shape: "[E_max,5]", fill: Fill::Zero },
-    TensorSpec { name: "entity_ref", dtype: Dtype::I32, shape: "[E_max,5]", fill: Fill::RefMinusOne },
-    TensorSpec { name: "entity_ref_present", dtype: Dtype::U8, shape: "[E_max,5]", fill: Fill::Zero },
+    TensorSpec {
+        name: "entity_mask",
+        dtype: Dtype::U8,
+        shape: "[E_max]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "entity_template",
+        dtype: Dtype::I32,
+        shape: "[E_max]",
+        fill: Fill::RefMinusOne,
+    },
+    TensorSpec {
+        name: "entity_team",
+        dtype: Dtype::I32,
+        shape: "[E_max,2]",
+        fill: Fill::RefMinusOne,
+    },
+    TensorSpec {
+        name: "entity_num",
+        dtype: Dtype::F32,
+        shape: "[E_max,24]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "entity_num_present",
+        dtype: Dtype::U8,
+        shape: "[E_max,24]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "entity_bool",
+        dtype: Dtype::U8,
+        shape: "[E_max,10]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "entity_flags",
+        dtype: Dtype::U8,
+        shape: "[E_max,8]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "entity_kind_flags",
+        dtype: Dtype::U8,
+        shape: "[E_max,6]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "entity_cat",
+        dtype: Dtype::I32,
+        shape: "[E_max,5]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "entity_ref",
+        dtype: Dtype::I32,
+        shape: "[E_max,5]",
+        fill: Fill::RefMinusOne,
+    },
+    TensorSpec {
+        name: "entity_ref_present",
+        dtype: Dtype::U8,
+        shape: "[E_max,5]",
+        fill: Fill::Zero,
+    },
     // template
-    TensorSpec { name: "template_mask", dtype: Dtype::U8, shape: "[H_max]", fill: Fill::Zero },
-    TensorSpec { name: "template_num", dtype: Dtype::F32, shape: "[H_max,31]", fill: Fill::Zero },
-    TensorSpec { name: "template_num_present", dtype: Dtype::U8, shape: "[H_max,31]", fill: Fill::Zero },
-    TensorSpec { name: "template_bool", dtype: Dtype::U8, shape: "[H_max,5]", fill: Fill::Zero },
-    TensorSpec { name: "template_cat", dtype: Dtype::I32, shape: "[H_max,5]", fill: Fill::Zero },
-    TensorSpec { name: "template_cat_present", dtype: Dtype::U8, shape: "[H_max,5]", fill: Fill::Zero },
-    TensorSpec { name: "template_team", dtype: Dtype::I32, shape: "[H_max]", fill: Fill::RefMinusOne },
-    TensorSpec { name: "template_player_ref", dtype: Dtype::I32, shape: "[H_max]", fill: Fill::RefMinusOne },
-    TensorSpec { name: "template_override_present", dtype: Dtype::U8, shape: "[H_max,4]", fill: Fill::Zero },
-    TensorSpec { name: "template_clone_attr", dtype: Dtype::U32, shape: "[H_max,8]", fill: Fill::Zero },
-    TensorSpec { name: "template_clone_weapon_bonus", dtype: Dtype::I32, shape: "[H_max,8]", fill: Fill::Zero },
-    TensorSpec { name: "immunity_num", dtype: Dtype::F32, shape: "[H_max,9]", fill: Fill::Zero },
-    TensorSpec { name: "immunity_present", dtype: Dtype::U8, shape: "[H_max,9]", fill: Fill::Zero },
-    TensorSpec { name: "clan_equal", dtype: Dtype::U8, shape: "[H_max,H_max]", fill: Fill::Zero },
+    TensorSpec {
+        name: "template_mask",
+        dtype: Dtype::U8,
+        shape: "[H_max]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "template_num",
+        dtype: Dtype::F32,
+        shape: "[H_max,31]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "template_num_present",
+        dtype: Dtype::U8,
+        shape: "[H_max,31]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "template_bool",
+        dtype: Dtype::U8,
+        shape: "[H_max,5]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "template_cat",
+        dtype: Dtype::I32,
+        shape: "[H_max,5]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "template_cat_present",
+        dtype: Dtype::U8,
+        shape: "[H_max,5]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "template_team",
+        dtype: Dtype::I32,
+        shape: "[H_max]",
+        fill: Fill::RefMinusOne,
+    },
+    TensorSpec {
+        name: "template_player_ref",
+        dtype: Dtype::I32,
+        shape: "[H_max]",
+        fill: Fill::RefMinusOne,
+    },
+    TensorSpec {
+        name: "template_override_present",
+        dtype: Dtype::U8,
+        shape: "[H_max,4]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "template_clone_attr",
+        dtype: Dtype::U32,
+        shape: "[H_max,8]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "template_clone_weapon_bonus",
+        dtype: Dtype::I32,
+        shape: "[H_max,8]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "immunity_num",
+        dtype: Dtype::F32,
+        shape: "[H_max,9]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "immunity_present",
+        dtype: Dtype::U8,
+        shape: "[H_max,9]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "clan_equal",
+        dtype: Dtype::U8,
+        shape: "[H_max,H_max]",
+        fill: Fill::Zero,
+    },
 ];
 
 /// 张量的具体 shape（不含 batch 轴）；用于推导每样本元素数与字节数。
@@ -167,6 +291,7 @@ pub fn tensor_shape(dims: &[usize; 9], name: &str) -> Option<Vec<usize>> {
     })
 }
 
+#[derive(Debug)]
 enum TensorBuffer {
     F32(Vec<f32>),
     I32(Vec<i32>),
@@ -229,6 +354,7 @@ impl TensorBuffer {
     }
 }
 
+#[derive(Debug)]
 struct TensorSlot {
     per_sample: usize,
     fill: Fill,
@@ -236,6 +362,7 @@ struct TensorSlot {
 }
 
 /// 一批编码结果；每个张量按 `batch × 每样本元素数` 单独连续存放。
+#[derive(Debug)]
 pub struct EncodedBatch {
     dims: [usize; 9],
     batch: usize,
@@ -271,9 +398,7 @@ impl EncodedBatch {
     pub fn dims(&self) -> &[usize; 9] { &self.dims }
 
     /// 张量静态描述；未注册返回 None。
-    pub fn spec(name: &str) -> Option<&'static TensorSpec> {
-        TENSOR_SPECS.iter().find(|spec| spec.name == name)
-    }
+    pub fn spec(name: &str) -> Option<&'static TensorSpec> { TENSOR_SPECS.iter().find(|spec| spec.name == name) }
 
     /// 该张量的元素数（含 batch 轴）。
     pub fn tensor_len(&self, name: &str) -> Result<usize, EncodeError> { Ok(self.slot(name)?.buffer.len()) }
@@ -287,7 +412,10 @@ impl EncodedBatch {
     /// 把一个批槽位恢复成 padding 值；复用缓冲时必须在写入前调用。
     pub fn clear_slot(&mut self, batch_index: usize) -> Result<(), EncodeError> {
         if batch_index >= self.batch {
-            return Err(EncodeError::BatchSlotOutOfRange { batch: batch_index, limit: self.batch });
+            return Err(EncodeError::BatchSlotOutOfRange {
+                batch: batch_index,
+                limit: self.batch,
+            });
         }
         for slot in self.slots.values_mut() {
             let start = batch_index * slot.per_sample;
@@ -297,9 +425,7 @@ impl EncodedBatch {
     }
 
     fn slot(&self, name: &str) -> Result<&TensorSlot, EncodeError> {
-        self.slots
-            .get(name)
-            .ok_or_else(|| EncodeError::UnknownTensor { name: name.to_owned() })
+        self.slots.get(name).ok_or_else(|| EncodeError::UnknownTensor { name: name.to_owned() })
     }
 
     fn slot_mut(&mut self, name: &str) -> Result<&mut TensorSlot, EncodeError> {
@@ -382,7 +508,10 @@ impl EncodedBatch {
     fn check_batch(&self, name: &str, batch_index: usize) -> Result<(), EncodeError> {
         self.slot(name)?;
         if batch_index >= self.batch {
-            return Err(EncodeError::BatchSlotOutOfRange { batch: batch_index, limit: self.batch });
+            return Err(EncodeError::BatchSlotOutOfRange {
+                batch: batch_index,
+                limit: self.batch,
+            });
         }
         Ok(())
     }
@@ -494,6 +623,9 @@ mod tests {
     fn wrong_dtype_access_is_rejected() {
         let batch = EncodedBatch::baseline(1);
         // entity_mask 是 u8；用 f32 视图访问必须报未知张量而不是 reinterpret。
-        assert!(matches!(batch.f32_all("entity_mask").unwrap_err(), EncodeError::UnknownTensor { .. }));
+        assert!(matches!(
+            batch.f32_all("entity_mask").unwrap_err(),
+            EncodeError::UnknownTensor { .. }
+        ));
     }
 }

@@ -16,10 +16,10 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::encoder::capacity::{EncoderProfile, BASELINE_64};
+use crate::encoder::capacity::EncoderProfile;
 use crate::encoder::error::EncodeError;
 use crate::encoder::numeric::TransformKind;
-use crate::encoder::vocab::{boss_kind_vocabulary, player_kind_vocabulary, Vocabulary};
+use crate::encoder::vocab::{Vocabulary, boss_kind_vocabulary, player_kind_vocabulary};
 use crate::runtime::model_state::MODEL_STATE_SCHEMA_VERSION;
 
 /// manifest schema 名。
@@ -53,8 +53,7 @@ pub const SUPPORTED_PAYLOAD_KINDS: [&str; 11] = [
 ];
 
 /// 本轮不映射的 Boss 专属/感染载荷 kind。
-pub const UNSUPPORTED_PAYLOAD_KINDS: [&str; 5] =
-    ["covid_boss", "covid_infection", "saitama_boss", "lazy_boss", "lazy_infection"];
+pub const UNSUPPORTED_PAYLOAD_KINDS: [&str; 5] = ["covid_boss", "covid_infection", "saitama_boss", "lazy_boss", "lazy_infection"];
 
 /// manifest 声明的容量档位；名称用 `String` 以便序列化，
 /// 不变量与 [`BASELINE_64`] 相同（规格第 4 节容量表）。
@@ -75,7 +74,10 @@ pub struct ProfileSpec {
 impl ProfileSpec {
     /// 自洽性检查；容量推导见规格第 4 节。全部用 checked 算术，畸形 manifest 不得回绕。
     pub fn validate(&self) -> Result<(), EncodeError> {
-        let mismatch = |detail: String| EncodeError::ManifestMismatch { path: "profile".to_owned(), detail };
+        let mismatch = |detail: String| EncodeError::ManifestMismatch {
+            path: "profile".to_owned(),
+            detail,
+        };
         if self.name.is_empty() {
             return Err(mismatch("profile 名称为空".to_owned()));
         }
@@ -109,10 +111,7 @@ impl ProfileSpec {
             return Err(mismatch(format!("s_max={} < e_max={}", self.s_max, self.e_max)));
         }
         // V 的规划下界：五类 lane list。
-        let lane_bound = self
-            .l_max
-            .checked_mul(5)
-            .ok_or_else(|| mismatch("l_max 溢出".to_owned()))?;
+        let lane_bound = self.l_max.checked_mul(5).ok_or_else(|| mismatch("l_max 溢出".to_owned()))?;
         if self.v_max < lane_bound {
             return Err(mismatch(format!("v_max={} < 5*l_max={}", self.v_max, lane_bound)));
         }
@@ -173,7 +172,10 @@ pub struct FittedConstants {
 impl FittedConstants {
     /// 自校验：常数有限、下界为 1、`c_f ≥ s_f`（分位数单调）、bit 表示一致。
     pub fn validate(&self, path: &str) -> Result<(), EncodeError> {
-        let mismatch = |detail: String| EncodeError::ManifestMismatch { path: path.to_owned(), detail };
+        let mismatch = |detail: String| EncodeError::ManifestMismatch {
+            path: path.to_owned(),
+            detail,
+        };
         if self.count == 0 {
             return Err(mismatch("没有 train 观测值".to_owned()));
         }
@@ -280,7 +282,10 @@ impl SupportDomain {
 
     /// 自校验：两类 kind 不重叠且非空。
     pub fn validate(&self) -> Result<(), EncodeError> {
-        let mismatch = |detail: String| EncodeError::ManifestMismatch { path: "support".to_owned(), detail };
+        let mismatch = |detail: String| EncodeError::ManifestMismatch {
+            path: "support".to_owned(),
+            detail,
+        };
         if self.payload_kinds.is_empty() {
             return Err(mismatch("没有启用任何载荷 kind".to_owned()));
         }
@@ -353,9 +358,10 @@ impl EncoderManifest {
         self.profile.validate()?;
         for (name, vocabulary) in &self.vocabularies {
             vocabulary.validate().map_err(|error| match error {
-                EncodeError::ManifestMismatch { detail, .. } => {
-                    EncodeError::ManifestMismatch { path: format!("vocabularies.{name}"), detail }
-                }
+                EncodeError::ManifestMismatch { detail, .. } => EncodeError::ManifestMismatch {
+                    path: format!("vocabularies.{name}"),
+                    detail,
+                },
                 other => other,
             })?;
         }
@@ -388,10 +394,7 @@ impl EncoderManifest {
     /// - 固定计数尺度的槽（规格第 5 节“机制计数的绝对量”）写入 `FixedCount` 声明，不要求观测；
     /// - 其余数值槽一律 `Fitted`，常数来自校准报告；报告缺字段时这里就失败，
     ///   而不是等编码到具体样本才报错（发布门禁前移）。
-    pub fn from_calibration(
-        calibration: &CalibrationReport,
-        profile: &EncoderProfile,
-    ) -> Result<Self, EncodeError> {
+    pub fn from_calibration(calibration: &CalibrationReport, profile: &EncoderProfile) -> Result<Self, EncodeError> {
         if calibration.schema != CALIBRATION_SCHEMA || calibration.schema_version != CALIBRATION_SCHEMA_VERSION {
             return Err(EncodeError::SchemaMismatch {
                 path: "calibration.schema".to_owned(),
@@ -480,8 +483,7 @@ impl EncoderManifest {
 }
 
 /// 规格第 5 节的固定计数尺度槽：`(字段路径, 分母)`。分母取 p99，不随容量放大。
-pub const FIXED_COUNT_SLOTS: [(&str, f64); 2] =
-    [("global.entity_slot_count", 16.0), ("global.entity_count", 15.0)];
+pub const FIXED_COUNT_SLOTS: [(&str, f64); 2] = [("global.entity_slot_count", 16.0), ("global.entity_count", 15.0)];
 
 /// `tswn-pwp calibrate` 的报告视图；只读取组装 manifest 需要的字段，
 /// 未知字段忽略，因此校准报告可以继续增补统计量而不破坏本视图。
@@ -518,6 +520,7 @@ pub struct CalibrationFieldReport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::encoder::capacity::BASELINE_64;
 
     fn profile() -> EncoderProfile { BASELINE_64 }
 

@@ -12,7 +12,9 @@
 
 pub mod batch;
 pub mod capacity;
+pub mod encode;
 pub mod error;
 pub mod manifest;
 pub mod numeric;
+pub mod slots;
 pub mod vocab;
