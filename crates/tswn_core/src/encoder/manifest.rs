@@ -116,16 +116,15 @@ impl ProfileSpec {
             return Err(mismatch(format!("v_max={} < 5*l_max={}", self.v_max, lane_bound)));
         }
         // X 的上界式：V + 15H + 9E + 3Q + 3S + 2，按每槽 3 条计费。
-        // 用饱和算术：畸形 manifest 不应让校验自身 panic；饱和后上界必然大于任何合法 x_max。
-        let raw = self.h_max.saturating_mul(10).saturating_add(self.q_max);
-        let bound = self
-            .v_max
-            .saturating_add(self.h_max.saturating_mul(15))
-            .saturating_add(self.e_max.saturating_mul(9))
-            .saturating_add(self.q_max.saturating_mul(3))
-            .saturating_add(self.s_max.saturating_mul(3))
-            .saturating_add(raw)
-            .saturating_add(2);
+        // raw 已包含在各项内，不能再重复加 10H+Q；溢出直接拒绝，不让 usize::MAX 蒙混通过。
+        let mut bound = self.v_max;
+        for (value, factor) in [(self.h_max, 15), (self.e_max, 9), (self.q_max, 3), (self.s_max, 3)] {
+            bound = value
+                .checked_mul(factor)
+                .and_then(|term| bound.checked_add(term))
+                .ok_or_else(|| mismatch("X 容量上界式溢出".to_owned()))?;
+        }
+        let bound = bound.checked_add(2).ok_or_else(|| mismatch("X 容量上界式溢出".to_owned()))?;
         if self.x_max < bound {
             return Err(mismatch(format!("x_max={} < 上界式 {}", self.x_max, bound)));
         }
@@ -428,6 +427,10 @@ impl EncoderManifest {
             })
             .collect();
         for (path, field) in &calibration.fields {
+            // 校准报告也含固定计数的分布统计，但这些统计不能覆盖已冻结的线性变换声明。
+            if FIXED_COUNT_SLOTS.iter().any(|(fixed_path, _)| *fixed_path == path.as_str()) {
+                continue;
+            }
             normalization.insert(
                 path.clone(),
                 NormalizationField {
@@ -562,6 +565,21 @@ mod tests {
     }
 
     #[test]
+    fn calibration_statistics_cannot_override_fixed_count_transforms() {
+        let mut report = calibration_report();
+        for (path, _) in FIXED_COUNT_SLOTS {
+            report.fields.insert(path.to_owned(), report.fields["global.round"].clone());
+        }
+        let manifest = EncoderManifest::from_calibration(&report, &profile()).unwrap();
+        manifest.validate().unwrap();
+        for (path, divisor) in FIXED_COUNT_SLOTS {
+            let field = &manifest.normalization[path];
+            assert_eq!(field.transform, TransformKind::FixedCount { divisor });
+            assert!(field.fitted.is_none(), "{path} 的统计值不得变成拟合常数");
+        }
+    }
+
+    #[test]
     fn missing_calibration_field_is_reported_not_defaulted() {
         let mut report = calibration_report();
         report.fields.clear();
@@ -599,6 +617,26 @@ mod tests {
         let mut spec = ProfileSpec::from(&profile());
         spec.s_max = 8;
         assert!(spec.validate().is_err(), "s_max 必须至少等于 e_max");
+    }
+
+    #[test]
+    fn profile_x_bound_counts_raw_once_and_rejects_overflow() {
+        let mut spec = ProfileSpec::from(&profile());
+        let bound = BASELINE_64.v_max
+            + 15 * BASELINE_64.h_max
+            + 9 * BASELINE_64.e_max
+            + 3 * BASELINE_64.q_max
+            + 3 * BASELINE_64.s_max
+            + 2;
+        assert_eq!(bound, 42_754);
+        spec.name = "test-exact-x-bound".to_owned();
+        spec.x_max = bound;
+        assert!(spec.validate().is_ok(), "raw 已计入 15H/9E/3Q/3S，不应重复计费");
+        spec.x_max = bound - 1;
+        assert!(spec.validate().is_err());
+        spec.h_max = usize::MAX;
+        spec.x_max = usize::MAX;
+        assert!(spec.validate().is_err(), "上界式溢出不能由 usize::MAX 饱和值掩盖");
     }
 
     #[test]

@@ -51,12 +51,13 @@ pub fn apply_transform(value: f64, kind: TransformKind, s_f: f64, c_f: f64) -> f
     }
 }
 
-/// f64 → f32（Rust `as` 即 IEEE 最近偶数舍入）；仅接受有限输入。
+/// f64 → f32（Rust `as` 即 IEEE 最近偶数舍入）；输入与舍入结果都必须有限。
 pub fn to_f32_checked(value: f64, path: &str) -> Result<f32, EncodeError> {
-    if !value.is_finite() {
+    let rounded = value as f32;
+    if !value.is_finite() || !rounded.is_finite() {
         return Err(EncodeError::NonFiniteValue { path: path.to_owned() });
     }
-    Ok(value as f32)
+    Ok(rounded)
 }
 
 /// i64 → f64；用于把机制整数送入数值通道，保留有符号语义（负属性、`round_pos=-1`）。
@@ -98,6 +99,19 @@ mod tests {
         assert!(to_f32_checked(f64::NAN, "x").is_err());
         assert!(to_f32_checked(f64::INFINITY, "x").is_err());
         assert_eq!(to_f32_checked(1.0, "x").unwrap(), 1.0f32);
+    }
+
+    #[test]
+    fn to_f32_rejects_finite_values_that_overflow_after_rounding() {
+        for value in [f64::MAX, -f64::MAX] {
+            assert!(value.is_finite());
+            assert!(matches!(
+                to_f32_checked(value, "x"),
+                Err(EncodeError::NonFiniteValue { ref path }) if path == "x"
+            ));
+        }
+        assert_eq!(to_f32_checked(f64::from(f32::MAX), "x").unwrap(), f32::MAX);
+        assert_eq!(to_f32_checked(-0.0, "x").unwrap().to_bits(), (-0.0f32).to_bits());
     }
 
     #[test]

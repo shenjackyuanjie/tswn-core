@@ -8,10 +8,9 @@
 //! FeatureEncoder::encode_into(state, batch_index, batch)  // 批槽位写入
 //! ```
 //!
-//! 约束（外部评审 3.1）：manifest 在初始化阶段校验；每次编码先检查 schema、引用、词表、
-//! 可空分支和容量，再填充目标缓冲；错误不暴露“部分新数据、部分上一次数据”的结果
-//! （写入前先 [`EncodedBatch::clear_slot`] 恢复 padding）；同一 state 放在不同 batch 位置
-//! 不改变其有效内容。
+//! 约束（外部评审 3.1）：manifest 在初始化阶段校验；目标槽位先恢复 padding，随后检查
+//! schema、引用、可空分支与容量，再写入字段。校验或写入返回错误时再次清理目标槽位，
+//! 不暴露部分结果，也不影响相邻批槽位；同一 state 放在不同 batch 位置不改变其有效内容。
 //!
 //! lane / state / slot / list / extra 四族的张量写入按 handoff 分块计划在后续提交追加；
 //! 本文件的校验部分已覆盖全部引用域（含 charm `group_id` 与槽内 U64 实体引用）。
@@ -20,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
 use crate::encoder::batch::{CapacityDims, EncodedBatch};
-use crate::encoder::capacity::{CAPACITY_DIMS, CapacityMeasure};
+use crate::encoder::capacity::{CAPACITY_DIMS, CapacityMeasure, runtime_team_ids};
 use crate::encoder::error::EncodeError;
 use crate::encoder::manifest::{EncoderManifest, FIXED_COUNT_SLOTS, ProfileSpec, SupportDomain, UNSUPPORTED_PAYLOAD_KINDS};
 use crate::encoder::numeric::{TransformKind, normalize_fitted, normalize_fixed_count, to_f32_checked};
@@ -249,7 +248,8 @@ impl FeatureEncoder {
         Ok(batch)
     }
 
-    /// 批槽位写入；写入前先恢复 padding，失败不会留下半新半旧的槽位。
+    /// 批槽位写入；状态校验或字段写入失败时，目标槽位整体恢复 padding。
+    /// profile 不匹配或 batch_index 越界属于调用错误，不修改任何槽位。
     pub fn encode_into(&self, state: &BattleModelState, batch_index: usize, out: &mut EncodedBatch) -> Result<(), EncodeError> {
         if out.dims() != &self.profile.dims() {
             return Err(EncodeError::ManifestMismatch {
@@ -257,13 +257,20 @@ impl FeatureEncoder {
                 detail: "批缓冲容量与 manifest 声明不一致".to_owned(),
             });
         }
-        self.validate_state(state)?;
-        let index = self.build_index(state)?;
         out.clear_slot(batch_index)?;
-        self.write_global(state, &index, batch_index, out)?;
-        self.write_entity_family(state, &index, batch_index, out)?;
-        self.write_template_family(&index, batch_index, out)?;
-        Ok(())
+        let result = (|| -> Result<(), EncodeError> {
+            self.validate_state(state)?;
+            let index = self.build_index(state)?;
+            self.write_global(state, &index, batch_index, out)?;
+            self.write_entity_family(state, &index, batch_index, out)?;
+            self.write_template_family(&index, batch_index, out)?;
+            Ok(())
+        })();
+        if result.is_err() {
+            // 词表、免疫分类与数值校验也可能在写入过程中失败，不能留下已置 1 的 mask。
+            out.clear_slot(batch_index)?;
+        }
+        result
     }
 
     // ---------------------------------------------------------------- 校验
@@ -294,7 +301,8 @@ impl FeatureEncoder {
         }
         let mut ids: BTreeSet<u32> = BTreeSet::new();
         for (row, entity) in state.entities.iter().enumerate() {
-            if !ids.insert(entity.id.0) {
+            // 稀疏 ID 可以大于实体行数，但必须落在包含预留空洞的槽范围内。
+            if entity.id.0 as usize >= state.entity_slot_count || !ids.insert(entity.id.0) {
                 return Err(EncodeError::InvalidState {
                     path: format!("entities[{row}].id"),
                 });
@@ -448,14 +456,8 @@ impl FeatureEncoder {
                 template_rows.push(template);
             }
         }
-        // runtime team 关系域：world 团队行 ∪ runtime.team ∪ template.team（含蓝图），按原值升序。
-        let mut teams: BTreeSet<usize> = (0..state.world.team_roster.len().max(state.world.team_alive.len())).collect();
-        for entity in &state.entities {
-            teams.insert(entity.runtime.team);
-        }
-        for template in &template_rows {
-            teams.insert(template.team);
-        }
+        // runtime team 关系域与容量计费共用同一个集合，包含蓝图和空 world 团队行。
+        let teams = runtime_team_ids(state);
         let runtime_teams: BTreeMap<usize, usize> = teams.iter().copied().enumerate().map(|(row, raw)| (raw, row)).collect();
         // PlrId 相等关系键：模板表行序首次出现分配。
         let mut player_keys: BTreeMap<PlrId, usize> = BTreeMap::new();
@@ -647,9 +649,13 @@ impl FeatureEncoder {
                 let cats = out.i32_row_mut("template_cat", batch_index)?;
                 cats[row * 5] = self.dense_id("template.kind", template.kind.0, &format!("{prefix}.kind"))?;
                 if let Some(boss_kind) = identity.boss_kind {
+                    let raw = u32::try_from(boss_kind).map_err(|_| EncodeError::UnknownCategory {
+                        path: format!("{prefix}.identity.boss_kind"),
+                        raw: boss_kind.to_string(),
+                    })?;
                     cats[row * 5 + 1] = self.dense_id(
                         "template.identity.boss_kind",
-                        boss_kind as u32,
+                        raw,
                         &format!("{prefix}.identity.boss_kind"),
                     )?;
                 }
@@ -745,6 +751,12 @@ impl FeatureEncoder {
 
     /// 逐字段 `N_f`；manifest 缺该字段或声明不是 fitted 时报错，不套用默认常数。
     fn fitted_value(&self, value: f64, path: &str, prefix: &str) -> Result<f32, EncodeError> {
+        // 必须检查变换前的原值；否则 ±Inf 会被 clamp 伪装成有限的 ±4。
+        if !value.is_finite() {
+            return Err(EncodeError::NonFiniteValue {
+                path: format!("{prefix}{path}"),
+            });
+        }
         let field = self.manifest.normalization.get(path).ok_or_else(|| EncodeError::MissingCalibration {
             path: format!("{prefix}{path}"),
         })?;
@@ -989,13 +1001,11 @@ mod tests {
         }
     }
 
-    /// 合成一份覆盖全部 Fitted 槽位的校准报告。
+    /// 合成覆盖全部数值槽的报告，包含真实采集器也会输出的固定计数统计。
     fn manifest() -> EncoderManifest {
         let mut fields = BTreeMap::new();
-        for (path, kind) in required_normalization() {
-            if kind == TransformKind::Fitted {
-                fields.insert(path.to_owned(), calibration_field());
-            }
+        for (path, _) in required_normalization() {
+            fields.insert(path.to_owned(), calibration_field());
         }
         let report = CalibrationReport {
             schema: CALIBRATION_SCHEMA.to_owned(),
@@ -1034,6 +1044,7 @@ mod tests {
         for index in 0..extra {
             let mut entity = cloned.entities[index % base].clone();
             entity.id = EntityIdx(10_000 + index as u32);
+            cloned.entity_slot_count = cloned.entity_slot_count.max(entity.id.0 as usize + 1);
             cloned.entities.push(entity);
         }
         cloned
@@ -1150,15 +1161,66 @@ mod tests {
         for (index, entity) in at_limit.entities.iter_mut().enumerate() {
             entity.runtime.team = 100 + index;
         }
+        assert_eq!(CapacityMeasure::measure(&at_limit).r, 32);
         assert!(encoder.encode(&at_limit).is_ok(), "R=32 必须可编码");
         let mut over = replicate_entities(&state, 31 - base);
         for (index, entity) in over.entities.iter_mut().enumerate() {
             entity.runtime.team = 100 + index;
         }
+        assert_eq!(CapacityMeasure::measure(&over).r, 33);
         assert!(matches!(
             encoder.encode(&over).unwrap_err(),
             EncodeError::CapacityExceeded { ref path, limit: 32, .. } if path == "runtime_team"
         ));
+    }
+
+    #[test]
+    fn runtime_team_measure_matches_written_union_with_blueprints_and_empty_rows() {
+        let mut state = battle_state(0);
+        state.world.team_roster.resize(3, Vec::new());
+        state.world.team_alive.resize(4, Vec::new());
+        for entity in &mut state.entities {
+            entity.runtime.team = 2;
+            entity.template.team = 6;
+            entity.slots.clear();
+        }
+        state.template_slots.clear();
+        state.battle_slots.clear();
+        let mut blueprint = state.entities[0].template.clone();
+        blueprint.team = 1000;
+        state.entities[0].slots.push(crate::runtime::model_state::ModelSlot {
+            slot_id: 0,
+            bool_value: None,
+            i64_value: None,
+            u64_value: None,
+            template: Some(blueprint.clone()),
+        });
+        blueprint.team = 2000;
+        state.template_slots.push(crate::runtime::model_state::ModelSlot {
+            slot_id: 0,
+            bool_value: None,
+            i64_value: None,
+            u64_value: None,
+            template: Some(blueprint),
+        });
+        // 集合为 {0,1,2,3,6,1000,2000}；计量的是关系行数，不是最大原编号加一。
+        let measure = CapacityMeasure::measure(&state);
+        assert_eq!(measure.r, 7);
+        let batch = encoder().encode(&state).unwrap();
+        let mask = batch.u8_all("runtime_team_mask").unwrap();
+        assert_eq!(&mask[..7], &[1; 7]);
+        assert!(mask[7..].iter().all(|value| *value == 0));
+        for row in 0..measure.e {
+            assert_eq!(batch.i32_all("entity_team").unwrap()[2 * row + 1], 2);
+            assert_eq!(batch.i32_all("template_team").unwrap()[row], 4);
+        }
+        assert_eq!(batch.i32_all("template_team").unwrap()[measure.e], 5);
+        assert_eq!(batch.i32_all("template_team").unwrap()[measure.e + 1], 6);
+        assert_eq!(measure.h, measure.e + 2);
+        assert_eq!(
+            batch.u8_all("template_mask").unwrap().iter().filter(|value| **value == 1).count(),
+            measure.h
+        );
     }
 
     #[test]
@@ -1203,6 +1265,21 @@ mod tests {
     }
 
     #[test]
+    fn entity_ids_must_fit_entity_slot_count() {
+        let mut state = battle_state(0);
+        let max_id = state.entities.iter().map(|entity| entity.id.0 as usize).max().unwrap();
+        state.entity_slot_count = max_id + 1;
+        assert!(encoder().encode(&state).is_ok());
+        for invalid_count in [max_id, 0] {
+            state.entity_slot_count = invalid_count;
+            assert!(matches!(
+                encoder().encode(&state).unwrap_err(),
+                EncodeError::InvalidState { ref path } if path.ends_with(".id")
+            ));
+        }
+    }
+
+    #[test]
     fn reserved_flag_bits_are_rejected_and_named_bits_are_written() {
         let mut state = battle_state(2);
         state.entities[0].compressed_state_flags = 0b0001_0101;
@@ -1218,12 +1295,15 @@ mod tests {
 
     #[test]
     fn non_finite_value_is_rejected() {
-        let mut state = battle_state(2);
-        state.entities[0].runtime.at_boost_bits = f64::NAN.to_bits();
-        assert!(matches!(
-            encoder().encode(&state).unwrap_err(),
-            EncodeError::NonFiniteValue { .. }
-        ));
+        let encoder = encoder();
+        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let mut state = battle_state(2);
+            state.entities[0].runtime.at_boost_bits = value.to_bits();
+            assert!(matches!(encoder.encode(&state).unwrap_err(), EncodeError::NonFiniteValue { .. }));
+            let mut state = battle_state(2);
+            state.entities[0].template.at_boost_bits = value.to_bits();
+            assert!(matches!(encoder.encode(&state).unwrap_err(), EncodeError::NonFiniteValue { .. }));
+        }
     }
 
     #[test]
@@ -1233,6 +1313,18 @@ mod tests {
         assert!(matches!(
             encoder().encode(&state).unwrap_err(),
             EncodeError::UnknownCategory { .. }
+        ));
+    }
+
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn oversized_boss_kind_does_not_alias_a_valid_category() {
+        let mut state = battle_state(0);
+        state.entities[0].template.identity.boss_kind = Some((1u64 << 32) as usize);
+        assert!(matches!(
+            encoder().encode(&state).unwrap_err(),
+            EncodeError::UnknownCategory { ref path, ref raw }
+                if path == "templates[0].identity.boss_kind" && raw == "4294967296"
         ));
     }
 
@@ -1361,6 +1453,8 @@ mod tests {
         let numbers = batch.f32_all("entity_num").unwrap();
         assert_eq!(numbers[19], normalize_fitted(3.0, 4.0, 64.0) as f32);
         assert_eq!(numbers[21], normalize_fitted(7.0, 4.0, 64.0) as f32);
+        assert_eq!(numbers[22], normalize_fitted(8.0, 4.0, 64.0) as f32);
+        assert_eq!(numbers[23], normalize_fitted(9.0, 4.0, 64.0) as f32);
         // attract 走 f64 还原后归一化（s_f=4、c_f=64）。
         let expected = normalize_fitted(2.5, 4.0, 64.0) as f32;
         assert!((numbers[20] - expected).abs() < 1e-6);
@@ -1485,6 +1579,7 @@ mod tests {
         for (index, entity) in state.entities.iter().enumerate() {
             renames.insert(entity.id.0, 500 + index as u32 * 7);
         }
+        state.entity_slot_count = state.entity_slot_count.max(*renames.values().max().unwrap() as usize + 1);
         for entity in &mut state.entities {
             entity.id = EntityIdx(renames[&entity.id.0]);
             entity.runtime.owner = EntityIdx(renames[&entity.runtime.owner.0]);
@@ -1579,6 +1674,82 @@ mod tests {
     }
 
     #[test]
+    fn failed_encode_clears_only_target_slot_and_allows_reuse() {
+        let valid = battle_state(0);
+        let encoder = encoder();
+        let standalone = encoder.encode(&valid).unwrap();
+        let padding = EncodedBatch::new(encoder.profile(), 1);
+        for case in 0..4 {
+            let mut invalid = valid.clone();
+            match case {
+                0 => invalid.schema_version += 1,
+                1 => invalid.entities[0].runtime.at_boost_bits = f64::NAN.to_bits(),
+                2 => invalid.entities[0].template.kind = crate::runtime::extension::PlayerKindId(9999),
+                _ => {
+                    let entry = crate::runtime::model_state::ModelImmunity {
+                        status: "fire".to_owned(),
+                        threshold: 0,
+                    };
+                    invalid.entities[0].template.identity.immunity = vec![entry.clone(), entry];
+                }
+            }
+            let mut batch = EncodedBatch::new(encoder.profile(), 3);
+            // 所有 dtype、所有张量都写入哨兵，确保清理错误不会被本来就是 padding 的邻居掩盖。
+            for spec in TENSOR_SPECS {
+                for slot in 0..3 {
+                    match spec.dtype {
+                        Dtype::F32 => batch.f32_row_mut(spec.name, slot).unwrap().fill((slot + 1) as f32),
+                        Dtype::I32 => batch.i32_row_mut(spec.name, slot).unwrap().fill((slot + 1) as i32),
+                        Dtype::U8 => batch.u8_row_mut(spec.name, slot).unwrap().fill((slot + 1) as u8),
+                        Dtype::U32 => batch.u32_row_mut(spec.name, slot).unwrap().fill((slot + 1) as u32),
+                    }
+                }
+            }
+            encoder.encode_into(&valid, 1, &mut batch).unwrap();
+            let before: Vec<_> = TENSOR_SPECS.iter().map(|spec| tensor_bytes(&batch, spec.name)).collect();
+            let error = encoder.encode_into(&invalid, 1, &mut batch).unwrap_err();
+            match case {
+                0 => assert!(matches!(error, EncodeError::SchemaMismatch { .. })),
+                1 => assert!(matches!(error, EncodeError::NonFiniteValue { .. })),
+                2 => assert!(matches!(error, EncodeError::UnknownCategory { .. })),
+                _ => assert!(matches!(error, EncodeError::DuplicateCategory { .. })),
+            }
+            for (spec, previous) in TENSOR_SPECS.iter().zip(&before) {
+                let empty = tensor_bytes(&padding, spec.name);
+                let stride = empty.len();
+                let after = tensor_bytes(&batch, spec.name);
+                assert_eq!(&after[..stride], &previous[..stride], "{} 左邻居被修改", spec.name);
+                assert_eq!(&after[stride..2 * stride], empty.as_slice(), "{} 失败后不是 padding", spec.name);
+                assert_eq!(&after[2 * stride..], &previous[2 * stride..], "{} 右邻居被修改", spec.name);
+            }
+            encoder.encode_into(&valid, 1, &mut batch).unwrap();
+            for (spec, previous) in TENSOR_SPECS.iter().zip(&before) {
+                let expected = tensor_bytes(&standalone, spec.name);
+                let stride = expected.len();
+                let after = tensor_bytes(&batch, spec.name);
+                assert_eq!(&after[stride..2 * stride], expected.as_slice(), "{} 失败后复用不一致", spec.name);
+                assert_eq!(&after[..stride], &previous[..stride]);
+                assert_eq!(&after[2 * stride..], &previous[2 * stride..]);
+            }
+        }
+    }
+
+    #[test]
+    fn out_of_range_encode_does_not_modify_batch() {
+        let state = battle_state(0);
+        let encoder = encoder();
+        let mut batch = encoder.encode(&state).unwrap();
+        let before: Vec<_> = TENSOR_SPECS.iter().map(|spec| tensor_bytes(&batch, spec.name)).collect();
+        assert!(matches!(
+            encoder.encode_into(&state, 1, &mut batch).unwrap_err(),
+            EncodeError::BatchSlotOutOfRange { batch: 1, limit: 1 }
+        ));
+        for (spec, expected) in TENSOR_SPECS.iter().zip(before) {
+            assert_eq!(tensor_bytes(&batch, spec.name), expected, "{} 被越界调用修改", spec.name);
+        }
+    }
+
+    #[test]
     fn reused_slot_does_not_keep_stale_values() {
         let mut rich = battle_state(8);
         rich.entities[0].runtime.protect_to = Some(rich.entities[1].id);
@@ -1627,6 +1798,7 @@ mod tests {
             encoder.encode_into(&state, 0, &mut batch).unwrap_err(),
             EncodeError::ManifestMismatch { .. }
         ));
+        assert_eq!(batch.u8_all("entity_mask").unwrap()[0], 1, "profile 错配不能修改缓冲");
     }
 
     // ------------------------------------------------------------ manifest 门禁

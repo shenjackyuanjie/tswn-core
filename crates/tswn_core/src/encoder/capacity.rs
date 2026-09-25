@@ -13,6 +13,7 @@
 
 use crate::runtime::model_state::{BattleModelState, ModelSkills, ModelTemplate};
 use serde::Serialize;
+use std::collections::BTreeSet;
 
 /// 容量维度名；顺序与规格第 4 节的容量表一致。
 pub const CAPACITY_DIMS: [&str; 9] = ["e", "t", "r", "h", "l", "s", "q", "v", "x"];
@@ -98,7 +99,7 @@ impl CapacityMeasure {
         let mut measure = CapacityMeasure {
             e: state.entities.len(),
             t: state.input_teams.len(),
-            r: state.world.team_roster.len().max(state.world.team_alive.len()),
+            r: runtime_team_ids(state).len(),
             h: state.entities.len(),
             ..CapacityMeasure::default()
         };
@@ -170,6 +171,29 @@ impl CapacityMeasure {
         measure.x = saturate(&[clone_leaves, protect, assassinate, measure.q, raw]);
         measure
     }
+}
+
+/// runtime team 的唯一关系域：world 行号 ∪ runtime.team ∪ 全部模板的 team。
+///
+/// 包含实体槽蓝图及全局槽模板；空 world 团队行同样存在。容量计费与编码重映射
+/// 共用此函数，避免 stats 只统计 world 行而低报稀疏团队编号的实际占用。
+pub(crate) fn runtime_team_ids(state: &BattleModelState) -> BTreeSet<usize> {
+    let mut teams: BTreeSet<usize> = (0..state.world.team_roster.len().max(state.world.team_alive.len())).collect();
+    for entity in &state.entities {
+        teams.insert(entity.runtime.team);
+        teams.insert(entity.template.team);
+        for slot in &entity.slots {
+            if let Some(template) = &slot.template {
+                teams.insert(template.team);
+            }
+        }
+    }
+    for slot in state.template_slots.iter().chain(state.battle_slots.iter()) {
+        if let Some(template) = &slot.template {
+            teams.insert(template.team);
+        }
+    }
+    teams
 }
 
 /// 饱和求和；用于容量计费，避免畸形输入造成加法溢出。
