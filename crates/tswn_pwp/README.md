@@ -6,7 +6,7 @@
 
 - `generate` / `validate` / `storage`：数据集生成、提交与完整性校验
 - `sampling` / `random` / `input`：确定性抽样、阵容输入与切分
-- `stats` / `bench`：数据分布与生成规模统计
+- `stats` / `bench` / `calibrate`：数据分布、生成规模统计与逐字段标量校准
 - 后续扩展：`encoder`、`baseline`、`inference`
 
 相关文档入口：
@@ -106,6 +106,22 @@ target/release/tswn-pwp.exe bench --out target/winprob-demo `
 首次生成可以使用新目录或已有空目录；已有 `manifest.json` 时需要 `--resume`，且输入、配置和可执行文件摘要必须匹配，否则应换目录。非空但没有 manifest 的目录不能通过 `--resume` 接续。
 10k/100k 规模的实际结果见
 [winprob 数据集生成规模基线](../../docs/perf/reports/winprob-dataset-scale-baseline.md)。
+
+## 标量校准
+
+`calibrate` 只读已提交分片，默认只用 `train` 切分且标签非空的行，采集逐字段标量分布并拟合
+`encoder-manifest` 的归一化常数（`s_f = max(1, Q50(|x|))`、`c_f = max(1, Q99(|x|))`）：
+
+```powershell
+target/release/tswn-pwp.exe calibrate --out target/winprob-100k --json-out target/encoder-calibration.json
+```
+
+输出 JSON 记录每个字段的样本数、min/max/p50/p99 与 `s_f`/`c_f`。覆盖范围是
+[FeatureEncoder 规格](../../docs/design/feature-encoder-spec.md) 第 5 节"逐字段标量"的第一批：
+全局机制计数、实体 runtime 与模板标量、lane 等级与 boost、状态 priority。分类、引用、bit、
+精确注册序和槽内数值不参与统计。缺字段时不写默认值，由 encoder 返回 `MissingCalibration`；
+`--keep-unlabeled` 可保留空标签行，`--print-fields` 打印逐字段摘要。校准只使用 train 行，
+Python 训练侧只加载结果，不重新拟合。
 
 ## Python 读取
 

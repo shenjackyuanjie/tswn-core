@@ -1,5 +1,6 @@
 //! 确定性的战斗状态生成、Parquet 分片与完整性校验。
 mod bench;
+mod calibrate;
 mod generate;
 mod input;
 mod random;
@@ -16,10 +17,7 @@ use tswn_core::cli_api::battle::{BattleModelFrame, BattleModelOutcome};
 use tswn_core::runtime::model_state::BattleModelState;
 
 #[derive(Debug, Parser)]
-#[command(
-    name = "tswn-pwp",
-    about = "生成或校验战斗机制状态数据集"
-)]
+#[command(name = "tswn-pwp", about = "生成或校验战斗机制状态数据集")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -36,6 +34,8 @@ pub enum Command {
     Stats(stats::StatsArgs),
     /// 采集生成与校验的规模基准，不修改数据。
     Bench(bench::BenchArgs),
+    /// 拟合逐字段归一化常数，输出 encoder-manifest 的数值部分，不修改数据。
+    Calibrate(calibrate::CalibrateArgs),
 }
 
 #[derive(Debug, Clone, Args)]
@@ -128,6 +128,7 @@ pub fn run(cli: Cli) -> Result<()> {
         }
         Command::Stats(args) => stats::run(&args),
         Command::Bench(args) => bench::run(&args),
+        Command::Calibrate(args) => calibrate::run(&args),
     }
 }
 

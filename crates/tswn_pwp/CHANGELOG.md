@@ -13,6 +13,7 @@
 - 输出嵌套 Parquet 分片及 manifest、summary、complete/failure 记录；使用临时目录、文件锁、摘要回读和双遍状态核对保证提交完整性。
 - 支持 `--resume` 安全续跑，并验证输入、配置、可执行文件摘要和已提交分片。
 - 新增 `validate`、`stats` 和 `bench` 子命令，覆盖引用完整性、标签、抽样、分布、吞吐、RSS、压缩比和行组规模审计。
+- 新增 `calibrate` 子命令：只读 `train` 切分且标签非空的行，采集逐字段标量分布并拟合 `s_f`/`c_f`，作为 `encoder-manifest` 的数值来源；缺字段不写默认值，由 encoder 报 `MissingCalibration`。
 
 ### 性能
 
