@@ -1,4 +1,6 @@
-# 战斗状态数据生成器
+# tswn-pwp 数据集生成器
+
+本 crate 是 **tswn-pwp（player winchance predictor）** 的数据生成阶段，负责把 Rust Runtime 的机制状态采样为可校验的 Parquet 数据集；它不包含 FeatureEncoder、模型训练或线上推理。
 
 相关文档入口：
 

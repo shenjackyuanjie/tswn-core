@@ -1,10 +1,10 @@
-# FeatureEncoder 设计规格
+# tswn-pwp FeatureEncoder 设计规格
 
 [返回设计索引](README.md)
 
 本文承接 [状态导出与数据生成契约](battle-analyze.md)，字段语义以 [BattleModelState Runtime 审计](battle-model-state-audit.md) 为准；生成器和 Parquet 文件说明见 [winprob 数据集 README](../../crates/tswn_winprob_dataset/README.md)。
 
-状态：契约草案，供实施前复核；本轮只写文档。输入 schema v1，拟议 encoder v1。
+状态：契约草案，供实施前复核；本轮只写文档。输入 schema v1，拟议 encoder v1。本文是 **tswn-pwp（player winchance predictor）** 的特征编码层规格，不定义最终神经网络结构。
 
 ## 1. 目标与边界
 
