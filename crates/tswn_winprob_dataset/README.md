@@ -1,6 +1,12 @@
 # 战斗状态数据生成器
 
-相关文档入口：[设计索引](../../docs/design/README.md) · [BattleModelState 审计](../../docs/design/battle-model-state-audit.md) · [FeatureEncoder 规格](../../docs/design/feature-encoder-spec.md) · [规模基线](../../docs/perf/reports/winprob-dataset-scale-baseline.md)。仓库整体文档从 [docs/README.md](../../docs/README.md) 开始。
+相关文档入口：
+
+- [仓库文档中心](../../docs/README.md)
+- [设计索引](../../docs/design/README.md)
+- [BattleModelState 审计](../../docs/design/battle-model-state-audit.md)
+- [FeatureEncoder 规格](../../docs/design/feature-encoder-spec.md)
+- [规模基线](../../docs/perf/reports/winprob-dataset-scale-baseline.md)
 
 生成器直接运行 Rust 战斗引擎，按初始状态和可见帧末采样，输出嵌套 Parquet。
 它与 `BattleSession` 共用推进和终止策略，不构造回放 DTO、图标或玩家展示快照。
