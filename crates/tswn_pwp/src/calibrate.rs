@@ -128,7 +128,8 @@ fn quantile(sorted: &[f64], q: f64) -> f64 {
 
 /// 采集一个 state 里已冻结的第一批逐字段标量。
 fn collect_state(state: &BattleModelState, scalars: &mut Scalars) {
-    scalars.push_int("global.round", state.round as i64);
+    // `round` 是 u64：直接进 f64，避免 `as i64` 在极值下变成有符号回绕。
+    scalars.push("global.round", state.round as f64);
     scalars.push_count("global.entity_count", state.entities.len());
     scalars.push_count("global.entity_slot_count", state.entity_slot_count);
     scalars.push_count(
@@ -149,7 +150,7 @@ fn collect_state(state: &BattleModelState, scalars: &mut Scalars) {
     );
     scalars.push_count("global.template_slot_count", state.template_slots.len());
     scalars.push_count("global.battle_slot_count", state.battle_slots.len());
-    scalars.push_int("global.world.alive_group_count", state.world.alive_group_count as i64);
+    scalars.push("global.world.alive_group_count", state.world.alive_group_count as f64);
     scalars.push_int("global.world.round_pos", state.world.round_pos as i64);
 
     for entity in &state.entities {

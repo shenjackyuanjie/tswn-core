@@ -649,7 +649,9 @@ git diff --check
 3. 已在 `docs/reference/public-api.md:10–14` 修正：新增 BattleModelSession 数据集入口，说明生成器在 PreparedRunner 之上两遍运行，以 next_frame() 取可见帧边界、model_state() 导出状态（G:195、208、213）；Runner/PreparedRunner 是执行内核入口，而不是数据集直接驱动接口。
 4. W:119 写计数“唯一用途”为目标选择，W:128 又补充 post-action 用法；本稿保留计数，且遵循 W:174 禁止用作 mask。
 5. 数量统计不含蓝图技能、复合载荷叶子和标量尺度（S:187–209）；这是本稿容量与数值 manifest 不能立即冻结的原因。Boss 已按第 9 节移出本轮范围，不再是阻塞项。
-6. Parquet 读回的 struct **子字段不继承父级 null**：`clone_build.score_skill_boost_plan` 全为 `None` 时，它的 `initially_boosted_mask` 与 `slot_boosts` 仍被判为有效（实测父级 valid=0、孙字段 valid=全部行）。判断可选 struct 是否存在必须检查**该 struct 自身**的 validity；`scripts/measure_encoder_capacity.py` 已按此修正，100k 池的 `X_required` 峰值由 2271 降为 1671，与 `tswn-pwp stats` 的上界计费（1737）方向一致（差值来自前者按实际 ref 槽、后者按每槽一条 ref 计费）。第 4 节 8 人池与深测表的 X 列仍是修正前的数值，方向保守。
+6. Parquet 读回的 struct **子字段不继承父级 null**：`clone_build.score_skill_boost_plan` 全为 `None` 时，它的 `initially_boosted_mask` 与 `slot_boosts` 仍被判为有效（实测父级 valid=0、孙字段 valid=全部行）。判断可选 struct 是否存在必须检查**该 struct 自身**的 validity；`scripts/measure_encoder_capacity.py` 已按此修正，100k 池的 `X_required` 峰值由 2271 降为 1671，与 `tswn-pwp stats` 的上界计费（1737）方向一致（差值来自前者按实际 ref 槽、后者按每槽一条 ref 计费）。第 4 节的 8 人池两张表已按修正脚本重测（X 峰值 3335 → 2465），深测表未重测、其 X 列仍是修正前数值。
+
+7. `BattleModelState::validate` **不是 encoder 校验的替代品**：它只检查了部分引用（如 charm `target`），没有覆盖 charm 的 `group_id` 实体引用、槽内 `U64` 实体引用与全部引用域语义。encoder 必须自己完成引用域、presence、词表与容量校验（`UnknownSlotSemantics`、`InvalidSlotValue` 等），不能以“数据已通过 validate”为由跳过。
 
 ## 17. 参考来源表
 

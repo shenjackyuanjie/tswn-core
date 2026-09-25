@@ -145,20 +145,32 @@ impl CapacityMeasure {
         let input_members = state.input_teams.iter().map(Vec::len).sum::<usize>();
 
         measure.l = lanes;
-        measure.v = lane_lists
-            + world_lists
-            + 3 * measure.s
-            + protect
-            + input_members
-            + state.ice_release_events.len()
-            + deferred
-            + measure.e;
+        // 计费一律用饱和算术：畸形输入不该让计数在 debug 下 panic、在 release 下回绕。
+        measure.v = saturate(&[
+            lane_lists,
+            world_lists,
+            3usize.saturating_mul(measure.s),
+            protect,
+            input_members,
+            state.ice_release_events.len(),
+            deferred,
+            measure.e,
+        ]);
         // raw：8e + 10h + 3s + 2q + 2；每槽再按至多一条实体 ref 计费。
-        let raw = 8 * measure.e + 10 * measure.h + 3 * measure.s + 2 * measure.q + 2;
-        measure.x = clone_leaves + protect + assassinate + measure.q + raw;
+        let raw = saturate(&[
+            8usize.saturating_mul(measure.e),
+            10usize.saturating_mul(measure.h),
+            3usize.saturating_mul(measure.s),
+            2usize.saturating_mul(measure.q),
+            2,
+        ]);
+        measure.x = saturate(&[clone_leaves, protect, assassinate, measure.q, raw]);
         measure
     }
 }
+
+/// 饱和求和；用于容量计费，避免畸形输入造成加法溢出。
+fn saturate(parts: &[usize]) -> usize { parts.iter().fold(0usize, |acc, part| acc.saturating_add(*part)) }
 
 /// 单个模板的 lane 总数、五类 lane list 条目数与 deferred 条目数。
 fn skill_counts(skills: &ModelSkills) -> (usize, usize, usize) {
