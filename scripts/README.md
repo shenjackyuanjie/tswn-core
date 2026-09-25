@@ -21,6 +21,20 @@
 python scripts/measure_encoder_capacity.py --dataset target/winprob-100k --out target/caps-100k.json
 ```
 
+## winprob_hp_baseline.py
+
+HP-only 胜率基线：只读 `samples.parquet`，把每支输入队伍的血量比例
+（`sum(存活成员 hp) / sum(该队全部成员的 max_hp)`，分母含已阵亡成员）softmax 成概率，
+按 split 与 progress 分桶报告 Log Loss／Brier／Top-1。不训练任何参数，用来确认数据集与标签可用，
+并作为后续模型的对照下界；`progress` 只参与分桶，不参与打分。
+基线定位见 [battle-analyze.md](../docs/design/battle-analyze.md)。
+
+```powershell
+python scripts/winprob_hp_baseline.py --dataset target/winprob-100k --json-out target/hp-baseline.json
+```
+
+`--limit N` 可只统计前 N 个样本，便于快速冒烟。
+
 ## check_runtime_release.py
 
 验证主 Runtime 的 release 独立性与行为回归：
