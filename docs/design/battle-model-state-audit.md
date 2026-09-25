@@ -1,5 +1,9 @@
 # BattleModelState v1：Runtime 状态审计
 
+[返回设计索引](README.md) · [状态导出与数据生成](battle-analyze.md) · [FeatureEncoder 规格](feature-encoder-spec.md)
+
+本文是 [状态导出与胜率数据生成契约](battle-analyze.md) 的字段级依据；它只审计 Runtime 状态，不重新定义 `BattleSession` 的推进或公开 API。
+
 审计边界是默认规则、初始化完成或完整主回合结束。导出目标是当前机制信息，不是用于恢复整个 Runtime 的存档格式。`ModelStateError` 拒绝不同注册表、非空效果队列、文本槽和无法映射的实体引用；高层 session 在失败后也拒绝导出。
 
 ## 字段来源

@@ -1,6 +1,6 @@
 # 战斗状态导出与胜率数据生成
 
-本文规定第一版状态导出和数据生成契约；字段审计见 [battle-model-state-audit.md](battle-model-state-audit.md)，运行命令见 [生成器说明](../../crates/tswn_winprob_dataset/README.md)。
+本文规定第一版状态导出和数据生成契约。它建立在 [BattleSession 重构计划](battle-session-plan.md) 与 [API 加固要求](battle-session-hardening.md) 已确定的推进语义上；字段审计见 [battle-model-state-audit.md](battle-model-state-audit.md)，固定张量映射见 [FeatureEncoder 规格](feature-encoder-spec.md)，运行命令见 [生成器说明](../../crates/tswn_winprob_dataset/README.md)。
 
 ## 目标与边界
 
