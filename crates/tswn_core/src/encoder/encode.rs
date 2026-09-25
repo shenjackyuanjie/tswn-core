@@ -653,11 +653,8 @@ impl FeatureEncoder {
                         path: format!("{prefix}.identity.boss_kind"),
                         raw: boss_kind.to_string(),
                     })?;
-                    cats[row * 5 + 1] = self.dense_id(
-                        "template.identity.boss_kind",
-                        raw,
-                        &format!("{prefix}.identity.boss_kind"),
-                    )?;
+                    cats[row * 5 + 1] =
+                        self.dense_id("template.identity.boss_kind", raw, &format!("{prefix}.identity.boss_kind"))?;
                 }
                 for (slot, value) in [
                     overrides.owner_resolution.map(owner_resolution_id),
@@ -1299,10 +1296,16 @@ mod tests {
         for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
             let mut state = battle_state(2);
             state.entities[0].runtime.at_boost_bits = value.to_bits();
-            assert!(matches!(encoder.encode(&state).unwrap_err(), EncodeError::NonFiniteValue { .. }));
+            assert!(matches!(
+                encoder.encode(&state).unwrap_err(),
+                EncodeError::NonFiniteValue { .. }
+            ));
             let mut state = battle_state(2);
             state.entities[0].template.at_boost_bits = value.to_bits();
-            assert!(matches!(encoder.encode(&state).unwrap_err(), EncodeError::NonFiniteValue { .. }));
+            assert!(matches!(
+                encoder.encode(&state).unwrap_err(),
+                EncodeError::NonFiniteValue { .. }
+            ));
         }
     }
 
@@ -1727,7 +1730,12 @@ mod tests {
                 let expected = tensor_bytes(&standalone, spec.name);
                 let stride = expected.len();
                 let after = tensor_bytes(&batch, spec.name);
-                assert_eq!(&after[stride..2 * stride], expected.as_slice(), "{} 失败后复用不一致", spec.name);
+                assert_eq!(
+                    &after[stride..2 * stride],
+                    expected.as_slice(),
+                    "{} 失败后复用不一致",
+                    spec.name
+                );
                 assert_eq!(&after[..stride], &previous[..stride]);
                 assert_eq!(&after[2 * stride..], &previous[2 * stride..]);
             }
