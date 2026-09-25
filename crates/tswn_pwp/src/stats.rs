@@ -5,6 +5,7 @@
 
 use crate::{
     BattleRow, DatasetConfig, SampleRow,
+    capacity::{BASELINE_64, CAPACITY_DIMS, CapacityMeasure},
     storage::{self},
 };
 use anyhow::{Context, Result};
@@ -119,11 +120,30 @@ pub struct ContentStats {
     pub clan_group: BTreeMap<u32, usize>,
 }
 
+/// 单维容量统计：上限、峰值与超限样本数。
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapacityDimStats {
+    pub limit: usize,
+    pub max: usize,
+    pub over_limit: usize,
+    /// 超限样本占比；这些样本会被 encoder 判 `CapacityExceeded`。
+    pub over_ratio: f64,
+}
+
+/// 按冻结 profile 的容量统计；计费式为上界口径，见 `capacity` 模块。
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapacityStats {
+    pub profile: String,
+    pub samples: usize,
+    pub dims: BTreeMap<String, CapacityDimStats>,
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DatasetStats {
     pub battles: BattleStats,
     pub samples: SampleStats,
     pub content: ContentStats,
+    pub capacity: CapacityStats,
 }
 
 /// 汇总一个已完成数据集；要求每个分片都已提交。
@@ -132,6 +152,16 @@ pub fn collect(out: &Path) -> Result<DatasetStats> {
     let total = config.cases.len() * config.games_per_matchup;
     let shard_count = total.div_ceil(config.battles_per_shard);
     let mut stats = DatasetStats::default();
+    stats.capacity.profile = BASELINE_64.name.to_owned();
+    for dim in CAPACITY_DIMS {
+        stats.capacity.dims.insert(
+            dim.to_owned(),
+            CapacityDimStats {
+                limit: BASELINE_64.limit(dim),
+                ..CapacityDimStats::default()
+            },
+        );
+    }
     let mut samples_per_battle = Series::default();
     let mut progress = Series::default();
     let mut sample_rounds = Series::default();
@@ -207,6 +237,15 @@ pub fn collect(out: &Path) -> Result<DatasetStats> {
             }
             state_entry_count.push(entries as u64);
             skill_count.push(lanes as u64);
+            let measure = CapacityMeasure::measure(state);
+            for dim in CAPACITY_DIMS {
+                let value = measure.value(dim);
+                let entry = stats.capacity.dims.get_mut(dim).expect("capacity dimension must be pre-seeded");
+                entry.max = entry.max.max(value);
+                if value > entry.limit {
+                    entry.over_limit += 1;
+                }
+            }
             Ok(())
         })
         .with_context(|| format!("读取分片 {index} 的样本表"))?;
@@ -221,6 +260,11 @@ pub fn collect(out: &Path) -> Result<DatasetStats> {
     stats.samples.entity_slot_count = entity_slot_count.finish();
     stats.samples.state_entry_count = state_entry_count.finish();
     stats.samples.skill_count = skill_count.finish();
+    stats.capacity.samples = stats.samples.total;
+    let total = stats.capacity.samples.max(1) as f64;
+    for entry in stats.capacity.dims.values_mut() {
+        entry.over_ratio = entry.over_limit as f64 / total;
+    }
     Ok(stats)
 }
 
@@ -272,6 +316,20 @@ pub fn print_report(stats: &DatasetStats, top: usize) {
     println!("- 模板 kind：{:?}", stats.content.player_kind);
     println!("- Boss kind：{:?}", stats.content.boss_kind);
     println!("- 阵营分组：{:?}", stats.content.clan_group);
+    println!();
+    println!("## 容量溢出（profile {}，上界计费）", stats.capacity.profile);
+    println!();
+    println!("| 维度 | 上限 | 峰值 | 超限样本 | 占比 |");
+    println!("| --- | --- | --- | --- | --- |");
+    for (dim, entry) in &stats.capacity.dims {
+        println!(
+            "| {dim} | {} | {} | {} | {:.4}% |",
+            entry.limit,
+            entry.max,
+            entry.over_limit,
+            entry.over_ratio * 100.0
+        );
+    }
 }
 
 fn top_of<K: std::fmt::Debug + Clone + Ord>(map: &BTreeMap<K, usize>, top: usize) -> Vec<(K, usize)> {

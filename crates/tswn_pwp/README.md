@@ -104,6 +104,9 @@ target/release/tswn-pwp.exe bench --out target/winprob-demo `
 
 `stats` 只读已提交的数据分片；`bench` 会在 `--out` 指定目录内运行 `generate`/`validate`，**会写入数据**。
 首次生成可以使用新目录或已有空目录；已有 `manifest.json` 时需要 `--resume`，且输入、配置和可执行文件摘要必须匹配，否则应换目录。非空但没有 manifest 的目录不能通过 `--resume` 接续。
+`stats` 还会按冻结的 `baseline-64` 容量档位报告 `e/t/r/h/l/s/q/v/x` 九维的上限、峰值与超限样本占比
+（上界计费，每槽按 3 条 X 记录）；超限样本会被 encoder 判 `CapacityExceeded`。档位定义见
+[capacity.rs](src/capacity.rs)，推导与依据见 [FeatureEncoder 规格](../../docs/design/feature-encoder-spec.md) 第 4 节。
 10k/100k 规模的实际结果见
 [winprob 数据集生成规模基线](../../docs/perf/reports/winprob-dataset-scale-baseline.md)。
 

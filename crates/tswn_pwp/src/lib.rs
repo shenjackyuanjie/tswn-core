@@ -1,6 +1,7 @@
 //! 确定性的战斗状态生成、Parquet 分片与完整性校验。
 mod bench;
 mod calibrate;
+mod capacity;
 mod generate;
 mod input;
 mod random;
