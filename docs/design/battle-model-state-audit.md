@@ -57,7 +57,7 @@
 
 ## 契约与校验
 
-技能映射由 `MODEL_SKILL_EXPORTS` 固定，当前 42 项占用约定的 1–50 空间中的 1–42。新增处理器或改变含义必须更新审计和 schema，而不能静默重新解释已有数据。
+技能映射由 `MODEL_SKILL_EXPORTS` 固定，当前 42 项占用约定的 1–50 空间中的 1–42（43–50 预留）。新增处理器、重排顺序或改变含义时，必须同时更新本审计、评估 `MODEL_STATE_SCHEMA_VERSION` 是否需要 bump，并更新锁定映射的测试；不能静默重新解释已有数据。技能 ID、legacy key 与 fixed lane 是三个不同概念，不得互换。
 
 `BattleModelState::validate` 检查实体 ID、空槽范围、输入队伍、世界顺序、owner/root_owner、保护链、暗杀/反击目标、毒/魅惑及感染/Boss 引用。Parquet 校验层另外检查对局行序、标签唯一性、样本轮数、终局排除、样本计数和集合隔离。
 

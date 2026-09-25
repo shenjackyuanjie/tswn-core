@@ -145,3 +145,26 @@ core 定义六个稳定错误码：`INVALID_INPUT`、`INVALID_ARGUMENT`、`UNSUP
 胜率摘要（`win_rate_summary` / `team_win_rate_summary` / `group_win_rate_summary`）、评分（`score` / `namer_pf` / `batch_rate` / `pair_rate`）、工具（`to_diy` / `to_diy_batch` / `icon_info` / `parse_group_lines`）仍按高层 API 对齐；`default_custom_runtime_normalized_run` 是诊断接口。PreparedRunner 的 `eval_rq` 在创建时固定。
 
 验证入口：`scripts/verify_battle_cross_binding.py` 使用真实 Rust CLI、Python 扩展、C 动态库和 Node WASM，逐字段精确比较四组输入在完整/限轮两种设置下的 initial、frames、result。
+
+## 稳定性边界
+
+长期稳定、可以作为对外契约依赖的部分：
+
+```text
+BattleSession 语义与三端方法集
+BattleOptions V1（prefix 永久冻结，C ABI 保持 4）
+BattlePlayerState / BattleReplayFrame / BattleResult / BattleReplay
+CLI JSONL {type,data} 与 stderr 非零退出的错误路径
+Python canonical battle dict / WASM canonical battle DTO
+Web streaming 架构（BattleStreamSource / BattleStreamController）
+```
+
+仍属 Experimental、允许按版本调整的部分（变更时正常 bump 对应 schema 版本，不要为兼容实验数据绑死设计）：
+
+```text
+BattleModelState（MODEL_STATE_SCHEMA_VERSION）
+BattleModelSession
+数据集格式（manifest 的 format_version / state_schema_version）
+FeatureEncoder 与 WinProbFeatures
+模型结构与推理接口
+```
