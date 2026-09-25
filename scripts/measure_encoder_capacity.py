@@ -91,12 +91,19 @@ def template_lane_counts(template_array, valid_mask):
 
 
 def clone_plan_leaves(template_array, valid_mask):
-    """计划存在记 1，每个 Some 的 slot_boosts[i] 记 2；None 不计费。"""
+    """计划存在记 1，每个 Some 的 slot_boosts[i] 记 2；None 不计费。
+
+    必须先看结构体自身的 validity：Parquet 读回的 struct 子字段**不继承**父级 null
+    （`score_skill_boost_plan` 全是 null 时，它的 `initially_boosted_mask` 仍被判为 valid），
+    直接检查孙字段会把每个模板都算成有计划，实测会让 X 峰值虚高数倍。
+    """
     plan = template_array.field("clone_build").field("score_skill_boost_plan")
-    total = pc.is_valid(plan.field("initially_boosted_mask")).to_numpy(zero_copy_only=False).astype(np.int64)
+    plan_valid = pc.is_valid(plan).to_numpy(zero_copy_only=False)
+    total = plan_valid.astype(np.int64)
     boosts = plan.field("slot_boosts")
     for index in ("0", "1"):
-        total += pc.is_valid(boosts.field(index).field("0")).to_numpy(zero_copy_only=False).astype(np.int64) * 2
+        pair_valid = pc.is_valid(boosts.field(index)).to_numpy(zero_copy_only=False)
+        total += (plan_valid & pair_valid).astype(np.int64) * 2
     return total[valid_mask] if valid_mask is not None else total
 
 

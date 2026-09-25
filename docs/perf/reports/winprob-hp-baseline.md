@@ -83,9 +83,19 @@ python scripts/winprob_hp_baseline.py --dataset target/winprob-100k --json-out t
    比例几乎不降，基线退化成随机（test Log Loss 1.0804、80-100% 桶 Top-1 0.556）；
    分母含阵亡成员后才有上表结果。
 
-## 待核对
+## 已核对的差异（原「待核对」）
 
-`tswn-pwp stats` 的 `x` 峰值（**上界**计费，每槽按 3 条 X 记录）为 1737，
-而 `scripts/measure_encoder_capacity.py` 在同一数据集上按**真实记录数**报 2271。
-两者口径不同，但方向应为「上界 ≥ 实测」，因此需要确认其中一方的分量计算有偏差。
-当前「零超限」结论在两种口径下都成立（都远低于 65536），不影响容量冻结。
+`tswn-pwp stats` 的 `x` 峰值（**上界**计费）为 1737，而容量脚本按**真实记录数**曾报 2271——
+方向应是「上界 ≥ 实测」，两者矛盾。核对结论：**容量脚本的 clone 计数有 bug**。
+
+- Parquet 读回的 struct **子字段不继承父级 null**：`clone_build.score_skill_boost_plan` 全为 `None` 时，
+  它的 `initially_boosted_mask`／`slot_boosts` 仍被判为 valid（实测父级 valid=0、孙字段 valid=全部行），
+  于是脚本对**每个模板**都记 5 条计划叶子，X 被高估约 `5 × h`。
+- 修正后同一数据集的 `X_required` 峰值为 **1671**（原 2271），`x_clone` 全 0；
+  Rust 上界 1737 ≥ 1671，方向正确，差值来自「每槽一条实体 ref（上界计费）」与
+  「按实际 ref 槽计数（实测）」。
+- 顺带确认：`clone_build` 在**所有**模板上都存在（它是名字派生属性的构造参数，`attrs` 全非零），
+  真正的可空项只有 `score_skill_boost_plan`；因此不存在 clone_build presence 丢失的问题。
+- 规格第 4 节里 8 人池与深测的 X 列尚未用修正脚本重测（方向上是被高估，不影响 `X_max` 冻结）。
+
+「零超限」结论在两种口径下都成立（都远低于 65536），不受影响。
