@@ -17,6 +17,7 @@
 - [OpenBox pair 并行修复复测（2026-09-15）](reports/openbox-pair-parallelism-2026-09-15.md)：
   fixed30 / CQP / CQD / pair 的同机交替 A/B，含仪表伪影排查与原始样本。
 - [winprob 数据集生成规模基线](reports/winprob-dataset-scale-baseline.md)：10k/100k 局生成的吞吐、存储、内存与校验开销，含 Parquet 行组缺陷的修复前后对比。
+- [胜率数据集 HP-only 基线（100k 局）](reports/winprob-hp-baseline.md)：只用队伍血量比例的无参数基线，含九维容量溢出与 99 字段标量校准结果，作为后续模型的对照下界。
 - [Web Streaming 基线](reports/web-streaming-baseline.md)。
 - [Python BattleSession DTO 转换基线](reports/python-battle-session-baseline.md)。
 - [RC4 热点与优化调查（2026-09-05）](reports/rc4-profile-2026-09-05.md)。
