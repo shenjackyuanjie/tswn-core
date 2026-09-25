@@ -17,7 +17,7 @@ use tswn_core::runtime::model_state::BattleModelState;
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "tswn-winprob-dataset",
+    name = "tswn-pwp",
     about = "生成或校验战斗机制状态数据集"
 )]
 pub struct Cli {

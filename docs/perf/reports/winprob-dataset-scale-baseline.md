@@ -2,9 +2,9 @@
 
 > 采集时间：2026-09-08  
 > 采集提交：`a3e3f771`（含 `chore(deps)` 更新后的依赖）  
-> 生成器：`tswn-winprob-dataset`，`release` profile（`lto = "fat"`、`debug = 1`、`codegen-units = 1`）
+> 生成器：`tswn-pwp`，`release` profile（`lto = "fat"`、`debug = 1`、`codegen-units = 1`）
 
-本文记录 `tswn_winprob_dataset` 在 10k / 100k 规模下的吞吐、存储、内存与校验开销，
+本文记录 `tswn_pwp` 在 10k / 100k 规模下的吞吐、存储、内存与校验开销，
 以及修复“每局一个 Parquet 行组”缺陷前后的对比。它是 handoff 中 Commit 4 的交付物。
 
 ## 结论
@@ -42,17 +42,17 @@
 
 ```powershell
 # 10k：100 个阵容 × 100 局，每分片 250 局（40 分片，16 worker）
-target/release/tswn-winprob-dataset.exe bench `
+target/release/tswn-pwp.exe bench `
   --out target/winprob-10k --names tests/sqp5900.txt --team-sizes 2,2,2 `
   --matchups 100 --games-per-matchup 100 --battles-per-shard 250 --seed bench
 
 # 100k：500 个阵容 × 200 局，每分片 1000 局（100 分片，16 worker）
-target/release/tswn-winprob-dataset.exe bench `
+target/release/tswn-pwp.exe bench `
   --out target/winprob-100k --names tests/sqp5900.txt --team-sizes 2,2,2 `
   --matchups 500 --games-per-matchup 200 --battles-per-shard 1000 --seed bench
 
 # 分布统计（只读）
-target/release/tswn-winprob-dataset.exe stats --out target/winprob-100k --json-out target/benchmark-logs/100k-stats.json
+target/release/tswn-pwp.exe stats --out target/winprob-100k --json-out target/benchmark-logs/100k-stats.json
 ```
 
 `bench` 在本进程内运行 `generate`/`validate` 并采样自身 RSS、线程数与 CPU 时间，再读产物
@@ -210,10 +210,10 @@ Parquet 元数据；数值与原 Python 采集脚本一致（200 局探针：3.5
 | 改动 | 位置 |
 | --- | --- |
 | 探针取值改为 `OnceLock` 缓存，热路径只剩一次原子读 | `crates/tswn_core/src/debug.rs` 及 15 个调用点 |
-| `active-battle.json` 只在失败／panic 时落盘 | `crates/tswn_winprob_dataset/src/generate.rs` |
+| `active-battle.json` 只在失败／panic 时落盘 | `crates/tswn_pwp/src/generate.rs` |
 | 样本行攒到 256 行再转一次 `RecordBatch` | 同上 |
-| `validate_dataset` 按分片并行；`generate` 覆盖全部分片时直接合并各 worker 摘要 | `crates/tswn_winprob_dataset/src/validate.rs` |
-| 依赖 `tswn_core` 时启用 `no_debug` + `mimalloc_alloc` | `crates/tswn_winprob_dataset/Cargo.toml` |
+| `validate_dataset` 按分片并行；`generate` 覆盖全部分片时直接合并各 worker 摘要 | `crates/tswn_pwp/src/validate.rs` |
+| 依赖 `tswn_core` 时启用 `no_debug` + `mimalloc_alloc` | `crates/tswn_pwp/Cargo.toml` |
 
 修复前后（100k 局 / 80 万样本，`bench` 子命令）：
 

@@ -2,7 +2,7 @@
 
 [返回设计索引](README.md)
 
-本文承接 [状态导出与数据生成契约](battle-analyze.md)，字段语义以 [BattleModelState Runtime 审计](battle-model-state-audit.md) 为准；生成器和 Parquet 文件说明见 [winprob 数据集 README](../../crates/tswn_winprob_dataset/README.md)。
+本文承接 [状态导出与数据生成契约](battle-analyze.md)，字段语义以 [BattleModelState Runtime 审计](battle-model-state-audit.md) 为准；生成器和 Parquet 文件说明见 [winprob 数据集 README](../../crates/tswn_pwp/README.md)。
 
 状态：契约草案，供实施前复核；本轮只写文档。输入 schema v1，拟议 encoder v1。本文是 **tswn-pwp（player winchance predictor）** 的特征编码层规格，不定义最终神经网络结构。
 
@@ -209,7 +209,7 @@ Felix CQACSVGRXSAT@nan
 该玩家已挂机，点此跳过他的回合 OQAf07JZxq@XJ联队
 ```
 
-复现：把上表存成名字池后运行 `target/release/tswn-winprob-dataset.exe generate --names <池文件> --team-sizes <上表> --matchups 200 --games-per-matchup 25 --battles-per-shard 250 --seed u8-<模式> --out <目录>`（FFA 模式按 `--matchups` 与 `--games-per-matchup` 组合凑约 5000 局），再运行 `python scripts/measure_encoder_capacity.py --dataset <目录> --out <json>`。
+复现：把上表存成名字池后运行 `target/release/tswn-pwp.exe generate --names <池文件> --team-sizes <上表> --matchups 200 --games-per-matchup 25 --battles-per-shard 250 --seed u8-<模式> --out <目录>`（FFA 模式按 `--matchups` 与 `--games-per-matchup` 组合凑约 5000 局），再运行 `python scripts/measure_encoder_capacity.py --dataset <目录> --out <json>`。
 
 **8 人的全部队伍划分。** 这 8 个名字以召唤／人海类 build 为主（同一批 8 人在 3684 人名字池的 FFA8 里只有 24 个实体，本池到 40），因此再把 8 人拆成全部 20 种队伍划分各测约 5000 局：
 
@@ -594,8 +594,8 @@ raw 路径的 runtime/template/state/slot/world 前缀指第 3 节相应结构�
 
 ```powershell
 rg -n '^pub struct|^pub const MODEL_' crates/tswn_core/src/runtime/model_state.rs
-rg -n 'state_entry_count|skill_count|lanes \+=' crates/tswn_winprob_dataset/src/stats.rs
-target/release/tswn-winprob-dataset.exe stats --out target/winprob-100k
+rg -n 'state_entry_count|skill_count|lanes \+=' crates/tswn_pwp/src/stats.rs
+target/release/tswn-pwp.exe stats --out target/winprob-100k
 git diff --check
 ```
 
@@ -616,7 +616,7 @@ git diff --check
 
 阅读中发现的描述差异／覆盖缺口（已修正项注明，其余仅记录）：
 
-1. 已在 `crates/tswn_winprob_dataset/README.md:86–88` 修正：stats 只读已提交分片，bench 会在 --out 目录运行 generate/validate 并写入数据；同时区分首次生成与已有 manifest 的 --resume 条件（G:41–60、138–182）。
+1. 已在 `crates/tswn_pwp/README.md:86–88` 修正：stats 只读已提交分片，bench 会在 --out 目录运行 generate/validate 并写入数据；同时区分首次生成与已有 manifest 的 --resume 条件（G:41–60、138–182）。
 2. P:126 把 seed 列列在 samples 字节构成中；G:215–224 的 SampleRow 构造无 seed，G:243–250 的 BattleRow 才有 seed。报告口径／历史 schema 来源待确认，本稿不改原数据格式。
 3. 已在 `docs/reference/public-api.md:10–14` 修正：新增 BattleModelSession 数据集入口，说明生成器在 PreparedRunner 之上两遍运行，以 next_frame() 取可见帧边界、model_state() 导出状态（G:195、208、213）；Runner/PreparedRunner 是执行内核入口，而不是数据集直接驱动接口。
 4. W:119 写计数“唯一用途”为目标选择，W:128 又补充 post-action 用法；本稿保留计数，且遵循 W:174 禁止用作 mask。
@@ -645,8 +645,8 @@ git diff --check
 | W 判胜 | `docs/mechanics/winner.md:17`（判胜）、`:110`（粘性计数）、`:159`（复活／资格） |
 | API 绑定 | `docs/reference/public-api.md:5`（入口）、`:55`（DTO）、`:91`（WASM）、`:135`（播放） |
 | P 实测 | `docs/perf/reports/winprob-dataset-scale-baseline.md:27`（环境）、`:117`（字节口径）、`:146`（分布）、`:177`（encoder 建议） |
-| D 生成器说明 | `crates/tswn_winprob_dataset/README.md:38`（标签）、`:68`（统计／基准）、`:91`（Python） |
-| S 统计口径 | `crates/tswn_winprob_dataset/src/stats.rs:45`（Series）、`:130`（collect）、`:187`（实体／状态／技能计数） |
-| F 抽样 | `crates/tswn_winprob_dataset/src/sampling.rs:5`（select，排终局与最终轮数分桶） |
-| G 生成 | `crates/tswn_winprob_dataset/src/generate.rs:138`（write_shard）、`:186`（generate_battle）、`:202`（标签）、`:211`（样本） |
+| D 生成器说明 | `crates/tswn_pwp/README.md:38`（标签）、`:68`（统计／基准）、`:91`（Python） |
+| S 统计口径 | `crates/tswn_pwp/src/stats.rs:45`（Series）、`:130`（collect）、`:187`（实体／状态／技能计数） |
+| F 抽样 | `crates/tswn_pwp/src/sampling.rs:5`（select，排终局与最终轮数分桶） |
+| G 生成 | `crates/tswn_pwp/src/generate.rs:138`（write_shard）、`:186`（generate_battle）、`:202`（标签）、`:211`（样本） |
 | K 槽语义与顺序证据 | 前缀均为 `crates/tswn_core/src/`：`runtime/prepared_init/init.rs`（init）、`runtime/prepared_init/seed.rs`（seed）、`runtime/prepared_init/roster.rs`（roster）、`runtime/plain_summon.rs`（summon）、`runtime/plain_zombie.rs`（zombie）、`runtime/handlers/mod.rs`（handlers）、`runtime/handlers/minions.rs`（minions）、`runtime/handlers/states.rs`（states）、`runtime/combat/skills_control.rs`（skills_control）、`runtime/combat/skills_team.rs`（skills_team）、`runtime/combat/round.rs`（round）、`runtime/scheduler.rs`（scheduler）、`runtime/entity/runtime.rs`（entity_runtime）、`runtime/entity/state.rs`（state）、`runtime/profile/import.rs`（import）、`runtime/prepared_init.rs`（prepared） |

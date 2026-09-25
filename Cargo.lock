@@ -4612,6 +4612,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "tswn_pwp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arrow-array",
+ "arrow-schema",
+ "clap",
+ "fs2",
+ "parquet",
+ "serde",
+ "serde_arrow",
+ "serde_json",
+ "sha2 0.10.9",
+ "sysinfo",
+ "tempfile",
+ "tswn_core",
+]
+
+[[package]]
 name = "tswn_py"
 version = "0.5.3"
 dependencies = [
@@ -4643,25 +4662,6 @@ dependencies = [
  "tsify",
  "tswn_core",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "tswn_winprob_dataset"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "arrow-array",
- "arrow-schema",
- "clap",
- "fs2",
- "parquet",
- "serde",
- "serde_arrow",
- "serde_json",
- "sha2 0.10.9",
- "sysinfo",
- "tempfile",
- "tswn_core",
 ]
 
 [[package]]

@@ -2,6 +2,13 @@
 
 本 crate 是 **tswn-pwp（player winchance predictor）** 的数据生成阶段，负责把 Rust Runtime 的机制状态采样为可校验的 Parquet 数据集；它不包含 FeatureEncoder、模型训练或线上推理。
 
+当前模块边界：
+
+- `generate` / `validate` / `storage`：数据集生成、提交与完整性校验
+- `sampling` / `random` / `input`：确定性抽样、阵容输入与切分
+- `stats` / `bench`：数据分布与生成规模统计
+- 后续扩展：`encoder`、`baseline`、`inference`
+
 相关文档入口：
 
 - [仓库文档中心](../../docs/README.md)
@@ -18,8 +25,8 @@
 从仓库根目录运行：
 
 ```powershell
-cargo run -p tswn_winprob_dataset --bin tswn-winprob-dataset -- generate --input crates/tswn_winprob_dataset/examples/matchup.txt --games-per-matchup 20 --seed demo --out target/winprob-demo
-cargo run -p tswn_winprob_dataset --bin tswn-winprob-dataset -- validate --out target/winprob-demo
+cargo run -p tswn_pwp --bin tswn-pwp -- generate --input crates/tswn_pwp/examples/matchup.txt --games-per-matchup 20 --seed demo --out target/winprob-demo
+cargo run -p tswn_pwp --bin tswn-pwp -- validate --out target/winprob-demo
 ```
 
 `--input` 也接受目录，按路径排序递归读取 `.txt` 文件。没有空行时每行一队（FFA），含空行时按空行分队，至少两支非空队伍；输入中的 seed 行由生成器派生的 seed 替换。完全相同的有序阵容只生成一次；顺序变体保留，但进入同一个切分集合。
@@ -27,7 +34,7 @@ cargo run -p tswn_winprob_dataset --bin tswn-winprob-dataset -- validate --out t
 从名字池抽取阵容：
 
 ```powershell
-cargo run -p tswn_winprob_dataset --bin tswn-winprob-dataset -- generate --names crates/tswn_winprob_dataset/examples/names.txt --team-sizes 2,2,2 --matchups 10 --games-per-matchup 20 --seed demo --out target/winprob-names
+cargo run -p tswn_pwp --bin tswn-pwp -- generate --names crates/tswn_pwp/examples/names.txt --team-sizes 2,2,2 --matchups 10 --games-per-matchup 20 --seed demo --out target/winprob-names
 ```
 
 名字池每行一个角色，可以包含引擎支持的武器、Boss 和 DIY 输入。按引擎规则处理行末空白；空行和 seed 行不参与抽样。相同条目去重，单局不重复抽取；不同阵容抽取任务可能得到相同阵容，这些对局仍共享切分组。
@@ -83,15 +90,15 @@ Runtime 错误、panic、导出失败和两遍不一致都会停止生成。已�
 以及技能 ID、载荷 kind、模板 kind、Boss 与阵营分组频次：
 
 ```powershell
-target/release/tswn-winprob-dataset.exe stats --out target/winprob-demo --json-out target/stats.json
+target/release/tswn-pwp.exe stats --out target/winprob-demo --json-out target/stats.json
 ```
 
 `bench` 在本进程内运行 `generate`/`validate` 并采样自身 RSS、线程数与 CPU 时间，再读产物
 Parquet 元数据，输出吞吐、存储、行组与列块压缩比、嵌套字段占比：
 
 ```powershell
-target/release/tswn-winprob-dataset.exe bench --out target/winprob-demo `
-  --names crates/tswn_winprob_dataset/examples/names.txt --team-sizes 2,2,2 `
+target/release/tswn-pwp.exe bench --out target/winprob-demo `
+  --names crates/tswn_pwp/examples/names.txt --team-sizes 2,2,2 `
   --matchups 10 --games-per-matchup 20 --seed demo
 ```
 
