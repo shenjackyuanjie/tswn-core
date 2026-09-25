@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::encoder::error::EncodeError;
 use crate::namerena::BOSS_NAMES;
-use crate::runtime::extension::ExtensionRegistry;
+use crate::runtime::{ExtensionRegistry, PLAIN_STATE_LEGACY_KEYS};
 
 /// 冻结的分类词表；`entries` 的稠密 ID 必须恰好覆盖 `1..=K`。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,6 +86,25 @@ pub fn boss_kind_vocabulary() -> Vocabulary {
     Vocabulary::new(entries).expect("BOSS_NAMES 位置词表必须自洽")
 }
 
+/// `state.legacy_order_key` 词表：默认规则 legacy key 白名单按原值升序冻结。
+pub fn state_legacy_vocabulary() -> Vocabulary {
+    let entries = PLAIN_STATE_LEGACY_KEYS
+        .into_iter()
+        .enumerate()
+        .map(|(index, raw)| (raw, index as i32 + 1))
+        .collect();
+    Vocabulary::new(entries).expect("默认规则 legacy state 词表必须自洽")
+}
+
+/// `state.extension_state_id` 词表：从默认注册表的稳定 state ID 派生。
+pub fn state_extension_vocabulary(registry: &ExtensionRegistry) -> Vocabulary {
+    let mut ids: Vec<u32> = registry.states().iter().map(|spec| spec.id.0).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    let entries = ids.into_iter().enumerate().map(|(index, raw)| (raw, index as i32 + 1)).collect();
+    Vocabulary::new(entries).expect("注册表派生的 state 词表必须自洽")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,5 +146,20 @@ mod tests {
         assert_eq!(vocabulary.len(), BOSS_NAMES.len());
         assert_eq!(vocabulary.dense_id(0, "template.identity.boss_kind").unwrap(), 1);
         assert!(vocabulary.dense_id(BOSS_NAMES.len() as u32, "x").is_err());
+    }
+
+    #[test]
+    fn state_vocabularies_are_frozen_and_dense() {
+        let legacy = state_legacy_vocabulary();
+        assert_eq!(legacy.len(), PLAIN_STATE_LEGACY_KEYS.len());
+        assert_eq!(legacy.dense_id(0, "state.legacy_order_key").unwrap(), 1);
+        assert!(legacy.dense_id(2, "state.legacy_order_key").is_err());
+
+        let config = crate::runtime::default_custom_runtime_import_config().unwrap();
+        let extension = state_extension_vocabulary(&config.registry);
+        assert_eq!(extension.len(), config.registry.states().len());
+        for spec in config.registry.states() {
+            assert!(extension.dense_id(spec.id.0, "state.extension_state_id").unwrap() > 0);
+        }
     }
 }

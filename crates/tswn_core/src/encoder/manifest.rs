@@ -19,7 +19,9 @@ use sha2::{Digest, Sha256};
 use crate::encoder::capacity::EncoderProfile;
 use crate::encoder::error::EncodeError;
 use crate::encoder::numeric::TransformKind;
-use crate::encoder::vocab::{Vocabulary, boss_kind_vocabulary, player_kind_vocabulary};
+use crate::encoder::vocab::{
+    Vocabulary, boss_kind_vocabulary, player_kind_vocabulary, state_extension_vocabulary, state_legacy_vocabulary,
+};
 use crate::runtime::model_state::MODEL_STATE_SCHEMA_VERSION;
 
 /// manifest schema 名。
@@ -463,6 +465,8 @@ impl EncoderManifest {
                 ("runtime.kind".to_owned(), player_kind_vocabulary(&registry)),
                 ("template.kind".to_owned(), player_kind_vocabulary(&registry)),
                 ("template.identity.boss_kind".to_owned(), boss_kind_vocabulary()),
+                ("state.legacy_order_key".to_owned(), state_legacy_vocabulary()),
+                ("state.extension_state_id".to_owned(), state_extension_vocabulary(&registry)),
             ]
             .into_iter()
             .collect(),

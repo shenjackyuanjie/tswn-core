@@ -1,4 +1,4 @@
-//! 编码主路径：状态校验 → 局内重映射 → global / entity / template 三族写入。
+//! 编码主路径：状态校验 → 局内重映射 → global / entity / template / lane / list / state 写入。
 //!
 //! 本文件实现规格第 14 节的拟议接口，并按外部评审 3.1 增加可复用缓冲的批路径：
 //!
@@ -12,8 +12,8 @@
 //! schema、引用、可空分支与容量，再写入字段。校验或写入返回错误时再次清理目标槽位，
 //! 不暴露部分结果，也不影响相邻批槽位；同一 state 放在不同 batch 位置不改变其有效内容。
 //!
-//! lane / state / slot / list / extra 四族的张量写入按 handoff 分块计划在后续提交追加；
-//! 本文件的校验部分已覆盖全部引用域（含 charm `group_id` 与槽内 U64 实体引用）。
+//! slot / extra 两族尚未接入模型张量；本文件的校验部分已覆盖全部引用域（含 charm `group_id`
+//! 与槽内 U64 实体引用）。
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
@@ -24,7 +24,9 @@ use crate::encoder::error::EncodeError;
 use crate::encoder::manifest::{EncoderManifest, FIXED_COUNT_SLOTS, ProfileSpec, SupportDomain, UNSUPPORTED_PAYLOAD_KINDS};
 use crate::encoder::numeric::{TransformKind, normalize_fitted, normalize_fixed_count, to_f32_checked};
 use crate::encoder::slots::{SlotScope, SlotSemantic, resolve_slot};
-use crate::encoder::vocab::{Vocabulary, boss_kind_vocabulary, player_kind_vocabulary};
+use crate::encoder::vocab::{
+    Vocabulary, boss_kind_vocabulary, player_kind_vocabulary, state_extension_vocabulary, state_legacy_vocabulary,
+};
 use crate::runtime::entity::RuntimeCorpseKind;
 use crate::runtime::extension::{DamageSharePolicy, MergePolicy, OwnerResolutionPolicy};
 use crate::runtime::model_state::{
@@ -121,6 +123,24 @@ pub fn required_normalization() -> Vec<(&'static str, TransformKind)> {
     required.extend(ENTITY_NUM_SLOTS.iter().map(|(_, path)| (*path, TransformKind::Fitted)));
     required.extend(TEMPLATE_NUM_SLOTS.iter().map(|(_, path)| (*path, TransformKind::Fitted)));
     required.push(("template.identity.immunity.threshold", TransformKind::Fitted));
+    required.push(("state.priority", TransformKind::Fitted));
+    required.extend([
+        ("state.payload.fire_mag_half_steps", TransformKind::Fitted),
+        ("state.payload.ice.frozen_step", TransformKind::Fitted),
+        ("state.payload.shield_value", TransformKind::Fitted),
+        ("state.payload.curse.prob", TransformKind::Fitted),
+        ("state.payload.curse.multiply", TransformKind::Fitted),
+        ("state.payload.poison.atp", TransformKind::Fitted),
+        ("state.payload.poison.count", TransformKind::Fitted),
+        ("state.payload.haste.faster", TransformKind::Fitted),
+        ("state.payload.haste.effective_faster", TransformKind::Fitted),
+        ("state.payload.haste.step", TransformKind::Fitted),
+        ("state.payload.berserk.step", TransformKind::Fitted),
+        ("state.payload.charm.step", TransformKind::Fitted),
+        ("state.payload.slow.step", TransformKind::Fitted),
+        ("state.payload.iron.protect", TransformKind::Fitted),
+        ("state.payload.iron.step", TransformKind::Fitted),
+    ]);
     required.extend([
         ("lane.level", TransformKind::Fitted),
         ("lane.build_level", TransformKind::Fitted),
@@ -181,7 +201,13 @@ struct ListRecord {
     ordinal: i32,
     target: i32,
     order_key: Option<u64>,
-    order_domain: Option<usize>,
+    rank_domain: Option<OrderRankDomain>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum OrderRankDomain {
+    Registration(usize),
+    Runtime(usize),
 }
 
 impl ListRecord {
@@ -205,7 +231,7 @@ fn entity_list_record(
         ordinal: ordinal as i32,
         target: index.entity_row(id, "list.target")? as i32,
         order_key: None,
-        order_domain: None,
+        rank_domain: None,
     })
 }
 
@@ -236,10 +262,12 @@ impl FeatureEncoder {
     pub fn new(manifest: EncoderManifest) -> Result<Self, EncodeError> {
         manifest.validate()?;
         let registry = default_registry();
-        let derived: [(&'static str, Vocabulary); 3] = [
+        let derived: [(&'static str, Vocabulary); 5] = [
             ("runtime.kind", player_kind_vocabulary(registry)),
             ("template.kind", player_kind_vocabulary(registry)),
             ("template.identity.boss_kind", boss_kind_vocabulary()),
+            ("state.legacy_order_key", state_legacy_vocabulary()),
+            ("state.extension_state_id", state_extension_vocabulary(registry)),
         ];
         let mut vocabularies = BTreeMap::new();
         for (name, vocabulary) in derived {
@@ -308,6 +336,7 @@ impl FeatureEncoder {
             self.write_template_family(&index, batch_index, out)?;
             self.write_lane_family(&index, batch_index, out)?;
             self.write_list_family(state, &index, batch_index, out)?;
+            self.write_state_family(state, &index, batch_index, out)?;
             Ok(())
         })();
         if result.is_err() {
@@ -887,7 +916,6 @@ impl FeatureEncoder {
                 (260, template.skills.post_damage_order.clone()),
             ];
             for (field_class, values) in lists {
-                let length = values.len();
                 for (ordinal, target_lane) in values.into_iter().enumerate() {
                     let target = if field_class == 256 {
                         lane_starts[template_row] + ordinal
@@ -901,7 +929,7 @@ impl FeatureEncoder {
                         ordinal: ordinal as i32,
                         target: target as i32,
                         order_key: None,
-                        order_domain: Some(length),
+                        rank_domain: None,
                     });
                 }
             }
@@ -914,7 +942,7 @@ impl FeatureEncoder {
                     ordinal: ordinal as i32,
                     target: target as i32,
                     order_key: Some(deferred.state_cursor),
-                    order_domain: Some(template.skills.post_action_after_states.len()),
+                    rank_domain: None,
                 });
             }
         }
@@ -948,9 +976,39 @@ impl FeatureEncoder {
                     ordinal: ordinal as i32,
                     target: (state.entities[..entity_row].iter().map(|e| e.states.len()).sum::<usize>() + ordinal) as i32,
                     order_key: None,
-                    order_domain: Some(entity.states.len()),
+                    rank_domain: None,
                 });
             }
+            for (ordinal, entry) in entity.states.iter().enumerate() {
+                let target = state.entities[..entity_row].iter().map(|e| e.states.len()).sum::<usize>() + ordinal;
+                records.push(ListRecord {
+                    owner_scope: 2,
+                    owner: entity_row as i32,
+                    field_class: 270,
+                    ordinal: ordinal as i32,
+                    target: target as i32,
+                    order_key: Some(u64::from(entry.registration_order)),
+                    rank_domain: Some(OrderRankDomain::Registration(entity_row)),
+                });
+                records.push(ListRecord {
+                    owner_scope: 2,
+                    owner: entity_row as i32,
+                    field_class: 271,
+                    ordinal: ordinal as i32,
+                    target: target as i32,
+                    order_key: Some(entry.runtime_registration_order),
+                    rank_domain: Some(OrderRankDomain::Runtime(entity_row)),
+                });
+            }
+            records.push(ListRecord {
+                owner_scope: 2,
+                owner: entity_row as i32,
+                field_class: 272,
+                ordinal: 0,
+                target: entity_row as i32,
+                order_key: Some(entity.state_registration_cursor),
+                rank_domain: Some(OrderRankDomain::Runtime(entity_row)),
+            });
             for (ordinal, link) in entity.runtime.protect_from.iter().enumerate() {
                 records.push(entity_list_record(index, link.owner, 267, ordinal, 2)?.with_owner(entity_row as i32));
             }
@@ -984,9 +1042,14 @@ impl FeatureEncoder {
             }
         }
         {
+            let mut lengths = BTreeMap::<(i32, i32, i32), usize>::new();
+            for record in &records {
+                *lengths.entry((record.owner_scope, record.owner, record.field_class)).or_default() += 1;
+            }
             let positions = out.f32_row_mut("list_position", batch_index)?;
             for (row, record) in records.iter().enumerate() {
-                positions[row] = normalize_position(record.ordinal as usize, record.order_domain.unwrap_or(1));
+                let length = lengths[&(record.owner_scope, record.owner, record.field_class)];
+                positions[row] = normalize_position(record.ordinal as usize, length);
             }
         }
         let order_values: Vec<Option<u64>> = records.iter().map(|record| record.order_key).collect();
@@ -1001,6 +1064,119 @@ impl FeatureEncoder {
             let present = out.u8_row_mut("order_key_present", batch_index)?;
             for (row, key) in order_values.iter().enumerate() {
                 present[row] = u8::from(key.is_some());
+            }
+        }
+        {
+            let mut distinct = BTreeMap::<OrderRankDomain, BTreeSet<u64>>::new();
+            for record in &records {
+                if let (Some(domain), Some(key)) = (record.rank_domain, record.order_key) {
+                    distinct.entry(domain).or_default().insert(key);
+                }
+            }
+            let mut ranks = Vec::new();
+            for (row, record) in records.iter().enumerate() {
+                let Some(domain) = record.rank_domain else { continue };
+                let Some(key) = record.order_key else { continue };
+                let keys = &distinct[&domain];
+                let rank = keys.range(..key).count();
+                ranks.push((row, rank as f32 / keys.len().saturating_sub(1).max(1) as f32));
+            }
+            {
+                let values = out.f32_row_mut("order_rank", batch_index)?;
+                for (row, rank) in &ranks {
+                    values[*row] = *rank;
+                }
+            }
+            {
+                let present = out.u8_row_mut("order_rank_present", batch_index)?;
+                for (row, _) in ranks {
+                    present[row] = 1;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn write_state_family(
+        &self,
+        state: &BattleModelState,
+        index: &SampleIndex<'_>,
+        batch_index: usize,
+        out: &mut EncodedBatch,
+    ) -> Result<(), EncodeError> {
+        let mut row = 0usize;
+        for (entity_row, entity) in state.entities.iter().enumerate() {
+            for (ordinal, entry) in entity.states.iter().enumerate() {
+                let prefix = format!("entities[{entity_row}].states[{ordinal}]");
+                let kind = state_kind_id(entry.payload.kind.as_str()).ok_or_else(|| EncodeError::UnsupportedPayloadKind {
+                    path: format!("{prefix}.payload.kind"),
+                    kind: entry.payload.kind.clone(),
+                })?;
+                out.u8_row_mut("state_mask", batch_index)?[row] = 1;
+                out.i32_row_mut("state_entity", batch_index)?[row] = entity_row as i32;
+                out.i32_row_mut("state_kind", batch_index)?[row] = kind;
+                {
+                    let cats = out.i32_row_mut("state_cat", batch_index)?;
+                    cats[row * 2] = self.dense_id(
+                        "state.legacy_order_key",
+                        entry.legacy_order_key,
+                        &format!("{prefix}.legacy_order_key"),
+                    )?;
+                    if let Some(extension) = entry.extension_state_id {
+                        cats[row * 2 + 1] =
+                            self.dense_id("state.extension_state_id", extension, &format!("{prefix}.extension_state_id"))?;
+                    }
+                }
+                {
+                    let presence = out.u8_row_mut("state_cat_present", batch_index)?;
+                    presence[row * 2] = 1;
+                    presence[row * 2 + 1] = u8::from(entry.extension_state_id.is_some());
+                }
+                {
+                    let hooks = out.u8_row_mut("state_hook", batch_index)?;
+                    for bit in 0..64 {
+                        hooks[row * 64 + bit] = ((entry.hook_mask >> bit) & 1) as u8;
+                    }
+                }
+                out.f32_row_mut("state_num", batch_index)?[row * 9] =
+                    self.fitted_value(entry.priority as f64, "state.priority", &format!("{prefix}."))?;
+                out.u8_row_mut("state_num_present", batch_index)?[row * 9] = 1;
+                let (values, value_presence, refs, groups) = state_payload_values(&entry.payload, &prefix)?;
+                let payload_paths = state_payload_paths(entry.payload.kind.as_str());
+                let mut payload_nums = [0.0f32; 8];
+                for slot in 0..8 {
+                    if value_presence[slot] {
+                        payload_nums[slot] = self.fitted_value(values[slot], payload_paths[slot], &format!("{prefix}."))?;
+                    }
+                }
+                out.f32_row_mut("state_num", batch_index)?[row * 9 + 1..row * 9 + 9].copy_from_slice(&payload_nums);
+                out.u8_row_mut("state_num_present", batch_index)?[row * 9 + 1..row * 9 + 9]
+                    .copy_from_slice(&value_presence.map(u8::from));
+                let mut payload_refs = [-1i32; 4];
+                let mut refs_present = [0u8; 4];
+                for slot in 0..4 {
+                    if let Some(id) = refs[slot] {
+                        payload_refs[slot] = index.entity_row(id, &format!("{prefix}.payload.reference"))? as i32;
+                        refs_present[slot] = 1;
+                    }
+                }
+                out.i32_row_mut("state_ref", batch_index)?[row * 4..row * 4 + 4].copy_from_slice(&payload_refs);
+                out.u8_row_mut("state_ref_present", batch_index)?[row * 4..row * 4 + 4].copy_from_slice(&refs_present);
+                let mut payload_groups = [-1i32; 3];
+                let mut groups_present = [0u8; 3];
+                for slot in 0..3 {
+                    if let Some(team) = groups[slot] {
+                        let dense = index.runtime_teams.get(&team).copied().ok_or_else(|| EncodeError::InvalidReference {
+                            path: format!("{prefix}.payload.team"),
+                            raw: team.to_string(),
+                        })?;
+                        payload_groups[slot] = dense as i32;
+                        groups_present[slot] = 1;
+                    }
+                }
+                out.i32_row_mut("state_group", batch_index)?[row * 3..row * 3 + 3].copy_from_slice(&payload_groups);
+                out.u8_row_mut("state_group_present", batch_index)?[row * 3..row * 3 + 3].copy_from_slice(&groups_present);
+                row += 1;
             }
         }
         Ok(())
@@ -1187,6 +1363,118 @@ fn template_num_present(template: &ModelTemplate) -> [bool; 31] {
 }
 
 fn normalize_position(ordinal: usize, length: usize) -> f32 { ordinal as f32 / length.saturating_sub(1).max(1) as f32 }
+
+fn state_kind_id(kind: &str) -> Option<i32> {
+    Some(match kind {
+        "none" => 1,
+        "fire_mag_half_steps" => 2,
+        "ice" => 3,
+        "shield_value" => 4,
+        "curse" => 5,
+        "poison" => 6,
+        "haste" => 7,
+        "berserk" => 8,
+        "charm" => 9,
+        "slow" => 10,
+        "iron" => 11,
+        _ => return None,
+    })
+}
+
+fn state_payload_paths(kind: &str) -> [&'static str; 8] {
+    let mut paths = ["state.payload.unused"; 8];
+    match kind {
+        "fire_mag_half_steps" => paths[0] = "state.payload.fire_mag_half_steps",
+        "ice" => paths[0] = "state.payload.ice.frozen_step",
+        "shield_value" => paths[0] = "state.payload.shield_value",
+        "curse" => {
+            paths[0] = "state.payload.curse.prob";
+            paths[1] = "state.payload.curse.multiply";
+        }
+        "poison" => {
+            paths[0] = "state.payload.poison.atp";
+            paths[1] = "state.payload.poison.count";
+        }
+        "haste" => {
+            paths[0] = "state.payload.haste.faster";
+            paths[1] = "state.payload.haste.effective_faster";
+            paths[2] = "state.payload.haste.step";
+        }
+        "berserk" => paths[0] = "state.payload.berserk.step",
+        "charm" => paths[0] = "state.payload.charm.step",
+        "slow" => paths[0] = "state.payload.slow.step",
+        "iron" => {
+            paths[0] = "state.payload.iron.protect";
+            paths[1] = "state.payload.iron.step";
+        }
+        "none" => {}
+        _ => {}
+    }
+    paths
+}
+
+type PayloadValues = ([f64; 8], [bool; 8], [Option<EntityIdx>; 4], [Option<usize>; 3]);
+
+fn state_payload_values(payload: &ModelPayload, prefix: &str) -> Result<PayloadValues, EncodeError> {
+    let mut values = [0.0; 8];
+    let mut presence = [false; 8];
+    let mut refs = [None; 4];
+    let mut groups = [None; 3];
+    let mut set = |slot: usize, value: f64| {
+        values[slot] = value;
+        presence[slot] = true;
+    };
+    match payload.kind.as_str() {
+        "none" => {}
+        "fire_mag_half_steps" => set(0, f64::from(payload.fire_mag_half_steps.unwrap())),
+        "ice" => set(0, f64::from(payload.ice.as_ref().unwrap().frozen_step)),
+        "shield_value" => set(0, f64::from(payload.shield_value.unwrap())),
+        "curse" => {
+            let p = payload.curse.as_ref().unwrap();
+            set(0, f64::from(p.prob));
+            set(1, f64::from(p.multiply));
+        }
+        "poison" => {
+            let p = payload.poison.as_ref().unwrap();
+            refs[0] = p.caster.map(EntityIdx);
+            refs[1] = p.target.map(EntityIdx);
+            set(0, f64::from_bits(p.atp_bits));
+            set(1, f64::from(p.count));
+        }
+        "haste" => {
+            let p = payload.haste.as_ref().unwrap();
+            set(0, f64::from(p.faster));
+            set(1, f64::from(p.effective_faster));
+            set(2, f64::from(p.step));
+        }
+        "berserk" => set(0, f64::from(payload.berserk.as_ref().unwrap().step)),
+        "charm" => {
+            let p = payload.charm.as_ref().unwrap();
+            refs[0] = p.target.map(EntityIdx);
+            let group = u32::try_from(p.group_id).map_err(|_| EncodeError::InvalidReference {
+                path: format!("{prefix}.payload.charm.group_id"),
+                raw: p.group_id.to_string(),
+            })?;
+            refs[1] = Some(EntityIdx(group));
+            groups[0] = p.effective_team_idx;
+            groups[1] = p.source_team_idx;
+            set(0, f64::from(p.step));
+        }
+        "slow" => set(0, f64::from(payload.slow.as_ref().unwrap().step)),
+        "iron" => {
+            let p = payload.iron.as_ref().unwrap();
+            set(0, f64::from(p.protect));
+            set(1, f64::from(p.step));
+        }
+        _ => {
+            return Err(EncodeError::UnsupportedPayloadKind {
+                path: format!("{prefix}.payload.kind"),
+                kind: payload.kind.clone(),
+            });
+        }
+    }
+    Ok((values, presence, refs, groups))
+}
 
 /// `RuntimeCorpseKind` 的固定词表：枚举 `None` 是真实类 1，不是缺失。
 fn corpse_kind_id(corpse: RuntimeCorpseKind) -> i32 {
@@ -1656,6 +1944,129 @@ mod tests {
             encoder().encode(&extra).unwrap_err(),
             EncodeError::InvalidState { .. }
         ));
+    }
+
+    #[test]
+    fn state_categories_use_frozen_vocabularies() {
+        let mut state = battle_state(2);
+        let row = state.entities[0].states.len();
+        state.entities[0].states.push(crate::runtime::model_state::ModelStateEntry {
+            legacy_order_key: 1,
+            extension_state_id: Some(0),
+            hook_mask: 0,
+            priority: 0,
+            registration_order: 1,
+            runtime_registration_order: 1,
+            payload: ModelPayload {
+                kind: "none".to_owned(),
+                ..ModelPayload::default()
+            },
+        });
+        let batch = encoder().encode(&state).unwrap();
+        let cats = batch.i32_all("state_cat").unwrap();
+        let presence = batch.u8_all("state_cat_present").unwrap();
+        assert!(cats[row * 2] > 0);
+        assert!(cats[row * 2 + 1] > 0, "Some(0) 也必须映射为正分类");
+        assert_eq!(&presence[row * 2..row * 2 + 2], &[1, 1]);
+
+        state.entities[0].states[row].extension_state_id = None;
+        let batch = encoder().encode(&state).unwrap();
+        let cats = batch.i32_all("state_cat").unwrap();
+        let presence = batch.u8_all("state_cat_present").unwrap();
+        assert_eq!(cats[row * 2 + 1], 0);
+        assert_eq!(&presence[row * 2..row * 2 + 2], &[1, 0]);
+    }
+
+    #[test]
+    fn unknown_state_categories_are_rejected() {
+        let mut legacy = battle_state(2);
+        legacy.entities[0].states.push(crate::runtime::model_state::ModelStateEntry {
+            legacy_order_key: 2,
+            extension_state_id: None,
+            hook_mask: 0,
+            priority: 0,
+            registration_order: 1,
+            runtime_registration_order: 1,
+            payload: ModelPayload {
+                kind: "none".to_owned(),
+                ..ModelPayload::default()
+            },
+        });
+        assert!(matches!(
+            encoder().encode(&legacy).unwrap_err(),
+            EncodeError::UnknownCategory { ref path, .. } if path.ends_with(".legacy_order_key")
+        ));
+
+        let mut extension = battle_state(2);
+        extension.entities[0].states.push(crate::runtime::model_state::ModelStateEntry {
+            legacy_order_key: 1,
+            extension_state_id: Some(9999),
+            hook_mask: 0,
+            priority: 0,
+            registration_order: 1,
+            runtime_registration_order: 1,
+            payload: ModelPayload {
+                kind: "none".to_owned(),
+                ..ModelPayload::default()
+            },
+        });
+        assert!(matches!(
+            encoder().encode(&extension).unwrap_err(),
+            EncodeError::UnknownCategory { ref path, .. } if path.ends_with(".extension_state_id")
+        ));
+    }
+
+    #[test]
+    fn order_lists_preserve_keys_and_rank_domains() {
+        let mut state = battle_state(2);
+        state.entities[0].states.push(crate::runtime::model_state::ModelStateEntry {
+            legacy_order_key: 1,
+            extension_state_id: None,
+            hook_mask: 0,
+            priority: 0,
+            registration_order: 1,
+            runtime_registration_order: 1,
+            payload: ModelPayload {
+                kind: "none".to_owned(),
+                ..ModelPayload::default()
+            },
+        });
+        let template = state
+            .entities
+            .iter_mut()
+            .find(|entity| !entity.template.skills.lanes.is_empty())
+            .expect("测试战斗必须有至少一条 lane");
+        template
+            .template
+            .skills
+            .post_action_after_states
+            .push(crate::runtime::model_state::ModelDeferredSkill {
+                state_cursor: 17,
+                fixed_lane: 0,
+            });
+
+        let batch = encoder().encode(&state).unwrap();
+        let indices = batch.i32_all("list_index").unwrap();
+        let mask = batch.u8_all("list_mask").unwrap();
+        let order_present = batch.u8_all("order_key_present").unwrap();
+        let rank_present = batch.u8_all("order_rank_present").unwrap();
+        let mut seen = [false; 4];
+        let count = mask.iter().position(|value| *value == 0).unwrap_or(mask.len());
+        for row in 0..count {
+            let field_class = indices[row * 5 + 2];
+            let slot = match field_class {
+                261 => Some(0),
+                270 => Some(1),
+                271 => Some(2),
+                272 => Some(3),
+                _ => None,
+            };
+            let Some(slot) = slot else { continue };
+            seen[slot] = true;
+            assert_eq!(order_present[row], 1, "field_class={field_class} 必须有精确顺序键");
+            assert_eq!(rank_present[row], u8::from(field_class != 261), "field_class={field_class}");
+        }
+        assert!(seen.into_iter().all(|present| present), "四类顺序记录都应出现");
     }
 
     #[test]

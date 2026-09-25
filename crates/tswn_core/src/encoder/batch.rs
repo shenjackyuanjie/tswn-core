@@ -87,10 +87,9 @@ impl CapacityDims for ProfileSpec {
     }
 }
 
-/// 本模块已实现的张量注册表：**global / entity / template 三族**（含 mask 与 presence）。
+/// 本模块已实现的张量注册表：**global / entity / template / lane / list / state 六族**（含 mask 与 presence）。
 ///
-/// lane / state / slot / list / extra 四族以及 `order_key`/`extra_*` 等张量按 handoff
-/// 的分块计划在后续提交追加；追加时必须同步规格第 4 节的张量表与 manifest 张量注册表，
+/// slot / extra 尚未接入；后续追加时必须同步规格第 4 节的张量表与 manifest 张量注册表，
 /// 并保持“每个张量只登记一次、名称全局唯一”。
 pub const TENSOR_SPECS: &[TensorSpec] = &[
     // global
@@ -356,11 +355,84 @@ pub const TENSOR_SPECS: &[TensorSpec] = &[
         shape: "[V_max]",
         fill: Fill::Zero,
     },
+    // state
+    TensorSpec {
+        name: "state_mask",
+        dtype: Dtype::U8,
+        shape: "[S_max]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "state_entity",
+        dtype: Dtype::I32,
+        shape: "[S_max]",
+        fill: Fill::RefMinusOne,
+    },
+    TensorSpec {
+        name: "state_kind",
+        dtype: Dtype::I32,
+        shape: "[S_max]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "state_cat",
+        dtype: Dtype::I32,
+        shape: "[S_max,2]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "state_cat_present",
+        dtype: Dtype::U8,
+        shape: "[S_max,2]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "state_hook",
+        dtype: Dtype::U8,
+        shape: "[S_max,64]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "state_num",
+        dtype: Dtype::F32,
+        shape: "[S_max,9]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "state_num_present",
+        dtype: Dtype::U8,
+        shape: "[S_max,9]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "state_ref",
+        dtype: Dtype::I32,
+        shape: "[S_max,4]",
+        fill: Fill::RefMinusOne,
+    },
+    TensorSpec {
+        name: "state_ref_present",
+        dtype: Dtype::U8,
+        shape: "[S_max,4]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "state_group",
+        dtype: Dtype::I32,
+        shape: "[S_max,3]",
+        fill: Fill::RefMinusOne,
+    },
+    TensorSpec {
+        name: "state_group_present",
+        dtype: Dtype::U8,
+        shape: "[S_max,3]",
+        fill: Fill::Zero,
+    },
 ];
 
 /// 张量的具体 shape（不含 batch 轴）；用于推导每样本元素数与字节数。
 pub fn tensor_shape(dims: &[usize; 9], name: &str) -> Option<Vec<usize>> {
-    let [e, t, r, h, l, _s, _q, v, _x] = *dims;
+    let [e, t, r, h, l, s, _q, v, _x] = *dims;
     Some(match name {
         "global_num" => vec![6],
         "team_mask" => vec![t],
@@ -385,6 +457,12 @@ pub fn tensor_shape(dims: &[usize; 9], name: &str) -> Option<Vec<usize>> {
         "list_mask" | "list_position" | "order_key_present" | "order_rank" | "order_rank_present" => vec![v],
         "list_index" => vec![v, 5],
         "order_key" => vec![v, 2],
+        "state_mask" | "state_entity" | "state_kind" => vec![s],
+        "state_cat" | "state_cat_present" => vec![s, 2],
+        "state_hook" => vec![s, 64],
+        "state_num" | "state_num_present" => vec![s, 9],
+        "state_ref" | "state_ref_present" => vec![s, 4],
+        "state_group" | "state_group_present" => vec![s, 3],
         _ => return None,
     })
 }
