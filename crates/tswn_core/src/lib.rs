@@ -82,6 +82,7 @@ pub mod debug {
 pub mod bench_sched;
 pub mod case_gen;
 pub mod cli_api;
+pub mod encoder;
 pub mod namerena;
 pub mod rc4;
 pub mod replay_view;
