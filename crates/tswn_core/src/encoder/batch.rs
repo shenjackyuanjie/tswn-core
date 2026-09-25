@@ -311,14 +311,14 @@ impl TensorBuffer {
         }
     }
 
-    fn clear(&mut self, start: usize, fill: Fill) {
+    fn clear(&mut self, start: usize, len: usize, fill: Fill) {
         match self {
             Self::F32(values) => {
                 let value = match fill {
                     Fill::Zero => 0.0,
                     Fill::RefMinusOne => -1.0,
                 };
-                for slot in &mut values[start..] {
+                for slot in &mut values[start..start + len] {
                     *slot = value;
                 }
             }
@@ -327,17 +327,17 @@ impl TensorBuffer {
                     Fill::Zero => 0,
                     Fill::RefMinusOne => -1,
                 };
-                for slot in &mut values[start..] {
+                for slot in &mut values[start..start + len] {
                     *slot = value;
                 }
             }
             Self::U8(values) => {
-                for slot in &mut values[start..] {
+                for slot in &mut values[start..start + len] {
                     *slot = 0;
                 }
             }
             Self::U32(values) => {
-                for slot in &mut values[start..] {
+                for slot in &mut values[start..start + len] {
                     *slot = 0;
                 }
             }
@@ -419,7 +419,7 @@ impl EncodedBatch {
         }
         for slot in self.slots.values_mut() {
             let start = batch_index * slot.per_sample;
-            slot.buffer.clear(start, slot.fill);
+            slot.buffer.clear(start, slot.per_sample, slot.fill);
         }
         Ok(())
     }
@@ -593,6 +593,26 @@ mod tests {
         batch.clear_slot(0).unwrap();
         assert!(batch.u8_all("entity_mask").unwrap().iter().all(|value| *value == 0));
         assert!(batch.i32_all("entity_ref").unwrap().iter().all(|value| *value == -1));
+    }
+
+    #[test]
+    fn clear_middle_slot_does_not_touch_other_batch_slots() {
+        let mut batch = EncodedBatch::baseline(3);
+        batch.f32_row_mut("global_num", 0).unwrap()[0] = 1.0;
+        batch.f32_row_mut("global_num", 1).unwrap()[0] = 2.0;
+        batch.f32_row_mut("global_num", 2).unwrap()[0] = 3.0;
+        batch.i32_row_mut("entity_ref", 0).unwrap()[0] = 10;
+        batch.i32_row_mut("entity_ref", 1).unwrap()[0] = 20;
+        batch.i32_row_mut("entity_ref", 2).unwrap()[0] = 30;
+
+        batch.clear_slot(1).unwrap();
+
+        assert_eq!(batch.f32_row_mut("global_num", 0).unwrap()[0], 1.0);
+        assert_eq!(batch.f32_row_mut("global_num", 1).unwrap()[0], 0.0);
+        assert_eq!(batch.f32_row_mut("global_num", 2).unwrap()[0], 3.0);
+        assert_eq!(batch.i32_row_mut("entity_ref", 0).unwrap()[0], 10);
+        assert_eq!(batch.i32_row_mut("entity_ref", 1).unwrap()[0], -1);
+        assert_eq!(batch.i32_row_mut("entity_ref", 2).unwrap()[0], 30);
     }
 
     #[test]
