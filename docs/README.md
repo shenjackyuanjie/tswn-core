@@ -10,6 +10,7 @@
 - 从旧版本迁移：[Runtime 0.5 迁移指南](guides/runtime-0.5-migration.md)。
 - 查看 BattleSession 工作规格：[重构计划](design/battle-session-plan.md)、[API 冻结前加固要求](design/battle-session-hardening.md)。
 - 性能测量与历史结果：[性能索引](perf/README.md)。
+- 胜率预测模块：[tswn-pwp 设计索引](design/README.md)。
 
 ## 目录导航
 

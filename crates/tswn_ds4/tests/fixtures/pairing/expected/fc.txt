@@ -1,0 +1,4 @@
+1000 fz1@teamA+bc1@teamA
+1000 fz1@teamA+bc2@teamC
+1195 fz2@teamB+bc1@teamA
+1166 fz2@teamB+bc2@teamC

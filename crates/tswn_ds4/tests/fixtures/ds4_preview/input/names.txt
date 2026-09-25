@@ -1,0 +1,4 @@
+alpha@teamA
+beta@teamA
+gamma@teamA
+delta@teamA

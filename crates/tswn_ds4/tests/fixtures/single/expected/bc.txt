@@ -1,0 +1,6 @@
+1111 476 alpha@teamA
+1111 -635 beta@teamA
+1111 795 gamma@teamB
+1111 310 +delta@teamC+
+1111 -922 epsilon@teamD
+1111 -557 zeta@teamE

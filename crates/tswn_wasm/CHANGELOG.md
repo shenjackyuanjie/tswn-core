@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### 变更
+
+- WASM 导出边界从 `#[tsify(into_wasm_abi)]` / `#[tsify(from_wasm_abi)]` 迁移到 `tsify::Ts<T>`：
+  参数改收 `Option<Ts<T>>`，返回改 `Ts<T>` / `Vec<Ts<T>>`，并在函数体内转成普通 Rust 类型。
+  这两个属性自 tsify 0.5.7 起弃用——它们把（反）序列化下沉到 wasm-bindgen 的 ABI 边界，
+  而该边界无法回传失败，只能 `throw_str`：一个 JS 可捕获的异常，却会跳过析构函数，
+  每次失败泄漏一点直到实例死亡（见 <https://github.com/madonoharu/tsify/issues/65>）。
+  此前只要升级 tsify 就会刷出 33 条弃用 warning，迁移后 warning 清零。
+- JS 侧可见契约不变：重新生成的 `tswn_wasm.d.ts` 与迁移前逐字节一致，`.js` glue 的函数名、
+  参数形状与返回类型不变，`examples/` 与契约测试无需改动。
+
+### 修复
+
+- 畸形 options 现在返回结构化 `{ code, message }` 错误（`INVALID_ARGUMENT`），不再抛
+  `throw_str` 的裸字符串；`icon_info()`、`FightSession` / `WinRateSession` 的取值方法在
+  序列化失败时也改为抛 `INTERNAL_ERROR`，不再直接 panic。
+
 ## [0.5.4] - 2026-09-08
 
 ### 新增

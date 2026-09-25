@@ -3,10 +3,12 @@
 //! 提供 `WinRateSession`（分批次步进执行，支持进度轮询）及 `run_win_rate_sync`
 //! 一次性同步函数，计算第一组玩家对其余组的胜率百分比。
 
+use tsify::Ts;
 use tswn_core::Runner;
 use tswn_core::runtime::{PreparedRuntimeRunner, default_custom_runtime_import_config, prepared_runtime_win_rate_range_timed};
 use wasm_bindgen::prelude::*;
 
+use crate::convert::{ts_in, ts_out};
 use crate::error::{WasmResult, invalid_input, runner_init_failed, unsupported_option, win_rate_invalid_groups};
 use crate::model::{WinRateOptions, WinRateProgress, WinRateResult, WinRateTiming};
 
@@ -110,21 +112,21 @@ pub fn run_win_rate_sync(raw_input: String, total_rounds: usize, options: WinRat
 #[wasm_bindgen]
 impl WinRateSession {
     #[wasm_bindgen(constructor)]
-    pub fn new(raw_input: String, total_rounds: usize, options: Option<WinRateOptions>) -> WasmResult<WinRateSession> {
+    pub fn new(raw_input: String, total_rounds: usize, options: Option<Ts<WinRateOptions>>) -> WasmResult<WinRateSession> {
         crate::install_panic_hook();
-        let options = options.unwrap_or_default();
+        let options = ts_in(options)?;
         Self::new_internal(raw_input, total_rounds, options)
     }
 
     pub fn is_finished(&self) -> bool { self.next_round >= self.total_rounds }
 
-    pub fn progress(&self) -> WinRateProgress { self.progress_value() }
+    pub fn progress(&self) -> WasmResult<Ts<WinRateProgress>> { ts_out(&self.progress_value()) }
 
-    pub fn step(&mut self, batch_size: Option<usize>) -> WasmResult<WinRateProgress> {
-        self.step_internal(batch_size.unwrap_or(100))
+    pub fn step(&mut self, batch_size: Option<usize>) -> WasmResult<Ts<WinRateProgress>> {
+        self.step_internal(batch_size.unwrap_or(100)).and_then(|progress| ts_out(&progress))
     }
 
-    pub fn result(&self) -> WinRateResult { self.result_value() }
+    pub fn result(&self) -> WasmResult<Ts<WinRateResult>> { ts_out(&self.result_value()) }
 
     pub fn eval_rq(&self) -> f64 { self.eval_rq }
 }

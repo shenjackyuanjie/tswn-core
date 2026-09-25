@@ -1,0 +1,4 @@
+700 fs1@teamA+pj1@teamA
+900 fs1@teamA+pj2@teamZ
+751 fs2@teamB+pj1@teamA
+1058 fs2@teamB+pj2@teamZ

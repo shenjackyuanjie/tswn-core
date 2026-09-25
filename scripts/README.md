@@ -8,8 +8,8 @@
 ## read_winprob_dataset.py
 
 使用 `pyarrow` 读取战斗状态 Parquet，只向调用方提供 `state` 和 `winner_team_index`，默认排除空标签。
-先用 `tswn-winprob-dataset validate` 校验完整性，再运行 `python scripts/read_winprob_dataset.py target/winprob-demo`。
-生成命令和数据契约见 [生成器说明](../crates/tswn_winprob_dataset/README.md)。
+先用 `tswn-pwp validate` 校验完整性，再运行 `python scripts/read_winprob_dataset.py target/winprob-demo`。
+生成命令和数据契约见 [生成器说明](../crates/tswn_pwp/README.md)。
 
 ## measure_encoder_capacity.py
 

@@ -48,3 +48,5 @@
 | [rc4_20260905_profile.json](rc4_20260905_profile.json) | RC4 调查数据 |
 | [python_battle_session_samples.json](python_battle_session_samples.json) | Python BattleSession DTO 转换基线的逐次样本 |
 | [web_streaming_result.png](web_streaming_result.png) | Web Streaming 页面截图 |
+
+胜率数据集的设计与读取契约见 [设计索引](../design/README.md) 和 [`tswn_pwp` README](../../crates/tswn_pwp/README.md)；其中 encoder 容量测量直接为 [FeatureEncoder 规格](../design/feature-encoder-spec.md) 提供依据。

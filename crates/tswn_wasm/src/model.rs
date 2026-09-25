@@ -2,6 +2,13 @@
 //!
 //! 定义从 Rust 向 JavaScript 暴露的所有数据结构，包括战斗选项、玩家元数据、
 //! 每帧状态快照、战斗回放、胜率结果等，均通过 `tsify` 生成对应的 TypeScript 类型声明。
+//!
+//! 这些类型只保留 `#[derive(Tsify)]`，不再使用 `#[tsify(into_wasm_abi)]` /
+//! `#[tsify(from_wasm_abi)]`：那套属性把（反）序列化下沉到 wasm-bindgen 的 ABI
+//! 边界，而该边界无法回传失败，反序列化报错只能 `throw_str`，跳过析构函数并造成
+//! 内存泄漏（见 <https://github.com/madonoharu/tsify/issues/65>）。
+//! 现在统一由导出函数经 `tsify::Ts<T>` 在函数体内完成转换，失败时走普通
+//! `Result`，生成的 TypeScript 声明与之前完全一致。
 
 use serde::{Deserialize, Serialize};
 use tsify::Tsify;
@@ -10,7 +17,6 @@ use tswn_core::runtime::RuntimeMinionKind;
 use tswn_core::runtime::update::UpdateType;
 
 #[derive(Debug, Clone, Default, Deserialize, Tsify)]
-#[tsify(from_wasm_abi)]
 pub struct FightOptions {
     #[tsify(optional)]
     pub eval_rq: Option<f64>,
@@ -29,7 +35,6 @@ impl FightOptions {
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, Tsify)]
-#[tsify(from_wasm_abi)]
 pub struct WinRateOptions {
     #[tsify(optional)]
     pub eval_rq: Option<f64>,
@@ -50,7 +55,6 @@ impl WinRateOptions {
 
 /// 跨绑定、可供 UI 使用的战斗回放 API 选项。
 #[derive(Debug, Clone, Deserialize, Tsify)]
-#[tsify(from_wasm_abi)]
 pub struct BattleOptions {
     #[tsify(optional)]
     pub eval_rq: Option<f64>,
@@ -85,7 +89,6 @@ impl BattleOptions {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct PlayerMeta {
     pub id: usize,
     pub team_index: usize,
@@ -97,7 +100,6 @@ pub struct PlayerMeta {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct PlayerState {
     pub id: usize,
     pub team_index: usize,
@@ -134,7 +136,6 @@ pub struct PlayerState {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 #[serde(rename_all = "snake_case")]
 pub enum MinionKindView {
     Clone,
@@ -155,7 +156,6 @@ impl From<RuntimeMinionKind> for MinionKindView {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 #[serde(rename_all = "snake_case")]
 pub enum UpdateTypeView {
     Win,
@@ -185,7 +185,6 @@ impl From<&str> for UpdateTypeView {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct RuntimeNormalizedRunView {
     pub rounds: Vec<RuntimeNormalizedOutcomeView>,
     pub winner_team: Option<usize>,
@@ -194,7 +193,6 @@ pub struct RuntimeNormalizedRunView {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct RuntimeNormalizedOutcomeView {
     pub winner_team: Option<usize>,
     pub round: u64,
@@ -217,7 +215,6 @@ pub struct RuntimeNormalizedOutcomeView {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct RuntimeActionBoundaryView {
     pub round: u64,
     pub actor: usize,
@@ -226,7 +223,6 @@ pub struct RuntimeActionBoundaryView {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct RuntimeUpdateFrameView {
     pub message: String,
     pub caster: usize,
@@ -241,7 +237,6 @@ pub struct RuntimeUpdateFrameView {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageTone {
     /// 普通消息（无特殊视觉效果）
@@ -257,7 +252,6 @@ pub enum MessageTone {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct UpdateView {
     pub score: u32,
     pub delay0: i32,
@@ -279,7 +273,6 @@ pub struct UpdateView {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 #[serde(rename_all = "snake_case")]
 pub enum ReplayTextPartKind {
     Text,
@@ -289,7 +282,6 @@ pub enum ReplayTextPartKind {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct ReplayTextPart {
     pub kind: ReplayTextPartKind,
     pub text: String,
@@ -303,7 +295,6 @@ pub struct ReplayTextPart {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct ReplayClip {
     pub delay: i32,
     pub color: String,
@@ -322,14 +313,12 @@ pub struct ReplayClip {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct ReplayRow {
     pub indent: bool,
     pub clips: Vec<ReplayClip>,
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct RoundFrame {
     pub finished: bool,
     pub winner_ids: Vec<usize>,
@@ -342,7 +331,6 @@ pub struct RoundFrame {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct FightReplay {
     pub players: Vec<PlayerMeta>,
     pub frames: Vec<RoundFrame>,
@@ -351,7 +339,6 @@ pub struct FightReplay {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct FightSummary {
     pub finished: bool,
     pub players: Vec<PlayerMeta>,
@@ -361,11 +348,9 @@ pub struct FightSummary {
 
 #[derive(Debug, Clone, Serialize, Tsify)]
 #[serde(transparent)]
-#[tsify(into_wasm_abi)]
 pub struct WinnerIds(pub Vec<usize>);
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct WinRateProgress {
     pub done: bool,
     pub rounds_done: usize,
@@ -375,14 +360,12 @@ pub struct WinRateProgress {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct WinRateTiming {
     pub init_nanos: u64,
     pub fight_nanos: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct WinRateResult {
     pub done: bool,
     pub rounds_done: usize,
@@ -394,14 +377,12 @@ pub struct WinRateResult {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct GroupWinRateResult {
     pub opponent: String,
     pub result: WinRateResult,
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct CliWinRateResult {
     pub wins: usize,
     pub total: usize,
@@ -411,14 +392,12 @@ pub struct CliWinRateResult {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct CliGroupWinRateResult {
     pub opponent: String,
     pub result: CliWinRateResult,
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct CliScoreResult {
     pub score: f64,
     pub wins: usize,
@@ -429,7 +408,6 @@ pub struct CliScoreResult {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct CliNamerPfResult {
     pub group: Vec<String>,
     pub modes: Vec<String>,
@@ -438,7 +416,6 @@ pub struct CliNamerPfResult {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct CliBatchRateResult {
     pub label: String,
     pub avg_win_rate: f64,
@@ -452,14 +429,12 @@ pub struct CliBatchRateResult {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct CliPairRateEntry {
     pub name: String,
     pub rate: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct CliPairRateResult {
     pub label: String,
     pub final_score: f64,
@@ -476,7 +451,6 @@ pub struct CliPairRateResult {
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct CliIconInfo {
     pub border_style: usize,
     pub shapes: Vec<usize>,

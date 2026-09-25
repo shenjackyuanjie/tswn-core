@@ -5,13 +5,13 @@
 
 mod actions;
 mod help;
+mod log;
 mod source;
 mod state;
-mod target_presets;
 mod view;
 mod widgets;
 
-use eframe::egui;
+use egui;
 
 pub use state::{OpenboxApp, Tool};
 

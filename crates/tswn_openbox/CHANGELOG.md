@@ -2,6 +2,37 @@
 
 ## [Unreleased]
 
+### 依赖更新
+
+- 显式依赖 `egui` 并直接使用其 API；`eframe`、`egui` 及配套组件更新至 `0.36.2`。
+- 更新 `clap`、`toml` 等依赖至现有兼容范围内的最新版本。
+
+### 新增
+
+- 新增 `openbox-cli` 无头命令行（`cargo run -p tswn_openbox --bin openbox-cli`）：
+  与 GUI 共用同一套后端（`src/backend/`）与预设（`src/presets/`），输出逐字节一致，
+  用于把面板工作流脚本化。四个子命令对应四个面板：`to-diy`、`namer-pf`、
+  `cqd`（别名 `cqp`）、`pair`。数据行走 stdout、进度与状态走 stderr；
+  预设读 `./setting/settings.toml`（缺失时自动释放内嵌默认资源），
+  技能榜阈值默认读 `./setting/score_now.toml`，`--skill-board FILE` 可显式指定。
+  `--metric NAME[:MIN_SCREEN[:FILE[:MIN_FILE]]]` 语法与 `tswn-cli namer-pf`
+  一致；`--show-matchups`（默认开）与 `--detail every`（默认）跟随 GUI 勾选状态；
+  高亮颜色降级为普通行，未实现 GUI 的停止按钮。
+- backend `NamerPfSkillBoardOptions` 增加 `config: Option<PathBuf>`：
+  CLI 可显式指定技能榜阈值文件；GUI 传 `None`，行为不变。
+
+### 重构
+
+- `app/target_presets.rs` 上移为 lib 级 `src/presets.rs`（`pub mod presets`），
+  预设解析与默认资源释放从此与 GUI 解耦，CLI 直接复用；新增
+  `load_target_preset_text` / `load_teammate_preset_text` 按预设直接读取。
+
+### 性能
+
+- GUI 日志改为按行维护 4 MiB 上限，超限时逐行淘汰旧内容，避免每次追加都搬移整段日志；
+  高亮和技能榜标记随日志行一起保留或淘汰。
+- 主日志仅绘制滚动区域内的可见行；技能榜内容仅在展开时生成，减少大量日志下的重绘开销。
+
 ## [0.4.4] - 2026-09-15
 
 ### 修复

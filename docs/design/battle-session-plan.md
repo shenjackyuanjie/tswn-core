@@ -6,6 +6,12 @@
 > 本文不覆盖：任何胜率模型、ModelState、训练数据、模型推理、模型 UI  
 > 本文取代此前 BattleSession 计划文档，作为本轮实现唯一规格。
 
+相关文档入口：
+
+- [返回设计索引](README.md)
+- [API 加固要求](battle-session-hardening.md)
+- [公共 API](../reference/public-api.md)
+
 ---
 
 ## 0. 本轮最终目标

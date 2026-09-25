@@ -1,0 +1,7 @@
+1200.000 1300.000 oldbc2@teamY
+1111.000 -557.000 zeta@teamE
+1111.000 795.000 gamma@teamB
+1111.000 -922.000 epsilon@teamD
+1111.000 476.000 alpha@teamA
+1111.000 310.000 +delta@teamC+
+1000.000 1000.000 oldbc1@teamX

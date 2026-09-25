@@ -10,7 +10,7 @@
 - **DIY 转换**：`tswn-cli to-diy -r NAME` 默认输出 `+ol`，加 `--old` 输出 `+diy`，也支持 `-f/--file` 和 `-o/--out-file`
 - **图标渲染**：玩家名称 → 16×16 像素头像（PNG / Base64 / RGBA）
 - **结构化回放视图**：`replay_view` 提供跨 WASM / Python / C 等包装层复用的分行、分帧、延迟、文本片段、血条和死亡特效规则
-- **DS3 兼容**：通过 `tswn_ds3` crate 提供 DS3_demo3 流程兼容
+- **DS4 流程**：通过 `tswn_ds4` crate 跟进 20260824 版本 ds4preview
 
 ## 快速开始
 
@@ -46,13 +46,17 @@ echo '<your raw input>' | ./target/release/tswn-cli fight
 ./target/release/tswn-cli bench batch-rate -l targets.txt -p players.txt --wr-precision 5
 ./target/release/tswn-cli bench batch-rate -l weighted-targets.toml -p players.txt --target-factored
 
-# namer-pf 四项评分；--precision 默认 0，控制分数输出的小数位数
-./target/release/tswn-cli namer-pf -r "mario\nluigi" --mode pp qd --precision 2
+# namer-pf 五项评分；--metric 逐项配置阈值/输出文件，--precision 控制小数位数
+./target/release/tswn-cli namer-pf -r "mario\nluigi" --precision 2
+./target/release/tswn-cli namer-pf -f names.txt --metric sum --metric pp:8000
+./target/release/tswn-cli namer-pf -f names.txt --metric pp:8000:pp.txt:7500 --no-screen
+./target/release/tswn-cli namer-pf -f names.txt --skill-board score_now.toml --skill-board-out board.txt
 
 # 二人组队友筛选；player-list 和 teammate-list 都是每行一个名字
 ./target/release/tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3
 ./target/release/tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 5 -o pair.txt --min-file 250
 ./target/release/tswn-cli bench pair -l weighted-targets.toml -p players.txt --teammate-list teammates.txt --head 3 --target-factored
+./target/release/tswn-cli bench pair -l targets.txt -p players.txt --teammate-list weighted-mates.toml --teammate-factored --head 4 --detail top
 ```
 
 `fight --jsonl` 逐行输出 initial/frame/result 并立即 flush；评分和胜率使用明确的 `bench` 子命令。CLI 不再提供 `--runtime` 执行器选择器或 `runtime parity`；独立 `bench` 也已迁移到同一数据模型。
@@ -61,7 +65,9 @@ echo '<your raw input>' | ./target/release/tswn-cli fight
 
 OL 召唤物模板支持继续嵌套 `shadow` / `summon` / `zombie` 子模板，用于配置“召唤物的召唤物”。给使魔模板配置普通玩家技能时需要显式写 `normal:` 前缀，例如 `{"normal:sklsummon":255,"sklfire1":9}`；这样普通技能、使魔固定技能和幻影附体会保留在不同技能编号通道中，吞噬时也不会互相串槽。使魔召唤出的子使魔会按直接来源链路传导伤害；使魔分身仍沿用 root owner 命名/清理规则，但伤害分摊会直接传到主名字。
 
-`bench pair` 会为每个选手组合与每个队友组合组成对局，分别计算 batch rate，并取最高的 `--head <N>` 个 batch rate 求和作为最终分数。选手每行默认按 `+` 分隔，使用 `--player-list-double-plus` 时改按 `++`；队友每行默认按 `++` 分隔，使用 `--teammate-list-single-plus` 时改按 `+`。选中带权靶子时加 `--target-factored`，即可按 TOML 中的 `factor` 计算加权平均。
+`bench pair` 会为每个选手组合与每个队友组合组成对局，分别计算 batch rate，并取最高的 `--head <N>` 个 batch rate 求和作为最终分数。选手每行默认按 `+` 分隔，使用 `--player-list-double-plus` 时改按 `++`；队友每行默认按 `++` 分隔，使用 `--teammate-list-single-plus` 时改按 `+`。选中带权靶子时加 `--target-factored`，即可按 TOML 中的 `factor` 计算加权平均。`--teammate-factored` 则把 teammate-list 按同格式带权 TOML 解析：每个队友组合先按靶子权重得到平均胜率，再乘该队友组的 `factor`，然后按 `--head` 取高分求和，队友权重会影响排名与最终分数。`--detail none|every|top` 控制 cqp 详情：`every` 按 `--detail-min` 过滤队友组合，`top` 只输出最终取分的组合。
+
+`namer-pf` 默认输出 `名字组合 指标:分数` 五行屏幕文本（pp/pd/qp/qd/sum）。`--metric NAME[:MIN_SCREEN[:FILE[:MIN_FILE]]]` 可重复传入，逐项配置屏幕阈值与输出文件，指标固定按 pp/pd/qp/qd/sum 顺序输出；`--no-screen` 只写文件。`--skill-board FILE` 开启技能榜：FILE 是阈值 TOML（`[sklfire]` 等小节写 pp/qp/qd/all，`[lessskl]` 写白板号阈值），按名字最高熟练度技能筛选输出 `技能名指标 分数 名字`。`bench batch-rate` 的 `--show-matchups` 输出逐个靶子的块状胜率明细，`--sort` 让输出文件按分数降序重排，`--clean-label` 剥掉标签里的 `+ol:` / `+diy[` 后缀（默认保持原有行为，显式开启才生效）。
 
 ### 作为库使用
 

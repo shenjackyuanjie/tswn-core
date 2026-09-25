@@ -71,6 +71,9 @@ pub struct NamerPfMetricOptions {
 pub struct NamerPfSkillBoardOptions {
     pub screen: bool,
     pub output_file: Option<PathBuf>,
+    /// 技能榜阈值配置文件；`None` 时按 GUI 惯例读取 `./setting/score_now.toml`。
+    /// CLI 可显式指定路径，摆脱对当前目录配置的依赖。
+    pub config: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]

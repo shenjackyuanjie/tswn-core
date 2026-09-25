@@ -6,6 +6,12 @@
 > 目的：在进入下一阶段前，修复已发现的兼容语义问题，补强 C ABI 演进能力、类型契约和失败态说明，并建立 Python DTO 转换性能基线。\
 > 本文不重新设计 BattleSession，不修改网页 streaming 架构，不包含任何胜率模型、ModelState、训练或推理工作。
 
+相关文档入口：
+
+- [返回设计索引](README.md)
+- [BattleSession 重构计划](battle-session-plan.md)
+- [公共 API](../reference/public-api.md)
+
 ---
 
 ## 0. 验收结论与本轮定位

@@ -10,12 +10,13 @@
 
 use std::fs;
 use std::io::{self, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use clap::CommandFactory;
 use clap::error::ErrorKind;
 
 use super::cli::Cli;
+use super::parsed::{NamerPfMetric, NamerPfMetricSpec};
 
 /// 从标准输入读取完整的 namerena 原始输入。
 ///
@@ -130,13 +131,76 @@ pub(super) fn parse_line_list(content: &str) -> Vec<String> {
 ///
 /// 返回转换后的 namerena 组字符串列表，组内成员之间用 `\n` 分隔。
 /// 这是 `bench batch-rate` / `bench pair` 的靶子列表和部分玩家列表的标准格式。
-pub(super) fn parse_plus_separated_groups(content: &str) -> Vec<String> {
+/// `double_plus=true` 时组内分隔符改成 `++`，避免拆开名字里的 `+diy[...]` /
+/// `+ol:...`。
+pub(super) fn parse_plus_separated_groups(content: &str, double_plus: bool) -> Vec<String> {
+    let separator = if double_plus { "++" } else { "+" };
     content
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
-        .map(|line| parse_group_line(line, "+"))
+        .map(|line| parse_group_line(line, separator))
         .collect()
+}
+
+/// 解析 `namer-pf --metric` 的单项规格。
+///
+/// 语法为 `NAME[:MIN_SCREEN[:FILE[:MIN_FILE]]]`，空段表示跳过该可选项，
+/// 例如 `pp::pp.txt` 表示无屏幕阈值但写入 `pp.txt`。
+///
+/// FILE 段按“最后一段是可解析数字才算 MIN_FILE”的规则回切，因此 Windows 的
+/// `C:\dir\out.txt` 这类带盘符冒号的路径不会被切碎。
+pub(super) fn parse_metric_spec(raw: &str) -> Result<NamerPfMetricSpec, String> {
+    let mut segments = raw.split(':');
+    let name = segments.next().unwrap_or_default().trim();
+    let metric = match name.to_ascii_lowercase().as_str() {
+        "pp" => NamerPfMetric::Pp,
+        "pd" => NamerPfMetric::Pd,
+        "qp" => NamerPfMetric::Qp,
+        "qd" => NamerPfMetric::Qd,
+        "sum" => NamerPfMetric::Sum,
+        _ => return Err(format!("评分项 NAME 必须是 pp/pd/qp/qd/sum 之一，当前为: {name}")),
+    };
+    let min_screen = match segments.next() {
+        Some(segment) if !segment.trim().is_empty() => Some(parse_non_negative_f64(segment.trim())?),
+        _ => None,
+    };
+    let mut rest = segments.collect::<Vec<_>>();
+    if rest.len() > 1 && rest.last().is_some_and(|segment| segment.trim().is_empty()) {
+        rest.pop();
+    }
+    let min_file = if rest.len() >= 2 && rest.last().is_some_and(|segment| segment.trim().parse::<f64>().is_ok()) {
+        let raw_min_file = rest.pop().expect("至少两段时才回切");
+        Some(parse_non_negative_f64(raw_min_file.trim())?)
+    } else {
+        None
+    };
+    let output_file = (!rest.is_empty()).then(|| PathBuf::from(rest.join(":").trim()));
+    if let Some(path) = output_file.as_ref()
+        && path_has_illegal_colon(path)
+    {
+        return Err(format!(
+            "输出文件路径不能包含 ':'（Windows 盘符前缀如 C:\\ 除外）: {}",
+            path.display()
+        ));
+    }
+    Ok(NamerPfMetricSpec {
+        metric,
+        min_screen,
+        output_file,
+        min_file,
+    })
+}
+
+/// 判断路径里的 `:` 是否非法。
+///
+/// 冒号分段语法要求 FILE 段本身不含冒号，唯一例外是 Windows 盘符前缀
+/// （`C:\dir\out.txt`）；ADS 等其他含冒号路径一律拒绝，避免和语法混淆。
+fn path_has_illegal_colon(path: &Path) -> bool {
+    let raw = path.to_string_lossy();
+    let mut chars = raw.chars();
+    let is_drive = matches!((chars.next(), chars.next()), (Some(letter), Some(':')) if letter.is_ascii_alphabetic());
+    !is_drive && raw.contains(':')
 }
 
 /// 解析带权靶子 TOML。每个 `[[targets]]` 项包含正数 `factor` 和非空 `players` 数组。
@@ -284,5 +348,69 @@ mod tests {
     #[test]
     fn to_diy_file_names_reject_empty_file() {
         assert!(parse_to_diy_file_names("\n \r\n").is_err());
+    }
+
+    #[test]
+    fn plus_groups_double_plus_keeps_overlay_suffix() {
+        assert_eq!(parse_plus_separated_groups("a+b", false), vec!["a\nb".to_string()]);
+        let diy = r#"aaaa+diy[58,87,82,78,89,93,99,343]{"skldefend":13}"#;
+        assert_eq!(
+            parse_plus_separated_groups(&format!("{diy}++bbbb"), true),
+            vec![format!("{diy}\nbbbb")]
+        );
+    }
+
+    #[test]
+    fn metric_spec_parses_name_only() {
+        let spec = parse_metric_spec("pp").unwrap();
+        assert_eq!(spec.metric, NamerPfMetric::Pp);
+        assert_eq!(spec.min_screen, None);
+        assert_eq!(spec.output_file, None);
+        assert_eq!(spec.min_file, None);
+    }
+
+    #[test]
+    fn metric_spec_parses_all_four_segments() {
+        let spec = parse_metric_spec("sum:30000:out.txt:25000").unwrap();
+        assert_eq!(spec.metric, NamerPfMetric::Sum);
+        assert_eq!(spec.min_screen, Some(30000.0));
+        assert_eq!(spec.output_file, Some(PathBuf::from("out.txt")));
+        assert_eq!(spec.min_file, Some(25000.0));
+    }
+
+    #[test]
+    fn metric_spec_allows_empty_middle_segment() {
+        let spec = parse_metric_spec("qp::qp.txt").unwrap();
+        assert_eq!(spec.metric, NamerPfMetric::Qp);
+        assert_eq!(spec.min_screen, None);
+        assert_eq!(spec.output_file, Some(PathBuf::from("qp.txt")));
+        assert_eq!(spec.min_file, None);
+    }
+
+    #[test]
+    fn metric_spec_keeps_windows_drive_letter_in_file() {
+        let spec = parse_metric_spec(r"pd::C:\scores\pd.txt").unwrap();
+        assert_eq!(spec.output_file, Some(PathBuf::from(r"C:\scores\pd.txt")));
+        let spec = parse_metric_spec(r"pd:8000:C:\scores\pd.txt:7000").unwrap();
+        assert_eq!(spec.metric, NamerPfMetric::Pd);
+        assert_eq!(spec.min_screen, Some(8000.0));
+        assert_eq!(spec.output_file, Some(PathBuf::from(r"C:\scores\pd.txt")));
+        assert_eq!(spec.min_file, Some(7000.0));
+    }
+
+    #[test]
+    fn metric_spec_rejects_unknown_name() {
+        assert!(parse_metric_spec("xp").is_err());
+    }
+
+    #[test]
+    fn metric_spec_rejects_negative_threshold() {
+        assert!(parse_metric_spec("pp:-1").is_err());
+    }
+
+    #[test]
+    fn metric_spec_rejects_non_numeric_threshold() {
+        assert!(parse_metric_spec("pp:abc").is_err());
+        assert!(parse_metric_spec("pp:8000:out.txt:abc").is_err());
     }
 }

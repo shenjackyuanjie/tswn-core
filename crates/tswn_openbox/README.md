@@ -4,6 +4,8 @@
 
 `tswn_openbox` 是一个带 GUI 的本地交互面板，把常用 `tswn-cli` 工作流做成点击即用的界面。目标是能跑、无使用门槛、界面简洁。
 
+同时提供 `openbox-cli` 无头命令行：与 GUI 共用同一套后端与配置，输出逐字节一致，用于把面板工作流脚本化。
+
 当前支持：
 
 - `to-diy`
@@ -32,6 +34,44 @@ target\release\tswn_openbox.exe
 ```
 
 Windows GUI 构建启用 `windows_subsystem = "windows"`，双击启动时不会额外挂出控制台窗口。
+
+## openbox-cli（无头 CLI）
+
+```powershell
+cargo run -p tswn_openbox --bin openbox-cli -- --help
+```
+
+`openbox-cli` 复用 GUI 的后端（`src/backend/`）与预设（`src/presets/`），
+因此行为与面板完全一致：同样的解析、执行、输出格式、输出排序、标签清洗，
+以及同样的配置约定——靶子/队友预设读 `./setting/settings.toml`（缺失时
+自动释放内嵌默认资源），技能榜阈值默认读 `./setting/score_now.toml`。
+数据行走 stdout，进度与状态走 stderr，方便管道与重定向。
+
+四个子命令与 GUI 面板一一对应：
+
+```powershell
+# to-diy：默认单号输出详情；--no-details 关闭；--old / --minions 同 GUI
+openbox-cli to-diy -r "mario@team+fire"
+openbox-cli to-diy -f names.txt --minions -o diy.txt
+
+# namer-pf：默认五项上屏；--metric 逐项阈值/文件；--skill-board 技能榜
+openbox-cli namer-pf -f names.txt --metric sum --metric pp:8000
+openbox-cli namer-pf -f names.txt --metric pp:8000:pp.txt:7500 --no-screen
+openbox-cli namer-pf -f names.txt --skill-board --skill-board-out board.txt
+openbox-cli namer-pf -f names.txt --skill-board custom-thresholds.toml
+
+# cqd/cqp：靶子用预设（--target-preset ID）或手动文件；默认输出每组胜率明细
+openbox-cli cqd --target-preset 2 -p players.txt -n 10000
+openbox-cli cqp -l targets.txt -p players.txt --no-show-matchups --min-screen 60.5
+
+# pair：默认 id=2 靶子预设 + 第一个队友预设（head/factor 一并生效）
+openbox-cli pair -p players.txt --teammate-preset 刺评 --head 4
+openbox-cli pair -l targets.txt -p players.txt --teammates mates.toml --detail top
+```
+
+与 GUI 的刻意差异（均为 CLI 合理性考虑）：高亮颜色降级为普通行；
+未实现“停止”按钮（Ctrl+C 直接终止进程）。预设系统、带权靶子/队友、
+技能榜、mirror 50%、重名跳过、输出排序等行为与 GUI 完全一致。
 
 ## 界面
 

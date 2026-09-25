@@ -1,6 +1,6 @@
-# 战斗状态导出与胜率数据生成
+# tswn-pwp：战斗状态导出与胜率数据生成
 
-本文规定第一版状态导出和数据生成契约；字段审计见 [battle-model-state-audit.md](battle-model-state-audit.md)，运行命令见 [生成器说明](../../crates/tswn_winprob_dataset/README.md)。
+本文规定 **tswn-pwp（player winchance predictor）** 第一版状态导出和数据生成契约。它建立在 [BattleSession 重构计划](battle-session-plan.md) 与 [API 加固要求](battle-session-hardening.md) 已确定的推进语义上；字段审计见 [battle-model-state-audit.md](battle-model-state-audit.md)，固定张量映射见 [FeatureEncoder 规格](feature-encoder-spec.md)，运行命令见 [生成器说明](../../crates/tswn_pwp/README.md)。
 
 ## 目标与边界
 
@@ -51,7 +51,7 @@ K=1 时只保留初始状态。最终进度只写审计列，不能作为输入�
 
 ## 输入、切分和 Parquet
 
-`tswn-winprob-dataset generate` 支持固定对局文件/目录，或名字池抽取指定队伍人数的阵容。这两种模式互斥。文本沿用引擎解析规则；实际战斗保留输入顺序，原 seed 行由派生 seed 替换。名字池去重，单局不重复抽同一条目。
+`tswn-pwp generate` 支持固定对局文件/目录，或名字池抽取指定队伍人数的阵容。这两种模式互斥。文本沿用引擎解析规则；实际战斗保留输入顺序，原 seed 行由派生 seed 替换。名字池去重，单局不重复抽同一条目。
 
 按规范化阵容哈希切分为 train/validation/test，比例 80/10/10。规范化忽略 seed、排序队伍与队内成员，但保留成员重复和队伍边界。同阵容所有 seed、所有顺序变体共享集合；不同集合允许出现相同名字。规范化只服务于切分，不改变引擎输入。比例是哈希分桶比例，小样本不保证三组都非空。
 

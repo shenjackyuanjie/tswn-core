@@ -1,10 +1,12 @@
 //! 从规范 BattleSession 投影出的高级兼容 API。
+use crate::convert::{ts_in, ts_out, ts_out_vec};
 use crate::error::{WasmResult, cli_api_error};
 use crate::model::{
     FightOptions, FightReplay, FightSummary, MessageTone, MinionKindView, PlayerMeta, PlayerState, ReplayClip, ReplayRow,
     ReplayTextPart, ReplayTextPartKind, RoundFrame, UpdateTypeView, UpdateView, WinnerIds,
 };
 use crate::render::status_change_tokens;
+use tsify::Ts;
 use tswn_core::cli_api::battle::{BattleOptions, BattlePlayerState, BattleReplayFrame, BattleSession, BattleUpdate};
 use wasm_bindgen::prelude::*;
 
@@ -176,40 +178,52 @@ impl FightSession {
         Ok(FightReplay {
             players: self.players.clone(),
             frames,
-            winner_ids: self.winner_ids().0,
-            final_states: self.state()?,
+            winner_ids: self.winner_ids_value().0,
+            final_states: self.state_vec(),
         })
+    }
+
+    /// 当前全部玩家状态的 Rust 视图，供兼容包装与测试复用。
+    fn state_vec(&self) -> Vec<PlayerState> { self.session.current_states().iter().map(state_from_core).collect() }
+
+    /// 当前胜者 id 的 Rust 视图，供兼容包装与测试复用。
+    fn winner_ids_value(&self) -> WinnerIds {
+        WinnerIds(self.session.result().map(|result| result.winner_ids).unwrap_or_default())
+    }
+
+    /// 推进一步并返回该帧的 Rust 视图；已结束且无新帧时返回占位空帧。
+    fn step_internal(&mut self) -> WasmResult<RoundFrame> {
+        match self.session.next_frame().map_err(cli_api_error)? {
+            Some(frame) => Ok(frame_from_core(frame)),
+            None => Ok(RoundFrame {
+                finished: self.session.is_finished(),
+                winner_ids: self.winner_ids_value().0,
+                updates: Vec::new(),
+                rows: Vec::new(),
+                states: self.state_vec(),
+                total_delay: 0,
+            }),
+        }
     }
 }
 
 #[wasm_bindgen]
 impl FightSession {
     #[wasm_bindgen(constructor)]
-    pub fn new(raw_input: String, options: Option<FightOptions>) -> WasmResult<FightSession> {
+    pub fn new(raw_input: String, options: Option<Ts<FightOptions>>) -> WasmResult<FightSession> {
         crate::install_panic_hook();
-        Self::new_internal(raw_input, options.unwrap_or_default())
+        let options = ts_in(options)?;
+        Self::new_internal(raw_input, options)
     }
-    pub fn players(&self) -> Vec<PlayerMeta> { self.players.clone() }
-    pub fn state(&self) -> WasmResult<Vec<PlayerState>> {
-        Ok(self.session.current_states().iter().map(state_from_core).collect())
-    }
+    pub fn players(&self) -> WasmResult<Vec<Ts<PlayerMeta>>> { ts_out_vec(&self.players) }
+    pub fn state(&self) -> WasmResult<Vec<Ts<PlayerState>>> { ts_out_vec(&self.state_vec()) }
     pub fn is_finished(&self) -> bool { self.session.is_finished() }
     pub fn is_done(&self) -> bool { self.session.is_done() }
-    pub fn winner_ids(&self) -> WinnerIds { WinnerIds(self.session.result().map(|result| result.winner_ids).unwrap_or_default()) }
-    pub fn step(&mut self) -> WasmResult<RoundFrame> {
-        match self.session.next_frame().map_err(cli_api_error)? {
-            Some(frame) => Ok(frame_from_core(frame)),
-            None => Ok(RoundFrame {
-                finished: self.session.is_finished(),
-                winner_ids: self.winner_ids().0,
-                updates: Vec::new(),
-                rows: Vec::new(),
-                states: self.state()?,
-                total_delay: 0,
-            }),
-        }
+    pub fn winner_ids(&self) -> WasmResult<Ts<WinnerIds>> { ts_out(&self.winner_ids_value()) }
+    pub fn step(&mut self) -> WasmResult<Ts<RoundFrame>> { self.step_internal().and_then(|frame| ts_out(&frame)) }
+    pub fn run_to_end(&mut self, limit: Option<usize>) -> WasmResult<Ts<FightReplay>> {
+        self.run_to_end_internal(limit).and_then(|replay| ts_out(&replay))
     }
-    pub fn run_to_end(&mut self, limit: Option<usize>) -> WasmResult<FightReplay> { self.run_to_end_internal(limit) }
 }
 
 pub fn fight_impl(raw_input: String, options: FightOptions) -> WasmResult<FightReplay> {
@@ -279,7 +293,7 @@ mod tests {
         let mut session = FightSession::new_internal("left@red\n\nright@blue\n".to_owned(), FightOptions::default()).unwrap();
         assert_eq!(session.players.iter().map(|player| player.id).collect::<Vec<_>>(), vec![0, 1]);
 
-        let frame = session.step().unwrap();
+        let frame = session.step_internal().unwrap();
         assert!(!frame.updates.is_empty());
         let clip = frame
             .rows
@@ -321,7 +335,7 @@ mod tests {
         );
         assert_eq!(legacy.session.rounds_advanced(), canonical.rounds_advanced());
         while let Some(expected) = canonical.next_frame().unwrap() {
-            let actual = legacy.step().unwrap();
+            let actual = legacy.step_internal().unwrap();
             assert_eq!(actual.finished, expected.finished);
             assert_eq!(actual.winner_ids, expected.winner_ids);
             assert_eq!(actual.total_delay, expected.total_delay);
@@ -339,7 +353,7 @@ mod tests {
             }
         }
         assert!(legacy.is_done() && legacy.is_finished());
-        assert!(legacy.step().unwrap().updates.is_empty());
+        assert!(legacy.step_internal().unwrap().updates.is_empty());
         assert_eq!(legacy.session.result(), canonical.result());
     }
 

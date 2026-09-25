@@ -2,11 +2,12 @@
 
 use std::cell::Cell;
 
-use eframe::egui;
+use egui;
 
 use tswn_openbox::backend::PairDetailMode;
 
 use super::help::{HelpTopic, help_icon};
+use super::log::LogKind;
 use super::state::{AccuracyPreset, CountMode, OpenboxApp, Tool};
 use super::widgets::{
     bench_output_controls, count_mode_controls, optional_file_output_controls, pick_named_output_file, thread_controls,
@@ -312,13 +313,10 @@ impl OpenboxApp {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.button("复制日志").clicked() {
-                            ctx.copy_text(self.log.clone());
+                            ctx.copy_text(self.log.copy_text());
                         }
                         if ui.button("清空日志").clicked() {
                             self.log.clear();
-                            self.log_line_count = 0;
-                            self.highlight_lines.clear();
-                            self.skill_board_lines.clear();
                         }
                     });
                 });
@@ -332,24 +330,22 @@ impl OpenboxApp {
                     ui.label(egui::RichText::new("运行结果会显示在这里").weak());
                 }
             });
-        if !self.skill_board_lines.is_empty() {
+        let skill_board_line_count = self.log.skill_board_line_count();
+        if skill_board_line_count > 0 {
             ui.add_space(LOG_SECTION_GAP);
-            let skill_board_log = selected_log_lines(&self.log, &self.skill_board_lines);
-            let line_count = skill_board_log.lines().count();
-            if line_count > 0 {
-                egui::CollapsingHeader::new(format!("技能榜 ({line_count})"))
-                    .default_open(false)
-                    .show(ui, |ui| {
-                        let text_height = compact_log_text_height(line_count);
-                        readonly_log_view(ui, "skill_board_log", &skill_board_log, text_height);
-                    });
-            }
+            egui::CollapsingHeader::new(format!("技能榜 ({skill_board_line_count})"))
+                .default_open(false)
+                .show(ui, |ui| {
+                    let skill_board_log = self.log.skill_board_text();
+                    let text_height = compact_log_text_height(skill_board_line_count);
+                    readonly_log_view(ui, "skill_board_log", &skill_board_log, text_height);
+                });
         }
         ui.add_space(LOG_SECTION_GAP);
         egui::Frame::group(ui.style())
             .inner_margin(egui::Margin::same(GROUP_MARGIN))
             .show(ui, |ui| {
-                if self.log.trim().is_empty() {
+                if self.log.is_empty() {
                     ui.vertical_centered(|ui| {
                         ui.add_space(48.0);
                         ui.label(egui::RichText::new("暂无日志").weak().size(18.0));
@@ -361,21 +357,27 @@ impl OpenboxApp {
                         .id_salt("main_log")
                         .auto_shrink([false, false])
                         .max_height(text_height)
-                        .show(ui, |ui| {
-                            ui.vertical(|ui| {
-                                for (index, line) in self.log.lines().enumerate() {
-                                    let mut text = egui::RichText::new(line).monospace();
-                                    if self.skill_board_lines.contains(&index) {
+                        .show_rows(
+                            ui,
+                            ui.text_style_height(&egui::TextStyle::Monospace),
+                            self.log.len(),
+                            |ui, rows| {
+                                for index in rows {
+                                    let Some(line) = self.log.get(index) else { continue };
+                                    let display_text = line.display_text();
+                                    let mut text =
+                                        egui::RichText::new(if display_text.is_empty() { " " } else { display_text }).monospace();
+                                    if line.kind == LogKind::SkillBoard {
                                         text = text.color(egui::Color32::from_rgb(45, 120, 220)).strong();
-                                    } else if line.starts_with("  ") {
+                                    } else if display_text.starts_with("  ") {
                                         text = text.color(egui::Color32::GRAY);
-                                    } else if self.highlight_lines.contains(&index) {
+                                    } else if line.kind == LogKind::Highlight {
                                         text = text.color(egui::Color32::from_rgb(210, 40, 40)).strong();
                                     }
                                     ui.add(egui::Label::new(text).extend());
                                 }
-                            });
-                        });
+                            },
+                        );
                 }
             });
     }
@@ -392,19 +394,6 @@ fn readonly_log_view(ui: &mut egui::Ui, id: &'static str, text: &str, viewport_h
 }
 
 fn compact_log_text_height(line_count: usize) -> f32 { (line_count.clamp(4, 20) as f32 * 17.0 + 12.0).min(360.0) }
-
-fn selected_log_lines(log: &str, line_indexes: &std::collections::HashSet<usize>) -> String {
-    let mut selected = log
-        .lines()
-        .enumerate()
-        .filter_map(|(index, line)| line_indexes.contains(&index).then_some(line))
-        .collect::<Vec<_>>()
-        .join("\n");
-    if !selected.is_empty() {
-        selected.push('\n');
-    }
-    selected
-}
 
 fn tool_header(ui: &mut egui::Ui, title: &str, subtitle: &str, more_settings_open: &mut bool) {
     ui.horizontal(|ui| {
@@ -475,7 +464,7 @@ fn highlight_delta_control(ui: &mut egui::Ui, value: &mut String, requested_help
     });
 }
 
-fn target_preset_controls(ui: &mut egui::Ui, state: &mut super::target_presets::TargetPresetState) {
+fn target_preset_controls(ui: &mut egui::Ui, state: &mut tswn_openbox::presets::TargetPresetState) {
     ui.horizontal(|ui| {
         ui.label("靶子");
         egui::ComboBox::from_id_salt(ui.next_auto_id())
@@ -496,7 +485,7 @@ fn target_preset_controls(ui: &mut egui::Ui, state: &mut super::target_presets::
 
 fn teammate_preset_controls(
     ui: &mut egui::Ui,
-    state: &mut super::target_presets::TeammatePresetState,
+    state: &mut tswn_openbox::presets::TeammatePresetState,
     requested_help: &Cell<Option<HelpTopic>>,
     show_help: bool,
 ) {

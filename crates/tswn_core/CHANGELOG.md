@@ -2,6 +2,53 @@
 
 ## [Unreleased]
 
+### 依赖更新
+
+- 更新 `clap`、`smallvec`、`toml` 等依赖至现有兼容范围内的最新版本。
+
+### 新增
+
+- `tswn-cli namer-pf` 对齐 openbox GUI 输出形态：屏幕行改为 `名字组合 指标:分数`，
+  删除原 `pp|pd|qp|qd|sum` 管道表与 `--mode` 参数，改为可重复的
+  `--metric NAME[:MIN_SCREEN[:FILE[:MIN_FILE]]]`（`sum` = 其余四项之和，选中或
+  技能榜开启时四项全算；FILE 段支持 Windows 盘符冒号，其余含冒号路径直接报错）；
+  新增 `--no-screen`（只写文件）、`--skill-board FILE` 与 `--skill-board-out FILE`
+  技能榜（阈值 TOML 显式传入，不依赖 `./setting` 约定；含 `[lessskl]` 白板号阈值与
+  全能 pp>=8000/pd>=9000/qp>=6000/qd>=7000 硬编码条件，输出 `技能名指标 分数 名字`）。
+- `tswn-cli bench batch-rate`（别名 cqp/cqd）新增 `--target-list-double-plus`（靶子
+  侧 `++` 分隔）、`--show-matchups`（openbox 块状每组胜率明细，串行与并行路径收集
+  顺序一致，与 `-v` 同开时以块状为准）、`--sort`（Log/JSONL 输出文件按分数降序重排，
+  pure 不排）与 `--clean-label`（剥掉 `+ol:` / `+diy[` 后缀）；两者默认关闭，保持
+  原有输出行为。
+- `tswn-cli bench pair` 新增 `--teammate-factored`（teammate-list 按带权 TOML 解析：
+  先靶子加权平均，再乘队友 `factor`，按乘权分数降序取前 `head` 个求和，权重影响排名
+  与最终分数）、`--detail none|every|top` 与 `--detail-min`（cqp 详情三模式，块状
+  格式 `最终分数 名字` + 缩进 `cqp 队友`，与 `-v` 相互独立）、`--sort` / `--clean-label`。
+- `tswn-cli to-diy` 新增 `--no-details`（单号详情默认开启，等价原隐式规则），详情块
+  补 `技能: {...}` 行（按花括号深度与字符串转义从 `+diy` 导出中抽取）。
+- 四个子命令的 `--help` 重写为自带教程的长文档：语法、默认值、输出格式与示例齐全，
+  只看帮助即可上手。
+
+### 重构
+
+- `tswn_cli::bench` 的 `batch.rs`（1360 行、`run_bench_pair` 27 参）拆分为
+  `batch_rate.rs` / `pair.rs` / `progress.rs`；共享的类型与助手（文件输出模式、
+  输出排序、进度条）上移到 `output.rs` / `progress.rs`。巨型签名收敛：
+  pair 的对齐参数合并为 `PairOptions`，namer-pf 的输出参数合并为
+  `NamerPfOutputOptions`，batch-rate / pair 的排序与标签清洗合并为
+  `ScoreOutputOptions`。
+
+### 修复
+
+- 修复 wasm32-unknown-unknown 上计时直接 panic、导致胜率与评分等批量接口整体不可用的问题。
+  `std::time::Instant::now()` 在该 target 上未实现（`library/std/src/sys/time/unsupported.rs`），
+  wasm 侧一旦走到 `_timed` 路径就 `RuntimeError: unreachable`，之后整个实例失效，
+  `win_rate_sync` / `group_win_rate` / `score` / `namer_pf` / `batch_rate` / `pair_rate`
+  等导出全部无法调用。新增 `time::Stopwatch`：native 仍走 `Instant`，wasm 改用 `js-sys` 的
+  `Date::now()`（毫秒精度、不保证严格单调），`runtime/batch.rs` 与 `runtime/cqp.rs` 的计时
+  统一改走该辅助类型。`init_nanos` / `fight_nanos` 与 matchup 墙钟耗时在 wasm 上恢复可用，
+  数值语义与 native 一致，仅精度回退；战斗与胜率计算不读取计时值，结果不变。
+
 ## [0.6.1] - 2026-09-15
 
 ### 性能与诊断

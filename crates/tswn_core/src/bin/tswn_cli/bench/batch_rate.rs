@@ -1,0 +1,744 @@
+//! `bench batch-rate` / `bench cqp` 的批量评估入口。
+//!
+//! 这部分的特点不是“单次对局逻辑复杂”，而是外层循环很多：
+//! - 一个 player group 需要对多个 target group 重复跑；
+//! - 同时还要维护进度条、阈值过滤和结果落盘。
+//!
+//! 与 `pair` 的差异只在汇总目标：batch-rate 输出每个选手对全部靶子的平均胜率，
+//! 组合层面的二人组求和在 `pair.rs`。共享的进度条在 `progress.rs`，文件输出与
+//! 排序在 `output.rs`。
+
+use std::cell::Cell;
+use std::fmt::Write as _;
+use std::fs::File;
+use std::io::{self, IsTerminal, Write as _};
+use std::path::Path;
+use std::sync::atomic::AtomicBool;
+use std::time::{Duration, Instant};
+
+use tswn_core::runtime::{RuntimeCqpMatchup, runtime_cqp_matchups};
+use tswn_core::win_rate::{WinRateTiming, resolve_win_rate_workers};
+
+use crate::args::BenchThreadMode;
+
+use super::common::{format_duration, thread_spec};
+use super::output::{
+    BatchFileOutputMode, ScoreOutputOptions, clean_group_label, clean_name_label, display_group, finalize_score_output,
+    first_duplicate_name_in_matchup, format_batch_rate_log_record, format_batch_rate_pure_record, format_batch_rate_record,
+    format_rate, groups_have_same_players, open_batch_rate_output, print_perf_lines, write_batch_rate_record,
+};
+use super::progress::{BatchProgress, PROGRESS_BAR_WIDTH};
+use super::winrate::bench_winrate_summary;
+
+/// 单个 player group 批量测试后的汇总；`pair` 也复用同一次单组计算的结果。
+#[derive(Debug)]
+pub(super) struct BatchRateSummary {
+    pub avg: f64,
+    pub aggregate_rate: f64,
+    pub wins: usize,
+    pub total: usize,
+    pub timing: WinRateTiming,
+    pub elapsed: Duration,
+    pub valid_matchups: usize,
+    pub skipped_matchups: usize,
+}
+
+impl BatchRateSummary {
+    /// 每秒完成多少场 battle。
+    fn throughput(&self) -> f64 {
+        let elapsed_secs = self.elapsed.as_secs_f64();
+        if elapsed_secs > 0.0 {
+            self.total as f64 / elapsed_secs
+        } else {
+            0.0
+        }
+    }
+}
+
+/// `bench batch-rate` / `bench cqp` 入口。
+#[allow(clippy::too_many_arguments)]
+pub fn run_bench_batch_rate(
+    target_groups: &[String],
+    target_factors: &[f64],
+    target_factored: bool,
+    player_groups: &[String],
+    player_labels: &[String],
+    n: usize,
+    mode: BenchThreadMode,
+    threads: Option<usize>,
+    eval_rq: f64,
+    verbose: bool,
+    perf: bool,
+    out_file: Option<&Path>,
+    force: bool,
+    log: bool,
+    pure: bool,
+    min_screen: Option<f64>,
+    min_file: Option<f64>,
+    wr_precision: usize,
+    show_matchups: bool,
+    output: ScoreOutputOptions,
+) {
+    let ScoreOutputOptions { sort, clean_label } = output;
+    let file_mode = if pure {
+        BatchFileOutputMode::Pure
+    } else if log {
+        BatchFileOutputMode::Json
+    } else {
+        BatchFileOutputMode::Log
+    };
+    // 排序发生在所有选手处理完之后，先记住路径，避免被下面的 File 句柄遮蔽。
+    let sort_path = out_file;
+
+    let mut out_file = match out_file {
+        Some(path) => match open_batch_rate_output(path, force) {
+            Ok(file) => Some(file),
+            Err(err) => {
+                eprintln!("打开批量结果输出文件失败: {err}");
+                std::process::exit(1);
+            }
+        },
+        None => None,
+    };
+
+    println!(
+        "=== 批量组胜率测试 ({n} 场/对局, {} 选手组, {} 靶子组) ===",
+        player_groups.len(),
+        target_groups.len()
+    );
+    if let Some(threshold) = min_screen {
+        println!("终端最低胜率阈值: {:.2}%", threshold);
+    }
+    if out_file.is_some()
+        && let Some(threshold) = min_file
+    {
+        println!("文件最低胜率阈值: {:.2}%", threshold);
+    }
+
+    // 自动多线程把整个 player × target 矩阵交给 core 的持久 worker；显式单线程仍保留
+    // 原来的逐 player 路径，便于确定性诊断和单线程性能对照。
+    let matrix_workers = if mode == BenchThreadMode::SingleThread || target_factored {
+        1
+    } else {
+        resolve_win_rate_workers(thread_spec(threads), player_groups.len().saturating_mul(target_groups.len()))
+    };
+
+    if matrix_workers > 1 {
+        run_bench_batch_rate_parallel(
+            target_groups,
+            player_groups,
+            player_labels,
+            n,
+            threads,
+            eval_rq,
+            verbose,
+            perf,
+            &mut out_file,
+            file_mode,
+            min_screen,
+            min_file,
+            wr_precision,
+            show_matchups,
+            output,
+        );
+    } else {
+        // 串行路径：选手数很少或高精度档位，保留逐选手 ETA + 滑动窗口的细粒度进度条。
+        let mut progress = BatchProgress::new(player_groups.len(), target_groups.len());
+        progress.draw();
+
+        for (pi, (player, label)) in player_groups.iter().zip(player_labels.iter()).enumerate() {
+            // verbose 模式先把逐靶输出缓冲起来，等阈值判断通过后再整体打印，避免刷屏。
+            let mut verbose_buf = String::new();
+            if verbose {
+                let _ = writeln!(&mut verbose_buf);
+                let _ = writeln!(&mut verbose_buf, "━━━ [{}/{}] {} ━━━", pi + 1, player_groups.len(), label);
+            }
+
+            // `--show-matchups` 的块状明细按靶子输入顺序收集，与并行路径保持一致。
+            let mut detail_rates = Vec::new();
+            let summary = bench_batch_rate_for_group_detailed(
+                player,
+                target_groups,
+                target_factors,
+                target_factored,
+                n,
+                mode,
+                threads,
+                eval_rq,
+                verbose,
+                &mut verbose_buf,
+                |_, _| progress.tick_target(),
+                show_matchups.then_some(&mut detail_rates),
+            );
+
+            // complete_player 必须在打印前结算，这样滑动 ETA 能把刚跑完的选手算进去；
+            // 真正的排版/落盘交给 emit_batch_rate_player，确保和并行路径完全一致。
+            progress.complete_player(summary.elapsed);
+            emit_batch_rate_player(
+                label,
+                &summary,
+                &verbose_buf,
+                &detail_rates,
+                file_mode,
+                min_screen,
+                min_file,
+                wr_precision,
+                verbose,
+                show_matchups,
+                clean_label,
+                perf,
+                &mut out_file,
+                &|| progress.clear(),
+            );
+            progress.draw();
+        }
+
+        progress.finish();
+    }
+
+    drop(out_file);
+    if let Err(err) = finalize_score_output(sort_path, file_mode, sort) {
+        eprintln!("排序输出文件失败: {err}");
+        std::process::exit(1);
+    }
+}
+
+/// cqd/cqp 的矩阵并行执行路径。
+///
+/// 每个 `player × target` matchup 都是独立任务，core 在一组持久 worker 上动态窃取任务；
+/// 这样复杂 player 不会独占一个 worker 形成长尾，高精度档也不再为每个 matchup 重建线程组。
+/// core 返回值按矩阵原始顺序排列，因此这里仍按 player 输入顺序汇总、打印和落盘。
+#[allow(clippy::too_many_arguments)]
+fn run_bench_batch_rate_parallel(
+    target_groups: &[String],
+    player_groups: &[String],
+    player_labels: &[String],
+    n: usize,
+    threads: Option<usize>,
+    eval_rq: f64,
+    verbose: bool,
+    perf: bool,
+    out_file: &mut Option<File>,
+    file_mode: BatchFileOutputMode,
+    min_screen: Option<f64>,
+    min_file: Option<f64>,
+    wr_precision: usize,
+    show_matchups: bool,
+    output: ScoreOutputOptions,
+) {
+    let ScoreOutputOptions { sort: _, clean_label } = output;
+    let player_count = player_groups.len();
+    let total_matchups = player_count * target_groups.len();
+    let progress_enabled = io::stderr().is_terminal();
+    let started = Instant::now();
+    let cancel = AtomicBool::new(false);
+    // done_cell 同时被 on_tick（matchup 完成时自增）和 emit（打印后重绘时读取）访问；
+    // 主线程单线程，用 Cell 做内部可变性比把它拆成两个互斥的可变借用更顺手。
+    let done_cell = Cell::new(0usize);
+
+    let clear = || {
+        if progress_enabled {
+            eprint!("\r\x1b[K");
+            let _ = io::stderr().flush();
+        }
+    };
+    let draw = || {
+        if progress_enabled {
+            draw_overall_progress(done_cell.get(), total_matchups, started);
+        }
+    };
+    let mut request_by_matchup = vec![None; total_matchups];
+    let mut duplicates = vec![None; total_matchups];
+    let mut requests = Vec::with_capacity(total_matchups);
+    for (player_index, player) in player_groups.iter().enumerate() {
+        for (target_index, target) in target_groups.iter().enumerate() {
+            let flat_index = player_index * target_groups.len() + target_index;
+            if let Some(duplicate) = first_duplicate_name_in_matchup(&[player.as_str(), target.as_str()]) {
+                duplicates[flat_index] = Some(duplicate);
+                continue;
+            }
+            let groups = vec![
+                player.lines().map(str::to_owned).collect(),
+                target.lines().map(str::to_owned).collect(),
+            ];
+            request_by_matchup[flat_index] = Some(requests.len());
+            requests.push(RuntimeCqpMatchup::new(groups));
+        }
+    }
+
+    // 重复名字无需进入执行器，直接算作已经完成的进度单位。
+    done_cell.set(duplicates.iter().filter(|duplicate| duplicate.is_some()).count());
+    draw();
+    let batch = match runtime_cqp_matchups(&requests, n, eval_rq, thread_spec(threads), &cancel, || {
+        done_cell.set(done_cell.get() + 1);
+        draw();
+    }) {
+        Ok(batch) => batch,
+        Err(err) => {
+            clear();
+            eprintln!("执行 CQP/CQD 矩阵失败: {err}");
+            return;
+        }
+    };
+
+    for (player_index, label) in player_labels.iter().enumerate() {
+        let mut verbose_buf = String::new();
+        if verbose {
+            let _ = writeln!(&mut verbose_buf);
+            let _ = writeln!(&mut verbose_buf, "━━━ [{}/{}] {} ━━━", player_index + 1, player_count, label);
+        }
+        // `--show-matchups` 块状明细：按靶子输入顺序收集有效对局的 (胜率, 靶子组)。
+        let mut detail_rates = Vec::new();
+        let mut accumulated_rate = 0.0;
+        let mut accumulated_wins = 0;
+        let mut accumulated_total = 0;
+        let mut accumulated_timing = WinRateTiming::default();
+        let mut accumulated_elapsed = Duration::default();
+        let mut valid_matchups = 0;
+        let mut skipped_matchups = 0;
+
+        for (target_index, target) in target_groups.iter().enumerate() {
+            let flat_index = player_index * target_groups.len() + target_index;
+            if let Some(duplicate) = duplicates[flat_index].as_deref() {
+                skipped_matchups += 1;
+                if verbose {
+                    let _ = writeln!(
+                        &mut verbose_buf,
+                        "  [{}/{}] vs {}  =>  SKIP duplicate name: {}",
+                        target_index + 1,
+                        target_groups.len(),
+                        display_group(target),
+                        duplicate
+                    );
+                }
+                continue;
+            }
+
+            let Some(request_index) = request_by_matchup[flat_index] else {
+                skipped_matchups += 1;
+                continue;
+            };
+            let Some(result) = batch.matchups[request_index].as_ref() else {
+                skipped_matchups += 1;
+                continue;
+            };
+            accumulated_elapsed += result.elapsed;
+            let summary = match &result.summary {
+                Ok(summary) => *summary,
+                Err(err) => {
+                    if verbose {
+                        let _ = writeln!(
+                            &mut verbose_buf,
+                            "  [{}/{}] vs {}  =>  ERROR: {}",
+                            target_index + 1,
+                            target_groups.len(),
+                            display_group(target),
+                            err
+                        );
+                    }
+                    skipped_matchups += 1;
+                    continue;
+                }
+            };
+            if verbose {
+                let _ = writeln!(
+                    &mut verbose_buf,
+                    "  [{}/{}] vs {}  =>  {:.2}%  ({}/{})",
+                    target_index + 1,
+                    target_groups.len(),
+                    display_group(target),
+                    summary.win_rate_percent(),
+                    summary.wins,
+                    summary.total
+                );
+            }
+            if show_matchups {
+                detail_rates.push((summary.win_rate_percent(), target.clone()));
+            }
+            accumulated_rate += summary.win_rate_percent();
+            accumulated_wins += summary.wins;
+            accumulated_total += summary.total;
+            accumulated_timing.merge(summary.timing);
+            valid_matchups += 1;
+        }
+
+        let avg = if valid_matchups > 0 {
+            accumulated_rate / valid_matchups as f64
+        } else {
+            0.0
+        };
+        let summary = BatchRateSummary {
+            avg,
+            aggregate_rate: accumulated_wins as f64 * 100.0 / accumulated_total.max(1) as f64,
+            wins: accumulated_wins,
+            total: accumulated_total,
+            timing: accumulated_timing,
+            elapsed: accumulated_elapsed,
+            valid_matchups,
+            skipped_matchups,
+        };
+        emit_batch_rate_player(
+            label,
+            &summary,
+            &verbose_buf,
+            &detail_rates,
+            file_mode,
+            min_screen,
+            min_file,
+            wr_precision,
+            verbose,
+            show_matchups,
+            clean_label,
+            perf,
+            out_file,
+            &clear,
+        );
+    }
+
+    if progress_enabled {
+        clear();
+        eprintln!(
+            "完成: {player_count}/{player_count} 组选手, 总用时: {}",
+            format_duration(started.elapsed().as_secs_f64())
+        );
+    }
+}
+
+/// 把单个选手的批量胜率结果落地（屏幕日志 + 输出文件 + perf 拆分）。
+///
+/// 串行与外层并行两条路径共用同一套阈值判断和排版，避免两边各写一份导致格式漂移。
+/// 进度条的推进/结算由各自调用方负责（串行用带 ETA 的 [`BatchProgress`]，并行只数 matchup），
+/// 这里只通过 `clear` 回调在打印正文前擦掉进度行。
+///
+/// `show_matchups` 时屏幕输出切换为 openbox 块状格式（`平均胜率 名字` + 逐行缩进的
+/// `胜率 靶子组`），此时以它为准不再打印 `-v` 的逐靶明细，避免同一内容输出两遍；
+/// `clean_label` 同时作用于屏幕与文件标签。
+#[allow(clippy::too_many_arguments)]
+fn emit_batch_rate_player(
+    label: &str,
+    summary: &BatchRateSummary,
+    verbose_buf: &str,
+    detail_rates: &[(f64, String)],
+    file_mode: BatchFileOutputMode,
+    min_screen: Option<f64>,
+    min_file: Option<f64>,
+    wr_precision: usize,
+    verbose: bool,
+    show_matchups: bool,
+    clean_label: bool,
+    perf: bool,
+    out_file: &mut Option<File>,
+    clear: &dyn Fn(),
+) {
+    let avg = summary.avg;
+    let aggregate_rate = summary.aggregate_rate;
+    let elapsed = summary.elapsed;
+    let elapsed_secs = elapsed.as_secs_f64();
+    let throughput = summary.throughput();
+    let display_label = if clean_label {
+        clean_name_label(label)
+    } else {
+        label.to_string()
+    };
+    let summary_json = format_batch_rate_record(
+        &display_label,
+        avg,
+        aggregate_rate,
+        summary.wins,
+        summary.total,
+        elapsed,
+        throughput,
+        summary.valid_matchups,
+        summary.skipped_matchups,
+        wr_precision,
+    );
+    let summary_log = format_batch_rate_log_record(&display_label, avg, wr_precision);
+    let summary_pure = format_batch_rate_pure_record(&display_label);
+
+    let passes_screen = min_screen.is_none_or(|t| avg >= t);
+    let passes_file = min_file.is_none_or(|t| avg >= t);
+
+    if passes_screen {
+        // 打印前先擦掉进度条所在行，避免进度条和正文串到同一行。
+        clear();
+        if show_matchups {
+            println!("{} {}", format_rate(avg, wr_precision), display_label);
+            for (rate, target) in detail_rates {
+                println!(
+                    "  {} {}",
+                    format_rate(*rate, wr_precision),
+                    group_label_for_display(target, clean_label)
+                );
+            }
+        } else if verbose {
+            print!("{verbose_buf}");
+            println!(
+                "平均胜率: {}%  (有效 {} 组靶子，跳过 {} 场重复号)",
+                format_rate(avg, wr_precision),
+                summary.valid_matchups,
+                summary.skipped_matchups
+            );
+            println!(
+                "汇总胜率: {}%  ({}/{})",
+                format_rate(aggregate_rate, wr_precision),
+                summary.wins,
+                summary.total
+            );
+            println!(
+                "用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
+                elapsed_secs,
+                elapsed.as_micros() as f64 / summary.total.max(1) as f64,
+                throughput
+            );
+        } else {
+            println!(
+                "{}\t平均胜率: {}%\t有效: {}\t跳过重复: {}\t用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
+                display_label,
+                format_rate(avg, wr_precision),
+                summary.valid_matchups,
+                summary.skipped_matchups,
+                elapsed_secs,
+                elapsed.as_micros() as f64 / summary.total.max(1) as f64,
+                throughput
+            );
+        }
+    }
+
+    if passes_file && let Some(file) = out_file.as_mut() {
+        let line = match file_mode {
+            BatchFileOutputMode::Log => &summary_log,
+            BatchFileOutputMode::Json => &summary_json,
+            BatchFileOutputMode::Pure => &summary_pure,
+        };
+        if let Err(err) = write_batch_rate_record(file, line) {
+            eprintln!("写入批量结果输出文件失败: {err}");
+            std::process::exit(1);
+        }
+    }
+
+    if perf && passes_screen {
+        clear();
+        print_perf_lines(elapsed, summary.timing, summary.total);
+    }
+}
+
+/// 外层并行路径的“总体进度条”。
+///
+/// 串行版 [`BatchProgress`] 的 ETA 依赖逐选手耗时，但并行下选手乱序完成、墙钟相互重叠，
+/// 那套估算不再成立。这里退化成按 matchup 计数的总体进度，ETA 用整体已耗时线性外推。
+fn draw_overall_progress(done: usize, total: usize, started: Instant) {
+    if total == 0 {
+        return;
+    }
+    let frac = done as f64 / total as f64;
+    let filled = (frac * PROGRESS_BAR_WIDTH as f64) as usize;
+    let empty = PROGRESS_BAR_WIDTH.saturating_sub(filled);
+    let eta = if frac > 0.0 {
+        let elapsed = started.elapsed().as_secs_f64();
+        format_duration(elapsed / frac * (1.0 - frac))
+    } else {
+        "--".to_string()
+    };
+    let bar_filled: String = "█".repeat(filled);
+    let bar_empty: String = "░".repeat(empty);
+    eprint!(
+        "\r进度 [{bar_filled}{bar_empty}] {done}/{total} ({pct:.1}%) | 预计: {eta}\x1b[K",
+        pct = frac * 100.0,
+    );
+    let _ = io::stderr().flush();
+}
+
+/// 块状明细里的靶子组单行标签。
+///
+/// `clean=true` 走 openbox 的 `clean_group_label`（剥 overlay 后缀后用 `+` 拼回）；
+/// `clean=false` 只把多行组拼成 `+`，不改变名字内容，保证块状格式仍是单行一条。
+fn group_label_for_display(raw: &str, clean: bool) -> String {
+    if clean {
+        return clean_group_label(raw);
+    }
+    raw.lines().map(str::trim).filter(|line| !line.is_empty()).collect::<Vec<_>>().join("+")
+}
+
+/// 计算单个 player group 对整个 target 列表的平均胜率（不收集明细）。
+///
+/// `pair` 复用同一次单组计算结果，因此对 `bench` 模块内可见。
+#[allow(clippy::too_many_arguments)]
+pub(super) fn bench_batch_rate_for_group(
+    player: &str,
+    target_groups: &[String],
+    target_factors: &[f64],
+    target_factored: bool,
+    n: usize,
+    mode: BenchThreadMode,
+    threads: Option<usize>,
+    eval_rq: f64,
+    verbose: bool,
+    verbose_buf: &mut String,
+    tick_target: impl FnMut(usize, &str),
+) -> BatchRateSummary {
+    bench_batch_rate_for_group_detailed(
+        player,
+        target_groups,
+        target_factors,
+        target_factored,
+        n,
+        mode,
+        threads,
+        eval_rq,
+        verbose,
+        verbose_buf,
+        tick_target,
+        None,
+    )
+}
+
+/// 与 `bench_batch_rate_for_group` 相同，但可按需收集逐个靶子的 `(胜率, 靶子组)`。
+///
+/// `detail_rates` 为 `None` 时行为完全一致；`Some` 时按靶子输入顺序记录有效对局
+/// （镜像 50% 也记录，重复号跳过不记录），供 `--show-matchups` 块状明细使用。
+#[allow(clippy::too_many_arguments)]
+fn bench_batch_rate_for_group_detailed(
+    player: &str,
+    target_groups: &[String],
+    target_factors: &[f64],
+    target_factored: bool,
+    n: usize,
+    mode: BenchThreadMode,
+    threads: Option<usize>,
+    eval_rq: f64,
+    verbose: bool,
+    verbose_buf: &mut String,
+    mut tick_target: impl FnMut(usize, &str),
+    mut detail_rates: Option<&mut Vec<(f64, String)>>,
+) -> BatchRateSummary {
+    let overall_started = Instant::now();
+    let mut accumulated_rate = 0.0;
+    let mut accumulated_wins = 0usize;
+    let mut accumulated_total = 0usize;
+    let mut accumulated_timing = WinRateTiming::default();
+    let mut valid_matchups = 0usize;
+    let mut skipped_matchups = 0usize;
+    let mut accumulated_factor = 0.0;
+
+    for (ti, target) in target_groups.iter().enumerate() {
+        let factor = target_factors.get(ti).copied().unwrap_or(1.0);
+        if target_factored && groups_have_same_players(player, target) {
+            accumulated_rate += 50.0 * factor;
+            accumulated_factor += factor;
+            accumulated_wins += 1;
+            accumulated_total += 2;
+            valid_matchups += 1;
+            if let Some(sink) = detail_rates.as_mut() {
+                sink.push((50.0, target.clone()));
+            }
+            if verbose {
+                let _ = writeln!(
+                    verbose_buf,
+                    "  [{}/{}] vs {}  =>  50.00% (same players)",
+                    ti + 1,
+                    target_groups.len(),
+                    display_group(target),
+                );
+            }
+            tick_target(ti, target);
+            continue;
+        }
+        if !target_factored && let Some(duplicate) = first_duplicate_name_in_matchup(&[player, target.as_str()]) {
+            skipped_matchups += 1;
+            if verbose {
+                let _ = writeln!(
+                    verbose_buf,
+                    "  [{}/{}] vs {}  =>  SKIP duplicate name: {}",
+                    ti + 1,
+                    target_groups.len(),
+                    display_group(target),
+                    duplicate
+                );
+            }
+            tick_target(ti, target);
+            continue;
+        }
+
+        let raw = format!("{player}\n\n{target}");
+        let summary = bench_winrate_summary(&raw, n, mode, threads, eval_rq, true);
+        if let Some(sink) = detail_rates.as_mut() {
+            sink.push((summary.win_rate_percent(), target.clone()));
+        }
+        if verbose {
+            let _ = writeln!(
+                verbose_buf,
+                "  [{}/{}] vs {}  =>  {:.2}%  ({}/{})",
+                ti + 1,
+                target_groups.len(),
+                display_group(target),
+                summary.win_rate_percent(),
+                summary.wins,
+                summary.total
+            );
+        }
+        accumulated_rate += summary.win_rate_percent() * factor;
+        accumulated_factor += factor;
+        accumulated_wins += summary.wins;
+        accumulated_total += summary.total;
+        accumulated_timing.merge(summary.timing);
+        valid_matchups += 1;
+        tick_target(ti, target);
+    }
+
+    let avg = if accumulated_factor > 0.0 {
+        accumulated_rate / accumulated_factor
+    } else {
+        0.0
+    };
+    let aggregate_rate = accumulated_wins as f64 * 100.0 / accumulated_total.max(1) as f64;
+    BatchRateSummary {
+        avg,
+        aggregate_rate,
+        wins: accumulated_wins,
+        total: accumulated_total,
+        timing: accumulated_timing,
+        elapsed: overall_started.elapsed(),
+        valid_matchups,
+        skipped_matchups,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bench_batch_rate_for_group;
+    use crate::args::BenchThreadMode;
+
+    #[test]
+    fn factored_mirror_match_counts_as_weighted_fifty_percent() {
+        let targets = vec!["mario\nluigi".to_string()];
+        let factors = vec![2.0];
+        let mut verbose = String::new();
+        let summary = bench_batch_rate_for_group(
+            "luigi\nmario",
+            &targets,
+            &factors,
+            true,
+            1,
+            BenchThreadMode::SingleThread,
+            None,
+            4.0,
+            false,
+            &mut verbose,
+            |_, _| {},
+        );
+        assert_eq!(summary.avg, 50.0);
+        assert_eq!(summary.valid_matchups, 1);
+        assert_eq!(summary.skipped_matchups, 0);
+    }
+
+    #[test]
+    fn block_detail_group_label_joins_lines_and_honors_clean() {
+        // 多行靶子组在块状明细里必须是单行：clean 时剥 overlay 后用 `+` 拼回。
+        assert_eq!(super::group_label_for_display("mario\nluigi", false), "mario+luigi");
+        assert_eq!(
+            super::group_label_for_display("mario+diy[1,2,3,4,5,6,7,8]{\"a\":1}\nluigi", true),
+            "mario+luigi"
+        );
+        assert_eq!(super::group_label_for_display("mario+diy[1]{}", false), "mario+diy[1]{}");
+    }
+}

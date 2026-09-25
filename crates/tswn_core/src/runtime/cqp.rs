@@ -6,7 +6,9 @@
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use crate::time::Stopwatch;
 
 use super::{
     CustomRuntimeImportConfig, PreparedRuntimeRunner, RuntimeBatchError, RuntimeBatchSummary,
@@ -41,8 +43,8 @@ pub struct RuntimeCqpBatchResult {
 struct RangeEvent {
     index: usize,
     summary: Result<RuntimeBatchSummary, RuntimeBatchError>,
-    started: Instant,
-    finished: Instant,
+    started: Stopwatch,
+    finished: Stopwatch,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -90,8 +92,8 @@ impl RangePlan {
 struct Accumulator {
     parts: usize,
     summary: Result<RuntimeBatchSummary, RuntimeBatchError>,
-    started: Option<Instant>,
-    finished: Option<Instant>,
+    started: Option<Stopwatch>,
+    finished: Option<Stopwatch>,
 }
 
 impl Accumulator {
@@ -209,7 +211,7 @@ fn run_range_jobs(
         }
         let index = task / plan.parts;
         let (start, end) = plan.bounds(task % plan.parts, n);
-        let started = Instant::now();
+        let started = Stopwatch::now();
         if cached_index != index {
             prepared = Some(
                 PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(&matchups[index].groups, eval_rq, config.clone())
@@ -227,7 +229,7 @@ fn run_range_jobs(
             index,
             summary,
             started,
-            finished: Instant::now(),
+            finished: Stopwatch::now(),
         }) {
             break;
         }

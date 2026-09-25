@@ -1,9 +1,11 @@
 //! 规范的面向用户流式 API；DTO 直接从 core 序列化。
 use crate::{
+    convert::ts_in,
     error::{WasmResult, cli_api_error, internal_error},
     model::BattleOptions,
 };
 use serde::Serialize;
+use tsify::Ts;
 use tswn_core::cli_api::battle::BattleSession as CoreBattleSession;
 use wasm_bindgen::prelude::*;
 
@@ -23,10 +25,11 @@ pub struct BattleSession {
 #[wasm_bindgen]
 impl BattleSession {
     #[wasm_bindgen(constructor)]
-    pub fn new(raw_input: String, options: Option<BattleOptions>) -> WasmResult<BattleSession> {
+    pub fn new(raw_input: String, options: Option<Ts<BattleOptions>>) -> WasmResult<BattleSession> {
         crate::install_panic_hook();
+        let options = ts_in(options)?;
         Ok(Self {
-            inner: CoreBattleSession::new(&raw_input, options.unwrap_or_default().to_core()).map_err(cli_api_error)?,
+            inner: CoreBattleSession::new(&raw_input, options.to_core()).map_err(cli_api_error)?,
         })
     }
     #[wasm_bindgen(unchecked_return_type = "BattlePlayerState[]")]

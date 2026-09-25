@@ -1,0 +1,5 @@
+1111.000 795.000 gamma@teamB
+1111.000 476.000 alpha@teamA
+1111.000 310.000 +delta@teamC+
+1111.000 -557.000 zeta@teamE
+1111.000 -922.000 epsilon@teamD

@@ -3,14 +3,14 @@ resolver = "2"
 members = [
   "crates/tswn_capi",
   "crates/tswn_core",
-  "crates/tswn_ds3",
+  "crates/tswn_ds4",
   "crates/tswn_test",
   "crates/tswn_py",
   "crates/tswn_wasm",
   "crates/tswn_openbox",
   "crates/tswn_lane_ranker",
   "crates/tswn_ladder",
-  "crates/tswn_winprob_dataset",
+  "crates/tswn_pwp",
 ]
 # 单号排名工具依赖独立校准数据，暂不参与主 workspace 构建与测试。
 exclude = ["crates/tswn_name_ranker"]

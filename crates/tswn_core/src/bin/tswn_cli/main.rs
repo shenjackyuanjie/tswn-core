@@ -24,7 +24,8 @@
 //! - `bench group-win-rate`: 目标组对多个对手组逐个统计并汇总平均胜率。
 //! - `bench batch-rate` / `bench cqp`: 批量计算选手组对靶子组列表的平均胜率。
 //! - `bench pair`: 评估选手与队友二人组的 top-head 胜率和。
-//! - `namer-pf`: 输出与 ica-plugin `/namer-pf` 对齐的四项评分，可用 `--mode` 只跑指定项。
+//! - `namer-pf`: 输出与 ica-plugin `/namer-pf` 对齐的五项评分（pp/pd/qp/qd/sum）；
+//!   `--metric` 逐项配置屏幕阈值与输出文件，`--skill-board` 输出技能榜。
 //! - `icon show|b64|save`: 预览、导出或保存玩家图标。
 //! - `to-diy`: 将名字导出为 DIY/OL overlay 格式。
 //!
@@ -48,7 +49,8 @@
 //! tswn-cli bench cqp -l targets.txt -p players.txt --min-screen 60.5
 //! tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3
 //! tswn-cli namer-pf -r "mario\nluigi"
-//! tswn-cli namer-pf -r "mario\nluigi" --mode pp qd
+//! tswn-cli namer-pf -r "mario\nluigi" --metric pp:8000 --metric sum
+//! tswn-cli namer-pf -f names.txt --skill-board score_now.toml
 //! tswn-cli to-diy -r "mario@team+fire" -o diy.txt
 //! tswn-cli icon show mario luigi
 //! ```
@@ -148,6 +150,9 @@ fn main() {
             min_screen,
             min_file,
             wr_precision,
+            show_matchups,
+            sort,
+            clean_label,
         } => {
             let eval_rq = if keep_rq {
                 tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ
@@ -173,12 +178,16 @@ fn main() {
                 min_screen,
                 min_file,
                 wr_precision,
+                show_matchups,
+                bench::ScoreOutputOptions { sort, clean_label },
             );
         }
         ParsedCommand::BenchPair {
             target_groups,
             target_factors,
             target_factored,
+            teammate_factored,
+            teammate_factors,
             players,
             player_labels,
             teammates,
@@ -190,6 +199,8 @@ fn main() {
             perf,
             keep_rq,
             verbose,
+            detail,
+            detail_min,
             out_file,
             force,
             log,
@@ -197,6 +208,8 @@ fn main() {
             min_screen,
             min_file,
             wr_precision,
+            sort,
+            clean_label,
         } => {
             let eval_rq = if keep_rq {
                 tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ
@@ -225,6 +238,13 @@ fn main() {
                 min_screen,
                 min_file,
                 wr_precision,
+                bench::PairOptions {
+                    teammate_factored,
+                    teammate_factors,
+                    detail,
+                    detail_min,
+                },
+                bench::ScoreOutputOptions { sort, clean_label },
             );
         }
         ParsedCommand::NamerPf {
@@ -233,14 +253,29 @@ fn main() {
             threads,
             keep_rq,
             precision,
-            modes,
+            metrics,
+            no_screen,
+            skill_board_config,
+            skill_board_output,
         } => {
             let eval_rq = if keep_rq {
                 tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ
             } else {
                 tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ
             };
-            bench::run_namer_pf(&raw, n, threads, eval_rq, precision, &modes);
+            bench::run_namer_pf(
+                &raw,
+                n,
+                threads,
+                eval_rq,
+                precision,
+                &metrics,
+                bench::NamerPfOutputOptions {
+                    no_screen,
+                    skill_board_config,
+                    skill_board_output,
+                },
+            );
         }
         ParsedCommand::IconShow { names } => icon::print_icons(&names),
         ParsedCommand::IconB64 { names } => {
@@ -261,6 +296,7 @@ fn main() {
             out_file,
             old,
             minions,
-        } => to_diy::run(&names, from_file, out_file.as_deref(), old, minions),
+            details,
+        } => to_diy::run(&names, from_file, out_file.as_deref(), old, minions, details),
     }
 }

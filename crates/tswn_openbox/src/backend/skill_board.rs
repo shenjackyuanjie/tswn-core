@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use tswn_core::cli_api;
@@ -46,12 +46,20 @@ const SKILL_CN_NAMES: [&str; 35] = [
 ];
 
 impl SkillBoardConfig {
-    pub fn load_default() -> Result<Self, String> {
-        let path = current_dir()?.join("setting").join("score_now.toml");
-        let raw = fs::read_to_string(&path).map_err(|err| format!("读取技能榜配置失败: {}: {err}", path.display()))?;
+    /// 从显式路径加载技能榜阈值（CLI 入口）。
+    ///
+    /// 读失败 / 解析失败都返回 `Err`，由调用方决定如何呈现。
+    pub fn load(path: &Path) -> Result<Self, String> {
+        let raw = fs::read_to_string(path).map_err(|err| format!("读取技能榜配置失败: {}: {err}", path.display()))?;
         let entries = toml::from_str::<HashMap<String, SkillBoardThreshold>>(&raw)
             .map_err(|err| format!("解析技能榜配置失败: {}: {err}", path.display()))?;
         Ok(Self { entries })
+    }
+
+    /// GUI 的默认加载路径：当前目录下的 `setting/score_now.toml`。
+    pub fn load_default() -> Result<Self, String> {
+        let path = current_dir()?.join("setting").join("score_now.toml");
+        Self::load(&path)
     }
 
     fn threshold_for(&self, skill_key: &str) -> Option<SkillBoardThreshold> {

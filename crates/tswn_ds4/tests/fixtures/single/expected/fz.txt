@@ -1,0 +1,6 @@
+2320 2668 alpha@teamA
+1853 2335 beta@teamA
+2479 2823 gamma@teamB
+1818 2165 +delta@teamC+
+1517 2246 epsilon@teamD
+1837 2034 zeta@teamE

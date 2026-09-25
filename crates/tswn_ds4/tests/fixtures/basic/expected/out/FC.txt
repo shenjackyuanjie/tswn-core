@@ -1,0 +1,11 @@
+2479 gamma@teamB+zeta@teamE
+2320 alpha@teamA+zeta@teamE
+1837 zeta@teamE+zeta@teamE
+1817 +zeta@teamE
+1517 epsilon@teamD+zeta@teamE
+2479 gamma@teamB+oldbc1@teamX
+2320 alpha@teamA+oldbc1@teamX
+1837 zeta@teamE+oldbc1@teamX
+1818 +oldbc1@teamX
+1517 epsilon@teamD+oldbc1@teamX
+1100 oldfz1@teamX+zeta@teamE

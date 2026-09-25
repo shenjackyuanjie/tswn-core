@@ -1,0 +1,6 @@
+u1@ta
+u1@ta
+u2@tb
+u3@tc
+u3@tc
+u4@td

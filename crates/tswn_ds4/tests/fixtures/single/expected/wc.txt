@@ -1,0 +1,6 @@
+680 1270 alpha@teamA
+-854 467 beta@teamA
+1046 1651 gamma@teamB
+-596 236 +delta@teamC+
+-416 958 epsilon@teamD
+280 678 zeta@teamE

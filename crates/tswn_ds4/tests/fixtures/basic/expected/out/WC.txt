@@ -1,0 +1,16 @@
+1763 gamma@teamB+alpha@teamA
+1326 gamma@teamB+zeta@teamE
+630 gamma@teamB+epsilon@teamD
+450 gamma@teamB+
+960 alpha@teamA+zeta@teamE
+264 alpha@teamA+epsilon@teamD
+130 alpha@teamA+
+-136 zeta@teamE+epsilon@teamD
+-245 zeta@teamE+
+-827 epsilon@teamD+
+-2520 +
+2008 gamma@teamB+oldwc1@teamX
+1580 alpha@teamA+oldwc1@teamX
+1252 zeta@teamE+oldwc1@teamX
+1697 epsilon@teamD+oldwc1@teamX
+304 +oldwc1@teamX

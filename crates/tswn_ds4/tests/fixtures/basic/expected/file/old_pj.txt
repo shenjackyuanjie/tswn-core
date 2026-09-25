@@ -1,0 +1,6 @@
+2303.000 2603.000 gamma@teamB
+1844.000 2180.000 alpha@teamA
+1250.000 1585.000 zeta@teamE
+1074.000 1997.000 epsilon@teamD
+863.000 1317.000 +delta@teamC+
+700.000 705.000 oldpj1@teamX

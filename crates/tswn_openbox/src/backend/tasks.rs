@@ -176,7 +176,12 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
         None => None,
     };
     let skill_board_config = if input.skill_board.screen || skill_board_output.is_some() {
-        match SkillBoardConfig::load_default() {
+        // GUI 不传 config，按 ./setting/score_now.toml 惯例加载；CLI 可显式指定。
+        let loaded = match input.skill_board.config.as_deref() {
+            Some(path) => SkillBoardConfig::load(path),
+            None => SkillBoardConfig::load_default(),
+        };
+        match loaded {
             Ok(config) => Some(config),
             Err(err) => {
                 send(ProgressEvent::Done(Err(err)));

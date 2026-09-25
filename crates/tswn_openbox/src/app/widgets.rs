@@ -3,7 +3,7 @@
 use std::cell::Cell;
 use std::path::{PathBuf, absolute};
 
-use eframe::egui;
+use egui;
 
 use tswn_openbox::backend::OutputMode;
 
