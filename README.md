@@ -16,11 +16,16 @@
 
 ```text
 crates/
-  tswn_core/   核心库和主要 CLI/binary
-  tswn_py/     Python 扩展绑定，基于 PyO3
-  tswn_wasm/   WebAssembly 绑定和浏览器示例
-  tswn_capi/   C ABI 动态库/静态库导出
-  tswn_ds3/    ds3 相关数据处理和兼容实验
+  tswn_core/         核心库和主要 CLI/binary
+  tswn_py/           Python 扩展绑定，基于 PyO3
+  tswn_wasm/         WebAssembly 绑定和浏览器示例
+  tswn_capi/         C ABI 动态库/静态库导出
+  tswn_test/         跨 crate 集成测试与 golden/corpus 基线
+  tswn_openbox/      图形界面工具与 openbox-cli
+  tswn_lane_ranker/  lane 排名工具
+  tswn_ladder/       天梯工具
+  tswn_pwp/          胜率数据集生成器（binary `tswn-pwp`）
+  tswn_ds4/          ds4 相关数据处理和兼容实验
 
 docs/          架构、DIY、差分、性能、构建和更新记录
 scripts/       构建脚本、差分辅助脚本、case 生成脚本
@@ -28,6 +33,9 @@ tests/         测试输入、差分记录和样例数据
 assets/        资源文件
 target/        Cargo 输出和本地差分产物
 ```
+
+`crates/tswn_name_ranker` 在根 `Cargo.toml` 的 `exclude` 列表里：它依赖独立校准数据，
+不参与主 workspace 构建。成员清单与顺序以根 `Cargo.toml` 为准。
 
 ## 主要命令
 
