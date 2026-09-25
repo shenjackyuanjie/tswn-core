@@ -10,4 +10,9 @@
 //! 容量常量与计费规则的唯一权威在 [`capacity`]（`BASELINE_64`）；`tswn_pwp::capacity`
 //! 只是再导出，不再保留第二份实现。
 
+pub mod batch;
 pub mod capacity;
+pub mod error;
+pub mod manifest;
+pub mod numeric;
+pub mod vocab;
