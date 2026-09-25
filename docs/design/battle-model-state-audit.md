@@ -1,6 +1,10 @@
 # BattleModelState v1：Runtime 状态审计
 
-[返回设计索引](README.md) · [状态导出与数据生成](battle-analyze.md) · [FeatureEncoder 规格](feature-encoder-spec.md)
+相关文档入口：
+
+- [返回设计索引](README.md)
+- [状态导出与数据生成](battle-analyze.md)
+- [FeatureEncoder 规格](feature-encoder-spec.md)
 
 本文是 [状态导出与胜率数据生成契约](battle-analyze.md) 的字段级依据；它只审计 Runtime 状态，不重新定义 `BattleSession` 的推进或公开 API。
 
