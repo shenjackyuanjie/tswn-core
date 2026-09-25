@@ -264,6 +264,55 @@ pub const TENSOR_SPECS: &[TensorSpec] = &[
         shape: "[H_max,H_max]",
         fill: Fill::Zero,
     },
+    // lane
+    TensorSpec {
+        name: "lane_mask",
+        dtype: Dtype::U8,
+        shape: "[L_max]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "lane_skill_id",
+        dtype: Dtype::I32,
+        shape: "[L_max]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "lane_boost_kind",
+        dtype: Dtype::I32,
+        shape: "[L_max]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "lane_template",
+        dtype: Dtype::I32,
+        shape: "[L_max]",
+        fill: Fill::RefMinusOne,
+    },
+    TensorSpec {
+        name: "lane_key",
+        dtype: Dtype::I32,
+        shape: "[L_max]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "lane_num",
+        dtype: Dtype::F32,
+        shape: "[L_max,4]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "lane_num_present",
+        dtype: Dtype::U8,
+        shape: "[L_max,4]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "lane_bool",
+        dtype: Dtype::U8,
+        shape: "[L_max,1]",
+        fill: Fill::Zero,
+    },
 ];
 
 /// 张量的具体 shape（不含 batch 轴）；用于推导每样本元素数与字节数。
@@ -287,6 +336,9 @@ pub fn tensor_shape(dims: &[usize; 9], name: &str) -> Option<Vec<usize>> {
         "template_clone_attr" | "template_clone_weapon_bonus" => vec![h, 8],
         "immunity_num" | "immunity_present" => vec![h, 9],
         "clan_equal" => vec![h, h],
+        "lane_mask" | "lane_skill_id" | "lane_boost_kind" | "lane_template" | "lane_key" => vec![_l],
+        "lane_num" | "lane_num_present" => vec![_l, 4],
+        "lane_bool" => vec![_l, 1],
         _ => return None,
     })
 }

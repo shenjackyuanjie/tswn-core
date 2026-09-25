@@ -121,6 +121,12 @@ pub fn required_normalization() -> Vec<(&'static str, TransformKind)> {
     required.extend(ENTITY_NUM_SLOTS.iter().map(|(_, path)| (*path, TransformKind::Fitted)));
     required.extend(TEMPLATE_NUM_SLOTS.iter().map(|(_, path)| (*path, TransformKind::Fitted)));
     required.push(("template.identity.immunity.threshold", TransformKind::Fitted));
+    required.extend([
+        ("lane.level", TransformKind::Fitted),
+        ("lane.build_level", TransformKind::Fitted),
+        ("lane.boost.base", TransformKind::Fitted),
+        ("lane.boost.extra", TransformKind::Fitted),
+    ]);
     required
 }
 
@@ -264,6 +270,7 @@ impl FeatureEncoder {
             self.write_global(state, &index, batch_index, out)?;
             self.write_entity_family(state, &index, batch_index, out)?;
             self.write_template_family(&index, batch_index, out)?;
+            self.write_lane_family(&index, batch_index, out)?;
             Ok(())
         })();
         if result.is_err() {
@@ -432,6 +439,13 @@ impl FeatureEncoder {
                     limit,
                 });
             }
+        }
+        if measure.l > self.profile.l_max {
+            return Err(EncodeError::CapacityExceeded {
+                path: dim_path("l"),
+                actual: measure.l,
+                limit: self.profile.l_max,
+            });
         }
         Ok(())
     }
@@ -739,6 +753,69 @@ impl FeatureEncoder {
                 for (right, right_group) in clan_groups.iter().enumerate() {
                     matrix[left * h_max + right] = u8::from(left_group == right_group);
                 }
+            }
+        }
+        Ok(())
+    }
+
+    fn write_lane_family(&self, index: &SampleIndex<'_>, batch_index: usize, out: &mut EncodedBatch) -> Result<(), EncodeError> {
+        let mut lane_row = 0usize;
+        for (template_row, template) in index.template_rows.iter().enumerate() {
+            for (ordinal, lane) in template.skills.lanes.iter().enumerate() {
+                let prefix = format!("templates[{template_row}].skills.lanes[{ordinal}]");
+                out.u8_row_mut("lane_mask", batch_index)?[lane_row] = 1;
+                out.i32_row_mut("lane_skill_id", batch_index)?[lane_row] =
+                    i32::try_from(lane.skill_id).map_err(|_| EncodeError::UnknownCategory {
+                        path: format!("{prefix}.skill_id"),
+                        raw: lane.skill_id.to_string(),
+                    })?;
+                let boost_kind = match lane.boost.as_ref().map(|boost| boost.kind.as_str()) {
+                    None => 1,
+                    Some("normal") => 2,
+                    Some("last_boost") => 3,
+                    Some("slot_boost") => 4,
+                    Some(raw) => {
+                        return Err(EncodeError::UnknownCategory {
+                            path: format!("{prefix}.boost.kind"),
+                            raw: raw.to_owned(),
+                        });
+                    }
+                };
+                out.i32_row_mut("lane_boost_kind", batch_index)?[lane_row] = boost_kind;
+                out.i32_row_mut("lane_template", batch_index)?[lane_row] = template_row as i32;
+                out.i32_row_mut("lane_key", batch_index)?[lane_row] =
+                    i32::try_from(lane.fixed_lane_key).map_err(|_| EncodeError::InvalidSlotValue {
+                        path: format!("{prefix}.fixed_lane_key"),
+                    })?;
+                let values = [
+                    f64::from(lane.level),
+                    f64::from(lane.build_level),
+                    f64::from(lane.boost.as_ref().map_or(0, |boost| boost.base)),
+                    f64::from(lane.boost.as_ref().map_or(0, |boost| boost.extra)),
+                ];
+                let present = [true, true, lane.boost.is_some(), lane.boost.is_some()];
+                {
+                    let numbers = out.f32_row_mut("lane_num", batch_index)?;
+                    for (slot, value) in values.into_iter().enumerate() {
+                        numbers[lane_row * 4 + slot] = if present[slot] {
+                            self.fitted_value(
+                                value,
+                                ["lane.level", "lane.build_level", "lane.boost.base", "lane.boost.extra"][slot],
+                                &prefix,
+                            )?
+                        } else {
+                            0.0
+                        };
+                    }
+                }
+                {
+                    let presence = out.u8_row_mut("lane_num_present", batch_index)?;
+                    for (slot, value) in present.into_iter().enumerate() {
+                        presence[lane_row * 4 + slot] = u8::from(value);
+                    }
+                }
+                out.u8_row_mut("lane_bool", batch_index)?[lane_row] = u8::from(lane.boosted);
+                lane_row += 1;
             }
         }
         Ok(())
@@ -1093,6 +1170,21 @@ mod tests {
         let team_mask = batch.u8_all("team_mask").unwrap();
         assert_eq!(team_mask[..state.input_teams.len()], vec![1; state.input_teams.len()][..]);
         assert!(team_mask[state.input_teams.len()..].iter().all(|value| *value == 0));
+    }
+
+    #[test]
+    fn encodes_lane_rows_and_boost_presence() {
+        let state = battle_state(2);
+        let batch = encoder().encode(&state).unwrap();
+        let measure = CapacityMeasure::measure(&state);
+        assert_eq!(batch.u8_all("lane_mask").unwrap()[..measure.l], vec![1; measure.l][..]);
+        assert!(batch.u8_all("lane_mask").unwrap()[measure.l..].iter().all(|value| *value == 0));
+        let templates = batch.i32_all("lane_template").unwrap();
+        assert!(templates[..measure.l].iter().all(|row| *row >= 0));
+        let presence = batch.u8_all("lane_num_present").unwrap();
+        for row in 0..measure.l {
+            assert_eq!(&presence[row * 4..row * 4 + 2], &[1, 1]);
+        }
     }
 
     #[test]
