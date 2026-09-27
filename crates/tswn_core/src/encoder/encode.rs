@@ -315,18 +315,13 @@ impl ExtraWriter<'_> {
         Ok(())
     }
 
-    fn raw_state(
-        &mut self,
-        key: (usize, usize),
-        entry: &crate::runtime::model_state::ModelStateEntry,
-    ) -> Result<(), EncodeError> {
-        let owner = (key.0 + key.1) as i32;
-        self.raw_u32(4, owner, 4099, entry.legacy_order_key)?;
+    fn raw_state(&mut self, owner: usize, entry: &crate::runtime::model_state::ModelStateEntry) -> Result<(), EncodeError> {
+        self.raw_u32(4, owner as i32, 4099, entry.legacy_order_key)?;
         if let Some(value) = entry.extension_state_id {
-            self.raw_u32(4, owner, 4100, value)?;
+            self.raw_u32(4, owner as i32, 4100, value)?;
         }
         if let Some(poison) = &entry.payload.poison {
-            self.raw_u64(4, owner, 4119, poison.atp_bits)?;
+            self.raw_u64(4, owner as i32, 4119, poison.atp_bits)?;
         }
         Ok(())
     }
@@ -749,6 +744,20 @@ impl FeatureEncoder {
             out,
             row: 0,
         };
+        for (ordinal, slot) in state.template_slots.iter().chain(state.battle_slots.iter()).enumerate() {
+            writer.raw_u32(5, 0, 4101, slot.slot_id)?;
+            if let Some(value) = slot.u64_value {
+                let scope = if ordinal < state.template_slots.len() {
+                    SlotScope::Template
+                } else {
+                    SlotScope::Battle
+                };
+                let resolved = resolve_slot(scope, slot, "global.slots")?;
+                if !matches!(resolved.semantic, SlotSemantic::EntityRef | SlotSemantic::Excluded) {
+                    writer.raw_u64(5, 0, 4103, value)?;
+                }
+            }
+        }
         for (entity_row, entity) in state.entities.iter().enumerate() {
             let prefix = format!("entities[{entity_row}]");
             if let Some(assassinate) = entity.runtime.assassinate {
@@ -774,17 +783,17 @@ impl FeatureEncoder {
             }
             for (ordinal, slot) in entity.slots.iter().enumerate() {
                 let resolved = resolve_slot(SlotScope::Entity, slot, &format!("{prefix}.slots[{ordinal}]"))?;
-                writer.raw_u32(5, (entity_row + 1) as i32, 4101, slot.slot_id)?;
+                writer.raw_u32(5, entity_row as i32, 4101, slot.slot_id)?;
                 if let Some(value) = slot.u64_value {
                     if !matches!(resolved.semantic, SlotSemantic::EntityRef | SlotSemantic::Excluded) {
-                        writer.raw_u64(5, (entity_row + 1) as i32, 4103, value)?;
+                        writer.raw_u64(5, entity_row as i32, 4103, value)?;
                     }
                 }
                 if let Some(raw) = slot.u64_value.filter(|_| resolved.semantic == SlotSemantic::EntityRef) {
                     writer.reference(
                         5,
                         8,
-                        (entity_row + 1) as i32,
+                        entity_row as i32,
                         0,
                         index.entity_row(
                             EntityIdx(u32::try_from(raw).map_err(|_| EncodeError::InvalidReference {
@@ -843,8 +852,9 @@ impl FeatureEncoder {
         }
         for (entity_row, entity) in state.entities.iter().enumerate() {
             writer.raw_entity(entity_row as i32, entity)?;
-            for (state_row, entry) in entity.states.iter().enumerate() {
-                writer.raw_state((entity_row, state_row), entry)?;
+            for entry in &entity.states {
+                let state_owner = state.entities[..entity_row].iter().map(|item| item.states.len()).sum::<usize>();
+                writer.raw_state(state_owner, entry)?;
             }
         }
         writer.raw_world(state)?;
