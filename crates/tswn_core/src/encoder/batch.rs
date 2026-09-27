@@ -428,11 +428,97 @@ pub const TENSOR_SPECS: &[TensorSpec] = &[
         shape: "[S_max,3]",
         fill: Fill::Zero,
     },
+    // slot
+    TensorSpec {
+        name: "slot_mask",
+        dtype: Dtype::U8,
+        shape: "[Q_max]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "slot_index",
+        dtype: Dtype::I32,
+        shape: "[Q_max,4]",
+        fill: Fill::RefMinusOne,
+    },
+    TensorSpec {
+        name: "slot_field_present",
+        dtype: Dtype::U8,
+        shape: "[Q_max,4]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "slot_value",
+        dtype: Dtype::F32,
+        shape: "[Q_max,1]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "slot_value_present",
+        dtype: Dtype::U8,
+        shape: "[Q_max,1]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "slot_template",
+        dtype: Dtype::I32,
+        shape: "[Q_max]",
+        fill: Fill::RefMinusOne,
+    },
+    TensorSpec {
+        name: "slot_template_present",
+        dtype: Dtype::U8,
+        shape: "[Q_max]",
+        fill: Fill::Zero,
+    },
+    // extra
+    TensorSpec {
+        name: "extra_mask",
+        dtype: Dtype::U8,
+        shape: "[X_max]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "extra_index",
+        dtype: Dtype::I32,
+        shape: "[X_max,4]",
+        fill: Fill::RefMinusOne,
+    },
+    TensorSpec {
+        name: "extra_num",
+        dtype: Dtype::F32,
+        shape: "[X_max]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "extra_ref",
+        dtype: Dtype::I32,
+        shape: "[X_max]",
+        fill: Fill::RefMinusOne,
+    },
+    TensorSpec {
+        name: "extra_bool",
+        dtype: Dtype::U8,
+        shape: "[X_max]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "extra_cat",
+        dtype: Dtype::I32,
+        shape: "[X_max]",
+        fill: Fill::Zero,
+    },
+    TensorSpec {
+        name: "extra_bits",
+        dtype: Dtype::U32,
+        shape: "[X_max,2]",
+        fill: Fill::Zero,
+    },
 ];
 
 /// 张量的具体 shape（不含 batch 轴）；用于推导每样本元素数与字节数。
 pub fn tensor_shape(dims: &[usize; 9], name: &str) -> Option<Vec<usize>> {
-    let [e, t, r, h, l, s, _q, v, _x] = *dims;
+    let [e, t, r, h, l, s, q, v, x] = *dims;
     Some(match name {
         "global_num" => vec![6],
         "team_mask" => vec![t],
@@ -463,6 +549,11 @@ pub fn tensor_shape(dims: &[usize; 9], name: &str) -> Option<Vec<usize>> {
         "state_num" | "state_num_present" => vec![s, 9],
         "state_ref" | "state_ref_present" => vec![s, 4],
         "state_group" | "state_group_present" => vec![s, 3],
+        "slot_mask" | "slot_value" | "slot_value_present" | "slot_template" | "slot_template_present" => vec![q],
+        "slot_index" | "slot_field_present" => vec![q, 4],
+        "extra_mask" | "extra_num" | "extra_ref" | "extra_bool" | "extra_cat" => vec![x],
+        "extra_index" => vec![x, 4],
+        "extra_bits" => vec![x, 2],
         _ => return None,
     })
 }

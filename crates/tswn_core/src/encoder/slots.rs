@@ -138,6 +138,10 @@ impl SlotScope {
             Self::Battle => BATTLE_SLOT_WHITELIST,
         }
     }
+
+    pub fn whitelist_id(self, raw: u32) -> Option<u32> {
+        self.whitelist().iter().position(|entry| entry.slot_id == raw).map(|row| row as u32 + 1)
+    }
 }
 
 /// 一个真实槽行的语义判定结果。
