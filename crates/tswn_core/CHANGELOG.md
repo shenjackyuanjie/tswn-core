@@ -4,6 +4,7 @@
 
 ### 新增
 
+- 新增 `EncodedBatch::tensor_bytes`，按显式小端序导出 typed tensor 缓冲，供离线编码包写出并校验字节长度。
 - 新增 `encoder` 模块（FeatureEncoder 第一块，Experimental）：`EncoderManifest`（协议身份、容量
   `ProfileSpec`、分类词表、逐槽归一化声明、校准证据、支持域、sha256 契约摘要）与两级门禁
   （`validate` 查自洽性、`FeatureEncoder::new` 与实现交叉核对）；`from_calibration` 从

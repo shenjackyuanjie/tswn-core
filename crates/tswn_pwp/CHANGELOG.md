@@ -8,6 +8,9 @@
 
 ### 新增
 
+- 新增 `encode` 子命令：读取 Parquet 状态与 `EncoderManifest`，按批输出各 tensor 的小端 `.bin`、
+  `batch-manifest.json` 和总 manifest；新增 `scripts/read_encoded_batches.py` 只读校验器，检查
+  manifest 摘要、shape、dtype、字节长度和尾批实际大小。
 - 新增可复现的胜率数据集生成器，直接复用 `BattleModelSession` 导出初始状态和可见帧末状态，并将胜者输入队伍索引作为监督标签。
 - 支持从对局文件或名字池生成阵容，按规范化阵容哈希稳定划分 train/validation/test，队伍顺序变体不会跨集合。
 - 输出嵌套 Parquet 分片及 manifest、summary、complete/failure 记录；使用临时目录、文件锁、摘要回读和双遍状态核对保证提交完整性。
@@ -34,4 +37,4 @@
 ### 说明
 
 - 该 crate 当前保持 `0.1.0` 初始未发布状态，不进入默认 `scripts/build_all.py` 聚合包。
-- FeatureEncoder 的张量布局仍处于设计和校准阶段，不属于本次初始数据生成工具的发布承诺。
+- FeatureEncoder 的张量编码已在 `tswn_core` 落地；本 crate 当前提供离线编码包导出，跨绑定 parity 与真正逐行流式读取仍在后续验收阶段。
