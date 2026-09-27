@@ -59,8 +59,15 @@ impl Fill {
         match self {
             Self::Zero => 0,
             Self::RefMinusOne => -1,
-            Self::Index { columns, reference_columns } => {
-                if reference_columns & (1u8 << (index % columns)) != 0 { -1 } else { 0 }
+            Self::Index {
+                columns,
+                reference_columns,
+            } => {
+                if reference_columns & (1u8 << (index % columns)) != 0 {
+                    -1
+                } else {
+                    0
+                }
             }
         }
     }
@@ -337,7 +344,10 @@ pub const TENSOR_SPECS: &[TensorSpec] = &[
         name: "list_index",
         dtype: Dtype::I32,
         shape: "[V_max,5]",
-        fill: Fill::Index { columns: 5, reference_columns: 0b10010 },
+        fill: Fill::Index {
+            columns: 5,
+            reference_columns: 0b10010,
+        },
     },
     TensorSpec {
         name: "list_position",
@@ -453,7 +463,10 @@ pub const TENSOR_SPECS: &[TensorSpec] = &[
         name: "slot_index",
         dtype: Dtype::I32,
         shape: "[Q_max,4]",
-        fill: Fill::Index { columns: 4, reference_columns: 0b0010 },
+        fill: Fill::Index {
+            columns: 4,
+            reference_columns: 0b0010,
+        },
     },
     TensorSpec {
         name: "slot_field_present",
@@ -496,7 +509,10 @@ pub const TENSOR_SPECS: &[TensorSpec] = &[
         name: "extra_index",
         dtype: Dtype::I32,
         shape: "[X_max,4]",
-        fill: Fill::Index { columns: 4, reference_columns: 0b0010 },
+        fill: Fill::Index {
+            columns: 4,
+            reference_columns: 0b0010,
+        },
     },
     TensorSpec {
         name: "extra_num",
@@ -909,7 +925,13 @@ mod tests {
             }
             batch.clear_slot(1).unwrap();
             assert!(batch.i32_row_mut(name, 0).unwrap().iter().all(|value| *value == 20));
-            assert!(batch.i32_row_mut(name, 1).unwrap().chunks_exact(expected.len()).all(|row| row == expected));
+            assert!(
+                batch
+                    .i32_row_mut(name, 1)
+                    .unwrap()
+                    .chunks_exact(expected.len())
+                    .all(|row| row == expected)
+            );
             assert!(batch.i32_row_mut(name, 2).unwrap().iter().all(|value| *value == 22));
         }
     }
