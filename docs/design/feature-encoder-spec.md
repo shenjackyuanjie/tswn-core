@@ -4,7 +4,7 @@
 
 本文承接 [状态导出与数据生成契约](battle-analyze.md)，字段语义以 [BattleModelState Runtime 审计](battle-model-state-audit.md) 为准；生成器和 Parquet 文件说明见 [winprob 数据集 README](../../crates/tswn_pwp/README.md)。
 
-状态：容量档位 `baseline-64` 与三批未决项已冻结（见第 4／16 节），第 5 节的标量校准通道已实现为 `tswn-pwp calibrate`；**encoder 实现已开始**：`tswn_core::encoder` 已落地 manifest／分类词表／数值变换／批缓冲，以及 global／entity／template 三族的字段写入、presence 与容量预检（第一块，见下文“实现状态”）；lane／state／slot／list／extra 四族张量与离线导出器按 handoff 的分块计划追加。输入 schema v1，encoder v1。本文是 **tswn-pwp（player winchance predictor）** 的特征编码层规格，不定义最终神经网络结构。
+状态：容量档位 `baseline-64` 与三批未决项已冻结（见第 4／16 节），第 5 节的标量校准通道已实现为 `tswn-pwp calibrate`；**encoder 实现已落地**：`tswn_core::encoder` 已实现 manifest／分类词表／数值变换／批缓冲，以及 global／entity／template／lane／state／slot／list／extra 全部张量族的字段写入、presence、引用重映射与容量预检。输入 schema v1，encoder v1。本文是 **tswn-pwp（player winchance predictor）** 的特征编码层规格，不定义最终神经网络结构。
 
 **实现状态（第一块）。** 编码模块落位在 `crates/tswn_core/src/encoder/`：外部评审结论是 encoder 只在 Rust 实现一次、由离线导出器与 Python／WASM 绑定共享，因此该模块**不依赖 Arrow/Parquet、文件系统或模型参数**，并已在 `wasm32-unknown-unknown` 上按 `tswn_wasm` 的特性组合编译验证。容量权威随编码器迁到 `tswn_core::encoder::capacity`（`BASELINE_64` 与计费式），`tswn_pwp::capacity` 只做再导出，不保留第二份常量。批缓冲按张量分配（`encoder::batch`），批槽位偏移为 `batch_index × 该张量每样本元素数`；未写入位置按 0／-1 填充，复用前 `clear_slot` 恢复 padding。规格第 3.2 节白名单已固化为 `encoder::slots` 的数据表；第 16 节第 7 条指出的三处校验缺口（charm `group_id`、槽内 U64 实体引用、载荷 kind 与分支匹配）由 `FeatureEncoder::validate_state` 闭合，`BattleModelState::validate` 仍不是替代品。
 

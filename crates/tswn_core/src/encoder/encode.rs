@@ -478,6 +478,15 @@ impl FeatureEncoder {
             self.write_state_family(state, &index, batch_index, out)?;
             self.write_slot_family(state, &index, batch_index, out)?;
             self.write_extra_family(state, &index, batch_index, out)?;
+            let extra_rows = out.u8_row_mut("extra_mask", batch_index)?.iter().filter(|value| **value != 0).count();
+            let measured = CapacityMeasure::measure(state).x;
+            if extra_rows > measured {
+                return Err(EncodeError::CapacityExceeded {
+                    path: "extra".to_owned(),
+                    actual: extra_rows,
+                    limit: measured,
+                });
+            }
             Ok(())
         })();
         if result.is_err() {
