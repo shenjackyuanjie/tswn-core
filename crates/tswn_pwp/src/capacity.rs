@@ -4,4 +4,4 @@
 //! （外部评审要求：常量与计费规则只保留唯一权威实现，不在 core / pwp / WASM 各复制一份）。
 //! 本模块仅再导出，`stats` 等既有调用方无需改动。
 
-pub use tswn_core::encoder::capacity::{BASELINE_64, CAPACITY_DIMS, CapacityMeasure, EncoderProfile};
+pub use tswn_core::encoder::capacity::{BASELINE_64, CAPACITY_DIMS, CapacityMeasure};
