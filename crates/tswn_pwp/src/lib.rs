@@ -2,6 +2,7 @@
 mod bench;
 mod calibrate;
 mod capacity;
+mod encode;
 mod generate;
 mod input;
 mod random;
@@ -37,6 +38,8 @@ pub enum Command {
     Bench(bench::BenchArgs),
     /// 拟合逐字段归一化常数，输出 encoder-manifest 的数值部分，不修改数据。
     Calibrate(calibrate::CalibrateArgs),
+    /// 将 Parquet state 编码为按张量分片的 C 连续小端二进制。
+    Encode(encode::EncodeArgs),
 }
 
 #[derive(Debug, Clone, Args)]
@@ -130,6 +133,7 @@ pub fn run(cli: Cli) -> Result<()> {
         Command::Stats(args) => stats::run(&args),
         Command::Bench(args) => bench::run(&args),
         Command::Calibrate(args) => calibrate::run(&args),
+        Command::Encode(args) => encode::run(&args),
     }
 }
 

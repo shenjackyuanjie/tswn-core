@@ -754,6 +754,18 @@ impl EncodedBatch {
         }
     }
 
+    /// 以小端序返回整段张量字节；导出器不得依赖主机字节序。
+    pub fn tensor_bytes(&self, name: &str) -> Result<Vec<u8>, EncodeError> {
+        let mut bytes = Vec::with_capacity(self.tensor_byte_len(name)?);
+        match &self.slot(name)?.buffer {
+            TensorBuffer::F32(values) => values.iter().for_each(|value| bytes.extend(value.to_le_bytes())),
+            TensorBuffer::I32(values) => values.iter().for_each(|value| bytes.extend(value.to_le_bytes())),
+            TensorBuffer::U8(values) => bytes.extend(values),
+            TensorBuffer::U32(values) => values.iter().for_each(|value| bytes.extend(value.to_le_bytes())),
+        }
+        Ok(bytes)
+    }
+
     /// 批槽位可写行；偏移即 `batch_index × per_sample`。
     pub fn f32_row_mut(&mut self, name: &str, batch_index: usize) -> Result<&mut [f32], EncodeError> {
         self.check_batch(name, batch_index)?;
@@ -975,5 +987,21 @@ mod tests {
             batch.f32_all("entity_mask").unwrap_err(),
             EncodeError::UnknownTensor { .. }
         ));
+    }
+
+    #[test]
+    fn tensor_bytes_are_little_endian_and_match_declared_length() {
+        let batch = EncodedBatch::baseline(1);
+        for spec in TENSOR_SPECS {
+            let bytes = batch.tensor_bytes(spec.name).unwrap();
+            assert_eq!(bytes.len(), batch.tensor_byte_len(spec.name).unwrap(), "{}", spec.name);
+        }
+        let bytes = batch.tensor_bytes("list_index").unwrap();
+        assert_eq!(
+            &bytes[..20],
+            &[
+                0, 0, 0, 0, 0xff, 0xff, 0xff, 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0xff, 0xff
+            ]
+        );
     }
 }
