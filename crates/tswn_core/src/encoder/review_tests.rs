@@ -204,6 +204,8 @@ fn raw_state_rows_and_signed_bits_are_exact() {
 fn lane_indices_are_not_fixed_keys_and_deferred_joins_runtime_rank_domain() {
     use crate::runtime::model_state::ModelDeferredSkill;
     let mut state = review_state();
+    // 两个模板刻意使用不同 key；槽内蓝图复用实体 0 的 key，验证 key 是跨模板关系键。
+    state.entities[1].template.skills.lanes[1].fixed_lane_key = 22;
     state.entities[0].states.push(review_entry(ModelPayload { kind: "none".to_owned(), ..ModelPayload::default() }, 10));
     state.entities[0].state_registration_cursor = 20;
     state.entities[0].template.skills.post_action_after_states.push(ModelDeferredSkill { state_cursor: 12, fixed_lane: 1 });
@@ -243,6 +245,10 @@ fn lane_indices_are_not_fixed_keys_and_deferred_joins_runtime_rank_domain() {
     }
     assert_eq!(deferred, 2);
     assert_eq!(active, vec![1, 0, 1], "执行顺序与重复项不能丢失");
+    let lane_keys = batch.i32_all("lane_key").unwrap();
+    assert_eq!(&lane_keys[..6], &[88, 11, 88, 22, 88, 11]);
+    assert_eq!(lane_keys[0], lane_keys[2], "相等 fixed key 必须保留相等关系");
+    assert_ne!(lane_keys[1], lane_keys[3], "不同 fixed key 不得被模板内序号合并");
     assert_eq!(batch.u8_all("lane_mask").unwrap()[1], 1);
     assert_eq!(&batch.u8_all("lane_num_present").unwrap()[4..8], &[1; 4]);
     assert_eq!(&batch.f32_all("lane_num").unwrap()[4..8], &[0.0; 4]);

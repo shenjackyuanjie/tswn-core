@@ -4,9 +4,11 @@
 
 本文承接 [状态导出与数据生成契约](battle-analyze.md)，字段语义以 [BattleModelState Runtime 审计](battle-model-state-audit.md) 为准；生成器和 Parquet 文件说明见 [winprob 数据集 README](../../crates/tswn_pwp/README.md)。
 
-状态：容量档位 `baseline-64` 与三批未决项已冻结（见第 4／16 节），第 5 节的标量校准通道已实现为 `tswn-pwp calibrate`；**encoder 实现已落地**：`tswn_core::encoder` 已实现 manifest／分类词表／数值变换／批缓冲，以及 global／entity／template／lane／state／slot／list／extra 全部张量族的字段写入、presence、引用重映射与容量预检。输入 schema v1，encoder v1。本文是 **tswn-pwp（player winchance predictor）** 的特征编码层规格，不定义最终神经网络结构。
+状态：容量档位 `baseline-64` 与三批未决项已冻结（见第 4／16 节），第 5 节的标量校准通道已实现为 `tswn-pwp calibrate`；**encoder 实现已落地，正在做发布验收**：`tswn_core::encoder` 已实现 manifest／分类词表／数值变换／批缓冲，以及 global／entity／template／lane／state／slot／list／extra 全部张量族的字段写入、presence、引用重映射与容量预检。输入 schema v1，encoder v1。本文是 **tswn-pwp（player winchance predictor）** 的特征编码层规格，不定义最终神经网络结构。
 
-**实现状态（第一块）。** 编码模块落位在 `crates/tswn_core/src/encoder/`：外部评审结论是 encoder 只在 Rust 实现一次、由离线导出器与 Python／WASM 绑定共享，因此该模块**不依赖 Arrow/Parquet、文件系统或模型参数**，并已在 `wasm32-unknown-unknown` 上按 `tswn_wasm` 的特性组合编译验证。容量权威随编码器迁到 `tswn_core::encoder::capacity`（`BASELINE_64` 与计费式），`tswn_pwp::capacity` 只做再导出，不保留第二份常量。批缓冲按张量分配（`encoder::batch`），批槽位偏移为 `batch_index × 该张量每样本元素数`；未写入位置按 0／-1 填充，复用前 `clear_slot` 恢复 padding。规格第 3.2 节白名单已固化为 `encoder::slots` 的数据表；第 16 节第 7 条指出的三处校验缺口（charm `group_id`、槽内 U64 实体引用、载荷 kind 与分支匹配）由 `FeatureEncoder::validate_state` 闭合，`BattleModelState::validate` 仍不是替代品。
+**实现与验收状态。** 编码模块落位在 `crates/tswn_core/src/encoder/`：encoder 只在 Rust 实现一次，由离线导出器与 Python／WASM 绑定共享；该模块**不依赖 Arrow/Parquet、文件系统或模型参数**。容量权威位于 `tswn_core::encoder::capacity`（`BASELINE_64` 与计费式），`tswn_pwp::capacity` 只做再导出，不保留第二份常量。批缓冲按张量分配（`encoder::batch`），批槽位偏移为 `batch_index × 该张量每样本元素数`；未写入位置按 0／-1 填充，复用前 `clear_slot` 恢复 padding。规格第 3.2 节白名单已固化为 `encoder::slots` 的数据表；第 16 节第 7 条指出的三处校验缺口（charm `group_id`、槽内 U64 实体引用、载荷 kind 与分支匹配）由 `FeatureEncoder::validate_state` 闭合，`BattleModelState::validate` 仍不是替代品。
+
+当前门禁分开记录：实现状态为全部张量族已写入；astra 针对 `e3925bf0` 的静态复核发现已在 `ebe5d75f` 修复，格式修正为 `b2ff92d9`；`tswn_core` 在关闭默认 `mimalloc`、保留 `png_render` 的配置下通过 599 项测试（2 项依赖外部输入而忽略）。WASM 数值一致性、跨绑定闭环和离线导出器尚未完成，不能由上述原生测试替代。
 
 ## 1. 目标与边界
 
@@ -294,7 +296,7 @@ Felix CQACSVGRXSAT@nan
 | `template_team`、`template_player_ref` | i32 `[B,H_max]`；i32 `[B,H_max]` | runtime team 关系与独立 PlrId 相等关系 |
 | `template_override_present`、`template_clone_attr`、`template_clone_weapon_bonus` | u8 `[B,H_max,4]`；u32 `[B,H_max,8]`；i32 `[B,H_max,8]` | policy overrides 四路 presence、分身属性与武器加成；clone 整体存在性见 `template_bool[4]` |
 | `immunity_num`、`clan_equal` | f32 `[B,H_max,9]`；u8 `[B,H_max,H_max]` | 免疫阈值与阵营相等关系 |
-| `lane_skill_id`、`lane_boost_kind`、`lane_template`、`lane_key` | i32 `[B,L_max]`；i32 `[B,L_max]`；i32 `[B,L_max]`；i32 `[B,L_max]` | 技能／boost 分类、模板引用及模板内重映射的 fixed key |
+| `lane_skill_id`、`lane_boost_kind`、`lane_template`、`lane_key` | i32 `[B,L_max]`；i32 `[B,L_max]`；i32 `[B,L_max]`；i32 `[B,L_max]` | 技能／boost 分类、模板引用及跨模板稳定关系键；`lane_key` 保留 `fixed_lane_key` 的相等关系，不做模板内独立编号 |
 | `lane_num`、`lane_bool` | f32 `[B,L_max,4]`；u8 `[B,L_max,1]` | 等级、构建等级、base、extra；boosted |
 | `state_entity`、`state_kind`、`state_cat`、`state_hook` | i32 `[B,S_max]`；i32 `[B,S_max]`；i32 `[B,S_max,2]`；u8 `[B,S_max,64]` | 归属、payload kind、legacy/extension 稠密分类、hook bit；kind 的 0=PAD、真实 none=1 |
 | `state_num`、`state_ref`、`state_group` | f32 `[B,S_max,9]`；i32 `[B,S_max,4]`；i32 `[B,S_max,3]` | priority + 8 payload 数值槽；4 个实体引用；3 个阵营／队伍关系键 |
@@ -604,11 +606,11 @@ raw 路径的 runtime/template/state/slot/world 前缀指第 3 节相应结构�
 
 白名单按 owner 的最多记录数正是第 4 节的 `8×e+10×h+3×s+2×q+2`；槽的两个 raw 已计入每槽 3 条的总预算（第 4 节），不重复相加。计划 mask 使用 X 类 3，不另复制 raw mask。`raw` 只传精确旁路，不允许借本表恢复原始名字、seed、标签或身份编号输入。
 
-## 15. 测试计划（先于实现）
+## 15. 测试与验收
 
-先准备下表的输入与期望，再实现 encoder；本轮不编写或执行 Rust 测试。以下是未来验收标准，不是测试已通过声明。
+下表是实现后的持续验收标准；跨端和离线项目仍未完成，不能把原生回归结果扩展解释为最终发布通过。
 
-**第一块的测试已落地**（`crates/tswn_core/src/encoder/` 内 `#[cfg(test)]`，共 57 项）：manifest 自洽性与门禁、词表与注册表交叉核对、`N_f` 与固定计数尺度、批缓冲布局（批槽位与 B=1 逐字节一致、复用不留残值、shape 之积与字节数）、容量边界（`E=64/65`、`T=32/33`、`R=32/33`、`Q=512/513`）、presence 与 mask 语义（`Some(0)`/`None`/padding、hide、可选引用 -1、clone 整体 presence）、压缩标志保留位、非有限值、未知分类、载荷 kind 与分支、槽白名单（未登记／类型不符／实体引用悬空）、charm `group_id` 引用、`team_mask` 不随存活与粘性计数变化、实体存储重排等变、原始 `EntityIdx` 不泄漏、跨技能池端到端冒烟（含终局帧必须被 `AlreadyDecided` 拒绝）、以及 state JSON 全字段覆盖（未登记字段即失败）。下表仍是后续各族与跨目标验收的完整标准。
+**encoder 回归已落地**（`crates/tswn_core/src/encoder/` 内 `#[cfg(test)]`，当前 80 项）：manifest 自洽性与门禁、词表与注册表交叉核对、`N_f` 与固定计数尺度、批缓冲布局（批槽位与 B=1 逐字节一致、复用不留残值、shape 之积与字节数）、容量边界（`E=64/65`、`T=32/33`、`R=32/33`、`Q=512/513`）、presence 与 mask 语义（`Some(0)`/`None`/padding、hide、可选引用 -1、clone 整体 presence）、压缩标志保留位、非有限值、未知分类、载荷 kind 与分支、槽白名单（未登记／类型不符／实体引用悬空）、charm `group_id` 引用、`team_mask` 不随存活与粘性计数变化、实体存储重排等变、原始 `EntityIdx` 不泄漏、跨技能池端到端冒烟（含终局帧必须被 `AlreadyDecided` 拒绝）、slot/state raw owner、clone 归属、lane 作用域与稳定 key、批失败清理，以及 state JSON 精确字段覆盖。下表仍是后续跨目标验收的完整标准。
 
 | 类别 | 必须覆盖与判定标准 |
 | --- | --- |
