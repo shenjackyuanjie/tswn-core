@@ -213,6 +213,7 @@ struct SampleIndex<'a> {
 }
 
 impl SampleIndex<'_> {
+    /// Runtime 的 fixed_lane 是所属模板内的数组下标，不是 fixed_lane_key。
     fn lane_row(&self, template_row: usize, fixed_lane: usize, path: &str) -> Result<usize, EncodeError> {
         let offset: usize = self
             .template_rows
@@ -223,9 +224,8 @@ impl SampleIndex<'_> {
         self.template_rows[template_row]
             .skills
             .lanes
-            .iter()
-            .position(|lane| lane.fixed_lane_key == fixed_lane)
-            .map(|row| offset + row)
+            .get(fixed_lane)
+            .map(|_| offset + fixed_lane)
             .ok_or_else(|| EncodeError::InvalidReference {
                 path: path.to_owned(),
                 raw: fixed_lane.to_string(),
@@ -753,8 +753,11 @@ impl FeatureEncoder {
             out,
             row: 0,
         };
+        // extra 的输出次序不决定 owner；owner 必须指向 write_slot_family 的 Q 轴行号。
+        let global_slot_start: usize = state.entities.iter().map(|entity| entity.slots.len()).sum();
         for (ordinal, slot) in state.template_slots.iter().chain(state.battle_slots.iter()).enumerate() {
-            writer.raw_u32(5, 0, 4101, slot.slot_id)?;
+            let slot_row = (global_slot_start + ordinal) as i32;
+            writer.raw_u32(5, slot_row, 4101, slot.slot_id)?;
             if let Some(value) = slot.u64_value {
                 let scope = if ordinal < state.template_slots.len() {
                     SlotScope::Template
@@ -763,10 +766,11 @@ impl FeatureEncoder {
                 };
                 let resolved = resolve_slot(scope, slot, "global.slots")?;
                 if !matches!(resolved.semantic, SlotSemantic::EntityRef | SlotSemantic::Excluded) {
-                    writer.raw_u64(5, 0, 4103, value)?;
+                    writer.raw_u64(5, slot_row, 4103, value)?;
                 }
             }
         }
+        let mut slot_row = 0usize;
         for (entity_row, entity) in state.entities.iter().enumerate() {
             let prefix = format!("entities[{entity_row}]");
             if let Some(assassinate) = entity.runtime.assassinate {
@@ -792,17 +796,17 @@ impl FeatureEncoder {
             }
             for (ordinal, slot) in entity.slots.iter().enumerate() {
                 let resolved = resolve_slot(SlotScope::Entity, slot, &format!("{prefix}.slots[{ordinal}]"))?;
-                writer.raw_u32(5, entity_row as i32, 4101, slot.slot_id)?;
+                writer.raw_u32(5, slot_row as i32, 4101, slot.slot_id)?;
                 if let Some(value) = slot.u64_value {
                     if !matches!(resolved.semantic, SlotSemantic::EntityRef | SlotSemantic::Excluded) {
-                        writer.raw_u64(5, entity_row as i32, 4103, value)?;
+                        writer.raw_u64(5, slot_row as i32, 4103, value)?;
                     }
                 }
                 if let Some(raw) = slot.u64_value.filter(|_| resolved.semantic == SlotSemantic::EntityRef) {
                     writer.reference(
                         5,
                         8,
-                        entity_row as i32,
+                        slot_row as i32,
                         0,
                         index.entity_row(
                             EntityIdx(u32::try_from(raw).map_err(|_| EncodeError::InvalidReference {
@@ -813,6 +817,7 @@ impl FeatureEncoder {
                         )? as i32,
                     )?;
                 }
+                slot_row += 1;
             }
         }
         for (template_row, template) in index.template_rows.iter().enumerate() {
@@ -824,8 +829,8 @@ impl FeatureEncoder {
                             writer.number(
                                 3,
                                 4 + (slot * 2) as i32,
-                                3,
                                 template_row as i32,
+                                0,
                                 self.fitted_value(
                                     f64::from(*a),
                                     [
@@ -840,8 +845,8 @@ impl FeatureEncoder {
                             writer.number(
                                 3,
                                 5 + (slot * 2) as i32,
-                                3,
                                 template_row as i32,
+                                0,
                                 self.fitted_value(
                                     f64::from(*b),
                                     [
@@ -859,11 +864,12 @@ impl FeatureEncoder {
             }
             writer.raw_template(template_row as i32, template)?;
         }
+        let mut state_row = 0usize;
         for (entity_row, entity) in state.entities.iter().enumerate() {
             writer.raw_entity(entity_row as i32, entity)?;
             for entry in &entity.states {
-                let state_owner = state.entities[..entity_row].iter().map(|item| item.states.len()).sum::<usize>();
-                writer.raw_state(state_owner, entry)?;
+                writer.raw_state(state_row, entry)?;
+                state_row += 1;
             }
         }
         writer.raw_world(state)?;
@@ -1189,6 +1195,13 @@ impl FeatureEncoder {
         for (template_row, template) in index.template_rows.iter().enumerate() {
             for (ordinal, lane) in template.skills.lanes.iter().enumerate() {
                 let prefix = format!("templates[{template_row}].skills.lanes[{ordinal}]");
+                // 0 是 PAD，43–50 尚未启用；能转换成 i32 不等于合法技能类别。
+                if lane.skill_id == 0 || lane.skill_id as usize > crate::runtime::model_state::MODEL_SKILL_EXPORTS.len() {
+                    return Err(EncodeError::UnknownCategory {
+                        path: format!("{prefix}.skill_id"),
+                        raw: lane.skill_id.to_string(),
+                    });
+                }
                 out.u8_row_mut("lane_mask", batch_index)?[lane_row] = 1;
                 out.i32_row_mut("lane_skill_id", batch_index)?[lane_row] =
                     i32::try_from(lane.skill_id).map_err(|_| EncodeError::UnknownCategory {
@@ -1271,13 +1284,15 @@ impl FeatureEncoder {
             ];
             for (field_class, values) in lists {
                 for (ordinal, target_lane) in values.into_iter().enumerate() {
-                    let target = if field_class == 256 {
-                        lane_starts[template_row] + ordinal
-                    } else {
-                        lane_starts[template_row] + target_lane
-                    };
+                    if target_lane >= template.skills.lanes.len() {
+                        return Err(EncodeError::InvalidReference {
+                            path: format!("templates[{template_row}].skills.list[{field_class}][{ordinal}]"),
+                            raw: target_lane.to_string(),
+                        });
+                    }
+                    let target = lane_starts[template_row] + target_lane;
                     records.push(ListRecord {
-                        owner_scope: 9,
+                        owner_scope: 3,
                         owner: template_row as i32,
                         field_class,
                         ordinal: ordinal as i32,
@@ -1288,15 +1303,22 @@ impl FeatureEncoder {
                 }
             }
             for (ordinal, deferred) in template.skills.post_action_after_states.iter().enumerate() {
+                if deferred.fixed_lane >= template.skills.lanes.len() {
+                    return Err(EncodeError::InvalidReference {
+                        path: format!("templates[{template_row}].skills.post_action_after_states[{ordinal}].fixed_lane"),
+                        raw: deferred.fixed_lane.to_string(),
+                    });
+                }
                 let target = lane_starts[template_row] + deferred.fixed_lane;
                 records.push(ListRecord {
-                    owner_scope: 9,
+                    owner_scope: 3,
                     owner: template_row as i32,
                     field_class: 261,
                     ordinal: ordinal as i32,
                     target: target as i32,
                     order_key: Some(deferred.state_cursor),
-                    rank_domain: None,
+                    // 前 e 个模板分别属于实体；其余蓝图没有当前实体注册序比较域。
+                    rank_domain: (template_row < state.entities.len()).then_some(OrderRankDomain::Runtime(template_row)),
                 });
             }
         }
@@ -2022,7 +2044,7 @@ mod tests {
         for row in 0..list_count {
             assert!(list[row * 5 + 4] >= 0);
             if (256..=261).contains(&list[row * 5 + 2]) {
-                assert_eq!(list[row * 5], 9);
+                assert_eq!(list[row * 5], 3);
             }
         }
     }
@@ -2418,7 +2440,8 @@ mod tests {
             let Some(slot) = slot else { continue };
             seen[slot] = true;
             assert_eq!(order_present[row], 1, "field_class={field_class} 必须有精确顺序键");
-            assert_eq!(rank_present[row], u8::from(field_class != 261), "field_class={field_class}");
+            let has_entity_domain = field_class != 261 || (indices[row * 5 + 1] as usize) < state.entities.len();
+            assert_eq!(rank_present[row], u8::from(has_entity_domain), "field_class={field_class}");
         }
         assert!(seen.into_iter().all(|present| present), "四类顺序记录都应出现");
     }
@@ -3042,4 +3065,6 @@ mod tests {
             }
         }
     }
+
+    include!("review_tests.rs");
 }

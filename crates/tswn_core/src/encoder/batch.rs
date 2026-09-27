@@ -50,6 +50,20 @@ pub enum Fill {
     Zero,
     /// 引用张量：-1（防止消费端把 padding 当有效引用 gather）。
     RefMinusOne,
+    /// 混合索引行：仅引用列填 -1，其余分类与 ordinal 列填 0。
+    Index { columns: usize, reference_columns: u8 },
+}
+
+impl Fill {
+    fn i32_at(self, index: usize) -> i32 {
+        match self {
+            Self::Zero => 0,
+            Self::RefMinusOne => -1,
+            Self::Index { columns, reference_columns } => {
+                if reference_columns & (1u8 << (index % columns)) != 0 { -1 } else { 0 }
+            }
+        }
+    }
 }
 
 /// 一个输出张量的静态描述。
@@ -87,9 +101,9 @@ impl CapacityDims for ProfileSpec {
     }
 }
 
-/// 本模块已实现的张量注册表：**global / entity / template / lane / list / state 六族**（含 mask 与 presence）。
+/// 已实现的全部张量族（含 mask、presence 与精确旁路）。
 ///
-/// slot / extra 尚未接入；后续追加时必须同步规格第 4 节的张量表与 manifest 张量注册表，
+/// 追加时必须同步规格第 4 节的张量表与 manifest 张量注册表，
 /// 并保持“每个张量只登记一次、名称全局唯一”。
 pub const TENSOR_SPECS: &[TensorSpec] = &[
     // global
@@ -323,7 +337,7 @@ pub const TENSOR_SPECS: &[TensorSpec] = &[
         name: "list_index",
         dtype: Dtype::I32,
         shape: "[V_max,5]",
-        fill: Fill::RefMinusOne,
+        fill: Fill::Index { columns: 5, reference_columns: 0b10010 },
     },
     TensorSpec {
         name: "list_position",
@@ -439,7 +453,7 @@ pub const TENSOR_SPECS: &[TensorSpec] = &[
         name: "slot_index",
         dtype: Dtype::I32,
         shape: "[Q_max,4]",
-        fill: Fill::RefMinusOne,
+        fill: Fill::Index { columns: 4, reference_columns: 0b0010 },
     },
     TensorSpec {
         name: "slot_field_present",
@@ -482,7 +496,7 @@ pub const TENSOR_SPECS: &[TensorSpec] = &[
         name: "extra_index",
         dtype: Dtype::I32,
         shape: "[X_max,4]",
-        fill: Fill::RefMinusOne,
+        fill: Fill::Index { columns: 4, reference_columns: 0b0010 },
     },
     TensorSpec {
         name: "extra_num",
@@ -549,7 +563,8 @@ pub fn tensor_shape(dims: &[usize; 9], name: &str) -> Option<Vec<usize>> {
         "state_num" | "state_num_present" => vec![s, 9],
         "state_ref" | "state_ref_present" => vec![s, 4],
         "state_group" | "state_group_present" => vec![s, 3],
-        "slot_mask" | "slot_value" | "slot_value_present" | "slot_template" | "slot_template_present" => vec![q],
+        "slot_mask" | "slot_template" | "slot_template_present" => vec![q],
+        "slot_value" | "slot_value_present" => vec![q, 1],
         "slot_index" | "slot_field_present" => vec![q, 4],
         "extra_mask" | "extra_num" | "extra_ref" | "extra_bool" | "extra_cat" => vec![x],
         "extra_index" => vec![x, 4],
@@ -569,10 +584,10 @@ enum TensorBuffer {
 impl TensorBuffer {
     fn allocate(dtype: Dtype, len: usize, fill: Fill) -> Self {
         match (dtype, fill) {
-            (Dtype::F32, Fill::Zero) => Self::F32(vec![0.0; len]),
-            (Dtype::F32, Fill::RefMinusOne) => Self::F32(vec![-1.0; len]),
+            (Dtype::F32, _) => Self::F32(vec![fill.i32_at(0) as f32; len]),
             (Dtype::I32, Fill::Zero) => Self::I32(vec![0; len]),
             (Dtype::I32, Fill::RefMinusOne) => Self::I32(vec![-1; len]),
+            (Dtype::I32, Fill::Index { .. }) => Self::I32((0..len).map(|index| fill.i32_at(index)).collect()),
             (Dtype::U8, _) => Self::U8(vec![0; len]),
             (Dtype::U32, _) => Self::U32(vec![0; len]),
         }
@@ -581,21 +596,14 @@ impl TensorBuffer {
     fn clear(&mut self, start: usize, len: usize, fill: Fill) {
         match self {
             Self::F32(values) => {
-                let value = match fill {
-                    Fill::Zero => 0.0,
-                    Fill::RefMinusOne => -1.0,
-                };
+                let value = fill.i32_at(0) as f32;
                 for slot in &mut values[start..start + len] {
                     *slot = value;
                 }
             }
             Self::I32(values) => {
-                let value = match fill {
-                    Fill::Zero => 0,
-                    Fill::RefMinusOne => -1,
-                };
-                for slot in &mut values[start..start + len] {
-                    *slot = value;
+                for (index, slot) in values[start..start + len].iter_mut().enumerate() {
+                    *slot = fill.i32_at(index);
                 }
             }
             Self::U8(values) => {
@@ -827,6 +835,11 @@ mod tests {
                         spec.name
                     );
                 }
+                Fill::Index { .. } => {
+                    for (index, value) in batch.i32_all(spec.name).unwrap().iter().enumerate() {
+                        assert_eq!(*value, spec.fill.i32_at(index), "{} 的混合列 padding", spec.name);
+                    }
+                }
             }
         }
     }
@@ -883,6 +896,32 @@ mod tests {
     }
 
     #[test]
+    fn mixed_index_padding_is_column_typed_and_slot_local() {
+        for (name, expected) in [
+            ("list_index", &[0, -1, 0, 0, -1][..]),
+            ("slot_index", &[0, -1, 0, 0][..]),
+            ("extra_index", &[0, -1, 0, 0][..]),
+        ] {
+            let mut batch = EncodedBatch::baseline(3);
+            assert!(batch.i32_all(name).unwrap().chunks_exact(expected.len()).all(|row| row == expected));
+            for slot in 0..3 {
+                batch.i32_row_mut(name, slot).unwrap().fill(20 + slot as i32);
+            }
+            batch.clear_slot(1).unwrap();
+            assert!(batch.i32_row_mut(name, 0).unwrap().iter().all(|value| *value == 20));
+            assert!(batch.i32_row_mut(name, 1).unwrap().chunks_exact(expected.len()).all(|row| row == expected));
+            assert!(batch.i32_row_mut(name, 2).unwrap().iter().all(|value| *value == 22));
+        }
+    }
+
+    #[test]
+    fn slot_scalar_tensors_keep_the_singleton_feature_axis() {
+        for name in ["slot_value", "slot_value_present"] {
+            assert_eq!(tensor_shape(&BASELINE_64.dims(), name), Some(vec![BASELINE_64.q_max, 1]));
+        }
+    }
+
+    #[test]
     fn byte_len_matches_shape_times_dtype_size() {
         let batch = EncodedBatch::baseline(4);
         for spec in TENSOR_SPECS {
@@ -901,7 +940,7 @@ mod tests {
             EncodeError::BatchSlotOutOfRange { batch: 2, limit: 2 }
         ));
         assert!(matches!(
-            batch.u8_row_mut("extra_index", 0).unwrap_err(),
+            batch.u8_row_mut("not_a_tensor", 0).unwrap_err(),
             EncodeError::UnknownTensor { .. }
         ));
     }
