@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### 依赖更新
+
+- 更新 `js-sys`、`serde` 与 `wasm-bindgen` 至现有兼容范围内的最新版本；
+  `tsify` 同步升级至 `0.5.8`，并配合下述 ABI 边界迁移消除弃用告警。
+
 ### 变更
 
 - WASM 导出边界从 `#[tsify(into_wasm_abi)]` / `#[tsify(from_wasm_abi)]` 迁移到 `tsify::Ts<T>`：
