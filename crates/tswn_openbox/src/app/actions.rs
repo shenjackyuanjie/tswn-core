@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 use egui;
 
 use tswn_openbox::backend::PairDetailMode;
+use tswn_openbox::backend::live::LiveFeed;
 use tswn_openbox::backend::{
     self, BatchRateInput, CommonBenchOptions, NamerPfInput, NamerPfMetricOptions, NamerPfSkillBoardOptions, PairInput,
     ProgressEvent,
@@ -57,25 +58,20 @@ impl OpenboxApp {
         }
 
         self.begin_task();
-        let feed = tswn_openbox::backend::live::LiveFeed::default();
-        self.live_feed = Some(feed.clone());
         let old = self.to_diy.old;
         let minions = self.to_diy.minions;
         let details = self.to_diy.details && output_file.is_none();
         let cancel = self.cancel_token();
-        std::thread::spawn(move || {
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                backend::run_to_diy_observed(
-                    &raw,
-                    old,
-                    minions,
-                    details,
-                    output_file,
-                    &cancel,
-                    Some(&|update| feed.result(update)),
-                )
-            }))
-            .unwrap_or_else(|_| Err("导出线程异常退出。".into()));
+        self.spawn_worker(move |feed| {
+            let result = backend::run_to_diy_observed(
+                &raw,
+                old,
+                minions,
+                details,
+                output_file,
+                &cancel,
+                Some(&|update| feed.result(update)),
+            );
             feed.progress(ProgressEvent::Done(result));
         });
     }
@@ -153,8 +149,6 @@ impl OpenboxApp {
         };
 
         self.begin_task();
-        let feed = tswn_openbox::backend::live::LiveFeed::default();
-        self.live_feed = Some(feed.clone());
         let cancel = self.cancel_token();
         let input = NamerPfInput {
             raw,
@@ -171,13 +165,8 @@ impl OpenboxApp {
             },
             cancel,
         };
-        std::thread::spawn(move || {
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                backend::run_namer_pf_observed(input, |event| feed.progress(event), Some(&|update| feed.result(update)));
-            }));
-            if result.is_err() {
-                feed.progress(ProgressEvent::Done(Err("计算线程异常退出。".into())));
-            }
+        self.spawn_worker(move |feed| {
+            backend::run_namer_pf_observed(input, |event| feed.progress(event), Some(&|update| feed.result(update)));
         });
     }
 
@@ -233,8 +222,6 @@ impl OpenboxApp {
         };
 
         self.begin_task();
-        let feed = tswn_openbox::backend::live::LiveFeed::default();
-        self.live_feed = Some(feed.clone());
         let cancel = self.cancel_token();
         let input = BatchRateInput {
             target_text,
@@ -257,13 +244,8 @@ impl OpenboxApp {
             },
             cancel,
         };
-        std::thread::spawn(move || {
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                backend::run_batch_rate_observed(input, |event| feed.progress(event), Some(&|update| feed.result(update)));
-            }));
-            if result.is_err() {
-                feed.progress(ProgressEvent::Done(Err("计算线程异常退出。".into())));
-            }
+        self.spawn_worker(move |feed| {
+            backend::run_batch_rate_observed(input, |event| feed.progress(event), Some(&|update| feed.result(update)));
         });
     }
 
@@ -343,8 +325,6 @@ impl OpenboxApp {
         };
 
         self.begin_task();
-        let feed = tswn_openbox::backend::live::LiveFeed::default();
-        self.live_feed = Some(feed.clone());
         let cancel = self.cancel_token();
         let input = PairInput {
             target_text,
@@ -371,14 +351,21 @@ impl OpenboxApp {
             },
             cancel,
         };
-        std::thread::spawn(move || {
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                backend::run_pair_observed(input, |event| feed.progress(event), Some(&|update| feed.result(update)));
-            }));
-            if result.is_err() {
+        self.spawn_worker(move |feed| {
+            backend::run_pair_observed(input, |event| feed.progress(event), Some(&|update| feed.result(update)));
+        });
+    }
+
+    fn spawn_worker(&mut self, task: impl FnOnce(&LiveFeed) + Send + 'static) {
+        let feed = LiveFeed::default();
+        self.live_feed = Some(feed.clone());
+        if let Err(err) = std::thread::Builder::new().name("openbox-task".into()).spawn(move || {
+            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| task(&feed))).is_err() {
                 feed.progress(ProgressEvent::Done(Err("计算线程异常退出。".into())));
             }
-        });
+        }) {
+            self.fail_before_start(format!("启动计算线程失败: {err}"));
+        }
     }
 
     pub fn begin_task(&mut self) {
