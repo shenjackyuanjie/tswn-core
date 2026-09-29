@@ -47,6 +47,7 @@ const USAGE: &str = "\
   --detail <none|top|every>    屏幕日志的 cqp 明细模式，默认 top
   --teammate-factored          队友文件按带权 TOML（[[targets]]）解析
   --target-factored            靶子文件按带权 TOML（[[targets]]）解析
+  --live                       测量 GUI 收件箱通路与首条结果延迟
   -h, --help                   打印本说明
 ";
 
@@ -60,6 +61,7 @@ struct Args {
     detail_mode: PairDetailMode,
     teammate_factored: bool,
     target_factored: bool,
+    live: bool,
 }
 
 impl Args {
@@ -75,6 +77,7 @@ impl Args {
             detail_mode: PairDetailMode::Top,
             teammate_factored: false,
             target_factored: false,
+            live: false,
         };
         while let Some(arg) = args.next() {
             let mut value = |name: &str| args.next().ok_or_else(|| format!("{name} 需要一个取值"));
@@ -103,6 +106,7 @@ impl Args {
                         other => return Err(format!("--detail 只支持 none/top/every，收到: {other}")),
                     }
                 }
+                "--live" => parsed.live = true,
                 "--teammate-factored" => parsed.teammate_factored = true,
                 "--target-factored" => parsed.target_factored = true,
                 other => return Err(format!("未知参数: {other}（用 --help 查看用法）")),
@@ -185,6 +189,11 @@ fn main() {
         cancel: Arc::clone(&cancel),
     };
 
+    if args.live {
+        run_live_probe(input);
+        return;
+    }
+
     let lines = RefCell::new(Vec::<String>::new());
     let ticks = Cell::new(0usize);
     let last = Cell::new(0usize);
@@ -238,4 +247,57 @@ fn main() {
         last.get(),
         total.get(),
     );
+}
+
+/// 模拟 100ms 的 GUI 收件频率，单独报告计算时间，避免尾部刷新等待污染吞吐。
+fn run_live_probe(input: PairInput) {
+    use tswn_openbox::backend::{
+        live::{LiveEvent, LiveFeed},
+        run_pair_observed,
+    };
+    let feed = LiveFeed::default();
+    let worker_feed = feed.clone();
+    let start = Instant::now();
+    let worker = std::thread::spawn(move || {
+        let started = Instant::now();
+        run_pair_observed(
+            input,
+            |event| worker_feed.progress(event),
+            Some(&|update| worker_feed.result(update)),
+        );
+        started.elapsed()
+    });
+    let mut first_ms = None;
+    let mut updates = 0;
+    let mut dropped = 0;
+    let status = loop {
+        let batch = feed.take();
+        dropped += batch.dropped;
+        for event in batch.events {
+            if let LiveEvent::Result(update) = event {
+                first_ms.get_or_insert(start.elapsed().as_secs_f64() * 1000.0);
+                updates += 1;
+                if let Some(finish) = update.finish {
+                    println!("{} {:.3} {}", update.group, finish.score.unwrap_or(0.0), update.label);
+                }
+            }
+        }
+        if let Some(result) = batch.done {
+            break result;
+        }
+        if worker.is_finished() {
+            continue;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+    let elapsed = worker.join().expect("计算线程异常");
+    eprintln!(
+        "live elapsed_s={:.6} visible_s={:.6} first_ms={:.3} updates={updates} dropped={dropped} done={status:?}",
+        elapsed.as_secs_f64(),
+        start.elapsed().as_secs_f64(),
+        first_ms.unwrap_or(0.0)
+    );
+    if status.is_err() {
+        std::process::exit(3);
+    }
 }

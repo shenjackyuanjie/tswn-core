@@ -7,7 +7,6 @@ use std::ops::RangeInclusive;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
-    mpsc::{self, TryRecvError},
 };
 use std::time::{Duration, Instant};
 
@@ -25,8 +24,7 @@ use super::widgets::OptionalFileOutput;
 use tswn_openbox::presets::{load_selected_target_text, load_selected_teammate_text};
 
 const MAX_EVENTS_PER_POLL: usize = 256;
-const EVENT_CHANNEL_CAPACITY: usize = MAX_EVENTS_PER_POLL * 16;
-const RUNNING_REPAINT_INTERVAL: Duration = Duration::from_millis(33);
+const RUNNING_REPAINT_INTERVAL: Duration = Duration::from_millis(100);
 
 impl OpenboxApp {
     pub fn stop_current_task(&mut self) {
@@ -59,15 +57,26 @@ impl OpenboxApp {
         }
 
         self.begin_task();
-        let (tx, rx) = progress_channel();
-        self.rx = Some(rx);
+        let feed = tswn_openbox::backend::live::LiveFeed::default();
+        self.live_feed = Some(feed.clone());
         let old = self.to_diy.old;
         let minions = self.to_diy.minions;
         let details = self.to_diy.details && output_file.is_none();
         let cancel = self.cancel_token();
         std::thread::spawn(move || {
-            let result = backend::run_to_diy(&raw, old, minions, details, output_file, &cancel);
-            let _ = tx.send(ProgressEvent::Done(result));
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                backend::run_to_diy_observed(
+                    &raw,
+                    old,
+                    minions,
+                    details,
+                    output_file,
+                    &cancel,
+                    Some(&|update| feed.result(update)),
+                )
+            }))
+            .unwrap_or_else(|_| Err("导出线程异常退出。".into()));
+            feed.progress(ProgressEvent::Done(result));
         });
     }
 
@@ -144,8 +153,8 @@ impl OpenboxApp {
         };
 
         self.begin_task();
-        let (tx, rx) = progress_channel();
-        self.rx = Some(rx);
+        let feed = tswn_openbox::backend::live::LiveFeed::default();
+        self.live_feed = Some(feed.clone());
         let cancel = self.cancel_token();
         let input = NamerPfInput {
             raw,
@@ -163,9 +172,12 @@ impl OpenboxApp {
             cancel,
         };
         std::thread::spawn(move || {
-            backend::run_namer_pf(input, |event| {
-                let _ = tx.send(event);
-            });
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                backend::run_namer_pf_observed(input, |event| feed.progress(event), Some(&|update| feed.result(update)));
+            }));
+            if result.is_err() {
+                feed.progress(ProgressEvent::Done(Err("计算线程异常退出。".into())));
+            }
         });
     }
 
@@ -221,8 +233,8 @@ impl OpenboxApp {
         };
 
         self.begin_task();
-        let (tx, rx) = progress_channel();
-        self.rx = Some(rx);
+        let feed = tswn_openbox::backend::live::LiveFeed::default();
+        self.live_feed = Some(feed.clone());
         let cancel = self.cancel_token();
         let input = BatchRateInput {
             target_text,
@@ -246,9 +258,12 @@ impl OpenboxApp {
             cancel,
         };
         std::thread::spawn(move || {
-            backend::run_batch_rate(input, |event| {
-                let _ = tx.send(event);
-            });
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                backend::run_batch_rate_observed(input, |event| feed.progress(event), Some(&|update| feed.result(update)));
+            }));
+            if result.is_err() {
+                feed.progress(ProgressEvent::Done(Err("计算线程异常退出。".into())));
+            }
         });
     }
 
@@ -328,8 +343,8 @@ impl OpenboxApp {
         };
 
         self.begin_task();
-        let (tx, rx) = progress_channel();
-        self.rx = Some(rx);
+        let feed = tswn_openbox::backend::live::LiveFeed::default();
+        self.live_feed = Some(feed.clone());
         let cancel = self.cancel_token();
         let input = PairInput {
             target_text,
@@ -357,13 +372,18 @@ impl OpenboxApp {
             cancel,
         };
         std::thread::spawn(move || {
-            backend::run_pair(input, |event| {
-                let _ = tx.send(event);
-            });
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                backend::run_pair_observed(input, |event| feed.progress(event), Some(&|update| feed.result(update)));
+            }));
+            if result.is_err() {
+                feed.progress(ProgressEvent::Done(Err("计算线程异常退出。".into())));
+            }
         });
     }
 
     pub fn begin_task(&mut self) {
+        self.live_feed = None;
+        self.pending_live = Default::default();
         self.running = true;
         self.cancel_requested = false;
         self.cancel_token = Some(Arc::new(AtomicBool::new(false)));
@@ -372,7 +392,7 @@ impl OpenboxApp {
         self.started_at = Some(Instant::now());
         self.rate_text = "--".to_string();
         self.eta_text = "--".to_string();
-        self.log.clear();
+        self.clear_results();
         self.status = "运行中".to_string();
     }
 
@@ -385,79 +405,86 @@ impl OpenboxApp {
         self.started_at = None;
         self.rate_text = "--".to_string();
         self.eta_text = "--".to_string();
-        self.rx = None;
+        self.live_feed = None;
+        self.pending_live = Default::default();
         self.status = "失败".to_string();
-        self.log.clear();
+        self.clear_results();
         self.append_log(&err);
     }
 
+    pub fn clear_results(&mut self) {
+        self.log.clear();
+        self.results.clear();
+        // 清空当前已入队内容，保留终态与进度，避免任务完成消息丢失。
+        self.pending_live.events.clear();
+        if let Some(feed) = &self.live_feed {
+            let batch = feed.take();
+            if batch.progress.is_some() {
+                self.pending_live.progress = batch.progress;
+            }
+            if batch.done.is_some() {
+                self.pending_live.done = batch.done;
+            }
+        }
+    }
+
     pub fn poll_events(&mut self, ctx: &egui::Context) {
-        let mut processed_any = false;
-        let mut hit_event_limit = false;
-        if let Some(rx) = self.rx.take() {
-            let mut keep_rx = true;
-            for event_index in 0..MAX_EVENTS_PER_POLL {
-                match rx.try_recv() {
-                    Ok(event) => {
-                        processed_any = true;
-                        hit_event_limit = event_index + 1 == MAX_EVENTS_PER_POLL;
-                        match event {
-                            ProgressEvent::Log(line) => {
-                                self.append_log(&line);
-                            }
-                            ProgressEvent::HighlightLog(line) => {
-                                self.append_highlight_log(&line);
-                            }
-                            ProgressEvent::SkillBoardLog(line) => {
-                                self.append_skill_board_log(&line);
-                            }
-                            ProgressEvent::Progress { done, total } => {
-                                self.done = done;
-                                self.total = total;
-                                self.status = "运行中".to_string();
-                                self.update_progress_stats();
-                            }
-                            ProgressEvent::Done(result) => {
-                                self.running = false;
-                                self.cancel_requested = false;
-                                self.cancel_token = None;
-                                self.status = match &result {
-                                    Ok(_) => "完成".to_string(),
-                                    Err(_) => "失败".to_string(),
-                                };
-                                match result {
-                                    Ok(output) => self.append_log(&output),
-                                    Err(err) => self.append_log(&err),
-                                }
-                                self.update_progress_stats();
-                                keep_rx = false;
-                                break;
-                            }
-                        }
-                    }
-                    Err(TryRecvError::Empty) => {
-                        hit_event_limit = false;
-                        break;
-                    }
-                    Err(TryRecvError::Disconnected) => {
-                        self.running = false;
-                        self.cancel_requested = false;
-                        self.cancel_token = None;
-                        keep_rx = false;
-                        break;
-                    }
-                }
+        if self.pending_live.events.is_empty()
+            && self.pending_live.done.is_none()
+            && self.last_live_poll.elapsed() >= RUNNING_REPAINT_INTERVAL
+        {
+            if let Some(feed) = &self.live_feed {
+                self.pending_live = feed.take();
+                self.results.trimmed += self.pending_live.dropped;
             }
-            if keep_rx {
-                self.rx = Some(rx);
+            self.last_live_poll = Instant::now();
+        }
+        if let Some((done, total)) = self.pending_live.progress.take() {
+            self.done = done;
+            self.total = total;
+        }
+        let start = Instant::now();
+        for _ in 0..MAX_EVENTS_PER_POLL {
+            let Some(event) = self.pending_live.events.pop_front() else {
+                break;
+            };
+            match event {
+                tswn_openbox::backend::live::LiveEvent::Result(update) => self.results.apply(update, &mut self.log),
+                tswn_openbox::backend::live::LiveEvent::Log(text) => self.append_log(&text),
             }
+            if start.elapsed() >= Duration::from_millis(4) {
+                break;
+            }
+        }
+        if self.pending_live.events.is_empty()
+            && let Some(result) = self.pending_live.done.take()
+        {
+            self.running = false;
+            self.cancel_requested = false;
+            self.cancel_token = None;
+            self.status = match &result {
+                Err(_) => "失败",
+                Ok(message) if message == "已停止。" => "已停止",
+                Ok(_) => "完成",
+            }
+            .into();
+            self.results.finish(&self.status);
+            self.update_progress_stats();
+            if self.status != "完成" {
+                self.eta_text = "--".into();
+            }
+            match result {
+                Ok(text) | Err(text) => self.append_log(&text),
+            }
+            self.live_feed = None;
         }
         if self.running {
             self.update_progress_stats();
-            ctx.request_repaint_after(RUNNING_REPAINT_INTERVAL);
         }
-        if processed_any || hit_event_limit {
+        if !self.pending_live.events.is_empty() {
             ctx.request_repaint();
+        } else if self.running {
+            ctx.request_repaint_after(RUNNING_REPAINT_INTERVAL);
         }
     }
 
@@ -482,10 +509,6 @@ impl OpenboxApp {
     }
 
     pub fn append_log(&mut self, text: &str) { self.log.append(text, LogKind::Plain); }
-
-    pub fn append_highlight_log(&mut self, text: &str) { self.log.append(text, LogKind::Highlight); }
-
-    pub fn append_skill_board_log(&mut self, text: &str) { self.log.append(text, LogKind::SkillBoard); }
 }
 
 impl OpenboxApp {
@@ -524,10 +547,6 @@ fn bench_count(mode: CountMode, accuracy: super::state::AccuracyPreset, manual_c
 fn bench_threads(auto_threads: bool, threads: usize) -> Option<usize> { if auto_threads { None } else { non_zero(threads) } }
 
 fn non_zero(value: usize) -> Option<usize> { if value == 0 { None } else { Some(value) } }
-
-fn progress_channel() -> (mpsc::SyncSender<ProgressEvent>, mpsc::Receiver<ProgressEvent>) {
-    mpsc::sync_channel(EVENT_CHANNEL_CAPACITY)
-}
 
 fn parse_optional_f64_in_range(raw: &str, field_name: &str, range: RangeInclusive<f64>) -> Result<Option<f64>, String> {
     let trimmed = raw.trim();

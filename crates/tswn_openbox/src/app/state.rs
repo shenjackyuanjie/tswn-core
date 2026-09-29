@@ -3,15 +3,16 @@
 //! 定义工具枚举 [`Tool`] 及各工具的独立状态结构体（`ToDiyState`、`NamerPfState` 等），
 //! 以及聚合所有状态的顶层 [`OpenboxApp`] 结构体。
 
-use std::sync::{Arc, atomic::AtomicBool, mpsc::Receiver};
+use std::sync::{Arc, atomic::AtomicBool};
 use std::time::Instant;
 
 use egui;
 
-use tswn_openbox::backend::{NamerPfMetric, OutputMode, PairDetailMode, ProgressEvent};
+use tswn_openbox::backend::{NamerPfMetric, OutputMode, PairDetailMode};
 
 use super::help::HelpTopic;
 use super::log::LogBuffer;
+use super::results::ViewMode;
 
 use super::source::TextSource;
 use super::widgets::{BenchOutputConfig, OptionalFileOutput};
@@ -268,7 +269,12 @@ pub struct OpenboxApp {
     pub started_at: Option<Instant>,
     pub rate_text: String,
     pub eta_text: String,
-    pub rx: Option<Receiver<ProgressEvent>>,
+    pub(crate) live_feed: Option<tswn_openbox::backend::live::LiveFeed>,
+    pub(crate) pending_live: tswn_openbox::backend::live::LiveBatch,
+    pub(crate) last_live_poll: Instant,
+    pub(crate) results: super::results::ResultsView,
+    // 与 Tool::ALL 的固定顺序对应；各页单独保留本次会话的视图选择。
+    pub(crate) result_modes: [ViewMode; 4],
     pub to_diy: ToDiyState,
     pub namer_pf: NamerPfState,
     pub batch_rate: BatchRateState,
@@ -293,7 +299,11 @@ impl Default for OpenboxApp {
             started_at: None,
             rate_text: "--".to_string(),
             eta_text: "--".to_string(),
-            rx: None,
+            live_feed: None,
+            pending_live: Default::default(),
+            last_live_poll: Instant::now(),
+            results: Default::default(),
+            result_modes: [ViewMode::Cards, ViewMode::Table, ViewMode::Table, ViewMode::Cards],
             to_diy: ToDiyState::default(),
             namer_pf: NamerPfState::default(),
             batch_rate: BatchRateState::default(),

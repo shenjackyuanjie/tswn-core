@@ -4,8 +4,11 @@
 //! 组织工具栏与左侧输入面板、中央日志面板，并将各工具 UI 分发给子模块渲染。
 
 mod actions;
+#[cfg(feature = "ui_capture")]
+pub(crate) mod capture;
 mod help;
 mod log;
+mod results;
 mod source;
 mod state;
 mod view;
@@ -79,7 +82,11 @@ impl eframe::App for OpenboxApp {
 
         egui::CentralPanel::default().show(ui, |ui| {
             egui::Frame::central_panel(ui.style())
-                .inner_margin(egui::Margin::same(PANEL_MARGIN))
+                .inner_margin(egui::Margin::same(if self.results.mode == results::ViewMode::Text {
+                    PANEL_MARGIN
+                } else {
+                    4
+                }))
                 .show(ui, |ui| {
                     self.log_ui(ui, &ctx);
                 });
@@ -125,7 +132,9 @@ fn top_bar_ui(ui: &mut egui::Ui, app: &mut OpenboxApp, ctx: &egui::Context) {
         for tool in Tool::ALL {
             let selected = app.tool == tool;
             let label = egui::RichText::new(tool.label()).size(16.0);
-            if ui.selectable_label(selected, label).clicked() && !app.running {
+            if ui.selectable_label(selected, label).clicked() && !app.running && !selected {
+                app.result_modes[app.tool as usize] = app.results.mode;
+                app.results.mode = app.result_modes[tool as usize];
                 app.tool = tool;
             }
         }

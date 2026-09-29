@@ -316,7 +316,7 @@ impl OpenboxApp {
                             ctx.copy_text(self.log.copy_text());
                         }
                         if ui.button("清空日志").clicked() {
-                            self.log.clear();
+                            self.clear_results();
                         }
                     });
                 });
@@ -330,6 +330,22 @@ impl OpenboxApp {
                     ui.label(egui::RichText::new("运行结果会显示在这里").weak());
                 }
             });
+        self.results.controls(ui);
+        if self.log.discarded_lines() > 0 {
+            ui.weak(format!(
+                "文本历史已裁剪 {} 行，复制日志仅包含当前保留部分。",
+                self.log.discarded_lines()
+            ));
+        }
+        if self.results.mode != super::results::ViewMode::Text {
+            if self.status == "失败"
+                && let Some(line) = self.log.get(self.log.len().saturating_sub(1))
+            {
+                ui.colored_label(egui::Color32::RED, line.display_text());
+            }
+            self.results.ui(ui);
+            return;
+        }
         let skill_board_line_count = self.log.skill_board_line_count();
         if skill_board_line_count > 0 {
             ui.add_space(LOG_SECTION_GAP);
@@ -353,7 +369,11 @@ impl OpenboxApp {
                     });
                 } else {
                     let text_height = ui.available_height().max(220.0);
+                    if ui.rect_contains_pointer(ui.max_rect()) && ui.input(|input| input.smooth_scroll_delta.y > 0.0) {
+                        self.results.follow = false;
+                    }
                     egui::ScrollArea::both()
+                        .stick_to_bottom(self.results.follow)
                         .id_salt("main_log")
                         .auto_shrink([false, false])
                         .max_height(text_height)

@@ -130,6 +130,19 @@ pub fn runtime_cqp_matchups(
     cancel: &AtomicBool,
     mut on_complete: impl FnMut(),
 ) -> Result<RuntimeCqpBatchResult, RuntimeBatchError> {
+    runtime_cqp_matchups_observed(matchups, n, eval_rq, thread, cancel, |_, _| on_complete())
+}
+
+/// 每个完整 matchup 汇总后立即提供索引与结果，不等待整个矩阵返回。
+/// 回调只在调用线程执行；结果顺序、取消及分片策略与旧接口相同。
+pub fn runtime_cqp_matchups_observed(
+    matchups: &[RuntimeCqpMatchup],
+    n: usize,
+    eval_rq: f64,
+    thread: u32,
+    cancel: &AtomicBool,
+    mut on_complete: impl FnMut(usize, &RuntimeCqpMatchupResult),
+) -> Result<RuntimeCqpBatchResult, RuntimeBatchError> {
     let mut ordered = (0..matchups.len()).map(|_| None).collect::<Vec<_>>();
     if matchups.is_empty() || cancel.load(Ordering::Relaxed) {
         return Ok(RuntimeCqpBatchResult {
@@ -152,7 +165,7 @@ pub fn runtime_cqp_matchups(
                 elapsed: accumulator.finished.unwrap().duration_since(accumulator.started.unwrap()),
             });
             completed += 1;
-            on_complete();
+            on_complete(index, ordered[index].as_ref().unwrap());
         }
     };
 
@@ -265,6 +278,40 @@ fn platform_default_cqp_workers(n: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn observer_receives_result_before_remaining_matchups_run() {
+        let matchups = vec![RuntimeCqpMatchup::new(vec![vec!["alpha".into()], vec!["beta".into()]]); 3];
+        let cancel = AtomicBool::new(false);
+        let mut seen = Vec::new();
+        let result = runtime_cqp_matchups_observed(&matchups, 24, 6.0, 1, &cancel, |index, result| {
+            seen.push((index, result.summary.as_ref().unwrap().total));
+            // 在首项回调中取消；若回调被延迟至整批结束，其余项就已完成。
+            cancel.store(true, Ordering::Relaxed);
+        })
+        .unwrap();
+        assert_eq!(seen, vec![(0, 24)]);
+        assert_eq!(result.completed, 1);
+        assert!(result.matchups[1..].iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn observer_indexes_are_unique_and_match_ordered_results() {
+        let matchups = (0..8)
+            .map(|i| RuntimeCqpMatchup::new(vec![vec![format!("alpha{i}")], vec!["beta".into()]]))
+            .collect::<Vec<_>>();
+        let mut seen = std::collections::BTreeMap::new();
+        let result = runtime_cqp_matchups_observed(&matchups, 130, 6.0, 4, &AtomicBool::new(false), |index, result| {
+            let summary = result.summary.as_ref().unwrap();
+            assert!(seen.insert(index, (summary.wins, summary.total)).is_none());
+        })
+        .unwrap();
+        assert_eq!(seen.len(), matchups.len());
+        for (index, outcome) in result.matchups.into_iter().enumerate() {
+            let summary = outcome.unwrap().summary.unwrap();
+            assert_eq!(seen[&index], (summary.wins, summary.total));
+        }
+    }
 
     #[test]
     fn cqp_matrix_keeps_input_order_and_win_totals() {

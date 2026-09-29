@@ -26,6 +26,7 @@ pub(crate) struct LogBuffer {
     non_blank_lines: usize,
     skill_board_lines: usize,
     max_bytes: usize,
+    discarded: usize,
 }
 
 impl Default for LogBuffer {
@@ -40,6 +41,7 @@ impl LogBuffer {
             non_blank_lines: 0,
             skill_board_lines: 0,
             max_bytes,
+            discarded: 0,
         }
     }
 
@@ -48,6 +50,7 @@ impl LogBuffer {
         self.bytes = 0;
         self.non_blank_lines = 0;
         self.skill_board_lines = 0;
+        self.discarded = 0;
     }
 
     pub(crate) fn is_empty(&self) -> bool { self.non_blank_lines == 0 }
@@ -57,6 +60,8 @@ impl LogBuffer {
     pub(crate) fn get(&self, index: usize) -> Option<&LogLine> { self.lines.get(index) }
 
     pub(crate) fn skill_board_line_count(&self) -> usize { self.skill_board_lines }
+
+    pub(crate) fn discarded_lines(&self) -> usize { self.discarded }
 
     pub(crate) fn append(&mut self, text: &str, kind: LogKind) {
         let trimmed = text.trim_end_matches('\n');
@@ -103,6 +108,7 @@ impl LogBuffer {
         // 单条超长日志仍可完整查看；后续内容到来时再淘汰它。
         while self.bytes > self.max_bytes && self.lines.len() > 1 {
             let removed = self.lines.pop_front().unwrap();
+            self.discarded += 1;
             self.bytes -= removed.text.len() + 1;
             self.non_blank_lines -= usize::from(!removed.text.trim().is_empty());
             self.skill_board_lines -= usize::from(removed.kind == LogKind::SkillBoard);

@@ -1,0 +1,633 @@
+{
+  "baseline": "9473188c",
+  "pair": {
+    "summary": {
+      "short": {
+        "old": 0.511967,
+        "new": 0.517328,
+        "live": 0.514917,
+        "new_ratio": 1.0104713780380377,
+        "live_ratio": 1.0057620901347157
+      },
+      "normal": {
+        "old": 0.65595,
+        "new": 0.644532,
+        "live": 0.660157,
+        "new_ratio": 0.9825931854562084,
+        "live_ratio": 1.006413598597454
+      },
+      "long": {
+        "old": 0.574348,
+        "new": 0.5718,
+        "live": 0.580028,
+        "new_ratio": 0.9955636652343178,
+        "live_ratio": 1.0098894746738911
+      }
+    },
+    "runs": [
+      {
+        "case": "short",
+        "round": 0,
+        "mode": "old",
+        "elapsed_s": 0.516044,
+        "sha256": "c6fb7c83da0b796ba847b4e647021dc40e62c1e32b8eff171409313d1d1d9d2b",
+        "stderr": "probe elapsed_s=0.516044 lines=21 progress_ticks=14 progress_last=13120 progress_total=13120 matrix_estimate=20x16x41=13120 done=完成。"
+      },
+      {
+        "case": "short",
+        "round": 0,
+        "mode": "new",
+        "elapsed_s": 0.509911,
+        "sha256": "c6fb7c83da0b796ba847b4e647021dc40e62c1e32b8eff171409313d1d1d9d2b",
+        "stderr": "probe elapsed_s=0.509911 lines=21 progress_ticks=14 progress_last=13120 progress_total=13120 matrix_estimate=20x16x41=13120 done=完成。"
+      },
+      {
+        "case": "short",
+        "round": 0,
+        "mode": "live",
+        "elapsed_s": 0.510951,
+        "sha256": "9b397cfe797169d09703724d2e49cda70bfe86d0e18c784a06ee433182c48586",
+        "stderr": "live elapsed_s=0.510951 visible_s=0.603383 first_ms=100.142 updates=320 dropped=0 done=Ok(\"完成。\")"
+      },
+      {
+        "case": "short",
+        "round": 1,
+        "mode": "live",
+        "elapsed_s": 0.516147,
+        "sha256": "9b397cfe797169d09703724d2e49cda70bfe86d0e18c784a06ee433182c48586",
+        "stderr": "live elapsed_s=0.516147 visible_s=0.605050 first_ms=100.547 updates=320 dropped=0 done=Ok(\"完成。\")"
+      },
+      {
+        "case": "short",
+        "round": 1,
+        "mode": "new",
+        "elapsed_s": 0.517328,
+        "sha256": "c6fb7c83da0b796ba847b4e647021dc40e62c1e32b8eff171409313d1d1d9d2b",
+        "stderr": "probe elapsed_s=0.517328 lines=21 progress_ticks=14 progress_last=13120 progress_total=13120 matrix_estimate=20x16x41=13120 done=完成。"
+      },
+      {
+        "case": "short",
+        "round": 1,
+        "mode": "old",
+        "elapsed_s": 0.526613,
+        "sha256": "c6fb7c83da0b796ba847b4e647021dc40e62c1e32b8eff171409313d1d1d9d2b",
+        "stderr": "probe elapsed_s=0.526613 lines=21 progress_ticks=15 progress_last=13120 progress_total=13120 matrix_estimate=20x16x41=13120 done=完成。"
+      },
+      {
+        "case": "short",
+        "round": 2,
+        "mode": "old",
+        "elapsed_s": 0.51076,
+        "sha256": "c6fb7c83da0b796ba847b4e647021dc40e62c1e32b8eff171409313d1d1d9d2b",
+        "stderr": "probe elapsed_s=0.510760 lines=21 progress_ticks=14 progress_last=13120 progress_total=13120 matrix_estimate=20x16x41=13120 done=完成。"
+      },
+      {
+        "case": "short",
+        "round": 2,
+        "mode": "new",
+        "elapsed_s": 0.50877,
+        "sha256": "c6fb7c83da0b796ba847b4e647021dc40e62c1e32b8eff171409313d1d1d9d2b",
+        "stderr": "probe elapsed_s=0.508770 lines=21 progress_ticks=14 progress_last=13120 progress_total=13120 matrix_estimate=20x16x41=13120 done=完成。"
+      },
+      {
+        "case": "short",
+        "round": 2,
+        "mode": "live",
+        "elapsed_s": 0.514917,
+        "sha256": "9b397cfe797169d09703724d2e49cda70bfe86d0e18c784a06ee433182c48586",
+        "stderr": "live elapsed_s=0.514917 visible_s=0.605291 first_ms=100.988 updates=320 dropped=0 done=Ok(\"完成。\")"
+      },
+      {
+        "case": "short",
+        "round": 3,
+        "mode": "live",
+        "elapsed_s": 0.505571,
+        "sha256": "9b397cfe797169d09703724d2e49cda70bfe86d0e18c784a06ee433182c48586",
+        "stderr": "live elapsed_s=0.505571 visible_s=0.605665 first_ms=101.049 updates=320 dropped=0 done=Ok(\"完成。\")"
+      },
+      {
+        "case": "short",
+        "round": 3,
+        "mode": "new",
+        "elapsed_s": 0.535865,
+        "sha256": "c6fb7c83da0b796ba847b4e647021dc40e62c1e32b8eff171409313d1d1d9d2b",
+        "stderr": "probe elapsed_s=0.535865 lines=21 progress_ticks=15 progress_last=13120 progress_total=13120 matrix_estimate=20x16x41=13120 done=完成。"
+      },
+      {
+        "case": "short",
+        "round": 3,
+        "mode": "old",
+        "elapsed_s": 0.511967,
+        "sha256": "c6fb7c83da0b796ba847b4e647021dc40e62c1e32b8eff171409313d1d1d9d2b",
+        "stderr": "probe elapsed_s=0.511967 lines=21 progress_ticks=14 progress_last=13120 progress_total=13120 matrix_estimate=20x16x41=13120 done=完成。"
+      },
+      {
+        "case": "normal",
+        "round": 0,
+        "mode": "old",
+        "elapsed_s": 0.645661,
+        "sha256": "69fd2094ac46f0f04672dd3cb0ffb69f3a3cc6c6e449d51a7c4cc880c3d79258",
+        "stderr": "probe elapsed_s=0.645661 lines=9 progress_ticks=17 progress_last=1312 progress_total=1312 matrix_estimate=8x4x41=1312 done=完成。"
+      },
+      {
+        "case": "normal",
+        "round": 0,
+        "mode": "new",
+        "elapsed_s": 0.648915,
+        "sha256": "69fd2094ac46f0f04672dd3cb0ffb69f3a3cc6c6e449d51a7c4cc880c3d79258",
+        "stderr": "probe elapsed_s=0.648915 lines=9 progress_ticks=17 progress_last=1312 progress_total=1312 matrix_estimate=8x4x41=1312 done=完成。"
+      },
+      {
+        "case": "normal",
+        "round": 0,
+        "mode": "live",
+        "elapsed_s": 0.636304,
+        "sha256": "fb12de834c1955949ca3b38ad086629592fa5668d864780c34fcd2f197876123",
+        "stderr": "live elapsed_s=0.636304 visible_s=0.704984 first_ms=101.060 updates=32 dropped=0 done=Ok(\"完成。\")"
+      },
+      {
+        "case": "normal",
+        "round": 1,
+        "mode": "live",
+        "elapsed_s": 0.660157,
+        "sha256": "fb12de834c1955949ca3b38ad086629592fa5668d864780c34fcd2f197876123",
+        "stderr": "live elapsed_s=0.660157 visible_s=0.706325 first_ms=100.305 updates=32 dropped=0 done=Ok(\"完成。\")"
+      },
+      {
+        "case": "normal",
+        "round": 1,
+        "mode": "new",
+        "elapsed_s": 0.692822,
+        "sha256": "69fd2094ac46f0f04672dd3cb0ffb69f3a3cc6c6e449d51a7c4cc880c3d79258",
+        "stderr": "probe elapsed_s=0.692822 lines=9 progress_ticks=18 progress_last=1312 progress_total=1312 matrix_estimate=8x4x41=1312 done=完成。"
+      },
+      {
+        "case": "normal",
+        "round": 1,
+        "mode": "old",
+        "elapsed_s": 0.65595,
+        "sha256": "69fd2094ac46f0f04672dd3cb0ffb69f3a3cc6c6e449d51a7c4cc880c3d79258",
+        "stderr": "probe elapsed_s=0.655950 lines=9 progress_ticks=18 progress_last=1312 progress_total=1312 matrix_estimate=8x4x41=1312 done=完成。"
+      },
+      {
+        "case": "normal",
+        "round": 2,
+        "mode": "old",
+        "elapsed_s": 0.651798,
+        "sha256": "69fd2094ac46f0f04672dd3cb0ffb69f3a3cc6c6e449d51a7c4cc880c3d79258",
+        "stderr": "probe elapsed_s=0.651798 lines=9 progress_ticks=18 progress_last=1312 progress_total=1312 matrix_estimate=8x4x41=1312 done=完成。"
+      },
+      {
+        "case": "normal",
+        "round": 2,
+        "mode": "new",
+        "elapsed_s": 0.644532,
+        "sha256": "69fd2094ac46f0f04672dd3cb0ffb69f3a3cc6c6e449d51a7c4cc880c3d79258",
+        "stderr": "probe elapsed_s=0.644532 lines=9 progress_ticks=17 progress_last=1312 progress_total=1312 matrix_estimate=8x4x41=1312 done=完成。"
+      },
+      {
+        "case": "normal",
+        "round": 2,
+        "mode": "live",
+        "elapsed_s": 0.667855,
+        "sha256": "fb12de834c1955949ca3b38ad086629592fa5668d864780c34fcd2f197876123",
+        "stderr": "live elapsed_s=0.667855 visible_s=0.703270 first_ms=100.261 updates=32 dropped=0 done=Ok(\"完成。\")"
+      },
+      {
+        "case": "normal",
+        "round": 3,
+        "mode": "live",
+        "elapsed_s": 0.650308,
+        "sha256": "fb12de834c1955949ca3b38ad086629592fa5668d864780c34fcd2f197876123",
+        "stderr": "live elapsed_s=0.650308 visible_s=0.705751 first_ms=101.030 updates=32 dropped=0 done=Ok(\"完成。\")"
+      },
+      {
+        "case": "normal",
+        "round": 3,
+        "mode": "new",
+        "elapsed_s": 0.644163,
+        "sha256": "69fd2094ac46f0f04672dd3cb0ffb69f3a3cc6c6e449d51a7c4cc880c3d79258",
+        "stderr": "probe elapsed_s=0.644163 lines=9 progress_ticks=17 progress_last=1312 progress_total=1312 matrix_estimate=8x4x41=1312 done=完成。"
+      },
+      {
+        "case": "normal",
+        "round": 3,
+        "mode": "old",
+        "elapsed_s": 0.657902,
+        "sha256": "69fd2094ac46f0f04672dd3cb0ffb69f3a3cc6c6e449d51a7c4cc880c3d79258",
+        "stderr": "probe elapsed_s=0.657902 lines=9 progress_ticks=18 progress_last=1312 progress_total=1312 matrix_estimate=8x4x41=1312 done=完成。"
+      },
+      {
+        "case": "long",
+        "round": 0,
+        "mode": "old",
+        "elapsed_s": 0.577057,
+        "sha256": "26c54cac947bc2518ec948ae997c94c0080904eee6d3161cb07a5b39e795c362",
+        "stderr": "probe elapsed_s=0.577057 lines=3 progress_ticks=9 progress_last=8 progress_total=8 matrix_estimate=2x2x2=8 done=完成。"
+      },
+      {
+        "case": "long",
+        "round": 0,
+        "mode": "new",
+        "elapsed_s": 0.593225,
+        "sha256": "26c54cac947bc2518ec948ae997c94c0080904eee6d3161cb07a5b39e795c362",
+        "stderr": "probe elapsed_s=0.593225 lines=3 progress_ticks=9 progress_last=8 progress_total=8 matrix_estimate=2x2x2=8 done=完成。"
+      },
+      {
+        "case": "long",
+        "round": 0,
+        "mode": "live",
+        "elapsed_s": 0.5781,
+        "sha256": "0c81d427910aac59eb49e0d36d2effff58f08e3fce64eb79539cec44754f6856",
+        "stderr": "live elapsed_s=0.578100 visible_s=0.604289 first_ms=201.100 updates=4 dropped=0 done=Ok(\"完成。\")"
+      },
+      {
+        "case": "long",
+        "round": 1,
+        "mode": "live",
+        "elapsed_s": 0.580028,
+        "sha256": "0c81d427910aac59eb49e0d36d2effff58f08e3fce64eb79539cec44754f6856",
+        "stderr": "live elapsed_s=0.580028 visible_s=0.604499 first_ms=201.742 updates=4 dropped=0 done=Ok(\"完成。\")"
+      },
+      {
+        "case": "long",
+        "round": 1,
+        "mode": "new",
+        "elapsed_s": 0.592144,
+        "sha256": "26c54cac947bc2518ec948ae997c94c0080904eee6d3161cb07a5b39e795c362",
+        "stderr": "probe elapsed_s=0.592144 lines=3 progress_ticks=9 progress_last=8 progress_total=8 matrix_estimate=2x2x2=8 done=完成。"
+      },
+      {
+        "case": "long",
+        "round": 1,
+        "mode": "old",
+        "elapsed_s": 0.553335,
+        "sha256": "26c54cac947bc2518ec948ae997c94c0080904eee6d3161cb07a5b39e795c362",
+        "stderr": "probe elapsed_s=0.553335 lines=3 progress_ticks=9 progress_last=8 progress_total=8 matrix_estimate=2x2x2=8 done=完成。"
+      },
+      {
+        "case": "long",
+        "round": 2,
+        "mode": "old",
+        "elapsed_s": 0.574516,
+        "sha256": "26c54cac947bc2518ec948ae997c94c0080904eee6d3161cb07a5b39e795c362",
+        "stderr": "probe elapsed_s=0.574516 lines=3 progress_ticks=9 progress_last=8 progress_total=8 matrix_estimate=2x2x2=8 done=完成。"
+      },
+      {
+        "case": "long",
+        "round": 2,
+        "mode": "new",
+        "elapsed_s": 0.566946,
+        "sha256": "26c54cac947bc2518ec948ae997c94c0080904eee6d3161cb07a5b39e795c362",
+        "stderr": "probe elapsed_s=0.566946 lines=3 progress_ticks=9 progress_last=8 progress_total=8 matrix_estimate=2x2x2=8 done=完成。"
+      },
+      {
+        "case": "long",
+        "round": 2,
+        "mode": "live",
+        "elapsed_s": 0.583345,
+        "sha256": "0c81d427910aac59eb49e0d36d2effff58f08e3fce64eb79539cec44754f6856",
+        "stderr": "live elapsed_s=0.583345 visible_s=0.604934 first_ms=201.418 updates=4 dropped=0 done=Ok(\"完成。\")"
+      },
+      {
+        "case": "long",
+        "round": 3,
+        "mode": "live",
+        "elapsed_s": 0.572614,
+        "sha256": "0c81d427910aac59eb49e0d36d2effff58f08e3fce64eb79539cec44754f6856",
+        "stderr": "live elapsed_s=0.572614 visible_s=0.603643 first_ms=200.700 updates=4 dropped=0 done=Ok(\"完成。\")"
+      },
+      {
+        "case": "long",
+        "round": 3,
+        "mode": "new",
+        "elapsed_s": 0.5718,
+        "sha256": "26c54cac947bc2518ec948ae997c94c0080904eee6d3161cb07a5b39e795c362",
+        "stderr": "probe elapsed_s=0.571800 lines=3 progress_ticks=9 progress_last=8 progress_total=8 matrix_estimate=2x2x2=8 done=完成。"
+      },
+      {
+        "case": "long",
+        "round": 3,
+        "mode": "old",
+        "elapsed_s": 0.574348,
+        "sha256": "26c54cac947bc2518ec948ae997c94c0080904eee6d3161cb07a5b39e795c362",
+        "stderr": "probe elapsed_s=0.574348 lines=3 progress_ticks=9 progress_last=8 progress_total=8 matrix_estimate=2x2x2=8 done=完成。"
+      }
+    ]
+  },
+  "batch_rate": {
+    "summary": {
+      "short": {
+        "old": 0.859508,
+        "new": 0.8551,
+        "live": 0.854023,
+        "new_ratio": 0.9948714846167807,
+        "live_ratio": 0.9936184421785486
+      },
+      "normal": {
+        "old": 0.120636,
+        "new": 0.114032,
+        "live": 0.11307,
+        "new_ratio": 0.9452568055970025,
+        "live_ratio": 0.9372824032627077
+      },
+      "long": {
+        "old": 0.100735,
+        "new": 0.101332,
+        "live": 0.101054,
+        "new_ratio": 1.0059264406611406,
+        "live_ratio": 1.0031667245743783
+      }
+    },
+    "runs": [
+      {
+        "case": "short",
+        "round": 0,
+        "mode": "old",
+        "elapsed_s": 0.918217,
+        "rss_kb": 37312,
+        "stderr": "probe start players=1000 targets=41 count=1 threads=Some(8) show_matchups=true rss_kb=4788\ndone=Ok(\"完成。\")\nt=0.918217s rss_kb=37312 progress=41000/41000 events=41000 logs=1001 log_kb=2601 highlights=0"
+      },
+      {
+        "case": "short",
+        "round": 0,
+        "mode": "new",
+        "elapsed_s": 0.894795,
+        "rss_kb": 37512,
+        "stderr": "probe start players=1000 targets=41 count=1 threads=Some(8) show_matchups=true rss_kb=5036\ndone=Ok(\"完成。\")\nt=0.894795s rss_kb=37512 progress=41000/41000 events=41000 logs=1001 log_kb=2601 highlights=0"
+      },
+      {
+        "case": "short",
+        "round": 0,
+        "mode": "live",
+        "elapsed_s": 0.845977,
+        "rss_kb": 47708,
+        "stderr": "probe start players=1000 targets=41 count=1 threads=Some(8) show_matchups=true rss_kb=4788\ndone=Ok(\"完成。\")\nlive elapsed_s=0.845977 updates=41000 dropped=0 first_ms=100.514\nt=0.909294s rss_kb=47708 progress=41000/41000 events=41000 logs=1 log_kb=0 highlights=0"
+      },
+      {
+        "case": "short",
+        "round": 1,
+        "mode": "live",
+        "elapsed_s": 0.846559,
+        "rss_kb": 46820,
+        "stderr": "probe start players=1000 targets=41 count=1 threads=Some(8) show_matchups=true rss_kb=4788\ndone=Ok(\"完成。\")\nlive elapsed_s=0.846559 updates=41000 dropped=0 first_ms=101.112\nt=0.911205s rss_kb=46820 progress=41000/41000 events=41000 logs=1 log_kb=0 highlights=0"
+      },
+      {
+        "case": "short",
+        "round": 1,
+        "mode": "new",
+        "elapsed_s": 0.881736,
+        "rss_kb": 37248,
+        "stderr": "probe start players=1000 targets=41 count=1 threads=Some(8) show_matchups=true rss_kb=4784\ndone=Ok(\"完成。\")\nt=0.881736s rss_kb=37248 progress=41000/41000 events=41000 logs=1001 log_kb=2601 highlights=0"
+      },
+      {
+        "case": "short",
+        "round": 1,
+        "mode": "old",
+        "elapsed_s": 0.859508,
+        "rss_kb": 37308,
+        "stderr": "probe start players=1000 targets=41 count=1 threads=Some(8) show_matchups=true rss_kb=4788\ndone=Ok(\"完成。\")\nt=0.859508s rss_kb=37308 progress=41000/41000 events=41000 logs=1001 log_kb=2601 highlights=0"
+      },
+      {
+        "case": "short",
+        "round": 2,
+        "mode": "old",
+        "elapsed_s": 0.874956,
+        "rss_kb": 37216,
+        "stderr": "probe start players=1000 targets=41 count=1 threads=Some(8) show_matchups=true rss_kb=4792\ndone=Ok(\"完成。\")\nt=0.874956s rss_kb=37216 progress=41000/41000 events=41000 logs=1001 log_kb=2601 highlights=0"
+      },
+      {
+        "case": "short",
+        "round": 2,
+        "mode": "new",
+        "elapsed_s": 0.8551,
+        "rss_kb": 37328,
+        "stderr": "probe start players=1000 targets=41 count=1 threads=Some(8) show_matchups=true rss_kb=4784\ndone=Ok(\"完成。\")\nt=0.855100s rss_kb=37328 progress=41000/41000 events=41000 logs=1001 log_kb=2601 highlights=0"
+      },
+      {
+        "case": "short",
+        "round": 2,
+        "mode": "live",
+        "elapsed_s": 0.854583,
+        "rss_kb": 45836,
+        "stderr": "probe start players=1000 targets=41 count=1 threads=Some(8) show_matchups=true rss_kb=4788\ndone=Ok(\"完成。\")\nlive elapsed_s=0.854583 updates=41000 dropped=0 first_ms=100.852\nt=0.910722s rss_kb=45836 progress=41000/41000 events=41000 logs=1 log_kb=0 highlights=0"
+      },
+      {
+        "case": "short",
+        "round": 3,
+        "mode": "live",
+        "elapsed_s": 0.854023,
+        "rss_kb": 44008,
+        "stderr": "probe start players=1000 targets=41 count=1 threads=Some(8) show_matchups=true rss_kb=4792\ndone=Ok(\"完成。\")\nlive elapsed_s=0.854023 updates=41000 dropped=0 first_ms=100.542\nt=0.910454s rss_kb=44008 progress=41000/41000 events=41000 logs=1 log_kb=0 highlights=0"
+      },
+      {
+        "case": "short",
+        "round": 3,
+        "mode": "new",
+        "elapsed_s": 0.849022,
+        "rss_kb": 37292,
+        "stderr": "probe start players=1000 targets=41 count=1 threads=Some(8) show_matchups=true rss_kb=4788\ndone=Ok(\"完成。\")\nt=0.849022s rss_kb=37292 progress=41000/41000 events=41000 logs=1001 log_kb=2601 highlights=0"
+      },
+      {
+        "case": "short",
+        "round": 3,
+        "mode": "old",
+        "elapsed_s": 0.855197,
+        "rss_kb": 37324,
+        "stderr": "probe start players=1000 targets=41 count=1 threads=Some(8) show_matchups=true rss_kb=4788\ndone=Ok(\"完成。\")\nt=0.855197s rss_kb=37324 progress=41000/41000 events=41000 logs=1001 log_kb=2601 highlights=0"
+      },
+      {
+        "case": "normal",
+        "round": 0,
+        "mode": "old",
+        "elapsed_s": 0.122041,
+        "rss_kb": 9272,
+        "stderr": "probe start players=20 targets=41 count=100 threads=Some(8) show_matchups=true rss_kb=4740\ndone=Ok(\"完成。\")\nt=0.122041s rss_kb=9272 progress=820/820 events=820 logs=21 log_kb=52 highlights=0"
+      },
+      {
+        "case": "normal",
+        "round": 0,
+        "mode": "new",
+        "elapsed_s": 0.123058,
+        "rss_kb": 9268,
+        "stderr": "probe start players=20 targets=41 count=100 threads=Some(8) show_matchups=true rss_kb=4728\ndone=Ok(\"完成。\")\nt=0.123058s rss_kb=9268 progress=820/820 events=820 logs=21 log_kb=52 highlights=0"
+      },
+      {
+        "case": "normal",
+        "round": 0,
+        "mode": "live",
+        "elapsed_s": 0.116816,
+        "rss_kb": 9768,
+        "stderr": "probe start players=20 targets=41 count=100 threads=Some(8) show_matchups=true rss_kb=4736\ndone=Ok(\"完成。\")\nlive elapsed_s=0.116816 updates=820 dropped=0 first_ms=101.129\nt=0.202338s rss_kb=9768 progress=820/820 events=820 logs=1 log_kb=0 highlights=0"
+      },
+      {
+        "case": "normal",
+        "round": 1,
+        "mode": "live",
+        "elapsed_s": 0.123381,
+        "rss_kb": 9844,
+        "stderr": "probe start players=20 targets=41 count=100 threads=Some(8) show_matchups=true rss_kb=4748\ndone=Ok(\"完成。\")\nlive elapsed_s=0.123381 updates=820 dropped=0 first_ms=100.257\nt=0.200896s rss_kb=9844 progress=820/820 events=820 logs=1 log_kb=0 highlights=0"
+      },
+      {
+        "case": "normal",
+        "round": 1,
+        "mode": "new",
+        "elapsed_s": 0.119178,
+        "rss_kb": 9220,
+        "stderr": "probe start players=20 targets=41 count=100 threads=Some(8) show_matchups=true rss_kb=4736\ndone=Ok(\"完成。\")\nt=0.119178s rss_kb=9220 progress=820/820 events=820 logs=21 log_kb=52 highlights=0"
+      },
+      {
+        "case": "normal",
+        "round": 1,
+        "mode": "old",
+        "elapsed_s": 0.120636,
+        "rss_kb": 9288,
+        "stderr": "probe start players=20 targets=41 count=100 threads=Some(8) show_matchups=true rss_kb=4736\ndone=Ok(\"完成。\")\nt=0.120636s rss_kb=9288 progress=820/820 events=820 logs=21 log_kb=52 highlights=0"
+      },
+      {
+        "case": "normal",
+        "round": 2,
+        "mode": "old",
+        "elapsed_s": 0.115975,
+        "rss_kb": 9296,
+        "stderr": "probe start players=20 targets=41 count=100 threads=Some(8) show_matchups=true rss_kb=4728\ndone=Ok(\"完成。\")\nt=0.115975s rss_kb=9296 progress=820/820 events=820 logs=21 log_kb=52 highlights=0"
+      },
+      {
+        "case": "normal",
+        "round": 2,
+        "mode": "new",
+        "elapsed_s": 0.114032,
+        "rss_kb": 9252,
+        "stderr": "probe start players=20 targets=41 count=100 threads=Some(8) show_matchups=true rss_kb=4732\ndone=Ok(\"完成。\")\nt=0.114032s rss_kb=9252 progress=820/820 events=820 logs=21 log_kb=52 highlights=0"
+      },
+      {
+        "case": "normal",
+        "round": 2,
+        "mode": "live",
+        "elapsed_s": 0.11307,
+        "rss_kb": 9780,
+        "stderr": "probe start players=20 targets=41 count=100 threads=Some(8) show_matchups=true rss_kb=4728\ndone=Ok(\"完成。\")\nlive elapsed_s=0.113070 updates=820 dropped=0 first_ms=101.090\nt=0.201763s rss_kb=9780 progress=820/820 events=820 logs=1 log_kb=0 highlights=0"
+      },
+      {
+        "case": "normal",
+        "round": 3,
+        "mode": "live",
+        "elapsed_s": 0.112168,
+        "rss_kb": 9812,
+        "stderr": "probe start players=20 targets=41 count=100 threads=Some(8) show_matchups=true rss_kb=4732\ndone=Ok(\"完成。\")\nlive elapsed_s=0.112168 updates=820 dropped=0 first_ms=100.937\nt=0.201819s rss_kb=9812 progress=820/820 events=820 logs=1 log_kb=0 highlights=0"
+      },
+      {
+        "case": "normal",
+        "round": 3,
+        "mode": "new",
+        "elapsed_s": 0.110194,
+        "rss_kb": 9260,
+        "stderr": "probe start players=20 targets=41 count=100 threads=Some(8) show_matchups=true rss_kb=4740\ndone=Ok(\"完成。\")\nt=0.110194s rss_kb=9260 progress=820/820 events=820 logs=21 log_kb=52 highlights=0"
+      },
+      {
+        "case": "normal",
+        "round": 3,
+        "mode": "old",
+        "elapsed_s": 0.122503,
+        "rss_kb": 9284,
+        "stderr": "probe start players=20 targets=41 count=100 threads=Some(8) show_matchups=true rss_kb=4736\ndone=Ok(\"完成。\")\nt=0.122503s rss_kb=9284 progress=820/820 events=820 logs=21 log_kb=52 highlights=0"
+      },
+      {
+        "case": "long",
+        "round": 0,
+        "mode": "old",
+        "elapsed_s": 0.100441,
+        "rss_kb": 8516,
+        "stderr": "probe start players=2 targets=2 count=10000 threads=Some(8) show_matchups=true rss_kb=4732\ndone=Ok(\"完成。\")\nt=0.100441s rss_kb=8516 progress=4/4 events=4 logs=3 log_kb=0 highlights=0"
+      },
+      {
+        "case": "long",
+        "round": 0,
+        "mode": "new",
+        "elapsed_s": 0.098275,
+        "rss_kb": 8528,
+        "stderr": "probe start players=2 targets=2 count=10000 threads=Some(8) show_matchups=true rss_kb=4728\ndone=Ok(\"完成。\")\nt=0.098275s rss_kb=8528 progress=4/4 events=4 logs=3 log_kb=0 highlights=0"
+      },
+      {
+        "case": "long",
+        "round": 0,
+        "mode": "live",
+        "elapsed_s": 0.10769,
+        "rss_kb": 8524,
+        "stderr": "probe start players=2 targets=2 count=10000 threads=Some(8) show_matchups=true rss_kb=4732\ndone=Ok(\"完成。\")\nlive elapsed_s=0.107690 updates=4 dropped=0 first_ms=100.700\nt=0.201321s rss_kb=8524 progress=4/4 events=4 logs=1 log_kb=0 highlights=0"
+      },
+      {
+        "case": "long",
+        "round": 1,
+        "mode": "live",
+        "elapsed_s": 0.101943,
+        "rss_kb": 8524,
+        "stderr": "probe start players=2 targets=2 count=10000 threads=Some(8) show_matchups=true rss_kb=4728\ndone=Ok(\"完成。\")\nlive elapsed_s=0.101943 updates=4 dropped=0 first_ms=100.821\nt=0.201031s rss_kb=8524 progress=4/4 events=4 logs=1 log_kb=0 highlights=0"
+      },
+      {
+        "case": "long",
+        "round": 1,
+        "mode": "new",
+        "elapsed_s": 0.101332,
+        "rss_kb": 8532,
+        "stderr": "probe start players=2 targets=2 count=10000 threads=Some(8) show_matchups=true rss_kb=4720\ndone=Ok(\"完成。\")\nt=0.101332s rss_kb=8532 progress=4/4 events=4 logs=3 log_kb=0 highlights=0"
+      },
+      {
+        "case": "long",
+        "round": 1,
+        "mode": "old",
+        "elapsed_s": 0.10114,
+        "rss_kb": 8500,
+        "stderr": "probe start players=2 targets=2 count=10000 threads=Some(8) show_matchups=true rss_kb=4724\ndone=Ok(\"完成。\")\nt=0.101140s rss_kb=8500 progress=4/4 events=4 logs=3 log_kb=0 highlights=0"
+      },
+      {
+        "case": "long",
+        "round": 2,
+        "mode": "old",
+        "elapsed_s": 0.09788,
+        "rss_kb": 8576,
+        "stderr": "probe start players=2 targets=2 count=10000 threads=Some(8) show_matchups=true rss_kb=4728\ndone=Ok(\"完成。\")\nt=0.097880s rss_kb=8576 progress=4/4 events=4 logs=3 log_kb=0 highlights=0"
+      },
+      {
+        "case": "long",
+        "round": 2,
+        "mode": "new",
+        "elapsed_s": 0.102067,
+        "rss_kb": 8508,
+        "stderr": "probe start players=2 targets=2 count=10000 threads=Some(8) show_matchups=true rss_kb=4720\ndone=Ok(\"完成。\")\nt=0.102067s rss_kb=8508 progress=4/4 events=4 logs=3 log_kb=0 highlights=0"
+      },
+      {
+        "case": "long",
+        "round": 2,
+        "mode": "live",
+        "elapsed_s": 0.101054,
+        "rss_kb": 8512,
+        "stderr": "probe start players=2 targets=2 count=10000 threads=Some(8) show_matchups=true rss_kb=4728\ndone=Ok(\"完成。\")\nlive elapsed_s=0.101054 updates=4 dropped=0 first_ms=100.902\nt=0.201500s rss_kb=8512 progress=4/4 events=4 logs=1 log_kb=0 highlights=0"
+      },
+      {
+        "case": "long",
+        "round": 3,
+        "mode": "live",
+        "elapsed_s": 0.095122,
+        "rss_kb": 8532,
+        "stderr": "probe start players=2 targets=2 count=10000 threads=Some(8) show_matchups=true rss_kb=4736\ndone=Ok(\"完成。\")\nlive elapsed_s=0.095122 updates=4 dropped=0 first_ms=101.055\nt=0.101196s rss_kb=8532 progress=4/4 events=4 logs=1 log_kb=0 highlights=0"
+      },
+      {
+        "case": "long",
+        "round": 3,
+        "mode": "new",
+        "elapsed_s": 0.098226,
+        "rss_kb": 8516,
+        "stderr": "probe start players=2 targets=2 count=10000 threads=Some(8) show_matchups=true rss_kb=4724\ndone=Ok(\"完成。\")\nt=0.098226s rss_kb=8516 progress=4/4 events=4 logs=3 log_kb=0 highlights=0"
+      },
+      {
+        "case": "long",
+        "round": 3,
+        "mode": "old",
+        "elapsed_s": 0.100735,
+        "rss_kb": 8492,
+        "stderr": "probe start players=2 targets=2 count=10000 threads=Some(8) show_matchups=true rss_kb=4724\ndone=Ok(\"完成。\")\nt=0.100735s rss_kb=8492 progress=4/4 events=4 logs=3 log_kb=0 highlights=0"
+      }
+    ]
+  }
+}

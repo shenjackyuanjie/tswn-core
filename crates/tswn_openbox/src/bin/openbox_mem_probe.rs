@@ -57,7 +57,7 @@ fn main() {
         cancel: Arc::clone(&cancel),
     };
 
-    run_batch_rate(input, |event| {
+    let send = |event| {
         let mut stats = stats.lock().expect("stats lock poisoned");
         match event {
             ProgressEvent::Log(line) => {
@@ -83,7 +83,40 @@ fn main() {
             report(started, &stats);
             *last_report = Instant::now();
         }
-    });
+    };
+    if args.live {
+        use tswn_openbox::backend::{live::LiveFeed, run_batch_rate_observed};
+        let feed = LiveFeed::default();
+        let receiver = feed.clone();
+        let finished = Arc::new(AtomicBool::new(false));
+        let receiver_finished = finished.clone();
+        let consumer = std::thread::spawn(move || {
+            let mut count = 0;
+            let mut dropped = 0;
+            let mut first_ms = None;
+            loop {
+                let done = receiver_finished.load(Ordering::Acquire);
+                let batch = receiver.take();
+                if !batch.events.is_empty() {
+                    first_ms.get_or_insert(started.elapsed().as_secs_f64() * 1000.0);
+                }
+                count += batch.events.len();
+                dropped += batch.dropped;
+                if done {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            (count, dropped, first_ms.unwrap_or(0.0))
+        });
+        run_batch_rate_observed(input, send, Some(&|update| feed.result(update)));
+        let elapsed = started.elapsed().as_secs_f64();
+        finished.store(true, Ordering::Release);
+        let (count, dropped, first_ms) = consumer.join().expect("收件线程异常");
+        eprintln!("live elapsed_s={elapsed:.6} updates={count} dropped={dropped} first_ms={first_ms:.3}");
+    } else {
+        run_batch_rate(input, send);
+    }
     report(started, &stats.lock().expect("stats lock poisoned"));
     cancel.store(true, Ordering::Relaxed);
 }
@@ -96,6 +129,7 @@ struct Args {
     count: usize,
     threads: Option<usize>,
     show_matchups: bool,
+    live: bool,
     report_every: Duration,
 }
 
@@ -110,6 +144,7 @@ impl Args {
             count: 1,
             threads: Some(8),
             show_matchups: false,
+            live: false,
             report_every: Duration::from_secs(2),
         };
         while let Some(arg) = args.next() {
@@ -123,6 +158,7 @@ impl Args {
                 "--count" => parsed.count = args.next().expect("--count needs a value").parse().expect("invalid --count"),
                 "--threads" => parsed.threads = parse_optional_usize(args.next().expect("--threads needs a value")),
                 "--show-matchups" => parsed.show_matchups = true,
+                "--live" => parsed.live = true,
                 "--report-ms" => {
                     let millis = args.next().expect("--report-ms needs a value").parse().expect("invalid --report-ms");
                     parsed.report_every = Duration::from_millis(millis);

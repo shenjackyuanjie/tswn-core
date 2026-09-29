@@ -7,4 +7,10 @@
 
 mod app;
 
-fn main() -> eframe::Result<()> { app::run() }
+fn main() -> eframe::Result<()> {
+    #[cfg(feature = "ui_capture")]
+    if let Some(result) = app::capture::run_if_requested() {
+        return result;
+    }
+    app::run()
+}

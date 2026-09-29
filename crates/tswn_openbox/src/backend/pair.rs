@@ -5,7 +5,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tswn_core::runtime::{RuntimeCqpMatchup, runtime_cqp_matchups};
+use tswn_core::runtime::{RuntimeCqpMatchup, runtime_cqp_matchups_observed};
 
 use super::parse::{first_duplicate_name_in_matchup, groups_have_same_players};
 
@@ -44,11 +44,30 @@ pub(super) fn run_pair_matrix(
     run_pair_matrix_windowed(input, 4096, on_progress, on_player)
 }
 
+pub(super) fn run_pair_matrix_observed(
+    input: &PairMatrixInput<'_>,
+    on_progress: impl FnMut(usize),
+    on_player: impl FnMut(usize, Vec<(f64, usize)>) -> Result<(), String>,
+    on_pair: &mut dyn FnMut(usize, usize, Option<f64>),
+) -> Result<(), String> {
+    run_pair_matrix_inner(input, 4096, on_progress, on_player, Some(on_pair))
+}
+
 fn run_pair_matrix_windowed(
+    input: &PairMatrixInput<'_>,
+    window_size: usize,
+    on_progress: impl FnMut(usize),
+    on_player: impl FnMut(usize, Vec<(f64, usize)>) -> Result<(), String>,
+) -> Result<(), String> {
+    run_pair_matrix_inner(input, window_size, on_progress, on_player, None)
+}
+
+fn run_pair_matrix_inner(
     input: &PairMatrixInput<'_>,
     window_size: usize,
     mut on_progress: impl FnMut(usize),
     mut on_player: impl FnMut(usize, Vec<(f64, usize)>) -> Result<(), String>,
+    mut on_pair: Option<&mut dyn FnMut(usize, usize, Option<f64>)>,
 ) -> Result<(), String> {
     let target_count = input.targets.len();
     let teammate_count = input.teammates.len();
@@ -67,6 +86,38 @@ fn run_pair_matrix_windowed(
     let mut done = 0;
     let mut accumulated = PairAccumulator::default();
     let mut rates = Vec::new();
+    // 增量显示按输入索引归组；只对已完整完成的队友组合求和。
+    let mut pending_pairs = std::collections::HashMap::<usize, (usize, Vec<Option<f64>>)>::new();
+    let mut record_live = |flat: usize, rate: Option<f64>| {
+        let Some(callback) = on_pair.as_mut() else { return };
+        let pair = flat / target_count;
+        let entry = pending_pairs.entry(pair).or_insert_with(|| (0, vec![None; target_count]));
+        entry.0 += 1;
+        entry.1[flat % target_count] = rate;
+        if entry.0 == target_count {
+            let (_, rates) = pending_pairs.remove(&pair).unwrap();
+            let mut sum = 0.0;
+            let mut weights = 0.0;
+            for (index, rate) in rates.into_iter().enumerate() {
+                if let Some(rate) = rate {
+                    let weight = if input.target_factored {
+                        input.target_factors[index]
+                    } else {
+                        1.0
+                    };
+                    sum += rate * weight;
+                    weights += weight;
+                }
+            }
+            let teammate = pair % teammate_count;
+            let factor = if input.teammate_factored {
+                input.teammate_factors[teammate]
+            } else {
+                1.0
+            };
+            callback(pair / teammate_count, teammate, (weights > 0.0).then(|| sum / weights * factor));
+        }
+    };
     for offset in (0..total).step_by(window_size) {
         if input.cancel.load(Ordering::Relaxed) {
             break;
@@ -74,6 +125,7 @@ fn run_pair_matrix_windowed(
         let end = offset.saturating_add(window_size).min(total);
         let mut requests = Vec::new();
         let mut slots = Vec::with_capacity(end - offset);
+        let mut request_flats = Vec::new();
         for flat in offset..end {
             let pair = flat / target_count;
             let player_index = pair / teammate_count;
@@ -82,21 +134,35 @@ fn run_pair_matrix_windowed(
             let team = format!("{}\n{}", input.players[player_index], input.teammates[teammate_index]);
             if input.target_factored && groups_have_same_players(&team, target) {
                 slots.push(Slot::Mirror);
+                record_live(flat, Some(50.0));
                 done += 1;
             } else if !input.target_factored && first_duplicate_name_in_matchup(&[&team, target]).is_some() {
                 slots.push(Slot::Skip);
+                record_live(flat, None);
                 done += 1;
             } else {
                 slots.push(Slot::Request(requests.len()));
+                request_flats.push(flat);
                 let lines = |group: &str| group.lines().map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned).collect();
                 requests.push(RuntimeCqpMatchup::new(vec![lines(&team), lines(target)]));
             }
         }
         on_progress(done);
-        let mut matrix = runtime_cqp_matchups(&requests, input.n, input.eval_rq, input.threads, input.cancel, || {
-            done += 1;
-            on_progress(done);
-        })
+        let mut matrix = runtime_cqp_matchups_observed(
+            &requests,
+            input.n,
+            input.eval_rq,
+            input.threads,
+            input.cancel,
+            |index, result| {
+                record_live(
+                    request_flats[index],
+                    result.summary.as_ref().ok().map(|summary| summary.win_rate_percent()),
+                );
+                done += 1;
+                on_progress(done);
+            },
+        )
         .map_err(|err| format!("pair 执行失败: {err}"))?;
 
         // 浮点加权必须按原始 target 顺序进行，不能按 worker 的完成顺序累加。
@@ -222,6 +288,23 @@ mod tests {
                         assert_eq!(actual, expected, "threads={threads}, window={window}");
                         assert_eq!(progress.last(), Some(&18));
                         assert!(progress.windows(2).all(|pair| pair[0] <= pair[1]));
+                        let mut live = std::collections::BTreeMap::new();
+                        run_pair_matrix_inner(
+                            &input,
+                            window,
+                            |_| {},
+                            |_, _| Ok(()),
+                            Some(&mut |player, teammate, rate| {
+                                assert!(live.insert((player, teammate), rate).is_none());
+                            }),
+                        )
+                        .unwrap();
+                        assert_eq!(live.len(), players.len() * teammates.len());
+                        for (player, rates) in &expected {
+                            for (rate, teammate) in rates {
+                                assert_eq!(live[&(*player, *teammate)], Some(*rate));
+                            }
+                        }
                     }
                 }
             }

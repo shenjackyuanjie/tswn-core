@@ -15,12 +15,13 @@ use tswn_core::bench_sched::{low_accuracy_outer_workers, run_outer_parallel_orde
 use tswn_core::cli_api;
 use tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ;
 use tswn_core::namerena::{BuiltinSkillRef, NamerenaInput, PreparedPlayer, PreparedRoster};
-use tswn_core::runtime::{RuntimeCqpMatchup, runtime_cqp_matchups};
+use tswn_core::runtime::{RuntimeCqpMatchup, runtime_cqp_matchups_observed};
 
 use super::format::{
     format_batch_file_record, format_batch_screen_log, format_pair_file_record, format_pair_screen_log, format_rate,
 };
-use super::pair::{PairMatrixInput, run_pair_matrix};
+use super::live::{EntryKind, ResultEntry, ResultFinish, ResultKind, ResultObserver, ResultUpdate};
+use super::pair::{PairMatrixInput, run_pair_matrix, run_pair_matrix_observed};
 use super::parse::{
     first_duplicate_name_in_matchup, groups_have_same_players, parse_factored_target_groups, parse_line_list,
     parse_namer_pf_groups, parse_player_groups_with_labels, parse_target_groups,
@@ -28,7 +29,7 @@ use super::parse::{
 #[cfg(test)]
 use super::score::bench_batch_rate_for_group;
 use super::score::{BatchRateSummary, namer_pf_score};
-use super::skill_board::{SkillBoardConfig, evaluate_skill_board};
+use super::skill_board::{SkillBoardConfig, SkillBoardLine, evaluate_skill_board};
 use super::types::{BatchRateInput, NamerPfInput, NamerPfMetric, NamerPfMetricOptions, OutputMode, PairInput, ProgressEvent};
 
 /// 导出 `to-diy` 结果。
@@ -44,6 +45,19 @@ pub fn run_to_diy(
     output_file: Option<PathBuf>,
     cancel: &std::sync::atomic::AtomicBool,
 ) -> Result<String, String> {
+    run_to_diy_observed(raw, old, minions, details, output_file, cancel, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn run_to_diy_observed(
+    raw: &str,
+    old: bool,
+    minions: bool,
+    details: bool,
+    output_file: Option<PathBuf>,
+    cancel: &std::sync::atomic::AtomicBool,
+    observer: ResultObserver<'_>,
+) -> Result<String, String> {
     let names = parse_line_list(raw);
     if names.is_empty() {
         return Err("请输入至少一个名字。".to_string());
@@ -52,7 +66,7 @@ pub fn run_to_diy(
     // 详情属于日志产物：选了输出文件时只写导出行，避免把详情混进文件。
     let details = details && output_file.is_none();
     let mut out = String::new();
-    for name in &names {
+    for (index, name) in names.iter().enumerate() {
         if cancel.load(Ordering::Relaxed) {
             return Ok("已停止。".to_string());
         }
@@ -60,18 +74,78 @@ pub fn run_to_diy(
         if !out.is_empty() {
             let _ = writeln!(out);
         }
+        let mut update = observer.map(|_| ResultUpdate::new(index, name, ResultKind::Diy, 0));
         let export = cli_api::to_diy(name, old, minions).map_err(|err| format!("导出 DIY 失败: {name}: {err}"))?;
         let _ = writeln!(out, "{export}");
+        if let Some(update) = &mut update {
+            update.entries.push(ResultEntry {
+                index: 0,
+                label: "导出".into(),
+                value: None,
+                text: export,
+                kind: EntryKind::Plain,
+            });
+        }
 
         if details {
             for detail in to_diy_details(name)? {
                 let _ = writeln!(out);
                 append_to_diy_details(&mut out, &detail);
+                if let Some(update) = &mut update {
+                    for (attr_index, label) in ["攻", "防", "速", "敏", "魔", "抗", "智", "HP"].iter().enumerate() {
+                        let delta = i64::from(detail.attrs[attr_index]) - i64::from(detail.solo_attrs[attr_index]);
+                        update.entries.push(ResultEntry {
+                            index: update.entries.len(),
+                            label: format!("{} · {label}", detail.name),
+                            value: Some(f64::from(detail.attrs[attr_index])),
+                            text: format_delta(i64::from(detail.attrs[attr_index]), i64::from(detail.solo_attrs[attr_index])),
+                            kind: if delta != 0 { EntryKind::Highlight } else { EntryKind::Plain },
+                        });
+                    }
+                    update.entries.push(ResultEntry {
+                        index: update.entries.len(),
+                        label: format!("{} · 八围", detail.name),
+                        value: None,
+                        text: format_eight_ring(detail.attrs),
+                        kind: EntryKind::Plain,
+                    });
+                    update.entries.push(ResultEntry::number(
+                        update.entries.len(),
+                        format!("{} · 嘲讽", detail.name),
+                        taunt_value(detail.attrs) as f64,
+                    ));
+                    for skill in &detail.skills {
+                        update.entries.push(ResultEntry {
+                            index: update.entries.len(),
+                            label: format!("{} · {}", detail.name, skill.name),
+                            value: Some(f64::from(skill.level)),
+                            text: format_delta(i64::from(skill.level), i64::from(skill.level) - skill.delta),
+                            kind: EntryKind::Plain,
+                        });
+                    }
+                }
+            }
+        }
+        if let (Some(observer), Some(mut update)) = (observer, update) {
+            update.finish = Some(ResultFinish {
+                score: None,
+                visible: true,
+                highlight: false,
+            });
+            observer(update);
+            // GUI 无文件导出无需长期保留已经发布的完整文本。
+            if output_file.is_none() {
+                out.clear();
             }
         }
     }
 
-    finish_output(output_file.as_deref(), out)
+    let result = finish_output(output_file.as_deref(), out)?;
+    Ok(if observer.is_some() && output_file.is_none() {
+        "完成。".to_owned()
+    } else {
+        result
+    })
 }
 
 /// 详情块里的一行技能：中文名、整队后的熟练度，以及相对单独构建的变化量。
@@ -266,7 +340,10 @@ const SKILL_CN_NAMES: [&str; 35] = [
     "反击", "吞噬", "召灵", "垂死", "隐匿",
 ];
 
-pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
+pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) { run_namer_pf_observed(input, send, None); }
+
+/// GUI 可选增量观察接口；None 保留原来的输出契约。
+pub fn run_namer_pf_observed(input: NamerPfInput, send: impl Fn(ProgressEvent), observer: ResultObserver<'_>) {
     let groups = parse_namer_pf_groups(&input.raw);
     if groups.is_empty() {
         send(ProgressEvent::Done(Err("namer-pf: 输入为空或无有效玩家。".to_string())));
@@ -344,6 +421,52 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
         needs_qp,
         needs_qd,
     };
+    let compute = |index: usize, group: &[String], settings: NamerPfScoreSettings| {
+        let label = group.join("+");
+        let mut visible = false;
+        let mut result = compute_namer_pf_result(group, settings, |metric, value| {
+            let Some(observer) = observer else { return };
+            let Some(options) = input.metrics.iter().find(|option| option.metric == metric && option.screen) else {
+                return;
+            };
+            if options.min_screen.is_some_and(|min| value < min) {
+                return;
+            }
+            visible = true;
+            let mut update = ResultUpdate::new(index, &label, ResultKind::Scores, precision);
+            let mut entry = ResultEntry::number(
+                NamerPfMetric::ALL.iter().position(|m| *m == metric).unwrap(),
+                metric.label().to_owned(),
+                value,
+            );
+            if should_highlight(value, options.min_screen, options.highlight_delta) {
+                entry.kind = EntryKind::Highlight;
+            }
+            update.entries.push(entry);
+            observer(update);
+        });
+        if let Some(config) = skill_board_config.as_ref() {
+            result.skill_lines = evaluate_skill_board(group, &result.scores, config);
+        }
+        if let Some(observer) = observer {
+            let mut update = ResultUpdate::new(index, &label, ResultKind::Scores, precision);
+            if input.skill_board.screen {
+                for (i, line) in result.skill_lines.iter().enumerate() {
+                    let mut entry = ResultEntry::number(5 + i, line.title.clone(), line.score);
+                    entry.kind = EntryKind::SkillBoard;
+                    update.entries.push(entry);
+                    visible = true;
+                }
+            }
+            update.finish = Some(ResultFinish {
+                score: None,
+                visible,
+                highlight: false,
+            });
+            observer(update);
+        }
+        result
+    };
     let outer_workers = low_accuracy_outer_workers(n, total, outer_thread_spec(input.threads));
     let completed = if outer_workers > 1 {
         let score_settings = score_settings.with_threads(Some(1));
@@ -352,8 +475,8 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
             &groups,
             outer_workers,
             &input.cancel,
-            |_, group, tick| {
-                let result = compute_namer_pf_result(group, score_settings);
+            |index, group, tick| {
+                let result = compute(index, group, score_settings);
                 tick();
                 result
             },
@@ -375,7 +498,11 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
                         screen: input.skill_board.screen,
                     },
                     precision,
-                    &send,
+                    &|event| {
+                        if observer.is_none() {
+                            send(event);
+                        }
+                    },
                 )
             },
         ) {
@@ -392,7 +519,7 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
                 send(ProgressEvent::Done(Ok("已停止。".to_string())));
                 return;
             }
-            let result = compute_namer_pf_result(group, score_settings);
+            let result = compute(index, group, score_settings);
             if let Err(err) = emit_namer_pf_result(
                 &result,
                 &input.metrics,
@@ -403,7 +530,11 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
                     screen: input.skill_board.screen,
                 },
                 precision,
-                &send,
+                &|event| {
+                    if observer.is_none() {
+                        send(event);
+                    }
+                },
             ) {
                 send(ProgressEvent::Done(Err(err)));
                 return;
@@ -462,32 +593,48 @@ impl NamerPfScoreSettings {
 }
 
 struct NamerPfJobResult {
-    group: Vec<String>,
     label: String,
     scores: NamerPfScores,
+    skill_lines: Vec<SkillBoardLine>,
 }
 
-fn compute_namer_pf_result(group: &[String], settings: NamerPfScoreSettings) -> NamerPfJobResult {
+fn compute_namer_pf_result(
+    group: &[String],
+    settings: NamerPfScoreSettings,
+    mut metric_done: impl FnMut(NamerPfMetric, f64),
+) -> NamerPfJobResult {
     let pp = if settings.needs_pp {
         namer_pf_score(group, "\u{0002}", false, settings.n, settings.threads, settings.eval_rq)
     } else {
         0.0
     };
+    if settings.needs_pp {
+        metric_done(NamerPfMetric::Pp, pp);
+    }
     let pd = if settings.needs_pd {
         namer_pf_score(group, "\u{0002}", true, settings.n, settings.threads, settings.eval_rq)
     } else {
         0.0
     };
+    if settings.needs_pd {
+        metric_done(NamerPfMetric::Pd, pd);
+    }
     let qp = if settings.needs_qp {
         namer_pf_score(group, "!", false, settings.n, settings.threads, settings.eval_rq)
     } else {
         0.0
     };
+    if settings.needs_qp {
+        metric_done(NamerPfMetric::Qp, qp);
+    }
     let qd = if settings.needs_qd {
         namer_pf_score(group, "!", true, settings.n, settings.threads, settings.eval_rq)
     } else {
         0.0
     };
+    if settings.needs_qd {
+        metric_done(NamerPfMetric::Qd, qd);
+    }
     let scores = NamerPfScores {
         pp,
         pd,
@@ -495,10 +642,11 @@ fn compute_namer_pf_result(group: &[String], settings: NamerPfScoreSettings) -> 
         qd,
         sum: pp + pd + qp + qd,
     };
+    metric_done(NamerPfMetric::Sum, scores.sum);
     NamerPfJobResult {
-        group: group.to_vec(),
         label: group.join("+"),
         scores,
+        skill_lines: Vec::new(),
     }
 }
 
@@ -534,8 +682,8 @@ fn emit_namer_pf_result(
             return Err(format!("写入输出文件失败: {err}"));
         }
     }
-    if let Some(config) = skill_board.config {
-        for line in evaluate_skill_board(&result.group, &result.scores, config) {
+    if skill_board.config.is_some() {
+        for line in &result.skill_lines {
             let score_text = format_rate(line.score, precision);
             if skill_board.screen {
                 send(ProgressEvent::SkillBoardLog(format!(
@@ -577,7 +725,10 @@ impl NamerPfScores {
     }
 }
 
-pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
+pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) { run_batch_rate_observed(input, send, None); }
+
+/// GUI 可选增量观察接口；None 保留原来的输出契约。
+pub fn run_batch_rate_observed(input: BatchRateInput, send: impl Fn(ProgressEvent), observer: ResultObserver<'_>) {
     let (target_groups, target_factors) = if input.target_factor_enabled {
         match parse_factored_target_groups(&input.target_text) {
             Ok(targets) => targets,
@@ -636,6 +787,53 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
             detail_rates: Vec::new(),
         })
         .collect::<Vec<_>>();
+    let mut live_rates = std::collections::HashMap::<usize, (usize, Vec<Option<f64>>)>::new();
+    let mut record_live = |player: usize, target: usize, rate: Option<f64>| {
+        let Some(observer) = observer else { return };
+        let entry = live_rates.entry(player).or_insert_with(|| (0, vec![None; target_groups.len()]));
+        entry.0 += 1;
+        entry.1[target] = rate;
+        let mut update = ResultUpdate::new(player, &player_labels[player], ResultKind::Rate, precision);
+        if input.show_matchups {
+            let mut detail = ResultEntry::number(
+                target,
+                super::format::clean_group_label(&target_groups[target]),
+                rate.unwrap_or(0.0),
+            );
+            if rate.is_none() {
+                detail.value = None;
+                detail.text = "跳过或计算失败".into();
+            }
+            update.entries.push(detail);
+        }
+        if entry.0 == target_groups.len() {
+            let (_, rates) = live_rates.remove(&player).unwrap();
+            let mut sum = 0.0;
+            let mut weight = 0.0;
+            // 兼容原输出：镜像项先累计，随后按原靶子顺序累计实际对局。
+            for mirrors in [true, false] {
+                for (index, rate) in rates.iter().enumerate() {
+                    let mirror =
+                        input.target_factor_enabled && groups_have_same_players(&player_groups[player], &target_groups[index]);
+                    if mirror == mirrors
+                        && let Some(rate) = rate
+                    {
+                        sum += rate * target_factors[index];
+                        weight += target_factors[index];
+                    }
+                }
+            }
+            let score = if weight > 0.0 { sum / weight } else { 0.0 };
+            update.finish = Some(ResultFinish {
+                score: Some(score),
+                visible: input.options.min_screen.is_none_or(|min| score >= min),
+                highlight: should_highlight(score, input.options.min_screen, input.highlight_delta),
+            });
+        }
+        if !update.entries.is_empty() || update.finish.is_some() {
+            observer(update);
+        }
+    };
     let mut requests = Vec::with_capacity(total);
     let mut request_slots = Vec::with_capacity(total);
     for (player_index, player) in player_groups.iter().enumerate() {
@@ -643,6 +841,7 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
             let factor = target_factors[target_index];
             if input.target_factor_enabled && groups_have_same_players(player, target) {
                 const MIRROR_RATE: f64 = 50.0;
+                record_live(player_index, target_index, Some(MIRROR_RATE));
                 let result = &mut results[player_index];
                 result.summary.avg += MIRROR_RATE * factor;
                 result.summary.wins += 1;
@@ -657,6 +856,7 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
                 continue;
             }
             if !input.target_factor_enabled && first_duplicate_name_in_matchup(&[player.as_str(), target.as_str()]).is_some() {
+                record_live(player_index, target_index, None);
                 results[player_index].summary.skipped_matchups += 1;
                 done += 1;
                 send(ProgressEvent::Progress { done, total });
@@ -667,13 +867,19 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
         }
     }
 
-    let matrix = match runtime_cqp_matchups(
+    let matrix = match runtime_cqp_matchups_observed(
         &requests,
         n,
         eval_rq,
         outer_thread_spec(input.options.threads),
         &input.cancel,
-        || {
+        |index, result| {
+            let (player, target) = request_slots[index];
+            record_live(
+                player,
+                target,
+                result.summary.as_ref().ok().map(|summary| summary.win_rate_percent()),
+            );
             done += 1;
             send(ProgressEvent::Progress { done, total });
         },
@@ -716,7 +922,11 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
         if input.cancel.load(Ordering::Relaxed) && result.summary.valid_matchups == 0 && result.summary.skipped_matchups == 0 {
             continue;
         }
-        if let Err(err) = emit_batch_rate_result(result, &input, &mut output, precision, &send) {
+        if let Err(err) = emit_batch_rate_result(result, &input, &mut output, precision, &|event| {
+            if observer.is_none() {
+                send(event);
+            }
+        }) {
             send(ProgressEvent::Done(Err(err)));
             return;
         }
@@ -783,7 +993,10 @@ fn emit_batch_rate_result(
     Ok(())
 }
 
-pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
+pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) { run_pair_observed(input, send, None); }
+
+/// GUI 可选增量观察接口；None 保留原来的输出契约。
+pub fn run_pair_observed(input: PairInput, send: impl Fn(ProgressEvent), observer: ResultObserver<'_>) {
     let (target_groups, target_factors) = match parse_pair_target_groups(&input.target_text, input.target_factor_enabled) {
         Ok(targets) => targets,
         Err(err) => {
@@ -865,57 +1078,93 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
     };
     let mut last_progress = Instant::now();
     send(ProgressEvent::Progress { done: 0, total });
-    let result = run_pair_matrix(
-        &matrix_input,
-        |done| {
-            // 短 matchup 可能每秒完成数万次；不让 GUI 消息积压反过来限制计算吞吐。
-            if done == total || last_progress.elapsed() >= std::time::Duration::from_millis(40) {
-                send(ProgressEvent::Progress { done, total });
-                last_progress = Instant::now();
+    let on_progress = |done| {
+        // 短 matchup 可能每秒完成数万次；不让 GUI 消息积压反过来限制计算吞吐。
+        if done == total || last_progress.elapsed() >= std::time::Duration::from_millis(40) {
+            send(ProgressEvent::Progress { done, total });
+            last_progress = Instant::now();
+        }
+    };
+    let on_player = |player_index: usize, rates: Vec<(f64, usize)>| {
+        let player_label = &player_labels[player_index];
+        let mut pair_rates = rates
+            .into_iter()
+            .map(|(rate, index)| (rate, teammate_labels[index].clone()))
+            .collect::<Vec<_>>();
+        pair_rates.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let selected_count = head.min(pair_rates.len());
+        let final_score = pair_rates.iter().take(selected_count).map(|(rate, _)| *rate).sum::<f64>();
+        if input.options.min_file.is_none_or(|limit| final_score >= limit)
+            && let Some(output) = output.as_mut()
+        {
+            let line = format_pair_file_record(
+                input.output_mode,
+                player_label,
+                final_score,
+                selected_count,
+                head,
+                &pair_rates,
+                precision,
+            );
+            writeln!(output, "{line}").map_err(|err| format!("写入输出文件失败: {err}"))?;
+        }
+        if observer.is_none() && input.options.min_screen.is_none_or(|limit| final_score >= limit) {
+            let log = format_pair_screen_log(
+                player_label,
+                final_score,
+                selected_count,
+                &pair_rates,
+                input.detail_mode,
+                input.detail_min,
+                precision,
+            );
+            if should_highlight(final_score, input.options.min_screen, input.highlight_delta) {
+                send(ProgressEvent::HighlightLog(log));
+            } else {
+                send(ProgressEvent::Log(log));
             }
-        },
-        |player_index, rates| {
-            let player_label = &player_labels[player_index];
-            let mut pair_rates = rates
-                .into_iter()
-                .map(|(rate, index)| (rate, teammate_labels[index].clone()))
-                .collect::<Vec<_>>();
-            pair_rates.sort_by(|a, b| b.0.total_cmp(&a.0));
-            let selected_count = head.min(pair_rates.len());
-            let final_score = pair_rates.iter().take(selected_count).map(|(rate, _)| *rate).sum::<f64>();
-            if input.options.min_file.is_none_or(|limit| final_score >= limit)
-                && let Some(output) = output.as_mut()
-            {
-                let line = format_pair_file_record(
-                    input.output_mode,
-                    player_label,
-                    final_score,
-                    selected_count,
-                    head,
-                    &pair_rates,
-                    precision,
-                );
-                writeln!(output, "{line}").map_err(|err| format!("写入输出文件失败: {err}"))?;
+        }
+        Ok(())
+    };
+    let result = if let Some(observer) = observer {
+        let mut pending = std::collections::HashMap::<usize, (usize, Vec<(f64, usize)>)>::new();
+        run_pair_matrix_observed(&matrix_input, on_progress, on_player, &mut |player, teammate, rate| {
+            let entry = pending.entry(player).or_default();
+            entry.0 += 1;
+            if let Some(rate) = rate {
+                entry.1.push((rate, teammate));
             }
-            if input.options.min_screen.is_none_or(|limit| final_score >= limit) {
-                let log = format_pair_screen_log(
-                    player_label,
-                    final_score,
-                    selected_count,
-                    &pair_rates,
-                    input.detail_mode,
-                    input.detail_min,
-                    precision,
-                );
-                if should_highlight(final_score, input.options.min_screen, input.highlight_delta) {
-                    send(ProgressEvent::HighlightLog(log));
-                } else {
-                    send(ProgressEvent::Log(log));
+            let mut update = ResultUpdate::new(player, &player_labels[player], ResultKind::Pair, precision);
+            update.top = (input.detail_mode == super::types::PairDetailMode::Top).then_some(head);
+            if let Some(rate) = rate {
+                let visible = match input.detail_mode {
+                    super::types::PairDetailMode::None => false,
+                    super::types::PairDetailMode::Top => true,
+                    super::types::PairDetailMode::Every => input.detail_min.is_none_or(|min| rate >= min),
+                };
+                if visible {
+                    update
+                        .entries
+                        .push(ResultEntry::number(teammate, teammate_labels[teammate].clone(), rate));
                 }
             }
-            Ok(())
-        },
-    );
+            if entry.0 == teammate_groups.len() {
+                let (_, mut rates) = pending.remove(&player).unwrap();
+                rates.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+                let score = rates.iter().take(head).map(|(rate, _)| rate).sum();
+                update.finish = Some(ResultFinish {
+                    score: Some(score),
+                    visible: input.options.min_screen.is_none_or(|min| score >= min),
+                    highlight: should_highlight(score, input.options.min_screen, input.highlight_delta),
+                });
+            }
+            if !update.entries.is_empty() || update.finish.is_some() {
+                observer(update);
+            }
+        })
+    } else {
+        run_pair_matrix(&matrix_input, on_progress, on_player)
+    };
     if let Err(err) = result {
         send(ProgressEvent::Done(Err(err)));
         return;

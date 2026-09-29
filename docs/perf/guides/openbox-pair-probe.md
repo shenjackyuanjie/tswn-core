@@ -165,3 +165,19 @@ SHA-256 `400B4ED3EC0A5769B127BEA59DFCA395FFAEC760CE84EB302131357F145E1EB8`）；
 
 - [OpenBox pair 并行修复：同机交替 A/B 复测（2026-09-15）](../reports/openbox-pair-parallelism-2026-09-15.md)；
   原始样本见 [openbox_pair_parallelism_9b07a04e_ab_samples.json](../openbox_pair_parallelism_9b07a04e_ab_samples.json)。
+
+## 6. 实时 GUI 数据通路
+
+增加 `--live` 可让 probe 使用 GUI 的结构化观察接口和 `LiveFeed`，每 100ms 消费一批结果：
+
+```powershell
+cargo run --release -p tswn_openbox --bin openbox_pair_probe -- --count 100 --threads 8 --detail every --live
+```
+
+该模式 stdout 是带输入序号的最终分数，不能与旧格式直接比较哈希；不传 `--live` 保持原来的
+stdout 契约。stderr 的 `elapsed_s` 只计算后端执行时间，`visible_s` 包含最后一次消费等待，
+`first_ms` 是任务开始到首次消费结构化结果的时间，`dropped` 是容量裁剪数量。
+
+`openbox_mem_probe` 同样支持 `--live`，用于验证 cqd/cqp 的实时收件箱及 RSS。
+测速可使用 `--report-ms 100000` 避免中途启动 PowerShell 查询 RSS 干扰结果。
+这些 probe 包含 GUI 收件箱，不包含 GPU 呈现；真实窗口截图可使用 Openbox 的 `ui_capture` feature。

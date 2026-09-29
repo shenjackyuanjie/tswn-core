@@ -70,7 +70,10 @@ pub use batch::{
 pub use combat::{
     CombatRuntime, PreparedBuiltinSkillAction, PreparedPlainAction, PreparedTargetList, RoundOutcome, SelectedBuiltinSkill,
 };
-pub use cqp::{RuntimeCqpBatchResult, RuntimeCqpMatchup, RuntimeCqpMatchupResult, resolve_cqp_workers, runtime_cqp_matchups};
+pub use cqp::{
+    RuntimeCqpBatchResult, RuntimeCqpMatchup, RuntimeCqpMatchupResult, resolve_cqp_workers, runtime_cqp_matchups,
+    runtime_cqp_matchups_observed,
+};
 pub use handlers::*;
 pub use plain_assassinate::PlainSkillPreActionOutcome;
 pub use prepared_init::{PreparedBattleInit, PreparedBattleRoster, RuntimeBattleInitError};
