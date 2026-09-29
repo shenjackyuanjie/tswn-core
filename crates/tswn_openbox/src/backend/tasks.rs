@@ -3,9 +3,8 @@
 //! 实现各工具的核心计算逻辑（`run_to_diy`、`run_namer_pf`、`run_batch_rate`、`run_pair`），
 //! 通过 `Sender<ProgressEvent>` 向 GUI 线程实时推送进度日志和最终结果。
 
-use std::cmp::Ordering as CmpOrdering;
 use std::fmt::Write as _;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
@@ -21,6 +20,7 @@ use super::format::{
     format_batch_file_record, format_batch_screen_log, format_pair_file_record, format_pair_screen_log, format_rate,
 };
 use super::live::{EntryKind, ResultEntry, ResultFinish, ResultKind, ResultObserver, ResultUpdate};
+use super::output::{create_output_file, finalize_sorted_output_file};
 use super::pair::{PairMatrixInput, run_pair_matrix, run_pair_matrix_observed};
 use super::parse::{
     first_duplicate_name_in_matchup, groups_have_same_players, parse_factored_target_groups, parse_line_list,
@@ -498,11 +498,7 @@ pub fn run_namer_pf_observed(input: NamerPfInput, send: impl Fn(ProgressEvent), 
                         screen: input.skill_board.screen,
                     },
                     precision,
-                    &|event| {
-                        if observer.is_none() {
-                            send(event);
-                        }
-                    },
+                    observer.is_none().then_some(&send as &dyn Fn(ProgressEvent)),
                 )
             },
         ) {
@@ -530,11 +526,7 @@ pub fn run_namer_pf_observed(input: NamerPfInput, send: impl Fn(ProgressEvent), 
                     screen: input.skill_board.screen,
                 },
                 precision,
-                &|event| {
-                    if observer.is_none() {
-                        send(event);
-                    }
-                },
+                observer.is_none().then_some(&send as &dyn Fn(ProgressEvent)),
             ) {
                 send(ProgressEvent::Done(Err(err)));
                 return;
@@ -662,11 +654,11 @@ fn emit_namer_pf_result(
     outputs: &mut [Option<File>],
     skill_board: SkillBoardEmitCfg<'_>,
     precision: usize,
-    send: &impl Fn(ProgressEvent),
+    send: Option<&dyn Fn(ProgressEvent)>,
 ) -> Result<(), String> {
     for (metric, output) in metrics.iter().zip(outputs.iter_mut()) {
         let score = result.scores.get(metric.metric);
-        if metric.min_screen.is_none_or(|limit| score >= limit) && metric.screen {
+        if let Some(send) = send.filter(|_| metric.screen && metric.min_screen.is_none_or(|limit| score >= limit)) {
             let score_text = format_rate(score, precision);
             let line = format!("{} {}:{}", result.label, metric.metric.label(), score_text);
             if should_highlight(score, metric.min_screen, metric.highlight_delta) {
@@ -685,7 +677,9 @@ fn emit_namer_pf_result(
     if skill_board.config.is_some() {
         for line in &result.skill_lines {
             let score_text = format_rate(line.score, precision);
-            if skill_board.screen {
+            if skill_board.screen
+                && let Some(send) = send
+            {
                 send(ProgressEvent::SkillBoardLog(format!(
                     "{} {} {}",
                     line.title, score_text, result.label
@@ -848,7 +842,7 @@ pub fn run_batch_rate_observed(input: BatchRateInput, send: impl Fn(ProgressEven
                 result.summary.total += 2;
                 result.summary.valid_matchups += 1;
                 result.accumulated_factor += factor;
-                if input.show_matchups {
+                if input.show_matchups && observer.is_none() {
                     result.detail_rates.push((MIRROR_RATE, target.clone()));
                 }
                 done += 1;
@@ -905,7 +899,7 @@ pub fn run_batch_rate_observed(input: BatchRateInput, send: impl Fn(ProgressEven
                 result.summary.total += summary.total;
                 result.summary.valid_matchups += 1;
                 result.accumulated_factor += factor;
-                if input.show_matchups {
+                if input.show_matchups && observer.is_none() {
                     result.detail_rates.push((percent, target_groups[target_index].clone()));
                 }
             }
@@ -922,11 +916,13 @@ pub fn run_batch_rate_observed(input: BatchRateInput, send: impl Fn(ProgressEven
         if input.cancel.load(Ordering::Relaxed) && result.summary.valid_matchups == 0 && result.summary.skipped_matchups == 0 {
             continue;
         }
-        if let Err(err) = emit_batch_rate_result(result, &input, &mut output, precision, &|event| {
-            if observer.is_none() {
-                send(event);
-            }
-        }) {
+        if let Err(err) = emit_batch_rate_result(
+            result,
+            &input,
+            &mut output,
+            precision,
+            observer.is_none().then_some(&send as &dyn Fn(ProgressEvent)),
+        ) {
             send(ProgressEvent::Done(Err(err)));
             return;
         }
@@ -966,7 +962,7 @@ fn emit_batch_rate_result(
     input: &BatchRateInput,
     output: &mut Option<File>,
     precision: usize,
-    send: &impl Fn(ProgressEvent),
+    send: Option<&dyn Fn(ProgressEvent)>,
 ) -> Result<(), String> {
     if input.options.min_file.is_none_or(|limit| result.summary.avg >= limit)
         && let Some(output) = output.as_mut()
@@ -977,7 +973,7 @@ fn emit_batch_rate_result(
         }
     }
 
-    if input.options.min_screen.is_none_or(|limit| result.summary.avg >= limit) {
+    if let Some(send) = send.filter(|_| input.options.min_screen.is_none_or(|limit| result.summary.avg >= limit)) {
         let detail_rates = if input.show_matchups {
             result.detail_rates.as_slice()
         } else {
@@ -1086,6 +1082,9 @@ pub fn run_pair_observed(input: PairInput, send: impl Fn(ProgressEvent), observe
         }
     };
     let on_player = |player_index: usize, rates: Vec<(f64, usize)>| {
+        if observer.is_some() && output.is_none() {
+            return Ok(());
+        }
         let player_label = &player_labels[player_index];
         let mut pair_rates = rates
             .into_iter()
@@ -1235,69 +1234,6 @@ fn finish_output(output_file: Option<&Path>, out: String) -> Result<String, Stri
     }
 }
 
-fn create_output_file(path: &Path) -> Result<File, String> {
-    if path.file_name().is_none() {
-        return Err(format!("输出路径必须包含文件名: {}", path.display()));
-    }
-    if path.exists() && path.is_dir() {
-        return Err(format!("输出路径不能是目录: {}", path.display()));
-    }
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty())
-        && !parent.exists()
-    {
-        fs::create_dir_all(parent).map_err(|err| format!("创建输出目录失败: {}: {err}", parent.display()))?;
-    }
-    File::create(path).map_err(|err| format!("打开输出文件失败: {}: {err}", path.display()))
-}
-
-fn finalize_sorted_output_file(mut output: Option<File>, path: Option<&Path>, mode: OutputMode) -> Result<(), String> {
-    let Some(path) = path else {
-        return Ok(());
-    };
-    if let Some(file) = output.as_mut() {
-        file.flush().map_err(|err| format!("刷新输出文件失败: {}: {err}", path.display()))?;
-    }
-    drop(output);
-    sort_score_output_file(path, mode)
-}
-
-fn sort_score_output_file(path: &Path, mode: OutputMode) -> Result<(), String> {
-    if mode == OutputMode::Pure {
-        return Ok(());
-    }
-    let content = fs::read_to_string(path).map_err(|err| format!("读取输出文件失败: {}: {err}", path.display()))?;
-    let mut lines = content.lines().filter(|line| !line.trim().is_empty()).collect::<Vec<_>>();
-    lines.sort_by(|left, right| compare_score_output_lines(left, right, mode));
-    let mut sorted = lines.join("\n");
-    if !sorted.is_empty() {
-        sorted.push('\n');
-    }
-    fs::write(path, sorted).map_err(|err| format!("写入排序输出文件失败: {}: {err}", path.display()))
-}
-
-fn compare_score_output_lines(left: &&str, right: &&str, mode: OutputMode) -> CmpOrdering {
-    match (score_output_line_value(left, mode), score_output_line_value(right, mode)) {
-        (Some(left_score), Some(right_score)) => right_score.total_cmp(&left_score).then_with(|| left.cmp(right)),
-        (Some(_), None) => CmpOrdering::Less,
-        (None, Some(_)) => CmpOrdering::Greater,
-        (None, None) => left.cmp(right),
-    }
-}
-
-fn score_output_line_value(line: &str, mode: OutputMode) -> Option<f64> {
-    match mode {
-        OutputMode::Log => line.split_whitespace().next()?.parse().ok(),
-        OutputMode::Jsonl => {
-            let value: serde_json::Value = serde_json::from_str(line).ok()?;
-            value
-                .get("avg_win_rate")
-                .or_else(|| value.get("score"))
-                .and_then(serde_json::Value::as_f64)
-        }
-        OutputMode::Pure => None,
-    }
-}
-
 fn eval_rq(keep_rq: bool) -> f64 {
     if keep_rq {
         tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ
@@ -1333,29 +1269,9 @@ mod tests {
     use crate::backend::CommonBenchOptions;
 
     use super::{
-        BatchRateInput, OutputMode, ProgressEvent, bench_batch_rate_for_group, compare_score_output_lines,
-        format_batch_screen_log, parse_pair_target_groups, parse_pair_teammate_groups, run_batch_rate, run_to_diy,
-        score_output_line_value,
+        BatchRateInput, OutputMode, ProgressEvent, bench_batch_rate_for_group, format_batch_screen_log, parse_pair_target_groups,
+        parse_pair_teammate_groups, run_batch_rate, run_to_diy,
     };
-
-    #[test]
-    fn log_output_lines_sort_by_score_descending() {
-        let mut lines = vec!["12.000 beta", "99.500 alpha", "bad line", "99.500 gamma"];
-        lines.sort_by(|left, right| compare_score_output_lines(left, right, OutputMode::Log));
-        assert_eq!(lines, vec!["99.500 alpha", "99.500 gamma", "12.000 beta", "bad line"]);
-    }
-
-    #[test]
-    fn jsonl_output_line_score_accepts_batch_and_pair_keys() {
-        assert_eq!(
-            score_output_line_value(r#"{"label":"a","avg_win_rate":64.25}"#, OutputMode::Jsonl),
-            Some(64.25)
-        );
-        assert_eq!(
-            score_output_line_value(r#"{"label":"a","score":300.0}"#, OutputMode::Jsonl),
-            Some(300.0)
-        );
-    }
 
     #[test]
     fn pair_parses_factored_targets_with_their_weights() {

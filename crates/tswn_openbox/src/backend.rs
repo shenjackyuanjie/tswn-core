@@ -7,6 +7,7 @@ mod format;
 pub mod live;
 #[cfg(test)]
 mod live_tests;
+mod output;
 mod pair;
 mod parse;
 mod score;
