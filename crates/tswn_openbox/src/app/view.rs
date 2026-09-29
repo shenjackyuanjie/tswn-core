@@ -2,8 +2,6 @@
 
 use std::cell::Cell;
 
-use egui;
-
 use tswn_openbox::backend::PairDetailMode;
 
 use super::help::{HelpTopic, help_icon};

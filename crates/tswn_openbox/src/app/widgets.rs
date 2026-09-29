@@ -3,8 +3,6 @@
 use std::cell::Cell;
 use std::path::{PathBuf, absolute};
 
-use egui;
-
 use tswn_openbox::backend::OutputMode;
 
 use super::help::{HelpTopic, help_icon};

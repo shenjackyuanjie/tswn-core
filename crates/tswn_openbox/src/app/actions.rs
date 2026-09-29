@@ -10,8 +10,6 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
-use egui;
-
 use tswn_openbox::backend::PairDetailMode;
 use tswn_openbox::backend::live::LiveFeed;
 use tswn_openbox::backend::{

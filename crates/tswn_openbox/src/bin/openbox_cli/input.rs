@@ -15,8 +15,11 @@ use super::plan::MetricSpec;
 
 /// 从文件读取完整文本，统一去掉 UTF-8 BOM。
 pub(super) fn read_file(path: &Path) -> Result<String, clap::Error> {
-    let content = fs::read_to_string(path).map_err(|err| cli_error(format!("读取文件失败: {err}")))?;
-    Ok(content.strip_prefix('\u{feff}').unwrap_or(&content).to_string())
+    let mut content = fs::read_to_string(path).map_err(|err| cli_error(format!("读取文件失败: {err}")))?;
+    if content.starts_with('\u{feff}') {
+        content.drain(..'\u{feff}'.len_utf8());
+    }
+    Ok(content)
 }
 
 /// 把命令行里的字面量 `\n` 还原成真实换行。
@@ -44,8 +47,8 @@ pub(super) fn parse_percent_0_100(raw: &str) -> Result<f64, String> {
 /// 解析非负浮点数。
 pub(super) fn parse_non_negative_f64(raw: &str) -> Result<f64, String> {
     let value = raw.parse::<f64>().map_err(|_| "阈值必须是非负数字".to_string())?;
-    if value < 0.0 {
-        Err("阈值必须不小于 0".to_string())
+    if !value.is_finite() || value < 0.0 {
+        Err("阈值必须是有限的非负数字".to_string())
     } else {
         Ok(value)
     }
@@ -128,6 +131,15 @@ fn path_has_illegal_colon(path: &Path) -> bool {
 mod tests {
     use super::*;
     use tswn_openbox::backend::NamerPfMetric;
+
+    #[test]
+    fn non_negative_threshold_rejects_non_finite_values() {
+        for raw in ["NaN", "inf", "-inf", "-1"] {
+            assert!(parse_non_negative_f64(raw).is_err(), "{raw}");
+        }
+        assert_eq!(parse_non_negative_f64("0").unwrap(), 0.0);
+        assert_eq!(parse_non_negative_f64("12.5").unwrap(), 12.5);
+    }
 
     #[test]
     fn metric_spec_parses_all_four_segments() {

@@ -7,8 +7,6 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use egui;
-
 use super::widgets::multiline;
 
 #[derive(Debug, Clone)]

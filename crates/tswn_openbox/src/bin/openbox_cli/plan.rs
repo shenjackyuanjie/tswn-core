@@ -20,15 +20,7 @@ pub(super) struct MetricSpec {
 }
 
 impl MetricSpec {
-    pub(super) fn metric_label(&self) -> &'static str {
-        match self.metric {
-            NamerPfMetric::Pp => "pp",
-            NamerPfMetric::Pd => "pd",
-            NamerPfMetric::Qp => "qp",
-            NamerPfMetric::Qd => "qd",
-            NamerPfMetric::Sum => "sum",
-        }
-    }
+    pub(super) fn metric_label(&self) -> &'static str { self.metric.label() }
 }
 
 /// 技能榜开关与落点。

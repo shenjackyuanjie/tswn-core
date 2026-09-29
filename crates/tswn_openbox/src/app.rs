@@ -14,8 +14,6 @@ mod state;
 mod view;
 mod widgets;
 
-use egui;
-
 pub use state::{OpenboxApp, Tool};
 
 const SARASA_FONT_NAME: &str = "SarasaMonoSC";

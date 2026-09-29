@@ -6,8 +6,6 @@
 use std::sync::{Arc, atomic::AtomicBool};
 use std::time::Instant;
 
-use egui;
-
 use tswn_openbox::backend::{NamerPfMetric, OutputMode, PairDetailMode};
 
 use super::help::HelpTopic;
