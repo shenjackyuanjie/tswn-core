@@ -43,13 +43,17 @@ pub(super) enum Command {
     /// 将名字导出为 DIY / OL 覆盖格式（对齐 GUI 的 to-diy 面板）。
     ///
     /// 用 `-r/--raw` 给名字时，未指定 `-o` 的每一行都会按 `+` 语义整队构建，并在这行
-    /// 导出行后面逐个玩家附加原始信息详情（名字/HP/七围/八围/嘲讽/技能）；
-    /// 组队行会输出该队每个玩家各一块。`--no-details` 可关闭，`-f/--file` 批量模式
-    /// 始终不输出详情。详情只走日志，不写入输出文件。默认输出 `+ol`；`--old` 切旧版
-    /// `+diy`；`--minions` 附带幻影/使魔/丧尸模板（与 `--old` 互斥）。
+    /// 导出行后面逐个成员附加原始信息详情（名字@队伍 / HP / 七围 / 八围 / 嘲讽 / 技能），
+    /// 组队行会输出该队每个成员各一块；行与块之间空一行。详情里每项属性、每条技能都会
+    /// 与“该成员单独构建”的结果做差，变化时标成 `HP 245(+2)`、`护符 98(+14)`。
+    /// `--no-details` 可关闭，`-f/--file` 批量模式始终不输出详情。
+    /// 详情只走日志，不写入输出文件；导出行本身不受详情影响。
+    /// 默认输出 `+ol`；`--old` 切旧版 `+diy`；`--minions` 附带幻影/使魔/丧尸模板
+    /// （与 `--old` 互斥）。
     ///
     /// 示例:
     ///   openbox-cli to-diy -r "mario@team+fire"
+    ///   openbox-cli to-diy -r "1@team+2@team"
     ///   openbox-cli to-diy -f names.txt --minions
     ///   openbox-cli to-diy -r "地狱之轮 #mW88BamWo@Shabby_fish" --no-details
     #[command(name = "to-diy", verbatim_doc_comment)]
