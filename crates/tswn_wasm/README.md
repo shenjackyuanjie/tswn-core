@@ -141,6 +141,8 @@ normal 播放模式下，对战结束后会等待 `1500ms` 再显示底部结算
 
 `examples/index.html` 支持通过 `?input=<url-safe-base64>` 直接传入 UTF-8 对局输入并自动播放；`replay` / `data` 可作为兼容别名，解码失败时会停留在输入面板并显示错误。右下角控制栏的分享按钮会复制当前对局对应的 `input` 链接。
 
+show 页面右下角控制栏还支持 `C/P/F/T/I/R/S/D` 字母快捷键；字母键在非编辑焦点且没有 Ctrl、Alt、Meta 修饰键时生效。已有的 `Space` 暂停/逐帧和方向键事件/帧步进行为保持不变，完整按键表见 [`examples/README.md`](examples/README.md#控制栏快捷键)。
+
 ### 错误
 
 所有可能失败的函数返回 `WasmResult<T>`（即 `Result<T, JsValue>`），错误对象结构为 `{ code: string, message: string }`。
