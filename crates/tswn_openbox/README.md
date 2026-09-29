@@ -107,6 +107,10 @@ openbox-cli pair -l targets.txt -p players.txt --teammates mates.toml --detail t
 - **卡片**：每个输入组一张卡片，点击标题展开明细；计算中的名字保留“预览”标记。
 - **表格**：展示名字、状态与评分列，点击某行查看该名字的明细。`namer-pf` 分别展示五项指标。
 
+视图选项旁的“说明”可固定查看预览、并发顺序、筛选与日志复制规则。
+状态使用蓝色预览、绿色完成、琥珀色未完成；红色表示高亮结果或明确标注的错误，技能榜使用蓝色。
+深浅主题分别调整颜色对比度，始终保留状态文字；工具输入、阈值及操作按钮也提供简短说明和悬停提示。
+
 `to-diy` 每行完成即显示导出及已启用的属性／技能详情；`namer-pf` 每项指标完成即显示；
 `cqd/cqp` 每个靶子的完整胜率计算结束即显示；`pair` 每个队友组合的所有靶子结束后即显示 cqp。
 这些更新不等待整批或整个计算窗口结束，但不会逐场战斗刷新。
@@ -136,6 +140,8 @@ cargo run -p tswn_openbox --bin tswn_openbox --features ui_capture -- --capture-
 
 该命令打开校验窗口，使用内置 pair 输入运行真实任务，自动切换视图、请求停止并退出，
 向指定目录写入 `cards.png`、`table.png`、`text.png`、`stopped.png`。
+
+追加 `--capture-light` 可使用浅色主题检查同样的四种状态；默认使用深色主题。
 截图来自 egui 渲染回传，只包含应用自身画面，不截取桌面或操作其他窗口。
 需要本机可用的图形环境；启用 feature 后不传 `--capture-dir` 仍正常启动 GUI。
 
@@ -432,16 +438,19 @@ crates\tswn_openbox\src\SarasaMonoSC-Regular.ttf
 
 - `src/lib.rs`、`src/app.rs`、`src/app/`：GUI 的状态、控件与任务启动。
   - `state.rs` 面板状态、`view.rs` 布局与控件、`actions.rs` 启动任务、`widgets.rs` 复用控件、
-    `help.rs` 上下文帮助、`log.rs` 日志缓存、`source.rs` 文本输入来源。
+    `task.rs` 后台任务生命周期、`help.rs` 上下文帮助、`style.rs` 语义配色、`log.rs` 日志缓存、
+    `results.rs` 结果模型、`results/view.rs` 结果渲染、`source.rs` 文本输入来源。
 - `src/backend.rs`、`src/backend/`：解析、执行、输出格式化与文件写入。
-  - `tasks.rs` 各工具入口（`run_to_diy` / `run_namer_pf` / `run_batch_rate` / `run_pair`）、
-    `parse.rs` 输入解析、`format.rs` 输出格式、`score.rs` 评分、`pair.rs` 队友×靶子矩阵、
-    `skill_board.rs` 技能榜、`types.rs` 事件与输入类型。
+  - `to_diy.rs` 导出及属性详情、`namer_pf.rs` 评分入口、`pair.rs` 配队入口、`batch.rs` 批量胜率及有界窗口执行，
+    `parse.rs` 输入解析、`format.rs` 输出格式、`output.rs` 文件创建与排序、`score.rs` 评分、
+    `pair/matrix.rs` 队友×靶子窗口矩阵、`live.rs` 实时收件箱、`skill_board.rs` 技能榜、`types.rs` 事件与输入类型。
 - `src/presets.rs`：靶子/队友预设与默认资源释放，GUI 与 CLI 共用。
 - `src/bin/openbox_cli/`：无头入口（`main.rs` 排空事件通道并按 stdout/stderr 分流、
   `args.rs` 参数解析与执行计划、`input.rs` 输入读取与校验、`plan.rs` 计划类型、`tools.rs` 分发）。
 
 这样后续继续对齐 `tswn-cli` 能力时，可以把 UI 和业务逻辑分开维护。
+
+性能检查、窗口化内存对照与验证范围见 [Openbox 代码检查报告](../../docs/perf/reports/openbox-review-2026-09-29.md)。
 
 ## 0.3.9 说明
 
