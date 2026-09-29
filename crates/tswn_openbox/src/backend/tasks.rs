@@ -14,7 +14,7 @@ use std::time::Instant;
 use tswn_core::bench_sched::{low_accuracy_outer_workers, run_outer_parallel_ordered};
 use tswn_core::cli_api;
 use tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ;
-use tswn_core::namerena::{NamerenaInput, PreparedRoster};
+use tswn_core::namerena::{BuiltinSkillRef, NamerenaInput, PreparedPlayer, PreparedRoster};
 use tswn_core::runtime::{RuntimeCqpMatchup, runtime_cqp_matchups};
 
 use super::format::{
@@ -31,6 +31,11 @@ use super::score::{BatchRateSummary, namer_pf_score};
 use super::skill_board::{SkillBoardConfig, evaluate_skill_board};
 use super::types::{BatchRateInput, NamerPfInput, NamerPfMetric, NamerPfMetricOptions, OutputMode, PairInput, ProgressEvent};
 
+/// 导出 `to-diy` 结果。
+///
+/// `details` 只影响日志：每一行都按 `+` 语义整行构队，再把这一行里的每个玩家各输出
+/// 一个“原始信息”详情块（组队行也输出，单玩家行就是一个块）。输出文件内容、
+/// `--old` / `--minions` 导出格式都不受它影响。
 pub fn run_to_diy(
     raw: &str,
     old: bool,
@@ -44,96 +49,222 @@ pub fn run_to_diy(
         return Err("请输入至少一个名字。".to_string());
     }
 
+    // 详情属于日志产物：选了输出文件时只写导出行，避免把详情混进文件。
+    let details = details && output_file.is_none();
     let mut out = String::new();
     for name in &names {
         if cancel.load(Ordering::Relaxed) {
             return Ok("已停止。".to_string());
         }
+        // 每行结果之间空一行：否则上一行的详情块会和下一行的导出行贴在一起。
+        if !out.is_empty() {
+            let _ = writeln!(out);
+        }
         let export = cli_api::to_diy(name, old, minions).map_err(|err| format!("导出 DIY 失败: {name}: {err}"))?;
         let _ = writeln!(out, "{export}");
 
-        if details
-            && names.len() == 1
-            && let Some(detail_name) = single_to_diy_detail_name(name)
-        {
-            let input = NamerenaInput::from_raw_groups(&[vec![detail_name.clone()]])
-                .map_err(|err| format!("构建玩家失败: {detail_name}: {err}"))?;
-            let roster = match PreparedRoster::build(&input, tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ) {
-                Ok(roster) => roster,
-                Err(error) => match error {},
-            };
-            let player = roster.players.first().ok_or_else(|| format!("构建玩家失败: {detail_name}: 无有效玩家"))?;
-            let status = player.status;
-            let diy =
-                cli_api::to_diy(&detail_name, true, false).map_err(|err| format!("导出玩家技能失败: {detail_name}: {err}"))?;
-            let _ = writeln!(out);
-            let _ = writeln!(out, "=== 原始信息 ===");
-            let _ = writeln!(out, "名字: {}", player.name);
-            let _ = writeln!(out, "队伍: {}", player.clan_name);
-            let _ = writeln!(
-                out,
-                "八围: atk={} def={} spd={} agi={} mag={} res={} wis={} maxhp={}",
-                status.attack,
-                status.defense,
-                status.speed,
-                status.agility,
-                status.magic,
-                status.resistance,
-                status.wisdom,
-                status.max_hp,
-            );
-            let _ = writeln!(out, "技能: {}", extract_diy_skill_object(&diy).unwrap_or("{}"));
-            let _ = writeln!(out, "name_factor: {:.6}", player.name_factor);
+        if details {
+            for detail in to_diy_details(name)? {
+                let _ = writeln!(out);
+                append_to_diy_details(&mut out, &detail);
+            }
         }
     }
 
     finish_output(output_file.as_deref(), out)
 }
 
-fn single_to_diy_detail_name(raw: &str) -> Option<String> {
-    let groups = parse_namer_pf_groups(raw);
-    match groups.as_slice() {
-        [group] if group.len() == 1 => group.first().cloned(),
-        _ => None,
-    }
+/// 详情块里的一行技能：中文名、整队后的熟练度，以及相对单独构建的变化量。
+#[derive(Debug)]
+struct ToDiySkill {
+    name: &'static str,
+    level: u32,
+    delta: i64,
 }
-fn extract_diy_skill_object(diy: &str) -> Option<&str> {
-    let attrs_start = diy.find("+diy[")? + "+diy[".len();
-    let attrs_end = attrs_start + diy[attrs_start..].find(']')?;
-    let object_start = attrs_end + 1;
-    if !diy[object_start..].starts_with('{') {
-        return None;
-    }
 
-    let mut depth = 0usize;
-    let mut in_string = false;
-    let mut escaped = false;
-    for (offset, ch) in diy[object_start..].char_indices() {
-        if in_string {
-            if escaped {
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == '"' {
-                in_string = false;
-            }
-            continue;
-        }
-        match ch {
-            '"' => in_string = true,
-            '{' => depth += 1,
-            '}' => {
-                depth = depth.saturating_sub(1);
-                if depth == 0 {
-                    let end = object_start + offset + ch.len_utf8();
-                    return Some(&diy[object_start..end]);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
+/// 一个玩家的详情块内容。
+///
+/// `attrs` / `skills` 取自本行整队构建的结果（与导出行一致）；`solo_attrs` 是同一个
+/// 成员单独构建的结果，用来标出“组队后与原属性”的差额。
+struct ToDiyDetails {
+    name: String,
+    attrs: [u32; 8],
+    solo_attrs: [u32; 8],
+    skills: Vec<ToDiySkill>,
 }
+
+/// 为一行输入构建详情块：整行按 `+` 组成一队后再逐个玩家取值。
+///
+/// 必须按整行构队而不是单独构建某个名字：同队成员之间会互相升级属性
+/// （例如 `1@team` 单独构队 HP 243，和 `2@team` 同队后是 245），
+/// 只有整行构队才能和导出行逐项对齐。每个成员再各自单独构建一次（同 overlay、
+/// 只是没有队友），两者之差就是该成员的“组队加成”，用来输出 `(+N)`。
+fn to_diy_details(name: &str) -> Result<Vec<ToDiyDetails>, String> {
+    let groups = parse_namer_pf_groups(name);
+    let Some(group) = groups.first().filter(|group| !group.is_empty()) else {
+        return Ok(Vec::new());
+    };
+    let group_input = NamerenaInput::from_raw_groups(std::slice::from_ref(group))
+        .map_err(|err| format!("构建玩家失败: {}: {err}", group.join("+")))?;
+    let roster = match PreparedRoster::build(&group_input, tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ) {
+        Ok(roster) => roster,
+        Err(error) => match error {},
+    };
+    let mut details = Vec::with_capacity(roster.players.len());
+    for player in &roster.players {
+        // `player.id` 就是该成员在本行 group 里的下标：单独构建时保留原字符串
+        // （overlay 等后缀都在里面），只是没有队友。
+        let solo_source = group.get(player.id).cloned().unwrap_or_else(|| player.id_key_name.clone());
+        let solo = solo_player_of(&solo_source).map_err(|err| format!("构建玩家失败: {solo_source}: {err}"))?;
+        let solo_levels = skill_levels(&solo);
+        details.push(ToDiyDetails {
+            name: player.id_key_name.clone(),
+            attrs: export_attrs(player.attrs),
+            solo_attrs: export_attrs(solo.attrs),
+            skills: action_order_skills(player, &solo_levels),
+        });
+    }
+    Ok(details)
+}
+
+/// 单独构建一个成员（保留它的 overlay 等后缀），返回它的玩家数据。
+fn solo_player_of(raw: &str) -> Result<PreparedPlayer, String> {
+    let input = NamerenaInput::from_raw_groups(&[vec![raw.to_owned()]]).map_err(|err| err.to_string())?;
+    let roster = match PreparedRoster::build(&input, tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ) {
+        Ok(roster) => roster,
+        Err(error) => match error {},
+    };
+    roster.players.into_iter().next().ok_or_else(|| "无有效玩家".to_string())
+}
+
+/// 玩家实际生效的技能等级：key 是导出名（`skl*` / `summon:skl*` / `phantom:skl*`），
+/// 与 `+ol` 导出用的是同一套命名，因此两次构建可以直接对齐。
+fn skill_levels(player: &PreparedPlayer) -> Vec<(String, u32)> {
+    player
+        .skills
+        .active_order
+        .iter()
+        .filter_map(|key| {
+            let entry = player.skills.entries.iter().find(|entry| entry.key == *key && entry.level > 0)?;
+            if entry.skill == BuiltinSkillRef::SummonShareDamage {
+                return None;
+            }
+            Some((export_skill_name(entry), entry.level))
+        })
+        .collect()
+}
+
+/// 详情块的技能行：逐项与单独构建的同名技能比差额。
+fn action_order_skills(player: &PreparedPlayer, solo_levels: &[(String, u32)]) -> Vec<ToDiySkill> {
+    let mut skills = Vec::new();
+    for (key, level) in skill_levels(player) {
+        let Some(name) = cn_skill_name(&key) else {
+            continue;
+        };
+        let solo = solo_levels
+            .iter()
+            .find_map(|(solo_key, solo_level)| (solo_key == &key).then_some(i64::from(*solo_level)))
+            .unwrap_or(0);
+        skills.push(ToDiySkill {
+            name,
+            level,
+            delta: i64::from(level) - solo,
+        });
+    }
+    skills
+}
+
+/// 导出名到中文名：只认技能榜同一张表里的常规技能。
+fn cn_skill_name(export_name: &str) -> Option<&'static str> {
+    let id = tswn_core::namerena::skill_name_to_id(export_name)?;
+    SKILL_CN_NAMES.get(id).copied()
+}
+
+/// 技能导出名，与 `cli_api` 的 `+ol` 导出（`skill_export_name` 的 Player 分支）一致。
+fn export_skill_name(entry: &tswn_core::namerena::SkillEntrySpec) -> String {
+    tswn_core::namerena::classified_player_skill_name_for_export(entry.key).unwrap_or_else(|| match entry.skill {
+        BuiltinSkillRef::Normal(skill_id) => tswn_core::namerena::skill_name_for_export(skill_id),
+        _ => entry.key.to_string(),
+    })
+}
+
+/// 把内部属性换算成导出口径：前七围 +36（与 `attrs_to_overlay_json` 一致），HP 原样。
+fn export_attrs(attrs: [u32; 8]) -> [u32; 8] {
+    let mut out = attrs;
+    for value in &mut out[..7] {
+        *value += 36;
+    }
+    out
+}
+
+/// 追加“单名详情”块。
+///
+/// 块内只描述构建后的玩家本体：名字、HP 与七围、八围、嘲讽，以及按行动顺序排列的
+/// 技能行。属性与技能都按“组队后相对单独构建”的差额标注 `(+N)` / `(-N)`。
+/// 整块只走日志，不写入输出文件。
+fn append_to_diy_details(out: &mut String, details: &ToDiyDetails) {
+    let attrs = details.attrs;
+    let _ = writeln!(out, "=== 原始信息 ===");
+    let _ = writeln!(out, "{}", details.name);
+    let _ = writeln!(
+        out,
+        "HP {} 攻 {} 防 {} 速 {} 敏 {} 魔 {} 抗 {} 智 {} 八围 {} 嘲讽{}",
+        format_delta(i64::from(attrs[7]), i64::from(details.solo_attrs[7])),
+        format_delta(i64::from(attrs[0]), i64::from(details.solo_attrs[0])),
+        format_delta(i64::from(attrs[1]), i64::from(details.solo_attrs[1])),
+        format_delta(i64::from(attrs[2]), i64::from(details.solo_attrs[2])),
+        format_delta(i64::from(attrs[3]), i64::from(details.solo_attrs[3])),
+        format_delta(i64::from(attrs[4]), i64::from(details.solo_attrs[4])),
+        format_delta(i64::from(attrs[5]), i64::from(details.solo_attrs[5])),
+        format_delta(i64::from(attrs[6]), i64::from(details.solo_attrs[6])),
+        format_eight_ring(attrs),
+        taunt_value(attrs),
+    );
+    for skill in &details.skills {
+        let solo = i64::from(skill.level) - skill.delta;
+        let _ = writeln!(out, "  {} {}", skill.name, format_delta(i64::from(skill.level), solo));
+    }
+}
+
+/// 一个数值：整队后的值，与单独构建有差额时追加 `(+N)` / `(-N)`。
+fn format_delta(teamed: i64, solo: i64) -> String {
+    match teamed.cmp(&solo) {
+        std::cmp::Ordering::Equal => teamed.to_string(),
+        std::cmp::Ordering::Greater => format!("{teamed}(+{})", teamed - solo),
+        std::cmp::Ordering::Less => format!("{teamed}(-{})", solo - teamed),
+    }
+}
+
+/// 八围 = 七围之和 + HP / 3，四舍五入到一位小数。
+///
+/// 用整数定点取到 0.1：`(total * 10 + 1) / 3`，其中 `total = 七围之和 * 3 + HP`
+/// 是 `(七围之和 + HP / 3)` 的 3 倍；除数 3 用 `+1` 做四舍五入。全程整数，
+/// 避免浮点格式化在边界上的抖动。
+fn format_eight_ring(attrs: [u32; 8]) -> String {
+    let seven = attrs[..7].iter().map(|value| u64::from(*value)).sum::<u64>();
+    let total = seven * 3 + u64::from(attrs[7]);
+    let tenths = (total * 10 + 1) / 3;
+    format!("{}.{}", tenths / 10, tenths % 10)
+}
+
+/// 嘲讽值 = 防 * 2 + 抗 * 2 - 攻 * 2 - 魔 * 2 - 速 * 2 - 敏 - 智。
+///
+/// 公式本身给出负数（属性越强嘲讽越低），面板按数值大小显示，这里取绝对值。
+fn taunt_value(attrs: [u32; 8]) -> u64 {
+    let read = |index: usize| i64::from(attrs[index]);
+    let raw = read(1) * 2 + read(5) * 2 - read(0) * 2 - read(4) * 2 - read(2) * 2 - read(3) - read(6);
+    raw.unsigned_abs()
+}
+
+/// 技能 id 到中文名的对照表，顺序与 `skill_name_to_id` 一一对应：
+/// 火球 冰冻 雷击 地裂 吸血 投毒 连击 会心 瘟疫 命轮 狂暴 魅惑 加速 减速 诅咒
+/// 治愈 苏生 净化 铁壁 蓄力 聚气 潜行 血祭 分身 幻术 防御 守护 反弹 护符 护盾
+/// 反击 吞噬 召灵 垂死 隐匿
+const SKILL_CN_NAMES: [&str; 35] = [
+    "火球", "冰冻", "雷击", "地裂", "吸血", "投毒", "连击", "会心", "瘟疫", "命轮", "狂暴", "魅惑", "加速", "减速", "诅咒",
+    "治愈", "苏生", "净化", "铁壁", "蓄力", "聚气", "潜行", "血祭", "分身", "幻术", "防御", "守护", "反弹", "护符", "护盾",
+    "反击", "吞噬", "召灵", "垂死", "隐匿",
+];
 
 pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
     let groups = parse_namer_pf_groups(&input.raw);
@@ -948,6 +1079,7 @@ mod tests {
     use std::sync::atomic::AtomicBool;
 
     use tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ;
+    use tswn_core::namerena::{NamerenaInput, PreparedPlayer, PreparedRoster};
 
     use crate::backend::CommonBenchOptions;
 
@@ -1005,20 +1137,259 @@ mod tests {
         assert_eq!(factors, vec![2.0]);
     }
 
+    /// 一行输入按整队构建后应该追加的全部详情块（含每个块前面的空行）。
+    fn expected_group_blocks(raw: &str) -> String {
+        let groups = super::parse_namer_pf_groups(raw);
+        let input = NamerenaInput::from_raw_groups(&groups).expect("group should parse");
+        let roster = PreparedRoster::build(&input, DEFAULT_EVAL_RQ).expect("group should build");
+        roster
+            .players
+            .iter()
+            .map(|player| format!("\n{}", expected_detail_block(player)))
+            .collect()
+    }
+
+    /// 多行输入的全部输出：每行之间空一行，行内是导出行 + 该行每个成员的详情块。
+    fn expected_multiline_output(raw: &str, old: bool) -> String {
+        let mut out = String::new();
+        for name in super::parse_line_list(raw) {
+            if !out.is_empty() {
+                out.push('\n');
+            }
+            out.push_str(&tswn_core::cli_api::to_diy(&name, old, false).expect("export should work"));
+            out.push('\n');
+            out.push_str(&expected_group_blocks(&name));
+        }
+        out
+    }
+
+    /// 详情块必须逐字段等于同一份导出 attrs / skills（含组队差额）的换算结果。
+    fn expected_detail_block(player: &PreparedPlayer) -> String {
+        let attrs = super::export_attrs(player.attrs);
+        let solo = super::solo_player_of(&player.id_key_name).expect("solo build should work");
+        let solo_attrs = super::export_attrs(solo.attrs);
+        let solo_levels = super::skill_levels(&solo);
+        let mut block = format!("=== 原始信息 ===\n{}\n", player.id_key_name);
+        block.push_str(&format!(
+            "HP {} 攻 {} 防 {} 速 {} 敏 {} 魔 {} 抗 {} 智 {} 八围 {} 嘲讽{}\n",
+            super::format_delta(i64::from(attrs[7]), i64::from(solo_attrs[7])),
+            super::format_delta(i64::from(attrs[0]), i64::from(solo_attrs[0])),
+            super::format_delta(i64::from(attrs[1]), i64::from(solo_attrs[1])),
+            super::format_delta(i64::from(attrs[2]), i64::from(solo_attrs[2])),
+            super::format_delta(i64::from(attrs[3]), i64::from(solo_attrs[3])),
+            super::format_delta(i64::from(attrs[4]), i64::from(solo_attrs[4])),
+            super::format_delta(i64::from(attrs[5]), i64::from(solo_attrs[5])),
+            super::format_delta(i64::from(attrs[6]), i64::from(solo_attrs[6])),
+            super::format_eight_ring(attrs),
+            super::taunt_value(attrs),
+        ));
+        for skill in super::action_order_skills(player, &solo_levels) {
+            let level = i64::from(skill.level);
+            block.push_str(&format!(
+                "  {} {}\n",
+                skill.name,
+                super::format_delta(level, level - skill.delta)
+            ));
+        }
+        block
+    }
+
+    /// 面板口径的完整示例：每行导出后，按该行整队逐个成员追加详情块；行与行之间空一行。
     #[test]
-    fn to_diy_details_include_skill_object() {
+    fn to_diy_details_match_panel_layout() {
+        let cancel = AtomicBool::new(false);
+        let raw = "1@team+2@team\ntest";
+        let output = run_to_diy(raw, false, false, true, None, &cancel).unwrap();
+
+        assert_eq!(output, expected_multiline_output(raw, false));
+    }
+
+    /// 多行输入之间必须空行分隔，详情块不能和下一行的导出行贴在一起。
+    #[test]
+    fn to_diy_details_separate_lines() {
+        let cancel = AtomicBool::new(false);
+        let raw = "1@team+2@team\ntest";
+        let output = run_to_diy(raw, false, false, true, None, &cancel).unwrap();
+        let lines = output.lines().collect::<Vec<_>>();
+        let first_export_of_second_line = lines.iter().position(|line| line.starts_with("test+ol:")).expect("second export");
+
+        assert_eq!(lines[first_export_of_second_line - 1], "");
+        assert_eq!(lines[first_export_of_second_line - 2], "  潜行 34");
+        // 行内成员之间同样空行分隔。
+        assert_eq!(lines[12], "");
+        assert_eq!(lines[13], "=== 原始信息 ===");
+    }
+
+    /// 同队升级也会改技能熟练度，技能行同样要标差额。
+    #[test]
+    fn to_diy_details_mark_team_skill_delta() {
         let cancel = AtomicBool::new(false);
         let output = run_to_diy(
-            r#"mario+diy[72,39,69,76,67,66,0,84]{"sklfire":5,"sklheal":"40+30"}"#,
-            true,
+            "冥河 WyO8MUZPPtKH@Afterglow+光 jKLA6V5mirfs@Afterglow",
+            false,
             false,
             true,
             None,
             &cancel,
         )
         .unwrap();
+        let lines = output.lines().collect::<Vec<_>>();
 
-        assert!(output.contains(r#"技能: {"sklfire":5,"sklheal":"40+30"}"#));
+        // 第一个成员：只有「智」被组队升级（+21），技能没有变化。
+        assert_eq!(lines[1], "");
+        assert_eq!(lines[2], "=== 原始信息 ===");
+        assert_eq!(lines[3], "冥河 WyO8MUZPPtKH@Afterglow");
+        assert_eq!(
+            lines[4],
+            "HP 311 攻 56 防 83 速 98 敏 65 魔 90 抗 96 智 94(+21) 八围 685.7 嘲讽289"
+        );
+        assert_eq!(lines[5], "  守护 20");
+        assert_eq!(lines[13], "  魅惑 80");
+        assert_eq!(lines[12], "  分身 56");
+        // 第二个成员：护符从单独构建的 84 升到 98，技能行标 `(+14)`。
+        assert_eq!(lines[14], "");
+        assert_eq!(lines[15], "=== 原始信息 ===");
+        assert_eq!(lines[16], "光 jKLA6V5mirfs@Afterglow");
+        assert_eq!(lines[17], "HP 315 攻 95 防 73 速 92 敏 77 魔 89 抗 86 智 84 八围 701.0 嘲讽395");
+        assert_eq!(lines[18], "  苏生 8");
+        assert_eq!(lines[19], "  隐匿 1");
+        assert_eq!(lines[20], "  吞噬 14");
+        assert_eq!(lines[21], "  反击 6");
+        assert_eq!(lines[22], "  命轮 20");
+        assert_eq!(lines[23], "  分身 58");
+        assert_eq!(lines[24], "  护符 98(+14)");
+        assert_eq!(lines.len(), 25);
+    }
+
+    #[test]
+    fn to_diy_details_reproduce_reported_example() {
+        let cancel = AtomicBool::new(false);
+        let output = run_to_diy("1@team+2@team\ntest", false, false, true, None, &cancel).unwrap();
+        let lines = output.lines().collect::<Vec<_>>();
+
+        // 组队行导出后，紧跟该队两个玩家的详情块。
+        assert!(lines[0].starts_with("1@team+ol:{\"attrs\":[78,78,58,64,72,60,77,245]"));
+        assert!(lines[0].contains("\"sklprotect\":19"));
+        assert!(lines[0].contains("+2@team+ol:{\"attrs\":[81,83,59,70,71,61,61,271]"));
+        assert!(lines[0].contains("\"sklassassinate\":\"2*17\""));
+        assert_eq!(lines[1], "");
+        assert_eq!(lines[2], "=== 原始信息 ===");
+        assert_eq!(lines[3], "1@team");
+        // 组队后 `1` 的 HP 是 245（单独构队 243），括号里标出 +2；八围 568.7、嘲讽 281。
+        assert_eq!(
+            lines[4],
+            "HP 245(+2) 攻 78 防 78 速 58 敏 64 魔 72 抗 60 智 77 八围 568.7 嘲讽281"
+        );
+        assert_eq!(lines[5], "  守护 19");
+        assert_eq!(lines[6], "  加速 14");
+        assert_eq!(lines[7], "  诅咒 29");
+        assert_eq!(lines[8], "  分身 4");
+        assert_eq!(lines[9], "  聚气 2");
+        assert_eq!(lines[10], "  反弹 1");
+        assert_eq!(lines[11], "  护符 4");
+        // 同一队的第二个玩家也有自己的块（属性与单独构建一致，所以没有括号）。
+        assert_eq!(lines[12], "");
+        assert_eq!(lines[13], "=== 原始信息 ===");
+        assert_eq!(lines[14], "2@team");
+        assert_eq!(lines[15], "HP 271 攻 81 防 83 速 59 敏 70 魔 71 抗 61 智 61 八围 576.3 嘲讽265");
+        // 第二行单名：导出、空行、详情块。
+        let solo_at = lines.iter().position(|line| line.starts_with("test+ol:")).expect("solo export line");
+        assert_eq!(lines[solo_at + 1], "");
+        assert_eq!(lines[solo_at + 2], "=== 原始信息 ===");
+        assert_eq!(lines[solo_at + 3], "test");
+        assert!(lines[solo_at + 4].starts_with("HP "));
+        assert!(lines[solo_at + 4].contains(" 八围 "));
+        assert!(lines[solo_at + 4].contains(" 嘲讽"));
+        assert_eq!(lines.len(), solo_at + 5 + 7);
+    }
+
+    /// 用 overlay 固定输入，逐字节校验详情块的排版与算值。
+    #[test]
+    fn to_diy_details_follow_single_name_layout() {
+        let cancel = AtomicBool::new(false);
+        // overlay 的 attrs 会被解码成内部属性，导出行写回时再 +36，取 ≥36 保证与输入一致。
+        let raw =
+            r#"mario+ol:{"attrs":[40,50,60,70,80,90,100,200],"skills":{"sklfire":5,"sklheal":40},"name_factor_enabled":true}"#;
+        let output = run_to_diy(raw, false, false, true, None, &cancel).unwrap();
+
+        // 八围 = 490 + 200/3 = 556.7
+        // 嘲讽 = 50*2 + 90*2 - 40*2 - 80*2 - 60*2 - 70 - 100 = -250
+        assert_eq!(
+            output,
+            format!(
+                "{raw}\n\n=== 原始信息 ===\nmario\nHP 200 攻 40 防 50 速 60 敏 70 魔 80 抗 90 智 100 八围 556.7 嘲讽250\n  火球 5\n  治愈 40\n"
+            )
+        );
+    }
+
+    #[test]
+    fn to_diy_details_are_only_extra_log_lines() {
+        let cancel = AtomicBool::new(false);
+        let raw = r#"mario+diy[72,39,69,76,67,66,0,84]{"sklfire":5}"#;
+        let without_details = run_to_diy(raw, true, false, false, None, &cancel).unwrap();
+        let with_details = run_to_diy(raw, true, false, true, None, &cancel).unwrap();
+
+        assert!(!without_details.contains("=== 原始信息 ==="));
+        // 勾选详情只在导出行后面追加日志块，导出行本身逐字节不变。
+        assert!(with_details.starts_with(&without_details));
+        assert!(with_details.contains("=== 原始信息 ==="));
+    }
+
+    #[test]
+    fn to_diy_details_apply_per_line_and_per_group_member() {
+        let cancel = AtomicBool::new(false);
+        let one_line = run_to_diy("mario@team", true, false, true, None, &cancel).unwrap();
+        let two_lines = run_to_diy("mario@team\nluigi@team", true, false, true, None, &cancel).unwrap();
+        // `+` 是组队分隔符：这行有两个成员，两个成员各出一个详情块。
+        let group_line = run_to_diy("mario@team+fire", true, false, true, None, &cancel).unwrap();
+
+        assert!(one_line.contains("=== 原始信息 ==="));
+        assert_eq!(two_lines.matches("=== 原始信息 ===").count(), 2);
+        assert!(two_lines.contains("mario@team\n"));
+        assert!(two_lines.contains("luigi@team\n"));
+        assert_eq!(group_line.matches("=== 原始信息 ===").count(), 2);
+    }
+
+    #[test]
+    fn to_diy_details_never_reach_the_output_file() {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let seq = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("tswn_openbox_to_diy_details_{}_{seq}.txt", std::process::id()));
+        let cancel = AtomicBool::new(false);
+
+        let summary = run_to_diy("mario@team", true, false, true, Some(path.clone()), &cancel).expect("export should succeed");
+        let written = std::fs::read_to_string(&path).expect("output file should exist");
+        let _ = std::fs::remove_file(&path);
+
+        assert!(summary.starts_with("完成，结果已写入"));
+        assert!(!written.contains("=== 原始信息 ==="));
+        assert_eq!(written, run_to_diy("mario@team", true, false, false, None, &cancel).unwrap());
+    }
+
+    #[test]
+    fn to_diy_detail_taunt_uses_absolute_value() {
+        assert_eq!(super::taunt_value([78, 78, 58, 64, 72, 60, 77, 245]), 281);
+        assert_eq!(super::taunt_value([81, 83, 59, 70, 71, 61, 61, 271]), 265);
+        assert_eq!(super::taunt_value([85, 72, 79, 76, 81, 41, 70, 236]), 410);
+        assert_eq!(super::taunt_value([0, 0, 0, 0, 0, 0, 0, 0]), 0);
+    }
+
+    #[test]
+    fn to_diy_detail_eight_ring_keeps_one_decimal() {
+        // 面板样例：七围 487 + HP 245 → 487 + 81.7 = 568.7。
+        assert_eq!(super::format_eight_ring([78, 78, 58, 64, 72, 60, 77, 245]), "568.7");
+        // `2@team`：七围 486 + HP 271 → 486 + 90.3 = 576.3。
+        assert_eq!(super::format_eight_ring([81, 83, 59, 70, 71, 61, 61, 271]), "576.3");
+        // `test`：七围 504 + HP 236 → 504 + 78.7 = 582.7。
+        assert_eq!(super::format_eight_ring([85, 72, 79, 76, 81, 41, 70, 236]), "582.7");
+        // 仓库当前 `test` 的构建：七围 478 + HP 259 → 564.3。
+        assert_eq!(super::format_eight_ring([71, 80, 59, 70, 75, 56, 67, 259]), "564.3");
+        assert_eq!(super::format_eight_ring([0, 0, 0, 0, 0, 0, 0, 0]), "0.0");
+        // 四舍五入：HP 1470 / 3 = 490.0 正好落在整数上；1482 / 3 = 494.0。
+        assert_eq!(super::format_eight_ring([0, 0, 0, 0, 0, 0, 0, 1470]), "490.0");
+        assert_eq!(super::format_eight_ring([0, 0, 0, 0, 0, 0, 0, 1482]), "494.0");
+        // 1472 / 3 = 490.66…：进位到 490.7。
+        assert_eq!(super::format_eight_ring([0, 0, 0, 0, 0, 0, 0, 1472]), "490.7");
     }
 
     #[test]
@@ -1027,11 +1398,14 @@ mod tests {
         let output = run_to_diy("1@a\n2@a\n1@a+2@a", true, false, false, None, &cancel).unwrap();
         let lines = output.lines().collect::<Vec<_>>();
 
-        assert_eq!(lines.len(), 3);
+        // 每行结果之间空一行。
+        assert_eq!(lines.len(), 5);
         assert!(lines[0].starts_with("1@a+diy["));
-        assert!(lines[1].starts_with("2@a+diy["));
-        assert!(lines[2].starts_with("1@a+diy["));
-        assert!(lines[2].contains("+2@a+diy["));
+        assert_eq!(lines[1], "");
+        assert!(lines[2].starts_with("2@a+diy["));
+        assert_eq!(lines[3], "");
+        assert!(lines[4].starts_with("1@a+diy["));
+        assert!(lines[4].contains("+2@a+diy["));
     }
 
     #[test]

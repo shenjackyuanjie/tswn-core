@@ -42,10 +42,11 @@ pub(super) struct Cli {
 pub(super) enum Command {
     /// 将名字导出为 DIY / OL 覆盖格式（对齐 GUI 的 to-diy 面板）。
     ///
-    /// 单号模式在未指定 `-o` 且名字不含 `+` 时附加输出原始信息详情
-    /// （名字/队伍/八围/技能/name_factor），`--no-details` 可关闭；文件批量
-    /// 模式不输出详情。默认输出 `+ol`；`--old` 切旧版 `+diy`；`--minions`
-    /// 附带幻影/使魔/丧尸模板（与 `--old` 互斥）。
+    /// 用 `-r/--raw` 给名字时，未指定 `-o` 的每一行都会按 `+` 语义整队构建，并在这行
+    /// 导出行后面逐个玩家附加原始信息详情（名字/HP/七围/八围/嘲讽/技能）；
+    /// 组队行会输出该队每个玩家各一块。`--no-details` 可关闭，`-f/--file` 批量模式
+    /// 始终不输出详情。详情只走日志，不写入输出文件。默认输出 `+ol`；`--old` 切旧版
+    /// `+diy`；`--minions` 附带幻影/使魔/丧尸模板（与 `--old` 互斥）。
     ///
     /// 示例:
     ///   openbox-cli to-diy -r "mario@team+fire"
@@ -183,7 +184,8 @@ pub(super) struct ToDiyArgs {
     #[arg(long = "minions", conflicts_with = "old")]
     minions: bool,
 
-    /// 关闭单号模式的原始信息详情（默认开启，GUI 的“单名详情”复选框）。
+    /// 关闭原始信息详情（默认开启，对应 GUI 的“单名详情”复选框）；
+    /// `-f/--file` 批量模式本来就不输出详情。
     #[arg(long = "no-details")]
     no_details: bool,
 }
@@ -690,9 +692,9 @@ impl Cli {
     pub(super) fn plan(self) -> Result<Job, clap::Error> {
         Ok(match self.command {
             Command::ToDiy(args) => {
-                let raw = match (args.raw, args.file) {
-                    (Some(raw), None) => decode_raw(&raw),
-                    (None, Some(path)) => read_file(&path)?,
+                let (raw, from_file) = match (args.raw, args.file) {
+                    (Some(raw), None) => (decode_raw(&raw), false),
+                    (None, Some(path)) => (read_file(&path)?, true),
                     (None, None) => return Err(cli_error("to-diy 需要 -r/--raw 或 -f/--file")),
                     (Some(_), Some(_)) => return Err(cli_error("to-diy 只能使用一种输入来源")),
                 };
@@ -700,7 +702,8 @@ impl Cli {
                     raw,
                     old: args.old,
                     minions: args.minions,
-                    details: !args.no_details,
+                    // 批量文件模式不输出详情，避免整份名单都被详情块撑开。
+                    details: !args.no_details && !from_file,
                     output_file: args.out_file,
                 })
             }
@@ -814,6 +817,23 @@ mod tests {
                 assert!(!plan.minions);
                 assert!(plan.output_file.is_none());
             }
+            _ => panic!("unexpected job"),
+        }
+    }
+
+    #[test]
+    fn to_diy_plan_keeps_details_off_for_batch_files() {
+        let path = temp_file("to_diy_details_off.txt", "mario@team\nluigi@team");
+        let from_file = plan_of(&["to-diy", "-f", path.to_str().unwrap()]).unwrap();
+        let no_details = plan_of(&["to-diy", "-r", "mario@team", "--no-details"]).unwrap();
+        let _ = std::fs::remove_file(&path);
+
+        match from_file {
+            Job::ToDiy(plan) => assert!(!plan.details, "-f 批量模式不应输出详情"),
+            _ => panic!("unexpected job"),
+        }
+        match no_details {
+            Job::ToDiy(plan) => assert!(!plan.details, "--no-details 应关闭详情"),
             _ => panic!("unexpected job"),
         }
     }

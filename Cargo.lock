@@ -4600,7 +4600,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_openbox"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "clap",
  "eframe",
@@ -4654,7 +4654,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_wasm"
-version = "0.5.4"
+version = "0.5.5"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
