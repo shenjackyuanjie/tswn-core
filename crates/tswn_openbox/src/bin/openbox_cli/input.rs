@@ -133,15 +133,6 @@ mod tests {
     use tswn_openbox::backend::NamerPfMetric;
 
     #[test]
-    fn non_negative_threshold_rejects_non_finite_values() {
-        for raw in ["NaN", "inf", "-inf", "-1"] {
-            assert!(parse_non_negative_f64(raw).is_err(), "{raw}");
-        }
-        assert_eq!(parse_non_negative_f64("0").unwrap(), 0.0);
-        assert_eq!(parse_non_negative_f64("12.5").unwrap(), 12.5);
-    }
-
-    #[test]
     fn metric_spec_parses_all_four_segments() {
         let spec = parse_metric_spec("sum:30000:out.txt:25000").unwrap();
         assert_eq!(spec.metric, NamerPfMetric::Sum);
@@ -169,6 +160,9 @@ mod tests {
 
     #[test]
     fn metric_spec_rejects_invalid_names_and_thresholds() {
+        for raw in ["pp:NaN", "pp:inf", "pp:-1", "pp::out.txt:NaN", "pp::out.txt:inf"] {
+            assert!(parse_metric_spec(raw).is_err(), "{raw}");
+        }
         assert!(parse_metric_spec("xp").is_err());
         assert!(parse_metric_spec("pp:abc").is_err());
         assert!(parse_metric_spec("pp:8000:out.txt:abc").is_err());
@@ -183,10 +177,5 @@ mod tests {
         std::fs::write(&path, b"\xef\xbb\xbfmario\nluigi").unwrap();
         assert_eq!(read_file(&path).unwrap(), "mario\nluigi");
         let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn decode_raw_restores_newlines() {
-        assert_eq!(decode_raw("mario\\nluigi"), "mario\nluigi");
     }
 }

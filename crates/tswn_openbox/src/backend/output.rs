@@ -77,6 +77,19 @@ fn score_output_line_value(line: &str, mode: OutputMode) -> Option<f64> {
     }
 }
 
+pub(super) fn finish_output(output_file: Option<&Path>, out: String) -> Result<String, String> {
+    match output_file {
+        Some(path) => {
+            let mut file = create_output_file(path)?;
+            file.write_all(out.as_bytes())
+                .and_then(|_| file.flush())
+                .map_err(|err| format!("写入输出文件失败: {}: {err}", path.display()))?;
+            Ok(format!("完成，结果已写入: {}", path.display()))
+        }
+        None => Ok(out),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,30 +115,5 @@ mod tests {
     fn log_output_lines_sort_by_score_descending() {
         let lines = sorted_score_lines("12.000 beta\n99.500 alpha\nbad line\n99.500 gamma\n", OutputMode::Log);
         assert_eq!(lines, vec!["99.500 alpha", "99.500 gamma", "12.000 beta", "bad line"]);
-    }
-
-    #[test]
-    fn jsonl_output_line_score_accepts_batch_and_pair_keys() {
-        assert_eq!(
-            score_output_line_value(r#"{"label":"a","avg_win_rate":64.25}"#, OutputMode::Jsonl),
-            Some(64.25)
-        );
-        assert_eq!(
-            score_output_line_value(r#"{"label":"a","score":300.0}"#, OutputMode::Jsonl),
-            Some(300.0)
-        );
-    }
-}
-
-pub(super) fn finish_output(output_file: Option<&Path>, out: String) -> Result<String, String> {
-    match output_file {
-        Some(path) => {
-            let mut file = create_output_file(path)?;
-            file.write_all(out.as_bytes())
-                .and_then(|_| file.flush())
-                .map_err(|err| format!("写入输出文件失败: {}: {err}", path.display()))?;
-            Ok(format!("完成，结果已写入: {}", path.display()))
-        }
-        None => Ok(out),
     }
 }

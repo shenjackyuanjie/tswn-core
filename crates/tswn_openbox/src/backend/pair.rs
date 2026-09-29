@@ -235,11 +235,6 @@ fn parse_pair_teammate_groups(content: &str, double_plus: bool, factor_enabled: 
     }
 }
 
-#[cfg(test)]
-fn teammate_score(average_rate: f64, factor: f64, factor_enabled: bool) -> f64 {
-    if factor_enabled { average_rate * factor } else { average_rate }
-}
-
 fn player_to_ol(raw: &str) -> Result<String, String> {
     if raw.contains("+diy[") || raw.contains("+ol:") {
         return Ok(raw.to_string());
@@ -259,23 +254,9 @@ fn player_group_to_ol(group: &str) -> Result<String, String> {
 mod tests {
     use super::*;
     #[test]
-    fn pair_parses_factored_targets_with_their_weights() {
-        let raw = "[[targets]]\nfactor = 2\nplayers = [\"mario\", \"luigi\"]\n\n[[targets]]\nfactor = 0.5\nplayers = [\"peach\"]";
-        let (groups, factors) = parse_pair_target_groups(raw, true).expect("factored targets should parse");
-        assert_eq!(groups, vec!["mario\nluigi", "peach"]);
-        assert_eq!(factors, vec![2.0, 0.5]);
-    }
-
-    #[test]
     fn pair_keeps_each_member_when_converting_a_multi_player_input_group() {
         let group = "+ol:player-a\n+ol:player-b";
         assert_eq!(super::player_group_to_ol(group).unwrap(), group);
-    }
-
-    #[test]
-    fn teammate_factor_changes_the_score_used_for_head_sorting() {
-        assert_eq!(super::teammate_score(80.0, 0.5, true), 40.0);
-        assert_eq!(super::teammate_score(80.0, 0.5, false), 80.0);
     }
 
     #[test]

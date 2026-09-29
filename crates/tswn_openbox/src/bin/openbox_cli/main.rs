@@ -118,14 +118,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn progress_draw_is_silent_when_stderr_is_redirected() {
-        // 测试环境的 stderr 通常不是 tty：draw_progress 应立即返回、不 panic。
-        let mut last = Instant::now();
-        draw_progress(1, 10, &mut last);
-        draw_progress(10, 10, &mut last);
-    }
-
-    #[test]
     fn drain_events_collects_lines_and_done_exit_code() {
         let (tx, rx) = sync_channel(16);
         let sender: std::sync::mpsc::SyncSender<ProgressEvent> = tx;

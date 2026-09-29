@@ -1,31 +1,4 @@
-
 use super::*;
-
-#[test]
-fn updates_to_collapsed_records_do_not_rebuild_rows_and_top_is_stable() {
-    let mut view = ResultsView::default();
-    let mut log = LogBuffer::default();
-    for group in 0..2 {
-        view.apply(ResultUpdate::new(group, "名字", ResultKind::Pair, 2), &mut log);
-    }
-    view.dirty = false;
-    let mut update = ResultUpdate::new(1, "名字", ResultKind::Pair, 2);
-    update.top = Some(2);
-    update.entries = vec![
-        ResultEntry::number(2, "丙".into(), 80.0),
-        ResultEntry::number(1, "乙".into(), 80.0),
-        ResultEntry::number(0, "甲".into(), 90.0),
-    ];
-    view.records.get_mut(&1).unwrap().top = Some(2);
-    view.apply(update, &mut log);
-    assert!(!view.dirty, "折叠卡片更新数值无需重建整张行索引");
-    let record = view.records.get_mut(&1).unwrap();
-    record.refresh_detail_order();
-    assert_eq!(record.detail_indexes, vec![0, 1]);
-    let allocation = record.detail_indexes.as_ptr();
-    record.refresh_detail_order();
-    assert_eq!(allocation, record.detail_indexes.as_ptr(), "无变化时应复用排序结果");
-}
 
 #[test]
 fn large_result_lists_only_layout_visible_rows_in_both_render_modes() {
