@@ -1,22 +1,49 @@
 //! 结果控件与可见行绘制；数据更新、索引及裁剪由父模块维护。
 
 use super::{DisplayEntry, Record, ResultsView, ViewMode};
+use crate::app::help::HelpTopic;
+use crate::app::style::Palette;
 use tswn_openbox::backend::live::{EntryKind, ResultKind};
 
 const ROW_HEIGHT: f32 = 20.0;
 
 impl ResultsView {
-    pub fn controls(&mut self, ui: &mut egui::Ui) {
+    pub fn controls(&mut self, ui: &mut egui::Ui, active_help: &mut Option<HelpTopic>) {
         ui.horizontal(|ui| {
             for (mode, label) in [(ViewMode::Text, "纯文本"), (ViewMode::Cards, "卡片"), (ViewMode::Table, "表格")] {
-                if ui.selectable_value(&mut self.mode, mode, label).changed() {
+                let hint = match mode {
+                    ViewMode::Text => "按到达顺序追加完整文本，方便复制和检查运行过程。",
+                    ViewMode::Cards => "点击卡片标题展开或收起该输入组的明细。",
+                    ViewMode::Table => "横向比较多个名字的分数；点击行查看该组明细。— 表示指标未显示。",
+                };
+                if ui.selectable_value(&mut self.mode, mode, label).on_hover_text(hint).changed() {
                     self.dirty = true;
                 }
             }
             ui.separator();
-            ui.checkbox(&mut self.follow, "跟随最新");
+            ui.checkbox(&mut self.follow, "跟随最新")
+                .on_hover_text("向上滚动会暂停跟随；重新勾选后继续跟随最新结果。");
+            if ui.small_button("说明").on_hover_text("查看预览、筛选、排序和复制日志的规则。").clicked() {
+                *active_help = Some(HelpTopic::LiveResults);
+            }
             if self.trimmed > 0 {
                 ui.weak(format!("已裁剪 {} 条较早记录，完整结果以输出文件为准", self.trimmed));
+            }
+        });
+        let palette = Palette::of(ui);
+        ui.horizontal_wrapped(|ui| {
+            for (color, label, hint) in [
+                (palette.info, "预览", "明细已完成，整组仍在计算；#序号对应原输入位置。"),
+                (palette.success, "完成", "该输入组已全部完成，显示最终结果。"),
+                (palette.warning, "未完成", "任务已停止，未算完的组不能作为最终结果。"),
+                (
+                    palette.emphasis,
+                    "高亮",
+                    "达到高亮阈值，或属性相对单独构建发生变化；错误会另标“失败”。",
+                ),
+            ] {
+                ui.label(egui::RichText::new(format!("● {label}")).size(13.0).color(color))
+                    .on_hover_text(hint);
             }
         });
     }
@@ -101,6 +128,12 @@ impl ResultsView {
                             } else {
                                 state.to_owned()
                             };
+                            let palette = Palette::of(ui);
+                            let state_color = palette.status(if record.finish.is_some() {
+                                "完成"
+                            } else {
+                                self.terminal.as_deref().unwrap_or("运行中")
+                            });
                             if table {
                                 ui.horizontal(|ui| {
                                     if ui
@@ -116,7 +149,11 @@ impl ResultsView {
                                     {
                                         self.selected = Some(group);
                                     }
-                                    cell(ui, 130.0, &state);
+                                    ui.add_sized(
+                                        [130.0, ROW_HEIGHT],
+                                        egui::Label::new(egui::RichText::new(&state).color(state_color)).truncate(),
+                                    )
+                                    .on_hover_text(&state);
                                     if scores {
                                         for index in 0..5 {
                                             let text = record.entries.get(&index).map_or("—", |entry| &entry.display);
@@ -126,12 +163,12 @@ impl ResultsView {
                                                 .get(&index)
                                                 .is_some_and(|entry| entry.data.kind == EntryKind::Highlight)
                                             {
-                                                label = label.color(egui::Color32::from_rgb(210, 40, 40));
+                                                label = label.color(palette.emphasis);
                                             }
                                             ui.add_sized([72.0, ROW_HEIGHT], egui::Label::new(label).truncate());
                                         }
                                     } else {
-                                        ui.label(summary_text(record));
+                                        ui.label(summary_text(record, palette));
                                     }
                                 });
                             } else {
@@ -144,15 +181,19 @@ impl ResultsView {
                                 let label =
                                     format!("{arrow} #{} {}   {}   {state}{top}", group + 1, record.label, record.summary);
                                 let text = if record.finish.as_ref().is_some_and(|f| f.highlight) {
-                                    egui::RichText::new(label).color(egui::Color32::from_rgb(210, 40, 40))
+                                    egui::RichText::new(label).color(palette.emphasis)
                                 } else {
                                     egui::RichText::new(label)
                                 };
                                 if ui
                                     .add_sized(
                                         [ui.available_width().max(300.0), ROW_HEIGHT],
-                                        egui::Button::new(text).frame(true).truncate(),
+                                        egui::Button::new(text)
+                                            .fill(state_color.gamma_multiply(0.1))
+                                            .stroke(egui::Stroke::new(1.0, state_color.gamma_multiply(0.45)))
+                                            .truncate(),
                                     )
+                                    .on_hover_text("点击展开或收起明细。序号按原输入标记，多个线程的结果可能交错到达。")
                                     .clicked()
                                 {
                                     toggle = Some(group);
@@ -189,21 +230,22 @@ impl ResultsView {
 
 fn cell(ui: &mut egui::Ui, width: f32, text: &str) { ui.add_sized([width, ROW_HEIGHT], egui::Label::new(text).truncate()); }
 
-fn summary_text(record: &Record) -> egui::RichText {
+fn summary_text(record: &Record, palette: Palette) -> egui::RichText {
     let text = egui::RichText::new(&record.summary);
     if record.finish.as_ref().is_some_and(|f| f.highlight) {
-        text.color(egui::Color32::from_rgb(210, 40, 40))
+        text.color(palette.emphasis)
     } else {
         text
     }
 }
 
 fn entry_ui(ui: &mut egui::Ui, entry: &DisplayEntry) {
+    let palette = Palette::of(ui);
     let text = egui::RichText::new(format!("#{} {}   {}", entry.data.index + 1, entry.data.label, entry.display));
     let text = match entry.data.kind {
         EntryKind::Plain => text,
-        EntryKind::Highlight => text.color(egui::Color32::from_rgb(210, 40, 40)).strong(),
-        EntryKind::SkillBoard => text.color(egui::Color32::from_rgb(45, 120, 220)).strong(),
+        EntryKind::Highlight => text.color(palette.emphasis).strong(),
+        EntryKind::SkillBoard => text.color(palette.info).strong(),
     };
     ui.add(egui::Label::new(text).extend().selectable(true));
 }

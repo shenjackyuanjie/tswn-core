@@ -31,7 +31,8 @@ pub struct BenchOutputConfig {
 
 pub fn optional_file_output_controls(ui: &mut egui::Ui, output: &mut OptionalFileOutput, default_name: &str) {
     ui.horizontal(|ui| {
-        ui.checkbox(&mut output.enabled, "写入文件");
+        ui.checkbox(&mut output.enabled, "写入文件")
+            .on_hover_text("启用后需要选择输出路径；输出文件只包含导出结果。");
         if output.enabled {
             if ui.button("选择输出文件").clicked()
                 && let Some(path) = pick_output_file(default_name)
@@ -95,9 +96,11 @@ pub fn bench_output_controls(
 
     ui.horizontal(|ui| {
         ui.label("日志阈值");
-        ui.add(egui::TextEdit::singleline(&mut output.min_screen).desired_width(72.0));
+        ui.add(egui::TextEdit::singleline(&mut output.min_screen).hint_text("不限").desired_width(72.0))
+            .on_hover_text("最终结果不低于该值时保留在日志中；运行中仍可能先显示明细预览。");
         ui.label("文件阈值");
-        ui.add(egui::TextEdit::singleline(&mut output.min_file).desired_width(72.0));
+        ui.add(egui::TextEdit::singleline(&mut output.min_file).hint_text("不限").desired_width(72.0))
+            .on_hover_text("结果不低于该值才写入文件；与日志阈值独立，留空表示不过滤。");
         if show_precision {
             ui.label("保留小数点后 X 位");
             ui.add(egui::DragValue::new(&mut output.precision).range(0..=9).speed(1));

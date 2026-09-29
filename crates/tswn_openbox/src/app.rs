@@ -11,6 +11,7 @@ mod log;
 mod results;
 mod source;
 mod state;
+mod style;
 mod task;
 mod view;
 mod widgets;
@@ -99,17 +100,30 @@ impl eframe::App for OpenboxApp {
 
 fn run_footer_ui(ui: &mut egui::Ui, app: &mut OpenboxApp) {
     ui.add_space(2.0);
+    let palette = style::Palette::of(ui);
     if app.running {
         let label = if app.cancel_requested { "停止中..." } else { "停止" };
-        let button = egui::Button::new(egui::RichText::new(label).size(17.0))
+        let button = egui::Button::new(egui::RichText::new(label).size(17.0).color(palette.warning))
+            .fill(palette.warning.gamma_multiply(0.12))
             .min_size(egui::vec2(ui.available_width(), RUN_BUTTON_HEIGHT));
-        if ui.add_enabled(!app.cancel_requested, button).clicked() {
+        if ui
+            .add_enabled(!app.cancel_requested, button)
+            .on_hover_text("请求停止计算，已完成的明细会保留；未完成的组合不会作为完整结果显示。")
+            .clicked()
+        {
             app.stop_current_task();
         }
     } else {
-        let button = egui::Button::new(egui::RichText::new("运行").size(17.0))
+        let accent = palette.tool(app.tool.label());
+        let button = egui::Button::new(egui::RichText::new("运行").size(17.0).color(accent).strong())
+            .fill(accent.gamma_multiply(0.12))
+            .stroke(egui::Stroke::new(1.0, accent.gamma_multiply(0.5)))
             .min_size(egui::vec2(ui.available_width(), RUN_BUTTON_HEIGHT));
-        if ui.add(button).clicked() {
+        if ui
+            .add(button)
+            .on_hover_text("使用当前输入和设置开始计算。新任务会清空上一次的日志与结果。")
+            .clicked()
+        {
             match app.tool {
                 Tool::ToDiy => app.start_to_diy(),
                 Tool::NamerPf => app.start_namer_pf(),
@@ -153,15 +167,7 @@ fn top_bar_ui(ui: &mut egui::Ui, app: &mut OpenboxApp, ctx: &egui::Context) {
 }
 
 fn status_pill(ui: &mut egui::Ui, app: &OpenboxApp) {
-    let color = if app.running {
-        egui::Color32::from_rgb(35, 130, 220)
-    } else if app.status == "失败" {
-        egui::Color32::from_rgb(190, 50, 50)
-    } else if app.status == "完成" {
-        egui::Color32::from_rgb(40, 150, 90)
-    } else {
-        ui.visuals().weak_text_color()
-    };
+    let color = style::Palette::of(ui).status(&app.status);
     ui.label(egui::RichText::new(&app.status).color(color).strong());
 }
 

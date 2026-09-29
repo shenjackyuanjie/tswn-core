@@ -17,9 +17,15 @@ struct CaptureArgs {
     /// 使用内置 pair 样例生成卡片、表格、文本、停止状态四张 PNG，然后退出。
     #[arg(long)]
     capture_dir: Option<PathBuf>,
+    /// 使用浅色主题检查对比度；默认使用深色主题。
+    #[arg(long)]
+    capture_light: bool,
 }
 
-pub(crate) fn run_if_requested() -> Option<eframe::Result<()>> { CaptureArgs::parse().capture_dir.map(run_capture) }
+pub(crate) fn run_if_requested() -> Option<eframe::Result<()>> {
+    let args = CaptureArgs::parse();
+    args.capture_dir.map(|directory| run_capture(directory, args.capture_light))
+}
 
 struct CaptureApp {
     app: OpenboxApp,
@@ -106,7 +112,7 @@ impl eframe::App for CaptureApp {
     }
 }
 
-fn run_capture(directory: PathBuf) -> eframe::Result<()> {
+fn run_capture(directory: PathBuf, light: bool) -> eframe::Result<()> {
     std::fs::create_dir_all(&directory).map_err(|err| eframe::Error::AppCreation(Box::new(err)))?;
     let failure = Arc::new(Mutex::new(None));
     let app_failure = failure.clone();
@@ -120,7 +126,11 @@ fn run_capture(directory: PathBuf) -> eframe::Result<()> {
             install_cjk_fonts(&cc.egui_ctx);
             configure_ui_style(&cc.egui_ctx);
             let mut app = OpenboxApp {
-                theme_preference: egui::ThemePreference::Dark,
+                theme_preference: if light {
+                    egui::ThemePreference::Light
+                } else {
+                    egui::ThemePreference::Dark
+                },
                 tool: Tool::Pair,
                 ..Default::default()
             };

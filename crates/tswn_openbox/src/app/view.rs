@@ -7,6 +7,7 @@ use tswn_openbox::backend::PairDetailMode;
 use super::help::{HelpTopic, help_icon};
 use super::log::LogKind;
 use super::state::{AccuracyPreset, CountMode, OpenboxApp, Tool};
+use super::style::{Palette, hint};
 use super::widgets::{
     bench_output_controls, count_mode_controls, optional_file_output_controls, pick_named_output_file, thread_controls,
 };
@@ -24,16 +25,22 @@ const NAMER_PF_ACTION_WIDTH: f32 = 112.0;
 
 impl OpenboxApp {
     pub(crate) fn show_diy_ui(&mut self, ui: &mut egui::Ui) {
+        let requested_help = Cell::new(None);
         tool_header(ui, "to-diy", "名字转 DIY / 召唤物 DIY", &mut self.more_settings_open);
-        section(ui, "基础选项", |ui| {
+        section_with_help(ui, "基础选项", HelpTopic::DiyExport, &requested_help, |ui| {
             to_diy_basic_controls(ui, self);
         });
         section(ui, "名字", |ui| {
+            hint(ui, "每行一个名字或组合；成员用 + 分隔。");
             self.to_diy.names.ui(ui, "名字", "to_diy_names", 16);
         });
         section(ui, "输出", |ui| {
             optional_file_output_controls(ui, &mut self.to_diy.output, "tswn-openbox-diy.txt");
+            hint(ui, "文件只保存导出行；属性、技能详情在右侧查看。");
         });
+        if requested_help.get().is_some() {
+            self.active_help = requested_help.get();
+        }
     }
 
     pub(crate) fn namer_pf_ui(&mut self, ui: &mut egui::Ui) {
@@ -50,8 +57,10 @@ impl OpenboxApp {
         });
         section_with_help(ui, "评分项", HelpTopic::NamerMetrics, &requested_help, |ui| {
             namer_pf_metric_controls_clean(ui, self, false);
+            hint(ui, "sum 为四项总分；各项可独立筛选，详细阈值见更多设置。");
         });
         section_with_help(ui, "名字", HelpTopic::NamerNames, &requested_help, |ui| {
+            hint(ui, "每行一组，成员用 + 分隔；评分完成后逐项显示。");
             self.namer_pf.names.ui(ui, "名字", "namer_pf_names", 14);
         });
         if requested_help.get().is_some() {
@@ -72,7 +81,8 @@ impl OpenboxApp {
             );
             target_preset_controls(ui, &mut self.batch_rate.target_presets);
             ui.horizontal(|ui| {
-                ui.checkbox(&mut self.batch_rate.show_matchups, "每组胜率");
+                ui.checkbox(&mut self.batch_rate.show_matchups, "每组胜率")
+                    .on_hover_text("每个靶子的完整胜率计算结束后显示；关闭可减少日志量，不影响最终平均胜率。");
                 help_icon(ui, HelpTopic::BatchMatchups, &requested_help);
             });
         });
@@ -87,6 +97,7 @@ impl OpenboxApp {
             );
         });
         section_with_help(ui, "选手列表", HelpTopic::BatchPlayers, &requested_help, |ui| {
+            hint(ui, "每行一组，成员用 + 分隔；总分为对靶子的平均胜率。");
             self.batch_rate.players.ui(ui, "选手", "batch_players", 8);
         });
         if requested_help.get().is_some() {
@@ -107,6 +118,7 @@ impl OpenboxApp {
             );
             teammate_preset_controls(ui, &mut self.pair.teammate_presets, &requested_help, true);
             pair_detail_controls(ui, self, &requested_help);
+            hint(ui, "总分取最高的前 N 个 cqp 之和；当前 Top 会随计算更新。");
         });
         section_with_help(ui, "输出", HelpTopic::PairScore, &requested_help, |ui| {
             bench_output_controls(
@@ -119,6 +131,7 @@ impl OpenboxApp {
             );
         });
         section(ui, "选手列表", |ui| {
+            hint(ui, "每行一个待测选手或组合；分组规则可在更多设置中调整。");
             self.pair.players.ui(ui, "选手", "pair_players", 6);
         });
         if requested_help.get().is_some() {
@@ -298,11 +311,13 @@ impl OpenboxApp {
             .inner_margin(egui::Margin::same(GROUP_MARGIN))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.heading(&self.status);
+                    let color = Palette::of(ui).status(&self.status);
+                    ui.heading(egui::RichText::new(&self.status).color(color));
                     if self.total > 0 {
                         let progress = self.done as f32 / self.total.max(1) as f32;
                         ui.add(
                             egui::ProgressBar::new(progress)
+                                .fill(color.gamma_multiply(0.35))
                                 .show_percentage()
                                 .desired_width(320.0)
                                 .desired_height(24.0),
@@ -310,10 +325,18 @@ impl OpenboxApp {
                         ui.heading(format!("{}/{}", self.done, self.total));
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("复制日志").clicked() {
+                        if ui
+                            .button("复制日志")
+                            .on_hover_text("复制当前保留的纯文本，不受卡片或表格视图影响；已裁剪的历史不包含在内。")
+                            .clicked()
+                        {
                             ctx.copy_text(self.log.copy_text());
                         }
-                        if ui.button("清空日志").clicked() {
+                        if ui
+                            .button("清空日志")
+                            .on_hover_text("清空三种视图中当前的内容；计算继续，新结果仍会出现。")
+                            .clicked()
+                        {
                             self.clear_results();
                         }
                     });
@@ -328,7 +351,7 @@ impl OpenboxApp {
                     ui.label(egui::RichText::new("运行结果会显示在这里").weak());
                 }
             });
-        self.results.controls(ui);
+        self.results.controls(ui, &mut self.active_help);
         if self.log.discarded_lines() > 0 {
             ui.weak(format!(
                 "文本历史已裁剪 {} 行，复制日志仅包含当前保留部分。",
@@ -339,7 +362,7 @@ impl OpenboxApp {
             if self.status == "失败"
                 && let Some(line) = self.log.get(self.log.len().saturating_sub(1))
             {
-                ui.colored_label(egui::Color32::RED, line.display_text());
+                ui.colored_label(Palette::of(ui).emphasis, line.display_text());
             }
             self.results.ui(ui);
             return;
@@ -400,11 +423,11 @@ impl OpenboxApp {
                                     let mut text =
                                         egui::RichText::new(if display_text.is_empty() { " " } else { display_text }).monospace();
                                     if line.kind == LogKind::SkillBoard {
-                                        text = text.color(egui::Color32::from_rgb(45, 120, 220)).strong();
+                                        text = text.color(Palette::of(ui).info).strong();
                                     } else if display_text.starts_with("  ") {
-                                        text = text.color(egui::Color32::GRAY);
+                                        text = text.color(ui.visuals().weak_text_color());
                                     } else if line.kind == LogKind::Highlight {
-                                        text = text.color(egui::Color32::from_rgb(210, 40, 40)).strong();
+                                        text = text.color(Palette::of(ui).emphasis).strong();
                                     }
                                     ui.add(egui::Label::new(text).extend());
                                 }
@@ -420,7 +443,7 @@ fn compact_log_text_height(line_count: usize) -> f32 { (line_count.clamp(4, 20) 
 fn tool_header(ui: &mut egui::Ui, title: &str, subtitle: &str, more_settings_open: &mut bool) {
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
-            ui.heading(title);
+            ui.heading(egui::RichText::new(title).color(Palette::of(ui).tool(title)));
             ui.label(egui::RichText::new(subtitle).weak());
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -436,7 +459,7 @@ fn section<R>(ui: &mut egui::Ui, title: &str, add_contents: impl FnOnce(&mut egu
     let inner = egui::Frame::group(ui.style())
         .inner_margin(egui::Margin::symmetric(SECTION_MARGIN_X, SECTION_MARGIN_Y))
         .show(ui, |ui| {
-            ui.label(egui::RichText::new(title).strong().size(15.0));
+            ui.label(egui::RichText::new(title).strong().size(15.0).color(Palette::of(ui).info));
             ui.separator();
             add_contents(ui)
         })
@@ -456,7 +479,7 @@ fn section_with_help<R>(
         .inner_margin(egui::Margin::symmetric(SECTION_MARGIN_X, SECTION_MARGIN_Y))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(title).strong().size(15.0));
+                ui.label(egui::RichText::new(title).strong().size(15.0).color(Palette::of(ui).info));
                 help_icon(ui, topic, requested_help);
             });
             ui.separator();
@@ -501,7 +524,7 @@ fn target_preset_controls(ui: &mut egui::Ui, state: &mut tswn_openbox::presets::
         }
     });
     if let Some(error) = &state.error {
-        ui.colored_label(egui::Color32::from_rgb(180, 40, 40), error);
+        ui.colored_label(Palette::of(ui).emphasis, error);
     }
 }
 
@@ -537,7 +560,7 @@ fn teammate_preset_controls(
         }
     });
     if let Some(error) = &state.error {
-        ui.colored_label(egui::Color32::from_rgb(180, 40, 40), error);
+        ui.colored_label(Palette::of(ui).emphasis, error);
     }
 }
 

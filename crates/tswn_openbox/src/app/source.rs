@@ -61,7 +61,7 @@ impl TextSource {
                 .unwrap_or_else(|| "未选择文件".to_string());
             ui.label(path);
             if let Some(error) = &self.error {
-                ui.colored_label(egui::Color32::from_rgb(180, 40, 40), error);
+                ui.colored_label(super::style::Palette::of(ui).emphasis, error);
             }
             let mut preview = self.preview.as_str();
             egui::ScrollArea::both().id_salt(id).max_height(rows as f32 * 20.0).show(ui, |ui| {

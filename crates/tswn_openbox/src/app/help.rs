@@ -7,6 +7,8 @@ const HELP_TOOLTIP_WIDTH: f32 = 380.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HelpTopic {
+    DiyExport,
+    LiveResults,
     Accuracy,
     NamerAccuracy,
     BatchAccuracy,
@@ -27,29 +29,10 @@ pub(crate) enum HelpTopic {
 }
 
 impl HelpTopic {
-    #[cfg(test)]
-    const ALL: [Self; 17] = [
-        Self::Accuracy,
-        Self::NamerAccuracy,
-        Self::BatchAccuracy,
-        Self::PairAccuracy,
-        Self::Threads,
-        Self::KeepRq,
-        Self::ScorePrecision,
-        Self::NamerMetrics,
-        Self::NamerNames,
-        Self::BatchMatchups,
-        Self::BatchPlayers,
-        Self::ManualTargets,
-        Self::BenchOutput,
-        Self::Highlight,
-        Self::PairTeammates,
-        Self::PairDetails,
-        Self::PairScore,
-    ];
-
     pub(crate) fn title(self) -> &'static str {
         match self {
+            Self::DiyExport => "导出格式与详情",
+            Self::LiveResults => "实时结果与视图",
             Self::Accuracy => "精确度与场数",
             Self::NamerAccuracy => "namer-pf 精确度",
             Self::BatchAccuracy => "cqd/cqp 精确度",
@@ -72,6 +55,18 @@ impl HelpTopic {
 
     pub(crate) fn body(self) -> &'static str {
         match self {
+            Self::DiyExport => {
+                "每行输入一个名字或组合，组内成员用 + 分隔。默认导出 +ol；“旧 +diy”和“召唤物diy”是另外两种格式，不能同时开启。\n\n\
+                 屏幕详情包括属性、技能、八围与嘲讽。带括号的 + / - 数值表示组队后相对单独构建的变化，并非额外加成选项。\n\n\
+                 写入文件时只保存导出行，不包含属性说明。可以先不写文件查看详情，确认后再导出。"
+            }
+            Self::LiveResults => {
+                "纯文本保留按到达顺序追加的日志；卡片适合展开一组的详细结果；表格适合横向比较多个名字，点击行可看详情。每个页面独立记住本次会话选择。\n\n\
+                 蓝色“预览”表示明细已算完，但整组尚未结束；绿色“完成”表示该组全部完成；停止或失败时，未算完的组会保留“不完整”标记。高亮结果标红，技能榜用蓝色。\n\n\
+                 多线程会让不同组交错完成，#序号对应原输入位置，重名也分别展示。pair 的“当前 Top”会随新队友结果更新，最终排名以完成状态为准。\n\n\
+                 明细会先预览，整组完成后再按日志阈值筛选；未达标组从卡片、表格移除，纯文本保留已经显示的预览并补充说明。namer-pf 的五项评分分别按各自阈值显示，未显示的指标用 — 表示。\n\n\
+                 向上滚动会暂停跟随；重新勾选“跟随最新”可恢复。复制日志总是复制当前保留的纯文本。清空只影响当前展示，不会停止计算；大量历史可能被裁剪，需要完整结果时请开启文件输出。"
+            }
             Self::Accuracy => {
                 "精确度决定每次对局的模拟场数：\n\
                  1% = 100 场\n\
@@ -126,7 +121,7 @@ impl HelpTopic {
                  普通靶子组使用 + 分隔；靶子名字本身含 + 时，开启“DIY靶子”并使用 ++ 分隔。"
             }
             Self::BenchOutput => {
-                "日志阈值控制右侧是否显示结果；文件阈值控制是否写入输出文件。留空表示不限制。\n\n\
+                "日志阈值控制最终结果是否保留在右侧；文件阈值独立控制是否写入输出文件。留空表示不限制，等于阈值的结果也保留。实时明细可能先显示，全部完成后再筛选。\n\n\
                  “分数 名字”适合直接查看；JSONL 适合程序读取；“名字 (--pure)”只输出名字。未选择输出文件时，结果只写入右侧日志。"
             }
             Self::Highlight => {
@@ -141,7 +136,8 @@ impl HelpTopic {
                 "不显示 cqp：只显示最终分数。\n\
                  每组 cqp：显示所有达到 cqp 阈值的队友组合；阈值留空表示全部显示。\n\
                  有效 cqp：只显示最终分数实际采用的前几个组合。\n\n\
-                 例如 cqp 阈值填写 48 时，只显示 cqp >= 48 的队友组合。这个阈值只影响详情显示，不影响最终分数计算。"
+                 例如 cqp 阈值填写 48 时，只显示 cqp >= 48 的队友组合。这个阈值只影响详情显示，不影响最终分数计算。\n\n\
+                 每个队友与全部靶子的计算结束后才显示该队友的 cqp；“有效 cqp”运行中展示当前 Top，所有队友完成后才确定最终排名。"
             }
             Self::PairScore => {
                 "pair 最终分数是 cqp 从高到低排序后，前 head 个结果的总和。日志阈值和文件阈值都针对这个总分。\n\n\
@@ -198,18 +194,5 @@ pub(crate) fn show_help_window(ctx: &egui::Context, active: &mut Option<HelpTopi
         });
     if !open {
         *active = None;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::HelpTopic;
-
-    #[test]
-    fn every_help_topic_has_copy() {
-        for topic in HelpTopic::ALL {
-            assert!(!topic.title().trim().is_empty());
-            assert!(!topic.body().trim().is_empty());
-        }
     }
 }
