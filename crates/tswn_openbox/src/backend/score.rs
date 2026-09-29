@@ -1,21 +1,27 @@
 //! 基准测试摘要与胜率汇总。
 
+#[cfg(test)]
 use std::fmt::Write as _;
+#[cfg(test)]
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tswn_core::runtime::{RuntimeRunner, runtime_groups_win_rate, runtime_score};
-use tswn_core::win_rate::WinRateTiming;
+use tswn_core::runtime::runtime_score;
+#[cfg(test)]
+use tswn_core::runtime::{RuntimeRunner, runtime_groups_win_rate};
 
+#[cfg(test)]
 use super::format::display_group;
+#[cfg(test)]
 use super::parse::{first_duplicate_name_in_matchup, groups_have_same_players};
 
+#[cfg(test)]
 #[derive(Debug, Clone)]
 pub struct BenchSummary {
     pub wins: usize,
     pub total: usize,
-    pub timing: WinRateTiming,
 }
 
+#[cfg(test)]
 impl BenchSummary {
     pub fn win_rate_percent(&self) -> f64 { self.wins as f64 * 100.0 / self.total.max(1) as f64 }
 }
@@ -29,12 +35,14 @@ pub struct BatchRateSummary {
     pub skipped_matchups: usize,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone)]
 pub enum BatchTargetOutcome {
     Rate,
     Skipped,
 }
 
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub fn bench_batch_rate_for_group(
     player: &str,
@@ -156,14 +164,20 @@ pub fn namer_pf_score(
     threads: Option<usize>,
     eval_rq: f64,
 ) -> f64 {
-    let mut target_group = base_group.to_vec();
-    if duplicate {
-        target_group.extend(base_group.iter().cloned());
-    }
-    let summary = run_bench_score_inner(&target_group, modifier, n, threads, eval_rq);
-    summary.wins as f64 * 10_000.0 / summary.total.max(1) as f64
+    let duplicated;
+    let target_group = if duplicate {
+        duplicated = base_group.iter().chain(base_group).cloned().collect::<Vec<_>>();
+        &duplicated
+    } else {
+        base_group
+    };
+    let thread = threads.and_then(|value| u32::try_from(value).ok()).unwrap_or(0);
+    runtime_score(target_group, modifier, n, eval_rq, thread)
+        .map(|summary| summary.wins as f64 * 10_000.0 / summary.total.max(1) as f64)
+        .unwrap_or(0.0)
 }
 
+#[cfg(test)]
 fn bench_winrate_summary(raw: &str, n: usize, threads: Option<usize>, eval_rq: f64) -> Result<BenchSummary, String> {
     let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_owned());
     let thread = threads.and_then(|value| u32::try_from(value).ok()).unwrap_or(0);
@@ -171,35 +185,6 @@ fn bench_winrate_summary(raw: &str, n: usize, threads: Option<usize>, eval_rq: f
         .map(|summary| BenchSummary {
             wins: summary.wins,
             total: summary.total,
-            timing: WinRateTiming {
-                init_nanos: summary.timing.init_nanos,
-                fight_nanos: summary.timing.fight_nanos,
-            },
         })
         .map_err(|error| error.to_string())
-}
-
-fn run_bench_score_inner(
-    target_group: &[String],
-    modifier: &str,
-    n: usize,
-    threads: Option<usize>,
-    eval_rq: f64,
-) -> BenchSummary {
-    let thread = threads.and_then(|value| u32::try_from(value).ok()).unwrap_or(0);
-    match runtime_score(target_group, modifier, n, eval_rq, thread) {
-        Ok(summary) => BenchSummary {
-            wins: summary.wins,
-            total: summary.total,
-            timing: WinRateTiming {
-                init_nanos: summary.timing.init_nanos,
-                fight_nanos: summary.timing.fight_nanos,
-            },
-        },
-        Err(_) => BenchSummary {
-            wins: 0,
-            total: 0,
-            timing: WinRateTiming::default(),
-        },
-    }
 }

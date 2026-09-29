@@ -97,21 +97,20 @@ pub fn first_duplicate_name_in_matchup(groups: &[&str]) -> Option<String> {
     None
 }
 
+#[cfg(test)]
 pub fn groups_have_same_players(left: &str, right: &str) -> bool {
-    let mut left = normalized_group_players(left);
-    let mut right = normalized_group_players(right);
-    left.sort_unstable();
-    right.sort_unstable();
-    left == right
+    normalized_group_players(left) == normalized_group_players(right)
 }
 
-fn normalized_group_players(group: &str) -> Vec<String> {
-    group
+pub(super) fn normalized_group_players(group: &str) -> Vec<String> {
+    let mut players: Vec<_> = group
         .lines()
         .map(str::trim)
         .filter(|name| !name.is_empty())
         .map(raw_namerena_to_id_name)
-        .collect()
+        .collect();
+    players.sort_unstable();
+    players
 }
 
 fn parse_namer_pf_group_line(line: &str) -> Vec<String> {

@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tswn_core::runtime::{RuntimeCqpMatchup, runtime_cqp_matchups_observed};
 
-use super::parse::{first_duplicate_name_in_matchup, groups_have_same_players};
+use super::parse::{first_duplicate_name_in_matchup, normalized_group_players};
 
 pub(super) struct PairMatrixInput<'a> {
     pub players: &'a [String],
@@ -84,6 +84,12 @@ fn run_pair_matrix_inner(
         .and_then(|n| n.checked_mul(target_count))
         .ok_or_else(|| "pair: 配队矩阵大小溢出。".to_owned())?;
     let mut done = 0;
+    let target_identities = input
+        .target_factored
+        .then(|| input.targets.iter().map(|target| normalized_group_players(target)).collect::<Vec<_>>());
+    let mut current_pair = None;
+    let mut team = String::new();
+    let mut team_identity = Vec::new();
     let mut accumulated = PairAccumulator::default();
     let mut rates = Vec::new();
     // 增量显示按输入索引归组；只对已完整完成的队友组合求和。
@@ -127,12 +133,24 @@ fn run_pair_matrix_inner(
         let mut slots = Vec::with_capacity(end - offset);
         let mut request_flats = Vec::new();
         for flat in offset..end {
+            if input.cancel.load(Ordering::Relaxed) {
+                return Ok(());
+            }
             let pair = flat / target_count;
             let player_index = pair / teammate_count;
             let teammate_index = pair % teammate_count;
             let target = &input.targets[flat % target_count];
-            let team = format!("{}\n{}", input.players[player_index], input.teammates[teammate_index]);
-            if input.target_factored && groups_have_same_players(&team, target) {
+            if current_pair != Some(pair) {
+                team = format!("{}\n{}", input.players[player_index], input.teammates[teammate_index]);
+                if input.target_factored {
+                    team_identity = normalized_group_players(&team);
+                }
+                current_pair = Some(pair);
+            }
+            if target_identities
+                .as_ref()
+                .is_some_and(|targets| team_identity == targets[flat % target_count])
+            {
                 slots.push(Slot::Mirror);
                 record_live(flat, Some(50.0));
                 done += 1;

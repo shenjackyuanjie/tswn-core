@@ -1,7 +1,6 @@
 //! 批量结果文本格式化。
 
 use std::fmt::Write as _;
-use std::time::Duration;
 
 use super::types::{OutputMode, PairDetailMode};
 
@@ -110,6 +109,7 @@ pub fn format_pair_screen_log(
     out
 }
 
+#[cfg(test)]
 pub fn display_group(raw: &str) -> String {
     raw.lines().map(str::trim).filter(|line| !line.is_empty()).collect::<Vec<_>>().join(", ")
 }
@@ -121,11 +121,6 @@ pub fn format_rate(value: f64, precision: usize) -> String {
         value
     };
     format!("{value:.precision$}")
-}
-
-pub fn _throughput(total: usize, elapsed: Duration) -> f64 {
-    let secs = elapsed.as_secs_f64();
-    if secs > 0.0 { total as f64 / secs } else { 0.0 }
 }
 
 fn escape_json_string(raw: &str) -> String {
