@@ -24,7 +24,7 @@ pub(crate) struct LogBuffer {
     lines: VecDeque<LogLine>,
     bytes: usize,
     non_blank_lines: usize,
-    skill_board_lines: usize,
+    skill_board_indices: VecDeque<usize>,
     max_bytes: usize,
     discarded: usize,
 }
@@ -39,7 +39,7 @@ impl LogBuffer {
             lines: VecDeque::new(),
             bytes: 0,
             non_blank_lines: 0,
-            skill_board_lines: 0,
+            skill_board_indices: VecDeque::new(),
             max_bytes,
             discarded: 0,
         }
@@ -49,7 +49,7 @@ impl LogBuffer {
         self.lines.clear();
         self.bytes = 0;
         self.non_blank_lines = 0;
-        self.skill_board_lines = 0;
+        self.skill_board_indices.clear();
         self.discarded = 0;
     }
 
@@ -59,7 +59,11 @@ impl LogBuffer {
 
     pub(crate) fn get(&self, index: usize) -> Option<&LogLine> { self.lines.get(index) }
 
-    pub(crate) fn skill_board_line_count(&self) -> usize { self.skill_board_lines }
+    pub(crate) fn skill_board_line_count(&self) -> usize { self.skill_board_indices.len() }
+
+    pub(crate) fn skill_board_line(&self, index: usize) -> Option<&LogLine> {
+        self.get(self.skill_board_indices.get(index)?.checked_sub(self.discarded)?)
+    }
 
     pub(crate) fn discarded_lines(&self) -> usize { self.discarded }
 
@@ -86,21 +90,12 @@ impl LogBuffer {
         text
     }
 
-    pub(crate) fn skill_board_text(&self) -> String {
-        let mut text = String::new();
-        for line in &self.lines {
-            if line.kind == LogKind::SkillBoard {
-                text.push_str(line.display_text());
-                text.push('\n');
-            }
-        }
-        text
-    }
-
     fn push_line(&mut self, text: &str, kind: LogKind) {
         self.bytes += text.len() + 1;
         self.non_blank_lines += usize::from(!text.trim().is_empty());
-        self.skill_board_lines += usize::from(kind == LogKind::SkillBoard);
+        if kind == LogKind::SkillBoard {
+            self.skill_board_indices.push_back(self.discarded + self.lines.len());
+        }
         self.lines.push_back(LogLine {
             text: text.to_owned(),
             kind,
@@ -111,7 +106,9 @@ impl LogBuffer {
             self.discarded += 1;
             self.bytes -= removed.text.len() + 1;
             self.non_blank_lines -= usize::from(!removed.text.trim().is_empty());
-            self.skill_board_lines -= usize::from(removed.kind == LogKind::SkillBoard);
+            if removed.kind == LogKind::SkillBoard {
+                self.skill_board_indices.pop_front();
+            }
         }
     }
 }
@@ -130,7 +127,7 @@ mod tests {
         assert_eq!(log.copy_text(), "开头\n\n高亮\n明细\n\n技能\n说明\n");
         assert_eq!(log.get(2).unwrap().kind, LogKind::Highlight);
         assert_eq!(log.get(5).unwrap().kind, LogKind::SkillBoard);
-        assert_eq!(log.skill_board_text(), "技能\n");
+        assert_eq!(log.skill_board_line(0).unwrap().display_text(), "技能");
         assert_eq!(log.skill_board_line_count(), 1);
     }
 
@@ -145,7 +142,7 @@ mod tests {
         assert_eq!(log.get(0).unwrap().kind, LogKind::Highlight);
         assert_eq!(log.get(1).unwrap().kind, LogKind::SkillBoard);
         assert_eq!(log.skill_board_line_count(), 1);
-        assert_eq!(log.skill_board_text(), "技能\n");
+        assert_eq!(log.skill_board_line(0).unwrap().display_text(), "技能");
 
         log.clear();
         assert!(log.is_empty());
@@ -169,6 +166,6 @@ mod tests {
 
         assert_eq!(log.copy_text(), "技能\r\n说明\r\n");
         assert_eq!(log.get(0).unwrap().display_text(), "技能");
-        assert_eq!(log.skill_board_text(), "技能\n");
+        assert_eq!(log.skill_board_line(0).unwrap().display_text(), "技能");
     }
 }

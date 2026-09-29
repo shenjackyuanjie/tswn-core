@@ -31,25 +31,37 @@ struct Record {
     top: Option<usize>,
     bytes: usize,
     summary: String,
+    detail_indexes: Vec<usize>,
+    details_dirty: bool,
 }
 
 impl Record {
-    fn detail_order(&self) -> Vec<usize> {
+    fn refresh_detail_order(&mut self) {
+        if !self.details_dirty {
+            return;
+        }
         let mut indexes: Vec<_> = self.entries.keys().copied().collect();
         if self.kind == ResultKind::Pair {
-            indexes.sort_by(|a, b| {
+            let compare = |a: &usize, b: &usize| {
                 self.entries[b]
                     .data
                     .value
                     .unwrap_or(0.0)
                     .total_cmp(&self.entries[a].data.value.unwrap_or(0.0))
                     .then(a.cmp(b))
-            });
+            };
+            // Top 模式只排序会显示的部分，避免大队友表全量排序。
+            if let Some(top) = self.top.filter(|top| *top < indexes.len()) {
+                indexes.select_nth_unstable_by(top, compare);
+                indexes.truncate(top);
+            }
+            indexes.sort_unstable_by(compare);
         }
         if let Some(top) = self.top {
             indexes.truncate(top);
         }
-        indexes
+        self.detail_indexes = indexes;
+        self.details_dirty = false;
     }
 
     fn update_summary(&mut self) {
@@ -158,6 +170,7 @@ impl ResultsView {
             }
         }
         let record = self.records.entry(group).or_insert_with(|| {
+            self.dirty = true;
             if self.order.is_empty() {
                 self.expanded.insert(group);
                 self.selected = Some(group);
@@ -174,9 +187,15 @@ impl ResultsView {
                 top: update.top,
                 bytes,
                 summary: String::new(),
+                detail_indexes: Vec::new(),
+                details_dirty: true,
             }
         });
         for entry in update.entries {
+            record.details_dirty = true;
+            if self.mode == ViewMode::Cards && self.expanded.contains(&group) {
+                self.dirty = true;
+            }
             let display = display_value(&entry, update.precision);
             let bytes = entry.bytes() + display.len() + 64;
             if let Some(old) = record.entries.insert(entry.index, DisplayEntry { data: entry, display }) {
@@ -191,7 +210,6 @@ impl ResultsView {
             record.finish = update.finish;
         }
         record.update_summary();
-        self.dirty = true;
         while self.bytes > MAX_RESULT_BYTES {
             let Some(old) = self.order.front().copied() else { break };
             self.remove(old);
@@ -250,8 +268,9 @@ impl ResultsView {
             for &group in &self.order {
                 self.rows.push((group, None));
                 if self.mode == ViewMode::Cards && self.expanded.contains(&group) {
-                    self.rows
-                        .extend(self.records[&group].detail_order().into_iter().map(|index| (group, Some(index))));
+                    let record = self.records.get_mut(&group).unwrap();
+                    record.refresh_detail_order();
+                    self.rows.extend(record.detail_indexes.iter().map(|&index| (group, Some(index))));
                 }
             }
             self.dirty = false;
@@ -376,13 +395,14 @@ impl ResultsView {
             }
             self.dirty = true;
         }
-        if table && let Some(record) = self.selected.and_then(|id| self.records.get(&id)) {
+        if table && let Some(record) = self.selected.and_then(|id| self.records.get_mut(&id)) {
+            record.refresh_detail_order();
             ui.separator();
             ui.label(egui::RichText::new(&record.label).strong());
             if record.top.is_some() && record.finish.is_none() {
                 ui.weak("当前 Top，全部队友完成后确定最终排名");
             }
-            let details = record.detail_order();
+            let details = &record.detail_indexes;
             egui::ScrollArea::both()
                 .id_salt("selected_result_details")
                 .show_rows(ui, ROW_HEIGHT, details.len(), |ui, rows| {
@@ -436,6 +456,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn updates_to_collapsed_records_do_not_rebuild_rows_and_top_is_stable() {
+        let mut view = ResultsView::default();
+        let mut log = LogBuffer::default();
+        for group in 0..2 {
+            view.apply(ResultUpdate::new(group, "名字", ResultKind::Pair, 2), &mut log);
+        }
+        view.dirty = false;
+        let mut update = ResultUpdate::new(1, "名字", ResultKind::Pair, 2);
+        update.top = Some(2);
+        update.entries = vec![
+            ResultEntry::number(2, "丙".into(), 80.0),
+            ResultEntry::number(1, "乙".into(), 80.0),
+            ResultEntry::number(0, "甲".into(), 90.0),
+        ];
+        view.records.get_mut(&1).unwrap().top = Some(2);
+        view.apply(update, &mut log);
+        assert!(!view.dirty, "折叠卡片更新数值无需重建整张行索引");
+        let record = view.records.get_mut(&1).unwrap();
+        record.refresh_detail_order();
+        assert_eq!(record.detail_indexes, vec![0, 1]);
+        let allocation = record.detail_indexes.as_ptr();
+        record.refresh_detail_order();
+        assert_eq!(allocation, record.detail_indexes.as_ptr(), "无变化时应复用排序结果");
+    }
+
+    #[test]
     fn large_result_lists_only_layout_visible_rows_in_both_render_modes() {
         let mut view = ResultsView::default();
         let mut log = LogBuffer::default();
@@ -447,7 +493,8 @@ mod tests {
             update.entries.push(ResultEntry::number(1, "mate1".into(), 80.0));
             view.apply(update, &mut log);
         }
-        assert_eq!(view.records[&9999].detail_order(), vec![1, 0]);
+        view.records.get_mut(&9999).unwrap().refresh_detail_order();
+        assert_eq!(view.records[&9999].detail_indexes, vec![1, 0]);
         let ctx = egui::Context::default();
         for mode in [ViewMode::Cards, ViewMode::Table] {
             view.mode = mode;
@@ -490,7 +537,8 @@ mod tests {
             view.apply(update, &mut log);
         }
         assert_eq!(view.order.iter().copied().collect::<Vec<_>>(), vec![1, 0]);
-        assert_eq!(view.records[&1].detail_order(), vec![0, 2]);
+        view.records.get_mut(&1).unwrap().refresh_detail_order();
+        assert_eq!(view.records[&1].detail_indexes, vec![0, 2]);
         assert_eq!(view.records[&0].entries[&1].data.value, Some(40.0));
         let mut rejected = ResultUpdate::new(1, "重名", ResultKind::Rate, 2);
         rejected.finish = Some(ResultFinish {

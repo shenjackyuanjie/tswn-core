@@ -352,9 +352,23 @@ impl OpenboxApp {
             egui::CollapsingHeader::new(format!("技能榜 ({skill_board_line_count})"))
                 .default_open(false)
                 .show(ui, |ui| {
-                    let skill_board_log = self.log.skill_board_text();
                     let text_height = compact_log_text_height(skill_board_line_count);
-                    readonly_log_view(ui, "skill_board_log", &skill_board_log, text_height);
+                    egui::ScrollArea::both().id_salt("skill_board_log").max_height(text_height).show_rows(
+                        ui,
+                        ui.text_style_height(&egui::TextStyle::Monospace),
+                        skill_board_line_count,
+                        |ui, rows| {
+                            for index in rows {
+                                if let Some(line) = self.log.skill_board_line(index) {
+                                    ui.add(
+                                        egui::Label::new(egui::RichText::new(line.display_text()).monospace())
+                                            .extend()
+                                            .selectable(true),
+                                    );
+                                }
+                            }
+                        },
+                    );
                 });
         }
         ui.add_space(LOG_SECTION_GAP);
@@ -401,16 +415,6 @@ impl OpenboxApp {
                 }
             });
     }
-}
-
-fn readonly_log_view(ui: &mut egui::Ui, id: &'static str, text: &str, viewport_height: f32) {
-    egui::ScrollArea::both()
-        .id_salt(id)
-        .auto_shrink([false, false])
-        .max_height(viewport_height)
-        .show(ui, |ui| {
-            ui.add(egui::Label::new(egui::RichText::new(text).monospace()).selectable(true));
-        });
 }
 
 fn compact_log_text_height(line_count: usize) -> f32 { (line_count.clamp(4, 20) as f32 * 17.0 + 12.0).min(360.0) }
