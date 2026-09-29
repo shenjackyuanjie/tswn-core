@@ -116,3 +116,16 @@ mod tests {
         );
     }
 }
+
+pub(super) fn finish_output(output_file: Option<&Path>, out: String) -> Result<String, String> {
+    match output_file {
+        Some(path) => {
+            let mut file = create_output_file(path)?;
+            file.write_all(out.as_bytes())
+                .and_then(|_| file.flush())
+                .map_err(|err| format!("写入输出文件失败: {}: {err}", path.display()))?;
+            Ok(format!("完成，结果已写入: {}", path.display()))
+        }
+        None => Ok(out),
+    }
+}

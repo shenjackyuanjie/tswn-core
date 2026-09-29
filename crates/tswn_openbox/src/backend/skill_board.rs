@@ -6,7 +6,8 @@ use serde::Deserialize;
 use tswn_core::cli_api;
 use tswn_core::namerena::skill_name_to_id;
 
-use super::tasks::NamerPfScores;
+use super::format::SKILL_CN_NAMES;
+use super::score::NamerPfScores;
 
 #[derive(Debug, Clone)]
 pub struct SkillBoardConfig {
@@ -38,12 +39,6 @@ struct BuiltSkill {
 const LESS_SKILL_KEY: &str = "lessskl";
 const LESS_SKILL_CN_NAME: &str = "白板";
 const LESS_SKILL_MAX_LEVEL: u64 = 30;
-
-const SKILL_CN_NAMES: [&str; 35] = [
-    "火球", "冰冻", "雷击", "地裂", "吸血", "投毒", "连击", "会心", "瘟疫", "命轮", "狂暴", "魅惑", "加速", "减速", "诅咒",
-    "治愈", "苏生", "净化", "铁壁", "蓄力", "聚气", "潜行", "血祭", "分身", "幻术", "防御", "守护", "反弹", "护符", "护盾",
-    "反击", "吞噬", "召灵", "垂死", "隐匿",
-];
 
 impl SkillBoardConfig {
     /// 从显式路径加载技能榜阈值（CLI 入口）。

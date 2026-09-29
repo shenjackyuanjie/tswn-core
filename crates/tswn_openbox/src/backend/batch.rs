@@ -6,6 +6,7 @@ use std::sync::atomic::Ordering;
 
 use tswn_core::runtime::{RuntimeCqpMatchup, runtime_cqp_matchups_observed};
 
+use super::format::should_highlight;
 use super::format::{format_batch_file_record, format_batch_screen_log};
 use super::live::{ResultEntry, ResultFinish, ResultKind, ResultObserver, ResultUpdate};
 use super::output::{create_output_file, finalize_sorted_output_file};
@@ -14,7 +15,7 @@ use super::parse::{
     parse_target_groups,
 };
 use super::score::BatchRateSummary;
-use super::tasks::{eval_rq, outer_thread_spec, should_highlight};
+use super::score::{eval_rq, outer_thread_spec};
 use super::types::{BatchRateInput, ProgressEvent};
 
 const MATCHUP_WINDOW: usize = 4096;
@@ -326,9 +327,11 @@ fn emit_batch_rate_result(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::score::bench_batch_rate_for_group;
     use crate::backend::{CommonBenchOptions, OutputMode};
     use std::cell::RefCell;
     use std::sync::{Arc, Mutex, atomic::AtomicBool};
+    use tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ;
 
     #[test]
     fn windows_preserve_text_and_live_scores_with_mirrors_weights_and_duplicates() {
@@ -398,5 +401,104 @@ mod tests {
                 }
             }
         }
+    }
+    #[test]
+    fn batch_rate_runtime_matrix_matches_legacy_summary_and_order() {
+        let players = ["alpha@red", "beta@blue"];
+        let targets = ["gamma@green", "delta@yellow"];
+        let mut expected = Vec::new();
+        for player in players {
+            let mut verbose = String::new();
+            let cancel = AtomicBool::new(false);
+            let summary = bench_batch_rate_for_group(
+                player,
+                &targets.map(str::to_owned),
+                None,
+                24,
+                Some(1),
+                DEFAULT_EVAL_RQ,
+                false,
+                &mut verbose,
+                &cancel,
+                |_, _, _, _| {},
+            );
+            expected.push(format_batch_screen_log(player, summary.avg, &[], 9));
+        }
+
+        let events = RefCell::new(Vec::new());
+        run_batch_rate(
+            BatchRateInput {
+                target_text: targets.join("\n"),
+                player_text: players.join("\n"),
+                target_factor_enabled: false,
+                target_double_plus: false,
+                player_double_plus: false,
+                show_matchups: false,
+                highlight_delta: None,
+                output_mode: OutputMode::Log,
+                output_file: None,
+                options: CommonBenchOptions {
+                    count: 24,
+                    threads: Some(4),
+                    keep_rq: true,
+                    verbose: false,
+                    min_screen: None,
+                    min_file: None,
+                    wr_precision: 9,
+                },
+                cancel: Arc::new(AtomicBool::new(false)),
+            },
+            |event| events.borrow_mut().push(event),
+        );
+
+        let events = events.into_inner();
+        let actual = events
+            .iter()
+            .filter_map(|event| match event {
+                ProgressEvent::Log(line) if players.iter().any(|player| line.contains(player)) => Some(line.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected);
+        assert!(events.iter().any(|event| matches!(event, ProgressEvent::Progress { done: 4, total: 4 })));
+        assert!(events.iter().any(|event| matches!(event, ProgressEvent::Done(Ok(_)))));
+    }
+
+    #[test]
+    fn factored_mirror_match_is_weighted_as_fifty_percent() {
+        let events = RefCell::new(Vec::new());
+        run_batch_rate(
+            BatchRateInput {
+                target_text: "[[targets]]\nfactor = 2.5\nplayers = [\"mario\", \"luigi\"]".to_string(),
+                player_text: "mario+luigi".to_string(),
+                target_factor_enabled: true,
+                target_double_plus: false,
+                player_double_plus: false,
+                show_matchups: true,
+                highlight_delta: None,
+                output_mode: OutputMode::Log,
+                output_file: None,
+                options: CommonBenchOptions {
+                    count: 1,
+                    threads: Some(1),
+                    keep_rq: true,
+                    verbose: false,
+                    min_screen: None,
+                    min_file: None,
+                    wr_precision: 9,
+                },
+                cancel: Arc::new(AtomicBool::new(false)),
+            },
+            |event| events.borrow_mut().push(event),
+        );
+
+        let events = events.into_inner();
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, ProgressEvent::Log(log) if log.contains("50.000000000")))
+        );
+        assert!(events.iter().any(|event| matches!(event, ProgressEvent::Progress { done: 1, total: 1 })));
+        assert!(events.iter().any(|event| matches!(event, ProgressEvent::Done(Ok(_)))));
     }
 }

@@ -1,368 +1,289 @@
-//! 配队矩阵的有界窗口执行与稳定汇总。
-//!
-//! 并行单元横跨选手、队友和靶子，不能只把同一个选手的队友留在串行外层。
-//! 窗口只限制在途请求，不改变原始汇总顺序；未完整完成的选手不会输出半成品排名。
+//! 配队任务：输入准备、队友明细与最终排名。
 
-use std::sync::atomic::{AtomicBool, Ordering};
+mod matrix;
 
-use tswn_core::runtime::{RuntimeCqpMatchup, runtime_cqp_matchups_observed};
+use super::format::{format_pair_file_record, format_pair_screen_log, should_highlight};
+use super::live::{ResultEntry, ResultFinish, ResultKind, ResultObserver, ResultUpdate};
+use super::output::{create_output_file, finalize_sorted_output_file};
+use super::parse::{parse_factored_target_groups, parse_player_groups_with_labels, parse_target_groups};
+use super::score::{eval_rq, outer_thread_spec};
+use super::types::{PairInput, ProgressEvent};
+use matrix::{PairMatrixInput, run_pair_matrix, run_pair_matrix_observed};
+use std::io::Write as _;
+use std::sync::atomic::Ordering;
+use std::time::Instant;
+use tswn_core::cli_api;
 
-use super::parse::{first_duplicate_name_in_matchup, normalized_group_players};
+pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) { run_pair_observed(input, send, None); }
 
-pub(super) struct PairMatrixInput<'a> {
-    pub players: &'a [String],
-    pub teammates: &'a [String],
-    pub targets: &'a [String],
-    pub target_factors: &'a [f64],
-    pub teammate_factors: &'a [f64],
-    pub target_factored: bool,
-    pub teammate_factored: bool,
-    pub n: usize,
-    pub eval_rq: f64,
-    pub threads: u32,
-    pub cancel: &'a AtomicBool,
-}
-
-#[derive(Default)]
-struct PairAccumulator {
-    weighted_rate: f64,
-    factor: f64,
-    valid: usize,
-}
-
-enum Slot {
-    Mirror,
-    Skip,
-    Request(usize),
-}
-
-pub(super) fn run_pair_matrix(
-    input: &PairMatrixInput<'_>,
-    on_progress: impl FnMut(usize),
-    on_player: impl FnMut(usize, Vec<(f64, usize)>) -> Result<(), String>,
-) -> Result<(), String> {
-    run_pair_matrix_windowed(input, 4096, on_progress, on_player)
-}
-
-pub(super) fn run_pair_matrix_observed(
-    input: &PairMatrixInput<'_>,
-    on_progress: impl FnMut(usize),
-    on_player: impl FnMut(usize, Vec<(f64, usize)>) -> Result<(), String>,
-    on_pair: &mut dyn FnMut(usize, usize, Option<f64>),
-) -> Result<(), String> {
-    run_pair_matrix_inner(input, 4096, on_progress, on_player, Some(on_pair))
-}
-
-fn run_pair_matrix_windowed(
-    input: &PairMatrixInput<'_>,
-    window_size: usize,
-    on_progress: impl FnMut(usize),
-    on_player: impl FnMut(usize, Vec<(f64, usize)>) -> Result<(), String>,
-) -> Result<(), String> {
-    run_pair_matrix_inner(input, window_size, on_progress, on_player, None)
-}
-
-fn run_pair_matrix_inner(
-    input: &PairMatrixInput<'_>,
-    window_size: usize,
-    mut on_progress: impl FnMut(usize),
-    mut on_player: impl FnMut(usize, Vec<(f64, usize)>) -> Result<(), String>,
-    mut on_pair: Option<&mut dyn FnMut(usize, usize, Option<f64>)>,
-) -> Result<(), String> {
-    let target_count = input.targets.len();
-    let teammate_count = input.teammates.len();
-    if target_count == 0 || teammate_count == 0 || input.players.is_empty() || window_size == 0 {
-        return Err("pair: 配队矩阵或窗口为空。".to_owned());
-    }
-    if input.target_factors.len() != target_count || input.teammate_factors.len() != teammate_count {
-        return Err("pair: 权重数量与输入数量不一致。".to_owned());
-    }
-    let total = input
-        .players
-        .len()
-        .checked_mul(teammate_count)
-        .and_then(|n| n.checked_mul(target_count))
-        .ok_or_else(|| "pair: 配队矩阵大小溢出。".to_owned())?;
-    let mut done = 0;
-    let target_identities = input
-        .target_factored
-        .then(|| input.targets.iter().map(|target| normalized_group_players(target)).collect::<Vec<_>>());
-    let mut current_pair = None;
-    let mut team = String::new();
-    let mut team_identity = Vec::new();
-    let mut accumulated = PairAccumulator::default();
-    let mut rates = Vec::new();
-    // 增量显示按输入索引归组；只对已完整完成的队友组合求和。
-    let mut pending_pairs = std::collections::HashMap::<usize, (usize, Vec<Option<f64>>)>::new();
-    let mut record_live = |flat: usize, rate: Option<f64>| {
-        let Some(callback) = on_pair.as_mut() else { return };
-        let pair = flat / target_count;
-        let entry = pending_pairs.entry(pair).or_insert_with(|| (0, vec![None; target_count]));
-        entry.0 += 1;
-        entry.1[flat % target_count] = rate;
-        if entry.0 == target_count {
-            let (_, rates) = pending_pairs.remove(&pair).unwrap();
-            let mut sum = 0.0;
-            let mut weights = 0.0;
-            for (index, rate) in rates.into_iter().enumerate() {
-                if let Some(rate) = rate {
-                    let weight = if input.target_factored {
-                        input.target_factors[index]
-                    } else {
-                        1.0
-                    };
-                    sum += rate * weight;
-                    weights += weight;
-                }
-            }
-            let teammate = pair % teammate_count;
-            let factor = if input.teammate_factored {
-                input.teammate_factors[teammate]
-            } else {
-                1.0
-            };
-            callback(pair / teammate_count, teammate, (weights > 0.0).then(|| sum / weights * factor));
+/// GUI 可选增量观察接口；None 保留原来的输出契约。
+pub fn run_pair_observed(input: PairInput, send: impl Fn(ProgressEvent), observer: ResultObserver<'_>) {
+    let (target_groups, target_factors) = match parse_pair_target_groups(&input.target_text, input.target_factor_enabled) {
+        Ok(targets) => targets,
+        Err(err) => {
+            send(ProgressEvent::Done(Err(err)));
+            return;
         }
     };
-    for offset in (0..total).step_by(window_size) {
-        if input.cancel.load(Ordering::Relaxed) {
-            break;
-        }
-        let end = offset.saturating_add(window_size).min(total);
-        let mut requests = Vec::new();
-        let mut slots = Vec::with_capacity(end - offset);
-        let mut request_flats = Vec::new();
-        for flat in offset..end {
-            if input.cancel.load(Ordering::Relaxed) {
-                return Ok(());
+    let (player_groups, player_labels) = parse_player_groups_with_labels(&input.player_text, input.player_double_plus);
+    let (teammate_groups, teammate_labels, teammate_factors) =
+        match parse_pair_teammate_groups(&input.teammate_text, input.teammate_double_plus, input.teammate_factor_enabled) {
+            Ok(value) => value,
+            Err(err) => {
+                send(ProgressEvent::Done(Err(err)));
+                return;
             }
-            let pair = flat / target_count;
-            let player_index = pair / teammate_count;
-            let teammate_index = pair % teammate_count;
-            let target = &input.targets[flat % target_count];
-            if current_pair != Some(pair) {
-                team = format!("{}\n{}", input.players[player_index], input.teammates[teammate_index]);
-                if input.target_factored {
-                    team_identity = normalized_group_players(&team);
-                }
-                current_pair = Some(pair);
-            }
-            if target_identities
-                .as_ref()
-                .is_some_and(|targets| team_identity == targets[flat % target_count])
-            {
-                slots.push(Slot::Mirror);
-                record_live(flat, Some(50.0));
-                done += 1;
-            } else if !input.target_factored && first_duplicate_name_in_matchup(&[&team, target]).is_some() {
-                slots.push(Slot::Skip);
-                record_live(flat, None);
-                done += 1;
-            } else {
-                slots.push(Slot::Request(requests.len()));
-                request_flats.push(flat);
-                let lines = |group: &str| group.lines().map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned).collect();
-                requests.push(RuntimeCqpMatchup::new(vec![lines(&team), lines(target)]));
-            }
-        }
-        on_progress(done);
-        let mut matrix = runtime_cqp_matchups_observed(
-            &requests,
-            input.n,
-            input.eval_rq,
-            input.threads,
-            input.cancel,
-            |index, result| {
-                record_live(
-                    request_flats[index],
-                    result.summary.as_ref().ok().map(|summary| summary.win_rate_percent()),
-                );
-                done += 1;
-                on_progress(done);
-            },
-        )
-        .map_err(|err| format!("pair 执行失败: {err}"))?;
-
-        // 浮点加权必须按原始 target 顺序进行，不能按 worker 的完成顺序累加。
-        for (slot_offset, slot) in slots.into_iter().enumerate() {
-            let flat = offset + slot_offset;
-            let target_index = flat % target_count;
-            let pair = flat / target_count;
-            let teammate_index = pair % teammate_count;
-            let player_index = pair / teammate_count;
-            let rate = match slot {
-                Slot::Mirror => Some(50.0),
-                Slot::Skip => None,
-                Slot::Request(index) => {
-                    let Some(outcome) = matrix.matchups[index].take() else {
-                        // 取消后不能把尚未完成的 matchup 当成有效的零胜率。
-                        return Ok(());
-                    };
-                    outcome.summary.ok().map(|summary| summary.win_rate_percent())
-                }
-            };
-            if let Some(rate) = rate {
-                let factor = if input.target_factored {
-                    input.target_factors[target_index]
-                } else {
-                    1.0
-                };
-                accumulated.weighted_rate += rate * factor;
-                accumulated.factor += factor;
-                accumulated.valid += 1;
-            }
-            if target_index + 1 == target_count {
-                if accumulated.valid > 0 {
-                    let avg = if accumulated.factor > 0.0 {
-                        accumulated.weighted_rate / accumulated.factor
-                    } else {
-                        0.0
-                    };
-                    let factor = if input.teammate_factored {
-                        input.teammate_factors[teammate_index]
-                    } else {
-                        1.0
-                    };
-                    rates.push((avg * factor, teammate_index));
-                }
-                accumulated = PairAccumulator::default();
-                if teammate_index + 1 == teammate_count {
-                    on_player(player_index, std::mem::take(&mut rates))?;
-                }
-            }
-        }
+        };
+    if target_groups.is_empty() {
+        send(ProgressEvent::Done(Err("pair: 靶子列表为空。".to_string())));
+        return;
     }
-    Ok(())
+    if player_groups.is_empty() {
+        send(ProgressEvent::Done(Err("pair: 选手列表为空。".to_string())));
+        return;
+    }
+    if teammate_groups.is_empty() {
+        send(ProgressEvent::Done(Err("pair: 队友列表为空。".to_string())));
+        return;
+    }
+
+    let mut output = match input.output_file.as_deref() {
+        Some(path) => match create_output_file(path) {
+            Ok(file) => Some(file),
+            Err(err) => {
+                send(ProgressEvent::Done(Err(err)));
+                return;
+            }
+        },
+        None => None,
+    };
+    if output.is_none() {
+        send(ProgressEvent::Log("未选择输出文件，本次只输出到日志。".to_string()));
+    }
+
+    let n = input.options.count.max(1);
+    let head = input.head.max(1);
+    let eval_rq = eval_rq(input.options.keep_rq);
+    let precision = input.options.wr_precision.min(9);
+    let Some(total) = player_groups
+        .len()
+        .checked_mul(teammate_groups.len())
+        .and_then(|n| n.checked_mul(target_groups.len()))
+    else {
+        send(ProgressEvent::Done(Err("pair: 配队矩阵大小溢出。".to_owned())));
+        return;
+    };
+    let converted_players = match player_groups
+        .iter()
+        .map(|player| player_group_to_ol(player))
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(players) => players,
+        Err(err) => {
+            send(ProgressEvent::Done(Err(err)));
+            return;
+        }
+    };
+    let matrix_input = PairMatrixInput {
+        players: &converted_players,
+        teammates: &teammate_groups,
+        targets: &target_groups,
+        target_factors: &target_factors,
+        teammate_factors: &teammate_factors,
+        target_factored: input.target_factor_enabled,
+        teammate_factored: input.teammate_factor_enabled,
+        n,
+        eval_rq,
+        threads: outer_thread_spec(input.options.threads),
+        cancel: &input.cancel,
+    };
+    let mut last_progress = Instant::now();
+    send(ProgressEvent::Progress { done: 0, total });
+    let on_progress = |done| {
+        // 短 matchup 可能每秒完成数万次；不让 GUI 消息积压反过来限制计算吞吐。
+        if done == total || last_progress.elapsed() >= std::time::Duration::from_millis(40) {
+            send(ProgressEvent::Progress { done, total });
+            last_progress = Instant::now();
+        }
+    };
+    let on_player = |player_index: usize, rates: Vec<(f64, usize)>| {
+        if observer.is_some() && output.is_none() {
+            return Ok(());
+        }
+        let player_label = &player_labels[player_index];
+        let mut pair_rates = rates
+            .into_iter()
+            .map(|(rate, index)| (rate, teammate_labels[index].clone()))
+            .collect::<Vec<_>>();
+        pair_rates.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let selected_count = head.min(pair_rates.len());
+        let final_score = pair_rates.iter().take(selected_count).map(|(rate, _)| *rate).sum::<f64>();
+        if input.options.min_file.is_none_or(|limit| final_score >= limit)
+            && let Some(output) = output.as_mut()
+        {
+            let line = format_pair_file_record(
+                input.output_mode,
+                player_label,
+                final_score,
+                selected_count,
+                head,
+                &pair_rates,
+                precision,
+            );
+            writeln!(output, "{line}").map_err(|err| format!("写入输出文件失败: {err}"))?;
+        }
+        if observer.is_none() && input.options.min_screen.is_none_or(|limit| final_score >= limit) {
+            let log = format_pair_screen_log(
+                player_label,
+                final_score,
+                selected_count,
+                &pair_rates,
+                input.detail_mode,
+                input.detail_min,
+                precision,
+            );
+            if should_highlight(final_score, input.options.min_screen, input.highlight_delta) {
+                send(ProgressEvent::HighlightLog(log));
+            } else {
+                send(ProgressEvent::Log(log));
+            }
+        }
+        Ok(())
+    };
+    let result = if let Some(observer) = observer {
+        let mut pending = std::collections::HashMap::<usize, (usize, Vec<(f64, usize)>)>::new();
+        run_pair_matrix_observed(&matrix_input, on_progress, on_player, &mut |player, teammate, rate| {
+            let entry = pending.entry(player).or_default();
+            entry.0 += 1;
+            if let Some(rate) = rate {
+                entry.1.push((rate, teammate));
+            }
+            let mut update = ResultUpdate::new(player, &player_labels[player], ResultKind::Pair, precision);
+            update.top = (input.detail_mode == super::types::PairDetailMode::Top).then_some(head);
+            if let Some(rate) = rate {
+                let visible = match input.detail_mode {
+                    super::types::PairDetailMode::None => false,
+                    super::types::PairDetailMode::Top => true,
+                    super::types::PairDetailMode::Every => input.detail_min.is_none_or(|min| rate >= min),
+                };
+                if visible {
+                    update
+                        .entries
+                        .push(ResultEntry::number(teammate, teammate_labels[teammate].clone(), rate));
+                }
+            }
+            if entry.0 == teammate_groups.len() {
+                let (_, mut rates) = pending.remove(&player).unwrap();
+                rates.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+                let score = rates.iter().take(head).map(|(rate, _)| rate).sum();
+                update.finish = Some(ResultFinish {
+                    score: Some(score),
+                    visible: input.options.min_screen.is_none_or(|min| score >= min),
+                    highlight: should_highlight(score, input.options.min_screen, input.highlight_delta),
+                });
+            }
+            if !update.entries.is_empty() || update.finish.is_some() {
+                observer(update);
+            }
+        })
+    } else {
+        run_pair_matrix(&matrix_input, on_progress, on_player)
+    };
+    if let Err(err) = result {
+        send(ProgressEvent::Done(Err(err)));
+        return;
+    }
+    if input.cancel.load(Ordering::Relaxed) {
+        send(ProgressEvent::Done(Ok("已停止。".to_owned())));
+        return;
+    }
+
+    if let Err(err) = finalize_sorted_output_file(output.take(), input.output_file.as_deref(), input.output_mode) {
+        send(ProgressEvent::Done(Err(err)));
+        return;
+    }
+
+    let final_message = if let Some(path) = input.output_file.as_deref() {
+        format!("完成，结果已写入: {}", path.display())
+    } else {
+        "完成。".to_string()
+    };
+    send(ProgressEvent::Done(Ok(final_message)));
+}
+
+fn parse_pair_target_groups(content: &str, factor_enabled: bool) -> Result<(Vec<String>, Vec<f64>), String> {
+    if factor_enabled {
+        parse_factored_target_groups(content)
+    } else {
+        let groups = parse_target_groups(content, false);
+        let factors = vec![1.0; groups.len()];
+        Ok((groups, factors))
+    }
+}
+
+type ParsedTeammates = (Vec<String>, Vec<String>, Vec<f64>);
+
+fn parse_pair_teammate_groups(content: &str, double_plus: bool, factor_enabled: bool) -> Result<ParsedTeammates, String> {
+    if factor_enabled {
+        let (groups, factors) = parse_factored_target_groups(content)?;
+        let labels = groups.iter().map(|group| group.lines().collect::<Vec<_>>().join("+")).collect();
+        Ok((groups, labels, factors))
+    } else {
+        let (groups, labels) = parse_player_groups_with_labels(content, double_plus);
+        let factors = vec![1.0; groups.len()];
+        Ok((groups, labels, factors))
+    }
+}
+
+#[cfg(test)]
+fn teammate_score(average_rate: f64, factor: f64, factor_enabled: bool) -> f64 {
+    if factor_enabled { average_rate * factor } else { average_rate }
+}
+
+fn player_to_ol(raw: &str) -> Result<String, String> {
+    if raw.contains("+diy[") || raw.contains("+ol:") {
+        return Ok(raw.to_string());
+    }
+    cli_api::to_diy(raw, false, false).map_err(|err| format!("转换 player-list 名字为 +ol 失败: {raw}: {err}"))
+}
+
+fn player_group_to_ol(group: &str) -> Result<String, String> {
+    group
+        .lines()
+        .map(player_to_ol)
+        .collect::<Result<Vec<_>, _>>()
+        .map(|players| players.join("\n"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::score::bench_batch_rate_for_group;
-
     #[test]
-    fn matrix_matches_legacy_weights_mirrors_duplicates_and_window_boundaries() {
-        let players = vec!["+ol:alpha".to_owned(), "+ol:beta".to_owned()];
-        let teammates = vec!["mate@red".to_owned(), "mate2@green".to_owned(), "mate@red".to_owned()];
-        let targets = vec![
-            "+ol:alpha\nmate@red".to_owned(),
-            "target@blue".to_owned(),
-            "target2@red".to_owned(),
-        ];
-        let factors = [0.5, 1.25, 3.0];
-        let mate_factors = [0.25, 2.0, 1.0];
-        for target_factored in [false, true] {
-            for teammate_factored in [false, true] {
-                let cancel = AtomicBool::new(false);
-                let mut expected = Vec::new();
-                for (player_index, player) in players.iter().enumerate() {
-                    let mut rates = Vec::new();
-                    for (index, mate) in teammates.iter().enumerate() {
-                        let summary = bench_batch_rate_for_group(
-                            &format!("{player}\n{mate}"),
-                            &targets,
-                            target_factored.then_some(&factors[..]),
-                            24,
-                            Some(1),
-                            6.0,
-                            false,
-                            &mut String::new(),
-                            &cancel,
-                            |_, _, _, _| {},
-                        );
-                        if summary.valid_matchups > 0 {
-                            rates.push((summary.avg * if teammate_factored { mate_factors[index] } else { 1.0 }, index));
-                        }
-                    }
-                    expected.push((player_index, rates));
-                }
-                for threads in [1, 4] {
-                    for window in [1, 7, 4096] {
-                        let input = PairMatrixInput {
-                            players: &players,
-                            teammates: &teammates,
-                            targets: &targets,
-                            target_factors: &factors,
-                            teammate_factors: &mate_factors,
-                            target_factored,
-                            teammate_factored,
-                            n: 24,
-                            eval_rq: 6.0,
-                            threads,
-                            cancel: &cancel,
-                        };
-                        let mut actual = Vec::new();
-                        let mut progress = Vec::new();
-                        run_pair_matrix_windowed(
-                            &input,
-                            window,
-                            |done| progress.push(done),
-                            |index, rates| {
-                                actual.push((index, rates));
-                                Ok(())
-                            },
-                        )
-                        .unwrap();
-                        assert_eq!(actual, expected, "threads={threads}, window={window}");
-                        assert_eq!(progress.last(), Some(&18));
-                        assert!(progress.windows(2).all(|pair| pair[0] <= pair[1]));
-                        let mut live = std::collections::BTreeMap::new();
-                        run_pair_matrix_inner(
-                            &input,
-                            window,
-                            |_| {},
-                            |_, _| Ok(()),
-                            Some(&mut |player, teammate, rate| {
-                                assert!(live.insert((player, teammate), rate).is_none());
-                            }),
-                        )
-                        .unwrap();
-                        assert_eq!(live.len(), players.len() * teammates.len());
-                        for (player, rates) in &expected {
-                            for (rate, teammate) in rates {
-                                assert_eq!(live[&(*player, *teammate)], Some(*rate));
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    fn pair_parses_factored_targets_with_their_weights() {
+        let raw = "[[targets]]\nfactor = 2\nplayers = [\"mario\", \"luigi\"]\n\n[[targets]]\nfactor = 0.5\nplayers = [\"peach\"]";
+        let (groups, factors) = parse_pair_target_groups(raw, true).expect("factored targets should parse");
+        assert_eq!(groups, vec!["mario\nluigi", "peach"]);
+        assert_eq!(factors, vec![2.0, 0.5]);
     }
 
     #[test]
-    fn cancellation_does_not_emit_partial_player() {
-        let players = vec!["+ol:alpha".to_owned()];
-        let teammates = vec!["mate@red".to_owned()];
-        let targets = vec!["target@blue".to_owned(), "target2@red".to_owned()];
-        let cancel = AtomicBool::new(false);
-        let input = PairMatrixInput {
-            players: &players,
-            teammates: &teammates,
-            targets: &targets,
-            target_factors: &[1.0, 1.0],
-            teammate_factors: &[1.0],
-            target_factored: false,
-            teammate_factored: false,
-            n: 24,
-            eval_rq: 6.0,
-            threads: 1,
-            cancel: &cancel,
-        };
-        let mut emitted = 0;
-        run_pair_matrix_windowed(
-            &input,
-            1,
-            |done| {
-                if done == 1 {
-                    cancel.store(true, Ordering::Relaxed);
-                }
-            },
-            |_, _| {
-                emitted += 1;
-                Ok(())
-            },
-        )
-        .unwrap();
-        assert_eq!(emitted, 0);
+    fn pair_keeps_each_member_when_converting_a_multi_player_input_group() {
+        let group = "+ol:player-a\n+ol:player-b";
+        assert_eq!(super::player_group_to_ol(group).unwrap(), group);
+    }
+
+    #[test]
+    fn teammate_factor_changes_the_score_used_for_head_sorting() {
+        assert_eq!(super::teammate_score(80.0, 0.5, true), 40.0);
+        assert_eq!(super::teammate_score(80.0, 0.5, false), 80.0);
+    }
+
+    #[test]
+    fn pair_parses_factored_teammates_with_labels_and_weights() {
+        let raw = "[[targets]]\nfactor = 2\nplayers = [\"mario\", \"luigi\"]";
+        let (groups, labels, factors) = parse_pair_teammate_groups(raw, true, true).expect("valid teammates");
+        assert_eq!(groups, vec!["mario\nluigi"]);
+        assert_eq!(labels, vec!["mario+luigi"]);
+        assert_eq!(factors, vec![2.0]);
     }
 }

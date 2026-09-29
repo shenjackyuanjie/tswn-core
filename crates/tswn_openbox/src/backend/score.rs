@@ -5,6 +5,7 @@ use std::fmt::Write as _;
 #[cfg(test)]
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use super::types::NamerPfMetric;
 use tswn_core::runtime::runtime_score;
 #[cfg(test)]
 use tswn_core::runtime::{RuntimeRunner, runtime_groups_win_rate};
@@ -187,4 +188,36 @@ fn bench_winrate_summary(raw: &str, n: usize, threads: Option<usize>, eval_rq: f
             total: summary.total,
         })
         .map_err(|error| error.to_string())
+}
+
+/// 把 GUI 侧的线程设置转换成 [`tswn_core::bench_sched::low_accuracy_outer_workers`] 所需的口径。
+pub(super) fn outer_thread_spec(threads: Option<usize>) -> u32 { threads.and_then(|x| u32::try_from(x).ok()).unwrap_or(0) }
+
+pub(super) fn eval_rq(keep_rq: bool) -> f64 {
+    if keep_rq {
+        tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ
+    } else {
+        tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct NamerPfScores {
+    pub pp: f64,
+    pub pd: f64,
+    pub qp: f64,
+    pub qd: f64,
+    pub sum: f64,
+}
+
+impl NamerPfScores {
+    pub(super) fn get(&self, metric: NamerPfMetric) -> f64 {
+        match metric {
+            NamerPfMetric::Pp => self.pp,
+            NamerPfMetric::Pd => self.pd,
+            NamerPfMetric::Qp => self.qp,
+            NamerPfMetric::Qd => self.qd,
+            NamerPfMetric::Sum => self.sum,
+        }
+    }
 }

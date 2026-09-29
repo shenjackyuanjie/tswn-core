@@ -11,6 +11,7 @@ mod log;
 mod results;
 mod source;
 mod state;
+mod task;
 mod view;
 mod widgets;
 

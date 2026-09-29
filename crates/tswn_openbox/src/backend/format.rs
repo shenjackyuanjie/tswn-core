@@ -137,3 +137,17 @@ fn escape_json_string(raw: &str) -> String {
     }
     escaped
 }
+
+pub(super) fn should_highlight(score: f64, min_screen: Option<f64>, highlight_delta: Option<f64>) -> bool {
+    highlight_delta.is_some_and(|delta| score >= min_screen.unwrap_or(0.0) + delta)
+}
+
+/// 技能 id 到中文名的对照表，顺序与 `skill_name_to_id` 一一对应：
+/// 火球 冰冻 雷击 地裂 吸血 投毒 连击 会心 瘟疫 命轮 狂暴 魅惑 加速 减速 诅咒
+/// 治愈 苏生 净化 铁壁 蓄力 聚气 潜行 血祭 分身 幻术 防御 守护 反弹 护符 护盾
+/// 反击 吞噬 召灵 垂死 隐匿
+pub(super) const SKILL_CN_NAMES: [&str; 35] = [
+    "火球", "冰冻", "雷击", "地裂", "吸血", "投毒", "连击", "会心", "瘟疫", "命轮", "狂暴", "魅惑", "加速", "减速", "诅咒",
+    "治愈", "苏生", "净化", "铁壁", "蓄力", "聚气", "潜行", "血祭", "分身", "幻术", "防御", "守护", "反弹", "护符", "护盾",
+    "反击", "吞噬", "召灵", "垂死", "隐匿",
+];
