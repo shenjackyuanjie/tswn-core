@@ -2,35 +2,36 @@
 
 ## [Unreleased]
 
+### 破坏性变更
+
+- `tswn-cli namer-pf` 删除 `--mode`，默认屏幕输出不再使用 `pp|pd|qp|qd|sum` 管道表；
+  脚本调用方应改用 `--metric` 选择指标，并适配 `名字组合 指标:分数` 输出。
+
 ### 新增
 
 - 新增 `EncodedBatch::tensor_bytes`，按显式小端序导出 typed tensor 缓冲，供离线编码包写出并校验字节长度。
-- 新增 `encoder` 模块（FeatureEncoder 第一块，Experimental）：`EncoderManifest`（协议身份、容量
+- 新增 `encoder` 模块（Experimental）：`EncoderManifest`（协议身份、容量
   `ProfileSpec`、分类词表、逐槽归一化声明、校准证据、支持域、sha256 契约摘要）与两级门禁
   （`validate` 查自洽性、`FeatureEncoder::new` 与实现交叉核对）；`from_calibration` 从
   `tswn-pwp calibrate` 报告组装，固定计数槽不带拟合常数、缺字段返回 `MissingCalibration`。
 - 编码主路径：`FeatureEncoder::encode`（B=1）与 `encode_into`（批槽位写入），完成状态校验
   （schema、终局门禁、输入队伍、实体唯一性、全部引用域含 charm `group_id` 与槽内 U64 实体引用、
   压缩标志保留位、载荷 kind 与分支匹配、槽语义白名单、容量预检）、局内重映射（实体行、模板表、
-  runtime team、PlrId 相等键）与 global／entity／template 三族 28 个张量的写入与 presence。
+  runtime team、PlrId 相等键）与 global／entity／template／lane／list／state／slot／extra
+  八族共 69 个张量的写入，包含 mask、presence 与精确旁路。
+- lane 编码保留 fixed lane key 的跨模板相等关系、等级与 boost presence；有序列表覆盖技能
+  调用链、世界行动顺序和实体关系，保留重复项与原始顺序；登记顺序与运行顺序分别排名，
+  延迟技能并入运行顺序域。
+- state 编码覆盖状态分类、hook、priority、payload、登记与运行顺序；slot／extra 编码覆盖
+  槽内蓝图、分身构造参数及原始整数／浮点 bit 的双 U32 精确旁路，实体引用统一映射到局内行。
 - 按张量分配的批缓冲 `EncodedBatch`：批槽位偏移为 `batch_index × 每样本元素数`，引用 padding 为 -1、
   其余为 0，`clear_slot` 支持复用不留残值；`tensor_shape`/`tensor_byte_len` 供导出侧校验
   `byte_length == product(shape) × sizeof(dtype)`。
 - 槽语义白名单（规格第 3.2 节）固化为数据表：未登记槽、存储类型不符、多分支同时为 Some 均拒绝。
 - 模块不依赖 Arrow/Parquet、文件系统或模型参数，已按 `tswn_wasm` 的特性组合在
   `wasm32-unknown-unknown` 上编译验证；capacity 权威迁入本 crate（`tswn_pwp` 改为再导出）。
-
-### 重构
-
-- `tswn_pwp::capacity` 原容量实现迁到 `tswn_core::encoder::capacity`，调用方不变
-  （容量常量与计费规则只保留唯一权威）。
-
-### 依赖更新
-
-- 更新 `clap`、`smallvec`、`toml` 等依赖至现有兼容范围内的最新版本。
-
-### 新增
-
+- 新增 `runtime_cqp_matchups_observed()`：每个完整 matchup 汇总后，在调用线程立即回调
+  输入索引与结果；旧 `runtime_cqp_matchups()` 委托新接口，保留输入顺序、取消和分片策略。
 - `tswn-cli namer-pf` 对齐 openbox GUI 输出形态：屏幕行改为 `名字组合 指标:分数`，
   删除原 `pp|pd|qp|qd|sum` 管道表与 `--mode` 参数，改为可重复的
   `--metric NAME[:MIN_SCREEN[:FILE[:MIN_FILE]]]`（`sum` = 其余四项之和，选中或
@@ -54,6 +55,8 @@
 
 ### 重构
 
+- `tswn_pwp::capacity` 原容量实现迁到 `tswn_core::encoder::capacity`，调用方不变
+  （容量常量与计费规则只保留唯一权威）。
 - `tswn_cli::bench` 的 `batch.rs`（1360 行、`run_bench_pair` 27 参）拆分为
   `batch_rate.rs` / `pair.rs` / `progress.rs`；共享的类型与助手（文件输出模式、
   输出排序、进度条）上移到 `output.rs` / `progress.rs`。巨型签名收敛：
@@ -63,6 +66,10 @@
 
 ### 修复
 
+- `encode_into` 校验或写入失败时清空全部目标槽位张量，不影响相邻批槽位；越界调用不修改缓冲，
+  失败后的槽位可重新使用。补齐非有限值、容量边界与编码器／批缓冲 profile 一致性校验。
+- 修正关联行索引与扩展记录 owner 域，区分 lane 行号与 fixed key、登记顺序与运行顺序，
+  并将槽内蓝图的运行时队伍纳入容量计费与编码的同一并集，避免引用错位或容量预检漏算。
 - 修复 wasm32-unknown-unknown 上计时直接 panic、导致胜率与评分等批量接口整体不可用的问题。
   `std::time::Instant::now()` 在该 target 上未实现（`library/std/src/sys/time/unsupported.rs`），
   wasm 侧一旦走到 `_timed` 路径就 `RuntimeError: unreachable`，之后整个实例失效，
@@ -72,7 +79,22 @@
   统一改走该辅助类型。`init_nanos` / `fight_nanos` 与 matchup 墙钟耗时在 wasm 上恢复可用，
   数值语义与 native 一致，仅精度回退；战斗与胜率计算不读取计时值，结果不变。
 
+### 依赖更新
+
+- 新增 `sha2`，用于 encoder manifest 的契约摘要；wasm target 新增 `js-sys`，用于跨平台计时。
+- 更新 `clap`、`smallvec`、`toml` 等依赖至现有兼容范围内的最新版本。
+
+### 测试
+
+- 新增 encoder 字段覆盖门禁与联合编码回归，覆盖跨模板 lane key、原始 bit、引用重映射、
+  实体存储置换等变性、单样本／批槽位一致性及失败清理；observed 接口覆盖提前回调、取消和并发索引。
+
 ## [0.6.1] - 2026-09-15
+
+### 新增
+
+- 公开 `CloneBuildData` 构造参数、`CloneStatAdjustments` 与 `ScoreCloneSkillBoostPlan` 及其字段，
+  供机制状态导出读取；只放宽可见性，不改变分身构造、技能强化或战斗行为。
 
 ### 性能与诊断
 

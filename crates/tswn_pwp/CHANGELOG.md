@@ -11,17 +11,28 @@
 - 新增 `encode` 子命令：读取 Parquet 状态与 `EncoderManifest`，按批输出各 tensor 的小端 `.bin`、
   `batch-manifest.json` 和总 manifest；新增 `scripts/read_encoded_batches.py` 只读校验器，检查
   manifest 摘要、shape、dtype、字节长度和尾批实际大小。
+- `encode` 支持 `--split` 与 `--batch-size`，导出前校验 manifest 契约摘要与 state schema；
+  每批记录源行身份摘要，尾批按实际样本数分配，不使用满批 padding 代替实际 B。
 - 新增可复现的胜率数据集生成器，直接复用 `BattleModelSession` 导出初始状态和可见帧末状态，并将胜者输入队伍索引作为监督标签。
 - 支持从对局文件或名字池生成阵容，按规范化阵容哈希稳定划分 train/validation/test，队伍顺序变体不会跨集合。
 - 输出嵌套 Parquet 分片及 manifest、summary、complete/failure 记录；使用临时目录、文件锁、摘要回读和双遍状态核对保证提交完整性。
 - 支持 `--resume` 安全续跑，并验证输入、配置、可执行文件摘要和已提交分片。
 - 新增 `validate`、`stats` 和 `bench` 子命令，覆盖引用完整性、标签、抽样、分布、吞吐、RSS、压缩比和行组规模审计。
-- 新增 `calibrate` 子命令：只读 `train` 切分且标签非空的行，采集逐字段标量分布并拟合 `s_f`/`c_f`，作为 `encoder-manifest` 的数值来源；缺字段不写默认值，由 encoder 报 `MissingCalibration`。
+- 新增 `calibrate` 子命令：默认只读 `train` 切分且标签非空的行，采集逐字段标量分布并拟合 `s_f`/`c_f`，作为 `encoder-manifest` 的数值来源；支持 `--split`、`--keep-unlabeled`、`--json-out` 与 `--print-fields`，缺字段不写默认值，由 encoder 报 `MissingCalibration`。
+- 校准报告记录 state schema／数据格式版本、输入与生成器可执行文件摘要、选中行序列摘要、
+  采集器身份及切分／标签策略，供 `EncoderManifest::from_calibration` 保留校准来源证据。
+- 扩充标量校准覆盖状态 payload、槽内计数、槽内蓝图模板与 `clone_build` 叶子；分类、引用、bit
+  与精确注册序不参与拟合，非有限值留给编码阶段拒绝。
 - 新增冻结的 `baseline-64` 容量档位（`E/T/R/H/L/S/Q/V/X = 64/32/32/512/4096/64/512/32768/65536`）；`stats` 按该档位报告九维上限、峰值与超限样本占比，上界计费（每槽 3 条 X 记录）。
 
 ### 重构
 
 - 容量权威（`BASELINE_64`、`CapacityMeasure` 与九维计费式）随 encoder 迁到 `tswn_core::encoder::capacity`；本 crate 的 `capacity` 模块改为再导出，`stats` 等调用方不变。容量常量与计费规则只保留唯一实现，不在 core/pwp/WASM 各复制一份。
+
+### 修复
+
+- 容量计费改用饱和算术，极端计数不再因加乘溢出而回绕；校准中的 `u64` 计数直接转为浮点，
+  避免先转 `i64` 导致大值变为负数，并补齐被漏采集的模板字段。
 
 ### 性能
 
@@ -37,4 +48,6 @@
 ### 说明
 
 - 该 crate 当前保持 `0.1.0` 初始未发布状态，不进入默认 `scripts/build_all.py` 聚合包。
-- FeatureEncoder 的张量编码已在 `tswn_core` 落地；本 crate 当前提供离线编码包导出，跨绑定 parity 与真正逐行流式读取仍在后续验收阶段。
+- FeatureEncoder 的八族 69 个张量编码已在 `tswn_core` 落地；本 crate 当前提供离线编码包导出，
+  尚不包含模型训练或线上推理。`encode` 先收集所选切分的全部状态，再按批编码，不能将
+  `--batch-size` 视为读取阶段的内存上限；跨绑定 parity 与真正逐行流式读取仍在后续验收阶段。

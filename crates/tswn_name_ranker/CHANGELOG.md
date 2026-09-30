@@ -34,4 +34,5 @@
 
 ### 说明
 
-- 该 crate 当前作为内部 Web 工具加入 workspace，版本仍处于 `0.1.0` 初始未发布阶段。
+- 该 crate 为内部 Web 工具，版本仍处于 `0.1.0` 初始未发布阶段；因依赖独立校准数据，
+  已从主 workspace 排除，使用本 crate 的 `Cargo.toml` 与独立 `Cargo.lock` 构建，不参与工作区默认构建与测试。

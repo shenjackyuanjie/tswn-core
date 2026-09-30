@@ -29,6 +29,9 @@
 
 ### 修复
 
+- 同步 core 的跨平台计时修复：wasm 不再调用未实现的 `std::time::Instant::now()`，
+  改用 `js-sys::Date::now()`，避免胜率、评分、`namer_pf`、`batch_rate` 和 `pair_rate` 等
+  批量路径触发 `RuntimeError: unreachable`；计时精度为毫秒且不保证严格单调，战斗结果不变。
 - 畸形 options 现在返回结构化 `{ code, message }` 错误（`INVALID_ARGUMENT`），不再抛
   `throw_str` 的裸字符串；`icon_info()`、`FightSession` / `WinRateSession` 的取值方法在
   序列化失败时也改为抛 `INTERNAL_ERROR`，不再直接 panic。
