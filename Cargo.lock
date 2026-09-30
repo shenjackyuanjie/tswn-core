@@ -4563,10 +4563,11 @@ dependencies = [
 
 [[package]]
 name = "tswn_ds4"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "rayon",
  "serde_json",
+ "tswn_openbox",
 ]
 
 [[package]]

@@ -238,8 +238,15 @@ fn load_teammate_presets(loaded: LoadedSettingFile) -> Vec<TeammatePreset> {
     items
 }
 
-fn load_setting_file() -> Result<LoadedSettingFile, String> {
-    let setting_dir = current_dir()?.join(SETTING_DIR_NAME);
+fn load_setting_file() -> Result<LoadedSettingFile, String> { load_setting_file_from_root(&current_dir()?) }
+
+/// 从指定工作目录读取靶子预设，不修改进程当前目录；缺失时释放内置资源。
+pub fn load_target_presets_from_root(root: &Path) -> Result<Vec<TargetPreset>, String> {
+    load_setting_file_from_root(root).map(load_target_presets)
+}
+
+fn load_setting_file_from_root(root: &Path) -> Result<LoadedSettingFile, String> {
+    let setting_dir = root.join(SETTING_DIR_NAME);
     let config_path = setting_dir.join(SETTINGS_FILE_NAME);
     let raw = read_or_create_setting_file(&setting_dir, &config_path)?;
     let config = toml::from_str(raw.trim_start_matches('\u{feff}'))

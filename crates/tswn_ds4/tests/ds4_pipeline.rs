@@ -26,7 +26,7 @@ fn json_pipeline_filters_team_and_preserves_incremental_state() {
     let root = temp_root();
     fs::write(
         root.join("input/names.txt"),
-        "alpha@teamA\nbeta@teamA\ngamma@teamA\nother@teamB\ninvalid\n",
+        "alpha@teamA 123\nbeta@teamA_suffix\ngamma@teamA\t\nalpha@teamA\nother@teamB\ninvalid\n",
     )
     .expect("write input");
     fs::write(
@@ -58,6 +58,7 @@ fn json_pipeline_filters_team_and_preserves_incremental_state() {
     assert!(ignored.contains("invalid"));
     let old = fs::read_to_string(root.join("file/old.txt")).expect("old names");
     assert_eq!(old.lines().count(), 3);
+    assert!(old.lines().all(|line| line.ends_with("@teamA")));
     assert!(root.join("out/new_qp.txt").exists());
     assert!(root.join("file/old_qp.txt").exists());
     let fc = fs::read_to_string(root.join("out/FC.txt")).expect("FC pairs");
@@ -65,7 +66,10 @@ fn json_pipeline_filters_team_and_preserves_incremental_state() {
     assert!(fc.contains("+beta@teamA"));
     assert!(fc.contains("+gamma@teamA"));
 
-    run(&root);
+    let config = tswn_ds4::Config::load_from_root(&root).expect("从 Rust API 加载配置");
+    let report = tswn_ds4::run(&root, &config).expect("Rust API 复用 CLI 的历史状态");
+    assert_eq!(report.stage1.dedup.remaining, 0);
+    assert_eq!(report.pair.fc, 0);
     assert_eq!(
         fs::read_to_string(root.join("file/old.txt")).expect("old names").lines().count(),
         3

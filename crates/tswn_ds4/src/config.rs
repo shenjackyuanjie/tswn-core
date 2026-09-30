@@ -100,12 +100,16 @@ pub struct Config {
     pub sp1: [Sp1Threshold; 5],
     pub copy_pf_to_out: bool,
     pub abcp: PairThreshold,
+    pub openbox_cqp: bool,
     pub get_3: bool,
     pub three_pair_abcp_sieve: i32,
     pub three: [ThreeThreshold; 8],
 }
 
 impl Config {
+    /// 从 DS4 JSON 文本构建配置，便于界面校验编辑后的配置。
+    pub fn from_json(source: &str) -> Ds4Result<Self> { parse_ds4_json(source) }
+
     pub fn single(&self, mode: SingleMode) -> SingleThreshold {
         match mode {
             SingleMode::Bc => self.single_bc,
@@ -229,8 +233,9 @@ fn parse_ds4_json(source: &str) -> Ds4Result<Config> {
     }
     let get_3 = json_enabled(&value, "get_3");
     let three_pair_abcp_sieve = json_i32(three_config, "pair_abcp_sieve");
-    if get_3 && three_pair_abcp_sieve <= 0 {
-        return Err(Ds4Error::parse("get_3 启用时 three.pair_abcp_sieve 必须大于 0"));
+    let openbox_cqp = json_enabled(&value, "openbox_cqp");
+    if (get_3 || openbox_cqp) && three_pair_abcp_sieve <= 0 {
+        return Err(Ds4Error::parse("get_3 或 openbox_cqp 启用时 three.pair_abcp_sieve 必须大于 0"));
     }
     Ok(Config {
         team_name: Some(team_name),
@@ -248,6 +253,7 @@ fn parse_ds4_json(source: &str) -> Ds4Result<Config> {
         sp1,
         copy_pf_to_out: json_enabled(&value, "copy_pf_to_out"),
         abcp: pair("abcp"),
+        openbox_cqp,
         get_3,
         three_pair_abcp_sieve,
         three,
@@ -339,6 +345,7 @@ fn parse_legacy_config(source: &str) -> Ds4Result<Config> {
             sieve: 0,
         },
         get_3: false,
+        openbox_cqp: false,
         three_pair_abcp_sieve: 0,
         three: [ThreeThreshold {
             enabled: false,
@@ -381,6 +388,7 @@ fn parse_toml_like(source: &str) -> Ds4Result<Config> {
             sieve: 0,
         },
         get_3: false,
+        openbox_cqp: false,
         three_pair_abcp_sieve: 0,
         three: [ThreeThreshold {
             enabled: false,
@@ -477,6 +485,13 @@ mod tests {
     fn parse_ds4_json_requires_team_and_three_threshold() {
         assert!(parse_ds4_json(r#"{"thread_number":4}"#).is_err());
         assert!(parse_ds4_json(r#"{"team_name":"a","get_3":1}"#).is_err());
+        assert!(parse_ds4_json(r#"{"team_name":"a","openbox_cqp":1}"#).is_err());
+        assert!(!parse_ds4_json(r#"{"team_name":"a"}"#).unwrap().openbox_cqp);
+        assert!(
+            parse_ds4_json(r#"{"team_name":"a","openbox_cqp":1,"three":{"pair_abcp_sieve":4400}}"#)
+                .unwrap()
+                .openbox_cqp
+        );
         let config = parse_ds4_json(
             r#"{"team_name":"teamA","thread_number":4,"two_fc":{"enable":1,"sieve":9400},
                 "qp":{"enable":1,"sieve":5700,"skill_sieve":300},"get_3":1,

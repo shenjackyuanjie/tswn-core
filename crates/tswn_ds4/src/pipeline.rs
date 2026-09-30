@@ -103,8 +103,8 @@ fn run_ds4_with_store(store: &Store, config: &Config, team_name: &str) -> Ds4Res
         let raw = raw?;
         let line = raw.trim_end_matches(char::is_whitespace);
         match line.rsplit_once('@') {
-            Some((name, team)) if !name.is_empty() && team == team_name => {
-                write!(accepted.writer(), "{line}\r\n")?;
+            Some((name, team)) if !name.is_empty() && team.starts_with(team_name) => {
+                write!(accepted.writer(), "{name}@{team_name}\r\n")?;
                 accepted_count += 1;
             }
             _ => {
@@ -190,6 +190,9 @@ fn run_ds4_with_store(store: &Store, config: &Config, team_name: &str) -> Ds4Res
     } else {
         0
     };
+    if config.openbox_cqp {
+        crate::openbox::screen_pairs(store.root(), config.three_pair_abcp_sieve, config.threads)?;
+    }
 
     copy_to_file_store(store)?;
     sort_file_store(store)?;

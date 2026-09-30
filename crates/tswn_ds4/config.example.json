@@ -1,0 +1,103 @@
+{
+  "team_name": "",
+  "thread_number": 20,
+  "bc": {
+    "sieve": 4100,
+    "ptt_sieve": 4500
+  },
+  "fz": {
+    "sieve": 4200,
+    "ptt_sieve": 4600
+  },
+  "wc": {
+    "sieve": 4000,
+    "ptt_sieve": 4400
+  },
+  "fs": {
+    "sieve": 3900,
+    "ptt_sieve": 4300
+  },
+  "pj": {
+    "sieve": 4100,
+    "ptt_sieve": 4500
+  },
+  "two_fc": {
+    "enable": 1,
+    "sieve": 9400
+  },
+  "two_wc": {
+    "enable": 1,
+    "sieve": 9200
+  },
+  "two_rh": {
+    "enable": 1,
+    "sieve": 9150
+  },
+  "qp": {
+    "enable": 1,
+    "sieve": 5700,
+    "skill_sieve": 300
+  },
+  "qd": {
+    "enable": 1,
+    "sieve": 6500,
+    "skill_sieve": 300
+  },
+  "pp": {
+    "enable": 1,
+    "sieve": 8000,
+    "skill_sieve": 300
+  },
+  "pd": {
+    "enable": 1,
+    "sieve": 9000
+  },
+  "cqd": {
+    "enable": 1,
+    "sieve": 4300
+  },
+  "copy_pf_to_out": 1,
+  "copy_to_new": 1,
+  "run_dup": 1,
+  "abcp": {
+    "enable": 1,
+    "sieve": 4500
+  },
+  "openbox_cqp": 0,
+  "get_3": 1,
+  "three": {
+    "pair_abcp_sieve": 4400,
+    "ffc": {
+      "enable": 1,
+      "sieve": 15000
+    },
+    "wfc": {
+      "enable": 1,
+      "sieve": 14950
+    },
+    "fwc": {
+      "enable": 1,
+      "sieve": 14950
+    },
+    "wwc": {
+      "enable": 1,
+      "sieve": 14750
+    },
+    "rwc": {
+      "enable": 0,
+      "sieve": 14850
+    },
+    "rrh": {
+      "enable": 1,
+      "sieve": 14700
+    },
+    "prh": {
+      "enable": 0,
+      "sieve": 15000
+    },
+    "wrh": {
+      "enable": 0,
+      "sieve": 14700
+    }
+  }
+}

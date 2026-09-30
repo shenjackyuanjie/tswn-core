@@ -1,13 +1,18 @@
 //! 命令行参数定义。
 //!
-//! 使用 `clap` 定义 [`Cli`] 结构体及 [`Command`] 枚举（Run/ShowConfig/Merge/Dedup/Sort/Score/Pair），
-//! 以及各子命令所需的选项结构体（[`ScoreCliOptions`]、[`PairCliOptions`]）。
+//! 定义 [`Cli`] 结构体及 [`Command`] 枚举（Run/ShowConfig/Merge/Dedup/Sort/Score/Pair），
+//! 以及各子命令所需的选项结构体（[`ScoreCli`]、[`PairCli`]）。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use crate::config::SingleMode;
+use crate::config::{Config, SingleMode};
 use crate::error::{Ds4Error, Ds4Result};
-use crate::ops::sort::SortOptions;
+use crate::model::{bc, fs as model_fs, fz, pj, wc as model_wc};
+use crate::ops::dedup::remove_duplicates;
+use crate::ops::merge::merge_input_files;
+use crate::ops::sort::{SortOptions, sort_scored_file};
+use crate::pairing::{fc, rh, wc as pair_wc};
+use crate::pipeline;
 
 #[derive(Debug, Clone)]
 pub struct Cli {
@@ -17,6 +22,11 @@ pub struct Cli {
 #[derive(Debug, Clone)]
 pub enum Command {
     Help,
+    Version,
+    OpenboxCqp {
+        root: PathBuf,
+        config_path: Option<PathBuf>,
+    },
     Run {
         root: PathBuf,
         config_path: Option<PathBuf>,
@@ -103,6 +113,16 @@ where
     let cmd = values.remove(0);
     match cmd.as_str() {
         "--help" | "-h" | "help" => Ok(Cli { command: Command::Help }),
+        "--version" | "-V" => Ok(Cli {
+            command: Command::Version,
+        }),
+        "openbox-cqp" => {
+            let mut cli = parse_run(values)?;
+            if let Command::Run { root, config_path } = cli.command {
+                cli.command = Command::OpenboxCqp { root, config_path };
+            }
+            Ok(cli)
+        }
         "run" => parse_run(values),
         "show-config" => parse_show_config(values),
         "merge" => parse_merge(values),
@@ -298,6 +318,8 @@ USAGE:
 
 COMMANDS:
   run [--root <dir>] [--config <path>]               Run full DS4 pipeline
+  openbox-cqp [--root <dir>] [--config <path>]       使用 Openbox Rust 后端执行三轮实战筛选
+  --version                                        显示版本
   show-config [--root <dir>] [--config <path>]       Load and print parsed config
   merge <input_dir> <output_file>                    Merge all input files into one output
   dedup <new_file> <old_file> <output_file>          Remove lines existing in old_file
@@ -318,4 +340,138 @@ NOTES:
   - ABCP5 requires abcp5.exe, model4.onnx and scale.txt in root/abcp5 or TSWN_DS4_ABCP_DIR.
 "#
     );
+}
+
+fn load_config(root: &Path, config_path: Option<PathBuf>) -> Ds4Result<Config> {
+    match config_path {
+        Some(path) => Config::load_from_path(&path),
+        None => Config::load_from_root(root),
+    }
+}
+
+pub fn execute(args: impl IntoIterator<Item = String>) -> Ds4Result<()> {
+    let cli = parse_args(args)?;
+    match cli.command {
+        Command::Version => println!("tswn_ds4 {}", env!("CARGO_PKG_VERSION")),
+        Command::OpenboxCqp { root, config_path } => {
+            let config = load_config(&root, config_path)?;
+            crate::screen_openbox_pairs(&root, config.three_pair_abcp_sieve, config.threads)?;
+        }
+        Command::Help => {
+            print_usage();
+        }
+        Command::Run { root, config_path } => {
+            let config = load_config(&root, config_path)?;
+            let report = pipeline::run_full(&root, &config)?;
+            println!(
+                "run complete: merged_files={}, remaining={}, single(bc/fz/wc/fs/pj)=({}/{}/{}/{}/{}), pair(fc/wc/rh)=({}/{}/{}), sp1(qp/qd/pp/pd/cqd)={:?}, three={:?}, abcp={}",
+                report.stage1.merged_files,
+                report.stage1.dedup.remaining,
+                report.single.bc,
+                report.single.fz,
+                report.single.wc,
+                report.single.fs,
+                report.single.pj,
+                report.pair.fc,
+                report.pair.wc,
+                report.pair.rh,
+                report.sp1,
+                report.three,
+                report.abcp
+            );
+        }
+        Command::ShowConfig { root, config_path } => {
+            let config = load_config(&root, config_path)?;
+            println!("{config:#?}");
+        }
+        Command::Merge { input_dir, output_file } => {
+            let merged_files = merge_input_files(&input_dir, &output_file)?;
+            println!("merged {merged_files} files into {}", output_file.display());
+        }
+        Command::Dedup {
+            new_file,
+            old_file,
+            output_file,
+        } => {
+            let stats = remove_duplicates(&new_file, &old_file, &output_file)?;
+            println!(
+                "dedup complete: new_unique={}, removed_by_old={}, remaining={}",
+                stats.new_unique, stats.old_hits, stats.remaining
+            );
+        }
+        Command::Sort(options) => {
+            let rows = sort_scored_file(&options.input_file, &options.output_file, &options.to_sort_options())?;
+            println!("sort complete: wrote {rows} rows to {}", options.output_file.display());
+        }
+        Command::Score(options) => {
+            let rows = match options.mode {
+                SingleMode::Bc => bc::score_file_bc_with_threads(
+                    &options.input_file,
+                    &options.output_file,
+                    options.score_sieve,
+                    options.potential_sieve,
+                    options.threads,
+                )?,
+                SingleMode::Fz => fz::score_file_fz_with_threads(
+                    &options.input_file,
+                    &options.output_file,
+                    options.score_sieve,
+                    options.potential_sieve,
+                    options.threads,
+                )?,
+                SingleMode::Wc => model_wc::score_file_wc_with_threads(
+                    &options.input_file,
+                    &options.output_file,
+                    options.score_sieve,
+                    options.potential_sieve,
+                    options.threads,
+                )?,
+                SingleMode::Fs => model_fs::score_file_fs_with_threads(
+                    &options.input_file,
+                    &options.output_file,
+                    options.score_sieve,
+                    options.potential_sieve,
+                    options.threads,
+                )?,
+                SingleMode::Pj => pj::score_file_pj_with_threads(
+                    &options.input_file,
+                    &options.output_file,
+                    options.score_sieve,
+                    options.potential_sieve,
+                    options.threads,
+                )?,
+            };
+            println!("score complete: wrote {rows} rows to {}", options.output_file.display());
+        }
+        Command::Pair(options) => {
+            let rows = match options.mode {
+                PairCliMode::Fc => fc::run_fc_with_threads(
+                    options.type_same_set,
+                    &options.left_file,
+                    &options.right_file,
+                    &options.output_file,
+                    options.sieve,
+                    options.threads,
+                )?,
+                PairCliMode::Wc => pair_wc::run_wc_with_threads(
+                    options.type_same_set,
+                    &options.left_file,
+                    &options.right_file,
+                    &options.output_file,
+                    options.sieve,
+                    options.threads,
+                )?,
+                PairCliMode::Rh => rh::run_rh_with_threads(
+                    options.type_same_set,
+                    &options.left_file,
+                    &options.right_file,
+                    &options.output_file,
+                    options.sieve,
+                    options.threads,
+                )?,
+            };
+            println!("pair complete: wrote {rows} rows to {}", options.output_file.display());
+        }
+    }
+    Ok(())
 }
