@@ -55,6 +55,7 @@ python scripts/check_runtime_release.py --corpus
 
 - `capi`: 现场构建并整理分发目录
 - `cli`: 现场构建并整理可执行文件
+- `openbox`: 现场构建 GUI 与 `openbox-cli`，两份可执行文件均收录到聚合 ZIP
 - `py`: 只收集当前已经存在的 Python wheel / 产物，不现场构建
 - `wasm`: 现场构建 `tswn_wasm`，并整理浏览器可直接消费的 `wasm-bindgen` 包
 
@@ -67,11 +68,11 @@ python scripts/check_runtime_release.py --corpus
 常用参数：
 
 - `-o DIR` / `--output-dir DIR`: 输出目录（默认 `dist/all`）
-- `--bundle-name NAME`: 自定义 bundle 目录名与 zip 基名（默认按 core/capi/py/wasm 版本自动生成）
-- `--release`: 对 capi/cli 使用 release 构建
+- `--bundle-name NAME`: 自定义 bundle 目录名与 zip 基名（默认按 core/capi/py/wasm/openbox 版本自动生成）
+- `--release`: 对 capi/cli/openbox/wasm 使用 release 构建
 - `--clean`: 构建前清空 bundle 目录与最终 zip
 - `--target TRIPLE`: 指定 cargo target triple
-- `--skip-capi` / `--skip-cli` / `--skip-py` / `--skip-wasm`: 跳过对应组件
+- `--skip-capi` / `--skip-cli` / `--skip-openbox` / `--skip-py` / `--skip-wasm`: 跳过对应组件
 - `--capi-with-example-build`: 传给 `build_capi.py`，额外尝试编译 C examples
 - `--cli-features FEATURES`: CLI 构建 features，逗号分隔（默认 `no_debug`；传空字符串表示不追加）
 - `--cargo ...`: 追加到 cargo/build_capi 的额外参数（放在最后）
@@ -83,12 +84,13 @@ python scripts/check_runtime_release.py --corpus
 
 其中 bundle 名默认会按版本自动生成，类似：
 
-- `tswn_core_x_y_z_capi_a_b_c_py_m_n_k_wasm_p_q_r_bundle`
+- `tswn_core_x_y_z_capi_a_b_c_py_m_n_k_wasm_p_q_r_openbox_u_v_w_bundle`
 
 打包结果中通常包含：
 
 - `capi/`: 头文件、动态库、C examples
 - `cli/`: 带版本号的 `tswn-cli` 可执行文件
+- `openbox/`: 带版本号的 GUI 与 `openbox-cli` 可执行文件、包说明与 changelog
 - `py/`: 当前已有 wheel 与 Python examples
 - `wasm/`: `pkg/`、原始 `.wasm`、静态页面 examples 与 changelog
 

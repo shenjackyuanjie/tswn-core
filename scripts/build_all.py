@@ -5,7 +5,7 @@
 设计目标：
 1) `capi`：现场构建并打包
 2) `cli`：现场构建并打包
-3) `openbox`：现场构建并打包
+3) `openbox`：现场构建并打包 GUI 与 `openbox-cli`
 4) `py`：不现场构建，只收集当前仓库里与 `tswn_py` 版本一致的 Python 分发产物
 5) `wasm`：现场构建 `tswn_wasm`，并用 `wasm-bindgen` 生成浏览器可直接消费的包
 6) 最终输出一个 zip
@@ -30,6 +30,7 @@ dist/all/tswn_core_x_y_z_capi_a_b_c_py_m_n_k_wasm_p_q_r_openbox_u_v_w_bundle/
   openbox/
     bin/
       tswn_openbox_alpha_u_v_w.exe
+      openbox-cli_alpha_u_v_w.exe
       tswn_openbox
     changelog/
       CHANGELOG.md
@@ -406,6 +407,12 @@ def bundled_openbox_binary_name(src_binary: Path) -> str:
     return f"tswn_openbox_alpha_{version}{suffix}"
 
 
+def bundled_openbox_cli_binary_name(src_binary: Path) -> str:
+    version = _version_token(tswn_openbox_version())
+    suffix = ".exe" if src_binary.suffix.lower() == ".exe" else ".bin"
+    return f"openbox-cli_alpha_{version}{suffix}"
+
+
 def package_component_changelog(dst_dir: Path, changelog_src: Path, update_doc_src: Path | None = None) -> list[Path]:
     copied: list[Path] = []
     changelog_dir = dst_dir / "changelog"
@@ -635,7 +642,7 @@ def build_openbox(
     extra_cargo: list[str],
     pgo: bool = False,
     pgo_train_runs: int = 1500,
-) -> tuple[Path, list[Path]]:
+) -> tuple[Path, Path, list[Path]]:
     if pgo:
         if target:
             raise RuntimeError("PGO 需要在本机运行训练，不能和 --target 交叉编译一起用")
@@ -658,13 +665,17 @@ def build_openbox(
         run(cmd, cwd=ROOT)
 
     binary = find_openbox_binary(out_dir)
-    support = openbox_support_artifacts(binary)
+    cli_binary = out_dir / ("openbox-cli.exe" if binary.suffix.lower() == ".exe" else "openbox-cli")
+    ensure_exists(cli_binary, "openbox-cli 构建产物")
+    support = openbox_support_artifacts(binary) + cli_support_artifacts(cli_binary)
 
     bin_dir = dst_dir / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
 
     bundled_binary = bin_dir / bundled_openbox_binary_name(binary)
     copy_file(binary, bundled_binary)
+    bundled_cli_binary = bin_dir / bundled_openbox_cli_binary_name(cli_binary)
+    copy_file(cli_binary, bundled_cli_binary)
     copied_support: list[Path] = []
     for item in support:
         dst = bin_dir / item.name
@@ -673,7 +684,7 @@ def build_openbox(
 
     collect_existing_linux_openbox_artifacts(dst_dir, copied_support)
 
-    return bundled_binary, copied_support
+    return bundled_binary, bundled_cli_binary, copied_support
 
 
 def write_cli_readme(
@@ -758,7 +769,7 @@ def write_cli_manifest(
     print(f"[write] {path}")
 
 
-def write_openbox_readme(dst_dir: Path, binary_path: Path, support_files: list[Path]) -> None:
+def write_openbox_readme(dst_dir: Path, binary_path: Path, cli_binary_path: Path, support_files: list[Path]) -> None:
     lines = [
         "# tswn_openbox package",
         "",
@@ -766,7 +777,8 @@ def write_openbox_readme(dst_dir: Path, binary_path: Path, support_files: list[P
         "",
         "## 内容",
         "",
-        f"- 当前平台可执行文件：`bin/{binary_path.name}`",
+        f"- 当前平台 GUI：`bin/{binary_path.name}`",
+        f"- 当前平台无头 CLI：`bin/{cli_binary_path.name}`",
     ]
     for item in support_files:
         lines.append(f"- 附带产物：`bin/{item.name}`")
@@ -776,6 +788,7 @@ def write_openbox_readme(dst_dir: Path, binary_path: Path, support_files: list[P
         "## 运行",
         "",
         f"- 直接运行 `bin/{binary_path.name}`。",
+        f"- 命令行入口：`bin/{cli_binary_path.name} --help`。",
         "- `tswn_openbox` 是本地 GUI 面板，用来把常用 `tswn-cli` 工作流做成点击即用的界面。",
         "- 首次启动时会在当前工作目录下自动创建 `setting/` 默认预设目录。",
         "",
@@ -796,6 +809,7 @@ def write_openbox_manifest(
     release: bool,
     target: str | None,
     binary_path: Path,
+    cli_binary_path: Path,
     support_files: list[Path],
 ) -> None:
     lines = [
@@ -807,6 +821,7 @@ def write_openbox_manifest(
         "",
         "[bin]",
         binary_path.name,
+        cli_binary_path.name,
         "",
         "[support]",
     ]
@@ -977,6 +992,7 @@ def write_root_readme(bundle_dir: Path, enabled: list[str], skipped: list[str]) 
     cli_binary_name = bundled_cli_binary_name(Path("tswn-cli.exe" if system == "windows" else "tswn-cli"))
     ohos_cli_binary_name = bundled_ohos_cli_binary_name(OHOS_DEFAULT_TARGET)
     openbox_binary_name = bundled_openbox_binary_name(Path("tswn_openbox.exe" if system == "windows" else "tswn_openbox"))
+    openbox_cli_binary_name = bundled_openbox_cli_binary_name(Path("openbox-cli.exe" if system == "windows" else "openbox-cli"))
 
     lines = [
         "# tswn bundle",
@@ -1018,7 +1034,7 @@ def write_root_readme(bundle_dir: Path, enabled: list[str], skipped: list[str]) 
         "",
         f"- CLI: `cli/bin/{cli_binary_name}`、可选的 Linux `cli/bin/tswn-cli_alpha_*.bin`、可选的 OHOS `cli/bin/{ohos_cli_binary_name}`，以及 `cli/changelog/`",
         "- C-API: `capi/include/tswn_capi.h`、`capi/lib/`（包含 Windows DLL、Windows staticlib `.lib` 与现有 Linux `.so`）以及 `capi/changelog/`",
-        f"- Openbox: `openbox/bin/{openbox_binary_name}`、可选的 Linux `openbox/bin/tswn_openbox_alpha_*.bin`，以及 `openbox/changelog/`",
+        f"- Openbox: GUI `openbox/bin/{openbox_binary_name}`、CLI `openbox/bin/{openbox_cli_binary_name}`、可选的 Linux `openbox/bin/tswn_openbox_alpha_*.bin`，以及 `openbox/changelog/`",
         "- Python: `py/dist/*.whl`、`py/examples/` 与 `py/changelog/`",
         "- WASM: `wasm/pkg/tswn_wasm.js`、`wasm/pkg/tswn_wasm_bg.wasm`、`wasm/examples/` 与 `wasm/changelog/`",
         "",
@@ -1186,7 +1202,7 @@ def main(argv: list[str]) -> int:
         skipped.append("openbox")
     else:
         openbox_dir = bundle_dir / "openbox"
-        binary_path, support_files = build_openbox(
+        binary_path, cli_binary_path, support_files = build_openbox(
             dst_dir=openbox_dir,
             release=args.release,
             target=args.target,
@@ -1196,12 +1212,13 @@ def main(argv: list[str]) -> int:
             pgo_train_runs=args.pgo_openbox_train_runs,
         )
         package_component_changelog(openbox_dir, changelog_src=OPENBOX_CHANGELOG)
-        write_openbox_readme(openbox_dir, binary_path=binary_path, support_files=support_files)
+        write_openbox_readme(openbox_dir, binary_path=binary_path, cli_binary_path=cli_binary_path, support_files=support_files)
         write_openbox_manifest(
             openbox_dir,
             release=args.release,
             target=args.target,
             binary_path=binary_path,
+            cli_binary_path=cli_binary_path,
             support_files=support_files,
         )
         enabled.append("openbox")

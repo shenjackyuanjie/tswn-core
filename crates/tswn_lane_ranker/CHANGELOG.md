@@ -1,6 +1,8 @@
 # 更新日志
 
-## [Unreleased]
+## [Unreleased] - 0.1.1
+
+## [0.1.0] - 2026-09-30
 
 ### 变更
 
@@ -12,8 +14,6 @@
 ### 验证
 
 - 当前 lane ranker 回归测试覆盖 9 项；校验命令为 `cargo test -p tswn_lane_ranker`、`cargo +nightly fmt --check` 和前端 `node --check`。
-
-## [0.1.0] - unreleased
 
 ### 新增
 
@@ -35,4 +35,4 @@
 
 ### 说明
 
-- 该 crate 作为内部 Web 工具加入 workspace，版本仍处于 `0.1.0` 初始未发布阶段。
+- 该 crate 作为内部 Web 工具加入 workspace，本轮首次封板为 `0.1.0`，不进入默认聚合包。

@@ -1,6 +1,6 @@
 # 更新日志
 
-## [Unreleased]
+## [Unreleased] - 0.0.0
 
 ### 新增
 

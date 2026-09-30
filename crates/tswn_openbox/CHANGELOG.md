@@ -1,9 +1,12 @@
 # 更新日志
 
-## [Unreleased]
+## [Unreleased] - 0.4.7
+
+## [0.4.6] - 2026-09-30
 
 ### 新增
 
+- 聚合打包脚本同时收录 Openbox GUI 与 `openbox-cli` 可执行文件，并在包内清单和说明中分别列出。
 - 新增 DS4 页面：工作目录、队伍名、配置读写、各类筛选阈值、后台执行、阶段进度、本轮统计及结果目录入口；直接调用 `tswn_ds4` Rust API。
 - 共用计算与预设模块提取为 `tswn_openbox_backend`，GUI、DS4 与 CLI 复用同一实现，原有公开接口保持兼容。
 - 新增按工作目录加载靶子预设的 Rust API；默认开启的 `gui` feature 管理 GUI 与 DS4 页面依赖，
