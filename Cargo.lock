@@ -4612,6 +4612,7 @@ dependencies = [
  "serde_json",
  "toml",
  "tswn_core",
+ "tswn_ds4",
  "tswn_openbox_backend",
 ]
 

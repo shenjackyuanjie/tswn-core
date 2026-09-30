@@ -20,11 +20,15 @@ struct CaptureArgs {
     /// 使用浅色主题检查对比度；默认使用深色主题。
     #[arg(long)]
     capture_light: bool,
+    /// 使用 DS4 工作目录样例，生成主页面、更多设置与详细帮助三张截图。
+    #[arg(long)]
+    capture_ds4: bool,
 }
 
 pub(crate) fn run_if_requested() -> Option<eframe::Result<()>> {
     let args = CaptureArgs::parse();
-    args.capture_dir.map(|directory| run_capture(directory, args.capture_light))
+    args.capture_dir
+        .map(|directory| run_capture(directory, args.capture_light, args.capture_ds4))
 }
 
 struct CaptureApp {
@@ -36,6 +40,7 @@ struct CaptureApp {
     next_frame: usize,
     started: Instant,
     failure: Arc<Mutex<Option<String>>>,
+    ds4: bool,
 }
 
 impl CaptureApp {
@@ -46,7 +51,11 @@ impl CaptureApp {
     }
 
     fn save_screenshot(&self, image: &egui::ColorImage) -> Result<(), String> {
-        let name = ["cards", "table", "text", "stopped"][self.stage];
+        let name = if self.ds4 {
+            ["ds4", "ds4-settings", "ds4-help"][self.stage]
+        } else {
+            ["cards", "table", "text", "stopped"][self.stage]
+        };
         let pixels = image.pixels.iter().flat_map(|pixel| pixel.to_array()).collect::<Vec<_>>();
         image::save_buffer_with_format(
             self.directory.join(format!("{name}.png")),
@@ -64,7 +73,7 @@ impl eframe::App for CaptureApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.frame += 1;
         let ctx = ui.ctx().clone();
-        if self.stage >= 4 {
+        if self.stage >= if self.ds4 { 3 } else { 4 } {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             return;
         }
@@ -85,6 +94,11 @@ impl eframe::App for CaptureApp {
                 self.pending = false;
                 // 模式切换后先完整绘制一帧，下一帧才请求该视图的截图。
                 self.next_frame = self.frame + 2;
+                if self.ds4 {
+                    self.app.more_settings_open = self.stage == 1;
+                    self.app.active_help = (self.stage == 2).then_some(super::help::HelpTopic::Ds4Battle);
+                    continue;
+                }
                 match self.stage {
                     1 => self.app.results.mode = ViewMode::Table,
                     2 => self.app.results.mode = ViewMode::Text,
@@ -104,7 +118,12 @@ impl eframe::App for CaptureApp {
             self.fail(&ctx, format!("截图样例执行失败：{}", self.app.log.copy_text()));
             return;
         }
-        if !self.pending && self.frame >= self.next_frame && self.app.log.len() > 3 && (self.stage != 3 || !self.app.running) {
+        if !self.pending
+            && self.frame >= self.next_frame
+            && self.app.log.len() > 3
+            && (self.stage != 3 || !self.app.running)
+            && (!self.ds4 || !self.app.running)
+        {
             self.pending = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -112,8 +131,17 @@ impl eframe::App for CaptureApp {
     }
 }
 
-fn run_capture(directory: PathBuf, light: bool) -> eframe::Result<()> {
+fn run_capture(directory: PathBuf, light: bool, ds4: bool) -> eframe::Result<()> {
     std::fs::create_dir_all(&directory).map_err(|err| eframe::Error::AppCreation(Box::new(err)))?;
+    if ds4 {
+        let root = directory.join("workspace");
+        std::fs::create_dir_all(root.join("input")).map_err(|err| eframe::Error::AppCreation(Box::new(err)))?;
+        std::fs::write(
+            root.join("input/names.txt"),
+            "alpha@teamA\nbeta@teamA\ngamma@teamA\ndelta@teamA\n",
+        )
+        .map_err(|err| eframe::Error::AppCreation(Box::new(err)))?;
+    }
     let failure = Arc::new(Mutex::new(None));
     let app_failure = failure.clone();
     eframe::run_native(
@@ -142,7 +170,28 @@ fn run_capture(directory: PathBuf, light: bool) -> eframe::Result<()> {
             app.pair.accuracy = AccuracyPreset::Hundred;
             app.pair.auto_threads = false;
             app.pair.threads = 4;
-            app.start_pair();
+            if ds4 {
+                app.tool = Tool::Ds4;
+                app.results.mode = ViewMode::Text;
+                app.ds4.root = directory.join("workspace").display().to_string();
+                app.ds4.load().map_err(std::io::Error::other)?;
+                app.ds4.document["team_name"] = "teamA".into();
+                app.ds4.document["thread_number"] = 2.into();
+                for key in ["get_3", "openbox_cqp"] {
+                    app.ds4.document[key] = 0.into();
+                }
+                app.ds4.document["abcp"]["enable"] = 0.into();
+                for key in ["bc", "fz", "wc", "fs", "pj"] {
+                    app.ds4.document[key]["sieve"] = (-10000).into();
+                    app.ds4.document[key]["ptt_sieve"] = (-10000).into();
+                }
+                for key in ["two_fc", "two_wc", "two_rh"] {
+                    app.ds4.document[key]["sieve"] = (-10000).into();
+                }
+                app.start_ds4();
+            } else {
+                app.start_pair();
+            }
             Ok(Box::new(CaptureApp {
                 app,
                 directory,
@@ -152,6 +201,7 @@ fn run_capture(directory: PathBuf, light: bool) -> eframe::Result<()> {
                 next_frame: 4,
                 started: Instant::now(),
                 failure: app_failure,
+                ds4,
             }))
         }),
     )?;

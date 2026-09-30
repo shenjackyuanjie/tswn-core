@@ -22,10 +22,11 @@ pub enum Tool {
     NamerPf,
     BatchRate,
     Pair,
+    Ds4,
 }
 
 impl Tool {
-    pub const ALL: [Self; 4] = [Self::ToDiy, Self::NamerPf, Self::BatchRate, Self::Pair];
+    pub const ALL: [Self; 5] = [Self::ToDiy, Self::NamerPf, Self::BatchRate, Self::Pair, Self::Ds4];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -33,6 +34,7 @@ impl Tool {
             Self::NamerPf => "namer-pf",
             Self::BatchRate => "cqd/cqp",
             Self::Pair => "pair",
+            Self::Ds4 => "DS4",
         }
     }
 }
@@ -272,11 +274,12 @@ pub struct OpenboxApp {
     pub(crate) last_live_poll: Instant,
     pub(crate) results: super::results::ResultsView,
     // 与 Tool::ALL 的固定顺序对应；各页单独保留本次会话的视图选择。
-    pub(crate) result_modes: [ViewMode; 4],
+    pub(crate) result_modes: [ViewMode; 5],
     pub to_diy: ToDiyState,
     pub namer_pf: NamerPfState,
     pub batch_rate: BatchRateState,
     pub pair: PairState,
+    pub ds4: super::ds4::Ds4State,
 }
 
 impl Default for OpenboxApp {
@@ -301,11 +304,18 @@ impl Default for OpenboxApp {
             pending_live: Default::default(),
             last_live_poll: Instant::now(),
             results: Default::default(),
-            result_modes: [ViewMode::Cards, ViewMode::Table, ViewMode::Table, ViewMode::Cards],
+            result_modes: [
+                ViewMode::Cards,
+                ViewMode::Table,
+                ViewMode::Table,
+                ViewMode::Cards,
+                ViewMode::Text,
+            ],
             to_diy: ToDiyState::default(),
             namer_pf: NamerPfState::default(),
             batch_rate: BatchRateState::default(),
             pair: PairState::default(),
+            ds4: Default::default(),
         }
     }
 }

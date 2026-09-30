@@ -12,6 +12,7 @@
 - `namer-pf`
 - `cqd/cqp`，对应原 `bench batch-rate`
 - `pair`
+- `DS4`：工作目录中的评分、增量配对与实战筛选
 
 ## 运行
 
@@ -41,13 +42,13 @@ Windows GUI 构建启用 `windows_subsystem = "windows"`，双击启动时不会
 cargo run -p tswn_openbox --bin openbox-cli -- --help
 ```
 
-`openbox-cli` 复用 GUI 的后端（`src/backend/`）与预设（`src/presets/`），
+`openbox-cli` 复用 GUI 的后端与预设（`tswn_openbox_backend` crate），
 因此与面板共用解析、执行、文件输出格式、输出排序、标签清洗，
 以及同样的配置约定——靶子/队友预设读 `./setting/settings.toml`（缺失时
 自动释放内嵌默认资源），技能榜阈值默认读 `./setting/score_now.toml`。
 数据行走 stdout，进度与状态走 stderr，方便管道与重定向。
 
-四个子命令与 GUI 面板一一对应：
+以下四个子命令对应原有 GUI 面板；DS4 保留独立的统一 `tswn_ds4` CLI 出口：
 
 ```powershell
 # to-diy：-r 单号默认追加详情日志；--no-details 关闭；-f 批量不输出详情；--old / --minions 同 GUI
@@ -432,6 +433,26 @@ players = ["peach", "fire"]
 crates\tswn_openbox\src\SarasaMonoSC-Regular.ttf
 ```
 
+## DS4 页面
+
+1. 选择包含 `input/` 的工作目录。已有 `config.json` 会自动读取；新目录载入默认配置。
+2. 填写输入中 `@` 后的队伍名，设置线程数、二人组类型及阈值。
+3. 按需开启 ABCP5、三人组和 Openbox 实战筛选；基础分类、SP1、八类三人阈值及归档选项在“更多设置”中。
+4. 点击运行。界面先保存配置，再在后台调用 DS4 Rust API；右侧显示阶段日志和本轮统计，底部按钮可打开结果目录。
+
+ABCP5 与三人流程需要工作目录的 `abcp5/` 模型和运行库，实战筛选直接使用内置 Rust 后端。运行按整轮完成，暂不提供中途取消；请等待历史状态归档后再关闭窗口。阶段进度不代表耗时比例。
+
+配置读写保留额外字段；手动改换目录后，应先读取配置，防止把另一个目录的设置覆盖进来。默认增量去重会复用 `file/` 中的历史，重新评估模型或阈值时应使用新工作目录。
+
+页面按目录、基础分类、配对、后续筛选和结果使用不同强调色。悬停字段查看对应上游参数说明；点击 ⓘ 可固定流程、阈值、历史、三人组合、模型诊断或实战筛选帮助。基础分类明确按“评分或潜力任一达标”保留，技能参数标为“技能容差”（越大越宽松），避免误当作最低分数。
+
+使用真实 DS4 样例校验深浅主题界面，每次生成主页面、更多设置和固定帮助三张截图：
+
+```powershell
+cargo run -p tswn_openbox --bin tswn_openbox --features ui_capture -- --capture-dir target/openbox-ds4-dark --capture-ds4
+cargo run -p tswn_openbox --bin tswn_openbox --features ui_capture -- --capture-dir target/openbox-ds4-light --capture-ds4 --capture-light
+```
+
 ## 实现说明
 
 源码按职责拆分，GUI 与 `openbox-cli` 共用同一套后端与预设：
@@ -439,12 +460,12 @@ crates\tswn_openbox\src\SarasaMonoSC-Regular.ttf
 - `src/lib.rs`、`src/app.rs`、`src/app/`：GUI 的状态、控件与任务启动。
   - `state.rs` 面板状态、`view.rs` 布局与控件、`actions.rs` 启动任务、`widgets.rs` 复用控件、
     `task.rs` 后台任务生命周期、`help.rs` 上下文帮助、`style.rs` 语义配色、`log.rs` 日志缓存、
-    `results.rs` 结果模型、`results/view.rs` 结果渲染、`source.rs` 文本输入来源。
-- `src/backend.rs`、`src/backend/`：解析、执行、输出格式化与文件写入。
+    `results.rs` 结果模型、`results/view.rs` 结果渲染、`source.rs` 文本输入来源、`ds4.rs` DS4 页面与任务入口、`ds4_help.rs` DS4 参数及流程帮助。
+- `../tswn_openbox_backend/src/backend.rs`、`backend/`：解析、执行、输出格式化与文件写入。
   - `to_diy.rs` 导出及属性详情、`namer_pf.rs` 评分入口、`pair.rs` 配队入口、`batch.rs` 批量胜率及有界窗口执行，
     `parse.rs` 输入解析、`format.rs` 输出格式、`output.rs` 文件创建与排序、`score.rs` 评分、
     `pair/matrix.rs` 队友×靶子窗口矩阵、`live.rs` 实时收件箱、`skill_board.rs` 技能榜、`types.rs` 事件与输入类型。
-- `src/presets.rs`：靶子/队友预设与默认资源释放，GUI 与 CLI 共用。
+- `../tswn_openbox_backend/src/presets.rs`：靶子/队友预设与默认资源释放，GUI、DS4 与 CLI 共用。
 - `src/bin/openbox_cli/`：无头入口（`main.rs` 排空事件通道并按 stdout/stderr 分流、
   `args.rs` 参数解析与执行计划、`input.rs` 输入读取与校验、`plan.rs` 计划类型、`tools.rs` 分发）。
 
@@ -477,7 +498,7 @@ crates\tswn_openbox\src\SarasaMonoSC-Regular.ttf
 仓库提供 `openbox_mem_probe` 调试入口，用于复现 Openbox 后端 `cqd/cqp` 路径并采样 RSS：
 
 ```powershell
-cargo run -p tswn_openbox --bin openbox_mem_probe -- --players tests/allCO3pure.txt --targets crates/tswn_openbox/assets/targets/target2.txt --limit 10000 --target-limit all --count 1 --threads 8 --report-ms 2000
+cargo run -p tswn_openbox --bin openbox_mem_probe -- --players tests/allCO3pure.txt --targets crates/tswn_openbox_backend/assets/targets/target2.txt --limit 10000 --target-limit all --count 1 --threads 8 --report-ms 2000
 ```
 
 `0.3.9` 修复后，`allCO3pure.txt` 取 10000 组、`target2.txt` 全 41 个靶子、共 410000 个 matchup 的测试中，RSS 运行中稳定在约 `15-16 MB`，结束约 `9.1 MB`。
@@ -490,8 +511,8 @@ pair 路径：
 ```powershell
 cargo run --release -p tswn_openbox --bin openbox_pair_probe -- `
   --players docs/perf/cqp/sqp6000_first20.txt `
-  --teammates crates/tswn_openbox/assets/teammates/teammate_fz.txt `
-  --targets crates/tswn_openbox/assets/targets/target2.txt `
+  --teammates crates/tswn_openbox_backend/assets/teammates/teammate_fz.txt `
+  --targets crates/tswn_openbox_backend/assets/targets/target2.txt `
   --count 100 --threads auto --head 5
 ```
 

@@ -15,10 +15,11 @@ serde_json = "1.0"
 toml = "1.1.5"
 tswn_core = { path = "../tswn_core", default-features = false, features = ["no_debug", "png_render"] }
 tswn_openbox_backend = { path = "../tswn_openbox_backend" }
+tswn_ds4 = { path = "../tswn_ds4", optional = true }
 
 [features]
 default = ["mimalloc_alloc", "gui"]
-gui = ["dep:eframe", "dep:egui", "dep:rfd"]
+gui = ["dep:eframe", "dep:egui", "dep:rfd", "dep:tswn_ds4"]
 no_debug = ["tswn_core/no_debug"]
 mimalloc_alloc = ["tswn_core/mimalloc_alloc"]
 # 仅供界面校验：由应用自身生成截图，普通构建不编译截图驱动。

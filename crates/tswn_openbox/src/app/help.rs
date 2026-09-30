@@ -26,6 +26,12 @@ pub(crate) enum HelpTopic {
     PairTeammates,
     PairDetails,
     PairScore,
+    Ds4Workflow,
+    Ds4Thresholds,
+    Ds4Storage,
+    Ds4Three,
+    Ds4Prediction,
+    Ds4Battle,
 }
 
 impl HelpTopic {
@@ -50,11 +56,23 @@ impl HelpTopic {
             Self::PairTeammates => "队友与保留数量",
             Self::PairDetails => "cqp 详情",
             Self::PairScore => "pair 分数与阈值",
+            Self::Ds4Workflow => "DS4 筛选流程",
+            Self::Ds4Thresholds => "DS4 阈值与实战筛选",
+            Self::Ds4Storage => "DS4 工作目录与增量历史",
+            Self::Ds4Three => "DS4 三人组合与后处理",
+            Self::Ds4Prediction => "DS4 模型环境与诊断",
+            Self::Ds4Battle => "DS4 三轮实战筛选",
         }
     }
 
     pub(crate) fn body(self) -> &'static str {
         match self {
+            Self::Ds4Workflow => super::ds4_help::WORKFLOW,
+            Self::Ds4Thresholds => super::ds4_help::THRESHOLDS,
+            Self::Ds4Storage => super::ds4_help::STORAGE,
+            Self::Ds4Three => super::ds4_help::THREE_DETAILS,
+            Self::Ds4Prediction => super::ds4_help::PREDICTION,
+            Self::Ds4Battle => super::ds4_help::BATTLE,
             Self::DiyExport => {
                 "每行输入一个名字或组合，组内成员用 + 分隔。默认导出 +ol；“旧 +diy”和“召唤物diy”是另外两种格式，不能同时开启。\n\n\
                  屏幕详情包括属性、技能、八围与嘲讽。带括号的 + / - 数值表示组队后相对单独构建的变化，并非额外加成选项。\n\n\
@@ -190,7 +208,9 @@ pub(crate) fn show_help_window(ctx: &egui::Context, active: &mut Option<HelpTopi
         .default_width(440.0)
         .show(ctx, |ui| {
             ui.set_max_width(520.0);
-            ui.label(topic.body());
+            egui::ScrollArea::vertical().max_height(560.0).show(ui, |ui| {
+                ui.label(topic.body());
+            });
         });
     if !open {
         *active = None;

@@ -145,25 +145,29 @@ impl OpenboxApp {
         }
 
         let mut open = self.more_settings_open;
-        egui::Window::new(format!("更多设置 - {}", self.tool.label()))
+        let mut window = egui::Window::new(format!("更多设置 - {}", self.tool.label()))
             .open(&mut open)
             .collapsible(false)
             .resizable(true)
-            .default_width(640.0)
-            .show(ctx, |ui| {
-                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                    egui::Frame::group(ui.style())
-                        .inner_margin(egui::Margin::same(GROUP_MARGIN))
-                        .show(ui, |ui| {
-                            ui.add_enabled_ui(!self.running, |ui| match self.tool {
-                                Tool::ToDiy => self.show_diy_more_settings(ui),
-                                Tool::NamerPf => self.namer_pf_more_settings(ui),
-                                Tool::BatchRate => self.batch_rate_more_settings(ui),
-                                Tool::Pair => self.pair_more_settings(ui),
-                            });
+            .default_width(640.0);
+        if self.tool == Tool::Ds4 {
+            window = window.default_height(640.0);
+        }
+        window.show(ctx, |ui| {
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                egui::Frame::group(ui.style())
+                    .inner_margin(egui::Margin::same(GROUP_MARGIN))
+                    .show(ui, |ui| {
+                        ui.add_enabled_ui(!self.running, |ui| match self.tool {
+                            Tool::ToDiy => self.show_diy_more_settings(ui),
+                            Tool::NamerPf => self.namer_pf_more_settings(ui),
+                            Tool::BatchRate => self.batch_rate_more_settings(ui),
+                            Tool::Pair => self.pair_more_settings(ui),
+                            Tool::Ds4 => self.ds4_more_settings(ui),
                         });
-                });
+                    });
             });
+        });
         self.more_settings_open = open;
     }
 
@@ -341,7 +345,9 @@ impl OpenboxApp {
                         }
                     });
                 });
-                if self.total > 0 {
+                if self.tool == Tool::Ds4 {
+                    ui.label("阶段进度不代表耗时比例；详细阶段见文本日志。");
+                } else if self.total > 0 {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new(format!("速度: {}", self.rate_text)).size(16.0));
                         ui.separator();
@@ -351,6 +357,9 @@ impl OpenboxApp {
                     ui.label(egui::RichText::new("运行结果会显示在这里").weak());
                 }
             });
+        if self.tool == Tool::Ds4 {
+            self.ds4_workflow_ui(ui);
+        }
         self.results.controls(ui, &mut self.active_help);
         if self.log.discarded_lines() > 0 {
             ui.weak(format!(
@@ -440,7 +449,7 @@ impl OpenboxApp {
 
 fn compact_log_text_height(line_count: usize) -> f32 { (line_count.clamp(4, 20) as f32 * 17.0 + 12.0).min(360.0) }
 
-fn tool_header(ui: &mut egui::Ui, title: &str, subtitle: &str, more_settings_open: &mut bool) {
+pub(super) fn tool_header(ui: &mut egui::Ui, title: &str, subtitle: &str, more_settings_open: &mut bool) {
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
             ui.heading(egui::RichText::new(title).color(Palette::of(ui).tool(title)));

@@ -6,6 +6,8 @@
 mod actions;
 #[cfg(feature = "ui_capture")]
 pub(crate) mod capture;
+mod ds4;
+mod ds4_help;
 mod help;
 mod log;
 mod results;
@@ -73,6 +75,7 @@ impl eframe::App for OpenboxApp {
                                     Tool::NamerPf => self.namer_pf_ui(ui),
                                     Tool::BatchRate => self.batch_rate_ui(ui),
                                     Tool::Pair => self.pair_ui(ui),
+                                    Tool::Ds4 => self.ds4_ui(ui),
                                 });
                             ui.separator();
                             run_footer_ui(ui, self);
@@ -102,6 +105,14 @@ fn run_footer_ui(ui: &mut egui::Ui, app: &mut OpenboxApp) {
     ui.add_space(2.0);
     let palette = style::Palette::of(ui);
     if app.running {
+        if app.tool == Tool::Ds4 {
+            ui.add_enabled(
+                false,
+                egui::Button::new("DS4 处理中…").min_size(egui::vec2(ui.available_width(), RUN_BUTTON_HEIGHT)),
+            )
+            .on_disabled_hover_text("DS4 按整轮执行，等待历史归档完成后即可再次运行。");
+            return;
+        }
         let label = if app.cancel_requested { "停止中..." } else { "停止" };
         let button = egui::Button::new(egui::RichText::new(label).size(17.0).color(palette.warning))
             .fill(palette.warning.gamma_multiply(0.12))
@@ -121,7 +132,11 @@ fn run_footer_ui(ui: &mut egui::Ui, app: &mut OpenboxApp) {
             .min_size(egui::vec2(ui.available_width(), RUN_BUTTON_HEIGHT));
         if ui
             .add(button)
-            .on_hover_text("使用当前输入和设置开始计算。新任务会清空上一次的日志与结果。")
+            .on_hover_text(if app.tool == Tool::Ds4 {
+                ds4_help::RUN
+            } else {
+                "使用当前输入和设置开始计算。新任务会清空上一次的日志与结果。"
+            })
             .clicked()
         {
             match app.tool {
@@ -129,6 +144,7 @@ fn run_footer_ui(ui: &mut egui::Ui, app: &mut OpenboxApp) {
                 Tool::NamerPf => app.start_namer_pf(),
                 Tool::BatchRate => app.start_batch_rate(),
                 Tool::Pair => app.start_pair(),
+                Tool::Ds4 => app.start_ds4(),
             }
         }
     }

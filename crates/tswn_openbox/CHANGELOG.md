@@ -4,6 +4,8 @@
 
 ### 新增
 
+- 新增 DS4 页面：工作目录、队伍名、配置读写、各类筛选阈值、后台执行、阶段进度、本轮统计及结果目录入口；直接调用 `tswn_ds4` Rust API。
+- 共用计算与预设模块提取为 `tswn_openbox_backend`，GUI、DS4 与 CLI 复用同一实现，原有公开接口保持兼容。
 - 新增按工作目录加载靶子预设的 Rust API；GUI 依赖由默认开启的 `gui` feature 管理，供 DS4 仅依赖后端 library。
 - 新增默认关闭的 `ui_capture` feature，按需用应用自身渲染回传生成四种状态的校验截图。
 - 日志区支持纯文本流水、可折叠卡片和表格三种视图，支持运行中切换及跟随最新。
@@ -20,6 +22,8 @@
 - 保留 CLI、文件输出、稳定加权及同分排序行为；新增回归测试覆盖提前发布、并发重名与文件兼容性。
 
 ### 界面调整
+
+- DS4 页面使用彩色流程与分区，所有配置项提供上游语义 tooltip；新增六类可固定帮助，覆盖增量缓存、技能容差、三人组合、模型诊断与三轮实战规则，截图驱动支持 `--capture-ds4`。
 
 - 四个工具补充输入规则、评分和导出提示；阈值、运行、停止、复制与清空提供悬停说明，新增导出帮助和可固定的实时结果说明。
 - 统一深浅主题语义配色：工具标题分别强调，预览、完成、停止、高亮和错误同时以颜色与文字区分；卡片边框、状态列、进度条与操作按钮同步配色。
@@ -274,8 +278,8 @@
 
 - `cargo check -p tswn_openbox`
 - `cargo check -p tswn_openbox --bin openbox_mem_probe`
-- `cargo run -p tswn_openbox --bin openbox_mem_probe -- --players tests/allCO3pure.txt --targets crates/tswn_openbox/assets/targets/target2.txt --limit 2000 --target-limit 8 --count 1 --threads 8 --report-ms 1000`
-- `cargo run -p tswn_openbox --bin openbox_mem_probe -- --players tests/allCO3pure.txt --targets crates/tswn_openbox/assets/targets/target2.txt --limit 10000 --target-limit all --count 1 --threads 8 --report-ms 2000`
+- `cargo run -p tswn_openbox --bin openbox_mem_probe -- --players tests/allCO3pure.txt --targets crates/tswn_openbox_backend/assets/targets/target2.txt --limit 2000 --target-limit 8 --count 1 --threads 8 --report-ms 1000`
+- `cargo run -p tswn_openbox --bin openbox_mem_probe -- --players tests/allCO3pure.txt --targets crates/tswn_openbox_backend/assets/targets/target2.txt --limit 10000 --target-limit all --count 1 --threads 8 --report-ms 2000`
 
 ### 实测
 

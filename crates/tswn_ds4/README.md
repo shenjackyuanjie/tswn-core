@@ -18,9 +18,9 @@ fn process(root: &Path) -> Ds4Result<()> {
 }
 ```
 
-`Config::from_json` 可校验界面编辑后的 JSON；`run` 返回 `FullRunReport`，出错时返回 `Ds4Error`，不会退出宿主进程。`screen_openbox_pairs` 可独立运行实战筛选。调用是同步的，GUI 应放到后台任务中执行；同一个工作目录不能并发运行。当前执行入口尚未提供全流程取消和结构化进度回调。
+`Config::from_json` 可校验界面编辑后的 JSON；`run` 返回 `FullRunReport`，出错时返回 `Ds4Error`，不会退出宿主进程。`run_with_progress` 通过 `RunStage` 回调报告阶段，`screen_openbox_pairs` 可独立运行实战筛选。调用是同步的，GUI 应放到后台任务中执行；同一个工作目录不能并发运行。当前执行入口尚未提供全流程取消。
 
-实战筛选直接依赖 `tswn_openbox` 的后端 library，并关闭其 `gui` feature，不需要 `openbox-cli.exe`。依赖方向为 `tswn_ds4 → tswn_openbox → tswn_core`；后续 GUI 接入应在宿主层组合两者，避免在 `tswn_openbox` library 中反向依赖 DS4。
+实战筛选直接调用共用的 `tswn_openbox_backend` library，不需要 `openbox-cli.exe`。Openbox GUI 的 DS4 页面直接调用本 crate；GUI 与 DS4 共用后端，避免循环依赖。原有 `tswn_openbox::backend` 和 `tswn_openbox::presets` 接口继续保留。
 
 ## 运行
 

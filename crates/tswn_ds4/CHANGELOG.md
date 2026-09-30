@@ -4,6 +4,7 @@
 
 > 跟进 2026-09-30 的 Data_Structure4.0，提供 Rust API 与统一 CLI
 
+- Openbox 新增 DS4 页面，直接调用 Rust API；提供彩色分区、配置 tooltip 与可固定流程帮助；新增 `run_with_progress` 阶段回调，共用后端提取为 `tswn_openbox_backend`。
 - 提取公开 Rust API，统一 CLI 复用 library，为 tswn 体系中的宿主集成提供配置、执行与报告接口。
 - 队伍名按前缀接收并截断尾缀；新增二人和三人流程 ABCP5 历史缓存，重复运行保留历史预测结果。
 - 新增默认关闭的 Openbox 三轮实战筛选，直接调用 `tswn_openbox` 后端和带权预设，无需 Openbox 外部程序。
