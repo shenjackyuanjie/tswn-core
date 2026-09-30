@@ -26,6 +26,10 @@ pub use openbox::screen_pairs as screen_openbox_pairs;
 pub use ops::dedup::DedupStats;
 pub use pipeline::run_full as run;
 pub use pipeline::{FullRunReport, PairReport, SingleReport, Stage1Report};
+pub use pipeline::{RunStage, run_with_progress};
+
+/// DS4 新工作目录使用的 JSON 配置模板。
+pub const DEFAULT_CONFIG_JSON: &str = include_str!("../config.example.json");
 
 /// 执行统一 CLI 入口；嵌入其他 Rust 应用时优先使用 [`run`]。
 pub fn run_cli(args: impl IntoIterator<Item = String>) -> Ds4Result<()> { cli::execute(args) }

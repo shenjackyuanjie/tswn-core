@@ -67,7 +67,11 @@ fn json_pipeline_filters_team_and_preserves_incremental_state() {
     assert!(fc.contains("+gamma@teamA"));
 
     let config = tswn_ds4::Config::load_from_root(&root).expect("从 Rust API 加载配置");
-    let report = tswn_ds4::run(&root, &config).expect("Rust API 复用 CLI 的历史状态");
+    let mut stages = Vec::new();
+    let report = tswn_ds4::run_with_progress(&root, &config, |stage| stages.push(stage)).expect("Rust API 复用 CLI 的历史状态");
+    assert_eq!(stages.first(), Some(&tswn_ds4::RunStage::Input));
+    assert_eq!(stages.last(), Some(&tswn_ds4::RunStage::Complete));
+    assert!(stages.windows(2).all(|stages| stages[0].completed() < stages[1].completed()));
     assert_eq!(report.stage1.dedup.remaining, 0);
     assert_eq!(report.pair.fc, 0);
     assert_eq!(

@@ -54,30 +54,74 @@ pub struct FullRunReport {
     pub abcp: usize,
 }
 
-pub fn run_full(root: &Path, config: &Config) -> Ds4Result<FullRunReport> {
+/// 当前执行阶段；阶段顺序用于界面显示，不代表各阶段耗时相同。
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum RunStage {
+    Input,
+    Single,
+    Pair,
+    Three,
+    Abcp,
+    Openbox,
+    Archive,
+    Complete,
+}
+
+impl RunStage {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Input => "合并输入、队伍筛选与去重",
+            Self::Single => "单人评分与分类",
+            Self::Pair => "二人增量配对",
+            Self::Three => "三人预测与增量配对",
+            Self::Abcp => "ABCP5 二人预测",
+            Self::Openbox => "Openbox 三轮实战筛选",
+            Self::Archive => "归档历史结果",
+            Self::Complete => "处理完成",
+        }
+    }
+
+    pub fn completed(self) -> usize { self as usize }
+
+    pub const TOTAL: usize = Self::Complete as usize;
+}
+
+pub fn run_full(root: &Path, config: &Config) -> Ds4Result<FullRunReport> { run_with_progress(root, config, |_| {}) }
+
+/// 同步执行流程并报告阶段；回调应快速返回，避免阻塞计算。
+pub fn run_with_progress(root: &Path, config: &Config, mut progress: impl FnMut(RunStage)) -> Ds4Result<FullRunReport> {
     let absolute = if root.is_absolute() {
         root.to_path_buf()
     } else {
         std::env::current_dir()?.join(root)
     };
     let store = Store::new(absolute);
-    run_full_with_store(&store, config)
+    run_with_store_observed(&store, config, &mut progress)
 }
 
 pub fn run_full_with_store(store: &Store, config: &Config) -> Ds4Result<FullRunReport> {
+    run_with_store_observed(store, config, &mut |_| {})
+}
+
+fn run_with_store_observed(store: &Store, config: &Config, progress: &mut dyn FnMut(RunStage)) -> Ds4Result<FullRunReport> {
+    progress(RunStage::Input);
     if let Some(team_name) = &config.team_name {
-        return run_ds4_with_store(store, config, team_name);
+        return run_ds4_with_store(store, config, team_name, progress);
     }
     let stage1 = run_stage1_with_store(store, config)?;
+    progress(RunStage::Single);
     let single = run_single_scoring(store, config)?;
     sort_tmp_single(store)?;
+    progress(RunStage::Pair);
     let pair = run_pairing(store, config)?;
+    progress(RunStage::Archive);
     copy_to_file_store(store)?;
     sort_file_store(store)?;
     if config.copy_to_new {
         copy_to_new_store(store)?;
         sort_new_store(store)?;
     }
+    progress(RunStage::Complete);
     Ok(FullRunReport {
         stage1,
         single,
@@ -88,7 +132,12 @@ pub fn run_full_with_store(store: &Store, config: &Config) -> Ds4Result<FullRunR
     })
 }
 
-fn run_ds4_with_store(store: &Store, config: &Config, team_name: &str) -> Ds4Result<FullRunReport> {
+fn run_ds4_with_store(
+    store: &Store,
+    config: &Config,
+    team_name: &str,
+    progress: &mut dyn FnMut(RunStage),
+) -> Ds4Result<FullRunReport> {
     prepare_dirs(store)?;
     fs::create_dir_all(store.root().join("3ren"))?;
     fs::create_dir_all(store.root().join("3-out"))?;
@@ -136,6 +185,7 @@ fn run_ds4_with_store(store: &Store, config: &Config, team_name: &str) -> Ds4Res
     };
     let stage1 = Stage1Report { merged_files, dedup };
     if accepted_count == 0 {
+        progress(RunStage::Complete);
         return Ok(FullRunReport {
             stage1,
             single: SingleReport {
@@ -152,15 +202,18 @@ fn run_ds4_with_store(store: &Store, config: &Config, team_name: &str) -> Ds4Res
         });
     }
 
+    progress(RunStage::Single);
     let single = run_single_scoring(store, config)?;
     sort_tmp_single(store)?;
     let sp1 = run_sp1_scoring(store, config)?;
     for mode in PairMode::ALL {
         write_bytes_atomic(&store.out_pair_file(mode), b"")?;
     }
+    progress(RunStage::Pair);
     let pair = run_pairing(store, config)?;
 
     let mut three_counts = [0; 8];
+    progress(RunStage::Three);
     if config.get_3 {
         abcp::prepare_three_pairs(store.root(), config.three_pair_abcp_sieve, config.threads)?;
         for kind in ["FC", "WC", "RH"] {
@@ -185,15 +238,18 @@ fn run_ds4_with_store(store: &Store, config: &Config, team_name: &str) -> Ds4Res
             sort_scored_file(&old_path, &old_path, &sort_by_score(1))?;
         }
     }
+    progress(RunStage::Abcp);
     let abcp = if config.abcp.enabled {
         abcp::predict_final_pairs(store.root(), config.abcp.sieve, config.threads)?
     } else {
         0
     };
+    progress(RunStage::Openbox);
     if config.openbox_cqp {
         crate::openbox::screen_pairs(store.root(), config.three_pair_abcp_sieve, config.threads)?;
     }
 
+    progress(RunStage::Archive);
     copy_to_file_store(store)?;
     sort_file_store(store)?;
     archive_sp1(store, config)?;
@@ -202,6 +258,7 @@ fn run_ds4_with_store(store: &Store, config: &Config, team_name: &str) -> Ds4Res
         sort_new_store(store)?;
         copy_sp1_to_new(store, config)?;
     }
+    progress(RunStage::Complete);
     Ok(FullRunReport {
         stage1,
         single,
