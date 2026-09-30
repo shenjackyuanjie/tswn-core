@@ -56,8 +56,8 @@ cargo build --release -p tswn_openbox --bin openbox_pair_probe
 ```powershell
 .\target\release\openbox_pair_probe.exe `
   --players .\docs\perf\cqp\sqp6000_first20.txt `
-  --teammates .\crates\tswn_openbox\assets\teammates\teammate_fz.txt `
-  --targets .\crates\tswn_openbox\assets\targets\target2.txt `
+  --teammates .\crates\tswn_openbox_backend\assets\teammates\teammate_fz.txt `
+  --targets .\crates\tswn_openbox_backend\assets\targets\target2.txt `
   --count 100 --threads auto --head 5
 ```
 
@@ -66,8 +66,8 @@ cargo build --release -p tswn_openbox --bin openbox_pair_probe
 ```powershell
 .\target\release\openbox_pair_probe.exe `
   --players .\docs\perf\cqp\sqp6000_first20.txt `
-  --teammates .\crates\tswn_openbox\assets\teammates\teammate_fz.toml --teammate-factored `
-  --targets .\crates\tswn_openbox\assets\targets\target2.txt `
+  --teammates .\crates\tswn_openbox_backend\assets\teammates\teammate_fz.toml --teammate-factored `
+  --targets .\crates\tswn_openbox_backend\assets\targets\target2.txt `
   --count 100 --threads auto --head 5
 ```
 
@@ -96,8 +96,8 @@ probe elapsed_s=0.009746 lines=3 progress_ticks=2 progress_last=2 progress_total
 # 用 PowerShell 7 重定向，避免 Windows PowerShell 5.1 的 UTF-16 输出影响哈希
 .\target\release\openbox_pair_probe.exe `
   --players .\docs\perf\cqp\sqp6000_first8.txt `
-  --teammates .\crates\tswn_openbox\assets\teammates\teammate_fz4.txt `
-  --targets .\crates\tswn_openbox\assets\targets\target2.txt `
+  --teammates .\crates\tswn_openbox_backend\assets\teammates\teammate_fz4.txt `
+  --targets .\crates\tswn_openbox_backend\assets\targets\target2.txt `
   --count 100 --threads auto --head 5 > pair-run.txt 2> pair-run.err
 
 Get-FileHash .\pair-run.txt -Algorithm SHA256
@@ -111,9 +111,9 @@ Get-Content .\pair-run.err
 | 文件 | 内容 |
 | --- | --- |
 | `docs/perf/cqp/sqp6000_first20.txt` | 20 个选手组 |
-| `crates/tswn_openbox/assets/teammates/teammate_fz.txt` | 16 个队友组 |
-| `crates/tswn_openbox/assets/teammates/teammate_fz.toml` | 同一批队友的带权 TOML 版本 |
-| `crates/tswn_openbox/assets/targets/target1.txt` / `target2.txt` | 35 / 41 个靶子组 |
+| `crates/tswn_openbox_backend/assets/teammates/teammate_fz.txt` | 16 个队友组 |
+| `crates/tswn_openbox_backend/assets/teammates/teammate_fz.toml` | 同一批队友的带权 TOML 版本 |
+| `crates/tswn_openbox_backend/assets/targets/target1.txt` / `target2.txt` | 35 / 41 个靶子组 |
 
 全网格跑 100% 精度档耗时较长。要控制单轮时长，可按下面的方式派生确定性子集
 （`docs/perf/reports/openbox-pair-parallelism-2026-09-15.md` 用的就是这几份）：
@@ -124,12 +124,12 @@ Get-Content .\docs\perf\cqp\sqp6000_first20.txt | Select-Object -First 8 | Set-C
 Get-Content .\docs\perf\cqp\sqp6000_first20.txt | Select-Object -First 2 | Set-Content .\docs\perf\cqp\sqp6000_first2.txt -Encoding utf8
 
 # 前 4 个队友组（文本；带权 TOML 见下方说明）
-Get-Content .\crates\tswn_openbox\assets\teammates\teammate_fz.txt | Select-Object -First 4 |
-  Set-Content .\crates\tswn_openbox\assets\teammates\teammate_fz4.txt -Encoding utf8
+Get-Content .\crates\tswn_openbox_backend\assets\teammates\teammate_fz.txt | Select-Object -First 4 |
+  Set-Content .\crates\tswn_openbox_backend\assets\teammates\teammate_fz4.txt -Encoding utf8
 
 # 单个靶子（用于“少 matchup × 长轮次”场景）
-Get-Content .\crates\tswn_openbox\assets\targets\target1.txt | Select-Object -First 1 |
-  Set-Content .\crates\tswn_openbox\assets\targets\target1_first1.txt -Encoding utf8
+Get-Content .\crates\tswn_openbox_backend\assets\targets\target1.txt | Select-Object -First 1 |
+  Set-Content .\crates\tswn_openbox_backend\assets\targets\target1_first1.txt -Encoding utf8
 ```
 
 带权队友场景还需要 `teammate_fz4.toml`（`teammate_fz.toml` 的前 4 个 `[[targets]]` 块，

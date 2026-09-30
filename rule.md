@@ -46,7 +46,7 @@ OpenBox CQP/CQD 可使用 `openbox_mem_probe`：
 cargo build -p tswn_openbox --release --bin openbox_mem_probe
 target\release\openbox_mem_probe.exe `
   --players docs\perf\cqp\sqp6000_first20.txt `
-  --targets crates\tswn_openbox\assets\targets\target1.txt `
+  --targets crates\tswn_openbox_backend\assets\targets\target1.txt `
   --limit all --target-limit all --count 1000 --threads 0
 ```
 

@@ -17,8 +17,8 @@
 //! ```powershell
 //! cargo run --release -p tswn_openbox --bin openbox_pair_probe -- `
 //!   --players docs/perf/cqp/sqp6000_first20.txt `
-//!   --teammates crates/tswn_openbox/assets/teammates/teammate_fz.txt `
-//!   --targets crates/tswn_openbox/assets/targets/target2.txt `
+//!   --teammates crates/tswn_openbox_backend/assets/teammates/teammate_fz.txt `
+//!   --targets crates/tswn_openbox_backend/assets/targets/target2.txt `
 //!   --count 100 --threads auto --head 5
 //! ```
 //!
@@ -69,8 +69,8 @@ impl Args {
         let mut args = std::env::args().skip(1);
         let mut parsed = Self {
             players: PathBuf::from("docs/perf/cqp/sqp6000_first20.txt"),
-            teammates: PathBuf::from("crates/tswn_openbox/assets/teammates/teammate_fz.txt"),
-            targets: PathBuf::from("crates/tswn_openbox/assets/targets/target2.txt"),
+            teammates: PathBuf::from("crates/tswn_openbox_backend/assets/teammates/teammate_fz.txt"),
+            targets: PathBuf::from("crates/tswn_openbox_backend/assets/targets/target2.txt"),
             count: 100,
             threads: None,
             head: 5,

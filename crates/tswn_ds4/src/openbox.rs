@@ -6,8 +6,8 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::sync::{Arc, atomic::AtomicBool};
 
-use tswn_openbox::backend::{self, BatchRateInput, CommonBenchOptions, OutputMode, ProgressEvent};
-use tswn_openbox::presets::{load_target_preset_text, load_target_presets_from_root};
+use tswn_openbox_backend::backend::{self, BatchRateInput, CommonBenchOptions, OutputMode, ProgressEvent};
+use tswn_openbox_backend::presets::{load_target_preset_text, load_target_presets_from_root};
 
 use crate::error::{Ds4Error, Ds4Result};
 use crate::output::{append_file, write_bytes_atomic};

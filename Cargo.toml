@@ -8,6 +8,7 @@ members = [
   "crates/tswn_py",
   "crates/tswn_wasm",
   "crates/tswn_openbox",
+  "crates/tswn_openbox_backend",
   "crates/tswn_lane_ranker",
   "crates/tswn_ladder",
   "crates/tswn_pwp",

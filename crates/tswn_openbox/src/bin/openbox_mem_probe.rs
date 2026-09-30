@@ -138,7 +138,7 @@ impl Args {
         let mut args = std::env::args().skip(1);
         let mut parsed = Self {
             players: PathBuf::from("tests/allCO3pure.txt"),
-            targets: PathBuf::from("crates/tswn_openbox/assets/targets/target2.txt"),
+            targets: PathBuf::from("crates/tswn_openbox_backend/assets/targets/target2.txt"),
             limit: Some(2000),
             target_limit: Some(8),
             count: 1,

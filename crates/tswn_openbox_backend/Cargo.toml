@@ -1,0 +1,11 @@
+[package]
+name = "tswn_openbox_backend"
+description = "Openbox 与 DS4 共用的无界面计算后端"
+version = "0.4.5"
+edition = "2024"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "1.1.5"
+tswn_core = { path = "../tswn_core", default-features = false, features = ["no_debug", "png_render"] }

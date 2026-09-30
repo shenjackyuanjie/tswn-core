@@ -4567,7 +4567,7 @@ version = "0.2.0"
 dependencies = [
  "rayon",
  "serde_json",
- "tswn_openbox",
+ "tswn_openbox_backend",
 ]
 
 [[package]]
@@ -4608,6 +4608,17 @@ dependencies = [
  "egui",
  "image",
  "rfd",
+ "serde",
+ "serde_json",
+ "toml",
+ "tswn_core",
+ "tswn_openbox_backend",
+]
+
+[[package]]
+name = "tswn_openbox_backend"
+version = "0.4.5"
+dependencies = [
  "serde",
  "serde_json",
  "toml",
