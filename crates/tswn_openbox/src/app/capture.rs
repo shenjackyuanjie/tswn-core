@@ -23,12 +23,15 @@ struct CaptureArgs {
     /// 使用 DS4 工作目录样例，生成主页面、更多设置与详细帮助三张截图。
     #[arg(long)]
     capture_ds4: bool,
+    /// 使用 DIY 组合样例校验属性、技能详情及旧版纯文本输出。
+    #[arg(long, conflicts_with = "capture_ds4")]
+    capture_diy: bool,
 }
 
 pub(crate) fn run_if_requested() -> Option<eframe::Result<()>> {
     let args = CaptureArgs::parse();
     args.capture_dir
-        .map(|directory| run_capture(directory, args.capture_light, args.capture_ds4))
+        .map(|directory| run_capture(directory, args.capture_light, args.capture_ds4, args.capture_diy))
 }
 
 struct CaptureApp {
@@ -131,7 +134,7 @@ impl eframe::App for CaptureApp {
     }
 }
 
-fn run_capture(directory: PathBuf, light: bool, ds4: bool) -> eframe::Result<()> {
+fn run_capture(directory: PathBuf, light: bool, ds4: bool, diy: bool) -> eframe::Result<()> {
     std::fs::create_dir_all(&directory).map_err(|err| eframe::Error::AppCreation(Box::new(err)))?;
     if ds4 {
         let root = directory.join("workspace");
@@ -189,6 +192,10 @@ fn run_capture(directory: PathBuf, light: bool, ds4: bool) -> eframe::Result<()>
                     app.ds4.document[key]["sieve"] = (-10000).into();
                 }
                 app.start_ds4();
+            } else if diy {
+                app.tool = Tool::ToDiy;
+                app.to_diy.names = TextSource::inline("1@team+2@team\nmario\nluigi");
+                app.start_to_diy();
             } else {
                 app.start_pair();
             }
