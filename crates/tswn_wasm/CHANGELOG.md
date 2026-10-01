@@ -2,6 +2,14 @@
 
 ## [Unreleased] - 0.5.7
 
+### 依赖更新
+
+- `wasm-bindgen` 升级到 `0.2.129`，`js-sys` 升级到 `0.3.106`；JS／TypeScript 导出契约不变。
+
+### 验证
+
+- `cargo check -p tswn_wasm --target wasm32-unknown-unknown` 通过。
+
 ## [0.5.6] - 2026-09-30
 
 ### 变更

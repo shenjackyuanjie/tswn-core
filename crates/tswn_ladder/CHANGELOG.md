@@ -2,6 +2,15 @@
 
 ## [Unreleased] - 0.1.1
 
+### 依赖更新
+
+- `cron` 升级到 `0.17`；`Schedule::from_str` 与 `upcoming` 用法无需调整。
+
+### 验证
+
+- `cargo check -p tswn_ladder --all-targets` 通过（本机以临时关闭 mimalloc 的配置绕过
+  `libmimalloc-sys` 的 `D8050` 环境故障）。
+
 ## [0.1.0] - 2026-09-30
 
 ### 新增

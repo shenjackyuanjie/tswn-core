@@ -2,6 +2,15 @@
 
 ## [Unreleased] - 0.5.5
 
+### 依赖更新
+
+- `pyo3` 升级到 `0.29`；Python API、类型存根与返回结构保持不变。
+
+### 验证
+
+- `cargo check -p tswn_py --all-targets` 通过（本机以临时关闭 mimalloc 的配置绕过
+  `libmimalloc-sys` 的 `D8050` 环境故障）。
+
 ## [0.5.4] - 2026-09-30
 
 ### 变更

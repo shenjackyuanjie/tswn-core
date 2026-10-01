@@ -2,6 +2,17 @@
 
 ## [Unreleased] - 0.7.1
 
+### 依赖更新
+
+- `sha2` 升级到 `0.11`。该版本的摘要类型不再实现 `LowerHex`，`EncoderManifest::digest()` 改为
+  逐字节格式化为小写十六进制；输出与旧版 `{:x}` 完全一致，契约摘要取值不变。
+- wasm 目标的 `js-sys` 升级到 `0.3.106`，与 `tswn_wasm` 的 `wasm-bindgen 0.2.129` 配套。
+
+### 验证
+
+- `cargo test -p tswn_core --no-default-features --features png_render`：`tswn_core` lib 602 项、
+  `tswn-cli` 88 项通过；`cargo +nightly fmt --check` 无输出。
+
 ## [0.7.0] - 2026-09-30
 
 ### 破坏性变更

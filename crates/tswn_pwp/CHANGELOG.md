@@ -2,6 +2,20 @@
 
 ## [Unreleased] - 0.0.2
 
+### 依赖更新
+
+- `arrow-array`、`arrow-schema`、`parquet` 升级到 `60.0`，`sha2` 升级到 `0.11`；
+  `serde_arrow` 的 Arrow 特性同步改为 `arrow-60`。
+- `encode` 与 `calibrate` 的摘要文本改用 `random::hex` 编码，不再依赖 `sha2` 摘要类型的
+  `LowerHex` 实现；小写十六进制输出与旧版一致，Parquet 与 manifest 契约不受影响。
+
+### 验证
+
+- 本机 MSVC 工具链编译 `zstd-sys` 持续报 `D8050`（既有环境故障），故在临时关闭 `zstd`
+  特性的配置下执行 `cargo check -p tswn_pwp --all-targets` 并通过；压缩相关的 5 个用例
+  因该配置缺少 zstd 而以 `Disabled feature at compile time: zstd` 失败，需在 MSVC 正常的
+  环境复跑。
+
 ## [0.0.1] - 2026-09-30
 
 ### 版本定位

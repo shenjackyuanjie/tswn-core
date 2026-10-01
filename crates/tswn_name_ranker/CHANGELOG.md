@@ -2,6 +2,15 @@
 
 ## [Unreleased] - 0.1.1
 
+### 依赖更新
+
+- 与 `tswn_lane_ranker` 对齐：`axum` 升级到 `0.8`、`tower-http` 升级到 `0.7`、`rusqlite`
+  升级到 `0.40`，并同步刷新本目录的 `Cargo.lock`。
+
+### 说明
+
+- 该 crate 由 workspace `exclude`，不参与默认构建与测试，本轮只同步版本约束与锁文件。
+
 ## [0.1.0] - 2026-09-30
 
 ### 新增
