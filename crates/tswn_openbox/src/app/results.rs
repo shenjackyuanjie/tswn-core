@@ -1,5 +1,7 @@
 //! 三种视图共用的结果模型；只格式化变化项，布局限于当前可见行。
 
+pub(crate) use view::RESULT_FOOTER_HEIGHT;
+
 mod view;
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};

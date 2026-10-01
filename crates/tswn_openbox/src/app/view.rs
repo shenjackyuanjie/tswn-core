@@ -383,7 +383,24 @@ impl OpenboxApp {
             {
                 ui.colored_label(Palette::of(ui).emphasis, line.display_text());
             }
-            self.views[page].ui(ui);
+            // 先给底部按钮留出高度，否则横向滚动区会占满整块空间把它挤出窗口。
+            let height = (ui.available_height() - super::results::RESULT_FOOTER_HEIGHT).max(120.0);
+            ui.allocate_ui_with_layout(
+                egui::vec2(ui.available_width(), height),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| self.views[page].ui(ui),
+            );
+            ui.horizontal(|ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .button("复制全部")
+                        .on_hover_text("复制本页全部结果，内容与“复制日志”相同，包含当前保留的文本。")
+                        .clicked()
+                    {
+                        ctx.copy_text(self.logs[page].copy_text());
+                    }
+                });
+            });
             return;
         }
         let skill_board_line_count = self.logs[page].skill_board_line_count();
@@ -446,7 +463,7 @@ impl OpenboxApp {
                             } else if line.kind == LogKind::Highlight {
                                 text = text.color(Palette::of(ui).emphasis).strong();
                             }
-                            ui.add(egui::Label::new(text).extend());
+                            ui.add(egui::Label::new(text).extend().selectable(true));
                         }
                     },
                 );

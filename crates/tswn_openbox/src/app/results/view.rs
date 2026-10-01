@@ -7,6 +7,8 @@ use tswn_openbox::backend::live::{EntryKind, ResultKind};
 
 const ROW_HEIGHT: f32 = 24.0;
 const CELL_GAP: f32 = 4.0;
+/// 结果区底部留给“复制全部”按钮的高度；由调用方从可用高度中扣除。
+pub(crate) const RESULT_FOOTER_HEIGHT: f32 = 34.0;
 const COLUMN_LABELS: [&str; 7] = ["名字 / 输入序号", "状态", "pp", "pd", "qp", "qd", "sum"];
 
 impl ResultsView {
@@ -162,9 +164,16 @@ impl ResultsView {
                             let record = &self.records[&group];
                             ui.push_id((group, detail), |ui| {
                                 if let Some(index) = detail {
+                                    let line = &record.details[index];
                                     ui.horizontal(|ui| {
                                         ui.add_space(12.0);
-                                        detail_ui(ui, &record.details[index], (width - 12.0).max(60.0), self.card_align);
+                                        let button = copy_button_width(record.kind, index);
+                                        detail_ui(ui, line, (width - 12.0 - button).max(60.0), self.card_align);
+                                        if button > 0.0
+                                            && ui.small_button("复制").on_hover_text("复制该名字的 DIY 导出行。").clicked()
+                                        {
+                                            ui.ctx().copy_text(line.text.clone());
+                                        }
                                     });
                                     return;
                                 }
@@ -282,7 +291,15 @@ impl ResultsView {
                 |ui, rows| {
                     let width = ui.available_width().max(300.0);
                     for index in rows {
-                        detail_ui(ui, &record.details[index], width, self.card_align);
+                        let line = &record.details[index];
+                        let button = copy_button_width(record.kind, index);
+                        ui.horizontal(|ui| {
+                            detail_ui(ui, line, (width - button).max(60.0), self.card_align);
+                            if button > 0.0 && ui.small_button("复制").on_hover_text("复制该名字的 DIY 导出行。").clicked()
+                            {
+                                ui.ctx().copy_text(line.text.clone());
+                            }
+                        });
                     }
                 },
             );
@@ -368,6 +385,9 @@ fn summary_text(record: &Record, palette: Palette) -> egui::RichText {
         text
     }
 }
+
+/// 导出结果的第一行是 DIY 导出行，右侧留出复制按钮的宽度。
+fn copy_button_width(kind: ResultKind, index: usize) -> f32 { if kind == ResultKind::Diy && index == 0 { 56.0 } else { 0.0 } }
 
 /// 详情行沿用纯文本视图的观感：区块标题加粗、缩进行弱化、差额项单独高亮。
 fn detail_ui(ui: &mut egui::Ui, line: &DetailLine, width: f32, align: ColumnAlign) {
