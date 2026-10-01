@@ -410,48 +410,45 @@ impl OpenboxApp {
                 });
         }
         ui.add_space(LOG_SECTION_GAP);
-        egui::Frame::group(ui.style())
-            .inner_margin(egui::Margin::same(GROUP_MARGIN))
-            .show(ui, |ui| {
-                if self.log.is_empty() {
-                    ui.vertical_centered(|ui| {
-                        ui.add_space(48.0);
-                        ui.label(egui::RichText::new("暂无日志").weak().size(18.0));
-                        ui.label(egui::RichText::new("选择工具、填好输入，然后点击运行。旧日志会在新任务开始时清空。").weak());
-                    });
-                } else {
-                    let text_height = ui.available_height().max(220.0);
-                    if ui.rect_contains_pointer(ui.max_rect()) && ui.input(|input| input.smooth_scroll_delta.y > 0.0) {
-                        self.results.follow = false;
-                    }
-                    egui::ScrollArea::both()
-                        .stick_to_bottom(self.results.follow)
-                        .id_salt("main_log")
-                        .auto_shrink([false, false])
-                        .max_height(text_height)
-                        .show_rows(
-                            ui,
-                            ui.text_style_height(&egui::TextStyle::Monospace),
-                            self.log.len(),
-                            |ui, rows| {
-                                for index in rows {
-                                    let Some(line) = self.log.get(index) else { continue };
-                                    let display_text = line.display_text();
-                                    let mut text =
-                                        egui::RichText::new(if display_text.is_empty() { " " } else { display_text }).monospace();
-                                    if line.kind == LogKind::SkillBoard {
-                                        text = text.color(Palette::of(ui).info).strong();
-                                    } else if display_text.starts_with("  ") {
-                                        text = text.color(ui.visuals().weak_text_color());
-                                    } else if line.kind == LogKind::Highlight {
-                                        text = text.color(Palette::of(ui).emphasis).strong();
-                                    }
-                                    ui.add(egui::Label::new(text).extend());
-                                }
-                            },
-                        );
-                }
+        // 与卡片、表格共用同一层版面：日志不再单独套外框。
+        if self.log.is_empty() {
+            ui.vertical_centered(|ui| {
+                ui.add_space(48.0);
+                ui.label(egui::RichText::new("暂无日志").weak().size(18.0));
+                ui.label(egui::RichText::new("选择工具、填好输入，然后点击运行。旧日志会在新任务开始时清空。").weak());
             });
+        } else {
+            let text_height = ui.available_height().max(220.0);
+            if ui.rect_contains_pointer(ui.max_rect()) && ui.input(|input| input.smooth_scroll_delta.y > 0.0) {
+                self.results.follow = false;
+            }
+            egui::ScrollArea::both()
+                .stick_to_bottom(self.results.follow)
+                .id_salt("main_log")
+                .auto_shrink([false, false])
+                .max_height(text_height)
+                .show_rows(
+                    ui,
+                    ui.text_style_height(&egui::TextStyle::Monospace),
+                    self.log.len(),
+                    |ui, rows| {
+                        for index in rows {
+                            let Some(line) = self.log.get(index) else { continue };
+                            let display_text = line.display_text();
+                            let mut text =
+                                egui::RichText::new(if display_text.is_empty() { " " } else { display_text }).monospace();
+                            if line.kind == LogKind::SkillBoard {
+                                text = text.color(Palette::of(ui).info).strong();
+                            } else if display_text.starts_with("  ") {
+                                text = text.color(ui.visuals().weak_text_color());
+                            } else if line.kind == LogKind::Highlight {
+                                text = text.color(Palette::of(ui).emphasis).strong();
+                            }
+                            ui.add(egui::Label::new(text).extend());
+                        }
+                    },
+                );
+        }
     }
 }
 

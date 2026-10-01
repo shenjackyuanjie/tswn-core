@@ -87,11 +87,7 @@ impl eframe::App for OpenboxApp {
 
         egui::CentralPanel::default().show(ui, |ui| {
             egui::Frame::central_panel(ui.style())
-                .inner_margin(egui::Margin::same(if self.results.mode == results::ViewMode::Text {
-                    PANEL_MARGIN
-                } else {
-                    4
-                }))
+                .inner_margin(egui::Margin::same(PANEL_MARGIN))
                 .show(ui, |ui| {
                     self.log_ui(ui, &ctx);
                 });
