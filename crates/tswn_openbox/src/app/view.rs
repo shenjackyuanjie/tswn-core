@@ -441,32 +441,37 @@ impl OpenboxApp {
             if ui.rect_contains_pointer(ui.max_rect()) && ui.input(|input| input.smooth_scroll_delta.y > 0.0) {
                 self.views[page].follow = false;
             }
-            egui::ScrollArea::both()
+            let font_id = egui::TextStyle::Monospace.resolve(ui.style());
+            let ascii_width = ui.fonts_mut(|fonts| fonts.glyph_width(&font_id, '0')).max(1.0);
+            let row_height = ui.text_style_height(&egui::TextStyle::Monospace);
+            let wrap_width = (ui.available_width() - 8.0).max(64.0);
+            let row_count = self.logs[page].wrap_rows(wrap_width, ascii_width);
+            egui::ScrollArea::vertical()
                 .stick_to_bottom(self.views[page].follow)
                 .id_salt("main_log")
                 .auto_shrink([false, false])
                 .max_height(text_height)
-                .show_rows(
-                    ui,
-                    ui.text_style_height(&egui::TextStyle::Monospace),
-                    self.logs[page].len(),
-                    |ui, rows| {
-                        for row in rows {
-                            let Some(line) = self.logs[page].get(row) else { continue };
-                            let display_text = line.display_text();
-                            let mut text =
-                                egui::RichText::new(if display_text.is_empty() { " " } else { display_text }).monospace();
-                            if line.kind == LogKind::SkillBoard {
-                                text = text.color(Palette::of(ui).info).strong();
-                            } else if display_text.starts_with("  ") {
-                                text = text.color(ui.visuals().weak_text_color());
-                            } else if line.kind == LogKind::Highlight {
-                                text = text.color(Palette::of(ui).emphasis).strong();
-                            }
-                            ui.add(egui::Label::new(text).extend().selectable(true));
+                .show_rows(ui, row_height, row_count, |ui, rows| {
+                    for row in rows {
+                        let Some((line, start, end)) = self.logs[page].wrapped_row(row) else {
+                            continue;
+                        };
+                        let Some(log_line) = self.logs[page].get(line) else { continue };
+                        let display_text = log_line.display_text();
+                        let Some(segment) = display_text.get(start..end) else {
+                            continue;
+                        };
+                        let mut text = egui::RichText::new(if segment.is_empty() { " " } else { segment }).monospace();
+                        if log_line.kind == LogKind::SkillBoard {
+                            text = text.color(Palette::of(ui).info).strong();
+                        } else if display_text.starts_with("  ") {
+                            text = text.color(ui.visuals().weak_text_color());
+                        } else if log_line.kind == LogKind::Highlight {
+                            text = text.color(Palette::of(ui).emphasis).strong();
                         }
-                    },
-                );
+                        ui.add(egui::Label::new(text).truncate().selectable(true));
+                    }
+                });
         }
     }
 }
