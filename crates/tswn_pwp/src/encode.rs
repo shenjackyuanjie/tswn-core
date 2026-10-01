@@ -124,7 +124,7 @@ pub fn run(args: &EncodeArgs) -> Result<()> {
                 batch_size: chunk.len(),
                 encoder_manifest_sha256: manifest.digest(),
                 tensors,
-                rows_sha256: format!("{:x}", row_hasher.finalize()),
+                rows_sha256: crate::random::hex(&row_hasher.finalize()),
             },
         )?;
         batches += 1;

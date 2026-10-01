@@ -450,7 +450,7 @@ pub fn run(args: &CalibrateArgs) -> Result<()> {
         samples_selected,
         input_sha256: config.input_sha256.clone(),
         executable_sha256: config.executable_sha256.clone(),
-        selected_rows_digest: format!("{:x}", rows_hasher.finalize()),
+        selected_rows_digest: crate::random::hex(&rows_hasher.finalize()),
         calibrator: "tswn-pwp calibrate v1".to_owned(),
         fields,
     };

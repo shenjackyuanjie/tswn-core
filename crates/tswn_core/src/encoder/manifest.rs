@@ -379,7 +379,9 @@ impl EncoderManifest {
         let mut canonical = self.clone();
         canonical.contract_digest = None;
         let bytes = serde_json::to_vec(&canonical).expect("manifest 必须可序列化");
-        format!("{:x}", Sha256::digest(bytes))
+        // sha2 0.11 的摘要类型不再实现 `LowerHex`，这里按字节转小写十六进制；
+        // 输出与旧版 `{:x}` 逐字节一致，契约摘要取值不变。
+        Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
     }
 
     /// 取一个数值槽的拟合常数；缺失返回 [`EncodeError::MissingCalibration`]。
