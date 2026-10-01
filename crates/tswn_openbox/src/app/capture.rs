@@ -110,11 +110,12 @@ impl eframe::App for CaptureApp {
                     self.app.active_help = (self.stage == 2).then_some(super::help::HelpTopic::Ds4Battle);
                     continue;
                 }
+                let page = self.app.tool as usize;
                 match self.stage {
-                    1 => self.app.results.mode = ViewMode::Table,
-                    2 => self.app.results.mode = ViewMode::Text,
+                    1 => self.app.views[page].mode = ViewMode::Table,
+                    2 => self.app.views[page].mode = ViewMode::Text,
                     3 => {
-                        self.app.results.mode = ViewMode::Cards;
+                        self.app.views[page].mode = ViewMode::Cards;
                         self.app.stop_current_task();
                     }
                     _ => {
@@ -125,13 +126,14 @@ impl eframe::App for CaptureApp {
             }
         }
         self.app.ui(ui, frame);
+        let page = self.app.tool as usize;
         if self.app.status == "失败" {
-            self.fail(&ctx, format!("截图样例执行失败：{}", self.app.log.copy_text()));
+            self.fail(&ctx, format!("截图样例执行失败：{}", self.app.logs[page].copy_text()));
             return;
         }
         if !self.pending
             && self.frame >= self.next_frame
-            && self.app.log.len() > 3
+            && self.app.logs[page].len() > 3
             && (self.stage != 3 || !self.app.running)
             && (!self.ds4 || !self.app.running)
         {
@@ -182,11 +184,11 @@ fn run_capture(directory: PathBuf, light: bool, ds4: bool, diy: bool, align: Col
             app.pair.accuracy = AccuracyPreset::One;
             app.pair.auto_threads = false;
             app.pair.threads = 4;
-            app.results.card_align = align;
-            app.results.column_alignments = [align; 7];
+            app.views[app.tool as usize].card_align = align;
+            app.views[app.tool as usize].column_alignments = [align; 7];
             if ds4 {
                 app.tool = Tool::Ds4;
-                app.results.mode = ViewMode::Text;
+                app.views[app.tool as usize].mode = ViewMode::Text;
                 app.ds4.root = directory.join("workspace").display().to_string();
                 app.ds4.load().map_err(std::io::Error::other)?;
                 app.ds4.document["team_name"] = "teamA".into();
@@ -205,7 +207,7 @@ fn run_capture(directory: PathBuf, light: bool, ds4: bool, diy: bool, align: Col
                 app.start_ds4();
             } else if diy {
                 app.tool = Tool::ToDiy;
-                app.results.follow = false;
+                app.views[app.tool as usize].follow = false;
                 app.to_diy.names = TextSource::inline("1@team+2@team\nmario\nluigi");
                 app.start_to_diy();
             } else {

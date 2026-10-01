@@ -11,6 +11,15 @@ use super::log::{LogBuffer, LogKind};
 
 const MAX_RESULT_BYTES: usize = 8 * 1024 * 1024;
 
+/// 与 [`Tool::ALL`] 顺序一致的默认视图：导出与配队看卡片，评分与胜率看表格，DS4 看纯文本。
+pub(crate) const DEFAULT_VIEW_MODES: [ViewMode; 5] = [
+    ViewMode::Cards,
+    ViewMode::Table,
+    ViewMode::Table,
+    ViewMode::Cards,
+    ViewMode::Text,
+];
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum ViewMode {
     Text,
@@ -158,6 +167,9 @@ impl Default for ResultsView {
 }
 
 impl ResultsView {
+    /// 按指定视图模式创建空结果视图；初始状态与设置恢复共用。
+    pub(crate) fn with_mode(mode: ViewMode) -> Self { Self { mode, ..Self::default() } }
+
     pub fn clear(&mut self) {
         *self = Self {
             mode: self.mode,

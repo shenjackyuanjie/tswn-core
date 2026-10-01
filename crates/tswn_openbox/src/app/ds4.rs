@@ -420,6 +420,7 @@ fn open_directory(path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::state::Tool;
 
     #[test]
     fn config_loading_preserves_custom_fields_and_refuses_unloaded_overwrite() {
@@ -465,9 +466,10 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         assert!(!app.running, "后台任务应完成");
-        assert_eq!(app.status, "完成", "{}", app.log.copy_text());
+        let log = app.logs[Tool::Ds4 as usize].copy_text();
+        assert_eq!(app.status, "完成", "{log}");
         assert_eq!(app.done, RunStage::TOTAL);
-        assert!(app.log.copy_text().contains("新增输入: 2"));
+        assert!(log.contains("新增输入: 2"));
         assert_eq!(fs::read_to_string(root.join("file/old.txt")).unwrap().lines().count(), 2);
         fs::remove_dir_all(root).unwrap();
     }

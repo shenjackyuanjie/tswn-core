@@ -11,7 +11,6 @@ use tswn_openbox::backend::{NamerPfMetric, OutputMode, PairDetailMode};
 
 use super::help::HelpTopic;
 use super::log::LogBuffer;
-use super::results::ViewMode;
 
 use super::source::TextSource;
 use super::widgets::{BenchOutputConfig, OptionalFileOutput};
@@ -260,7 +259,11 @@ pub struct OpenboxApp {
     pub more_settings_open: bool,
     pub about_open: bool,
     pub(crate) active_help: Option<HelpTopic>,
-    pub(crate) log: LogBuffer,
+    /// 各工具页独立的日志与结果，索引与 [`Tool::ALL`] 一致；渲染时只看当前页。
+    pub(crate) logs: [LogBuffer; 5],
+    pub(crate) views: [super::results::ResultsView; 5],
+    /// 当前任务所属的工具页；轮询到的事件始终写入这一页，切页不会串输出。
+    pub(crate) task_tool: Tool,
     pub status: String,
     pub running: bool,
     pub cancel_requested: bool,
@@ -273,9 +276,6 @@ pub struct OpenboxApp {
     pub(crate) live_feed: Option<tswn_openbox::backend::live::LiveFeed>,
     pub(crate) pending_live: tswn_openbox::backend::live::LiveBatch,
     pub(crate) last_live_poll: Instant,
-    pub(crate) results: super::results::ResultsView,
-    // 与 Tool::ALL 的固定顺序对应；各页独立保存视图选择并随 UI 偏好持久化。
-    pub(crate) result_modes: [ViewMode; 5],
     pub to_diy: ToDiyState,
     pub namer_pf: NamerPfState,
     pub batch_rate: BatchRateState,
@@ -291,7 +291,9 @@ impl Default for OpenboxApp {
             more_settings_open: false,
             about_open: false,
             active_help: None,
-            log: LogBuffer::default(),
+            logs: std::array::from_fn(|_| LogBuffer::default()),
+            views: std::array::from_fn(|index| super::results::ResultsView::with_mode(super::results::DEFAULT_VIEW_MODES[index])),
+            task_tool: Tool::ToDiy,
             status: "就绪".to_string(),
             running: false,
             cancel_requested: false,
@@ -304,14 +306,6 @@ impl Default for OpenboxApp {
             live_feed: None,
             pending_live: Default::default(),
             last_live_poll: Instant::now(),
-            results: Default::default(),
-            result_modes: [
-                ViewMode::Cards,
-                ViewMode::Table,
-                ViewMode::Table,
-                ViewMode::Cards,
-                ViewMode::Text,
-            ],
             to_diy: ToDiyState::default(),
             namer_pf: NamerPfState::default(),
             batch_rate: BatchRateState::default(),

@@ -311,6 +311,8 @@ impl OpenboxApp {
     }
 
     pub(crate) fn log_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        // 每页各自持有日志与结果；任务事件由 `task_tool` 决定写入哪一页。
+        let page = self.tool as usize;
         egui::Frame::group(ui.style())
             .inner_margin(egui::Margin::same(GROUP_MARGIN))
             .show(ui, |ui| {
@@ -334,7 +336,7 @@ impl OpenboxApp {
                             .on_hover_text("复制当前保留的纯文本，不受卡片或表格视图影响；已裁剪的历史不包含在内。")
                             .clicked()
                         {
-                            ctx.copy_text(self.log.copy_text());
+                            ctx.copy_text(self.logs[page].copy_text());
                         }
                         if ui
                             .button("清空日志")
@@ -353,7 +355,7 @@ impl OpenboxApp {
                         ui.separator();
                         ui.label(egui::RichText::new(format!("剩余: {}", self.eta_text)).size(16.0));
                     });
-                } else if self.log.is_empty() {
+                } else if self.logs[page].is_empty() {
                     ui.label(egui::RichText::new("运行结果会显示在这里").weak());
                 } else {
                     ui.label(egui::RichText::new("结果已生成，可切换视图或复制日志").weak());
@@ -368,23 +370,23 @@ impl OpenboxApp {
             Tool::Pair => tswn_openbox::backend::live::ResultKind::Pair,
             _ => tswn_openbox::backend::live::ResultKind::Rate,
         };
-        self.results.controls(ui, &mut self.active_help, kind);
-        if self.log.discarded_lines() > 0 {
+        self.views[page].controls(ui, &mut self.active_help, kind);
+        if self.logs[page].discarded_lines() > 0 {
             ui.weak(format!(
                 "文本历史已裁剪 {} 行，复制日志仅包含当前保留部分。",
-                self.log.discarded_lines()
+                self.logs[page].discarded_lines()
             ));
         }
-        if self.results.mode != super::results::ViewMode::Text {
+        if self.views[page].mode != super::results::ViewMode::Text {
             if self.status == "失败"
-                && let Some(line) = self.log.get(self.log.len().saturating_sub(1))
+                && let Some(line) = self.logs[page].get(self.logs[page].len().saturating_sub(1))
             {
                 ui.colored_label(Palette::of(ui).emphasis, line.display_text());
             }
-            self.results.ui(ui);
+            self.views[page].ui(ui);
             return;
         }
-        let skill_board_line_count = self.log.skill_board_line_count();
+        let skill_board_line_count = self.logs[page].skill_board_line_count();
         if skill_board_line_count > 0 {
             ui.add_space(LOG_SECTION_GAP);
             egui::CollapsingHeader::new(format!("技能榜 ({skill_board_line_count})"))
@@ -396,8 +398,8 @@ impl OpenboxApp {
                         ui.text_style_height(&egui::TextStyle::Monospace),
                         skill_board_line_count,
                         |ui, rows| {
-                            for index in rows {
-                                if let Some(line) = self.log.skill_board_line(index) {
+                            for row in rows {
+                                if let Some(line) = self.logs[page].skill_board_line(row) {
                                     ui.add(
                                         egui::Label::new(egui::RichText::new(line.display_text()).monospace())
                                             .extend()
@@ -411,7 +413,7 @@ impl OpenboxApp {
         }
         ui.add_space(LOG_SECTION_GAP);
         // 与卡片、表格共用同一层版面：日志不再单独套外框。
-        if self.log.is_empty() {
+        if self.logs[page].is_empty() {
             ui.vertical_centered(|ui| {
                 ui.add_space(48.0);
                 ui.label(egui::RichText::new("暂无日志").weak().size(18.0));
@@ -420,20 +422,20 @@ impl OpenboxApp {
         } else {
             let text_height = ui.available_height().max(220.0);
             if ui.rect_contains_pointer(ui.max_rect()) && ui.input(|input| input.smooth_scroll_delta.y > 0.0) {
-                self.results.follow = false;
+                self.views[page].follow = false;
             }
             egui::ScrollArea::both()
-                .stick_to_bottom(self.results.follow)
+                .stick_to_bottom(self.views[page].follow)
                 .id_salt("main_log")
                 .auto_shrink([false, false])
                 .max_height(text_height)
                 .show_rows(
                     ui,
                     ui.text_style_height(&egui::TextStyle::Monospace),
-                    self.log.len(),
+                    self.logs[page].len(),
                     |ui, rows| {
-                        for index in rows {
-                            let Some(line) = self.log.get(index) else { continue };
+                        for row in rows {
+                            let Some(line) = self.logs[page].get(row) else { continue };
                             let display_text = line.display_text();
                             let mut text =
                                 egui::RichText::new(if display_text.is_empty() { " " } else { display_text }).monospace();

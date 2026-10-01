@@ -44,6 +44,7 @@ impl OpenboxApp {
         self.started_at = Some(Instant::now());
         self.rate_text = "--".to_string();
         self.eta_text = "--".to_string();
+        self.task_tool = self.tool;
         self.clear_results();
         self.status = "运行中".to_string();
     }
@@ -59,14 +60,17 @@ impl OpenboxApp {
         self.eta_text = "--".to_string();
         self.live_feed = None;
         self.pending_live = Default::default();
+        self.task_tool = self.tool;
         self.status = "失败".to_string();
         self.clear_results();
         self.append_log(&err);
     }
 
+    /// 清空当前页的日志与结果；任务事件并不受影响。
     pub fn clear_results(&mut self) {
-        self.log.clear();
-        self.results.clear();
+        let index = self.tool as usize;
+        self.logs[index].clear();
+        self.views[index].clear();
         // 清空当前已入队内容，保留终态与进度，避免任务完成消息丢失。
         self.pending_live.events.clear();
         if let Some(feed) = &self.live_feed {
@@ -87,7 +91,7 @@ impl OpenboxApp {
         {
             if let Some(feed) = &self.live_feed {
                 self.pending_live = feed.take();
-                self.results.trimmed += self.pending_live.dropped;
+                self.views[self.task_tool as usize].trimmed += self.pending_live.dropped;
             }
             self.last_live_poll = Instant::now();
         }
@@ -101,7 +105,10 @@ impl OpenboxApp {
                 break;
             };
             match event {
-                tswn_openbox::backend::live::LiveEvent::Result(update) => self.results.apply(update, &mut self.log),
+                tswn_openbox::backend::live::LiveEvent::Result(update) => {
+                    let index = self.task_tool as usize;
+                    self.views[index].apply(update, &mut self.logs[index]);
+                }
                 tswn_openbox::backend::live::LiveEvent::Log(text) => self.append_log(&text),
             }
             if start.elapsed() >= Duration::from_millis(4) {
@@ -120,7 +127,7 @@ impl OpenboxApp {
                 Ok(_) => "完成",
             }
             .into();
-            self.results.finish(&self.status);
+            self.views[self.task_tool as usize].finish(&self.status);
             self.update_progress_stats();
             if self.status != "完成" {
                 self.eta_text = "--".into();
@@ -160,7 +167,34 @@ impl OpenboxApp {
         };
     }
 
-    pub fn append_log(&mut self, text: &str) { self.log.append(text, LogKind::Plain); }
+    pub fn append_log(&mut self, text: &str) {
+        let index = self.task_tool as usize;
+        self.logs[index].append(text, LogKind::Plain);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::state::Tool;
+    use super::*;
+
+    #[test]
+    fn running_task_keeps_writing_to_the_page_that_started_it() {
+        let mut app = OpenboxApp {
+            tool: Tool::ToDiy,
+            ..Default::default()
+        };
+        app.begin_task();
+        assert_eq!(app.task_tool, Tool::ToDiy);
+        // 模拟运行中切到别的页：任务输出仍应落在 DIY 页。
+        app.tool = Tool::NamerPf;
+        app.append_log("来自 DIY 任务");
+        assert!(app.logs[Tool::ToDiy as usize].copy_text().contains("来自 DIY 任务"));
+        assert!(app.logs[Tool::NamerPf as usize].is_empty());
+        // 清空只作用于当前页。
+        app.clear_results();
+        assert!(app.logs[Tool::ToDiy as usize].copy_text().contains("来自 DIY 任务"));
+    }
 }
 
 fn format_duration(secs: f64) -> String {

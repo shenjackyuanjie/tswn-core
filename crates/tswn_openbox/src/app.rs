@@ -96,7 +96,6 @@ impl eframe::App for OpenboxApp {
         self.more_settings_window(&ctx);
         help::show_help_window(&ctx, &mut self.active_help);
         show_about_window(&ctx, &mut self.about_open);
-        self.result_modes[self.tool as usize] = self.results.mode;
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) { self.save_ui_settings(storage); }
@@ -167,8 +166,6 @@ fn top_bar_ui(ui: &mut egui::Ui, app: &mut OpenboxApp, ctx: &egui::Context) {
             let selected = app.tool == tool;
             let label = egui::RichText::new(tool.label()).size(16.0);
             if ui.selectable_label(selected, label).clicked() && !app.running && !selected {
-                app.result_modes[app.tool as usize] = app.results.mode;
-                app.results.mode = app.result_modes[tool as usize];
                 app.tool = tool;
             }
         }
