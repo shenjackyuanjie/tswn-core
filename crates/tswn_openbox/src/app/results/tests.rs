@@ -15,7 +15,7 @@ fn authoritative_text_keeps_diy_blocks_and_skill_board_marks() {
         });
         view.apply(update, &mut log);
     }
-    assert_eq!(log.copy_text(), "导出0\n\n导出1\n");
+    assert_eq!(log.copy_text(), "导出0\n\n=========\n\n导出1\n");
     let mut update = ResultUpdate::new_with_legacy(2, "名字", ResultKind::Scores, 0);
     update.legacy_log = Some(("技能甲 1 名字\n技能乙 2 名字".into(), EntryKind::SkillBoard));
     view.apply(update, &mut log);
@@ -23,6 +23,25 @@ fn authoritative_text_keeps_diy_blocks_and_skill_board_marks() {
     assert_eq!(log.skill_board_line(1).unwrap().display_text(), "技能乙 2 名字");
     assert!(!log.copy_text().contains("预览"));
     assert!(!log.copy_text().contains("完成"));
+}
+
+/// 纯文本恢复旧格式后只多了组分隔行；去掉分隔行并压缩空行应与旧 API 逐字节一致。
+fn strip_group_separators(text: &str) -> String {
+    let mut out = String::new();
+    let mut blank_run = 0;
+    for line in text.lines().filter(|line| *line != crate::app::log::DIY_GROUP_SEPARATOR) {
+        if line.is_empty() {
+            blank_run += 1;
+            if blank_run > 1 {
+                continue;
+            }
+        } else {
+            blank_run = 0;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
 }
 
 #[test]
@@ -56,7 +75,13 @@ fn real_diy_output_is_identical_to_legacy_in_every_view_mode() {
             )
             .unwrap();
             let (_, log) = state.into_inner().unwrap();
-            assert_eq!(log.copy_text(), expected);
+            let copied = log.copy_text();
+            assert_eq!(strip_group_separators(&copied), expected);
+            assert_eq!(
+                copied.matches(crate::app::log::DIY_GROUP_SEPARATOR).count(),
+                1,
+                "两组输入之间应有分隔行，且第一组之前不加"
+            );
         }
     }
 }

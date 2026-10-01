@@ -3,6 +3,8 @@
 use std::collections::VecDeque;
 
 const MAX_LOG_BYTES: usize = 4 * 1024 * 1024;
+/// 纯文本里不同输入组之间的分隔行。
+pub(crate) const DIY_GROUP_SEPARATOR: &str = "=========";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum LogKind {
@@ -81,8 +83,14 @@ impl LogBuffer {
         }
     }
 
-    pub(crate) fn append_block(&mut self, text: &str, kind: LogKind) {
-        if !text.trim_end_matches('\n').is_empty() && self.lines.back().is_some_and(|last| !last.text.is_empty()) {
+    /// 追加一组结果；已有内容时先插入分隔行，便于区分不同输入组。
+    pub(crate) fn append_diy_block(&mut self, text: &str, kind: LogKind) {
+        if text.trim().is_empty() {
+            return;
+        }
+        if self.lines.back().is_some_and(|last| !last.text.is_empty()) {
+            self.push_line("", LogKind::Plain);
+            self.push_line(DIY_GROUP_SEPARATOR, LogKind::Plain);
             self.push_line("", LogKind::Plain);
         }
         self.append(text, kind);
@@ -164,6 +172,17 @@ mod tests {
         assert_eq!(log.copy_text(), "123456\n");
         log.append("新", LogKind::Plain);
         assert_eq!(log.copy_text(), "新\n");
+    }
+
+    #[test]
+    fn diy_blocks_are_separated_by_an_equals_line() {
+        let mut log = LogBuffer::default();
+        log.append_diy_block("甲\n", LogKind::Plain);
+        log.append_diy_block("乙\n", LogKind::Plain);
+        log.append_diy_block("   ", LogKind::Plain);
+
+        assert_eq!(log.copy_text(), "甲\n\n=========\n\n乙\n");
+        assert_eq!(log.get(2).unwrap().display_text(), DIY_GROUP_SEPARATOR);
     }
 
     #[test]

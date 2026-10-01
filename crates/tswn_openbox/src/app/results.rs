@@ -181,7 +181,7 @@ impl ResultsView {
                         log.append(line, LogKind::SkillBoard);
                     }
                 } else if update.kind == ResultKind::Diy {
-                    log.append_block(text, log_kind(*kind));
+                    log.append_diy_block(text, log_kind(*kind));
                 } else {
                     log.append(text, log_kind(*kind));
                 }
