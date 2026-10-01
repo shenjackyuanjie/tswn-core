@@ -8,7 +8,7 @@ use tswn_core::runtime::{RuntimeCqpMatchup, runtime_cqp_matchups_observed};
 
 use super::format::should_highlight;
 use super::format::{format_batch_file_record, format_batch_screen_log};
-use super::live::{ResultEntry, ResultFinish, ResultKind, ResultObserver, ResultUpdate};
+use super::live::{EntryKind, ResultEntry, ResultFinish, ResultKind, ResultObserver, ResultUpdate};
 use super::output::{create_output_file, finalize_sorted_output_file};
 use super::parse::{
     first_duplicate_name_in_matchup, normalized_group_players, parse_factored_target_groups, parse_player_groups_with_labels,
@@ -125,7 +125,7 @@ fn run_batch_rate_windowed(input: BatchRateInput, send: impl Fn(ProgressEvent), 
         let entry = live_rates.entry(player).or_insert_with(|| (0, vec![None; target_groups.len()]));
         entry.0 += 1;
         entry.1[target] = rate;
-        let mut update = ResultUpdate::new(player, &player_labels[player], ResultKind::Rate, precision);
+        let mut update = ResultUpdate::new_with_legacy(player, &player_labels[player], ResultKind::Rate, precision);
         if input.show_matchups {
             let mut detail = ResultEntry::number(
                 target,
@@ -155,11 +155,32 @@ fn run_batch_rate_windowed(input: BatchRateInput, send: impl Fn(ProgressEvent), 
                 }
             }
             let score = if weight > 0.0 { sum / weight } else { 0.0 };
+            let visible = input.options.min_screen.is_none_or(|min| score >= min);
+            let highlight = should_highlight(score, input.options.min_screen, input.highlight_delta);
             update.finish = Some(ResultFinish {
                 score: Some(score),
-                visible: input.options.min_screen.is_none_or(|min| score >= min),
-                highlight: should_highlight(score, input.options.min_screen, input.highlight_delta),
+                visible,
+                highlight,
             });
+            if visible {
+                let mut detail_rates = Vec::new();
+                if input.show_matchups {
+                    // 和旧日志一样：先输出镜像项，再按输入顺序输出实际对局。
+                    for mirrors in [true, false] {
+                        for (index, rate) in rates.iter().enumerate() {
+                            if is_mirror(player, index) == mirrors
+                                && let Some(rate) = rate
+                            {
+                                detail_rates.push((*rate, target_groups[index].clone()));
+                            }
+                        }
+                    }
+                }
+                update.legacy_log = Some((
+                    format_batch_screen_log(&player_labels[player], score, &detail_rates, precision),
+                    if highlight { EntryKind::Highlight } else { EntryKind::Plain },
+                ));
+            }
         }
         if !update.entries.is_empty() || update.finish.is_some() {
             observer(update);

@@ -3,7 +3,7 @@
 mod matrix;
 
 use super::format::{format_pair_file_record, format_pair_screen_log, should_highlight};
-use super::live::{ResultEntry, ResultFinish, ResultKind, ResultObserver, ResultUpdate};
+use super::live::{EntryKind, ResultEntry, ResultFinish, ResultKind, ResultObserver, ResultUpdate};
 use super::output::{create_output_file, finalize_sorted_output_file};
 use super::parse::{parse_factored_target_groups, parse_player_groups_with_labels, parse_target_groups};
 use super::score::{eval_rq, outer_thread_spec};
@@ -106,21 +106,24 @@ pub fn run_pair_observed(input: PairInput, send: impl Fn(ProgressEvent), observe
             last_progress = Instant::now();
         }
     };
-    let on_player = |player_index: usize, rates: Vec<(f64, usize)>| {
-        if observer.is_some() && output.is_none() {
-            return Ok(());
-        }
+    let on_player = |player_index: usize, mut rates: Vec<(f64, usize)>| {
+        // 相同胜率保留输入顺序，文件和 observed 日志复用同一次排序、求和。
+        rates.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+        let selected_count = head.min(rates.len());
+        let final_score = rates.iter().take(selected_count).map(|(rate, _)| *rate).sum::<f64>();
         let player_label = &player_labels[player_index];
-        let mut pair_rates = rates
-            .into_iter()
-            .map(|(rate, index)| (rate, teammate_labels[index].clone()))
-            .collect::<Vec<_>>();
-        pair_rates.sort_by(|a, b| b.0.total_cmp(&a.0));
-        let selected_count = head.min(pair_rates.len());
-        let final_score = pair_rates.iter().take(selected_count).map(|(rate, _)| *rate).sum::<f64>();
-        if input.options.min_file.is_none_or(|limit| final_score >= limit)
-            && let Some(output) = output.as_mut()
-        {
+        let visible = input.options.min_screen.is_none_or(|limit| final_score >= limit);
+        let highlight = should_highlight(final_score, input.options.min_screen, input.highlight_delta);
+        let file_visible = output.is_some() && input.options.min_file.is_none_or(|limit| final_score >= limit);
+        let pair_rates = if visible || file_visible {
+            rates
+                .into_iter()
+                .map(|(rate, index)| (rate, teammate_labels[index].clone()))
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        if file_visible && let Some(output) = output.as_mut() {
             let line = format_pair_file_record(
                 input.output_mode,
                 player_label,
@@ -132,17 +135,32 @@ pub fn run_pair_observed(input: PairInput, send: impl Fn(ProgressEvent), observe
             );
             writeln!(output, "{line}").map_err(|err| format!("写入输出文件失败: {err}"))?;
         }
-        if observer.is_none() && input.options.min_screen.is_none_or(|limit| final_score >= limit) {
-            let log = format_pair_screen_log(
-                player_label,
-                final_score,
-                selected_count,
-                &pair_rates,
-                input.detail_mode,
-                input.detail_min,
-                precision,
-            );
-            if should_highlight(final_score, input.options.min_screen, input.highlight_delta) {
+        let legacy_log = visible.then(|| {
+            (
+                format_pair_screen_log(
+                    player_label,
+                    final_score,
+                    selected_count,
+                    &pair_rates,
+                    input.detail_mode,
+                    input.detail_min,
+                    precision,
+                ),
+                if highlight { EntryKind::Highlight } else { EntryKind::Plain },
+            )
+        });
+        if let Some(observer) = observer {
+            let mut update = ResultUpdate::new_with_legacy(player_index, player_label, ResultKind::Pair, precision);
+            update.top = (input.detail_mode == super::types::PairDetailMode::Top).then_some(head);
+            update.finish = Some(ResultFinish {
+                score: Some(final_score),
+                visible,
+                highlight,
+            });
+            update.legacy_log = legacy_log;
+            observer(update);
+        } else if let Some((log, kind)) = legacy_log {
+            if kind == EntryKind::Highlight {
                 send(ProgressEvent::HighlightLog(log));
             } else {
                 send(ProgressEvent::Log(log));
@@ -151,14 +169,8 @@ pub fn run_pair_observed(input: PairInput, send: impl Fn(ProgressEvent), observe
         Ok(())
     };
     let result = if let Some(observer) = observer {
-        let mut pending = std::collections::HashMap::<usize, (usize, Vec<(f64, usize)>)>::new();
         run_pair_matrix_observed(&matrix_input, on_progress, on_player, &mut |player, teammate, rate| {
-            let entry = pending.entry(player).or_default();
-            entry.0 += 1;
-            if let Some(rate) = rate {
-                entry.1.push((rate, teammate));
-            }
-            let mut update = ResultUpdate::new(player, &player_labels[player], ResultKind::Pair, precision);
+            let mut update = ResultUpdate::new_with_legacy(player, &player_labels[player], ResultKind::Pair, precision);
             update.top = (input.detail_mode == super::types::PairDetailMode::Top).then_some(head);
             if let Some(rate) = rate {
                 let visible = match input.detail_mode {
@@ -172,17 +184,7 @@ pub fn run_pair_observed(input: PairInput, send: impl Fn(ProgressEvent), observe
                         .push(ResultEntry::number(teammate, teammate_labels[teammate].clone(), rate));
                 }
             }
-            if entry.0 == teammate_groups.len() {
-                let (_, mut rates) = pending.remove(&player).unwrap();
-                rates.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
-                let score = rates.iter().take(head).map(|(rate, _)| rate).sum();
-                update.finish = Some(ResultFinish {
-                    score: Some(score),
-                    visible: input.options.min_screen.is_none_or(|min| score >= min),
-                    highlight: should_highlight(score, input.options.min_screen, input.highlight_delta),
-                });
-            }
-            if !update.entries.is_empty() || update.finish.is_some() {
+            if !update.entries.is_empty() {
                 observer(update);
             }
         })

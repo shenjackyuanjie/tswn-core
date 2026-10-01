@@ -105,29 +105,43 @@ pub fn run_namer_pf_observed(input: NamerPfInput, send: impl Fn(ProgressEvent), 
                 return;
             }
             visible = true;
-            let mut update = ResultUpdate::new(index, &label, ResultKind::Scores, precision);
+            let mut update = ResultUpdate::new_with_legacy(index, &label, ResultKind::Scores, precision);
             let mut entry = ResultEntry::number(
                 NamerPfMetric::ALL.iter().position(|m| *m == metric).unwrap(),
                 metric.label().to_owned(),
                 value,
             );
-            if should_highlight(value, options.min_screen, options.highlight_delta) {
+            let highlight = should_highlight(value, options.min_screen, options.highlight_delta);
+            if highlight {
                 entry.kind = EntryKind::Highlight;
             }
             update.entries.push(entry);
+            update.legacy_log = Some((
+                format!("{} {}:{}", label, metric.label(), format_rate(value, precision)),
+                if highlight { EntryKind::Highlight } else { EntryKind::Plain },
+            ));
             observer(update);
         });
         if let Some(config) = skill_board_config.as_ref() {
             result.skill_lines = evaluate_skill_board(group, &result.scores, config);
         }
         if let Some(observer) = observer {
-            let mut update = ResultUpdate::new(index, &label, ResultKind::Scores, precision);
+            let mut update = ResultUpdate::new_with_legacy(index, &label, ResultKind::Scores, precision);
             if input.skill_board.screen {
                 for (i, line) in result.skill_lines.iter().enumerate() {
                     let mut entry = ResultEntry::number(5 + i, line.title.clone(), line.score);
                     entry.kind = EntryKind::SkillBoard;
                     update.entries.push(entry);
                     visible = true;
+                }
+                let legacy = result
+                    .skill_lines
+                    .iter()
+                    .map(|line| format!("{} {} {}", line.title, format_rate(line.score, precision), label))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                if !legacy.is_empty() {
+                    update.legacy_log = Some((legacy, EntryKind::SkillBoard));
                 }
             }
             update.finish = Some(ResultFinish {
@@ -346,7 +360,7 @@ fn emit_namer_pf_result(
             return Err(format!("写入输出文件失败: {err}"));
         }
     }
-    if skill_board.config.is_some() {
+    if skill_board.config.is_some() && ((skill_board.screen && send.is_some()) || skill_board.output.is_some()) {
         for line in &result.skill_lines {
             let score_text = format_rate(line.score, precision);
             if skill_board.screen

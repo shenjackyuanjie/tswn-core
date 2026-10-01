@@ -94,6 +94,9 @@ fn run_pair_matrix_inner(
     let mut rates = Vec::new();
     // 增量显示按输入索引归组；只对已完整完成的队友组合求和。
     let mut pending_pairs = std::collections::HashMap::<usize, (usize, Vec<Option<f64>>)>::new();
+    let observed = on_pair.is_some();
+    // 一个窗口内提前完成的组合，后续稳定输出直接取其汇总值，不再重复计算。
+    let completed_pairs = std::cell::RefCell::new(std::collections::HashMap::new());
     let mut record_live = |flat: usize, rate: Option<f64>| {
         let Some(callback) = on_pair.as_mut() else { return };
         let pair = flat / target_count;
@@ -121,7 +124,9 @@ fn run_pair_matrix_inner(
             } else {
                 1.0
             };
-            callback(pair / teammate_count, teammate, (weights > 0.0).then(|| sum / weights * factor));
+            let rate = (weights > 0.0).then(|| sum / weights * factor);
+            completed_pairs.borrow_mut().insert(pair, rate);
+            callback(pair / teammate_count, teammate, rate);
         }
     };
     for offset in (0..total).step_by(window_size) {
@@ -190,6 +195,21 @@ fn run_pair_matrix_inner(
             let pair = flat / target_count;
             let teammate_index = pair % teammate_count;
             let player_index = pair / teammate_count;
+            if observed {
+                if target_index + 1 == target_count {
+                    let Some(rate) = completed_pairs.borrow_mut().remove(&pair) else {
+                        // 取消后没有完整组合的缓存，不能把它当成零胜率。
+                        return Ok(());
+                    };
+                    if let Some(rate) = rate {
+                        rates.push((rate, teammate_index));
+                    }
+                    if teammate_index + 1 == teammate_count {
+                        on_player(player_index, std::mem::take(&mut rates))?;
+                    }
+                }
+                continue;
+            }
             let rate = match slot {
                 Slot::Mirror => Some(50.0),
                 Slot::Skip => None,
@@ -307,16 +327,21 @@ mod tests {
                         assert_eq!(progress.last(), Some(&18));
                         assert!(progress.windows(2).all(|pair| pair[0] <= pair[1]));
                         let mut live = std::collections::BTreeMap::new();
+                        let mut observed_players = Vec::new();
                         run_pair_matrix_inner(
                             &input,
                             window,
                             |_| {},
-                            |_, _| Ok(()),
+                            |player, rates| {
+                                observed_players.push((player, rates));
+                                Ok(())
+                            },
                             Some(&mut |player, teammate, rate| {
                                 assert!(live.insert((player, teammate), rate).is_none());
                             }),
                         )
                         .unwrap();
+                        assert_eq!(observed_players, expected, "threads={threads}, window={window}");
                         assert_eq!(live.len(), players.len() * teammates.len());
                         for (player, rates) in &expected {
                             for (rate, teammate) in rates {

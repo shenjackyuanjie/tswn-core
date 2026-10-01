@@ -63,6 +63,10 @@ pub struct ResultUpdate {
     pub finish: Option<ResultFinish>,
     /// pair 的当前 Top 上限；None 表示展示所有已筛选明细。
     pub top: Option<usize>,
+    /// 兼容旧版纯文本日志的完整结果块；结构化视图不依赖此字段。
+    pub legacy_log: Option<(String, EntryKind)>,
+    /// 后端设置后，前端不得用结构化字段生成替代文本。
+    pub legacy_log_authoritative: bool,
 }
 
 impl ResultUpdate {
@@ -75,11 +79,22 @@ impl ResultUpdate {
             entries: Vec::new(),
             finish: None,
             top: None,
+            legacy_log: None,
+            legacy_log_authoritative: false,
         }
     }
 
+    pub fn new_with_legacy(group: usize, label: &str, kind: ResultKind, precision: usize) -> Self {
+        let mut update = Self::new(group, label, kind, precision);
+        update.legacy_log_authoritative = true;
+        update
+    }
+
     pub fn bytes(&self) -> usize {
-        size_of::<Self>() + self.label.len() + self.entries.iter().map(ResultEntry::bytes).sum::<usize>()
+        size_of::<Self>()
+            + self.label.len()
+            + self.legacy_log.as_ref().map_or(0, |(text, _)| text.len())
+            + self.entries.iter().map(ResultEntry::bytes).sum::<usize>()
     }
 }
 
@@ -151,6 +166,26 @@ impl LiveFeed {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_text_counts_toward_queue_budget_without_losing_terminal() {
+        let feed = LiveFeed::default();
+        let mut huge = ResultUpdate::new_with_legacy(0, "alpha", ResultKind::Diy, 0);
+        huge.legacy_log = Some(("x".repeat(MAX_PENDING_BYTES), EntryKind::Plain));
+        assert!(huge.bytes() > MAX_PENDING_BYTES);
+        feed.result(huge);
+        for group in 0..10 {
+            let mut update = ResultUpdate::new_with_legacy(group, "alpha", ResultKind::Diy, 0);
+            update.legacy_log = Some(("x".repeat(1024 * 1024), EntryKind::Plain));
+            feed.result(update);
+        }
+        feed.progress(ProgressEvent::Done(Ok("完成。".into())));
+        let batch = feed.take();
+        assert!(batch.bytes <= MAX_PENDING_BYTES);
+        assert!(batch.dropped > 1);
+        assert!(matches!(batch.events.back(), Some(LiveEvent::Result(update)) if update.group == 9));
+        assert!(batch.done.unwrap().is_ok());
+    }
 
     #[test]
     fn slow_consumer_keeps_latest_progress_and_terminal_without_blocking() {

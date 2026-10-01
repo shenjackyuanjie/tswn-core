@@ -53,11 +53,11 @@ pub fn run_to_diy_observed(
         if needs_text && !out.is_empty() {
             let _ = writeln!(out);
         }
-        let mut update = observer.map(|_| ResultUpdate::new(index, name, ResultKind::Diy, 0));
+        let mut update = observer.map(|_| ResultUpdate::new_with_legacy(index, name, ResultKind::Diy, 0));
+        // 当前行只格式化一次；无 observer 时也不会额外生成一份兼容文本。
+        let mut legacy = String::new();
         let export = cli_api::to_diy(name, old, minions).map_err(|err| format!("导出 DIY 失败: {name}: {err}"))?;
-        if needs_text {
-            let _ = writeln!(out, "{export}");
-        }
+        let _ = writeln!(legacy, "{export}");
         if let Some(update) = &mut update {
             update.entries.push(ResultEntry {
                 index: 0,
@@ -70,10 +70,8 @@ pub fn run_to_diy_observed(
 
         if details {
             for detail in to_diy_details(name)? {
-                if needs_text {
-                    let _ = writeln!(out);
-                    append_to_diy_details(&mut out, &detail);
-                }
+                let _ = writeln!(legacy);
+                append_to_diy_details(&mut legacy, &detail);
                 if let Some(update) = &mut update {
                     for (attr_index, label) in ["攻", "防", "速", "敏", "魔", "抗", "智", "HP"].iter().enumerate() {
                         let delta = i64::from(detail.attrs[attr_index]) - i64::from(detail.solo_attrs[attr_index]);
@@ -109,22 +107,25 @@ pub fn run_to_diy_observed(
                 }
             }
         }
+        if needs_text {
+            out.push_str(&legacy);
+        }
         if let (Some(observer), Some(mut update)) = (observer, update) {
             update.finish = Some(ResultFinish {
                 score: None,
                 visible: true,
                 highlight: false,
             });
+            update.legacy_log = Some((legacy, EntryKind::Plain));
             observer(update);
         }
     }
 
-    let result = finish_output(output_file.as_deref(), out)?;
-    Ok(if observer.is_some() && output_file.is_none() {
-        "完成。".to_owned()
+    if observer.is_some() && output_file.is_none() {
+        Ok("完成。".to_owned())
     } else {
-        result
-    })
+        finish_output(output_file.as_deref(), out)
+    }
 }
 
 /// 详情块里的一行技能：中文名、整队后的熟练度，以及相对单独构建的变化量。
