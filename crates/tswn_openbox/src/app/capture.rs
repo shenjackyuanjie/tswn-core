@@ -170,7 +170,8 @@ fn run_capture(directory: PathBuf, light: bool, ds4: bool, diy: bool) -> eframe:
             app.pair.players = TextSource::inline("mario\nbowser\nluigi\npeach\nyoshi\ntoad\nwario\nwaluigi");
             app.pair.teammates = TextSource::inline("alpha\nbeta\ngamma\ndelta");
             app.pair.targets = TextSource::inline((0..10).map(|i| format!("target{i}")).collect::<Vec<_>>().join("\n"));
-            app.pair.accuracy = AccuracyPreset::Hundred;
+            // 截图关注布局而非评分精度，避免等待旧格式完整文本时超过驱动时限。
+            app.pair.accuracy = AccuracyPreset::One;
             app.pair.auto_threads = false;
             app.pair.threads = 4;
             if ds4 {
