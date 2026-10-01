@@ -331,7 +331,7 @@ fn resize_column(ui: &mut egui::Ui, index: usize, rect: egui::Rect, width: &mut 
 fn cell(
     ui: &mut egui::Ui,
     width: f32,
-    text: egui::RichText,
+    text: impl Into<egui::WidgetText>,
     align: ColumnAlign,
     clickable: bool,
     fill: Option<egui::Color32>,
@@ -345,7 +345,7 @@ fn cell(
     if let Some(fill) = fill {
         ui.painter().rect_filled(rect, 2.0, fill);
     }
-    let label = egui::Label::new(text).truncate().halign(align.egui()).selectable(!clickable);
+    let label = egui::Label::new(text.into()).truncate().halign(align.egui()).selectable(!clickable);
     let mut child = ui.new_child(
         egui::UiBuilder::new()
             .max_rect(rect.shrink2(egui::vec2(4.0, 0.0)))
@@ -378,18 +378,97 @@ fn entry_ui(ui: &mut egui::Ui, entry: &DisplayEntry, width: f32, align: ColumnAl
     } else {
         format!("{}   {}", entry.data.label, entry.display.replace(['\n', '\r'], " "))
     };
-    let text = match entry.data.kind {
-        EntryKind::Plain if entry.display.is_empty() => egui::RichText::new(text).strong(),
-        EntryKind::Plain => egui::RichText::new(text),
-        EntryKind::Highlight => egui::RichText::new(text).color(palette.emphasis).strong(),
-        EntryKind::SkillBoard => egui::RichText::new(text).color(palette.info).strong(),
+    let text: egui::WidgetText = match entry.data.kind {
+        EntryKind::Plain if entry.display.is_empty() => egui::RichText::new(text).strong().into(),
+        EntryKind::Plain => egui::RichText::new(text).into(),
+        // 结构化详情把一名成员的属性、技能合并成一行，只有带差额的项才是被加成的部分。
+        EntryKind::Highlight => match changed_items_job(ui, &text) {
+            Some(job) => job.into(),
+            None => egui::RichText::new(text).color(palette.emphasis).strong().into(),
+        },
+        EntryKind::SkillBoard => egui::RichText::new(text).color(palette.info).strong().into(),
     };
     cell(ui, width, text, align, false, None).on_hover_text(&entry.display);
+}
+
+/// 差额项由 `format_delta` 写成 `值(+N)` / `值(-N)`；只给这些项上高亮色，其余保持正文色。
+///
+/// 找不到差额项时返回 `None`，让调用方沿用整条高亮（胜率、配队等结果仍然整条命中阈值）。
+fn changed_items_job(ui: &egui::Ui, text: &str) -> Option<egui::text::LayoutJob> {
+    let contains_delta = |token: &str| token.contains("(+") || token.contains("(-");
+    if !text.split(' ').any(contains_delta) {
+        return None;
+    }
+    let font_id = egui::TextStyle::Body.resolve(ui.style());
+    let emphasis = egui::text::TextFormat {
+        font_id: font_id.clone(),
+        color: Palette::of(ui).emphasis,
+        ..Default::default()
+    };
+    let plain = egui::text::TextFormat {
+        font_id,
+        color: ui.visuals().text_color(),
+        ..Default::default()
+    };
+    let mut job = egui::text::LayoutJob::default();
+    for (index, token) in text.split(' ').enumerate() {
+        if index > 0 {
+            job.append(" ", 0.0, plain.clone());
+        }
+        let format = if contains_delta(token) {
+            emphasis.clone()
+        } else {
+            plain.clone()
+        };
+        job.append(token, 0.0, format);
+    }
+    Some(job)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn merged_rows_highlight_only_the_changed_items() {
+        let ctx = egui::Context::default();
+        let mut colored = Vec::new();
+        let mut untouched = Vec::new();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let emphasis = Palette::of(ui).emphasis;
+            let changed = changed_items_job(ui, "魔 90  抗 96  智 94(+21)  八围 685.7  嘲讽 289").expect("含差额应分段");
+            colored = changed
+                .sections
+                .iter()
+                .filter(|section| section.format.color == emphasis)
+                .map(|section| changed.text[section.byte_range.start.0..section.byte_range.end.0].to_owned())
+                .collect();
+            // 胜率、配队的整条高亮不含差额，仍由调用方整体着色。
+            untouched.push(changed_items_job(ui, "299.300").is_none());
+            untouched.push(changed_items_job(ui, "HP 311 攻 56 防 83").is_none());
+        });
+        output.textures_delta.clear();
+        assert_eq!(colored, ["94(+21)"]);
+        assert_eq!(untouched, [true, true]);
+    }
+
+    #[test]
+    fn skill_rows_highlight_every_changed_skill_on_that_line() {
+        let ctx = egui::Context::default();
+        let mut colored = Vec::new();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let emphasis = Palette::of(ui).emphasis;
+            let changed = changed_items_job(ui, "命轮 20  分身 58  护符 98(+14)  噬魂 3(-2)").expect("含差额应分段");
+            colored = changed
+                .sections
+                .iter()
+                .filter(|section| section.format.color == emphasis)
+                .map(|section| changed.text[section.byte_range.start.0..section.byte_range.end.0].to_owned())
+                .collect();
+        });
+        output.textures_delta.clear();
+        assert_eq!(colored, ["98(+14)", "3(-2)"]);
+    }
 
     #[test]
     fn cells_keep_fixed_geometry_and_align_text_left_center_right() {
