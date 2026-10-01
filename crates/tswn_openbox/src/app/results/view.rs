@@ -10,7 +10,7 @@ const CELL_GAP: f32 = 4.0;
 const COLUMN_LABELS: [&str; 7] = ["名字 / 输入序号", "状态", "pp", "pd", "qp", "qd", "sum"];
 
 impl ResultsView {
-    pub fn controls(&mut self, ui: &mut egui::Ui, active_help: &mut Option<HelpTopic>, scores: bool) {
+    pub fn controls(&mut self, ui: &mut egui::Ui, active_help: &mut Option<HelpTopic>, kind: ResultKind) {
         ui.horizontal_wrapped(|ui| {
             for (mode, label) in [(ViewMode::Text, "纯文本"), (ViewMode::Cards, "卡片"), (ViewMode::Table, "表格")] {
                 let hint = match mode {
@@ -26,7 +26,7 @@ impl ResultsView {
             ui.checkbox(&mut self.follow, "跟随最新")
                 .on_hover_text("向上滚动会暂停跟随；重新勾选后继续跟随最新结果。");
             if self.mode != ViewMode::Text {
-                ui.menu_button("排版设置", |ui| self.layout_controls(ui, scores));
+                ui.menu_button("排版设置", |ui| self.layout_controls(ui, kind));
             }
             if ui.small_button("说明").clicked() {
                 *active_help = Some(HelpTopic::LiveResults);
@@ -52,7 +52,7 @@ impl ResultsView {
         }
     }
 
-    fn layout_controls(&mut self, ui: &mut egui::Ui, scores: bool) {
+    fn layout_controls(&mut self, ui: &mut egui::Ui, kind: ResultKind) {
         if self.mode == ViewMode::Cards {
             ui.horizontal(|ui| {
                 ui.label("卡片对齐");
@@ -65,8 +65,8 @@ impl ResultsView {
         }
         ui.label("列宽 / 对齐（也可拖动表头右边界）");
         egui::Grid::new("result_column_settings").show(ui, |ui| {
-            for index in 0..if scores { 7 } else { 3 } {
-                ui.label(column_label(index, scores));
+            for index in 0..column_count(kind) {
+                ui.label(column_label(index, kind == ResultKind::Scores));
                 ui.add(
                     egui::DragValue::new(&mut self.column_widths[index])
                         .range(60.0..=640.0)
@@ -83,8 +83,6 @@ impl ResultsView {
             self.column_alignments = defaults.column_alignments;
         }
     }
-
-    fn is_scores(&self) -> bool { self.order.front().is_some_and(|id| self.records[id].kind == ResultKind::Scores) }
 
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         ui.scope(|ui| {
@@ -114,7 +112,8 @@ impl ResultsView {
             self.rendered_mode = self.mode;
         }
         let table = self.mode == ViewMode::Table;
-        let scores = self.is_scores();
+        let kind = self.records[self.order.front().unwrap()].kind;
+        let scores = kind == ResultKind::Scores;
         let height = if table && self.selected.is_some() {
             ui.available_height() * 0.55
         } else {
@@ -130,7 +129,7 @@ impl ResultsView {
             .auto_shrink([false, table])
             .show(ui, |ui| {
                 let width = if table {
-                    let count = if scores { 7 } else { 3 };
+                    let count = column_count(kind);
                     self.column_widths[..count].iter().sum::<f32>() + CELL_GAP * (count - 1) as f32
                 } else {
                     ui.available_width().max(300.0)
@@ -138,11 +137,11 @@ impl ResultsView {
                 ui.set_min_width(width);
                 if table {
                     ui.horizontal(|ui| {
-                        for index in 0..if scores { 7 } else { 3 } {
+                        for index in 0..column_count(kind) {
                             let response = cell(
                                 ui,
                                 self.column_widths[index],
-                                egui::RichText::new(column_label(index, scores)).strong(),
+                                egui::RichText::new(column_label(index, kind == ResultKind::Scores)).strong(),
                                 self.column_alignments[index],
                                 false,
                                 None,
@@ -154,7 +153,7 @@ impl ResultsView {
                 }
                 egui::ScrollArea::vertical()
                     .id_salt(if table { "results_table" } else { "results_cards" })
-                    .auto_shrink([false, false])
+                    .auto_shrink([false, table])
                     .max_height(height.max(60.0))
                     .stick_to_bottom(self.follow)
                     .show_rows(ui, ROW_HEIGHT, self.rows.len(), |ui, range| {
@@ -227,7 +226,7 @@ impl ResultsView {
                                                     Some(fill),
                                                 );
                                             }
-                                        } else {
+                                        } else if kind != ResultKind::Diy {
                                             cell(
                                                 ui,
                                                 self.column_widths[2],
@@ -288,6 +287,14 @@ impl ResultsView {
                 },
             );
         }
+    }
+}
+
+fn column_count(kind: ResultKind) -> usize {
+    match kind {
+        ResultKind::Diy => 2,
+        ResultKind::Scores => 7,
+        ResultKind::Rate | ResultKind::Pair => 3,
     }
 }
 
@@ -364,8 +371,15 @@ fn summary_text(record: &Record, palette: Palette) -> egui::RichText {
 
 fn entry_ui(ui: &mut egui::Ui, entry: &DisplayEntry, width: f32, align: ColumnAlign) {
     let palette = Palette::of(ui);
-    let text = format!("{}   {}", entry.data.label, entry.display.replace(['\n', '\r'], " "));
+    let text = if entry.data.label.is_empty() {
+        entry.display.replace(['\n', '\r'], " ")
+    } else if entry.display.is_empty() {
+        entry.data.label.clone()
+    } else {
+        format!("{}   {}", entry.data.label, entry.display.replace(['\n', '\r'], " "))
+    };
     let text = match entry.data.kind {
+        EntryKind::Plain if entry.display.is_empty() => egui::RichText::new(text).strong(),
         EntryKind::Plain => egui::RichText::new(text),
         EntryKind::Highlight => egui::RichText::new(text).color(palette.emphasis).strong(),
         EntryKind::SkillBoard => egui::RichText::new(text).color(palette.info).strong(),

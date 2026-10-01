@@ -353,14 +353,22 @@ impl OpenboxApp {
                         ui.separator();
                         ui.label(egui::RichText::new(format!("剩余: {}", self.eta_text)).size(16.0));
                     });
-                } else {
+                } else if self.log.is_empty() {
                     ui.label(egui::RichText::new("运行结果会显示在这里").weak());
+                } else {
+                    ui.label(egui::RichText::new("结果已生成，可切换视图或复制日志").weak());
                 }
             });
         if self.tool == Tool::Ds4 {
             self.ds4_workflow_ui(ui);
         }
-        self.results.controls(ui, &mut self.active_help, self.tool == Tool::NamerPf);
+        let kind = match self.tool {
+            Tool::ToDiy => tswn_openbox::backend::live::ResultKind::Diy,
+            Tool::NamerPf => tswn_openbox::backend::live::ResultKind::Scores,
+            Tool::Pair => tswn_openbox::backend::live::ResultKind::Pair,
+            _ => tswn_openbox::backend::live::ResultKind::Rate,
+        };
+        self.results.controls(ui, &mut self.active_help, kind);
         if self.log.discarded_lines() > 0 {
             ui.weak(format!(
                 "文本历史已裁剪 {} 行，复制日志仅包含当前保留部分。",

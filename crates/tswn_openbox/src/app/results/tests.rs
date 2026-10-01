@@ -62,6 +62,60 @@ fn real_diy_output_is_identical_to_legacy_in_every_view_mode() {
 }
 
 #[test]
+fn compact_diy_keeps_card_heading_visible_and_table_has_no_score_column() {
+    use std::sync::{Mutex, atomic::AtomicBool};
+    let updates = Mutex::new(Vec::new());
+    tswn_openbox::backend::run_to_diy_observed(
+        "1@team+2@team\nmario\nluigi",
+        false,
+        false,
+        true,
+        None,
+        &AtomicBool::new(false),
+        Some(&|update| updates.lock().unwrap().push(update)),
+    )
+    .unwrap();
+    for mode in [ViewMode::Cards, ViewMode::Table] {
+        let mut view = ResultsView {
+            mode,
+            ..Default::default()
+        };
+        let mut log = LogBuffer::default();
+        for update in updates.lock().unwrap().iter().cloned() {
+            view.apply(update, &mut log);
+        }
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(690.0, 570.0))),
+                ..Default::default()
+            },
+            |ui| view.ui(ui),
+        );
+        output.textures_delta.clear();
+        let text_shapes = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::epaint::Shape::Text(text) => Some(text),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if mode == ViewMode::Cards {
+            let heading = text_shapes
+                .iter()
+                .find(|text| text.galley.text().starts_with("▼ #1 1@team+2@team"))
+                .unwrap();
+            assert!(heading.pos.y >= 0.0 && heading.pos.y < 100.0, "默认跟随不应挤掉组合标题");
+        } else {
+            assert!(!text_shapes.iter().any(|text| text.galley.text() == "分数"));
+            let member = text_shapes.iter().find(|text| text.galley.text() == "1@team").unwrap();
+            assert!(member.pos.y < 200.0, "少量结果的详情应紧接表格，不留半屏空白");
+        }
+    }
+}
+
+#[test]
 fn clearing_results_preserves_layout_and_view_preferences() {
     let mut view = ResultsView {
         mode: ViewMode::Table,
