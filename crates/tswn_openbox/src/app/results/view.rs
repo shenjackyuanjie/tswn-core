@@ -1,6 +1,6 @@
 //! 结果控件与可见行绘制；数据更新、索引及裁剪由父模块维护。
 
-use super::{ColumnAlign, DisplayEntry, Record, ResultsView, ViewMode};
+use super::{ColumnAlign, DetailLine, Record, ResultsView, ViewMode};
 use crate::app::help::HelpTopic;
 use crate::app::style::Palette;
 use tswn_openbox::backend::live::{EntryKind, ResultKind};
@@ -105,7 +105,7 @@ impl ResultsView {
                 if self.mode == ViewMode::Cards && self.expanded.contains(&group) {
                     let record = self.records.get_mut(&group).unwrap();
                     record.refresh_detail_order();
-                    self.rows.extend(record.detail_indexes.iter().map(|&index| (group, Some(index))));
+                    self.rows.extend((0..record.details.len()).map(|index| (group, Some(index))));
                 }
             }
             self.dirty = false;
@@ -164,7 +164,7 @@ impl ResultsView {
                                 if let Some(index) = detail {
                                     ui.horizontal(|ui| {
                                         ui.add_space(12.0);
-                                        entry_ui(ui, &record.entries[&index], (width - 12.0).max(60.0), self.card_align);
+                                        detail_ui(ui, &record.details[index], (width - 12.0).max(60.0), self.card_align);
                                     });
                                     return;
                                 }
@@ -278,11 +278,11 @@ impl ResultsView {
             egui::ScrollArea::both().id_salt("selected_result_details").show_rows(
                 ui,
                 ROW_HEIGHT,
-                record.detail_indexes.len(),
+                record.details.len(),
                 |ui, rows| {
                     let width = ui.available_width().max(300.0);
                     for index in rows {
-                        entry_ui(ui, &record.entries[&record.detail_indexes[index]], width, self.card_align);
+                        detail_ui(ui, &record.details[index], width, self.card_align);
                     }
                 },
             );
@@ -369,26 +369,20 @@ fn summary_text(record: &Record, palette: Palette) -> egui::RichText {
     }
 }
 
-fn entry_ui(ui: &mut egui::Ui, entry: &DisplayEntry, width: f32, align: ColumnAlign) {
+/// 详情行沿用纯文本视图的观感：区块标题加粗、缩进行弱化、差额项单独高亮。
+fn detail_ui(ui: &mut egui::Ui, line: &DetailLine, width: f32, align: ColumnAlign) {
     let palette = Palette::of(ui);
-    let text = if entry.data.label.is_empty() {
-        entry.display.replace(['\n', '\r'], " ")
-    } else if entry.display.is_empty() {
-        entry.data.label.clone()
+    let text: egui::WidgetText = if line.kind == EntryKind::SkillBoard || line.text.starts_with("=== ") {
+        egui::RichText::new(&line.text).color(palette.info).strong().into()
+    } else if let Some(job) = changed_items_job(ui, &line.text) {
+        // 组队造成的加成只标出带 `(+N)` / `(-N)` 的项。
+        job.into()
+    } else if line.text.starts_with("  ") {
+        egui::RichText::new(&line.text).color(ui.visuals().weak_text_color()).into()
     } else {
-        format!("{}   {}", entry.data.label, entry.display.replace(['\n', '\r'], " "))
+        egui::RichText::new(&line.text).into()
     };
-    let text: egui::WidgetText = match entry.data.kind {
-        EntryKind::Plain if entry.display.is_empty() => egui::RichText::new(text).strong().into(),
-        EntryKind::Plain => egui::RichText::new(text).into(),
-        // 结构化详情把一名成员的属性、技能合并成一行，只有带差额的项才是被加成的部分。
-        EntryKind::Highlight => match changed_items_job(ui, &text) {
-            Some(job) => job.into(),
-            None => egui::RichText::new(text).color(palette.emphasis).strong().into(),
-        },
-        EntryKind::SkillBoard => egui::RichText::new(text).color(palette.info).strong().into(),
-    };
-    cell(ui, width, text, align, false, None).on_hover_text(&entry.display);
+    cell(ui, width, text, align, false, None).on_hover_text(&line.text);
 }
 
 /// 差额项由 `format_delta` 写成 `值(+N)` / `值(-N)`；只给这些项上高亮色，其余保持正文色。

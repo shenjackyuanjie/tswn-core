@@ -134,8 +134,15 @@ fn compact_diy_keeps_card_heading_visible_and_table_has_no_score_column() {
             assert!(heading.pos.y >= 0.0 && heading.pos.y < 100.0, "默认跟随不应挤掉组合标题");
         } else {
             assert!(!text_shapes.iter().any(|text| text.galley.text() == "分数"));
-            let member = text_shapes.iter().find(|text| text.galley.text() == "1@team").unwrap();
-            assert!(member.pos.y < 200.0, "少量结果的详情应紧接表格，不留半屏空白");
+            let last_row = text_shapes.iter().find(|text| text.galley.text() == "#3 luigi").unwrap();
+            let export = text_shapes
+                .iter()
+                .find(|text| text.galley.text().starts_with("1@team+ol:"))
+                .expect("详情首行应是导出行");
+            assert!(
+                export.pos.y > last_row.pos.y && export.pos.y - last_row.pos.y < 120.0,
+                "少量结果的详情应紧接表格，不留半屏空白"
+            );
         }
     }
 }

@@ -60,6 +60,12 @@ struct DisplayEntry {
     display: String,
 }
 
+/// 卡片与表格里的一行详情；`kind` 决定整体着色，缩进与差额由文本自身决定。
+pub(crate) struct DetailLine {
+    pub(crate) text: String,
+    pub(crate) kind: EntryKind,
+}
+
 struct Record {
     label: String,
     kind: ResultKind,
@@ -70,6 +76,9 @@ struct Record {
     bytes: usize,
     summary: String,
     detail_indexes: Vec<usize>,
+    /// 导出结果的旧版文本行（导出行与各成员详情）；卡片与表格按行渲染。
+    diy_lines: Vec<String>,
+    details: Vec<DetailLine>,
     details_dirty: bool,
 }
 
@@ -99,6 +108,27 @@ impl Record {
             indexes.truncate(top);
         }
         self.detail_indexes = indexes;
+        // 导出结果按旧版文本块逐行显示，属性与技能的排版因此与纯文本完全一致。
+        self.details = if self.kind == ResultKind::Diy {
+            self.diy_lines
+                .iter()
+                .map(|line| DetailLine {
+                    text: line.clone(),
+                    kind: EntryKind::Plain,
+                })
+                .collect()
+        } else {
+            self.detail_indexes
+                .iter()
+                .map(|&index| {
+                    let entry = &self.entries[&index];
+                    DetailLine {
+                        text: detail_line_text(entry),
+                        kind: entry.data.kind,
+                    }
+                })
+                .collect()
+        };
         self.details_dirty = false;
     }
 
@@ -260,6 +290,8 @@ impl ResultsView {
                 bytes,
                 summary: String::new(),
                 detail_indexes: Vec::new(),
+                diy_lines: Vec::new(),
+                details: Vec::new(),
                 details_dirty: true,
             }
         });
@@ -277,6 +309,12 @@ impl ResultsView {
             }
             record.bytes += bytes;
             self.bytes += bytes;
+        }
+        if update.kind == ResultKind::Diy
+            && let Some((text, _)) = &update.legacy_log
+        {
+            record.diy_lines = text.lines().map(str::to_owned).collect();
+            record.details_dirty = true;
         }
         if update.finish.is_some() {
             record.finish = update.finish;
@@ -303,6 +341,16 @@ impl ResultsView {
             }
             self.dirty = true;
         }
+    }
+}
+
+/// 结构化结果的一行详情文本；标签或数值为空时不留多余空白。
+fn detail_line_text(entry: &DisplayEntry) -> String {
+    let display = entry.display.replace(['\n', '\r'], " ");
+    match (entry.data.label.is_empty(), display.is_empty()) {
+        (true, _) => display,
+        (false, true) => entry.data.label.clone(),
+        (false, false) => format!("{}   {display}", entry.data.label),
     }
 }
 

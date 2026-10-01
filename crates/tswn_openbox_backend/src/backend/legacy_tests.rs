@@ -70,8 +70,12 @@ fn diy_observed_legacy_preserves_details_and_export_options() {
                 if details {
                     assert!(blocks[0].contains("\n\n=== 原始信息 ===\n1@team\nHP "));
                     assert!(blocks[0].contains("\n\n=== 原始信息 ===\n2@team\nHP "));
+                    assert!(
+                        updates.iter().all(|update| update.entries.is_empty()),
+                        "详情不再重复进入结构化条目"
+                    );
                 } else {
-                    assert!(updates.iter().all(|update| update.entries.len() == 1));
+                    assert!(updates.iter().all(|update| update.entries.is_empty()));
                 }
             }
         }

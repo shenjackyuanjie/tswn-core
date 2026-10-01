@@ -1,7 +1,7 @@
 //! 名字导出与属性、技能详情。
 
 use super::format::SKILL_CN_NAMES;
-use super::live::{EntryKind, ResultEntry, ResultFinish, ResultKind, ResultObserver, ResultUpdate};
+use super::live::{EntryKind, ResultFinish, ResultKind, ResultObserver, ResultUpdate};
 use super::output::finish_output;
 use super::parse::{parse_line_list, parse_namer_pf_groups};
 use std::fmt::Write as _;
@@ -53,28 +53,16 @@ pub fn run_to_diy_observed(
         if needs_text && !out.is_empty() {
             let _ = writeln!(out);
         }
-        let mut update = observer.map(|_| ResultUpdate::new_with_legacy(index, name, ResultKind::Diy, 0));
+        let update = observer.map(|_| ResultUpdate::new_with_legacy(index, name, ResultKind::Diy, 0));
         // 当前行只格式化一次；无 observer 时也不会额外生成一份兼容文本。
         let mut legacy = String::new();
         let export = cli_api::to_diy(name, old, minions).map_err(|err| format!("导出 DIY 失败: {name}: {err}"))?;
         let _ = writeln!(legacy, "{export}");
-        if let Some(update) = &mut update {
-            update.entries.push(ResultEntry {
-                index: 0,
-                label: "导出".into(),
-                value: None,
-                text: export,
-                kind: EntryKind::Plain,
-            });
-        }
 
         if details {
             for detail in to_diy_details(name)? {
                 let _ = writeln!(legacy);
                 append_to_diy_details(&mut legacy, &detail);
-                if let Some(update) = &mut update {
-                    append_structured_details(update, &detail);
-                }
             }
         }
         if needs_text {
@@ -95,62 +83,6 @@ pub fn run_to_diy_observed(
         Ok("完成。".to_owned())
     } else {
         finish_output(output_file.as_deref(), out)
-    }
-}
-
-/// 结构化视图按成员分组；固定短行仍适合虚拟列表，不影响独立的旧版纯文本块。
-fn append_structured_details(update: &mut ResultUpdate, detail: &ToDiyDetails) {
-    let mut push = |label: &str, text: String, highlight: bool| {
-        update.entries.push(ResultEntry {
-            index: update.entries.len(),
-            label: label.to_owned(),
-            value: None,
-            text,
-            kind: if highlight { EntryKind::Highlight } else { EntryKind::Plain },
-        });
-    };
-    push(&detail.name, String::new(), false);
-    for attributes in [
-        &[(7, "HP"), (0, "攻"), (1, "防"), (2, "速"), (3, "敏")][..],
-        &[(4, "魔"), (5, "抗"), (6, "智")][..],
-    ] {
-        let mut text = attributes
-            .iter()
-            .map(|&(index, label)| {
-                format!(
-                    "{label} {}",
-                    format_delta(i64::from(detail.attrs[index]), i64::from(detail.solo_attrs[index]))
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("  ");
-        if attributes[0].0 == 4 {
-            let _ = write!(
-                text,
-                "  八围 {}  嘲讽 {}",
-                format_eight_ring(detail.attrs),
-                taunt_value(detail.attrs)
-            );
-        }
-        push(
-            "",
-            text,
-            attributes.iter().any(|&(index, _)| detail.attrs[index] != detail.solo_attrs[index]),
-        );
-    }
-    for skills in detail.skills.chunks(4) {
-        let text = skills
-            .iter()
-            .map(|skill| {
-                format!(
-                    "{} {}",
-                    skill.name,
-                    format_delta(i64::from(skill.level), i64::from(skill.level) - skill.delta)
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("  ");
-        push("", text, skills.iter().any(|skill| skill.delta != 0));
     }
 }
 
