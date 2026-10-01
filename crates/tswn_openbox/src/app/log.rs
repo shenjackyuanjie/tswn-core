@@ -81,6 +81,13 @@ impl LogBuffer {
         }
     }
 
+    pub(crate) fn append_block(&mut self, text: &str, kind: LogKind) {
+        if !text.trim_end_matches('\n').is_empty() && self.lines.back().is_some_and(|last| !last.text.is_empty()) {
+            self.push_line("", LogKind::Plain);
+        }
+        self.append(text, kind);
+    }
+
     pub(crate) fn copy_text(&self) -> String {
         let mut text = String::with_capacity(self.bytes);
         for line in &self.lines {

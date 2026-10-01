@@ -4,18 +4,46 @@ mod view;
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
+use serde::{Deserialize, Serialize};
 use tswn_openbox::backend::live::{EntryKind, ResultEntry, ResultFinish, ResultKind, ResultUpdate};
 
 use super::log::{LogBuffer, LogKind};
 
 const MAX_RESULT_BYTES: usize = 8 * 1024 * 1024;
 
-#[derive(Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum ViewMode {
     Text,
     #[default]
     Cards,
     Table,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) enum ColumnAlign {
+    Left,
+    Center,
+    Right,
+}
+
+impl ColumnAlign {
+    pub(crate) const ALL: [Self; 3] = [Self::Left, Self::Center, Self::Right];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Left => "左",
+            Self::Center => "中",
+            Self::Right => "右",
+        }
+    }
+
+    fn egui(self) -> egui::Align {
+        match self {
+            Self::Left => egui::Align::Min,
+            Self::Center => egui::Align::Center,
+            Self::Right => egui::Align::Max,
+        }
+    }
 }
 
 struct DisplayEntry {
@@ -84,6 +112,9 @@ impl Record {
 pub(crate) struct ResultsView {
     pub mode: ViewMode,
     pub follow: bool,
+    pub column_widths: [f32; 7],
+    pub column_alignments: [ColumnAlign; 7],
+    pub card_align: ColumnAlign,
     records: HashMap<usize, Record>,
     order: VecDeque<usize>,
     expanded: HashSet<usize>,
@@ -101,6 +132,17 @@ impl Default for ResultsView {
         Self {
             mode: ViewMode::Cards,
             follow: true,
+            column_widths: [220.0, 132.0, 82.0, 82.0, 82.0, 82.0, 100.0],
+            column_alignments: [
+                ColumnAlign::Left,
+                ColumnAlign::Left,
+                ColumnAlign::Right,
+                ColumnAlign::Right,
+                ColumnAlign::Right,
+                ColumnAlign::Right,
+                ColumnAlign::Right,
+            ],
+            card_align: ColumnAlign::Left,
             records: HashMap::new(),
             order: VecDeque::new(),
             expanded: HashSet::new(),
@@ -117,11 +159,12 @@ impl Default for ResultsView {
 
 impl ResultsView {
     pub fn clear(&mut self) {
-        let mode = self.mode;
-        let follow = self.follow;
         *self = Self {
-            mode,
-            follow,
+            mode: self.mode,
+            follow: self.follow,
+            column_widths: self.column_widths,
+            column_alignments: self.column_alignments,
+            card_align: self.card_align,
             ..Self::default()
         };
     }
@@ -131,40 +174,56 @@ impl ResultsView {
     pub fn apply(&mut self, update: ResultUpdate, log: &mut LogBuffer) {
         let group = update.group;
         let prefix = format!("[#{} {}]", group + 1, update.label);
-        for entry in &update.entries {
-            let display = display_value(entry, update.precision);
-            let noun = match update.kind {
-                ResultKind::Rate => "靶子",
-                ResultKind::Pair => "队友",
-                _ => "项目",
-            };
-            log.append(
-                &format!("{prefix} 预览 · {noun} #{} {}: {display}", entry.index + 1, entry.label),
-                log_kind(entry.kind),
-            );
+        if update.legacy_log_authoritative {
+            if let Some((text, kind)) = update.legacy_log.as_ref() {
+                if *kind == EntryKind::SkillBoard {
+                    for line in text.lines() {
+                        log.append(line, LogKind::SkillBoard);
+                    }
+                } else if update.kind == ResultKind::Diy {
+                    log.append_block(text, log_kind(*kind));
+                } else {
+                    log.append(text, log_kind(*kind));
+                }
+            }
+        } else {
+            for entry in &update.entries {
+                let display = display_value(entry, update.precision);
+                let noun = match update.kind {
+                    ResultKind::Rate => "靶子",
+                    ResultKind::Pair => "队友",
+                    _ => "项目",
+                };
+                log.append(
+                    &format!("{prefix} 预览 · {noun} #{} {}: {display}", entry.index + 1, entry.label),
+                    log_kind(entry.kind),
+                );
+            }
         }
         if let Some(finish) = &update.finish {
             // 从未展示过预览的过滤项保持静默，避免关闭屏幕输出后仍刷出每个名字。
             if !finish.visible && update.entries.is_empty() && !self.records.contains_key(&group) {
                 return;
             }
-            let score = finish
-                .score
-                .map(|value| format!(" {value:.precision$}", precision = update.precision))
-                .unwrap_or_default();
-            let status = if finish.visible {
-                "完成"
-            } else {
-                "未达日志阈值或未启用屏幕输出"
-            };
-            log.append(
-                &format!("{prefix} {status}{score}"),
-                if finish.highlight {
-                    LogKind::Highlight
+            if !update.legacy_log_authoritative {
+                let score = finish
+                    .score
+                    .map(|value| format!(" {value:.precision$}", precision = update.precision))
+                    .unwrap_or_default();
+                let status = if finish.visible {
+                    "完成"
                 } else {
-                    LogKind::Plain
-                },
-            );
+                    "未达日志阈值或未启用屏幕输出"
+                };
+                log.append(
+                    &format!("{prefix} {status}{score}"),
+                    if finish.highlight {
+                        LogKind::Highlight
+                    } else {
+                        LogKind::Plain
+                    },
+                );
+            }
             if !finish.visible {
                 self.remove(group);
                 return;

@@ -1,20 +1,22 @@
 //! 结果控件与可见行绘制；数据更新、索引及裁剪由父模块维护。
 
-use super::{DisplayEntry, Record, ResultsView, ViewMode};
+use super::{ColumnAlign, DisplayEntry, Record, ResultsView, ViewMode};
 use crate::app::help::HelpTopic;
 use crate::app::style::Palette;
 use tswn_openbox::backend::live::{EntryKind, ResultKind};
 
-const ROW_HEIGHT: f32 = 20.0;
+const ROW_HEIGHT: f32 = 24.0;
+const CELL_GAP: f32 = 4.0;
+const COLUMN_LABELS: [&str; 7] = ["名字 / 输入序号", "状态", "pp", "pd", "qp", "qd", "sum"];
 
 impl ResultsView {
-    pub fn controls(&mut self, ui: &mut egui::Ui, active_help: &mut Option<HelpTopic>) {
-        ui.horizontal(|ui| {
+    pub fn controls(&mut self, ui: &mut egui::Ui, active_help: &mut Option<HelpTopic>, scores: bool) {
+        ui.horizontal_wrapped(|ui| {
             for (mode, label) in [(ViewMode::Text, "纯文本"), (ViewMode::Cards, "卡片"), (ViewMode::Table, "表格")] {
                 let hint = match mode {
-                    ViewMode::Text => "按到达顺序追加完整文本，方便复制和检查运行过程。",
+                    ViewMode::Text => "沿用旧版结果格式；完整结果块完成后追加，方便复制。",
                     ViewMode::Cards => "点击卡片标题展开或收起该输入组的明细。",
-                    ViewMode::Table => "横向比较多个名字的分数；点击行查看该组明细。— 表示指标未显示。",
+                    ViewMode::Table => "横向比较多个名字的分数；点击名字查看明细，拖动表头右边界调整列宽。",
                 };
                 if ui.selectable_value(&mut self.mode, mode, label).on_hover_text(hint).changed() {
                     self.dirty = true;
@@ -23,35 +25,70 @@ impl ResultsView {
             ui.separator();
             ui.checkbox(&mut self.follow, "跟随最新")
                 .on_hover_text("向上滚动会暂停跟随；重新勾选后继续跟随最新结果。");
-            if ui.small_button("说明").on_hover_text("查看预览、筛选、排序和复制日志的规则。").clicked() {
+            if self.mode != ViewMode::Text {
+                ui.menu_button("排版设置", |ui| self.layout_controls(ui, scores));
+            }
+            if ui.small_button("说明").clicked() {
                 *active_help = Some(HelpTopic::LiveResults);
             }
             if self.trimmed > 0 {
                 ui.weak(format!("已裁剪 {} 条较早记录，完整结果以输出文件为准", self.trimmed));
             }
         });
-        let palette = Palette::of(ui);
-        ui.horizontal_wrapped(|ui| {
-            for (color, label, hint) in [
-                (palette.info, "预览", "明细已完成，整组仍在计算；#序号对应原输入位置。"),
-                (palette.success, "完成", "该输入组已全部完成，显示最终结果。"),
-                (palette.warning, "未完成", "任务已停止，未算完的组不能作为最终结果。"),
-                (
-                    palette.emphasis,
-                    "高亮",
-                    "达到高亮阈值，或属性相对单独构建发生变化；错误会另标“失败”。",
-                ),
-            ] {
-                ui.label(egui::RichText::new(format!("● {label}")).size(13.0).color(color))
-                    .on_hover_text(hint);
+        // 纯文本不混入结构化视图的预览图例。
+        if self.mode != ViewMode::Text {
+            let palette = Palette::of(ui);
+            ui.horizontal_wrapped(|ui| {
+                for (color, label, hint) in [
+                    (palette.info, "预览", "明细已完成，整组仍在计算；#序号对应原输入位置。"),
+                    (palette.success, "完成", "该输入组已全部完成，显示最终结果。"),
+                    (palette.warning, "未完成", "任务已停止，未算完的组不能作为最终结果。"),
+                    (palette.emphasis, "高亮", "达到高亮阈值，或属性相对单独构建发生变化。"),
+                ] {
+                    ui.label(egui::RichText::new(format!("● {label}")).size(13.0).color(color))
+                        .on_hover_text(hint);
+                }
+            });
+        }
+    }
+
+    fn layout_controls(&mut self, ui: &mut egui::Ui, scores: bool) {
+        if self.mode == ViewMode::Cards {
+            ui.horizontal(|ui| {
+                ui.label("卡片对齐");
+                alignment_controls(ui, &mut self.card_align);
+            });
+            if ui.button("恢复默认排版").clicked() {
+                self.card_align = ColumnAlign::Left;
+            }
+            return;
+        }
+        ui.label("列宽 / 对齐（也可拖动表头右边界）");
+        egui::Grid::new("result_column_settings").show(ui, |ui| {
+            for index in 0..if scores { 7 } else { 3 } {
+                ui.label(column_label(index, scores));
+                ui.add(
+                    egui::DragValue::new(&mut self.column_widths[index])
+                        .range(60.0..=640.0)
+                        .speed(1.0)
+                        .suffix(" px"),
+                );
+                ui.horizontal(|ui| alignment_controls(ui, &mut self.column_alignments[index]));
+                ui.end_row();
             }
         });
+        if ui.button("恢复默认排版").clicked() {
+            let defaults = Self::default();
+            self.column_widths = defaults.column_widths;
+            self.column_alignments = defaults.column_alignments;
+        }
     }
+
+    fn is_scores(&self) -> bool { self.order.front().is_some_and(|id| self.records[id].kind == ResultKind::Scores) }
 
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         ui.scope(|ui| {
-            // 仅收紧结果视图，输入控件仍使用全局间距。
-            ui.spacing_mut().item_spacing = egui::vec2(4.0, 2.0);
+            ui.spacing_mut().item_spacing = egui::vec2(CELL_GAP, 2.0);
             ui.spacing_mut().button_padding = egui::vec2(4.0, 1.0);
             ui.spacing_mut().interact_size.y = ROW_HEIGHT;
             self.content_ui(ui);
@@ -77,21 +114,7 @@ impl ResultsView {
             self.rendered_mode = self.mode;
         }
         let table = self.mode == ViewMode::Table;
-        let scores = self.order.front().is_some_and(|id| self.records[id].kind == ResultKind::Scores);
-        if table {
-            ui.horizontal(|ui| {
-                cell(ui, 180.0, "名字 / 输入序号");
-                cell(ui, 130.0, "状态");
-                if scores {
-                    for label in ["pp", "pd", "qp", "qd", "sum"] {
-                        cell(ui, 72.0, label);
-                    }
-                } else {
-                    cell(ui, 100.0, "分数");
-                }
-            });
-            ui.separator();
-        }
+        let scores = self.is_scores();
         let height = if table && self.selected.is_some() {
             ui.available_height() * 0.55
         } else {
@@ -101,107 +124,144 @@ impl ResultsView {
             self.follow = false;
         }
         let mut toggle = None;
-        egui::ScrollArea::both()
-            .id_salt(if table { "results_table" } else { "results_cards" })
+        // 表头与数据共享横向滚动；垂直方向仍然只布局可见行。
+        egui::ScrollArea::horizontal()
+            .id_salt(if table { "results_table_x" } else { "results_cards_x" })
             .auto_shrink([false, table])
-            .max_height(height.max(60.0))
-            .stick_to_bottom(self.follow)
-            .show_rows(ui, ROW_HEIGHT, self.rows.len(), |ui, range| {
-                for row in range {
-                    let (group, detail) = self.rows[row];
-                    let record = &self.records[&group];
-                    ui.push_id((group, detail), |ui| {
-                        if let Some(index) = detail {
-                            let entry = &record.entries[&index];
-                            ui.horizontal(|ui| {
-                                ui.add_space(12.0);
-                                entry_ui(ui, entry);
-                            });
-                        } else {
-                            let state = if record.finish.is_some() {
-                                "完成"
-                            } else {
-                                self.terminal.as_deref().unwrap_or("计算中 · 预览")
-                            };
-                            let state = if record.finish.is_none() && self.terminal.is_some() {
-                                format!("{state} · 结果不完整")
-                            } else {
-                                state.to_owned()
-                            };
-                            let palette = Palette::of(ui);
-                            let state_color = palette.status(if record.finish.is_some() {
-                                "完成"
-                            } else {
-                                self.terminal.as_deref().unwrap_or("运行中")
-                            });
-                            if table {
-                                ui.horizontal(|ui| {
-                                    if ui
-                                        .add_sized(
-                                            [180.0, ROW_HEIGHT],
-                                            egui::Button::selectable(
-                                                self.selected == Some(group),
-                                                format!("#{} {}", group + 1, record.label),
-                                            )
-                                            .truncate(),
-                                        )
-                                        .clicked()
-                                    {
-                                        self.selected = Some(group);
-                                    }
-                                    ui.add_sized(
-                                        [130.0, ROW_HEIGHT],
-                                        egui::Label::new(egui::RichText::new(&state).color(state_color)).truncate(),
-                                    )
-                                    .on_hover_text(&state);
-                                    if scores {
-                                        for index in 0..5 {
-                                            let text = record.entries.get(&index).map_or("—", |entry| &entry.display);
-                                            let mut label = egui::RichText::new(text);
-                                            if record
-                                                .entries
-                                                .get(&index)
-                                                .is_some_and(|entry| entry.data.kind == EntryKind::Highlight)
-                                            {
-                                                label = label.color(palette.emphasis);
-                                            }
-                                            ui.add_sized([72.0, ROW_HEIGHT], egui::Label::new(label).truncate());
-                                        }
-                                    } else {
-                                        ui.label(summary_text(record, palette));
-                                    }
-                                });
-                            } else {
-                                let arrow = if self.expanded.contains(&group) { "▼" } else { "▶" };
-                                let top = if record.top.is_some() && record.finish.is_none() {
-                                    " · 当前 Top"
-                                } else {
-                                    ""
-                                };
-                                let label =
-                                    format!("{arrow} #{} {}   {}   {state}{top}", group + 1, record.label, record.summary);
-                                let text = if record.finish.as_ref().is_some_and(|f| f.highlight) {
-                                    egui::RichText::new(label).color(palette.emphasis)
-                                } else {
-                                    egui::RichText::new(label)
-                                };
-                                if ui
-                                    .add_sized(
-                                        [ui.available_width().max(300.0), ROW_HEIGHT],
-                                        egui::Button::new(text)
-                                            .fill(state_color.gamma_multiply(0.1))
-                                            .stroke(egui::Stroke::new(1.0, state_color.gamma_multiply(0.45)))
-                                            .truncate(),
-                                    )
-                                    .on_hover_text("点击展开或收起明细。序号按原输入标记，多个线程的结果可能交错到达。")
-                                    .clicked()
-                                {
-                                    toggle = Some(group);
-                                }
-                            }
+            .show(ui, |ui| {
+                let width = if table {
+                    let count = if scores { 7 } else { 3 };
+                    self.column_widths[..count].iter().sum::<f32>() + CELL_GAP * (count - 1) as f32
+                } else {
+                    ui.available_width().max(300.0)
+                };
+                ui.set_min_width(width);
+                if table {
+                    ui.horizontal(|ui| {
+                        for index in 0..if scores { 7 } else { 3 } {
+                            let response = cell(
+                                ui,
+                                self.column_widths[index],
+                                egui::RichText::new(column_label(index, scores)).strong(),
+                                self.column_alignments[index],
+                                false,
+                                None,
+                            );
+                            resize_column(ui, index, response.rect, &mut self.column_widths[index]);
                         }
                     });
+                    ui.separator();
                 }
+                egui::ScrollArea::vertical()
+                    .id_salt(if table { "results_table" } else { "results_cards" })
+                    .auto_shrink([false, false])
+                    .max_height(height.max(60.0))
+                    .stick_to_bottom(self.follow)
+                    .show_rows(ui, ROW_HEIGHT, self.rows.len(), |ui, range| {
+                        for row in range {
+                            let (group, detail) = self.rows[row];
+                            let record = &self.records[&group];
+                            ui.push_id((group, detail), |ui| {
+                                if let Some(index) = detail {
+                                    ui.horizontal(|ui| {
+                                        ui.add_space(12.0);
+                                        entry_ui(ui, &record.entries[&index], (width - 12.0).max(60.0), self.card_align);
+                                    });
+                                    return;
+                                }
+                                let palette = Palette::of(ui);
+                                let state = if record.finish.is_some() {
+                                    "完成".to_owned()
+                                } else if let Some(terminal) = &self.terminal {
+                                    format!("{terminal} · 结果不完整")
+                                } else {
+                                    "计算中 · 预览".to_owned()
+                                };
+                                let state_color = palette.status(if record.finish.is_some() {
+                                    "完成"
+                                } else {
+                                    self.terminal.as_deref().unwrap_or("运行中")
+                                });
+                                if table {
+                                    ui.horizontal(|ui| {
+                                        let fill = if self.selected == Some(group) {
+                                            ui.visuals().selection.bg_fill
+                                        } else if row % 2 == 0 {
+                                            ui.visuals().faint_bg_color
+                                        } else {
+                                            egui::Color32::TRANSPARENT
+                                        };
+                                        if cell(
+                                            ui,
+                                            self.column_widths[0],
+                                            egui::RichText::new(format!("#{} {}", group + 1, record.label)),
+                                            self.column_alignments[0],
+                                            true,
+                                            Some(fill),
+                                        )
+                                        .clicked()
+                                        {
+                                            self.selected = Some(group);
+                                        }
+                                        cell(
+                                            ui,
+                                            self.column_widths[1],
+                                            egui::RichText::new(&state).color(state_color),
+                                            self.column_alignments[1],
+                                            false,
+                                            Some(fill),
+                                        );
+                                        if scores {
+                                            for index in 0..5 {
+                                                let entry = record.entries.get(&index);
+                                                let mut text = egui::RichText::new(entry.map_or("—", |entry| &entry.display));
+                                                if entry.is_some_and(|entry| entry.data.kind == EntryKind::Highlight) {
+                                                    text = text.color(palette.emphasis);
+                                                }
+                                                cell(
+                                                    ui,
+                                                    self.column_widths[index + 2],
+                                                    text,
+                                                    self.column_alignments[index + 2],
+                                                    false,
+                                                    Some(fill),
+                                                );
+                                            }
+                                        } else {
+                                            cell(
+                                                ui,
+                                                self.column_widths[2],
+                                                summary_text(record, palette),
+                                                self.column_alignments[2],
+                                                false,
+                                                Some(fill),
+                                            );
+                                        }
+                                    });
+                                } else {
+                                    let arrow = if self.expanded.contains(&group) { "▼" } else { "▶" };
+                                    let top = if record.top.is_some() && record.finish.is_none() {
+                                        " · 当前 Top"
+                                    } else {
+                                        ""
+                                    };
+                                    let label =
+                                        format!("{arrow} #{} {}   {}   {state}{top}", group + 1, record.label, record.summary);
+                                    let text = if record.finish.as_ref().is_some_and(|finish| finish.highlight) {
+                                        egui::RichText::new(label).color(palette.emphasis)
+                                    } else {
+                                        egui::RichText::new(label)
+                                    };
+                                    if cell(ui, width, text, self.card_align, true, Some(state_color.gamma_multiply(0.1)))
+                                        .on_hover_text("点击展开或收起明细。序号按原输入标记，多个线程的结果可能交错到达。")
+                                        .clicked()
+                                    {
+                                        toggle = Some(group);
+                                    }
+                                }
+                            });
+                        }
+                    });
             });
         if let Some(group) = toggle {
             if !self.expanded.remove(&group) {
@@ -216,36 +276,168 @@ impl ResultsView {
             if record.top.is_some() && record.finish.is_none() {
                 ui.weak("当前 Top，全部队友完成后确定最终排名");
             }
-            let details = &record.detail_indexes;
-            egui::ScrollArea::both()
-                .id_salt("selected_result_details")
-                .show_rows(ui, ROW_HEIGHT, details.len(), |ui, rows| {
+            egui::ScrollArea::both().id_salt("selected_result_details").show_rows(
+                ui,
+                ROW_HEIGHT,
+                record.detail_indexes.len(),
+                |ui, rows| {
+                    let width = ui.available_width().max(300.0);
                     for index in rows {
-                        entry_ui(ui, &record.entries[&details[index]]);
+                        entry_ui(ui, &record.entries[&record.detail_indexes[index]], width, self.card_align);
                     }
-                });
+                },
+            );
         }
     }
 }
 
-fn cell(ui: &mut egui::Ui, width: f32, text: &str) { ui.add_sized([width, ROW_HEIGHT], egui::Label::new(text).truncate()); }
+fn column_label(index: usize, scores: bool) -> &'static str {
+    if !scores && index == 2 {
+        "分数"
+    } else {
+        COLUMN_LABELS[index]
+    }
+}
+
+fn alignment_controls(ui: &mut egui::Ui, alignment: &mut ColumnAlign) {
+    for align in ColumnAlign::ALL {
+        ui.selectable_value(alignment, align, align.label());
+    }
+}
+
+fn resize_column(ui: &mut egui::Ui, index: usize, rect: egui::Rect, width: &mut f32) {
+    let handle = egui::Rect::from_min_max(
+        egui::pos2(rect.right() - 4.0, rect.top()),
+        egui::pos2(rect.right() + 2.0, rect.bottom()),
+    );
+    let response = ui
+        .interact(handle, ui.id().with(("column_resize", index)), egui::Sense::drag())
+        .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+    if response.dragged() {
+        *width = (*width + ui.input(|input| input.pointer.delta().x)).clamp(60.0, 640.0);
+    }
+    ui.painter()
+        .vline(rect.right(), rect.y_range(), ui.visuals().widgets.noninteractive.bg_stroke);
+}
+
+/// 固定尺寸且不换行，避免长导出行或多行字段破坏虚拟列表行高。
+fn cell(
+    ui: &mut egui::Ui,
+    width: f32,
+    text: egui::RichText,
+    align: ColumnAlign,
+    clickable: bool,
+    fill: Option<egui::Color32>,
+) -> egui::Response {
+    let sense = if clickable {
+        egui::Sense::click()
+    } else {
+        egui::Sense::hover()
+    };
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, ROW_HEIGHT), sense);
+    if let Some(fill) = fill {
+        ui.painter().rect_filled(rect, 2.0, fill);
+    }
+    let label = egui::Label::new(text).truncate().halign(align.egui()).selectable(!clickable);
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(rect.shrink2(egui::vec2(4.0, 0.0)))
+            .layout(egui::Layout::top_down(align.egui()).with_main_align(egui::Align::Center)),
+    );
+    child.set_clip_rect(ui.clip_rect().intersect(rect));
+    child.add(label);
+    if clickable {
+        response.on_hover_cursor(egui::CursorIcon::PointingHand)
+    } else {
+        response
+    }
+}
 
 fn summary_text(record: &Record, palette: Palette) -> egui::RichText {
     let text = egui::RichText::new(&record.summary);
-    if record.finish.as_ref().is_some_and(|f| f.highlight) {
+    if record.finish.as_ref().is_some_and(|finish| finish.highlight) {
         text.color(palette.emphasis)
     } else {
         text
     }
 }
 
-fn entry_ui(ui: &mut egui::Ui, entry: &DisplayEntry) {
+fn entry_ui(ui: &mut egui::Ui, entry: &DisplayEntry, width: f32, align: ColumnAlign) {
     let palette = Palette::of(ui);
-    let text = egui::RichText::new(format!("#{} {}   {}", entry.data.index + 1, entry.data.label, entry.display));
+    let text = format!("{}   {}", entry.data.label, entry.display.replace(['\n', '\r'], " "));
     let text = match entry.data.kind {
-        EntryKind::Plain => text,
-        EntryKind::Highlight => text.color(palette.emphasis).strong(),
-        EntryKind::SkillBoard => text.color(palette.info).strong(),
+        EntryKind::Plain => egui::RichText::new(text),
+        EntryKind::Highlight => egui::RichText::new(text).color(palette.emphasis).strong(),
+        EntryKind::SkillBoard => egui::RichText::new(text).color(palette.info).strong(),
     };
-    ui.add(egui::Label::new(text).extend().selectable(true));
+    cell(ui, width, text, align, false, None).on_hover_text(&entry.display);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cells_keep_fixed_geometry_and_align_text_left_center_right() {
+        let ctx = egui::Context::default();
+        let mut cells = Vec::new();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            for align in ColumnAlign::ALL {
+                cells.push(cell(ui, 240.0, egui::RichText::new("align-marker"), align, false, None).rect);
+            }
+        });
+        output.textures_delta.clear();
+        let text_rects = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::epaint::Shape::Text(text) if text.galley.text() == "align-marker" => {
+                    Some(text.galley.rect.translate(text.pos.to_vec2()))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(text_rects.len(), 3);
+        for rect in &cells {
+            assert_eq!(rect.size(), egui::vec2(240.0, ROW_HEIGHT));
+        }
+        assert!((text_rects[0].left() - cells[0].left() - 4.0).abs() < 1.0);
+        assert!((text_rects[1].center().x - cells[1].center().x).abs() < 1.0);
+        assert!((text_rects[2].right() - cells[2].right() + 4.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn header_separator_drag_changes_width_within_bounds() {
+        let ctx = egui::Context::default();
+        let mut width = 220.0;
+        let rect = egui::Rect::from_min_size(egui::pos2(20.0, 20.0), egui::vec2(220.0, ROW_HEIGHT));
+        for (time, events) in [
+            (0.0, Vec::new()),
+            (
+                0.1,
+                vec![
+                    egui::Event::PointerMoved(egui::pos2(239.0, 30.0)),
+                    egui::Event::PointerButton {
+                        pos: egui::pos2(239.0, 30.0),
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            ),
+            (0.2, vec![egui::Event::PointerMoved(egui::pos2(280.0, 30.0))]),
+        ] {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    time: Some(time),
+                    events,
+                    ..Default::default()
+                },
+                |ui| resize_column(ui, 0, rect, &mut width),
+            );
+            output.textures_delta.clear();
+        }
+        assert!(width > 220.0);
+        assert!((60.0..=640.0).contains(&width));
+    }
 }

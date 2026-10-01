@@ -6,7 +6,7 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4.6.6", features = ["derive"] }
-eframe = { version = "0.36", optional = true }
+eframe = { version = "0.36", features = ["persistence"], optional = true }
 egui = { version = "0.36", optional = true }
 image = { version = "0.25", default-features = false, features = ["png"], optional = true }
 rfd = { version = "0.17.2", optional = true }

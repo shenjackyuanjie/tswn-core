@@ -6,6 +6,7 @@
 use std::sync::{Arc, atomic::AtomicBool};
 use std::time::Instant;
 
+use serde::{Deserialize, Serialize};
 use tswn_openbox::backend::{NamerPfMetric, OutputMode, PairDetailMode};
 
 use super::help::HelpTopic;
@@ -16,7 +17,7 @@ use super::source::TextSource;
 use super::widgets::{BenchOutputConfig, OptionalFileOutput};
 use tswn_openbox::presets::{TargetPresetState, TeammatePresetState};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Tool {
     ToDiy,
     NamerPf,
@@ -273,7 +274,7 @@ pub struct OpenboxApp {
     pub(crate) pending_live: tswn_openbox::backend::live::LiveBatch,
     pub(crate) last_live_poll: Instant,
     pub(crate) results: super::results::ResultsView,
-    // 与 Tool::ALL 的固定顺序对应；各页单独保留本次会话的视图选择。
+    // 与 Tool::ALL 的固定顺序对应；各页独立保存视图选择并随 UI 偏好持久化。
     pub(crate) result_modes: [ViewMode; 5],
     pub to_diy: ToDiyState,
     pub namer_pf: NamerPfState,

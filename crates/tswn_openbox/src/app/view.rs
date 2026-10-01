@@ -360,7 +360,7 @@ impl OpenboxApp {
         if self.tool == Tool::Ds4 {
             self.ds4_workflow_ui(ui);
         }
-        self.results.controls(ui, &mut self.active_help);
+        self.results.controls(ui, &mut self.active_help, self.tool == Tool::NamerPf);
         if self.log.discarded_lines() > 0 {
             ui.weak(format!(
                 "文本历史已裁剪 {} 行，复制日志仅包含当前保留部分。",

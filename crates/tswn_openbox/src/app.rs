@@ -11,13 +11,13 @@ mod ds4_help;
 mod help;
 mod log;
 mod results;
+mod settings;
 mod source;
 mod state;
 mod style;
 mod task;
 mod view;
 mod widgets;
-
 pub use state::{OpenboxApp, Tool};
 
 const SARASA_FONT_NAME: &str = "SarasaMonoSC";
@@ -33,16 +33,18 @@ pub fn run() -> eframe::Result<()> {
             .with_title(format!("tswn openbox {}", env!("CARGO_PKG_VERSION")))
             .with_inner_size([1180.0, 780.0])
             .with_min_inner_size([960.0, 620.0]),
+        persist_window: true,
         ..Default::default()
     };
     eframe::run_native(
         "tswn openbox",
         options,
         Box::new(|cc| {
-            cc.egui_ctx.set_theme(egui::ThemePreference::System);
+            let app = OpenboxApp::from_storage(cc.storage);
+            cc.egui_ctx.set_theme(app.theme_preference);
             install_cjk_fonts(&cc.egui_ctx);
             configure_ui_style(&cc.egui_ctx);
-            Ok(Box::<OpenboxApp>::default())
+            Ok(Box::new(app))
         }),
     )
 }
@@ -98,7 +100,14 @@ impl eframe::App for OpenboxApp {
         self.more_settings_window(&ctx);
         help::show_help_window(&ctx, &mut self.active_help);
         show_about_window(&ctx, &mut self.about_open);
+        self.result_modes[self.tool as usize] = self.results.mode;
     }
+
+    fn save(&mut self, storage: &mut dyn eframe::Storage) { self.save_ui_settings(storage); }
+
+    fn auto_save_interval(&self) -> std::time::Duration { std::time::Duration::from_secs(5) }
+
+    fn persist_egui_memory(&self) -> bool { true }
 }
 
 fn run_footer_ui(ui: &mut egui::Ui, app: &mut OpenboxApp) {
