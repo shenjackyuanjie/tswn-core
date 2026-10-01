@@ -123,7 +123,10 @@ fn run_footer_ui(ui: &mut egui::Ui, app: &mut OpenboxApp) {
             .min_size(egui::vec2(ui.available_width(), RUN_BUTTON_HEIGHT));
         if ui
             .add_enabled(!app.cancel_requested, button)
-            .on_hover_text("请求停止计算，已完成的明细会保留；未完成的组合不会作为完整结果显示。")
+            .on_hover_text(format!(
+                "停止 {} 页正在运行的任务，已完成的明细会保留；未完成的组合不会作为完整结果显示。",
+                app.task_tool.label()
+            ))
             .clicked()
         {
             app.stop_current_task();
@@ -164,8 +167,19 @@ fn top_bar_ui(ui: &mut egui::Ui, app: &mut OpenboxApp, ctx: &egui::Context) {
 
         for tool in Tool::ALL {
             let selected = app.tool == tool;
-            let label = egui::RichText::new(tool.label()).size(16.0);
-            if ui.selectable_label(selected, label).clicked() && !app.running && !selected {
+            // 任务页在运行中用蓝色标出；输出已按页独立，可以随时切走查看其他页。
+            let running_here = app.running && app.task_tool == tool;
+            let mut label = egui::RichText::new(tool.label()).size(16.0);
+            if running_here {
+                label = label.color(style::Palette::of(ui).info).strong();
+            }
+            let response = ui.selectable_label(selected, label);
+            let response = if running_here {
+                response.on_hover_text("该页任务正在运行；完成后状态与结果会继续留在这一页。")
+            } else {
+                response
+            };
+            if response.clicked() && !selected {
                 app.tool = tool;
             }
         }

@@ -173,6 +173,20 @@ impl OpenboxApp {
     }
 }
 
+fn format_duration(secs: f64) -> String {
+    if secs.is_nan() || secs.is_infinite() || secs < 0.0 {
+        return "--".to_string();
+    }
+    let seconds = secs.round() as u64;
+    if seconds < 60 {
+        format!("{seconds}s")
+    } else if seconds < 3600 {
+        format!("{}m{}s", seconds / 60, seconds % 60)
+    } else {
+        format!("{}h{}m{}s", seconds / 3600, (seconds % 3600) / 60, seconds % 60)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::state::Tool;
@@ -194,19 +208,5 @@ mod tests {
         // 清空只作用于当前页。
         app.clear_results();
         assert!(app.logs[Tool::ToDiy as usize].copy_text().contains("来自 DIY 任务"));
-    }
-}
-
-fn format_duration(secs: f64) -> String {
-    if secs.is_nan() || secs.is_infinite() || secs < 0.0 {
-        return "--".to_string();
-    }
-    let seconds = secs.round() as u64;
-    if seconds < 60 {
-        format!("{seconds}s")
-    } else if seconds < 3600 {
-        format!("{}m{}s", seconds / 60, seconds % 60)
-    } else {
-        format!("{}h{}m{}s", seconds / 3600, (seconds % 3600) / 60, seconds % 60)
     }
 }
