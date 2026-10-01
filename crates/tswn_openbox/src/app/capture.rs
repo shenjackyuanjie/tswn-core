@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use clap::Parser;
 
-use super::results::ViewMode;
+use super::results::{ColumnAlign, ViewMode};
 use super::source::TextSource;
 use super::state::AccuracyPreset;
 use super::{OpenboxApp, Tool, configure_ui_style, install_cjk_fonts};
@@ -26,12 +26,20 @@ struct CaptureArgs {
     /// 使用 DIY 组合样例校验属性、技能详情及旧版纯文本输出。
     #[arg(long, conflicts_with = "capture_ds4")]
     capture_diy: bool,
+    /// 指定非纯文本截图的对齐方式，便于实际审图。
+    #[arg(long, value_parser = ["left", "center", "right"], default_value = "left")]
+    capture_align: String,
 }
 
 pub(crate) fn run_if_requested() -> Option<eframe::Result<()>> {
     let args = CaptureArgs::parse();
+    let align = match args.capture_align.as_str() {
+        "center" => ColumnAlign::Center,
+        "right" => ColumnAlign::Right,
+        _ => ColumnAlign::Left,
+    };
     args.capture_dir
-        .map(|directory| run_capture(directory, args.capture_light, args.capture_ds4, args.capture_diy))
+        .map(|directory| run_capture(directory, args.capture_light, args.capture_ds4, args.capture_diy, align))
 }
 
 struct CaptureApp {
@@ -134,7 +142,7 @@ impl eframe::App for CaptureApp {
     }
 }
 
-fn run_capture(directory: PathBuf, light: bool, ds4: bool, diy: bool) -> eframe::Result<()> {
+fn run_capture(directory: PathBuf, light: bool, ds4: bool, diy: bool, align: ColumnAlign) -> eframe::Result<()> {
     std::fs::create_dir_all(&directory).map_err(|err| eframe::Error::AppCreation(Box::new(err)))?;
     if ds4 {
         let root = directory.join("workspace");
@@ -174,6 +182,8 @@ fn run_capture(directory: PathBuf, light: bool, ds4: bool, diy: bool) -> eframe:
             app.pair.accuracy = AccuracyPreset::One;
             app.pair.auto_threads = false;
             app.pair.threads = 4;
+            app.results.card_align = align;
+            app.results.column_alignments = [align; 7];
             if ds4 {
                 app.tool = Tool::Ds4;
                 app.results.mode = ViewMode::Text;
@@ -195,6 +205,7 @@ fn run_capture(directory: PathBuf, light: bool, ds4: bool, diy: bool) -> eframe:
                 app.start_ds4();
             } else if diy {
                 app.tool = Tool::ToDiy;
+                app.results.follow = false;
                 app.to_diy.names = TextSource::inline("1@team+2@team\nmario\nluigi");
                 app.start_to_diy();
             } else {
