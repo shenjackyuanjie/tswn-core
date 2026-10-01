@@ -73,37 +73,7 @@ pub fn run_to_diy_observed(
                 let _ = writeln!(legacy);
                 append_to_diy_details(&mut legacy, &detail);
                 if let Some(update) = &mut update {
-                    for (attr_index, label) in ["攻", "防", "速", "敏", "魔", "抗", "智", "HP"].iter().enumerate() {
-                        let delta = i64::from(detail.attrs[attr_index]) - i64::from(detail.solo_attrs[attr_index]);
-                        update.entries.push(ResultEntry {
-                            index: update.entries.len(),
-                            label: format!("{} · {label}", detail.name),
-                            value: Some(f64::from(detail.attrs[attr_index])),
-                            text: format_delta(i64::from(detail.attrs[attr_index]), i64::from(detail.solo_attrs[attr_index])),
-                            kind: if delta != 0 { EntryKind::Highlight } else { EntryKind::Plain },
-                        });
-                    }
-                    update.entries.push(ResultEntry {
-                        index: update.entries.len(),
-                        label: format!("{} · 八围", detail.name),
-                        value: None,
-                        text: format_eight_ring(detail.attrs),
-                        kind: EntryKind::Plain,
-                    });
-                    update.entries.push(ResultEntry::number(
-                        update.entries.len(),
-                        format!("{} · 嘲讽", detail.name),
-                        taunt_value(detail.attrs) as f64,
-                    ));
-                    for skill in &detail.skills {
-                        update.entries.push(ResultEntry {
-                            index: update.entries.len(),
-                            label: format!("{} · {}", detail.name, skill.name),
-                            value: Some(f64::from(skill.level)),
-                            text: format_delta(i64::from(skill.level), i64::from(skill.level) - skill.delta),
-                            kind: EntryKind::Plain,
-                        });
-                    }
+                    append_structured_details(update, &detail);
                 }
             }
         }
@@ -125,6 +95,62 @@ pub fn run_to_diy_observed(
         Ok("完成。".to_owned())
     } else {
         finish_output(output_file.as_deref(), out)
+    }
+}
+
+/// 结构化视图按成员分组；固定短行仍适合虚拟列表，不影响独立的旧版纯文本块。
+fn append_structured_details(update: &mut ResultUpdate, detail: &ToDiyDetails) {
+    let mut push = |label: &str, text: String, highlight: bool| {
+        update.entries.push(ResultEntry {
+            index: update.entries.len(),
+            label: label.to_owned(),
+            value: None,
+            text,
+            kind: if highlight { EntryKind::Highlight } else { EntryKind::Plain },
+        });
+    };
+    push(&detail.name, String::new(), false);
+    for attributes in [
+        &[(7, "HP"), (0, "攻"), (1, "防"), (2, "速"), (3, "敏")][..],
+        &[(4, "魔"), (5, "抗"), (6, "智")][..],
+    ] {
+        let mut text = attributes
+            .iter()
+            .map(|&(index, label)| {
+                format!(
+                    "{label} {}",
+                    format_delta(i64::from(detail.attrs[index]), i64::from(detail.solo_attrs[index]))
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("  ");
+        if attributes[0].0 == 4 {
+            let _ = write!(
+                text,
+                "  八围 {}  嘲讽 {}",
+                format_eight_ring(detail.attrs),
+                taunt_value(detail.attrs)
+            );
+        }
+        push(
+            "",
+            text,
+            attributes.iter().any(|&(index, _)| detail.attrs[index] != detail.solo_attrs[index]),
+        );
+    }
+    for skills in detail.skills.chunks(4) {
+        let text = skills
+            .iter()
+            .map(|skill| {
+                format!(
+                    "{} {}",
+                    skill.name,
+                    format_delta(i64::from(skill.level), i64::from(skill.level) - skill.delta)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("  ");
+        push("", text, skills.iter().any(|skill| skill.delta != 0));
     }
 }
 

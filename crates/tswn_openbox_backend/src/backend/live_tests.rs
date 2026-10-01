@@ -119,7 +119,18 @@ fn diy_publishes_completed_line_before_reading_next_line() {
     let updates = updates.into_inner().unwrap();
     assert_eq!(updates.len(), 1);
     assert!(updates[0].finish.is_some());
-    assert!(updates[0].entries.len() > 8);
+    assert!(updates[0].entries.iter().any(|entry| entry.label == "alpha"));
+    let details = updates[0]
+        .entries
+        .iter()
+        .skip(1)
+        .map(|entry| entry.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    for label in ["HP", "攻", "防", "速", "敏", "魔", "抗", "智", "八围", "嘲讽"] {
+        assert!(details.contains(label), "完整属性不能因紧凑排版而丢失：{label}");
+    }
+    assert!(updates[0].entries.len() <= 13, "每名成员应压缩为标题、两行属性和有限技能行");
 }
 
 #[test]
