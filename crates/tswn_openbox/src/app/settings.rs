@@ -55,7 +55,7 @@ struct UiSettings {
     tool: Tool,
     result_modes: [ViewMode; 5],
     follow: bool,
-    /// 0.4.7 之前的单一布局；仍写入当前页，便于旧版本读取。
+    /// 0.5.0 之前的单一布局；仍写入当前页，便于旧版本读取。
     column_widths: [f32; 7],
     column_alignments: [ColumnAlign; 7],
     card_align: ColumnAlign,

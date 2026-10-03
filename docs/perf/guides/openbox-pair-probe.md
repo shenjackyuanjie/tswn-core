@@ -75,7 +75,7 @@ cargo build --release -p tswn_openbox --bin openbox_pair_probe
 
 - **stdout**：该路径产生的日志行，按原顺序逐行打印。屏幕日志不含耗时字段，因此同一份输入
   在新旧提交上的 stdout 应当逐字节一致，可以直接取哈希做正确性门禁。
-- **语义变更会影响哈希**：`pair` 自 openbox `0.4.7` 起把队友也冻结成“单独构建”（与选手一致），
+- **语义变更会影响哈希**：`pair` 自 openbox `0.5.1` 起把队友也冻结成“单独构建”（与选手一致），
   输入里存在同公会（`@队名` 相同）的选手与队友时结果会与旧版本不同。带权队友那一档正是这种情况
   （`sqp6000_first20.txt` 的选手都是 `@Shabby_fish`，`teammate_fz.toml` 含同公会队友），
   跨该提交复测 `pair-probe-weighted-teammates` 时 stdout 哈希必然变化，属于预期的语义修复而不是回退；
