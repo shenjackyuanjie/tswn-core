@@ -183,9 +183,13 @@ impl ResultsView {
         let mut toggle = None;
         let mut select = None;
         // 表头与数据共享横向滚动；垂直方向仍然只布局可见行。
+        //
+        // 横向滚动区的高度必须钉在表格区高度上：`auto_shrink = false` 会把多余空间留在
+        // 滚动区*内部*，不设上限时表格区会吃掉整个结果区，把分隔条与明细挤到可视区之外。
         let scroll = egui::ScrollArea::horizontal()
             .id_salt(if table { "results_table_x" } else { "results_cards_x" })
             .auto_shrink([false, table && !fixed_table])
+            .max_height(if table { table_limit.max(60.0) } else { f32::INFINITY })
             .show(ui, |ui| {
                 let width = if table {
                     let count = column_count(kind);
@@ -382,9 +386,11 @@ impl ResultsView {
             if record.top.is_some() && record.finish.is_none() {
                 ui.weak("当前 Top，全部队友完成后确定最终排名");
             }
+            // 明细区占满表格下方的全部剩余高度：表格调小时明细随之变高。
             let details_height = ui.available_height().max(80.0);
             egui::ScrollArea::both()
                 .id_salt("selected_result_details")
+                .auto_shrink([false, false])
                 .max_height(details_height)
                 .show_rows(ui, height, record.details.len(), |ui, rows| {
                     let width = ui.available_width().max(300.0);
@@ -983,6 +989,84 @@ mod tests {
         );
         output.textures_delta.clear();
         assert!(view.follow, "滑到最底部后应自动勾选跟随最新");
+    }
+
+    /// 表格调小后：分隔条与明细紧贴表格、明细区变高、可视明细行变多。
+    ///
+    /// 回归用例：`auto_shrink = false` 会把多余空间留在滚动区内部，若横向滚动区不设高度上限，
+    /// 表格会吃掉整个结果区，明细被挤到可视区之外，中间还留出一大段空白。
+    #[test]
+    fn shrinking_the_table_keeps_details_attached_and_gives_them_more_room() {
+        use tswn_openbox::backend::live::{ResultEntry, ResultFinish, ResultUpdate};
+
+        let mut view = ResultsView {
+            mode: ViewMode::Table,
+            follow: false,
+            ..Default::default()
+        };
+        let mut log = crate::app::log::LogBuffer::default();
+        for group in 0..2 {
+            let label = format!("row{group}");
+            let mut update = ResultUpdate::new_with_legacy(group, &label, ResultKind::Pair, 3);
+            for index in 0..30 {
+                update.entries.push(ResultEntry::number(index, format!("mate{index}"), 60.0));
+            }
+            update.finish = Some(ResultFinish {
+                score: Some(240.0),
+                visible: true,
+                highlight: false,
+            });
+            view.apply(update, &mut log);
+        }
+        view.selected = Some(0);
+        let ctx = egui::Context::default();
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(700.0, 600.0));
+        // 返回（分隔条 y, 首条明细 y, 可见明细行数）。
+        let measure = |view: &mut ResultsView, table_height: f32, time: f64| {
+            view.set_table_height(Some(table_height));
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(screen),
+                    time: Some(time),
+                    ..Default::default()
+                },
+                |ui| view.ui(ui),
+            );
+            output.textures_delta.clear();
+            let mut divider = None;
+            let mut detail_ys = Vec::new();
+            for shape in &output.shapes {
+                if let egui::epaint::Shape::Text(text) = &shape.shape {
+                    // 分隔条左侧画的就是当前选中行的名字，明细行则形如 `mate0   60.000`。
+                    if text.galley.job.text == "row0" {
+                        divider = Some(text.pos.y);
+                    } else if text.galley.job.text.starts_with("mate") {
+                        detail_ys.push(text.pos.y);
+                    }
+                }
+            }
+            let divider = divider.unwrap_or_else(|| panic!("分隔条应绘制选中行名字"));
+            assert!(!detail_ys.is_empty(), "明细区应显示选中行的队友明细");
+            (divider, detail_ys[0], detail_ys.len())
+        };
+        let (tall_divider, tall_first, tall_rows) = measure(&mut view, 460.0, 0.0);
+        let (short_divider, short_first, short_rows) = measure(&mut view, 160.0, 0.1);
+        assert!(
+            short_divider < tall_divider,
+            "表格调小后分隔条应上移：{tall_divider} -> {short_divider}"
+        );
+        assert!(
+            (tall_first - tall_divider).abs() < 40.0 && (short_first - short_divider).abs() < 40.0,
+            "明细应紧贴分隔条，中间不留空白：{tall_divider}/{tall_first} 与 {short_divider}/{short_first}"
+        );
+        assert!(
+            (tall_divider - short_divider) > 200.0,
+            "分隔条位移应跟随表格高度：{tall_divider} -> {short_divider}"
+        );
+        assert!(
+            short_rows > tall_rows,
+            "表格调小后明细区应变高、显示更多行：{tall_rows} -> {short_rows}"
+        );
     }
 
     #[test]
