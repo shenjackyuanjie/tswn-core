@@ -392,12 +392,18 @@ impl OpenboxApp {
             );
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui
-                        .button("复制全部")
-                        .on_hover_text("复制本页全部结果，内容与“复制日志”相同，包含当前保留的文本。")
-                        .clicked()
+                    let selected = self.views[page].has_selection();
+                    let hint = if self.views[page].mode == super::results::ViewMode::Table {
+                        "复制当前选中行的全部内容：名字、状态、分数与明细；复制整页文本请用上方“复制日志”。"
+                    } else {
+                        "复制当前卡片的全部内容：标题与明细；每张展开的卡片右下角也有同样的按钮。"
+                    };
+                    let button = ui.add_enabled(selected, egui::Button::new("复制全部")).on_hover_text(hint);
+                    let button = button.on_disabled_hover_text("先点击表格里的名字或卡片标题选中一行。");
+                    if button.clicked()
+                        && let Some(text) = self.views[page].copy_selected_text()
                     {
-                        ctx.copy_text(self.logs[page].copy_text());
+                        ctx.copy_text(text);
                     }
                 });
             });
@@ -446,32 +452,43 @@ impl OpenboxApp {
             let row_height = ui.text_style_height(&egui::TextStyle::Monospace);
             let wrap_width = (ui.available_width() - 8.0).max(64.0);
             let row_count = self.logs[page].wrap_rows(wrap_width, ascii_width);
-            egui::ScrollArea::vertical()
+            let jump_extent = self.views[page].log_extent();
+            let jump = self.views[page].take_follow_jump(jump_extent);
+            let mut area = egui::ScrollArea::vertical()
                 .stick_to_bottom(self.views[page].follow)
                 .id_salt("main_log")
                 .auto_shrink([false, false])
-                .max_height(text_height)
-                .show_rows(ui, row_height, row_count, |ui, rows| {
-                    for row in rows {
-                        let Some((line, start, end)) = self.logs[page].wrapped_row(row) else {
-                            continue;
-                        };
-                        let Some(log_line) = self.logs[page].get(line) else { continue };
-                        let display_text = log_line.display_text();
-                        let Some(segment) = display_text.get(start..end) else {
-                            continue;
-                        };
-                        let mut text = egui::RichText::new(if segment.is_empty() { " " } else { segment }).monospace();
-                        if log_line.kind == LogKind::SkillBoard {
-                            text = text.color(Palette::of(ui).info).strong();
-                        } else if display_text.starts_with("  ") {
-                            text = text.color(ui.visuals().weak_text_color());
-                        } else if log_line.kind == LogKind::Highlight {
-                            text = text.color(Palette::of(ui).emphasis).strong();
-                        }
-                        ui.add(egui::Label::new(text).truncate().selectable(true));
+                .max_height(text_height);
+            if let Some(offset) = jump {
+                // 勾选“跟随最新”后当帧就落到最新一行：用上一次的度量算出到底部的偏移。
+                area = area.vertical_scroll_offset(offset);
+            }
+            let scroll = area.show_rows(ui, row_height, row_count, |ui, rows| {
+                for row in rows {
+                    let Some((line, start, end)) = self.logs[page].wrapped_row(row) else {
+                        continue;
+                    };
+                    let Some(log_line) = self.logs[page].get(line) else { continue };
+                    let display_text = log_line.display_text();
+                    let Some(segment) = display_text.get(start..end) else {
+                        continue;
+                    };
+                    let mut text = egui::RichText::new(if segment.is_empty() { " " } else { segment }).monospace();
+                    if log_line.kind == LogKind::SkillBoard {
+                        text = text.color(Palette::of(ui).info).strong();
+                    } else if display_text.starts_with("  ") {
+                        text = text.color(ui.visuals().weak_text_color());
+                    } else if log_line.kind == LogKind::Highlight {
+                        text = text.color(Palette::of(ui).emphasis).strong();
                     }
-                });
+                    ui.add(egui::Label::new(text).truncate().selectable(true));
+                }
+            });
+            // 滑到底部时自动恢复“跟随最新”，与卡片和表格的判断一致。
+            self.views[page].set_log_extent(scroll.content_size.y, scroll.inner_rect.height());
+            if super::results::scrolled_to_end(scroll.content_size, scroll.inner_rect, scroll.state.offset) {
+                self.views[page].follow = true;
+            }
         }
     }
 }

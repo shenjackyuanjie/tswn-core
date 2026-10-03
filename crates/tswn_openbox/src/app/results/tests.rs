@@ -157,12 +157,15 @@ fn clearing_results_preserves_layout_and_view_preferences() {
     };
     view.column_widths[0] = 330.0;
     view.column_alignments[0] = ColumnAlign::Right;
+    view.set_table_height(Some(260.0));
     view.clear();
     assert_eq!(view.mode, ViewMode::Table);
     assert!(!view.follow);
     assert_eq!(view.card_align, ColumnAlign::Center);
     assert_eq!(view.column_widths[0], 330.0);
     assert_eq!(view.column_alignments[0], ColumnAlign::Right);
+    assert_eq!(view.table_height, 260.0, "清空结果不应重置表格高度");
+    assert!(view.take_follow_jump(None).is_none(), "清空结果不应残留跳转请求");
 }
 
 #[test]
@@ -183,47 +186,57 @@ fn horizontal_table_scroll_keeps_header_and_data_columns_together() {
     });
     view.apply(update, &mut log);
     let ctx = egui::Context::default();
-    let mut positions = Vec::new();
-    for (time, events) in [
-        (0.0, vec![egui::Event::PointerMoved(egui::pos2(100.0, 50.0))]),
-        (
-            0.1,
-            vec![egui::Event::MouseWheel {
-                unit: egui::MouseWheelUnit::Point,
-                phase: egui::TouchPhase::Move,
-                delta: egui::vec2(-100.0, 0.0),
-                modifiers: egui::Modifiers::NONE,
-            }],
-        ),
-        (0.2, Vec::new()),
-    ] {
+    let frame = |view: &mut ResultsView, time: f32, events: Vec<egui::Event>| {
         let mut output = ctx.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(420.0, 400.0))),
-                time: Some(time),
+                time: Some(f64::from(time)),
                 events,
                 ..Default::default()
             },
             |ui| view.ui(ui),
         );
         output.textures_delta.clear();
-        let x = |label: &str| {
+        let position = |label: &str| {
             output
                 .shapes
                 .iter()
                 .find_map(|shape| match &shape.shape {
-                    egui::epaint::Shape::Text(text) if text.galley.text() == label => Some(text.pos.x),
+                    egui::epaint::Shape::Text(text) if text.galley.text() == label => Some((text.pos.x, text.pos.y)),
                     _ => None,
                 })
-                .unwrap()
+                .unwrap_or_else(|| panic!("{label} 应可见"))
         };
-        positions.push((x("名字 / 输入序号"), x("#1 scroll-marker")));
+        // 用状态列做标记：滚动前后它都在可视区内（首列与分数列会分别被裁掉或尚未进入视口）。
+        (position("状态"), position("完成"))
+    };
+    let mut positions = vec![frame(&mut view, 0.0, Vec::new())];
+    let (header_x, header_y) = positions[0].0;
+    let pointer = egui::pos2(header_x + 40.0, header_y + 3.0);
+    positions.push(frame(
+        &mut view,
+        0.1,
+        vec![
+            egui::Event::PointerMoved(pointer),
+            egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                phase: egui::TouchPhase::Move,
+                delta: egui::vec2(-100.0, 0.0),
+                modifiers: egui::Modifiers::NONE,
+            },
+        ],
+    ));
+    // 滚轮增量由 egui 分摊到后续帧，多跑几帧等滚动稳定。
+    for step in 0..3u32 {
+        positions.push(frame(&mut view, 0.2 + 0.1 * step as f32, Vec::new()));
     }
-    let (first_header, first_data) = positions[0];
-    let (last_header, last_data) = positions[2];
+    let ((first_header, _), (first_data, _)) = positions[0];
+    let ((last_header, _), (last_data, _)) = *positions.last().unwrap();
     assert!(last_header < first_header, "表格应该发生横向滚动");
-    assert!((first_header - first_data).abs() < 1.0);
-    assert!((last_header - last_data).abs() < 1.0);
+    assert!(
+        (last_header - last_data - (first_header - first_data)).abs() < 1.0,
+        "表头与数据列必须保持同偏移"
+    );
 }
 
 #[test]
@@ -314,4 +327,118 @@ fn filtered_result_without_preview_does_not_create_text_output() {
     view.apply(update, &mut log);
     assert!(log.is_empty());
     assert!(view.records.is_empty());
+}
+
+/// 勾选“跟随最新”必须立刻跳一次；取消勾选只停止跟随。
+#[test]
+fn follow_checkbox_requests_one_immediate_jump() {
+    let mut view = ResultsView {
+        follow: false,
+        ..Default::default()
+    };
+    assert!(view.take_follow_jump(None).is_none(), "初始没有待处理的跳转");
+    view.set_follow(true);
+    assert!(view.follow);
+    assert_eq!(
+        view.take_follow_jump(Some((500.0, 120.0))),
+        Some(380.0),
+        "用上一次的内容高度与视口高度算出到底部的偏移"
+    );
+    assert!(view.take_follow_jump(Some((500.0, 120.0))).is_none(), "跳转请求只消费一次");
+    view.set_follow(true);
+    assert!(view.take_follow_jump(None).is_none(), "已经是跟随时不重复跳转");
+    view.set_follow(false);
+    view.set_follow(true);
+    assert_eq!(
+        view.take_follow_jump(None),
+        Some(0.0),
+        "还没有内容度量时先停在当前位置，由 stick_to_bottom 接管"
+    );
+    view.set_follow(false);
+    view.set_follow(true);
+    assert_eq!(
+        view.take_follow_jump(Some((80.0, 120.0))),
+        Some(0.0),
+        "内容比视口短时不需要滚动"
+    );
+    view.set_follow(false);
+    assert!(view.take_follow_jump(None).is_none(), "取消勾选不应触发跳转");
+}
+
+/// 只有“内容可滚动且已经在底部”才自动恢复跟随，避免内容不足时反复勾选。
+#[test]
+fn auto_follow_only_triggers_at_the_bottom_of_scrollable_content() {
+    let viewport = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(200.0, 100.0));
+    assert!(
+        !scrolled_to_end(egui::vec2(200.0, 90.0), viewport, egui::vec2(0.0, 0.0)),
+        "内容没溢出"
+    );
+    assert!(
+        !scrolled_to_end(egui::vec2(200.0, 400.0), viewport, egui::vec2(0.0, 120.0)),
+        "还没到底"
+    );
+    assert!(
+        scrolled_to_end(egui::vec2(200.0, 400.0), viewport, egui::vec2(0.0, 300.0)),
+        "到底应恢复跟随"
+    );
+}
+
+/// 表格高度：默认按可用高度自动分配，拖动后固定，且明细区始终保留一段高度。
+#[test]
+fn table_height_switches_between_auto_and_dragged_value() {
+    let mut view = ResultsView::default();
+    assert_eq!(view.table_height, TABLE_HEIGHT_AUTO);
+    let auto = view.table_area_height(400.0);
+    assert!((auto - 400.0 * TABLE_AUTO_RATIO).abs() < 0.5, "自动模式按比例分配：{auto}");
+    view.set_table_height(Some(300.0));
+    assert_eq!(view.table_height, 300.0, "保存的是拖动后的高度");
+    assert!((view.table_area_height(900.0) - 300.0).abs() < 0.5, "空间足够时按保存值");
+    assert!(
+        (view.table_area_height(400.0) - (400.0 - TABLE_DETAIL_MIN)).abs() < 0.5,
+        "可用高度不足时压缩表格，给明细区留空间"
+    );
+    assert!(
+        view.table_area_height(200.0) <= 200.0 - TABLE_DETAIL_MIN + 0.5,
+        "表格过高时必须给明细区留出空间"
+    );
+    view.set_table_height(Some(f32::NAN));
+    assert_eq!(view.table_height, TABLE_HEIGHT_AUTO, "非法高度回退自动");
+    view.set_table_height(Some(10.0));
+    assert!(view.table_height >= TABLE_HEIGHT_MIN, "过小的高度被夹到下限");
+    view.set_table_height(None);
+    assert_eq!(view.table_height, TABLE_HEIGHT_AUTO);
+}
+
+/// 复制内容是该卡片/该行自己的文本：标题行加明细，不含日志里的其它结果。
+#[test]
+fn copy_text_uses_the_record_content_instead_of_the_log() {
+    let mut view = ResultsView {
+        mode: ViewMode::Table,
+        ..Default::default()
+    };
+    let mut log = LogBuffer::default();
+    let mut first = ResultUpdate::new_with_legacy(0, "1@team", ResultKind::Diy, 0);
+    first.legacy_log = Some(("1@team+ol:{}\n\n=== 原始信息 ===\n1@team".into(), EntryKind::Plain));
+    first.finish = Some(ResultFinish {
+        score: None,
+        visible: true,
+        highlight: false,
+    });
+    view.apply(first, &mut log);
+    let mut second = ResultUpdate::new(1, "player1", ResultKind::Pair, 3);
+    second.top = Some(1);
+    second.entries.push(ResultEntry::number(0, "mate1".into(), 60.0));
+    view.apply(second, &mut log);
+
+    assert_eq!(
+        view.copy_record_text(0).as_deref(),
+        Some("#1 1@team   完成\n1@team+ol:{}\n\n=== 原始信息 ===\n1@team")
+    );
+    view.selected = Some(1);
+    let text = view.copy_selected_text().expect("选中行存在");
+    assert!(text.starts_with("#2 player1"), "{text}");
+    assert!(text.contains("mate1   60.000"), "{text}");
+    assert!(!text.contains("1@team"), "只复制选中行，不混入其它结果：{text}");
+    view.selected = None;
+    assert!(view.copy_selected_text().is_none(), "没有选中项时不复制");
 }

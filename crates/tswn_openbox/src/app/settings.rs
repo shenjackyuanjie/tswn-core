@@ -14,6 +14,8 @@ struct ViewLayout {
     column_widths: [f32; 7],
     column_alignments: [ColumnAlign; 7],
     card_align: ColumnAlign,
+    /// 表格区域高度；0 表示按可用高度自动分配，拖动分隔条后保存具体像素值。
+    table_height: f32,
 }
 
 impl Default for ViewLayout {
@@ -23,6 +25,7 @@ impl Default for ViewLayout {
             column_widths: view.column_widths,
             column_alignments: view.column_alignments,
             card_align: view.card_align,
+            table_height: view.table_height,
         }
     }
 }
@@ -33,6 +36,7 @@ impl ViewLayout {
             column_widths: view.column_widths,
             column_alignments: view.column_alignments,
             card_align: view.card_align,
+            table_height: view.table_height,
         }
     }
 
@@ -45,6 +49,8 @@ impl ViewLayout {
         }
         view.column_alignments = self.column_alignments;
         view.card_align = self.card_align;
+        // 0 表示自动；其它值必须落在拖动允许的范围内，非法时回退自动。
+        view.set_table_height((self.table_height >= super::results::TABLE_HEIGHT_MIN).then_some(self.table_height));
     }
 }
 
@@ -89,6 +95,7 @@ impl OpenboxApp {
                 column_widths: settings.column_widths,
                 column_alignments: settings.column_alignments,
                 card_align: settings.card_align,
+                ..ViewLayout::default()
             };
             for (index, view) in app.views.iter_mut().enumerate() {
                 view.mode = settings.result_modes[index];
@@ -153,6 +160,7 @@ mod tests {
         pair.card_align = ColumnAlign::Center;
         pair.column_widths[0] = 350.0;
         pair.column_alignments[0] = ColumnAlign::Right;
+        pair.set_table_height(Some(280.0));
         app.running = true;
         app.append_log("不应持久化的日志");
         let mut storage = MemoryStorage::default();
@@ -166,6 +174,7 @@ mod tests {
         assert_eq!(restored.views[Tool::Pair as usize].card_align, ColumnAlign::Center);
         assert_eq!(restored.views[Tool::Pair as usize].column_widths[0], 350.0);
         assert_eq!(restored.views[Tool::Pair as usize].column_alignments[0], ColumnAlign::Right);
+        assert_eq!(restored.views[Tool::Pair as usize].table_height, 280.0, "表格高度按页保存");
         assert!(!restored.running);
         assert!(restored.logs[Tool::Pair as usize].is_empty());
     }
@@ -220,6 +229,25 @@ mod tests {
         let expected = [220.0, 300.0, 82.0, 82.0, 120.0, 140.0, 160.0];
         for view in &restored.views {
             assert_eq!(view.column_widths, expected);
+            // 旧存储没有表格高度字段，回退自动分配。
+            assert_eq!(view.table_height, super::super::results::TABLE_HEIGHT_AUTO);
         }
+    }
+
+    #[test]
+    fn broken_table_height_falls_back_to_auto_without_touching_other_layout() {
+        let mut layouts = std::array::from_fn(|_| ViewLayout::default());
+        layouts[Tool::Pair as usize].column_widths[0] = 260.0;
+        layouts[Tool::Pair as usize].table_height = 5.0;
+        let settings = UiSettings {
+            view_layouts: Some(layouts),
+            ..Default::default()
+        };
+        let mut storage = MemoryStorage::default();
+        eframe::set_value(&mut storage, UI_SETTINGS_KEY, &settings);
+        let restored = OpenboxApp::from_storage(Some(&storage));
+        let pair = &restored.views[Tool::Pair as usize];
+        assert_eq!(pair.table_height, super::super::results::TABLE_HEIGHT_AUTO);
+        assert_eq!(pair.column_widths[0], 260.0, "非法高度不应影响同一页的列宽");
     }
 }
