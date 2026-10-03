@@ -18,34 +18,21 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) { run_pair_obser
 
 /// GUI 可选增量观察接口；None 保留原来的输出契约。
 pub fn run_pair_observed(input: PairInput, send: impl Fn(ProgressEvent), observer: ResultObserver<'_>) {
-    let (target_groups, target_factors) = match parse_pair_target_groups(&input.target_text, input.target_factor_enabled) {
-        Ok(targets) => targets,
+    let PreparedPairGroups {
+        target_groups,
+        target_factors,
+        players,
+        player_labels,
+        teammates,
+        teammate_labels,
+        teammate_factors,
+    } = match prepare_pair_groups(&input) {
+        Ok(prepared) => prepared,
         Err(err) => {
             send(ProgressEvent::Done(Err(err)));
             return;
         }
     };
-    let (player_groups, player_labels) = parse_player_groups_with_labels(&input.player_text, input.player_double_plus);
-    let (teammate_groups, teammate_labels, teammate_factors) =
-        match parse_pair_teammate_groups(&input.teammate_text, input.teammate_double_plus, input.teammate_factor_enabled) {
-            Ok(value) => value,
-            Err(err) => {
-                send(ProgressEvent::Done(Err(err)));
-                return;
-            }
-        };
-    if target_groups.is_empty() {
-        send(ProgressEvent::Done(Err("pair: 靶子列表为空。".to_string())));
-        return;
-    }
-    if player_groups.is_empty() {
-        send(ProgressEvent::Done(Err("pair: 选手列表为空。".to_string())));
-        return;
-    }
-    if teammate_groups.is_empty() {
-        send(ProgressEvent::Done(Err("pair: 队友列表为空。".to_string())));
-        return;
-    }
 
     let mut output = match input.output_file.as_deref() {
         Some(path) => match create_output_file(path) {
@@ -65,28 +52,17 @@ pub fn run_pair_observed(input: PairInput, send: impl Fn(ProgressEvent), observe
     let head = input.head.max(1);
     let eval_rq = eval_rq(input.options.keep_rq);
     let precision = input.options.wr_precision.min(9);
-    let Some(total) = player_groups
+    let Some(total) = players
         .len()
-        .checked_mul(teammate_groups.len())
+        .checked_mul(teammates.len())
         .and_then(|n| n.checked_mul(target_groups.len()))
     else {
         send(ProgressEvent::Done(Err("pair: 配队矩阵大小溢出。".to_owned())));
         return;
     };
-    let converted_players = match player_groups
-        .iter()
-        .map(|player| player_group_to_ol(player))
-        .collect::<Result<Vec<_>, _>>()
-    {
-        Ok(players) => players,
-        Err(err) => {
-            send(ProgressEvent::Done(Err(err)));
-            return;
-        }
-    };
     let matrix_input = PairMatrixInput {
-        players: &converted_players,
-        teammates: &teammate_groups,
+        players: &players,
+        teammates: &teammates,
         targets: &target_groups,
         target_factors: &target_factors,
         teammate_factors: &teammate_factors,
@@ -237,28 +213,84 @@ fn parse_pair_teammate_groups(content: &str, double_plus: bool, factor_enabled: 
     }
 }
 
-fn player_to_ol(raw: &str) -> Result<String, String> {
+/// pair 的输入准备结果：靶子与两侧成员文本均已就绪，其中选手和队友都完成按成员冻结。
+struct PreparedPairGroups {
+    target_groups: Vec<String>,
+    target_factors: Vec<f64>,
+    players: Vec<String>,
+    player_labels: Vec<String>,
+    teammates: Vec<String>,
+    teammate_labels: Vec<String>,
+    teammate_factors: Vec<f64>,
+}
+
+/// 解析并冻结 pair 的两侧输入。
+///
+/// 选手与队友都必须按“逐个成员单独构建”导出成 `+ol`：冻结后的属性与技能来自该成员
+/// 单独构队的结果，同公会成员之间的组队加成不会再作用到它身上（core 的
+/// `apply_team_upgrades` 只改 `name_base`，而 overlay 的 `attrs` / `skills` 会直接覆盖），
+/// 这样每个（选手，队友）组合里的两侧都保持各自独立、可复现的强度，也不会互相污染。
+/// 只冻结一侧会让另一侧单方面吃到加成：带权队友 TOML 里的普通名字正好是这种情况。
+///
+/// 已经是 `+diy` / `+ol` 的输入原样保留，不做二次导出；返回的标签仍是原始输入行，
+/// 日志与文件输出不受影响。
+fn prepare_pair_groups(input: &PairInput) -> Result<PreparedPairGroups, String> {
+    let (target_groups, target_factors) = parse_pair_target_groups(&input.target_text, input.target_factor_enabled)?;
+    let (player_groups, player_labels) = parse_player_groups_with_labels(&input.player_text, input.player_double_plus);
+    let (teammate_groups, teammate_labels, teammate_factors) =
+        parse_pair_teammate_groups(&input.teammate_text, input.teammate_double_plus, input.teammate_factor_enabled)?;
+    if target_groups.is_empty() {
+        return Err("pair: 靶子列表为空。".to_string());
+    }
+    if player_groups.is_empty() {
+        return Err("pair: 选手列表为空。".to_string());
+    }
+    if teammate_groups.is_empty() {
+        return Err("pair: 队友列表为空。".to_string());
+    }
+    Ok(PreparedPairGroups {
+        target_groups,
+        target_factors,
+        players: groups_to_ol(&player_groups)?,
+        player_labels,
+        teammates: groups_to_ol(&teammate_groups)?,
+        teammate_labels,
+        teammate_factors,
+    })
+}
+
+/// 逐组按成员冻结；组内成员各自单独构建，成员之间不会互相加成。
+fn groups_to_ol(groups: &[String]) -> Result<Vec<String>, String> { groups.iter().map(|group| group_to_ol(group)).collect() }
+
+fn member_to_ol(raw: &str) -> Result<String, String> {
     if raw.contains("+diy[") || raw.contains("+ol:") {
         return Ok(raw.to_string());
     }
-    cli_api::to_diy(raw, false, false).map_err(|err| format!("转换 player-list 名字为 +ol 失败: {raw}: {err}"))
+    cli_api::to_diy(raw, false, false).map_err(|err| format!("转换名字为 +ol 失败: {raw}: {err}"))
 }
 
-fn player_group_to_ol(group: &str) -> Result<String, String> {
+/// 选手与队友共用：一组输入里的每个成员单独导出为 `+ol`，再用换行拼回同一组。
+fn group_to_ol(group: &str) -> Result<String, String> {
     group
         .lines()
-        .map(player_to_ol)
+        .map(member_to_ol)
         .collect::<Result<Vec<_>, _>>()
-        .map(|players| players.join("\n"))
+        .map(|members| members.join("\n"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::types::{CommonBenchOptions, OutputMode, PairDetailMode};
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+    use tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ;
+    use tswn_core::namerena::{NamerenaInput, PreparedRoster};
+
     #[test]
     fn pair_keeps_each_member_when_converting_a_multi_player_input_group() {
         let group = "+ol:player-a\n+ol:player-b";
-        assert_eq!(super::player_group_to_ol(group).unwrap(), group);
+        assert_eq!(super::group_to_ol(group).unwrap(), group);
     }
 
     #[test]
@@ -268,5 +300,146 @@ mod tests {
         assert_eq!(groups, vec!["mario\nluigi"]);
         assert_eq!(labels, vec!["mario+luigi"]);
         assert_eq!(factors, vec![2.0]);
+    }
+
+    fn pair_input(player_text: &str, teammate_text: &str, teammate_factored: bool) -> PairInput {
+        PairInput {
+            target_text: "target@blue".into(),
+            target_factor_enabled: false,
+            player_text: player_text.into(),
+            player_double_plus: false,
+            teammate_text: teammate_text.into(),
+            teammate_double_plus: true,
+            teammate_factor_enabled: teammate_factored,
+            head: 1,
+            detail_mode: PairDetailMode::None,
+            detail_min: None,
+            highlight_delta: None,
+            output_mode: OutputMode::Log,
+            output_file: None,
+            options: CommonBenchOptions {
+                count: 1,
+                threads: Some(1),
+                keep_rq: true,
+                verbose: false,
+                min_screen: None,
+                min_file: None,
+                wr_precision: 3,
+            },
+            cancel: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    /// 一组输入里指定成员的属性与技能，用 core 的构队结果取值。
+    fn built_snapshot(groups: &[Vec<String>], name: &str) -> ([u32; 8], Vec<(usize, u32)>) {
+        let input = NamerenaInput::from_raw_groups(groups).expect("groups should parse");
+        let roster = PreparedRoster::build(&input, DEFAULT_EVAL_RQ).unwrap();
+        let player = roster.players.iter().find(|player| player.id_key_name == name).expect("player missing");
+        let mut skills = player
+            .skills
+            .entries
+            .iter()
+            .filter(|entry| entry.level > 0)
+            .map(|entry| (entry.key, entry.level))
+            .collect::<Vec<_>>();
+        skills.sort();
+        (player.attrs, skills)
+    }
+
+    /// 复现 matrix 的队伍拼接后，取该队伍里某个成员的构建结果。
+    fn team_member_snapshot(player: &str, teammate: &str, name: &str) -> ([u32; 8], Vec<(usize, u32)>) {
+        let team = format!("{player}\n{teammate}");
+        let groups = vec![
+            team.lines().map(|line| line.trim().to_owned()).collect::<Vec<_>>(),
+            vec!["target@blue".to_owned()],
+        ];
+        built_snapshot(&groups, name)
+    }
+
+    /// 选手与队友都必须冻结成“单独构建”，否则同公会成员会单方面拿到组队加成：
+    /// `1@team` 单独 HP 243，和 `2@team` 同队后是 245（+2 组队加成）。
+    #[test]
+    fn pair_freezes_both_sides_so_team_bonus_does_not_apply() {
+        let solo_one = built_snapshot(&[vec!["1@team".to_owned()]], "1@team");
+        let solo_two = built_snapshot(&[vec!["2@team".to_owned()]], "2@team");
+        assert_eq!(solo_one.0[7], 243);
+        assert_eq!(solo_two.0[7], 271);
+        // 未冻结的原始组队确实存在加成，保证本测试不是空转。
+        assert_eq!(
+            built_snapshot(&[vec!["2@team".to_owned(), "1@team".to_owned()]], "1@team").0[7],
+            245
+        );
+
+        // 选手带权靶子/队友两条解析路径都要冻结队友；选手侧顺带覆盖“被加成方是选手”。
+        for (player_text, teammate_text, teammate_factored, teammate_label) in [
+            ("2@team", "1@team", false, "1@team"),
+            ("2@team", "[[targets]]\nfactor = 1\nplayers = [\"1@team\"]", true, "1@team"),
+            ("1@team", "2@team", false, "2@team"),
+        ] {
+            let input = pair_input(player_text, teammate_text, teammate_factored);
+            let prepared = prepare_pair_groups(&input).expect("prepare should succeed");
+            assert!(
+                prepared.players[0].contains("+ol:"),
+                "选手应冻结成 +ol: {}",
+                prepared.players[0]
+            );
+            assert!(
+                prepared.teammates[0].contains("+ol:"),
+                "队友应冻结成 +ol: {}",
+                prepared.teammates[0]
+            );
+            assert_eq!(
+                prepared.player_labels,
+                vec![player_text.to_string()],
+                "选手标签应保留原始输入行"
+            );
+            assert_eq!(
+                prepared.teammate_labels,
+                vec![teammate_label.to_string()],
+                "队友标签应保留原始输入行"
+            );
+            assert_eq!(
+                team_member_snapshot(&prepared.players[0], &prepared.teammates[0], "1@team"),
+                solo_one
+            );
+            assert_eq!(
+                team_member_snapshot(&prepared.players[0], &prepared.teammates[0], "2@team"),
+                solo_two
+            );
+        }
+    }
+
+    /// 一行多名成员时逐个成员冻结：组内成员之间的组队加成同样不进入 pair 计算。
+    #[test]
+    fn pair_freezes_every_member_of_a_player_group() {
+        let input = pair_input("1@team+2@team", "3@team", false);
+        let prepared = prepare_pair_groups(&input).expect("prepare should succeed");
+        assert_eq!(prepared.players[0].lines().count(), 2);
+        assert!(prepared.players[0].lines().all(|line| line.contains("+ol:")));
+        assert_eq!(
+            team_member_snapshot(&prepared.players[0], &prepared.teammates[0], "1@team"),
+            built_snapshot(&[vec!["1@team".to_owned()]], "1@team")
+        );
+        assert_eq!(
+            team_member_snapshot(&prepared.players[0], &prepared.teammates[0], "2@team"),
+            built_snapshot(&[vec!["2@team".to_owned()]], "2@team")
+        );
+    }
+
+    /// 冻结只改构建文本，不参与身份判定：镜像 50% 与重名跳过仍按原名比较。
+    #[test]
+    fn pair_freeze_keeps_identity_for_mirror_and_duplicate_checks() {
+        let prepared = prepare_pair_groups(&pair_input("1@team", "2@team", false)).expect("prepare should succeed");
+        let team = format!("{}\n{}", prepared.players[0], prepared.teammates[0]);
+        assert_eq!(
+            crate::backend::parse::normalized_group_players(&team),
+            vec!["1@team".to_string(), "2@team".to_string()],
+            "冻结后的 +ol 文本仍应还原出原始身份"
+        );
+        assert_eq!(
+            crate::backend::parse::first_duplicate_name_in_matchup(&[&team, "2@team"]),
+            Some("2@team".to_string()),
+            "重名跳过仍按原名判定"
+        );
     }
 }

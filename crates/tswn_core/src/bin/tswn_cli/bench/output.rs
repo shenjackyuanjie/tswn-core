@@ -357,7 +357,7 @@ pub(super) fn format_rate(value: f64, precision: usize) -> String {
     format!("{value:.precision$}")
 }
 
-/// 将 player-list 里的普通名字转换成 `+ol`，保持 pair 组合输入稳定。
+/// 将选手或队友列表里的普通名字转换成 `+ol`，保持 pair 组合输入稳定。
 pub(super) fn player_to_ol_or_exit(raw: &str) -> String {
     if raw.contains("+diy[") || raw.contains("+ol:") {
         return raw.to_string();
@@ -365,7 +365,7 @@ pub(super) fn player_to_ol_or_exit(raw: &str) -> String {
     match cli_api::to_diy(raw, false, false) {
         Ok(player) => player,
         Err(err) => {
-            eprintln!("转换 player-list 名字为 +ol 失败: {raw}: {err}");
+            eprintln!("转换名字为 +ol 失败: {raw}: {err}");
             std::process::exit(1);
         }
     }

@@ -4,6 +4,11 @@
 //! 得到平均胜率，`--teammate-factored` 时再乘队友权重，然后按乘权后的分数降序
 //! 取前 head 个求和。共享的单组平均胜率计算在 `batch_rate.rs`，进度条在
 //! `progress.rs`，文件输出与排序在 `output.rs`。
+//!
+//! 选手与队友都会先按“逐个成员单独构建”导出成 `+ol` 再组队：core 的
+//! `apply_team_upgrades` 只改 `name_base`，而 overlay 的 `attrs` / `skills` 会直接覆盖，
+//! 同公会成员之间的组队加成因此不会作用到任何一侧，两侧都保持各自单独构建的强度。
+//! 只冻结选手会让队友单方面吃到加成（带权队友 TOML 里的普通名字正是这种情况）。
 
 use std::cell::RefCell;
 use std::fmt::Write as _;
@@ -25,7 +30,8 @@ use super::output::{
 };
 use super::progress::BatchProgress;
 
-fn player_group_to_ol_or_exit(group: &str) -> String { group.lines().map(player_to_ol_or_exit).collect::<Vec<_>>().join("\n") }
+/// 选手与队友共用：一组输入里的每个成员单独导出成 `+ol`，再用换行拼回同一组。
+fn group_to_ol_or_exit(group: &str) -> String { group.lines().map(player_to_ol_or_exit).collect::<Vec<_>>().join("\n") }
 
 /// 队友权重应用，对齐 openbox `teammate_score` 语义。
 ///
@@ -184,7 +190,8 @@ pub fn run_bench_pair(
     };
     let workers = low_accuracy_outer_workers(n, jobs.len(), requested);
     let inner_threads = if workers > 1 { Some(1) } else { threads };
-    let converted = players.iter().map(|player| player_group_to_ol_or_exit(player)).collect::<Vec<_>>();
+    let converted = players.iter().map(|player| group_to_ol_or_exit(player)).collect::<Vec<_>>();
+    let converted_teammates = teammates.iter().map(|teammate| group_to_ol_or_exit(teammate)).collect::<Vec<_>>();
     let cancel = AtomicBool::new(false);
     let mut pair_rates = Vec::new();
     let mut total_wins = 0;
@@ -201,7 +208,7 @@ pub fn run_bench_pair(
         &cancel,
         |_, &(pi, ti), tick| {
             let started = Instant::now();
-            let pair_group = format!("{}\n{}", converted[pi], teammates[ti]);
+            let pair_group = format!("{}\n{}", converted[pi], converted_teammates[ti]);
             let mut detail = String::new();
             if verbose {
                 let _ = writeln!(detail, "  teammate: {}", teammates[ti]);
@@ -425,7 +432,21 @@ mod tests {
     #[test]
     fn multi_player_input_group_converts_each_member() {
         let group = "+ol:player-a\n+ol:player-b";
-        assert_eq!(super::player_group_to_ol_or_exit(group), group);
+        assert_eq!(super::group_to_ol_or_exit(group), group);
+    }
+
+    /// 队友与选手走同一条冻结路径：普通名字导出成 `+ol`，已是 DIY/OL 的原样保留。
+    #[test]
+    fn teammate_groups_are_frozen_like_players() {
+        let frozen = super::group_to_ol_or_exit("1@team");
+        assert!(frozen.starts_with("1@team+ol:"));
+        assert_eq!(super::group_to_ol_or_exit(&frozen), frozen, "已是 DIY/OL 的输入原样保留");
+
+        // 一行多名成员时按成员逐个冻结，成员之间的组队加成同样不进入 pair 计算。
+        let group = super::group_to_ol_or_exit("1@team\n2@team");
+        assert_eq!(group.lines().count(), 2);
+        assert!(group.lines().all(|line| line.contains("+ol:")));
+        assert_eq!(group.lines().next(), Some(frozen.as_str()));
     }
 
     /// 读取 pair 输出文件里的最终分数（Log 模式行首数字）。

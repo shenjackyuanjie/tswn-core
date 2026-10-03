@@ -8,10 +8,17 @@
   逐字节格式化为小写十六进制；输出与旧版 `{:x}` 完全一致，契约摘要取值不变。
 - wasm 目标的 `js-sys` 升级到 `0.3.106`，与 `tswn_wasm` 的 `wasm-bindgen 0.2.129` 配套。
 
+### 修复
+
+- `tswn-cli bench pair` 与 `cli_api::pair_rate` / `pair_rate_factored`：队友改为和选手一样按“逐个成员单独构建”
+  冻结成 `+ol` 后再组队。此前只冻结选手，同公会（`@队名` 相同）的队友会单方面吃到组队加成，
+  带权队友 TOML 里的普通名字必然命中，使该队友组合的 cqp 偏高；Python / WASM / C-API 的 `pair_rate` 同步修正。
+  已经带 `+diy` / `+ol` 的输入保持原样，输出里的队友标签仍是原始输入行。
+
 ### 验证
 
 - `cargo test -p tswn_core --no-default-features --features png_render`：`tswn_core` lib 602 项、
-  `tswn-cli` 88 项通过；`cargo +nightly fmt --check` 无输出。
+  `tswn-cli` 89 项通过；`cargo +nightly fmt --check` 无输出。
 
 ## [0.7.0] - 2026-09-30
 

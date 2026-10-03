@@ -94,7 +94,7 @@ pub(super) fn pair_rate_for_player(
     thread: u32,
     eval_rq: f64,
 ) -> CliApiResult<PairRateResult> {
-    let converted_player = player_group_to_ol(player)?;
+    let converted_player = group_to_ol(player)?;
     let mut pair_rates = Vec::with_capacity(teammates.len());
     let mut total_wins = 0usize;
     let mut total_battles = 0usize;
@@ -103,7 +103,9 @@ pub(super) fn pair_rate_for_player(
     let mut total_timing = WinRateTiming::default();
 
     for teammate in teammates {
-        let pair_group = format!("{converted_player}\n{teammate}");
+        // 队友同样冻结成单独构建：只冻结选手会让同公会队友单方面吃到组队加成。
+        let converted_teammate = group_to_ol(teammate)?;
+        let pair_group = format!("{converted_player}\n{converted_teammate}");
         let summary = batch_rate_for_group(&pair_group, target_groups, target_factors, n, thread, eval_rq)?;
         if summary.valid_matchups > 0 {
             pair_rates.push(PairRateEntry {
@@ -169,17 +171,22 @@ fn group_player_ids(group: &str) -> Vec<String> {
         .collect()
 }
 
-fn player_to_ol(raw: &str) -> CliApiResult<String> {
+/// 选手与队友共用：一组输入里的每个成员单独导出成 `+ol`。
+///
+/// 冻结后的属性与技能来自该成员单独构队的结果，同公会成员之间的组队加成不会再作用
+/// 到它身上（`apply_team_upgrades` 只改 `name_base`，overlay 的 `attrs` / `skills` 会直接
+/// 覆盖），因此 pair 两侧都保持各自单独构建的强度。已经是 `+diy` / `+ol` 的输入原样保留。
+fn member_to_ol(raw: &str) -> CliApiResult<String> {
     if raw.contains("+diy[") || raw.contains("+ol:") {
         return Ok(raw.to_string());
     }
     super::parse::export_player(raw, false, false)
 }
 
-fn player_group_to_ol(group: &str) -> CliApiResult<String> {
+fn group_to_ol(group: &str) -> CliApiResult<String> {
     group
         .lines()
-        .map(player_to_ol)
+        .map(member_to_ol)
         .collect::<CliApiResult<Vec<_>>>()
-        .map(|players| players.join("\n"))
+        .map(|members| members.join("\n"))
 }

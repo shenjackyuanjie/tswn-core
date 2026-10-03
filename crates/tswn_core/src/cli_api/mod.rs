@@ -491,6 +491,11 @@ pub fn batch_rate(
         .collect()
 }
 
+/// 二人组评分：每名选手与每个队友各组合一次，按 `head` 取最高的若干个胜率求和。
+///
+/// 选手与队友都会先按“逐个成员单独构建”冻结成 `+ol` 再组队，同公会（`@队名` 相同）
+/// 成员之间的组队加成不会计入 cqp，两侧都按各自单独构建的强度计算；已经带
+/// `+diy` / `+ol` 的输入原样保留，`top_pairs` 里的名字是调用方传入的队友原文。
 pub fn pair_rate(
     target_groups: &[String],
     players: &[String],
@@ -558,6 +563,9 @@ pub fn batch_rate_factored(
         .collect()
 }
 
+/// 带权靶子的二人组评分：每个队友组合先按靶子权重求平均，再按 `head` 取最高分求和。
+///
+/// 两侧的冻结语义与 [`pair_rate`] 相同。
 pub fn pair_rate_factored(
     target_groups: &[String],
     target_factors: &[f64],

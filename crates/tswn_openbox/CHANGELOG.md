@@ -1,4 +1,4 @@
-# 更新日志
+﻿# 更新日志
 
 ## [Unreleased] - 0.4.7
 
@@ -23,6 +23,9 @@
 
 ### 修复
 
+- 配队：队友与选手一样按“逐个成员单独构建”冻结成 DIY 后再组成二人组，同公会队友不再单方面拿到组队加成；
+  此前只有选手被冻结，带权队友（TOML 普通名字）预设会因此得到偏高的 cqp。已经带 `+diy` / `+ol` 的队友输入不受影响，
+  日志与文件里的名字仍是原始输入行。
 - 修复纯文本被结构化结果改写后无法复制旧格式的问题：旧版文本由后端随结果一并给出，界面不再自行拼接预览文案。
 - 修复结果已生成时仍显示“运行结果会显示在这里”的提示。
 
@@ -31,8 +34,9 @@
 - 新增回归覆盖：真实 DIY 结果在三种视图下的复制文本与旧 API 一致（忽略新增的组分隔行）、分隔行插入位置与空白块处理、合并行只高亮差额项、同一技能行多个差额、
   横向滚动时表头与数据列保持同偏移、拖拽列宽边界、万条结果仅绘制可见行、运行中切页后任务仍写入发起页、设置按页保存与恢复（含缺失字段与非法宽度）、
   长行折行切分与裁剪后段索引。
+- 配队冻结由后端回归测试覆盖：`cargo test -p tswn_openbox_backend`（52 通过）逐项断言选手与队友都等于各自单独构建。
 - 本版本验证命令：`cargo test --workspace -- --test-threads=1`、`cargo test -p tswn_openbox`（28 通过）、
-  `cargo test -p tswn_openbox_backend`（49 通过）、`cargo +nightly fmt --check`、
+  `cargo test -p tswn_openbox_backend`（52 通过）、`cargo +nightly fmt --check`、
   `cargo clippy -p tswn_openbox -p tswn_openbox_backend --all-targets --features ui_capture --no-deps -- -D warnings`。
 
 ### 说明

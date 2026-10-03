@@ -144,6 +144,8 @@ core 定义六个稳定错误码：`INVALID_INPUT`、`INVALID_ARGUMENT`、`UNSUP
 
 胜率摘要（`win_rate_summary` / `team_win_rate_summary` / `group_win_rate_summary`）、评分（`score` / `namer_pf` / `batch_rate` / `pair_rate`）、工具（`to_diy` / `to_diy_batch` / `icon_info` / `parse_group_lines`）仍按高层 API 对齐；`default_custom_runtime_normalized_run` 是诊断接口。PreparedRunner 的 `eval_rq` 在创建时固定。
 
+`pair_rate` / `pair_rate_factored` 与 `tswn-cli bench pair`、Openbox `pair` 语义一致：选手与队友都先按“逐个成员单独构建”冻结成 `+ol` 再组队，同公会（`@队名` 相同）成员之间的组队加成不计入 cqp，返回结果里的队友名仍是调用方传入的原文；已经带 `+diy` / `+ol` 的输入原样保留。
+
 验证入口：`scripts/verify_battle_cross_binding.py` 使用真实 Rust CLI、Python 扩展、C 动态库和 Node WASM，逐字段精确比较四组输入在完整/限轮两种设置下的 initial、frames、result。
 
 ## 稳定性边界
