@@ -18,7 +18,6 @@ exclude = ["crates/tswn_name_ranker"]
 
 [profile.release]
 lto = "fat"
-debug = 1
 codegen-units = 1
 
 [profile.release-fast]

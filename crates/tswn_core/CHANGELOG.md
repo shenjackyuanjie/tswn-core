@@ -15,6 +15,15 @@
   带权队友 TOML 里的普通名字必然命中，使该队友组合的 cqp 偏高；Python / WASM / C-API 的 `pair_rate` 同步修正。
   已经带 `+diy` / `+ol` 的输入保持原样，输出里的队友标签仍是原始输入行。
 
+### 构建
+
+- 工作区 `[profile.release]` 移除 `debug = 1`。该设置会让 cc-rs 给 `libmimalloc-sys` 的 C++ 源码追加
+  `-Z7`，MSVC 在写调试记录阶段报 `D8050`（无法执行 `c1xx.dll`），release 构建在
+  `libmimalloc-sys` 处中断、`tswn-cli` 无法产出。移除后
+  `cargo build --release -p tswn_core --bin tswn-cli --features no_debug` 约 1 分钟完成；代价是
+  release 产物不再带调试信息，panic 回溯不含行号。清空 `libmimalloc-sys` 构建缓存强制重编该 C++
+  文件后复现通过，确认与 `-Z7` 直接相关。
+
 ### 验证
 
 - `cargo test -p tswn_core --no-default-features --features png_render`：`tswn_core` lib 602 项、
