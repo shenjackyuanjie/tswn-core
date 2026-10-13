@@ -36,7 +36,7 @@
 - `perf/` 和 `diff/` 的固定输入、原始 JSON、图片及工具生成报告保留原文件名与路径，不套用手写文档命名规则，不重生成基线。性能报告中的测量值、版本、提交与原始数据内容不因整理而改写。
 - 示例命令默认从仓库根目录执行；Markdown 链接相对当前文档。
 
-主 Runtime 独立性与 release corpus 的验证入口：
+主 Runtime 的 release 行为与完整 corpus 回归入口：
 
 ```powershell
 python scripts/check_runtime_release.py --corpus

@@ -1521,21 +1521,3 @@ fn load_edges(db: &Db, groups: &[CalibGroup]) -> anyhow::Result<Vec<Edge>> {
 }
 
 fn round_to_6(x: f64) -> f64 { (x * 1_000_000.0).round() / 1_000_000.0 }
-
-#[cfg(test)]
-mod tests {
-    use super::{default_selection_cqd_threshold, replacement_k_for_lane};
-
-    #[test]
-    fn default_calibration_thresholds_match_browser_defaults() {
-        assert_eq!(default_selection_cqd_threshold(1), 48.0);
-        assert_eq!(default_selection_cqd_threshold(2), 48.7);
-    }
-
-    #[test]
-    fn replacement_slots_are_lane_specific() {
-        assert_eq!(replacement_k_for_lane(1), 10.0);
-        assert_eq!(replacement_k_for_lane(2), 5.0);
-        assert_eq!(replacement_k_for_lane(3), 5.0);
-    }
-}

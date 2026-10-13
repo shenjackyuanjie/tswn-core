@@ -108,7 +108,7 @@ c@team++d@team
 python scripts/check_runtime_release.py --corpus
 ```
 
-该门禁先检查旧对象路径、Rust/CLI 禁用符号和 corpus 清单，再运行 release/no_debug 主 Runtime 测试；`--corpus` 会执行 87 个 JS exact trace 与 37 个冻结压力 golden，共 124 项。
+该入口运行 release/no_debug 主 Runtime 与 release CLI 测试；`--corpus` 会执行完整冻结 corpus。旧路径、已删除 API 与源码写法的维护约束见 [迁移指南](docs/guides/runtime-0.5-migration.md)，不通过源码扫描或固定测试数量冻结实现。
 
 ## 重要入口
 
@@ -146,5 +146,5 @@ python scripts/check_runtime_release.py --corpus
 - `png_render` 是 `tswn_core` 默认 feature，用于图标 PNG/base64 输出。
 - 差分工具会大量写入 `target/`，这些产物通常不应提交。
 - 修改 Markdown 文档后，需要检查相对链接与 `git diff --check`。
-- 主 Runtime 独立性与 124-case release 回归统一由 `scripts/check_runtime_release.py` 执行；`track test` 仅用于维护测试失败集 checkpoint。
+- 主 Runtime 的 release 行为回归统一由 `scripts/check_runtime_release.py` 执行；`track test` 仅用于维护测试失败集 checkpoint。
 - 当前工作区可能有本地调试文件和未提交产物，提交前需要用 `git status` 明确区分源码改动与生成输出。

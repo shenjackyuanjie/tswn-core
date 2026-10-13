@@ -89,4 +89,6 @@ if (tswn_capi_abi_version() != 4) {
 python scripts/check_runtime_release.py --corpus
 ```
 
-门禁会验证旧源码路径和禁用 API 未回流，并执行 87 个 JS exact trace 与 37 个冻结压力 golden，共 124 项。压力 golden 固定有效输入 SHA-256、`eval_rq`、胜者、回合数、总分、最终 RC4 和逐回合 canonical digest。
+该入口运行 release/no_debug 主 Runtime、release CLI 和完整冻结 corpus。压力 golden 验证有效输入 SHA-256、`eval_rq`、胜者、回合数、总分、最终 RC4 和逐回合 canonical digest。0.5 迁移时的基线包含 87 个 JS exact trace 与 37 个压力 golden；实际执行范围由 Cargo 测试目标决定，不在脚本中重复冻结数量。
+
+旧路径、已删除符号和执行器选择器的维护约束以本指南为准，不再扫描源码来禁止重新出现某个路径或字符串。

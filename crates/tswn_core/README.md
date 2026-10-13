@@ -123,7 +123,7 @@ cargo test -p tswn_core
 python scripts/check_runtime_release.py --corpus
 ```
 
-第二条命令会检查主 Runtime 独立性并执行 87 个 JS exact trace 与 37 个冻结压力 golden。
+第二条命令运行 release/no_debug 主 Runtime、release CLI 与完整冻结 corpus；旧 API 的迁移约定留在 [迁移指南](../../docs/guides/runtime-0.5-migration.md)。
 
 ## 版本
 

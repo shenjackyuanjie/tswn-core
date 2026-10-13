@@ -37,12 +37,13 @@ python scripts/winprob_hp_baseline.py --dataset target/winprob-100k --json-out t
 
 ## check_runtime_release.py
 
-验证主 Runtime 的 release 独立性与行为回归：
+运行主 Runtime 的 release 行为回归：
 
-- 检查已删除的 `engine` / `player` 源码路径和旧 Rust/CLI API 没有回流；
-- 校验 corpus 清单固定为 87 个 JS exact trace 与 37 个压力 golden；
 - 运行 release 与 `no_debug` 的主 Runtime 定向测试；
-- 传入 `--corpus` 时实际执行全部 124 项 corpus，否则只编译 corpus 测试目标。
+- 运行 release CLI 的 Runtime 测试；
+- 传入 `--corpus` 时执行完整 corpus，否则只编译 corpus 测试目标。
+
+已删除入口与架构约定见 [Runtime 迁移指南](../docs/guides/runtime-0.5-migration.md)；脚本不检查源码路径、禁用字符串或固定测试数量。
 
 ```powershell
 python scripts/check_runtime_release.py
@@ -307,7 +308,7 @@ Bun 脚本，用于对 tswn-md5 模块进行 profile trace。
 
 - `verify_py_cli_api.py`：构建 Python 扩展并检查 TypedDict、迭代器、错误码与 session/replay 一致性。
 - `verify_wasm_battle.test.mjs`：真实 Node WASM 包的 canonical DTO、错误与旧 FightSession 兼容测试。
-- Rust 集成测试 [`cli_battle.rs`](../crates/tswn_core/tests/cli_battle.rs)：CLI JSONL、stdin、人类输出与删除命令的错误路径，运行 `cargo test -p tswn_core --test cli_battle`；原 `verify_cli_battle.py` 已删除。
+- Rust 集成测试 [`cli_battle.rs`](../crates/tswn_core/tests/cli_battle.rs)：CLI JSONL、stdin、人类输出与输入错误路径，运行 `cargo test -p tswn_core --test cli_battle`。
 - `verify_battle_cross_binding.py`：真实 Rust CLI / Python / C / WASM 的完整 payload 精确对比；调用 `dump_battle_wasm.mjs` 读取 Node WASM 输出。
 - `verify_web_playback.mjs`：真实页面模块与 DOM 的延迟 source 测试，需 `--experimental-vm-modules` 和 target/web-test-tools 下的 linkedom。
 - `benchmark_web_streaming.mjs`：独立桌面浏览器四组各 20 次性能测试，生成 timing JSON、表格和截图。

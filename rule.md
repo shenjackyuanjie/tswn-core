@@ -20,8 +20,8 @@ cargo test --workspace
 python scripts/check_runtime_release.py --corpus
 ```
 
-第二条命令同时检查旧源码路径与禁用 API 未回流，并执行 87 个 JS exact trace 和
-37 个冻结压力 golden。C、Python、WASM 和 OpenBox 等包装层修改还应运行：
+第二条命令运行 release/no_debug 主 Runtime、release CLI 与完整冻结 corpus。
+旧 API 与架构约定留在 [迁移指南](docs/guides/runtime-0.5-migration.md)，不以源码扫描或固定测试数量冻结实现。C、Python、WASM 和 OpenBox 等包装层修改还应运行：
 
 ```powershell
 cargo test --workspace --all-targets --no-run
