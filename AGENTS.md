@@ -22,6 +22,8 @@
 
 使用 Rust 内置测试框架（`#[test]`）。修复缺陷应先添加可复现测试；涉及 runtime 或解析语义时，覆盖边界条件与已有 case。提交前运行受影响 crate 的测试；影响核心逻辑时运行 `cargo test -p tswn_core`，跨模块变更再运行 `cargo test`。除非有意更新语义，不要重生成 `crates/tswn_test/cases/` 中的 golden/corpus 基线。
 
+测试应验证实际输入输出、状态变化、边界条件或资源管理。目录摆放、源码写法、架构选择、已移除入口及固定配置的维护约束留在对应文档，不单独增加“防止以后重新这么做”或冻结实现的测试。已发生缺陷的行为回归、公共接口兼容性与数据格式验证不属于这类维护约束。
+
 ## 提交与 PR
 
 近期历史采用 Conventional Commit 风格，如 `feat(openbox): 添加版本信息弹窗`、`docs(repo): 添加 Agent 工作约定`。使用 `feat`、`fix`、`docs`、`chore` 等类型和简短 scope；提交主题和正文均使用中文。PR 应说明动机、关键实现与验证命令；关联 issue；若更改 Openbox 或 WASM 可见界面，附截图或录屏。避免混入无关格式化、构建产物或本地配置。

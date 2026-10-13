@@ -30,6 +30,8 @@
 
 当前源码目录为 [cli_api/battle](../../crates/tswn_core/src/cli_api/battle/mod.rs)，包含 `dto.rs`、`driver.rs`、`session.rs`、`model_session.rs` 和 `replay.rs`，与早期仅列 DTO/session/replay 的规划树不同。API 加固的已修复项与保留契约见 [加固现状](battle-session-hardening.md#当前加固状态与源码依据)，当前使用入口见 [公共 API](../reference/public-api.md)。
 
+前端回归测试位于 [`crates/tswn_wasm/tests/`](../../crates/tswn_wasm/tests/README.md)。历史 `show-page-contract.test.mjs` 中只匹配源码写法的检查已移除；主题可读性保留为 [`show-theme.test.mjs`](../../crates/tswn_wasm/tests/show-theme.test.mjs)，页面交互由 [`verify_web_playback.mjs`](../../scripts/verify_web_playback.mjs) 执行真实模块与 DOM 验证。历史维护约束仍保留在下文，不据此增加防重引入测试。
+
 ## 历史重构提案阅读说明
 
 以下第 0–70 节中的“本轮”“当前”“必须”“新增”和 Commit 编号均指原重构阶段；代码草图、文件拆分和勾选框是历史计划/验收记录。后续新增的失败查询、共享 driver 和 ModelState 以本节源码依据为准。提交与验证约定以根 [AGENTS.md](../../AGENTS.md) 为准，历史分块提交建议不是本次文档维护的操作要求。
