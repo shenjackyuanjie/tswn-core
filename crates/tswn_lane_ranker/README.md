@@ -20,6 +20,13 @@ Rust 侧负责读取已保存结果、补算缺失胜率、调用 Python 求解�
 
 当前默认 Raw 校准池阈值为：单人 lane `48.0`，多人 lane `48.7`；Correct 假设替换槽位为：单人 `10`，多人 `5`。这些属于可调整的默认策略，维护时同步实际调用方和页面说明，不用只比较返回常量的测试冻结配置。
 
+## 内部结构
+
+- `db.rs` 保留连接与任务入口；`db/schema.rs` 管理迁移，`groups.rs` 管理组合/胜率/归档，`results.rs` 管理进度、排名与 Correct 靶子轨迹。
+- `ranker.rs` 负责配置和重新计算编排；`ranker/algorithm.rs` 负责 Raw/Golden 迭代和重建，`archive.rs` 负责归档规则，`rates.rs` 负责胜率矩阵和补算。
+- `pairwise.rs` 编排校准；`pairwise/` 分离 Rust Correct 计算、Python 结果解析和胜率准备。
+- `service.rs` 保留服务对象和队列入口；`service/` 分离组合管理、后台任务、靶子生成与压缩协议。HTTP 路由和页面仍在 `web.rs`、`static/`。
+
 ## 验证
 
 ```powershell

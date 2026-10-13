@@ -2,6 +2,12 @@
 
 ## [Unreleased] - 0.1.1
 
+### 内部整理
+
+- 按职责拆分 SQLite 存储、Raw/Golden 排名、Correct/Python 校准与服务任务模块；不改变 SQL、评分公式、求解器脚本或 HTTP 调用契约。
+- 默认阈值和替换槽位策略留在 README，删除只比较固定返回值的两项测试，保留七项实际行为回归。
+- 2026-10-13 使用正常 SQLite/mimalloc 配置执行 `cargo test -p tswn_lane_ranker` 通过；下方 D8050 记录保留当时的环境状态。
+
 ### 依赖更新
 
 - `axum` 升级到 `0.8`、`tower-http` 升级到 `0.7`、`rusqlite` 升级到 `0.40`。
