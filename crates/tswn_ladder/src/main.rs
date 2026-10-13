@@ -5,7 +5,8 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
-use chrono::{Local, Utc};
+use chrono::{DateTime, Utc};
+use chrono_tz::Asia::Shanghai;
 use cron::Schedule;
 use tokio::io::AsyncWriteExt;
 use tokio_postgres::{Client, NoTls};
@@ -167,16 +168,7 @@ struct Updator {
 #[tokio::main]
 async fn main() -> Result<()> {
     let config = Config::from_env()?;
-    let (client, connection) = tokio_postgres::connect(&config.database_url, NoTls).await.context("connect PostgreSQL")?;
-
-    tokio::spawn(async move {
-        if let Err(err) = connection.await {
-            eprintln!("PostgreSQL连接错误: {err}");
-        }
-    });
-
-    eprintln!("[db] PostgreSQL连接池已创建");
-
+    let client = connect_postgres(&config.database_url).await?;
     let mut updator = Updator::new(client, config);
     if updator.config.run_once {
         updator.run_round().await?;
@@ -184,6 +176,21 @@ async fn main() -> Result<()> {
     }
 
     updator.run_forever().await
+}
+
+/// 建立 PostgreSQL 连接并派生驱动 future。
+/// 抽成独立函数是为了让断线重连可以复用同一条构造路径。
+async fn connect_postgres(database_url: &str) -> Result<Client> {
+    let (client, connection) = tokio_postgres::connect(database_url, NoTls).await.context("connect PostgreSQL")?;
+
+    tokio::spawn(async move {
+        if let Err(err) = connection.await {
+            eprintln!("PostgreSQL连接错误: {err}");
+        }
+    });
+
+    eprintln!("[db] PostgreSQL连接已创建");
+    Ok(client)
 }
 
 impl Updator {
@@ -226,14 +233,55 @@ impl Updator {
 
     async fn run_round(&mut self) -> Result<()> {
         eprintln!("[tick] 天梯匹配轮次开始 {}", Utc::now().to_rfc3339());
+        if let Err(err) = self.ensure_postgres_connected().await {
+            eprintln!("[tick] PostgreSQL连接不可用，跳过本轮: {err:#}");
+            self.check_memory_usage();
+            eprintln!("[tick] 天梯匹配轮次结束");
+            return Ok(());
+        }
+
         for group in self.config.groups.clone() {
+            if let Err(err) = self.ensure_postgres_connected().await {
+                eprintln!("[group:{group}] 处理异常: reconnect PostgreSQL: {err:#}");
+                continue;
+            }
+
             eprintln!("[group:{group}] 开始");
             if let Err(err) = self.process_all_players(&group).await {
                 eprintln!("[group:{group}] 处理异常: {err:#}");
+                self.reconnect_after_postgres_error(&err).await;
             }
         }
         self.check_memory_usage();
         eprintln!("[tick] 天梯匹配轮次结束");
+        Ok(())
+    }
+
+    /// 每轮/每组开始前确认连接可用；连接已关闭时重连一次。
+    async fn ensure_postgres_connected(&mut self) -> Result<()> {
+        if !self.client.is_closed() {
+            return Ok(());
+        }
+
+        eprintln!("[db] PostgreSQL连接已关闭，正在重连");
+        self.reconnect_postgres().await
+    }
+
+    /// 仅在错误确实源于连接关闭时重连，避免对普通 SQL 错误做无谓重试。
+    async fn reconnect_after_postgres_error(&mut self, err: &anyhow::Error) {
+        if !is_closed_postgres_error(err) && !self.client.is_closed() {
+            return;
+        }
+
+        eprintln!("[db] 检测到PostgreSQL连接关闭，正在重连");
+        if let Err(reconnect_err) = self.reconnect_postgres().await {
+            eprintln!("[db] PostgreSQL重连失败: {reconnect_err:#}");
+        }
+    }
+
+    async fn reconnect_postgres(&mut self) -> Result<()> {
+        let database_url = self.config.database_url.clone();
+        self.client = connect_postgres(&database_url).await?;
         Ok(())
     }
 
@@ -1218,6 +1266,17 @@ fn read_env_bool(name: &str, default: bool) -> bool {
     }
 }
 
+/// `tokio_postgres` 底层连接关闭时错误链里会带 `is_closed()` 的 cause，
+/// 有些路径只留下 "connection closed" 文本，两种都识别。
+fn is_closed_postgres_error(err: &anyhow::Error) -> bool {
+    err.chain().any(|cause| {
+        cause
+            .downcast_ref::<tokio_postgres::Error>()
+            .is_some_and(tokio_postgres::Error::is_closed)
+            || cause.to_string().contains("connection closed")
+    })
+}
+
 async fn shutdown_signal() -> Result<()> {
     #[cfg(unix)]
     {
@@ -1280,9 +1339,12 @@ fn logistic_expected(score_diff: f64) -> f64 { 1.0 / (1.0 + 10_f64.powf(-score_d
 
 fn generate_unique_seed(rng: &mut fastrand::Rng) -> String {
     let basic_seed = format!("{:06}", rng.u32(..1_000_000));
-    let seed = Local::now().format("%Y-%m-%d %H:%M").to_string();
+    let seed = format_seed_timestamp(Utc::now());
     format!("{seed} #{basic_seed}")
 }
+
+/// seed 时间戳固定用 `Asia/Shanghai`，不随部署主机时区变化。
+fn format_seed_timestamp(now: DateTime<Utc>) -> String { now.with_timezone(&Shanghai).format("%Y-%m-%d %H:%M").to_string() }
 
 fn run_battle_winner(runs: &str, _player1: &str, _player2: &str) -> Result<Option<i32>> {
     let mut runner = Runner::new_from_namerena_raw(runs.to_string()).map_err(|err| anyhow::anyhow!(err.to_string()))?;
@@ -1332,6 +1394,23 @@ mod tests {
     #[test]
     fn parses_five_field_cron_like_node_cron() {
         assert!(parse_cron_schedule("* * * * *").is_ok());
+    }
+
+    #[test]
+    fn seed_timestamp_uses_asia_shanghai() {
+        let utc = DateTime::parse_from_rfc3339("2026-07-20T16:30:00Z")
+            .expect("valid timestamp")
+            .with_timezone(&Utc);
+        assert_eq!(format_seed_timestamp(utc), "2026-07-21 00:30");
+    }
+
+    #[test]
+    fn generate_unique_seed_uses_shanghai_clock() {
+        let mut rng = fastrand::Rng::with_seed(7);
+        let seed = generate_unique_seed(&mut rng);
+        let (stamp, suffix) = seed.split_once(" #").expect("seed has suffix");
+        assert_eq!(stamp, format_seed_timestamp(Utc::now()));
+        assert_eq!(suffix.len(), 6);
     }
 
     #[test]
