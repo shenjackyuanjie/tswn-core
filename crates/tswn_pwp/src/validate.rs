@@ -80,7 +80,7 @@ pub fn validate_dataset(out: &Path) -> Result<Summary> {
 }
 
 /// 校验 manifest 内容并返回总对局数。
-fn check_config(config: &DatasetConfig) -> Result<usize> {
+pub(crate) fn check_config(config: &DatasetConfig) -> Result<usize> {
     ensure!(
         config.format_version == 1 && config.state_schema_version == tswn_core::runtime::model_state::MODEL_STATE_SCHEMA_VERSION,
         "不支持的数据版本"

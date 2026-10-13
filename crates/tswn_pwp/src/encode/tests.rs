@@ -1,6 +1,6 @@
 //! 验证实际编码文件、监督标签和源行关联，不检查源码写法。
 use super::*;
-use crate::{BattleRow, input, manifest, random};
+use crate::{BattleRow, DatasetConfig, input, manifest, random};
 use clap::Parser;
 use serde_json::json;
 use tempfile::TempDir;
@@ -44,6 +44,7 @@ fn fixture(root: &Path) -> (EncodeArgs, Vec<SampleRow>) {
     .unwrap();
     let dataset = root.join("dataset");
     fs::create_dir(&dataset).unwrap();
+    fs::write(dataset.join(".generator.lock"), []).unwrap();
     let groups = (0..100)
         .map(|i| vec![vec![format!("left-{i}")], vec!["right".to_owned()]])
         .find(|groups| random::split(&input::matchup_id(groups)) == "train")
@@ -199,12 +200,18 @@ fn export_aligns_labels_source_rows_tail_and_core_bytes() {
     assert_eq!(manifest, storage::read_json::<EncoderManifest>(&args.manifest).unwrap());
     let encoder = FeatureEncoder::new(manifest).unwrap();
     let mut output_rows = Vec::new();
+    let mut tensor_bytes = 0u64;
     for index in 0..export.batches {
         let dir = args.out.join(format!("batch-{index:06}"));
         let batch: BatchManifest = storage::read_json(&dir.join("batch-manifest.json")).unwrap();
         let audit: Vec<SourceRow> = storage::read_json(&dir.join(&batch.audit.file)).unwrap();
         let winners = fs::read(dir.join("winner_team_index.bin")).unwrap();
         let masks = fs::read(dir.join("label_mask.bin")).unwrap();
+        for tensor in batch.features.iter().chain(&batch.exact).chain(&batch.labels) {
+            let path = dir.join(&tensor.payload.file);
+            tensor_bytes += fs::metadata(&path).unwrap().len();
+            assert_eq!(storage::file_hash(&path).unwrap(), tensor.payload.sha256);
+        }
         assert_eq!(audit.len(), batch.batch_size);
         assert_eq!(masks, vec![1; batch.batch_size]);
         for (slot, source) in audit.iter().enumerate() {
@@ -230,6 +237,12 @@ fn export_aligns_labels_source_rows_tail_and_core_bytes() {
         output_rows.extend(audit.into_iter().map(|source| (source.source_shard, source.source_row)));
     }
     assert_eq!(output_rows, vec![(0, 0), (1, 0), (1, 1)]);
+    assert_eq!(export.tensor_bytes, tensor_bytes);
+    assert_eq!(
+        export.dataset_manifest_sha256,
+        storage::file_hash(&args.dataset.join("manifest.json")).unwrap()
+    );
+    assert!(!root.path().join(".encoded.encode.tmp").exists());
     // 有 Python 时检验实际消费端；纯 Rust 环境不额外要求解释器。
     if std::process::Command::new("python")
         .arg("--version")
@@ -256,4 +269,84 @@ fn diagnostic_export_retains_null_label_with_zero_mask() {
     assert_eq!(i32::from_le_bytes(bytes[4..8].try_into().unwrap()), -1);
     let audit: Vec<SourceRow> = storage::read_json(&dir.join("rows.json")).unwrap();
     assert_eq!(audit[1].source_row, 1);
+}
+
+#[test]
+fn source_lock_and_corruption_prevent_export_before_any_batch_is_written() {
+    let root = TempDir::new().unwrap();
+    let (args, _) = fixture(root.path());
+    let generator_lock = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(args.dataset.join(".generator.lock"))
+        .unwrap();
+    fs2::FileExt::try_lock_exclusive(&generator_lock).unwrap();
+    assert!(format!("{:#}", run(&args).unwrap_err()).contains("正在生成或续跑"));
+    assert!(!args.out.exists());
+    assert!(!root.path().join(".encoded.encode.tmp").exists());
+    drop(generator_lock);
+    let source = SourceDataset::open(&args).unwrap();
+    assert_eq!(source.selected_samples, 3);
+    let generator_lock = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(args.dataset.join(".generator.lock"))
+        .unwrap();
+    assert!(fs2::FileExt::try_lock_exclusive(&generator_lock).is_err());
+    drop(source);
+    fs2::FileExt::try_lock_exclusive(&generator_lock).unwrap();
+    drop(generator_lock);
+    let sample_file = args.dataset.join("shard-000001/samples.parquet");
+    let mut bytes = fs::read(&sample_file).unwrap();
+    bytes[8] ^= 1;
+    fs::write(&sample_file, bytes).unwrap();
+    assert!(format!("{:#}", run(&args).unwrap_err()).contains("样本文件校验失败"));
+    assert!(!args.out.exists());
+    assert!(!root.path().join(".encoded.encode.tmp").exists());
+}
+
+#[test]
+fn later_encoding_failure_keeps_earlier_batch_private_and_locates_source_row() {
+    let root = TempDir::new().unwrap();
+    let (args, mut rows) = fixture(root.path());
+    rows[3].state.entities[0].runtime.at_boost_bits = f64::NAN.to_bits();
+    let dir = args.dataset.join("shard-000001");
+    let mut writer = storage::TableWriter::<SampleRow>::create(&dir.join("samples.parquet")).unwrap();
+    writer.append(&rows[2..]).unwrap();
+    writer.finish().unwrap();
+    write_receipt(&dir, 1);
+    let error = format!("{:#}", run(&args).unwrap_err());
+    assert!(error.contains("分片 1 行 1，battle_id=3"), "{error}");
+    assert!(error.contains("at_boost"), "{error}");
+    assert!(!args.out.exists());
+    let staging = root.path().join(".encoded.encode.tmp");
+    assert!(staging.join("batch-000000/batch-manifest.json").is_file());
+    assert!(!staging.join("manifest.json").exists());
+    let before = storage::file_hash(&staging.join("batch-000000/global_num.bin")).unwrap();
+    assert!(run(&args).is_err());
+    assert_eq!(
+        storage::file_hash(&staging.join("batch-000000/global_num.bin")).unwrap(),
+        before
+    );
+}
+
+#[test]
+fn existing_output_and_publish_conflicts_are_not_overwritten() {
+    let root = TempDir::new().unwrap();
+    let (args, _) = fixture(root.path());
+    run(&args).unwrap();
+    let before = storage::file_hash(&args.out.join("manifest.json")).unwrap();
+    assert!(run(&args).unwrap_err().to_string().contains("不覆盖"));
+    assert_eq!(storage::file_hash(&args.out.join("manifest.json")).unwrap(), before);
+    let target = root.path().join("occupied-late");
+    let transaction = output::OutputDirectory::create(&target, 0).unwrap();
+    fs::create_dir(&target).unwrap();
+    fs::write(target.join("user-file"), b"preserved").unwrap();
+    assert!(transaction.commit().is_err());
+    assert_eq!(fs::read(target.join("user-file")).unwrap(), b"preserved");
+    assert!(transaction.staging.exists());
+    let no_space = root.path().join("no-space");
+    assert!(output::OutputDirectory::create(&no_space, u64::MAX).is_err());
+    assert!(!no_space.exists());
+    assert!(!root.path().join(".no-space.encode.tmp").exists());
 }

@@ -4,7 +4,7 @@
 
 本文承接 [状态导出与数据生成契约](battle-analyze.md)，字段语义以 [BattleModelState Runtime 审计](battle-model-state-audit.md) 为准；生成器和 Parquet 文件说明见 [winprob 数据集 README](../../crates/tswn_pwp/README.md)。
 
-> 状态：Rust encoder 的全部八族张量、`baseline-64`、标量校准、完整契约发布与版本 2 训练数据通道已落地；流式/完整性加固及 Python/WASM 编码绑定仍需单独验收。输入 schema v1，encoder 为 `encoder-v1`。本文是 **tswn-pwp（player winchance predictor）** 的特征编码层规格，不定义最终神经网络结构。
+> 状态：Rust encoder 的全部八族张量、`baseline-64`、标量校准、完整契约发布与版本 2 流式训练包已落地；Python/WASM 编码绑定和模型训练/推理仍为后续工作。输入 schema v1，encoder 为 `encoder-v1`。本文是 **tswn-pwp（player winchance predictor）** 的特征编码层规格，不定义最终神经网络结构。
 
 ## 当前实现与验收边界
 
@@ -14,14 +14,14 @@
 | 容量与运行配置 | [capacity.rs](../../crates/tswn_core/src/encoder/capacity.rs#L19-L65) 是 `BASELINE_64` 和计费式的唯一权威；[manifest.rs](../../crates/tswn_core/src/encoder/manifest.rs#L304-L400) 提供 manifest、摘要和校准报告组装，[FeatureEncoder::new](../../crates/tswn_core/src/encoder/encode.rs#L401-L447) 交叉校验词表、数值槽与支持域。 |
 | 校准与契约发布 | [calibrate.rs](../../crates/tswn_pwp/src/calibrate.rs) 默认选择有标签 train 行，输出标量报告及来源摘要；[build-manifest](../../crates/tswn_pwp/src/manifest.rs) 调用核心组装并通过 `FeatureEncoder::new` 门禁后发布完整契约。报告不能直接作为 `encode --manifest` 的输入。 |
 | 离线训练包 | [encode.rs](../../crates/tswn_pwp/src/encode.rs) 输出版本 2 编码包，附带完整 encoder manifest，按 features/exact/labels/audit 分通道，默认过滤空标签并记录过滤前的源行位置；尾批使用实际 B。 |
-| 跨绑定与规模加固 | Python/WASM 当前没有 encoder 公共接口。导出仍先收集所选 split 的全部状态，流式读入、文件摘要与安全提交属于下一块加固。 |
-| Python 消费 | [read_encoded_batches.py](../../scripts/read_encoded_batches.py) 验证 dtype/shape/长度、批布局、标签和审计行数，提供逐批只读 NumPy 内存映射；不重做编码。 |
+| 流式与完整性 | [source.rs](../../crates/tswn_pwp/src/encode/source.rs) 共享锁保护源数据并投影统计标签；编码只保留当前批状态。输出按源内容与契约记录身份、估算空间、回读验证 SHA-256，在同级临时目录成功后提交；不覆盖、不自动续跑。 |
+| Python 消费 | [read_encoded_batches.py](../../scripts/read_encoded_batches.py) 验证文件与批清单 SHA-256、dtype/shape/长度、批布局、标签和审计行数，提供逐批只读 NumPy 内存映射；不重做编码。Python/WASM 的在线编码绑定仍未实现。 |
 
-本次文档维护核对源码和测试定义，未重跑完整测试、数据生成或校准。后文容量实测及原生验收数字属于各自记录时的环境与输入，不代表本次复测。
+本次训练包改动验证实际导出文件、标签/源行对应、尾批、与核心逐字节对齐、流式失败现场、锁与覆盖冲突以及 Python 消费端。同一篇后文的容量深测和历史性能数字仍属于各自记录时的环境与输入，本次没有重新生成那些大规模基线。
 
 **模块边界。** 编码模块落位见 [encoder/mod.rs](../../crates/tswn_core/src/encoder/mod.rs)：encoder 只在 Rust 实现一次，当前由基础离线导出器调用，Python／WASM 绑定是后续复用点；该模块**不依赖 Arrow/Parquet、文件系统或模型参数**。容量权威位于 `tswn_core::encoder::capacity`（`BASELINE_64` 与计费式），`tswn_pwp::capacity` 只做再导出，不保留第二份常量。批缓冲按张量分配（`encoder::batch`），批槽位偏移为 `batch_index × 该张量每样本元素数`；未写入位置按 0／-1 填充，复用前 `clear_slot` 恢复 padding。规格第 3.2 节白名单已固化为 `encoder::slots` 的数据表；第 16 节第 7 条指出的三处校验缺口（charm `group_id`、槽内 U64 实体引用、载荷 kind 与分支匹配）由 `FeatureEncoder::validate_state` 闭合，`BattleModelState::validate` 仍不是替代品。
 
-**历史原生验收记录。** astra 针对 `e3925bf0` 的静态复核发现已在 `ebe5d75f` 修复，格式修正为 `b2ff92d9`；当时 `tswn_core` 在关闭默认 `mimalloc`、保留 `png_render` 的配置下通过 599 项测试（2 项依赖外部输入而忽略）。这是历史记录，不是当前测试数量或本次维护的执行结果。WASM 数值一致性、跨绑定闭环和完整离线训练包验收仍需分别确认；基础导出器已存在，原生结果也不能替代这些完整验收。
+**历史原生验收记录。** astra 针对 `e3925bf0` 的静态复核发现已在 `ebe5d75f` 修复，格式修正为 `b2ff92d9`；当时 `tswn_core` 在关闭默认 `mimalloc`、保留 `png_render` 的配置下通过 599 项测试（2 项依赖外部输入而忽略）。这是历史记录，不是当前测试数量或本次维护的执行结果。版本 2 训练包的文件与消费端回归现已补齐；WASM 数值一致性和跨绑定闭环仍需分别确认，原生结果不能替代跨端验收。
 
 ## 1. 目标与边界
 
@@ -29,7 +29,7 @@
 
 遵循 [后续训练和网页约束](battle-analyze.md#后续训练和网页约束)：encoder 只在 Rust 实现一次，另加导出通道；原始 Parquet `state` 是唯一事实来源，格式不变，Python 只负责训练与评估。当前已实现编码与基础导出；模型训练和推理仍属后续阶段。本次文档维护不新增 crate，不修改已有数据或 golden/corpus。
 
-下文“规定”描述编码契约；“后续目标／拟议”专指尚未落地的规模加固、绑定或模型相关约束。当前公共接口以第 14 节为准。`M:行` 指 [runtime/model_state.rs](../../crates/tswn_core/src/runtime/model_state.rs) 的源码定位；其余缩写在第 17 节给出完整路径。复合类型叶子已在第 3.1 节展开，默认槽语义白名单已在第 3.2 节与实现中冻结；跨端与导出完整验收边界单独记录，见第 15／16 节。
+下文“规定”描述编码契约；“后续目标／拟议”专指尚未落地的绑定或模型相关约束。当前公共接口以第 14 节为准。`M:行` 指 [runtime/model_state.rs](../../crates/tswn_core/src/runtime/model_state.rs) 的源码定位；其余缩写在第 17 节给出完整路径。复合类型叶子已在第 3.1 节展开，默认槽语义白名单已在第 3.2 节与实现中冻结；跨端与导出完整验收边界单独记录，见第 15／16 节。
 
 ## 2. 输入契约
 
@@ -477,7 +477,7 @@ deferred 保存原列表顺序和精确 `state_cursor`，与实体状态注册�
 
 当前 alive、存活列表和粘性计数仍是机制输入；[粘性计数的语义与边界](../mechanics/winner.md#3-alive_group_count-的语义与边界) 记载计数参与目标选择及 post-action 循环，不能因为它不是判胜计数就删掉。标签按 [generate.rs](../../crates/tswn_pwp/src/generate.rs#L288-L292) 的唯一输入队伍映射读取；空标签不标负，不增加第 33 个“未决”类别。
 
-后续模型只对 mask=1 的 t 做归一化：`p_t=exp(z_t-m)/Σ_valid exp(z_j-m)`；padding 概率为 0，真实队伍概率和为 1。`world.winner_team!=None` 时 encoder 返回 `AlreadyDecided`；终局展示由引擎结果驱动，不把终局送模型。全灭但尚无 winner 的有效 state 可以编码，后续监督训练应默认过滤空标签；当前校准默认过滤，基础编码导出尚不执行该过滤。
+后续模型只对 mask=1 的 t 做归一化：`p_t=exp(z_t-m)/Σ_valid exp(z_j-m)`；padding 概率为 0，真实队伍概率和为 1。`world.winner_team!=None` 时 encoder 返回 `AlreadyDecided`；终局展示由引擎结果驱动，不把终局送模型。全灭但尚无 winner 的有效 state 可以编码；当前校准与训练编码包默认过滤空标签，诊断导出保留时 label_mask=0。
 
 ## 11. 禁止泄漏清单
 
@@ -553,7 +553,7 @@ deferred 保存原列表顺序和精确 `state_cursor`，与实体状态注册�
 
 **当前训练编码包。** [pwp/encode.rs](../../crates/tswn_pwp/src/encode.rs) 的根 `manifest.json` 记录 `format=tswn-core/encoded-dataset`、`format_version=2`、state schema、split、空标签策略、请求批大小、encoder 契约摘要、批数与样本数，另存完整 `encoder-manifest.json`。每批含 69 个小端 C 连续张量，`batch-manifest.json` 按 features/exact/labels/audit 分离清单；`extra_bits` 和 `order_key` 进入 exact，尾批使用实际 B，内部容量不变。
 
-labels 是 i32 `[B]` 的 `winner_team_index` 与 u8 `[B]` 的 `label_mask`；默认过滤空标签，`--keep-unlabeled` 写 -1/mask=0。`rows.json` 按批槽位记录源分片、过滤前行号、battle_id、阵容、帧边界和 progress，不包含 state 或特征数组，不能由 features 清单枚举到。当前仍先收集所选 split 的全部 `SampleRow`，再按批分配张量，不能将其称为流式读取。
+labels 是 i32 `[B]` 的 `winner_team_index` 与 u8 `[B]` 的 `label_mask`；默认过滤空标签，`--keep-unlabeled` 写 -1/mask=0。`rows.json` 按批槽位记录源分片、过滤前行号、battle_id、阵容、帧边界和 progress，不包含 state 或特征数组，不能由 features 清单枚举到。编码只保留当前批选中状态，跨源分片连续填充，另有固定 128 行 Parquet 读取批与轻量摘要清单。
 
 从仓库根目录使用已生成的数据集与**已组装且填写 `contract_digest` 的完整 EncoderManifest**：
 
@@ -564,9 +564,9 @@ python scripts/read_encoded_batches.py <编码包目录>
 
 `calibrate --json-out` 产生的是校准报告，不是上述 `--manifest` 所需文件；先执行 `tswn-pwp build-manifest --calibration <校准报告.json> --out <完整manifest.json>`。该命令只接受有标签 train 报告，复用核心组装、完整数值槽与词表门禁，并填写契约摘要。
 
-**后续规模与完整性加固。** 训练数据通道已落地；后续需要逐批流式读取、安全提交输出目录，并为每个张量与审计文件登记摘要。JSON 只描述编码包与审计关联，不装载 state 或整块特征内容。
+**空间与完整性。** 导出前只投影扫描 split/标签列，精确统计选中行数，按固定容量张量与标签预算打印并检查可用空间；预算不含 JSON/文件系统开销。载荷同步写入后回读验证，批清单记录所有张量和审计文件的字节数与 SHA-256；根清单保护批清单及完整 encoder manifest 副本。输出必须不存在，使用同级 `.输出名.encode.tmp` 目录，成功后改名提交；失败保留现场，不覆盖已有输出或旧临时包，不自动续跑。JSON 不装载 state 或整块特征内容。
 
-完整包的缓存键还应包括原始数据摘要、schema、encoder 版本、profile 与 manifest 摘要，更改任一项必须重编码。编码错误已附源分片/行号与 battle_id，同时保留核心字段路径；原始数据完整摘要和安全缓存提交仍需完善。文件容器和张量契约继续留在现有 crate，不需要另建编码算法。
+根清单的 `dataset_manifest_sha256` 是源 manifest 文件摘要；`dataset_sha256` 对其与按序 `ShardReceipt` 的 JSON 取摘要，包含两张 Parquet 的实际已验证摘要。源数据在整个编码过程中持有共享锁，阻止生成器并发续跑；切分与标签策略单独记录，schema/encoder 版本/profile 在复制的契约中。更改数据或契约必须使用新目录重编码，不自动复用缓存。编码错误附源分片/行号、battle_id 和核心字段路径；文件容器与张量契约仍在现有 crate，不增加编码算法副本。
 
 补充序列化约定：`owner_scope` 的 1–9 依次为 global/entity/template/state/slot/list/input_team/runtime_team/lane；global owner 固定为 0，其他 owner 必须引用有效行。`list_index=(owner_scope,owner,field_class,ordinal,target)` 承载下表登记的有序引用，target 域按 field_class 固定；ordinal 是该 owner 下该类源列表的原下标。`extra_index` 的四元索引由 `field_class` 决定值类型与引用域；`extra_num/extra_ref/extra_bool/extra_cat/extra_bits` 中恰有一条有效通道，其余清零（ref 填 -1）。记录存在性统一使用 `extra_mask`；未知字段或类型不符拒绝，不能猜测或哈希字段名。
 
@@ -639,7 +639,7 @@ raw 路径的 runtime/template/state/slot/world 前缀指第 3 节相应结构�
 
 ## 15. 测试与验收
 
-下表是持续验收标准。Rust 八族编码和基础离线导出已实现；完整训练包、跨绑定和 WASM 数值对齐验收仍需单独执行，原生回归不能替代这些项目。
+下表是持续验收标准。Rust 八族编码与流式训练包已实现，并有真实文件/消费端回归；跨绑定与 WASM 数值对齐仍需单独执行，原生回归不能替代这些项目。
 
 **encoder 回归已落地**（[encode.rs](../../crates/tswn_core/src/encoder/encode.rs)、[batch.rs](../../crates/tswn_core/src/encoder/batch.rs)、[manifest.rs](../../crates/tswn_core/src/encoder/manifest.rs) 等模块内 `#[cfg(test)]`；早期验收记录为 80 项，不作为当前总数）：manifest 自洽性与门禁、词表与注册表交叉核对、`N_f` 与固定计数尺度、批缓冲布局（批槽位与 B=1 逐字节一致、复用不留残值、shape 之积与字节数）、容量边界（`E=64/65`、`T=32/33`、`R=32/33`、`Q=512/513`）、presence 与 mask 语义（`Some(0)`/`None`/padding、hide、可选引用 -1、clone 整体 presence）、压缩标志保留位、非有限值、未知分类、载荷 kind 与分支、槽白名单（未登记／类型不符／实体引用悬空）、charm `group_id` 引用、`team_mask` 不随存活与粘性计数变化、实体存储重排等变、原始 `EntityIdx` 不泄漏、跨技能池端到端冒烟（含终局帧必须被 `AlreadyDecided` 拒绝）、slot/state raw owner、clone 归属、lane 作用域与稳定 key、批失败清理，以及 state JSON 精确字段覆盖。下表仍是后续跨目标验收的完整标准。
 
@@ -674,7 +674,7 @@ git diff --check
 
 ## 16. 冻结决策与后续验收事项
 
-下表保留设计取舍与机制审计的理由，已冻结项以源码为准；完整训练包、绑定、新支持域及未重测的历史深测数据仍是后续验收事项，不再将整个编码层描述为实施前草案。
+下表保留设计取舍与机制审计的理由，已冻结项以源码为准；绑定、新支持域及未重测的历史深测数据仍是后续验收事项，不再将整个编码层描述为实施前草案。
 
 | 问题 | 选项 | 建议及冻结条件 |
 | --- | --- | --- |
@@ -683,7 +683,7 @@ git diff --check
 | 浮点产生式 | 尺度按 train 实测拟合（已定）；各 `*_bits` 的 f64 产生式与 millionths 关系 | **产生式已逐字段核对，见第 13 节**：全部由 `f64::to_bits()` 写入，`millionths` 是有损整数且反向构造器仅测试使用。无观测即 `MissingCalibration`，不登记人工常数；仍不假定 `bits == millionths/1e6` |
 | 容量 profile | `baseline-64`（已冻结）；变更须发布新 profile | **已冻结 `E_max=64`**，`E/T/R/H/L/S/Q/V/X = 64/32/32/512/4096/64/512/32768/65536`，逐维推导见第 4 节容量表。实测依据：100k 池（2v2v2）`e≤30`、`h≤120`、`l≤882`、`q≤96`、`V≤2800`、`X≤1671`；8 人池全部 20 种队伍划分最高 `e=44`、`h=176`、`l=1485`、`q=140`、`V=4640`、`X=2465`；3v2v2v1 深测到 `e=46`、`h=184`、`l=1560`、`q=146`、`V=4846`、`X=3489（X 列由修正前的脚本统计，含每个模板虚增 5 条计划叶子的高估，方向保守，待用修正脚本重测）`。实体数机制审计（第 4 节）确认不存在与输入无关的上界，所以 `E_max` 是**支持域选择**：8 人以内、召唤密度不超过该池。配套：`stats` 报每维溢出率，超限返回 `CapacityExceeded` 而不截断；`Q_max`／`S_max` 随 `E_max` 同步提到 512／64，`H_max` 按实测 `h≈4e` 定 512，`X_max` 每槽按第 3.2 节白名单 3 条计费（原 66 条/槽在冻结白名单下不可达）。要机制保证只能改引擎（给 shadow／clone 加记忆槽或加全局上限），会改变战斗语义，本轮不做 |
 | 资格 mask | 全部输入队伍；或证明复活／召唤不可达后屏蔽 | 已冻结为全部真实输入队伍，采用第 10 节公式；避免把本池 `0/40000` 的未见事件当引擎保证（[复活与获胜资格](../mechanics/winner.md#5-复活与获胜资格)） |
-| 导出容器 | typed bin + manifest；或后续绑定直接返回 buffers | 基础 typed bin + manifest 离线包已实现；完整训练包及绑定是后续目标，继续复用同一布局与编码算法 |
+| 导出容器 | typed bin + manifest；或后续绑定直接返回 buffers | 版本 2 流式训练包已实现，包含标签、审计与摘要；绑定是后续目标，继续复用同一布局与编码算法 |
 
 阅读中发现的描述差异／覆盖缺口（已修正项注明，其余仅记录）：
 
@@ -723,6 +723,6 @@ git diff --check
 | S 统计口径 | [stats.rs:150](../../crates/tswn_pwp/src/stats.rs#L150)（collect）、[内容数量:218–240](../../crates/tswn_pwp/src/stats.rs#L218-L240)、[容量统计:240–250](../../crates/tswn_pwp/src/stats.rs#L240-L250) |
 | F 抽样 | [sampling.rs:5](../../crates/tswn_pwp/src/sampling.rs#L5)（select，排终局与最终轮数分桶） |
 | G 生成 | [generate.rs:166](../../crates/tswn_pwp/src/generate.rs#L166)（write_shard）、[两遍运行:272–326](../../crates/tswn_pwp/src/generate.rs#L272-L326)、[样本／对局:301–337](../../crates/tswn_pwp/src/generate.rs#L301-L337) |
-| 编码与导出 | [encoder/encode.rs](../../crates/tswn_core/src/encoder/encode.rs)、[batch.rs](../../crates/tswn_core/src/encoder/batch.rs)、[capacity.rs](../../crates/tswn_core/src/encoder/capacity.rs)、[manifest.rs](../../crates/tswn_core/src/encoder/manifest.rs)、[校准通道](../../crates/tswn_pwp/src/calibrate.rs)、[基础导出](../../crates/tswn_pwp/src/encode.rs)、[包检查脚本](../../scripts/read_encoded_batches.py) |
+| 编码与导出 | [encoder/encode.rs](../../crates/tswn_core/src/encoder/encode.rs)、[batch.rs](../../crates/tswn_core/src/encoder/batch.rs)、[capacity.rs](../../crates/tswn_core/src/encoder/capacity.rs)、[manifest.rs](../../crates/tswn_core/src/encoder/manifest.rs)、[校准通道](../../crates/tswn_pwp/src/calibrate.rs)、[训练包导出](../../crates/tswn_pwp/src/encode.rs)、[包检查脚本](../../scripts/read_encoded_batches.py) |
 | K 槽语义与顺序证据 | [prepared_init/init.rs](../../crates/tswn_core/src/runtime/prepared_init/init.rs)、[seed.rs](../../crates/tswn_core/src/runtime/prepared_init/seed.rs)、[roster.rs](../../crates/tswn_core/src/runtime/prepared_init/roster.rs)、[plain_summon.rs](../../crates/tswn_core/src/runtime/plain_summon.rs)、[plain_zombie.rs](../../crates/tswn_core/src/runtime/plain_zombie.rs)、[handlers/mod.rs](../../crates/tswn_core/src/runtime/handlers/mod.rs)、[minions.rs](../../crates/tswn_core/src/runtime/handlers/minions.rs)、[states.rs](../../crates/tswn_core/src/runtime/handlers/states.rs)、[skills_control.rs](../../crates/tswn_core/src/runtime/combat/skills_control.rs)、[skills_team.rs](../../crates/tswn_core/src/runtime/combat/skills_team.rs)、[round.rs](../../crates/tswn_core/src/runtime/combat/round.rs)、[scheduler.rs](../../crates/tswn_core/src/runtime/scheduler.rs)、[entity/runtime.rs](../../crates/tswn_core/src/runtime/entity/runtime.rs)、[entity/state.rs](../../crates/tswn_core/src/runtime/entity/state.rs)、[profile/import.rs](../../crates/tswn_core/src/runtime/profile/import.rs)、[prepared_init.rs](../../crates/tswn_core/src/runtime/prepared_init.rs) |
 | K2 实体产生入口（历史第三轮审计） | [plain_summon.rs](../../crates/tswn_core/src/runtime/plain_summon.rs)、[plain_zombie.rs](../../crates/tswn_core/src/runtime/plain_zombie.rs)、[skills_lifecycle.rs](../../crates/tswn_core/src/runtime/combat/skills_lifecycle.rs)、[skills_control.rs](../../crates/tswn_core/src/runtime/combat/skills_control.rs)、[skills_offense.rs](../../crates/tswn_core/src/runtime/combat/skills_offense.rs)、[defense.rs](../../crates/tswn_core/src/runtime/combat/defense.rs)、[handlers/mod.rs](../../crates/tswn_core/src/runtime/handlers/mod.rs)、[minions.rs](../../crates/tswn_core/src/runtime/handlers/minions.rs)、[skill_loadout.rs](../../crates/tswn_core/src/runtime/entity/skill_loadout.rs)、[seed.rs](../../crates/tswn_core/src/runtime/prepared_init/seed.rs)、[namerena/build.rs](../../crates/tswn_core/src/namerena/build.rs)、[分身回归测试](../../crates/tswn_core/src/runtime/tests/plain_clone_skill_tests.rs) |

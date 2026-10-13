@@ -147,12 +147,28 @@ target/release/tswn-pwp.exe encode --dataset target/winprob-demo --manifest targ
 python scripts/read_encoded_batches.py target/winprob-encoded
 ```
 
-- 输出为版本 2 训练包；根目录保存完整 `encoder-manifest.json`，`manifest.json` 记录切分、标签策略、样本数、批次数与契约摘要。旧版基础导出包需要重新编码。
+- 输出为版本 2 训练包；根目录保存完整 `encoder-manifest.json`，`manifest.json` 记录切分、标签策略、样本数、批次数、空间预算、契约摘要和源数据摘要。旧版基础导出包需要重新编码。
 - 每个 `batch-NNNNNN/` 含各张量的 `.bin` 文件及 `batch-manifest.json`；张量为小端、C 连续布局，shape 首维为实际批次大小，尾批可以小于 `--batch-size`。
 - 批清单分为 `features`、`exact`、`labels`、`audit` 四个通道；`extra_bits` 与 `order_key` 属精确旁路，不默认作为数值模型输入。
 - 标签是小端 i32 `[B]` 的 `winner_team_index` 和 u8 `[B]` 的 `label_mask`。默认过滤空标签；诊断导出可用 `--keep-unlabeled`，此时空标签为 -1/mask=0，不能给予监督权重。
 - `rows.json` 数组与批内槽位一一对应，记录源分片/原始行号、battle_id、阵容、帧边界及 progress。源行号在过滤前计数；标签无需另读 Parquet 拼接，审计列不进入 `features`。
-- 当前实现先将选定切分的全部样本读入内存，再分批编码；`--batch-size` 控制张量批次大小，不限制数据集读取的总内存。
+- 编码先只扫描 split/标签列计数，再流式读取状态；待编码状态最多一批，可跨源分片连续填充。除当前批与编码缓冲外，还保留固定的 Parquet 读取批（128 行）及分片/批清单摘要，不再收集整库状态。
+- 每个特征、旁路、标签、审计文件与 encoder manifest 副本都记录字节数和 SHA-256；写入同步后回读验证。根清单记录每批清单的摘要，Python 消费端检查整条文件引用链，能发现同长度内容损坏。
+
+### 空间预算与安全提交
+
+导出前核对源分片完成记录与两张 Parquet 的摘要，并持有数据集共享锁，阻止同一数据集并发生成或续跑；
+该过程只读源文件。源身份由原始 manifest 文件摘要和按序分片完成记录组成，写入 `dataset_sha256`，
+不同数据内容、encoder 契约、切分或标签策略应导出到新的目录，不自动复用旧缓存。
+共享锁使用生成器的 `.generator.lock`；拷贝已完成的数据集时也保留此文件。
+
+`--out` 必须是**不存在的新目录**，已有目录（包括空目录）或旧编码包都不覆盖。
+程序在同级 `.输出目录名.encode.tmp/` 中写入，全部成功后改名提交。失败时目标目录不出现，
+临时包保留供诊断；再次运行不覆盖旧临时包，可换输出目录，或人工检查现场后清理。编码目前不支持 `--resume`。
+
+预算按完整固定容量的 69 个张量和两个标签文件计算，在写入前打印并检查可用空间。
+`baseline-64` 约 4.2 MiB/样本；该预算**不包含 JSON、文件系统分配及其他进程后续写入**，不能视为绝对磁盘保证。
+张量仍为未压缩小端 `.bin`，流式读取只降低内存，不降低整库磁盘占用；首次验证请先用小数据集。
 
 安装 NumPy 后，训练侧可使用 `scripts/read_encoded_batches.py` 的 `iter_encoded_batches(root)`：
 逐批返回只读内存映射的 `features` 和 `labels`，无需 PyArrow；需要关系计算旁路时显式传入

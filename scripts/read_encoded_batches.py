@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -17,11 +18,14 @@ def _read_root(root: Path) -> dict:
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
     if manifest.get("format") != "tswn-core/encoded-dataset" or manifest.get("format_version") != 2:
         raise ValueError("不支持的编码包版本，请用当前 encode 重新导出")
-    encoder = json.loads((root / "encoder-manifest.json").read_text(encoding="utf-8"))
+    encoder_path = _check_file(root, manifest["encoder_manifest"])
+    encoder = json.loads(encoder_path.read_text(encoding="utf-8"))
     if encoder.get("contract_digest") != manifest["encoder_manifest_sha256"]:
         raise ValueError("encoder manifest 摘要不一致")
     if manifest["batches"] <= 0 or manifest["samples"] <= 0 or manifest["batch_size"] <= 0:
         raise ValueError("编码包样本数和批大小必须为正")
+    if len(manifest["batch_manifest_sha256"]) != manifest["batches"]:
+        raise ValueError("批清单摘要数量不匹配")
     return manifest
 
 
@@ -39,17 +43,31 @@ def _check_file(directory: Path, entry: dict) -> Path:
     path = _payload_path(directory, entry)
     if path.stat().st_size != entry["byte_length"]:
         raise ValueError(f"{path}: 文件长度不一致")
+    if _file_digest(path) != entry["sha256"]:
+        raise ValueError(f"{path}: 文件 SHA-256 不一致")
     return path
+
+
+def _file_digest(path: Path) -> str:
+    with path.open("rb") as payload:
+        digest = hashlib.sha256()
+        for chunk in iter(lambda: payload.read(64 * 1024), b""):
+            digest.update(chunk)
+        return digest.hexdigest()
 
 
 def _iter_validated_batches(root: Path, manifest: dict):
     samples = 0
+    tensor_bytes = 0
     layout = None
     for index in range(manifest["batches"]):
         directory = root / f"batch-{index:06d}"
         if directory.is_symlink():
             raise ValueError(f"不读取符号链接：{directory}")
-        batch = json.loads((directory / "batch-manifest.json").read_text(encoding="utf-8"))
+        batch_path = _payload_path(directory, {"file": "batch-manifest.json"})
+        if _file_digest(batch_path) != manifest["batch_manifest_sha256"][index]:
+            raise ValueError(f"{directory}: 批清单 SHA-256 不一致")
+        batch = json.loads(batch_path.read_text(encoding="utf-8"))
         if batch.get("format") != "tswn-core/encoded-batch" or batch.get("format_version") != 2:
             raise ValueError(f"{directory}: 不支持的批格式")
         if batch["batch_index"] != index or batch["encoder_manifest_sha256"] != manifest["encoder_manifest_sha256"]:
@@ -70,6 +88,7 @@ def _iter_validated_batches(root: Path, manifest: dict):
                 if tensor["dtype"] not in DTYPE_SIZE or math.prod(shape) * DTYPE_SIZE[tensor["dtype"]] != tensor["byte_length"]:
                     raise ValueError(f"{directory}/{tensor['name']}: dtype/shape 与字节数不一致")
                 _check_file(directory, tensor)
+                tensor_bytes += tensor["byte_length"]
                 current_layout.append((channel, tensor["name"], tensor["dtype"], shape[1:]))
         if layout is not None and current_layout != layout:
             raise ValueError(f"{directory}: 批间张量布局不一致")
@@ -103,6 +122,8 @@ def _iter_validated_batches(root: Path, manifest: dict):
         yield directory, batch
     if samples != manifest["samples"]:
         raise ValueError("批次样本数与总样本数不一致")
+    if tensor_bytes != manifest["tensor_bytes"]:
+        raise ValueError("实际张量字节数与预算不一致")
 
 
 def load_export(root: Path) -> dict:

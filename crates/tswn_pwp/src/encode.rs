@@ -1,4 +1,6 @@
 //! 将核心 encoder 的结果、监督标签与源行关联写入独立通道。
+mod output;
+mod source;
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -8,13 +10,14 @@ use std::{
 use tswn_core::{
     cli_api::battle::BattleModelFrame,
     encoder::{
-        batch::{EncodedBatch, TENSOR_SPECS, tensor_shape},
+        batch::{CapacityDims, EncodedBatch, TENSOR_SPECS, tensor_shape},
         encode::FeatureEncoder,
         manifest::EncoderManifest,
     },
 };
 
-use crate::{DatasetConfig, SampleRow, storage};
+use crate::{SampleRow, storage};
+use source::SourceDataset;
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct EncodeArgs {
@@ -24,7 +27,7 @@ pub struct EncodeArgs {
     /// build-manifest 生成的完整 EncoderManifest JSON。
     #[arg(long)]
     pub manifest: PathBuf,
-    /// 输出编码包目录。
+    /// 新的编码包目录，必须不存在；失败临时包保留在同级目录。
     #[arg(long)]
     pub out: PathBuf,
     /// 只编码指定 split。
@@ -64,6 +67,7 @@ struct TensorFile {
 struct FileEntry {
     byte_length: usize,
     file: String,
+    sha256: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,6 +79,11 @@ struct ExportManifest {
     keep_unlabeled: bool,
     batch_size: usize,
     encoder_manifest_sha256: String,
+    encoder_manifest: FileEntry,
+    dataset_manifest_sha256: String,
+    dataset_sha256: String,
+    tensor_bytes: u64,
+    batch_manifest_sha256: Vec<String>,
     batches: usize,
     samples: usize,
 }
@@ -98,6 +107,7 @@ struct SelectedRow {
 
 pub fn run(args: &EncodeArgs) -> Result<()> {
     ensure!(args.batch_size > 0, "batch-size 必须大于 0");
+    output::ensure_absent(&args.out)?;
     let manifest: EncoderManifest = storage::read_json(&args.manifest).context("读取 encoder manifest")?;
     manifest.validate().map_err(|error| anyhow::anyhow!(error.to_string()))?;
     let digest = manifest.digest();
@@ -106,22 +116,82 @@ pub fn run(args: &EncodeArgs) -> Result<()> {
         "encoder manifest contract_digest 不匹配"
     );
     let encoder = FeatureEncoder::new(manifest.clone()).map_err(|error| anyhow::anyhow!(error.to_string()))?;
-    let config: DatasetConfig = storage::read_json(&args.dataset.join("manifest.json")).context("读取数据集 manifest")?;
+    let source = SourceDataset::open(args)?;
     ensure!(
-        config.state_schema_version == manifest.state_schema_version,
+        source.config.state_schema_version == manifest.state_schema_version,
         "state schema 与 encoder manifest 不一致"
     );
-    ensure!(config.battles_per_shard > 0, "battles-per-shard 必须大于 0");
-    let total = config.cases.len().checked_mul(config.games_per_matchup).context("对局数溢出")?;
-    let mut rows = Vec::new();
-    for index in 0..total.div_ceil(config.battles_per_shard) {
+    ensure!(source.selected_samples > 0, "没有符合 split 和标签策略的样本");
+    let tensor_bytes = tensor_budget(&encoder, source.selected_samples)?;
+    let output = output::OutputDirectory::create(&args.out, tensor_bytes)?;
+    write_export(args, &source, &encoder, &digest, tensor_bytes, &output)
+        .with_context(|| format!("编码失败；临时包保留在 {}", output.staging.display()))?;
+    println!(
+        "编码完成：split={} 样本 {}，批次 {}",
+        args.split,
+        source.selected_samples,
+        source.selected_samples.div_ceil(args.batch_size)
+    );
+    Ok(())
+}
+
+fn write_export(
+    args: &EncodeArgs,
+    source: &SourceDataset,
+    encoder: &FeatureEncoder,
+    digest: &str,
+    tensor_bytes: u64,
+    output: &output::OutputDirectory,
+) -> Result<()> {
+    let encoder_manifest = output::write_payload(
+        &output.staging,
+        "encoder-manifest.json",
+        &serde_json::to_vec_pretty(encoder.manifest())?,
+    )?;
+    let mut batch_manifest_sha256 = Vec::new();
+    let samples = stream_batches(args, source, |chunk| {
+        let sha256 = write_batch(&output.staging, batch_manifest_sha256.len(), chunk, encoder, digest)?;
+        batch_manifest_sha256.push(sha256);
+        Ok(())
+    })?;
+    storage::write_json(
+        &output.staging.join("manifest.json"),
+        &ExportManifest {
+            format: "tswn-core/encoded-dataset".to_owned(),
+            format_version: 2,
+            state_schema_version: source.config.state_schema_version,
+            split: args.split.clone(),
+            keep_unlabeled: args.keep_unlabeled,
+            batch_size: args.batch_size,
+            encoder_manifest_sha256: digest.to_owned(),
+            encoder_manifest,
+            dataset_manifest_sha256: source.manifest_sha256.clone(),
+            dataset_sha256: source.dataset_sha256.clone(),
+            tensor_bytes,
+            batches: batch_manifest_sha256.len(),
+            batch_manifest_sha256,
+            samples,
+        },
+    )?;
+    output.commit()
+}
+
+/// 当前批跨源分片连续填充；回调成功后立即释放这一批状态，失败则停止读取。
+fn stream_batches(
+    args: &EncodeArgs,
+    source: &SourceDataset,
+    mut visit: impl FnMut(&[SelectedRow]) -> Result<()>,
+) -> Result<usize> {
+    let mut pending = Vec::with_capacity(args.batch_size.min(source.selected_samples));
+    let mut samples = 0usize;
+    for (index, receipt) in source.receipts.iter().enumerate() {
         let path = args.dataset.join(format!("shard-{index:06}/samples.parquet"));
-        let mut row_index = 0;
+        let mut row_index = 0usize;
         storage::read_rows::<SampleRow>(&path, |row| {
             let source_row = row_index;
             row_index += 1;
             if row.split == args.split && (args.keep_unlabeled || row.winner_team_index.is_some()) {
-                rows.push(SelectedRow {
+                pending.push(SelectedRow {
                     source: SourceRow {
                         source_shard: index,
                         source_row,
@@ -133,51 +203,62 @@ pub fn run(args: &EncodeArgs) -> Result<()> {
                     },
                     row,
                 });
+                samples = samples.checked_add(1).context("样本数溢出")?;
+                if pending.len() == args.batch_size {
+                    visit(&pending)?;
+                    pending.clear();
+                }
             }
             Ok(())
         })
         .with_context(|| format!("读取分片 {index}"))?;
+        ensure!(row_index == receipt.samples, "源分片 {index} 的样本数在编码期间发生变化");
     }
-    ensure!(!rows.is_empty(), "没有符合 split 和标签策略的样本");
-    fs::create_dir_all(&args.out)?;
-    storage::write_json(&args.out.join("encoder-manifest.json"), &manifest)?;
-    let mut batches = 0;
-    for (index, chunk) in rows.chunks(args.batch_size).enumerate() {
-        write_batch(&args.out, index, chunk, &encoder, &digest)?;
-        batches += 1;
+    if !pending.is_empty() {
+        visit(&pending)?;
     }
-    storage::write_json(
-        &args.out.join("manifest.json"),
-        &ExportManifest {
-            format: "tswn-core/encoded-dataset".to_owned(),
-            format_version: 2,
-            state_schema_version: config.state_schema_version,
-            split: args.split.clone(),
-            keep_unlabeled: args.keep_unlabeled,
-            batch_size: args.batch_size,
-            encoder_manifest_sha256: digest,
-            batches,
-            samples: rows.len(),
-        },
-    )?;
-    println!("编码完成：split={} 样本 {}，批次 {}", args.split, rows.len(), batches);
-    Ok(())
+    ensure!(samples == source.selected_samples, "选中样本数在编码期间发生变化");
+    Ok(samples)
 }
 
-fn write_batch(out: &Path, index: usize, chunk: &[SelectedRow], encoder: &FeatureEncoder, digest: &str) -> Result<()> {
+fn tensor_budget(encoder: &FeatureEncoder, samples: usize) -> Result<u64> {
+    let dims = encoder.profile().dims();
+    let mut per_sample = 5usize; // i32 标签与 u8 label_mask。
+    for tensor in TENSOR_SPECS {
+        let shape = tensor_shape(&dims, tensor.name).context("张量 shape 未登记")?;
+        let elements = shape
+            .iter()
+            .try_fold(1usize, |product, axis| product.checked_mul(*axis))
+            .context("张量 shape 溢出")?;
+        let bytes = elements.checked_mul(tensor.dtype.size()).context("张量字节数溢出")?;
+        per_sample = per_sample.checked_add(bytes).context("每样本字节数溢出")?;
+    }
+    u64::try_from(per_sample)?
+        .checked_mul(u64::try_from(samples)?)
+        .context("编码包字节预算溢出")
+}
+
+fn write_batch(out: &Path, index: usize, chunk: &[SelectedRow], encoder: &FeatureEncoder, digest: &str) -> Result<String> {
     let mut encoded = EncodedBatch::new(encoder.profile(), chunk.len());
     let mut winners = Vec::with_capacity(chunk.len() * 4);
     let mut label_mask = Vec::with_capacity(chunk.len());
     let mut sources = Vec::with_capacity(chunk.len());
     for (slot, selected) in chunk.iter().enumerate() {
         let row = &selected.row;
-        let winner = match row.winner_team_index {
-            Some(winner) => {
+        let winner = row
+            .winner_team_index
+            .map(|winner| -> Result<i32> {
                 ensure!(winner < row.state.input_teams.len(), "胜者输入队伍编号越界");
-                i32::try_from(winner).context("胜者输入队伍编号超过 i32")?
-            }
-            None => -1,
-        };
+                i32::try_from(winner).context("胜者输入队伍编号超过 i32")
+            })
+            .transpose()
+            .with_context(|| {
+                format!(
+                    "分片 {} 行 {}，battle_id={}",
+                    selected.source.source_shard, selected.source.source_row, row.battle_id
+                )
+            })?
+            .unwrap_or(-1);
         winners.extend(winner.to_le_bytes());
         label_mask.push(u8::from(winner >= 0));
         encoder
@@ -192,7 +273,7 @@ fn write_batch(out: &Path, index: usize, chunk: &[SelectedRow], encoder: &Featur
         sources.push(&selected.source);
     }
     let dir = out.join(format!("batch-{index:06}"));
-    fs::create_dir_all(&dir)?;
+    fs::create_dir(&dir)?;
     let mut features = Vec::new();
     let mut exact = Vec::new();
     for spec in TENSOR_SPECS {
@@ -212,7 +293,7 @@ fn write_batch(out: &Path, index: usize, chunk: &[SelectedRow], encoder: &Featur
         write_tensor(&dir, "label_mask", "u8", vec![chunk.len()], &label_mask)?,
     ];
     let audit_bytes = serde_json::to_vec(&sources)?;
-    fs::write(dir.join("rows.json"), &audit_bytes)?;
+    let audit = output::write_payload(&dir, "rows.json", &audit_bytes)?;
     storage::write_json(
         &dir.join("batch-manifest.json"),
         &BatchManifest {
@@ -224,26 +305,20 @@ fn write_batch(out: &Path, index: usize, chunk: &[SelectedRow], encoder: &Featur
             features,
             exact,
             labels,
-            audit: FileEntry {
-                byte_length: audit_bytes.len(),
-                file: "rows.json".to_owned(),
-            },
+            audit,
         },
     )?;
-    Ok(())
+    storage::file_hash(&dir.join("batch-manifest.json"))
 }
 
 fn write_tensor(dir: &Path, name: &str, dtype: &str, shape: Vec<usize>, bytes: &[u8]) -> Result<TensorFile> {
     let file = format!("{name}.bin");
-    fs::write(dir.join(&file), bytes)?;
+    let payload = output::write_payload(dir, &file, bytes)?;
     Ok(TensorFile {
         name: name.to_owned(),
         dtype: dtype.to_owned(),
         shape,
-        payload: FileEntry {
-            byte_length: bytes.len(),
-            file,
-        },
+        payload,
     })
 }
 

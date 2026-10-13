@@ -11,7 +11,7 @@
 | Rust 固定张量编码与容量/词表/数值/引用校验 | [encoder/encode.rs](../../crates/tswn_core/src/encoder/encode.rs#L390-L506)；[张量注册表](../../crates/tswn_core/src/encoder/batch.rs#L115-L546)；[编码器复核测试](../../crates/tswn_core/src/encoder/review_tests.rs) |
 | 校准、完整契约发布与训练包导出 | [命令注册](../../crates/tswn_pwp/src/lib.rs)；[calibrate.rs](../../crates/tswn_pwp/src/calibrate.rs)；[manifest.rs](../../crates/tswn_pwp/src/manifest.rs)；[encode.rs](../../crates/tswn_pwp/src/encode.rs) |
 
-**落地边界：** `calibrate` 输出标量校准报告，`build-manifest` 发布通过核心门禁的完整契约；版本 2 的 `encode` 包含逐批小端张量、标签、精确旁路和源行审计关联，并默认过滤空标签。流式读入与文件完整性加固仍需完善。模型训练、推理、Python/WASM 编码/机制状态查询接口和胜率 UI 仍是后续工作，见 [FeatureEncoder 接口边界](feature-encoder-spec.md#14-接口边界)。
+**落地边界：** `calibrate` 输出标量校准报告，`build-manifest` 发布通过核心门禁的完整契约；版本 2 的 `encode` 流式导出小端张量、标签、精确旁路和源行审计关联，默认过滤空标签，并通过源数据共享锁、空间预算、摘要回读和临时目录提交保障完整性。模型训练、推理、Python/WASM 编码/机制状态查询接口和胜率 UI 仍是后续工作，见 [FeatureEncoder 接口边界](feature-encoder-spec.md#14-接口边界)。
 
 ## 目标与边界
 
