@@ -2,6 +2,7 @@
 
 [返回文档中心](../README.md)
 
+- [项目与 core 原理指南](../core-guide/README.md)：从游戏概念理解构建、战斗、hook 和全项目交互链路。
 - [全量构建与打包](build-all.md)：CLI、C、Python、WASM 与 Openbox 产物。
 - [开发入口与模块边界](development.md)：代码归属、测试选择、文档维护与提交范围。
 - [Windows C/C++ 接入](c-api-cpp-windows.md)：编译、链接和示例验证。

@@ -2,6 +2,11 @@
 
 名字竞技场的 Rust 核心引擎。
 
+熟悉 namerena 的读者可以从 [项目与 core 原理指南](../../docs/core-guide/README.md) 开始，
+按角色构建、Runtime、战斗流程、hook 与交互层理解实现。Rust API 可通过
+`cargo doc -p tswn_core --no-deps --open` 按类型查阅；全 workspace 文档与内部模块的
+生成方式见 [Cargo doc 阅读入口](../../docs/core-guide/README.md#在本机看-api-文档)。
+
 ## 功能
 
 - **战斗模拟**：解析 namerena 输入格式，完整模拟回合制对战

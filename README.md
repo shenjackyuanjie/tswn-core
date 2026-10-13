@@ -84,6 +84,8 @@ python scripts/check_runtime_release.py --corpus
 
 ## 文档入口
 
+- [项目与 core 原理指南](docs/core-guide/README.md)：面向熟悉 namerena 的读者，图文介绍角色构建、Runtime、hook、状态、语言接口及全项目工具链。
+- [Cargo doc 阅读入口](docs/core-guide/README.md#在本机看-api-文档)：按类型、方法和字段浏览 API，并运行文档示例。
 - [开发入口与模块边界](docs/guides/development.md)：代码归属、测试和提交范围。
 - [文档中心](docs/README.md)：按用途浏览指南、接口参考、设计规格、机制分析、性能、版本记录与历史归档。
 - [公共 API 与跨语言契约](docs/reference/public-api.md)：BattleSession、快照、回放与错误模型。
@@ -103,6 +105,7 @@ python scripts/check_runtime_release.py --corpus
 - [`crates/tswn_capi/README.md`](crates/tswn_capi/README.md): C API 说明。
 - [Openbox 使用说明](crates/tswn_openbox/README.md)：GUI、无头 CLI 与共享后端。
 - [lane 排名服务](crates/tswn_lane_ranker/README.md) 与 [天梯更新器](crates/tswn_ladder/README.md)：数据库、数值工具和验证边界。
+- [独立单号排名服务](crates/tswn_name_ranker/README.md)：校准资源、独立构建与 HTTP 配置。
 - [DS4 批处理](crates/tswn_ds4/README.md)：单人/配对评分、历史缓存与外部 ABCP5。
 - [胜率数据集与离线特征编码](crates/tswn_pwp/README.md)：`tswn-pwp` 生成、校验、校准和编码入口。
 

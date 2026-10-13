@@ -4,6 +4,8 @@
 
 ## 从这里开始
 
+- 熟悉游戏、开始了解项目：[项目与 core 原理指南](core-guide/README.md)，按角色、战斗、hook、状态、接口和工具链循序阅读。
+- 查阅 Rust 类型和方法：[Cargo doc 阅读方法](core-guide/README.md#在本机看-api-文档)。
 - 构建与打包：[全量构建](guides/build-all.md)、[OpenHarmony 交叉编译](guides/openharmony.md)。
 - 参与开发：[模块边界与验证](guides/development.md)、[性能准则](perf/guides/performance.md)。
 - 接入对局：[公共 API 与跨语言契约](reference/public-api.md)、[Windows C/C++ 接入](guides/c-api-cpp-windows.md)。
@@ -19,6 +21,7 @@
 
 | 目录 | 内容与适用范围 |
 | --- | --- |
+| [core-guide/](core-guide/README.md) | 面向 namerena 玩家与项目新读者的图文原理指南 |
 | [guides/](guides/README.md) | 使用、构建、验证与迁移指南 |
 | [reference/](reference/README.md) | 公共 API 契约与输入输出格式 |
 | [design/](design/README.md) | 实施计划、加固要求与验收规格；状态以正文为准 |
