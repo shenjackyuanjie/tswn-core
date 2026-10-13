@@ -106,6 +106,14 @@ let summary = runner.run_to_completion(20_000);
 后续同名分身为 `1`、`2`……，供上层在名字内展示；唯一对象编号仍使用玩家 id。
 默认 `[]` 高亮文字颜色为 `0077BB`；解除、识破、中止、打消等状态离开消息使用 `bb7700`。普通文本不使用该颜色码。
 
+## 内部结构
+
+- `namerena/`：名字解析、属性和技能模板构建；`runtime/`：实体、状态、调度和战斗执行。
+- `runtime/entity/state.rs` 定义载荷与状态条目；`state/store.rs` 管理状态存储、运行期注册序和查询缓存。
+- `cli_api/battle/`：共享会话、DTO、回放与实验状态接口；CLI 和绑定从这里消费战斗结果。
+- `encoder/encode.rs` 保留 FeatureEncoder 公共入口和批写入编排；`encode/` 按字段登记、引用重映射、校验及张量族写入拆分。公共类型和张量布局不因内部拆分改变。
+- `encoder/encode/tests.rs` 共享测试夹具，`tests/` 按张量输出、非法状态、批缓冲和联合映射组织行为回归。
+
 ## 构建配置
 
 | feature      | 默认 | 说明                            |

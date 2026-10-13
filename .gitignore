@@ -17,6 +17,8 @@ __pycache__
 tests
 !crates/tswn_core/src/runtime/tests/
 !crates/tswn_core/src/runtime/tests/*.rs
+!crates/tswn_core/src/encoder/encode/tests/
+!crates/tswn_core/src/encoder/encode/tests/*.rs
 !crates/tswn_core/tests/
 !crates/tswn_core/tests/*.rs
 !crates/tswn_wasm/tests/

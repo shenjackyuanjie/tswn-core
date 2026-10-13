@@ -10,8 +10,8 @@
 
 | 能力 | 当前状态与源码依据 |
 | --- | --- |
-| 全部张量族 | global／entity／template／lane／state／slot／list／extra 的字段写入、presence、引用重映射和容量预检已实现；[encode.rs](../../crates/tswn_core/src/encoder/encode.rs#L462-L494) 调用全部族的写入器。[TENSOR_SPECS](../../crates/tswn_core/src/encoder/batch.rs#L115-L546) 登记 69 个张量，已不是早期三族 28 个。 |
-| 容量与运行配置 | [capacity.rs](../../crates/tswn_core/src/encoder/capacity.rs#L19-L65) 是 `BASELINE_64` 和计费式的唯一权威；[manifest.rs](../../crates/tswn_core/src/encoder/manifest.rs#L304-L400) 提供 manifest、摘要和校准报告组装，[FeatureEncoder::new](../../crates/tswn_core/src/encoder/encode.rs#L401-L447) 交叉校验词表、数值槽与支持域。 |
+| 全部张量族 | global／entity／template／lane／state／slot／list／extra 的字段写入、presence、引用重映射和容量预检已实现；[encode.rs](../../crates/tswn_core/src/encoder/encode.rs) 调用全部族的写入器。[TENSOR_SPECS](../../crates/tswn_core/src/encoder/batch.rs#L115-L546) 登记 69 个张量，已不是早期三族 28 个。 |
+| 容量与运行配置 | [capacity.rs](../../crates/tswn_core/src/encoder/capacity.rs#L19-L65) 是 `BASELINE_64` 和计费式的唯一权威；[manifest.rs](../../crates/tswn_core/src/encoder/manifest.rs#L304-L400) 提供 manifest、摘要和校准报告组装，[FeatureEncoder::new](../../crates/tswn_core/src/encoder/encode.rs) 交叉校验词表、数值槽与支持域。 |
 | 校准与契约发布 | [calibrate.rs](../../crates/tswn_pwp/src/calibrate.rs) 默认选择有标签 train 行，输出标量报告及来源摘要；[build-manifest](../../crates/tswn_pwp/src/manifest.rs) 调用核心组装并通过 `FeatureEncoder::new` 门禁后发布完整契约。报告不能直接作为 `encode --manifest` 的输入。 |
 | 离线训练包 | [encode.rs](../../crates/tswn_pwp/src/encode.rs) 输出版本 2 编码包，附带完整 encoder manifest，按 features/exact/labels/audit 分通道，默认过滤空标签并记录过滤前的源行位置；尾批使用实际 B。 |
 | 流式与完整性 | [source.rs](../../crates/tswn_pwp/src/encode/source.rs) 共享锁保护源数据并投影统计标签；编码只保留当前批状态。输出按源内容与契约记录身份、估算空间、回读验证 SHA-256，在同级临时目录成功后提交；不覆盖、不自动续跑。 |
@@ -530,7 +530,7 @@ deferred 保存原列表顺序和精确 `state_cursor`，与实体状态注册�
 
 ## 14. 接口边界
 
-当前公共接口定义于 [encoder/encode.rs](../../crates/tswn_core/src/encoder/encode.rs#L390-L494)，不是早期的静态 `encode(state, manifest)` 草图：
+当前公共接口定义于 [encoder/encode.rs](../../crates/tswn_core/src/encoder/encode.rs)，不是早期的静态 `encode(state, manifest)` 草图：
 
 | 接口 | 当前签名与用途 |
 | --- | --- |
@@ -641,7 +641,7 @@ raw 路径的 runtime/template/state/slot/world 前缀指第 3 节相应结构�
 
 下表是持续验收标准。Rust 八族编码与流式训练包已实现，并有真实文件/消费端回归；跨绑定与 WASM 数值对齐仍需单独执行，原生回归不能替代这些项目。
 
-**encoder 回归已落地**（[encode.rs](../../crates/tswn_core/src/encoder/encode.rs)、[batch.rs](../../crates/tswn_core/src/encoder/batch.rs)、[manifest.rs](../../crates/tswn_core/src/encoder/manifest.rs) 等模块内 `#[cfg(test)]`；早期验收记录为 80 项，不作为当前总数）：manifest 自洽性与门禁、词表与注册表交叉核对、`N_f` 与固定计数尺度、批缓冲布局（批槽位与 B=1 逐字节一致、复用不留残值、shape 之积与字节数）、容量边界（`E=64/65`、`T=32/33`、`R=32/33`、`Q=512/513`）、presence 与 mask 语义（`Some(0)`/`None`/padding、hide、可选引用 -1、clone 整体 presence）、压缩标志保留位、非有限值、未知分类、载荷 kind 与分支、槽白名单（未登记／类型不符／实体引用悬空）、charm `group_id` 引用、`team_mask` 不随存活与粘性计数变化、实体存储重排等变、原始 `EntityIdx` 不泄漏、跨技能池端到端冒烟（含终局帧必须被 `AlreadyDecided` 拒绝）、slot/state raw owner、clone 归属、lane 作用域与稳定 key、批失败清理。字段归属以第 3 节映射表维护，不再用静态路径清单冒充编码覆盖。下表仍是后续跨目标验收的完整标准。
+**encoder 回归已落地**（[编码行为测试](../../crates/tswn_core/src/encoder/encode/tests.rs)、[批缓冲测试](../../crates/tswn_core/src/encoder/batch_tests.rs)、[manifest.rs](../../crates/tswn_core/src/encoder/manifest.rs) 等模块内 `#[cfg(test)]`；早期验收记录为 80 项，不作为当前总数）：manifest 自洽性与门禁、词表与注册表交叉核对、`N_f` 与固定计数尺度、批缓冲布局（批槽位与 B=1 逐字节一致、复用不留残值、shape 之积与字节数）、容量边界（`E=64/65`、`T=32/33`、`R=32/33`、`Q=512/513`）、presence 与 mask 语义（`Some(0)`/`None`/padding、hide、可选引用 -1、clone 整体 presence）、压缩标志保留位、非有限值、未知分类、载荷 kind 与分支、槽白名单（未登记／类型不符／实体引用悬空）、charm `group_id` 引用、`team_mask` 不随存活与粘性计数变化、实体存储重排等变、原始 `EntityIdx` 不泄漏、跨技能池端到端冒烟（含终局帧必须被 `AlreadyDecided` 拒绝）、slot/state raw owner、clone 归属、lane 作用域与稳定 key、批失败清理。字段归属以第 3 节映射表维护，不再用静态路径清单冒充编码覆盖。下表仍是后续跨目标验收的完整标准。
 
 | 类别 | 必须覆盖与判定标准 |
 | --- | --- |

@@ -1,4 +1,7 @@
-// 联合编码回归：由 encode.rs 的 tests 模块 include，复用其校准与字节比较助手。
+// 联合编码回归，复用父模块的校准与字节比较助手。
+
+use super::*;
+
 // 期望值按规格的 owner 域和源行独立构造，不能只与同一个编码器的另一次输出比较。
 
 fn review_state() -> BattleModelState {
@@ -19,12 +22,23 @@ fn review_state() -> BattleModelState {
         entity.template.clone_build = None;
         entity.template.skills = ModelSkills {
             lanes: vec![
-                ModelSkill { skill_id: 6, level: 7, build_level: 7, boost: None, boosted: false, fixed_lane_key: 88 },
+                ModelSkill {
+                    skill_id: 6,
+                    level: 7,
+                    build_level: 7,
+                    boost: None,
+                    boosted: false,
+                    fixed_lane_key: 88,
+                },
                 ModelSkill {
                     skill_id: 6,
                     level: 0,
                     build_level: 0,
-                    boost: Some(ModelSkillBoost { kind: "normal".to_owned(), base: 0, extra: 0 }),
+                    boost: Some(ModelSkillBoost {
+                        kind: "normal".to_owned(),
+                        base: 0,
+                        extra: 0,
+                    }),
                     boosted: false,
                     fixed_lane_key: 11,
                 },
@@ -155,7 +169,10 @@ fn clone_plan_leaves_use_template_owner_and_zero_ordinal() {
         assert_eq!(review_raw(&batch, [3, owner, 3, 0]), 0, "Some 计划的零 mask 不能省略");
         for (field, value) in [(4, 0.0), (5, 7.0), (6, 9.0), (7, 0.0)] {
             let row = review_extra_row(&batch, [3, owner, field, 0]);
-            assert_eq!(batch.f32_all("extra_num").unwrap()[row], normalize_fitted(value, 4.0, 64.0) as f32);
+            assert_eq!(
+                batch.f32_all("extra_num").unwrap()[row],
+                normalize_fitted(value, 4.0, 64.0) as f32
+            );
             assert_eq!(batch.i32_all("extra_ref").unwrap()[row], -1);
             assert_eq!(&batch.u32_all("extra_bits").unwrap()[2 * row..2 * row + 2], &[0, 0]);
         }
@@ -171,13 +188,24 @@ fn raw_state_rows_and_signed_bits_are_exact() {
         state.entities[0].states.push(review_entry(
             ModelPayload {
                 kind: "poison".to_owned(),
-                poison: Some(PoisonPayload { caster: None, target: Some(target), atp_bits: bits, count: 0 }),
+                poison: Some(PoisonPayload {
+                    caster: None,
+                    target: Some(target),
+                    atp_bits: bits,
+                    count: 0,
+                }),
                 ..ModelPayload::default()
             },
             (1u64 << 53) + 1,
         ));
     }
-    let mut entry = review_entry(ModelPayload { kind: "none".to_owned(), ..ModelPayload::default() }, 0);
+    let mut entry = review_entry(
+        ModelPayload {
+            kind: "none".to_owned(),
+            ..ModelPayload::default()
+        },
+        0,
+    );
     entry.extension_state_id = Some(0);
     state.entities[1].states.push(entry);
     state.entities[0].runtime.at_boost_millionths = i64::MIN;
@@ -206,9 +234,18 @@ fn lane_indices_are_not_fixed_keys_and_deferred_joins_runtime_rank_domain() {
     let mut state = review_state();
     // 两个模板刻意使用不同 key；槽内蓝图复用实体 0 的 key，验证 key 是跨模板关系键。
     state.entities[1].template.skills.lanes[1].fixed_lane_key = 22;
-    state.entities[0].states.push(review_entry(ModelPayload { kind: "none".to_owned(), ..ModelPayload::default() }, 10));
+    state.entities[0].states.push(review_entry(
+        ModelPayload {
+            kind: "none".to_owned(),
+            ..ModelPayload::default()
+        },
+        10,
+    ));
     state.entities[0].state_registration_cursor = 20;
-    state.entities[0].template.skills.post_action_after_states.push(ModelDeferredSkill { state_cursor: 12, fixed_lane: 1 });
+    state.entities[0].template.skills.post_action_after_states.push(ModelDeferredSkill {
+        state_cursor: 12,
+        fixed_lane: 1,
+    });
     state.entities[0].runtime.assassinate = Some(crate::runtime::entity::AssassinateRuntime {
         fixed_lane: 1,
         target: state.entities[1].id,
@@ -218,17 +255,25 @@ fn lane_indices_are_not_fixed_keys_and_deferred_joins_runtime_rank_domain() {
     state.template_slots.push(review_blueprint(0, template));
     let batch = encoder().encode(&state).unwrap();
     let reference = review_extra_row(&batch, [2, 0, 1, 0]);
-    assert_eq!(batch.i32_all("extra_ref").unwrap()[reference], 1, "暗杀保存的是下标 1，不是 key=1");
+    assert_eq!(
+        batch.i32_all("extra_ref").unwrap()[reference],
+        1,
+        "暗杀保存的是下标 1，不是 key=1"
+    );
     let mut deferred = 0;
     let mut active = Vec::new();
     for (row, record) in batch.i32_all("list_index").unwrap().chunks_exact(5).enumerate() {
-        if batch.u8_all("list_mask").unwrap()[row] == 0 { continue; }
+        if batch.u8_all("list_mask").unwrap()[row] == 0 {
+            continue;
+        }
         let field = record[2];
         if (256..=261).contains(&field) {
             assert_eq!(record[0], 3, "lane 列表 owner 必须属于 template 域");
             assert_eq!(batch.i32_all("lane_template").unwrap()[record[4] as usize], record[1]);
         }
-        if field == 258 && record[1] == 0 { active.push(record[4]); }
+        if field == 258 && record[1] == 0 {
+            active.push(record[4]);
+        }
         if field == 261 {
             deferred += 1;
             assert_eq!(batch.u8_all("order_key_present").unwrap()[row], 1);
@@ -252,7 +297,10 @@ fn lane_indices_are_not_fixed_keys_and_deferred_joins_runtime_rank_domain() {
     assert_eq!(batch.u8_all("lane_mask").unwrap()[1], 1);
     assert_eq!(&batch.u8_all("lane_num_present").unwrap()[4..8], &[1; 4]);
     assert_eq!(&batch.f32_all("lane_num").unwrap()[4..8], &[0.0; 4]);
-    assert_eq!(batch.u8_all("list_mask").unwrap().iter().filter(|value| **value == 1).count(), CapacityMeasure::measure(&state).v);
+    assert_eq!(
+        batch.u8_all("list_mask").unwrap().iter().filter(|value| **value == 1).count(),
+        CapacityMeasure::measure(&state).v
+    );
 }
 
 #[test]
@@ -265,19 +313,36 @@ fn out_of_template_lane_references_and_reserved_skills_are_rejected() {
             1 => state.entities[0].template.skills.active_order.push(2),
             2 => state.entities[0].template.skills.pre_action_order.push(2),
             3 => state.entities[0].template.skills.post_damage_order.push(2),
-            4 => state.entities[0].template.skills.post_action_after_states.push(crate::runtime::model_state::ModelDeferredSkill { state_cursor: 0, fixed_lane: 2 }),
-            _ => state.entities[0].runtime.assassinate = Some(crate::runtime::entity::AssassinateRuntime {
-                fixed_lane: 2,
-                target,
-                break_on_damage: false,
-            }),
+            4 => {
+                state.entities[0]
+                    .template
+                    .skills
+                    .post_action_after_states
+                    .push(crate::runtime::model_state::ModelDeferredSkill {
+                        state_cursor: 0,
+                        fixed_lane: 2,
+                    })
+            }
+            _ => {
+                state.entities[0].runtime.assassinate = Some(crate::runtime::entity::AssassinateRuntime {
+                    fixed_lane: 2,
+                    target,
+                    break_on_damage: false,
+                })
+            }
         }
-        assert!(matches!(encoder().encode(&state), Err(EncodeError::InvalidReference { .. })), "case={case}");
+        assert!(
+            matches!(encoder().encode(&state), Err(EncodeError::InvalidReference { .. })),
+            "case={case}"
+        );
     }
     for skill in [0, 43, 50, 51, u32::MAX] {
         let mut state = review_state();
         state.entities[0].template.skills.lanes[0].skill_id = skill;
-        assert!(matches!(encoder().encode(&state), Err(EncodeError::UnknownCategory { .. })), "skill={skill}");
+        assert!(
+            matches!(encoder().encode(&state), Err(EncodeError::UnknownCategory { .. })),
+            "skill={skill}"
+        );
     }
 }
 
@@ -288,17 +353,30 @@ fn late_extra_failure_clears_every_tensor_and_preserves_batch_neighbors() {
     state.entities[0].slots.push(counter_slot(u64::MAX));
     let template = state.entities[0].template.clone();
     state.template_slots.push(review_blueprint(0, template));
-    state.entities[0].states.push(review_entry(ModelPayload { kind: "none".to_owned(), ..ModelPayload::default() }, (1u64 << 53) + 1));
+    state.entities[0].states.push(review_entry(
+        ModelPayload {
+            kind: "none".to_owned(),
+            ..ModelPayload::default()
+        },
+        (1u64 << 53) + 1,
+    ));
     let encoder = encoder();
     let expected = encoder.encode(&state).unwrap();
     let padding = EncodedBatch::new(encoder.profile(), 1);
     let mut batch = EncodedBatch::new(encoder.profile(), 3);
-    for slot in [2, 0, 1] { encoder.encode_into(&state, slot, &mut batch).unwrap(); }
+    for slot in [2, 0, 1] {
+        encoder.encode_into(&state, slot, &mut batch).unwrap();
+    }
     for spec in TENSOR_SPECS {
         let single = tensor_bytes(&expected, spec.name);
         let all = tensor_bytes(&batch, spec.name);
         for slot in 0..3 {
-            assert_eq!(&all[slot * single.len()..(slot + 1) * single.len()], single.as_slice(), "{}", spec.name);
+            assert_eq!(
+                &all[slot * single.len()..(slot + 1) * single.len()],
+                single.as_slice(),
+                "{}",
+                spec.name
+            );
         }
     }
     let before: Vec<_> = TENSOR_SPECS.iter().map(|spec| tensor_bytes(&batch, spec.name)).collect();
@@ -308,7 +386,10 @@ fn late_extra_failure_clears_every_tensor_and_preserves_batch_neighbors() {
         target: invalid.entities[1].id,
         break_on_damage: true,
     });
-    assert!(matches!(encoder.encode_into(&invalid, 1, &mut batch), Err(EncodeError::InvalidReference { .. })));
+    assert!(matches!(
+        encoder.encode_into(&invalid, 1, &mut batch),
+        Err(EncodeError::InvalidReference { .. })
+    ));
     for (spec, previous) in TENSOR_SPECS.iter().zip(&before) {
         let empty = tensor_bytes(&padding, spec.name);
         let stride = empty.len();
