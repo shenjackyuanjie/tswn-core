@@ -85,10 +85,11 @@ export function actorToken(player, state, previousState, update, { showHp = true
       </span>`
     : "";
   const hpClass = hpMetrics ? " has-hp" : "";
+  const shieldClass = shieldBar ? " has-shield" : "";
   const isKnockout = deathEffect === true;
   const nameClass = `actor-name${isKnockout ? " namedie" : ""}`;
 
-  return `<span class="actor-token${hpClass}" data-player-id="${player.id}"><span class="actor-avatar-wrap">${renderIconSprite(playerIconClassId(player), "msg-avatar icon-sprite")}</span><span class="${nameClass}">${hpBar}${shieldBar}${escapeHtml(player.display_name)}</span></span>`;
+  return `<span class="actor-token${hpClass}${shieldClass}" data-player-id="${player.id}"><span class="actor-avatar-wrap">${renderIconSprite(playerIconClassId(player), "msg-avatar icon-sprite")}</span><span class="${nameClass}">${hpBar}${shieldBar}${escapeHtml(player.display_name)}</span></span>`;
 }
 
 /**

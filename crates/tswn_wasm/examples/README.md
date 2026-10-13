@@ -8,6 +8,8 @@
 - `show-display.js`：昵称派生、按 icon_key 缓存图标；不修改原始 DTO。
 - `show-metrics.js`：TTIS / TTFE、拉帧和渲染计时；`?perf=1` 才输出统计。
 - `show.js` / `show-replay.js`：可增长的播放计划、暂停/单步/历史检查点/重播。
+- `show-theme-compat.js`：原生主题声明与 Dark Reader 注入提醒，不参与战斗和播放状态。
+- `show.css`：样式入口，按原始层叠顺序导入 `show-base.css`、`show-players.css`、`show-replay.css`、`show-panels.css`。
 
 前端回归测试位于源码仓库的 `crates/tswn_wasm/tests/`，不随示例分发。在仓库根目录执行 `bun test ./crates/tswn_wasm/tests` 或 `node --test crates/tswn_wasm/tests/show-*.test.mjs`；页面行为测试和浏览器基线命令见 [性能基线](../../../docs/perf/reports/web-streaming-baseline.md)。
 
@@ -30,6 +32,7 @@
   - `show-routing.js` — URL 输入与分享链接参数处理
 - 支持 normal / fast / turbo 三种播放速度。
 - 右下角盾形按钮（快捷键 `B`）切换盾条显示，默认关闭，使用 `localStorage` 保存选择。开启后左侧显示独立盾条，右侧消息在护盾变化时显示名字上方的盾条，按与血条相同的每 4 点 1px 比例展示新增/消耗区段；切换立即作用于已播放历史，保留播放进度。
+- 盾条为 4px 高的青色条，配合明暗主题描边与高光；正文预留上方空间，与 HP 条保持间距，不改变盾值的宽度比例。
 - 有护盾时，角色名字下方的状态标签区还会与其他正面状态一起显示绿色的 `护盾 +剩余值`。标签不受盾条开关影响，护盾消耗时更新，破盾或死亡时移除，并保留其他状态标签。
 - 盾值来自 core 输出的 `shield` 快照，包含实际吸收护盾，不包含铁壁的单次伤害阈值；旧数据缺省和死亡态按零处理。现有护盾快照为回合级，同回合内多次护盾变化展示净变化。
 - 支持从原始输入中提取 `seed:` 行并显示在玩家列表顶部。
@@ -105,3 +108,20 @@ python -m http.server 8000
 - 两套页面都优先从 `../pkg/tswn_wasm.js` 加载 wasm glue，推荐按上述分发目录启动。
 - `demo.js` 还会尝试 `../dist/wasm/pkg/tswn_wasm.js`，支持从源码示例目录调试；`show-wasm.js` 的另一个候选是 `./pkg/tswn_wasm.js`，用于页面与 `pkg/` 同级的扁平部署。
 - 由于浏览器的 ES module / wasm 加载要求，示例需要通过 HTTP 服务访问，不能直接双击本地文件运行。
+
+## Dark Reader 与原生主题
+
+show 页面已有原生明暗主题。页面使用 `color-scheme` 元数据同步当前主题，并按 [Dark Reader 官方约定](https://github.com/darkreader/darkreader/blob/main/CONTRIBUTING.md#disabling-dark-reader-on-your-site) 放置 `darkreader-lock`，请求插件不要再次转换本页；不删除插件样式、不改插件设置，也不强制改变用户保存的页面主题。
+
+若插件仍在本页启用 Dynamic 深色转换，页面根据它写入的 `data-darkreader-mode` / `data-darkreader-scheme` 显示提醒，关闭转换后自动收起；这些标记的来源见 [官方 Dynamic 引擎](https://github.com/darkreader/darkreader/blob/main/src/inject/dynamic-theme/index.ts)。
+
+**识别边界**：插件被 lock 成功跳过本站时不会写入启用标记，网页也无法知道它是否在其他站点或全局开启。当前提醒针对带有这些标记的 Dynamic 模式，不承诺识别所有旧版本、Filter/Static 模式或其他深色插件。遇到文字重影，应先关闭本站的插件转换，再核对原生主题。
+
+## 外观验收截图
+
+2026-10-13 使用隔离 Edge `155.0.4283.45`、debug WASM `0.5.7` 和真实 `seed:7@!` 护盾帧验收。正文同时覆盖生成盾值和破盾后的 HP 变化；盾条 4px，位于本行内部，与 HP 条间隔 2px。未改原始状态、护盾计量或回放规则。
+
+- [深色盾条](../../../docs/images/wasm-show/shield-dark.png)
+- [浅色盾条](../../../docs/images/wasm-show/shield-light.png)
+- [移动布局与提醒](../../../docs/images/wasm-show/shield-mobile.png)：提醒由注入标记模拟触发。
+- [真实 Dynamic 引擎提醒](../../../docs/images/wasm-show/darkreader-notice.png)：隔离页加载官方 `4.9.133` npm API；先验证 lock 生效，再仅在验收页移除 lock 触发转换，最后 disable 验证提醒消失。没有向用户的 Edge 安装或修改扩展。

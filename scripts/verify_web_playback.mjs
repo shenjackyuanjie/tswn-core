@@ -90,6 +90,33 @@ const initial = [state(1), state(2)];
 const frame = index => ({ frame_index: index, round_index: index + 1, states: initial, updates: [], total_delay: 0,
   rows: [{ indent: false, clips: [{ delay: 0, color: '000000', tone: 'normal', parts: [{ kind: 'text', text: `event${index}` }] }] }] });
 const flush = () => new Promise(resolve => setTimeout(resolve, 5));
+
+// 使用真实 DOM 属性变化验证提醒，不读取浏览器扩展的全局设置。
+const themeCompatibility = await load(resolve(root, "show-theme-compat.js"));
+await themeCompatibility.evaluate();
+const themeNotice = window.document.querySelector("#themeNotice");
+const schemeMeta = window.document.querySelector('meta[name="color-scheme"]');
+assert.equal(themeNotice.hidden, true);
+rootElement.dataset.theme = "dark";
+await flush();
+assert.equal(schemeMeta.content, "dark");
+rootElement.setAttribute("data-darkreader-mode", "dynamic");
+rootElement.setAttribute("data-darkreader-scheme", "dark");
+await flush();
+assert.equal(themeNotice.hidden, false);
+assert.match(themeNotice.textContent, /Dark Reader/);
+assert.equal(rootElement.dataset.theme, "dark");
+rootElement.setAttribute("data-darkreader-scheme", "dimmed");
+await flush();
+assert.equal(themeNotice.hidden, true);
+rootElement.removeAttribute("data-darkreader-mode");
+rootElement.removeAttribute("data-darkreader-scheme");
+rootElement.dataset.theme = "light";
+await flush();
+assert.equal(schemeMeta.content, "light");
+assert.equal(themeNotice.hidden, true);
+console.log("PASS: 原生主题声明、Dark Reader 转换提醒与移除，不改变页面主题或播放状态");
+
 function source(count) {
   let n = 0, freed = 0;
   const waiting = [];

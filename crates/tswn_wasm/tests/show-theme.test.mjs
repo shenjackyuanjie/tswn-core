@@ -14,7 +14,7 @@ function contrast(first, second) {
 }
 
 test("深色配色的文字、名字框与图标衬底保持可读对比度", async () => {
-  const css = await readFile(new URL("../examples/show.css", import.meta.url), "utf8");
+  const css = await readFile(new URL("../examples/show-base.css", import.meta.url), "utf8");
   const palette = css.match(/:root\[data-theme="dark"\]\s*\{([^}]+)\}/)[1];
   const colors = Object.fromEntries([...palette.matchAll(/--([\w-]+): (#[\da-f]{6});/g)].map(match => [match[1], match[2]]));
   assert.ok(contrast(colors["message-text"], colors["message-bg"]) >= 7);
