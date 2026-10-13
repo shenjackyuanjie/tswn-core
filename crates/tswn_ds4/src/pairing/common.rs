@@ -268,7 +268,7 @@ mod tests {
     use std::fs;
 
     use super::*;
-    use crate::pairing::coeffs::{MODEL_BC, MODEL_FZ};
+    use crate::model::coeffs::{MODEL_BC, MODEL_FZ};
 
     #[test]
     fn cross_set_pairs_visit_every_right_row_and_skip_identical_names() {

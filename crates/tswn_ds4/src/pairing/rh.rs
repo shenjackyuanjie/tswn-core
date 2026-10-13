@@ -7,8 +7,8 @@ use std::path::Path;
 
 use crate::error::Ds4Result;
 
-use super::coeffs::{MODEL_FS, MODEL_PJ};
 use super::common::{PairScoreMode, run_pair_mode, run_pair_mode_with_threads};
+use crate::model::coeffs::{MODEL_FS, MODEL_PJ};
 
 pub fn run_rh(type_same_set: bool, left_file: &Path, right_file: &Path, output_file: &Path, sieve: i32) -> Ds4Result<usize> {
     run_pair_mode(
