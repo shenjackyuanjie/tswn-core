@@ -1,6 +1,70 @@
-//! tswn-core — 星际战争命名器核心战斗引擎库。
+//! 名字竞技场的角色构建、确定性战斗与数据投影引擎。
 //!
-//! 提供 [`Runner`]（主战斗执行器）与 [`PreparedRunner`]（可复用批量执行器）。
+//! 从 namerena 文本生成属性和技能，再由同一套 [`runtime`] 执行战斗；CLI、Python、
+//! C ABI 和 WASM 通过适配层共享这套战斗规则。
+//!
+//! # 先选择入口
+//!
+//! | 需求 | 推荐入口 | 返回内容 |
+//! | --- | --- | --- |
+//! | 播放一场战斗、逐帧更新界面 | [`cli_api::battle::BattleSession`] | 初始/当前快照、可见帧、终止结果 |
+//! | 一次取完整回放 | [`cli_api::battle::battle_replay`] | 规范的 rows / clips / states |
+//! | 同一阵容重复跑不同 seed | [`PreparedRunner`]、[`win_rate`] | 精简的批量统计 |
+//! | 研究技能、状态或自定义规则 | [`Runner`]、[`runtime::CombatRuntime`] | 可访问的运行时数据与 hook |
+//! | 生成学习数据 | [`cli_api::battle::BattleModelSession`] | 帧末机制状态与边界 |
+//! | 将机制状态转成张量 | [`encoder::encode::FeatureEncoder`] | 固定容量张量与精确旁路 |
+//!
+//! # 最小流式对局
+//!
+//! ```
+//! use tswn_core::cli_api::battle::{BattleOptions, BattleSession};
+//!
+//! let raw = "left@red\n\nright@blue\nseed:demo@!";
+//! let mut session = BattleSession::new(raw, BattleOptions::default())?;
+//! assert_eq!(session.initial_states().len(), 2);
+//! while let Some(frame) = session.next_frame()? {
+//!     // 每帧描述一次可见 Runtime 回合，states 提供该回合末展示值。
+//!     println!("帧 {}，包含 {} 条消息", frame.frame_index, frame.updates.len());
+//! }
+//! let result = session.result().expect("正常终止应提供结果");
+//! assert!(result.finished || result.truncated);
+//! # Ok::<(), tswn_core::cli_api::CliApiError>(())
+//! ```
+//!
+//! `max_rounds` 限制实际推进回合数；正常胜利和安全截断都产生结果。
+//! Runtime 错误则返回 `Err` 并保存 sticky failure，供调用方单独处理失败。
+//!
+//! # 模块阅读地图
+//!
+//! - [`namerena`]：输入、名字评估、DIY/OL、构建属性、技能描述和图标。
+//! - [`runtime`]：实体、世界视图、行动调度、技能/状态 hook、效果队列及对局复用。
+//! - [`cli_api`]：面向应用的参数校验、统一错误与规范战斗 DTO。
+//! - [`replay_view`]：把消息和帧边界快照转换成展示片段，不推进战斗。
+//! - [`rc4`]：与原实现对齐的游戏确定性随机流。
+//! - [`win_rate`]：批量胜率入口；名字评分与 CQP 的实现入口在 [`runtime`]。
+//! - [`encoder`]：纯 Rust 特征编码；Parquet 由 PWP 处理，训练与推理另行接入。
+//! - [`bench_sched`]、[`case_gen`]：批任务调度与复现输入辅助。
+//!
+//! # 数据各有用途
+//!
+//! 空行划分对战队伍，`@` 后的阵营参与名字构建。实体 ID 用于关联机制与事件，
+//! 显示名用于阅读；输入队伍索引记录来源，运行时编号记录当前队伍。
+//! [`runtime::PlayerTemplate`] 提供当前构造基底，吞噬等机制会更新它。
+//! 展示快照服务 UI，完整 Runtime 服务执行，学习状态与张量服务数据处理。
+//!
+//! # Features 与完整指南
+//!
+//! | Feature | 用途 |
+//! | --- | --- |
+//! | `png_render`（默认） | 图标 PNG / Base64 输出 |
+//! | `mimalloc_alloc`（默认） | 原生全局分配器；嵌入应用需考虑分配器选择 |
+//! | `no_debug` | 编译期移除调试探针与 trace 路径，不切换战斗规则 |
+//! | `aux_bins` | 额外诊断 binary |
+//! | `battle-test-support` | 绑定测试用故障注入，不用于生产 |
+//!
+//! 面向熟悉游戏的读者，从仓库的
+//! [项目与 core 原理指南](https://github.com/shenjackyuanjie/tswn-core/tree/main/docs/core-guide)
+//! 开始；安装、CLI 参数和发布工具见各 crate README。API 细节以本 rustdoc 的类型和签名为准。
 
 #[cfg(feature = "mimalloc_alloc")]
 #[global_allocator]
@@ -102,4 +166,5 @@ pub use runtime::{PreparedRuntimeRunner as PreparedRunner, RuntimeRunner as Runn
 pub use runtime::update::{RunUpdate, RunUpdates};
 
 #[inline]
+/// 当前核心 crate 的版本；包装层版本应另行查询。
 pub fn version() -> &'static str { env!("CARGO_PKG_VERSION") }

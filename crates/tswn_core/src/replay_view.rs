@@ -1,3 +1,11 @@
+//! 展示投影：把已执行消息和帧前后快照拆成行、片段及玩家引用。
+//!
+//! [`build_replay_view_frame`] 纯粹读取当前事件和快照，保持战斗位置与 RNG 状态。
+//! [`ReplayState`] 只暴露投影所需的 HP、护盾和存活信息；每个 [`ReplayClip`] 携带
+//! 文本 parts、语气、播放延时及 sidebar 的前后值。
+//! 部分中间值由消息与边界快照推导；完整机制检查点由 Runtime 边界数据表达。
+//! delay 使用毫秒，服务于片段播放节奏。
+
 use std::collections::{HashMap, HashSet};
 
 use crate::runtime::PlrId;

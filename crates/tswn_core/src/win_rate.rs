@@ -1,4 +1,22 @@
-//! 主 Runtime 胜率批量计算接口。
+//! 主 Runtime 胜率批量计算接口，复用阵容模板而不收集完整回放。
+//!
+//! 先用 [`crate::Runner::prepare_groups_with_eval_rq`] 构造 [`PreparedRunner`]，再调用
+//! [`prepared_win_rate`]；`eval_rq` 在准备时固定，换口径时重新准备阵容。
+//! 统计口径为第一输入组获胜比例，返回百分比。
+//! `thread=0` 自动选择，`1` 强制单线程；WASM 平台限制为单 worker。
+//! 范围接口使用绝对局号生成 seed，可将同一批任务分段而不改变采样身份。
+//! `_timed` 版本额外逐场计时；普通统计使用非计时入口可节省计时开销。
+//!
+//! ```
+//! use tswn_core::{Runner, win_rate};
+//! let groups = vec![vec!["left@red".into()], vec!["right@blue".into()]];
+//! let rq = tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ;
+//! let prepared = Runner::prepare_groups_with_eval_rq(&groups, rq)?;
+//! let summary = win_rate::prepared_win_rate(&prepared, 16, rq, 1)?;
+//! assert_eq!(summary.total, 16);
+//! assert!((0.0..=100.0).contains(&summary.win_rate_percent()));
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
 use crate::PreparedRunner;
 use crate::runtime::{

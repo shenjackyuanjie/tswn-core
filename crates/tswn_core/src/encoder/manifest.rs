@@ -58,7 +58,7 @@ pub const SUPPORTED_PAYLOAD_KINDS: [&str; 11] = [
 pub const UNSUPPORTED_PAYLOAD_KINDS: [&str; 5] = ["covid_boss", "covid_infection", "saitama_boss", "lazy_boss", "lazy_infection"];
 
 /// manifest 声明的容量档位；名称用 `String` 以便序列化，
-/// 不变量与 [`BASELINE_64`] 相同（规格第 4 节容量表）。
+/// 容量关系对应 [`BASELINE_64`](super::capacity::BASELINE_64)（规格第 4 节容量表）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProfileSpec {
     pub name: String,

@@ -1,3 +1,16 @@
+//! 运行时实体数据：构造基底、当前战斗值、技能、状态与扩展槽。
+//!
+//! [`EntityArena`] 以 [`EntityIdx`] 寻址，每个 [`EntityRecord`] 组合
+//! [`PlayerTemplate`]、[`PlayerRuntime`]、[`SkillLoadout`]、[`StateStore`] 和实体槽。
+//! arena 可预留生成用 ID 空槽；`len` 表示槽范围，迭代器列出现有实体，world 列出存活实体。
+//!
+//! `PlayerTemplate` 保存当前构造基底，吞噬、分身衰减和派生属性更新会修改它。
+//! 技能当前等级与构建等级分开保存；展示上限读取当前等级。
+//! `PlayerRuntime` 保存当前防御、速度等有效数值，反映状态处理后的结果。
+//!
+//! 状态既有带载荷的条目，也有压缩标记与专用 runtime 字段。
+//! 死亡、召唤、状态移除通过对应机制入口协调实体与 [`super::WorldArena`] 的视图。
+
 use crate::namerena::{PlayerStats, SkillBoost};
 use crate::rc4::RC4;
 use crate::runtime::extension::{

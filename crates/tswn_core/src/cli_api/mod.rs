@@ -1,4 +1,17 @@
-//! 与 `tswn-cli` 对齐的高层辅助 API。
+//! 应用接入门面：参数校验、规范 DTO 与 CLI 对齐的批量辅助函数。
+//!
+//! # 使用哪一部分
+//!
+//! - 对局播放：[`battle::BattleSession`]；完整收集：[`battle::battle_replay`]。
+//! - 学习数据：[`battle::BattleModelSession`]，复用同一终止策略但不构造展示对象。
+//! - 两队/多队胜率：[`win_rate_summary`]、[`team_win_rate_summary`]、[`group_win_rate_summary`]。
+//! - 名字评分与组合评估：[`score`]、[`namer_pf`]、[`batch_rate`]、[`pair_rate`]。
+//! - 格式转换与图标：[`to_diy`]、[`to_diy_batch`]、[`icon_info`]。
+//!
+//! [`CliApiError`] 提供可读说明，[`CliApiError::code`] 提供跨语言错误分类。
+//! 错误码描述调用失败；[`battle::BattleStopReason`] 描述正常终止原因。
+//! 胜率以百分比表示，`eval_rq` 指定名字构建口径。
+//! 调用同步执行，包装层负责宿主调度、资源生命周期和 UI 更新。
 
 pub mod battle;
 mod bench;
@@ -16,10 +29,12 @@ use crate::runtime::{
 };
 use crate::win_rate::{WinRateSummary, WinRateTiming};
 
+/// 高层调用结果，错误包含跨语言分类与可读说明。
 pub type CliApiResult<T> = Result<T, CliApiError>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+/// 跨语言错误分类；序列化使用 SCREAMING_SNAKE_CASE。
 pub enum CliApiErrorCode {
     InvalidInput,
     InvalidArgument,
@@ -41,6 +56,7 @@ impl CliApiErrorCode {
     }
 }
 #[derive(Debug, Clone)]
+/// 参数、初始化、机制执行或内部转换失败，保留可读错误说明。
 pub enum CliApiError {
     InvalidInput(String),
     InvalidArgument(String),
@@ -76,6 +92,7 @@ impl std::fmt::Display for CliApiError {
 impl std::error::Error for CliApiError {}
 
 #[derive(Debug, Clone, PartialEq)]
+/// 第一输入组获胜统计，win_rate 使用百分比，耗时字段使用纳秒。
 pub struct WinRateResult {
     pub wins: usize,
     pub total: usize,
@@ -109,12 +126,14 @@ impl From<RuntimeBatchSummary> for WinRateResult {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// 一组目标对一个 opponent 的胜率结果。
 pub struct GroupWinRateResult {
     pub opponent: String,
     pub result: WinRateResult,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// 数字 profile 靶子评分及成功/错误统计，score 使用万分制。
 pub struct ScoreResult {
     pub score: f64,
     pub wins: usize,
@@ -245,6 +264,7 @@ pub fn runtime_update_type_name(value: UpdateType) -> &'static str {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// 一组名字的所选命配指标与合计。
 pub struct NamerPfResult {
     pub group: Vec<String>,
     pub modes: Vec<String>,
@@ -253,6 +273,7 @@ pub struct NamerPfResult {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// 对靶子集合的平均与合计胜率、有效对抗数量及耗时。
 pub struct BatchRateResult {
     pub label: String,
     pub avg_win_rate: f64,
@@ -272,6 +293,7 @@ pub struct PairRateEntry {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// 配对评估的最终分数、Top 明细和总体统计。
 pub struct PairRateResult {
     pub label: String,
     pub final_score: f64,
@@ -288,6 +310,7 @@ pub struct PairRateResult {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// 名字图标的边框、形状与调色板资料，供渲染或界面分析。
 pub struct IconInfo {
     pub border_style: usize,
     pub shapes: Vec<usize>,
@@ -354,6 +377,7 @@ pub(super) struct BatchSummary {
     skipped_matchups: usize,
 }
 
+/// 计算第一输入组对其他组的胜率；默认 rq 为胜率口径，n 至少按 1 处理。
 pub fn win_rate_summary(raw: &str, n: usize, eval_rq: Option<f64>, thread: u32) -> CliApiResult<WinRateResult> {
     let eval_rq = eval_rq.unwrap_or(eval_name::WIN_RATE_EVAL_RQ);
     let groups = RuntimeRunner::split_namerena_into_groups(raw.to_owned()).0;
@@ -363,6 +387,7 @@ pub fn win_rate_summary(raw: &str, n: usize, eval_rq: Option<f64>, thread: u32) 
         .map_err(runtime_batch_error)
 }
 
+/// 将两队文本按空行组合后计算规范胜率统计。
 pub fn team_win_rate_summary(
     team1: &str,
     team2: &str,
@@ -373,6 +398,7 @@ pub fn team_win_rate_summary(
     win_rate_summary(&format!("{team1}\n\n{team2}"), n, eval_rq, thread)
 }
 
+/// 按 opponent 列表顺序逐项计算目标组的胜率。
 pub fn group_win_rate_summary(
     target: &str,
     against: &[String],
@@ -393,6 +419,7 @@ pub fn group_win_rate_summary(
         .collect()
 }
 
+/// 对第一组名字计算所选 profile 模式的万分制评分。
 pub fn score(raw: &str, n: usize, mode: &str, eval_rq: Option<f64>, thread: u32) -> CliApiResult<ScoreResult> {
     let score_mode = parse_score_mode(mode)?;
     let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_owned());
@@ -418,6 +445,7 @@ pub fn score(raw: &str, n: usize, mode: &str, eval_rq: Option<f64>, thread: u32)
     })
 }
 
+/// 按命配组合格式解析名字并计算所选 pp/pd/qp/qd 指标；keep_rq 选择普通构建口径。
 pub fn namer_pf(raw: &str, n: usize, modes: Option<Vec<String>>, keep_rq: bool, thread: u32) -> CliApiResult<Vec<NamerPfResult>> {
     let groups = parse::parse_plus_separated_groups(raw);
     if groups.is_empty() {
@@ -452,6 +480,7 @@ pub fn namer_pf(raw: &str, n: usize, modes: Option<Vec<String>>, keep_rq: bool, 
         .collect::<CliApiResult<Vec<_>>>()?)
 }
 
+/// 计算每组选手对靶子列表的平均/合计胜率；标签与选手数量对应。
 pub fn batch_rate(
     target_groups: &[String],
     player_groups: &[String],
@@ -496,6 +525,7 @@ pub fn batch_rate(
 /// 选手与队友都会先按“逐个成员单独构建”冻结成 `+ol` 再组队，同公会（`@队名` 相同）
 /// 成员之间的组队加成不会计入 cqp，两侧都按各自单独构建的强度计算；已经带
 /// `+diy` / `+ol` 的输入原样保留，`top_pairs` 里的名字是调用方传入的队友原文。
+/// 按给定选手、队友和靶子评估组合，返回 Top 明细与最终统计。
 pub fn pair_rate(
     target_groups: &[String],
     players: &[String],

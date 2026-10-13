@@ -1,3 +1,16 @@
+//! 扩展数据槽：按注册表 ID 访问，不以字符串 map 进入战斗热路径。
+//!
+//! | 存储 | 作用域 | 常见内容 |
+//! | --- | --- | --- |
+//! | [`TemplateSlotStorage`] | 准备模板 / 配置 | 供构造或召唤读取的模板 |
+//! | [`BattleSlotStorage`] | 一局战斗 | 全局机制数据 |
+//! | [`EntitySlotStorage`] | 单个实体 | 召唤蓝图、已生成实体引用、计数 |
+//!
+//! [`SlotValue`] 提供明确的值类型。先注册槽位，再按相同 registry 分配 storage；
+//! 越界写入返回 [`SlotError`]。prepared runner 复位会恢复槽基线。
+//! 学习状态使用经过审计的槽语义，文本槽需另行审计接入。
+//! 模板槽在 handler 上下文中按只读配置使用，构造期可通过 storage 设置。
+
 use crate::runtime::entity::PlayerTemplate;
 use crate::runtime::{BattleSlotId, EntitySlotId, ExtensionRegistry, TemplateSlotId};
 use smallvec::SmallVec;

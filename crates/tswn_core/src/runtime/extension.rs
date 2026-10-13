@@ -1,3 +1,61 @@
+//! 扩展注册表：描述名字、ID、hook 元数据与策略，handler 函数另行绑定。
+//!
+//! [`ExtensionRegistryBuilder`] 按注册顺序分配各类别的 ID，`build` 后得到
+//! [`ExtensionRegistry`]。ID 依赖所属 registry，查找和 storage 使用同一份注册表。
+//! namespace / name 用于分类，export_name 用于导入和查找；重复名会返回
+//! [`ExtensionError`]。默认规则的稳定导出名称由 Runtime profile 维护。
+//!
+//! # 注册与函数绑定
+//!
+//! [`TswnExtension`] 声明名称、版本、能力和注册步骤；实际函数仍需通过
+//! [`super::CombatRuntime::set_skill_handler`] 等方法安装。capabilities 也需传给
+//! `set_*_handler_with_capabilities`，完成实际的上下文授权。
+//! 这些 API 面向同进程 Rust 扩展，通过明确注册和函数绑定组合规则。
+//!
+//! [`ProcMask`] 指定参与的生命周期阶段；[`SkillPriority`] 越小越先执行。
+//! 内置主动技能可使用 `ProcMask::NONE`，主体行为由专用行动分支触发。
+//! [`PlayerKindPolicies`] 决定归属解析、伤害共享、吞噬映射与主人防抗继承。
+//!
+//! # 最小技能 hook
+//!
+//! 下面在低层最小模板中注册行动前恢复。它演示注册、loadout、绑定、验证和推进，
+//! 普通名字推导、DIY 解析与模型词表可沿各自入口继续接入新技能。
+//!
+//! ```
+//! use tswn_core::runtime::{
+//!     ExtensionRegistryBuilder, PlayerTemplate, PreparedCombatTemplate, ProcMask,
+//!     QueuedEffect, RuntimeRunner, SkillContext, SkillHookPlanEntry, SkillPriority,
+//!     TargetPolicy,
+//! };
+//!
+//! fn recover(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
+//!     let owner = context.owner_idx();
+//!     context.push_nested(QueuedEffect::Heal {
+//!         caster: owner,
+//!         target: owner,
+//!         amount: context.skill_level(entry) as i32,
+//!     });
+//! }
+//!
+//! let mut builder = ExtensionRegistryBuilder::default();
+//! let skill = builder.register_skill_with_hooks(
+//!     "demo", "recover", "demo.skill.recover",
+//!     ProcMask::PRE_ACTION, TargetPolicy::None, SkillPriority(0),
+//! )?;
+//! let players = vec![
+//!     PlayerTemplate::new(1, "left", 0, 20, 4).with_skills([skill]),
+//!     PlayerTemplate::new(2, "right", 1, 20, 4),
+//! ];
+//! let mut runner = RuntimeRunner::from_template(
+//!     PreparedCombatTemplate::with_registry(players, builder.build()),
+//! );
+//! runner.runtime_mut().set_skill_handler(skill, recover);
+//! runner.validate_ready()?;
+//! let outcome = runner.run_round();
+//! assert!(outcome.action.is_some());
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
@@ -282,17 +340,23 @@ impl Display for ExtensionError {
 
 impl std::error::Error for ExtensionError {}
 
+/// 同进程扩展的描述和元数据注册协议；handler 与实际能力通过 Runtime 绑定。
 pub trait TswnExtension {
+    /// 扩展的唯一名称，重复安装会报错。
     fn name(&self) -> &'static str;
 
+    /// 扩展的描述性版本，供配置与审计读取。
     fn version(&self) -> ExtensionVersion;
 
+    /// 声明使用的上下文能力；实际 handler 绑定仍需显式传递。
     fn capabilities(&self) -> &'static [ExtensionCapability] { &[] }
 
+    /// 将技能、状态和槽等注册到 builder；失败时调用方重新构造完整配置。
     fn register(&self, registry: &mut ExtensionRegistryBuilder) -> Result<(), ExtensionError>;
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
+/// 构造期注册器；各类别 ID 依赖注册次序，完成后用 [`Self::build`] 冻结。
 pub struct ExtensionRegistryBuilder {
     installed_extensions: Vec<InstalledExtensionSpec>,
     player_kinds: Vec<PlayerKindSpec>,

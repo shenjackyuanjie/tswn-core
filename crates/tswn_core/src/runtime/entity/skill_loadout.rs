@@ -1,3 +1,9 @@
+//! 技能的固定 lane、当前/构建等级、尝试顺序及派生 hook 缓存。
+//!
+//! `fixed_lane` 是技能数据槽位置；`active_order` 保存遍历这些位置的排列。
+//! 吞噬等机制可能改等级、顺序或延后游标；使用 loadout 的修改入口以同步 dirty 与 generation。
+//! 当前等级为 0 的技能不进入相应 hook 计划，构建等级保留最初导入语义。
+
 use super::*;
 
 const SKILL_HOOK_COUNT: usize = 8;
@@ -43,6 +49,7 @@ const SKILL_DIRTY_POST_DAMAGE: u8 = 1 << 4;
 const SKILL_DIRTY_DEFERRED: u8 = 1 << 5;
 
 #[derive(Debug, Clone)]
+/// 一份技能配置及其运行期变动；handler 函数由 registry ID 另行绑定。
 pub struct SkillLoadout {
     skills: SmallVec<[SkillId; 8]>,
     levels: SmallVec<[u32; 8]>,

@@ -1,3 +1,19 @@
+//! hook 上下文、效果队列与可见事件出口。
+//!
+//! [`SkillContext`] 和 [`StateContext`] 为相应 hook 提供当前实体、随机数、受击值与
+//! 受控修改入口；[`EffectContext`] 供自定义效果 handler 使用。
+//! [`QueuedEffect`] 表达伤害、恢复、召唤、状态与复活等操作，由 Runtime 统一提交。
+//!
+//! # 两种入队顺序
+//!
+//! [`EffectQueue::push`] 追加到队尾；[`EffectQueue::push_nested`] 插到队首，优先执行
+//! 嵌套的反弹、吞噬等链路。连续 push_nested 的相对次序由队首插入决定。
+//! handler 可以继续入队，所以一次提交不等于只处理原来的队列长度。
+//!
+//! [`RuntimeFrame`] / [`RunUpdates`] 保存已执行事件的展示数据；实际伤害通过机制
+//! 入口或效果提交。批量 completion 路径以机制与统计为出口，省去展示捕获。
+//! 注册 handler 的元数据见 [`super::extension`]，实际绑定位于 [`super::CombatRuntime`]。
+
 use crate::rc4::RC4;
 use crate::runtime::combat::PlainAttackOnDamage;
 use crate::runtime::entity::{AccumulateRuntime, ChargeRuntime, EntityIdx, PlayerTemplate, StateEntry, StatePayload};

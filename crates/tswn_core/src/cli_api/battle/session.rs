@@ -22,6 +22,7 @@ pub struct BattleSession {
 }
 
 impl BattleSession {
+    /// 解析并初始化对局，不推进回合；空输入、零上限或非有限 eval_rq 返回错误。
     pub fn new(raw: &str, options: BattleOptions) -> CliApiResult<Self> {
         let driver = super::driver::BattleDriver::from_raw(raw, options)?;
         let mut icon_cache = HashMap::new();
@@ -47,8 +48,11 @@ impl BattleSession {
         self.driver.model_state()
     }
 
+    /// 本会话创建时保存的初始展示快照。
     pub fn initial_states(&self) -> &[BattlePlayerState] { &self.initial_states }
+    /// 最近推进边界的展示快照，适合更新角色面板。
     pub fn current_states(&self) -> &[BattlePlayerState] { &self.current_states }
+    /// 正常对局状态；失败另由 [`Self::is_failed`] 表示。
     pub fn status(&self) -> BattleStatus {
         match self.driver.stop_reason {
             None => BattleStatus::Running,
@@ -56,6 +60,7 @@ impl BattleSession {
             Some(_) => BattleStatus::Truncated,
         }
     }
+    /// 正常终止原因；运行中及 Runtime 失败后均为 `None`。
     pub fn stop_reason(&self) -> Option<BattleStopReason> { self.driver.stop_reason }
     /// 是否已产生正常 terminal BattleResult；Runtime failure 不属于正常终止。
     pub fn is_done(&self) -> bool { self.driver.stop_reason.is_some() }
@@ -63,7 +68,9 @@ impl BattleSession {
     pub fn is_failed(&self) -> bool { self.driver.failure.is_some() }
     pub fn is_finished(&self) -> bool { self.status() == BattleStatus::Finished }
     pub fn is_truncated(&self) -> bool { self.status() == BattleStatus::Truncated }
+    /// 实际推进的 Runtime 回合数，包含没有可见帧的回合。
     pub fn rounds_advanced(&self) -> usize { self.driver.rounds_advanced }
+    /// 已产出的可见帧数，不等于 Runtime 回合数。
     pub fn frames_emitted(&self) -> usize { self.driver.frames_emitted }
 
     /// 推进经过空的 Runtime 回合，直至出现可见帧或终止结果。
@@ -95,6 +102,7 @@ impl BattleSession {
         }
     }
 
+    /// 正常终止后构造结果；重复查询不推进对局，运行中或 sticky failure 时为 `None`。
     pub fn result(&self) -> Option<BattleResult> {
         Some(BattleResult {
             status: self.status(),

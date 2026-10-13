@@ -1,3 +1,10 @@
+//! 战场索引视图：行动顺序、各队 roster、存活列表和胜者。
+//!
+//! [`WorldArena`] 保存索引，实体本体与数值由 [`EntityArena`] 保存。
+//! `round_order`、`team_roster` 与 `team_alive` 各有生命周期，死亡、复活和召唤通过
+//! Runtime 的对应效果同时维护实体与视图。输入队伍由 runner 记录，学习胜者标签
+//! 使用输入队伍映射，运行时 team 表达当前机制队伍。
+
 use crate::runtime::entity::{EntityArena, EntityIdx};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

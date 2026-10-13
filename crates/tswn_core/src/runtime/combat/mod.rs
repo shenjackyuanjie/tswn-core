@@ -1,3 +1,10 @@
+//! Runtime 的机制执行器；子模块按行动、受击、效果与生命周期划分。
+//!
+//! [`CombatRuntime`] 组合实体、世界、注册表、handler、槽、队列和 RNG。
+//! 调度器选行动，hook 读取当前数据并修改受击值或入队，效果提交后同步世界与消息。
+//! 各攻击与状态效果使用各自分支，沿具体技能入口可查看完整的伤害与状态链。
+//! 普通应用通过 [`super::RuntimeRunner`] 或规范 BattleSession 使用本执行器。
+
 use super::*;
 
 mod attack;
@@ -14,6 +21,7 @@ mod skills_offense;
 mod skills_team;
 
 #[derive(Debug, Clone)]
+/// 单回合结果：分别记录行动、可选可见帧与当前胜者。
 pub struct RoundOutcome {
     pub action: Option<ActionPlan>,
     pub frame: Option<RuntimeFrame>,
@@ -64,6 +72,7 @@ pub enum PreparedPlainAction {
 }
 
 #[derive(Debug, Clone)]
+/// 一场战斗的完整可变机制容器；跨语言显示数据由会话层投影。
 pub struct CombatRuntime {
     pub entities: EntityArena,
     pub world: WorldArena,

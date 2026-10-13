@@ -1,6 +1,40 @@
-//! 名字竞技场输入与构建数据层。
+//! 从 namerena 文本到可导入 Runtime 的角色构建数据。
 //!
-//! 这里仅保存从文本输入到 Runtime 模板所需的纯数据，不承载战斗期状态。
+//! [`NamerenaInput`] 解析对战队伍与 seed，[`PlayerSpec`] 解析单个名字的 `@`、武器和
+//! DIY/OL 后缀；[`PreparedRoster::build`] 再构建属性、技能与团队强化。
+//! 战斗推进与状态生命周期由 [`crate::runtime`] 接续处理。
+//!
+//! # 队伍与阵营各自的作用
+//!
+//! 有空行时，连续名字组成一支对战队伍；没有空行时，每行各自成队。
+//! `name@clan` 的 `clan` 影响角色构建和阵营机制，不直接决定输入分组。
+//! `seed:` 行作为本场初始化材料提取。
+//!
+//! ```
+//! use tswn_core::namerena::{NamerenaInput, PlayerSpec};
+//!
+//! let input = NamerenaInput::parse("a@red\nb@red\n\nc@blue\nseed:demo@!")?;
+//! assert_eq!(input.groups.iter().map(Vec::len).collect::<Vec<_>>(), [2, 1]);
+//! assert_eq!(input.seed, ["seed:demo@!"]);
+//! let player = PlayerSpec::parse(r#"a@red+ol:{"skills":{"shield":80}}"#)?;
+//! assert!(player.overlay.is_some());
+//! # Ok::<(), tswn_core::namerena::PlayerSpecError>(())
+//! ```
+//!
+//! # 主要类型与工具
+//!
+//! | 入口 | 作用 |
+//! | --- | --- |
+//! | [`PreparedPlayer`] / [`PreparedRoster`] | 一次构建的属性、技能与阵容数据 |
+//! | [`PreparedMinionBlueprint`] | 召唤物派生与重施策略 |
+//! | [`PlayerStats`] | 构建属性容器，供 Runtime 导入 |
+//! | [`SkillLoadoutSpec`] / [`SkillBoost`] | 待导入的技能顺序、等级与强化信息 |
+//! | [`overlay`] | 玩家与幻影/使魔/丧尸的显式覆盖输入 |
+//! | [`eval_name`] | UTF-16 名字评估及 `eval_rq` 默认值 |
+//! | [`icon`] / [`icon_render`] | 身份图标数据与 RGBA / PNG 输出 |
+//!
+//! UTF-8 长度校验、UTF-16 字符评估和实际技能等级各有度量语义。
+//! 解析规则同时承载角色身份、随机材料与输入兼容信息。
 
 mod build;
 pub mod eval_name;

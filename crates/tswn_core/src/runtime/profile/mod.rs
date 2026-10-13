@@ -1,3 +1,11 @@
+//! 默认游戏规则的配置入口：导出名称、主动技能分类、注册、导入与 handler 绑定。
+//!
+//! [`default_custom_runtime_import_config`] 组装普通名字、Boss、Boost、召唤物与
+//! bed2 的运行配置。`registry` 描述技能/状态/种类/槽，`import` 将构建资料转成模板，
+//! `hooks` 提供阶段实现；这三部分共同将游戏机制接入 Runtime。
+//! export_name 用于查找与导入，legacy key 用于兼容原游戏的技能/状态类别。
+//! 新机制可以沿注册、导入、函数绑定和数据投影四个环节接入。
+
 use super::*;
 use crate::runtime::entity::ScoreSkillHookPlanEntry;
 

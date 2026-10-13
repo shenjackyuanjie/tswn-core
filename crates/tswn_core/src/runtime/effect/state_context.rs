@@ -1,5 +1,12 @@
+//! 状态 hook 上下文，包含状态 owner、当前 hook、受击值及延后清理列表。
+//!
+//! PRE_ACTION 状态可接管本次行动，并继续适用的恢复与行动后逻辑。
+//! POST_ACTION 中有些状态先登记待清理，等状态与穿插技能执行完后统一移除。
+//! 状态修改通过 store 与对应效果入口维护条目、游标和计划缓存。
+
 use super::*;
 
+/// 一次状态 handler 调用的受控借用视图；能力与阶段约束同技能上下文。
 pub struct StateContext<'a> {
     entities: &'a mut EntityArena,
     world: &'a mut WorldArena,

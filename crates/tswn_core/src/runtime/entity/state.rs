@@ -1,11 +1,17 @@
 //! 状态条目、载荷与构造规则。
+//!
+//! [`StateEntry`] 保存 hook 和排序元数据，[`StatePayload`] 保存实际机制参数。
+//! `legacy_order_key` 是兼容状态类别键，[`StateId`] 是扩展注册表 ID。
+//! store 另行保存运行期注册游标；压缩状态和专用 runtime 字段与 entries 共同表达机制。
 
 use super::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
+/// arena 中稳定的实体索引，允许预留 ID 空槽。
 pub struct EntityIdx(pub u32);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// 一个带载荷状态的登记信息；增删由 [`StateStore`] 维护计划缓存与注册游标。
 pub struct StateEntry {
     pub legacy_order_key: u32,
     pub extension_state_id: Option<StateId>,
@@ -23,6 +29,7 @@ pub struct CovidInfectionEntry {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
+/// 已实现状态的机制数据；步骤、来源、有效阵营与浮点 bits 均有各自语义。
 pub enum StatePayload {
     #[default]
     None,

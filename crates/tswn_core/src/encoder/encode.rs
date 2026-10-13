@@ -1,6 +1,6 @@
 //! 编码主路径：状态校验 → 局内重映射 → global / entity / template / lane / list / state 写入。
 //!
-//! 本文件实现规格第 14 节的拟议接口，并按外部评审 3.1 增加可复用缓冲的批路径：
+//! [`FeatureEncoder`] 提供单样本入口和可复用批缓冲入口：
 //!
 //! ```text
 //! FeatureEncoder::new(manifest)                          // 初始化期校验并冻结运行配置
@@ -8,9 +8,9 @@
 //! FeatureEncoder::encode_into(state, batch_index, batch)  // 批槽位写入
 //! ```
 //!
-//! 约束（外部评审 3.1）：manifest 在初始化阶段校验；目标槽位先恢复 padding，随后检查
-//! schema、引用、可空分支与容量，再写入字段。校验或写入返回错误时再次清理目标槽位，
-//! 不暴露部分结果，也不影响相邻批槽位；同一 state 放在不同 batch 位置不改变其有效内容。
+//! manifest 在初始化阶段校验；目标槽位先恢复 padding，随后检查 schema、引用、
+//! 可空分支与容量，再写入字段。失败时目标槽位恢复 padding，相邻槽位保持原内容。
+//! 同一 state 在各批位置具有相同的有效编码内容。
 //!
 //! slot / extra 两族按规格第 14 节写入模型张量与精确旁路。
 
@@ -60,7 +60,7 @@ fn default_registry() -> &'static ExtensionRegistry {
 
 /// FeatureEncoder：字段映射、局内引用、presence 与容量预检的唯一实现。
 ///
-/// 不依赖 Python、展示 DTO、文件格式或模型参数，可在 `wasm32-unknown-unknown` 上编译。
+/// 纯 Rust 机制编码，可在 `wasm32-unknown-unknown` 上编译，供数据导出器及后续绑定复用。
 #[derive(Debug, Clone)]
 pub struct FeatureEncoder {
     manifest: EncoderManifest,

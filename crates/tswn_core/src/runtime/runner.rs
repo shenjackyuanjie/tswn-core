@@ -2,6 +2,7 @@ use super::prepared_init::PreparedBattleSeed;
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// 组合低层实体模板、注册表与模板槽；技能实现通过 Runtime 的 handler 入口绑定。
 pub struct PreparedCombatTemplate {
     pub players: Vec<PlayerTemplate>,
     pub registry: ExtensionRegistry,
@@ -29,6 +30,10 @@ impl PreparedCombatTemplate {
 }
 
 #[derive(Debug, Clone)]
+/// 一场可变对局，拥有 [`CombatRuntime`] 和输入队伍映射。
+///
+/// 普通 UI 接入使用 [`crate::cli_api::battle::BattleSession`]，直接复用其终止策略。
+/// 高级调用者可访问 runtime，按机制入口协调 arena / world / handler。
 pub struct RuntimeRunner {
     pub runtime: CombatRuntime,
     pub input_groups: Vec<Vec<EntityIdx>>,
@@ -36,6 +41,7 @@ pub struct RuntimeRunner {
 }
 
 #[derive(Debug, Clone)]
+/// 保存逐回合 outcome 的运行结果；`guard_exhausted` 表示达到调用方给定的回合保护。
 pub struct RuntimeRunSummary {
     pub rounds: Vec<RoundOutcome>,
     pub winner_team: Option<usize>,
@@ -471,6 +477,7 @@ impl RuntimeRunner {
 
     pub fn runtime(&self) -> &CombatRuntime { &self.runtime }
 
+    /// 高级机制入口；直接修改字段可能破坏世界视图、缓存与默认导出支持域。
     pub fn runtime_mut(&mut self) -> &mut CombatRuntime { &mut self.runtime }
 
     pub fn input_groups(&self) -> &[Vec<EntityIdx>] { &self.input_groups }
@@ -487,6 +494,7 @@ impl RuntimeRunner {
             .is_some_and(|group| group.iter().any(|entity| winner_roster.contains(entity)))
     }
 
+    /// 检查当前实体与模板槽使用的技能是否已安装 handler。
     pub fn validate_ready(&self) -> Result<(), RuntimeReadyError> { self.runtime.validate_ready() }
 
     fn install_skill_handler_bindings(&mut self, bindings: Vec<RuntimeSkillHandlerBinding>) {
@@ -513,6 +521,7 @@ impl RuntimeRunner {
 
     fn run_round_unchecked_no_capture(&mut self) -> RoundOutcome { self.runtime.run_minimal_round_no_capture() }
 
+    /// 推进一个 Runtime 回合；可能没有可见帧。未就绪时会 panic，高层会话会先校验。
     pub fn run_round(&mut self) -> RoundOutcome {
         self.assert_ready();
         self.run_round_unchecked()
@@ -523,6 +532,7 @@ impl RuntimeRunner {
         NormalizedOutcome::from_runtime(&self.runtime, &outcome)
     }
 
+    /// 最多推进指定回合数并保存 outcome；大量胜率计算应使用不保留帧的 completion 入口。
     pub fn run_until_winner(&mut self, max_rounds: usize) -> RuntimeRunSummary {
         self.assert_ready();
         let mut rounds = Vec::new();

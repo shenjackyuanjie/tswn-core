@@ -1,3 +1,15 @@
+//! 行动选择与技能/状态 hook 计划；效果结算由 CombatRuntime 接续处理。
+//!
+//! [`ActionSchedulerMode::LegacyStep`] 对齐名字竞技场的速度行动条：每次 tick 从战斗
+//! RNG 取步长，行动点**严格大于** [`MOVE_POINT_THRESHOLD`] 才行动，再减去阈值。
+//! [`ActionSchedulerMode::Minimal`] 用于低层最小模板，适合单独验证阶段机制。
+//!
+//! 技能计划按 `(priority, active_order, registration_order)` 排序，并保留
+//! `fixed_lane` 供 handler 查询当前等级。状态计划按 `(priority, registration_order)`
+//! 稳定排序，同时携带运行期注册游标。数字较小的 priority 先执行。
+//! POST_ACTION 按 early、状态间 deferred、late 分区执行。
+//! 计划是派生数据，技能或状态变动后按 generation 刷新。
+
 use crate::runtime::entity::{EntityArena, EntityIdx};
 use crate::runtime::extension::{
     ExtensionRegistry, ProcMask, RegistrationOrder, SkillId, SkillPostActionPhase, SkillPriority, StateId, TargetPolicy,

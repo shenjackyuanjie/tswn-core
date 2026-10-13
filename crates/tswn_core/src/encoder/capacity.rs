@@ -1,6 +1,6 @@
 //! FeatureEncoder 容量 profile 与每样本容量计量。
 //!
-//! `baseline-64` 是 [FeatureEncoder 规格](../../../docs/design/feature-encoder-spec.md) 第 4 节冻结的档位：
+//! `baseline-64` 是仓库 `docs/design/feature-encoder-spec.md` 第 4 节定义的档位：
 //! `E_max=64` 是**支持域选择**而不是机制上界——幻术与分身可以无限新增实体，审计结论见规格第 4 节
 //! “实体数的机制上界”。因此冻结时把“超限即 `CapacityExceeded`、溢出率随统计报告”作为配套要求。
 //!

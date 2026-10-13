@@ -6,7 +6,7 @@ use super::*;
 ///
 /// - `entity_rows`：`EntityIdx` → 实体行（死亡实体仍在表内，mask=1）；
 /// - `template_rows`：模板表行 → 模板；前 `e` 行是实体模板，其后是槽内蓝图与全局槽模板，
-///   与 [`CapacityMeasure`](crate::encoder::capacity::CapacityMeasure) 的 `h` 计费口径一致；
+///   与 [`CapacityMeasure`] 的 `h` 计费口径一致；
 /// - `runtime_teams`：runtime team 原值 → 关系行（原值升序，跨 entities/templates/world 统一）；
 /// - `player_keys`：`PlrId` → 局内相等关系键（模板表行序首次出现）。
 pub(super) struct SampleIndex<'a> {

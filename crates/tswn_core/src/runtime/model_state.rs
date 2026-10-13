@@ -1,4 +1,16 @@
-//! 面向学习数据的机制状态；不包含名字文本、战斗随机数、未来标签或展示缓存。
+//! 面向学习数据的机制状态，保留当前机制数值、载荷、顺序与实体关系。
+//!
+//! [`RuntimeRunner::model_state`] 在效果队列已排空的回合边界生成 [`BattleModelState`]，
+//! 支持经过审计的默认注册表与槽载荷。读取是纯投影，保持战斗 RNG 状态。
+//! 导出会检查 registry、槽语义和引用，发现支持域或结构问题时返回明确错误。
+//!
+//! # 与展示快照的区别
+//!
+//! 这里保留模板、runtime、技能顺序、状态载荷、实体关系与世界视图，供
+//! [`crate::encoder::encode::FeatureEncoder`] 使用。角色名改为局内阵营相等关系；
+//! 标签、seed 和审计信息由 `tswn_pwp` 在 state 外保存。
+//! 随机未来通过原输入与 seed 重跑复现；这里提供学习所需的机制输入。
+//! `entity_slot_count` 包含预留 ID 空槽，可能大于实际 `entities.len()`。
 use super::entity::{AccumulateRuntime, ChargeRuntime};
 use super::*;
 use serde::{Deserialize, Serialize};

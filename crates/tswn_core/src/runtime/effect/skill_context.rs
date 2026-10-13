@@ -1,6 +1,13 @@
+//! 技能 hook 上下文：当前等级、受击值、owner 数据、RNG 和效果提交入口。
+//!
+//! handler 的 entry 与上下文使用同一 owner。PRE_DEFEND 中的值是浮点攻击威力，
+//! POST_DEFEND 中的值是整数伤害；错误阶段使用 setter 会 panic。
+//! 自身数据与部分内置修改有直接入口，跨实体读取和扩展槽按 capabilities 检查。
+
 use super::*;
 use crate::runtime::combat::PlainAttackOnDamage;
 
+/// 一次技能 handler 调用内的借用视图，使用本场 Runtime 的随机流。
 pub struct SkillContext<'a> {
     entities: &'a mut EntityArena,
     world: &'a mut WorldArena,
