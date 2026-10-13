@@ -8,12 +8,12 @@
 | --- | --- | --- |
 | 逐帧播放、交互、跨语言 UI | `cli_api::BattleSession` | 正式增量 API，四端一致；结果由 `result()` / `battle_replay` 收集 |
 | 一次性跑完、胜率评分 | 根级 `Runner`（即 `RuntimeRunner`） | `run_to_completion(max_rounds)`，不收集逐回合结果 |
-| 数据集生成、训练样本导出 | `cli_api::battle::BattleModelSession` | 生成器在 `PreparedRunner` 之上以相同 seed 两遍运行；`next_frame()` 给可见帧边界，`model_state()` 导出当前机制状态 |
+| 数据集生成、训练样本导出（Experimental） | `cli_api::battle::BattleModelSession` | 生成器在 `PreparedRunner` 之上以相同 seed 两遍运行；`next_frame()` 给可见帧边界，`model_state()` 导出当前机制状态 |
 | 同一模板按 seed 大批量复用 | 根级 `PreparedRunner` | 批量热路径用 `run_to_completion_prevalidated`，跳过 immutable handler 就绪扫描 |
 
-`Advanced / Compatibility` 描述的是调用方需要自己承担的部分（seed 行格式、模板复用与生命周期、批量并行策略），不是“不推荐使用”。根级 `Runner` / `PreparedRunner` 是唯一执行内核入口；CLI 和胜率评分使用这层入口，数据集生成则在其之上通过 `cli_api::battle::BattleModelSession` 驱动两遍运行与状态采样，不能概括为直接调用 `Runner` 导出训练样本。[主 Runtime 0.5 迁移指南](../guides/runtime-0.5-migration.md)中“根级 `Runner` 与 `PreparedRunner` 是唯一正式执行入口”指执行内核层，与上层会话驱动的分工不冲突。
+`Advanced / Compatibility` 描述的是调用方需要自己承担的部分（seed 行格式、模板复用与生命周期、批量并行策略），不是“不推荐使用”。根级 `Runner` / `PreparedRunner` 是唯一执行内核入口；CLI 和胜率评分使用这层入口，数据集生成则在其之上通过 Experimental `cli_api::battle::BattleModelSession` 驱动两遍运行与状态采样，不能概括为直接调用 `Runner` 导出训练样本。历史迁移背景见 [主 Runtime 0.5 迁移指南](../guides/runtime-0.5-migration.md)，执行内核层与正式会话 API 各有分工。
 
-两条执行路径的判胜实现不同：`run_until_winner` 走 `sync_winner`（全量扫描实体表），`run_to_completion` / `run_to_completion_prevalidated` 走 `sync_winner_from_alive_views`（只读存活视图）。两者结论必须一致；语义、历史缺陷与回归测试见[判胜语义](../mechanics/winner.md)。任何入口都不要用 `alive_group_count()` 判断胜负，它只服务于多人模式的目标选择。
+两条执行路径的判胜实现不同：`run_until_winner` 走 `sync_winner`（全量扫描实体表），`run_to_completion` / `run_to_completion_prevalidated` 走 `sync_winner_from_alive_views`（只读存活视图）。两者结论必须一致；语义、历史缺陷与回归测试见[判胜语义](../mechanics/winner.md)。任何入口都不要用 `alive_group_count()` 判断胜负；它保留 legacy 计数语义，参与多人目标选择与死亡行动者的 post-action 提前退出。
 
 ## 会话与结果
 
@@ -146,7 +146,7 @@ core 定义六个稳定错误码：`INVALID_INPUT`、`INVALID_ARGUMENT`、`UNSUP
 
 `pair_rate` / `pair_rate_factored` 与 `tswn-cli bench pair`、Openbox `pair` 语义一致：选手与队友都先按“逐个成员单独构建”冻结成 `+ol` 再组队，同公会（`@队名` 相同）成员之间的组队加成不计入 cqp，返回结果里的队友名仍是调用方传入的原文；已经带 `+diy` / `+ol` 的输入原样保留。
 
-验证入口：`scripts/verify_battle_cross_binding.py` 使用真实 Rust CLI、Python 扩展、C 动态库和 Node WASM，逐字段精确比较四组输入在完整/限轮两种设置下的 initial、frames、result。
+验证入口：[verify_battle_docs.py](../../scripts/verify_battle_docs.py) 提取本页 Rust/Python/WASM 示例执行，依赖已构建的本地 Python 扩展与 Node WASM 产物；[verify_battle_cross_binding.py](../../scripts/verify_battle_cross_binding.py) 使用真实 Rust CLI、Python 扩展、C 动态库和 Node WASM，逐字段精确比较四组输入在完整/限轮两种设置下的 initial、frames、result。
 
 ## 稳定性边界
 
@@ -167,7 +167,9 @@ Web streaming 架构（BattleStreamSource / BattleStreamController）
 BattleModelState（MODEL_STATE_SCHEMA_VERSION）
 BattleModelSession
 数据集格式（manifest 的 format_version / state_schema_version）
-FeatureEncoder 与 WinProbFeatures（tswn_core::encoder；当前实现 global/entity/template 三族，
-                    其余族与离线导出器仍在分块实现中）
+FeatureEncoder 与 WinProbFeatures（tswn_core::encoder；全八族核心张量编码与
+                    tswn-pwp encode 基础离线导出已落地，完整训练包仍有后续项）
 模型结构与推理接口
 ```
+
+当前 encoder 由 [encode_into](../../crates/tswn_core/src/encoder/encode.rs#L462-L480) 写入 global / entity / template / lane / state / slot / list / extra 八族，完整注册表见 [TENSOR_SPECS](../../crates/tswn_core/src/encoder/batch.rs#L115)。[tswn-pwp encode](../../crates/tswn_pwp/src/encode.rs) 已支持按 split 输出小端 `.bin`、每批 `batch-manifest.json` 与根 `manifest.json`；这是基础张量导出，尚不输出 labels / label_mask、逐行 audit 与源行定位，不复制 encoder manifest，也不提供逐文件摘要或流式分片读入。当前 Python / WASM 尚无 encoder 绑定；完整训练包验收与模型接口见 [FeatureEncoder 规格](../design/feature-encoder-spec.md)。

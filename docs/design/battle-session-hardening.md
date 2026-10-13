@@ -1,10 +1,10 @@
-# TSWN BattleSession API Freeze 前 Hardening 修改要求
+# TSWN BattleSession API 加固现状与历史要求
 
-> 状态：FINAL / 可直接执行\
-> 目标仓库：`shenjackyuanjie/tswn-core`\
-> 基线：BattleSession + Web Streaming 已完成后的当前 `main`\
-> 目的：在进入下一阶段前，修复已发现的兼容语义问题，补强 C ABI 演进能力、类型契约和失败态说明，并建立 Python DTO 转换性能基线。\
-> 本文不重新设计 BattleSession，不修改网页 streaming 架构，不包含任何胜率模型、ModelState、训练或推理工作。
+> 状态：历史加固提案；原 P0/P1 修复和 Python 基线已落地，当前行为见下方现状节。
+> 目标仓库：`shenjackyuanjie/tswn-core`。
+> 历史基线：BattleSession + Web Streaming 原重构完成时的版本，不是当前 `main` 功能清单。
+> 保留内容：兼容语义分析、C ABI 演进契约、失败态说明、TypeScript 类型约束和 Python DTO 性能优化门槛。
+> 第 0–29 节中的问题、代码草图、实施顺序和未勾选清单均属于原加固阶段；ModelState 等后续实现见 [状态与数据生成说明](battle-analyze.md)。
 
 相关文档入口：
 
@@ -14,7 +14,25 @@
 
 ---
 
-## 0. 验收结论与本轮定位
+## 当前加固状态与源码依据
+
+**原 P0/P1 问题已修复，Python DTO 基线已记录；历史提案不是当前未完成清单。** 本次维护核对源码和测试定义，保留历史性能数据的时间/环境边界，未重跑完整测试或基准。
+
+| 原任务 | 当前实现与证据 |
+| --- | --- |
+| P0-1：WASM legacy `owner_id` 映射 | [fight.rs](../../crates/tswn_wasm/src/fight.rs#L13-L26) 已直接复制 `state.owner_id`，不再复制 `source_id`；[直接 owner 回归测试](../../crates/tswn_wasm/src/fight.rs#L248) 保留 owner 与 root source 的区别。Core 映射见 [session.rs](../../crates/tswn_core/src/cli_api/battle/session.rs#L144-L181)。 |
+| P0-2：C options 演进 | [battle_api.rs](../../crates/tswn_capi/src/battle_api.rs#L8-L90) 已冻结私有 `BattleOptionsV1` 和最小 V1 大小，按未对齐读取接受已知前缀、忽略更大未知尾部；[默认初始化](../../crates/tswn_capi/src/battle_api.rs#L108-L120) 也永久只写 V1 前缀，未来更大初始化器需新接口。布局、旧 caller、未对齐缓冲区及未来尾部测试在同文件；公共契约见 [C 头文件](../../crates/tswn_capi/include/tswn_capi.h)。[ABI_VERSION](../../crates/tswn_capi/src/lib.rs#L21) 仍为 4。 |
+| P1-1：失败态查询 | Core 的 [session.rs](../../crates/tswn_core/src/cli_api/battle/session.rs#L52-L75)、[Python battle.rs](../../crates/tswn_py/src/battle.rs#L45-L54)、[WASM battle.rs](../../crates/tswn_wasm/src/battle.rs#L40-L52) 和 [C battle_api.rs](../../crates/tswn_capi/src/battle_api.rs#L159) 已提供 `is_failed()`/C 对应函数与真实 Runtime 失败测试。失败不属于正常 terminal：`status()` 仍为 `running`、`is_done()` 为 false、`result()` 为空，后续推进重复同一错误。 |
+| P1-2：TypeScript literal 类型 | [battle_types.d.ts](../../crates/tswn_wasm/src/battle_types.d.ts#L2-L7) 已定义状态、停止原因、动态实体、update、tone 和 text-part literal alias；[verify_wasm_battle.test.mjs](../../scripts/verify_wasm_battle.test.mjs) 检查真实生成包与 literal 契约。 |
+| P2-1：Python DTO 性能 | [benchmark_py_battle_session.py](../../scripts/benchmark_py_battle_session.py) 和 [历史基线报告](../perf/reports/python-battle-session-baseline.md) 已落地；当时 A/B 门槛未触发，C 项 CPU profiling 未测，因此保留 JSON 转换路径。本机历史基线不是所有输入和环境的性能保证。 |
+
+推进与 sticky error 现由 [driver.rs](../../crates/tswn_core/src/cli_api/battle/driver.rs#L56-L99) 统一管理，展示会话及后续 [BattleModelSession](../../crates/tswn_core/src/cli_api/battle/model_session.rs) 共用该驱动。当前 API 使用入口见 [公共 API](../reference/public-api.md)，原阶段之前的结构记录见 [历史重构计划](battle-session-plan.md)。
+
+## 历史加固提案阅读说明
+
+以下第 0–29 节保留当时的问题原因、方案与验收机制。旧的“当前问题”代码是缺陷示例，“新增”“必须修改”及未勾选框不表示当前源码仍缺这些功能；具体行为以现状节与源码为准。原分块提交建议仅供理解实施过程，当前贡献约定见根 [AGENTS.md](../../AGENTS.md)。
+
+## 0. 历史验收结论与阶段定位
 
 当前 BattleSession / Web Streaming 主体实现通过结构性验收：
 
@@ -69,7 +87,7 @@ P2-1  建立 Python DTO 转换性能基线
 
 ## 2. P0-1：修复 WASM FightSession `owner_id` 兼容映射
 
-### 2.1 当前问题
+### 2.1 历史问题（已修复）
 
 canonical `BattlePlayerState` 同时存在：
 
@@ -195,7 +213,7 @@ legacy_player_state_preserves_direct_owner_id
 
 ## 3. P0-2：修复 C BattleOptions `struct_size` 演进契约
 
-### 3.1 当前问题
+### 3.1 历史问题（已修复）
 
 当前 public struct：
 
@@ -574,7 +592,7 @@ tswn_capi_abi_version() 仍保持 4
 
 ## 9. P1-1：明确 BattleSession failed / poisoned 状态
 
-### 9.1 当前语义
+### 9.1 历史基线与保留的失败语义
 
 当前 core 在 Runtime validation/error 后会：
 
@@ -754,7 +772,7 @@ Cross-binding canonical success payload comparison无需增加 `is_failed` 字�
 
 ## 13. P1-2：收紧 WASM TypeScript literal 类型
 
-### 13.1 当前问题
+### 13.1 历史类型缺口（已收紧）
 
 `battle_types.d.ts` 已经正确将：
 
@@ -1188,12 +1206,7 @@ cargo test -p tswn_test
 Clippy：
 
 ```bash
-cargo clippy \
-  -p tswn_core \
-  -p tswn_py \
-  -p tswn_wasm \
-  -p tswn_capi \
-  --all-targets
+cargo clippy -p tswn_core -p tswn_py -p tswn_wasm -p tswn_capi --all-targets
 ```
 
 WASM/JS：
@@ -1201,7 +1214,7 @@ WASM/JS：
 ```bash
 node --test crates/tswn_wasm/examples/show-*.test.mjs
 node --experimental-vm-modules scripts/verify_web_playback.mjs
-node scripts/verify_wasm_battle.test.mjs
+node --test scripts/verify_wasm_battle.test.mjs
 ```
 
 Python：
@@ -1338,7 +1351,7 @@ docs/perf/reports/python-battle-session-baseline.md
 
 ---
 
-## 27. Definition of Done
+## 27. 历史验收清单（不表示当前待办）
 
 全部满足后，本 hardening 才算完成。
 
@@ -1405,7 +1418,7 @@ docs/perf/reports/python-battle-session-baseline.md
 
 ---
 
-## 28. 完成本轮后的冻结状态
+## 28. 历史加固阶段后的冻结状态
 
 Hardening 完成后，以下部分视为可进入稳定使用阶段：
 
@@ -1443,7 +1456,7 @@ cross-binding DTO shape
 
 ---
 
-## 29. 给实现者的最终要求
+## 29. 历史实施要求
 
 本任务的目标不是“继续优化已经能工作的代码”。
 

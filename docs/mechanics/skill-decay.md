@@ -10,7 +10,9 @@
 | 4   | 分身 (CloneSkill)        | 23  | 随机衰减（本体） / 开根号（克隆体） |
 | 5   | 幻术 (ShadowSkill)       | 24  | 乘 0.75 衰减                        |
 
-> **观测方法**：用 `+diy[]{"SklHeal":128,"其他主动技能":128}` 的号测试评分时，后面的技能发动频率不为 0；而换成净化/地裂等不衰减的技能，后面技能频率完全为 0。
+[返回机制索引](README.md)
+
+本文按当前 Runtime 的技能处理函数说明等级变化。可用合法 overlay（例如 `probe+ol:{"attrs":[86,86,86,86,86,86,86,300],"skills":{"sklheal":128,"sklfire":128}}`）观察行动顺序变化；发动频率还受选目标与发动条件影响，不能仅凭频率推导衰减公式。
 
 ---
 
@@ -122,10 +124,10 @@ new_level = ceil(level * f / 128)
 当本体满足以下条件时，额外衰减：
 
 ```text
-owner.hp + owner.magic_point < rand(0, 255)
+owner.hp + owner.magic < r255()
 ```
 
-若条件成立：
+这里读取处理后的本体当前 HP 与**魔法属性 `magic`**，不是 MP `magic_point`。若条件成立：
 
 ```text
 new_level = (new_level / 2) + 1
@@ -135,7 +137,7 @@ new_level = (new_level / 2) + 1
 
 ### 4.3 克隆体继承
 
-克隆体（cloned）的技能等级不是直接继承，而是基于本体的衰减后等级**开根号**：
+克隆体的**分身技能**不是直接继承，而是基于本体的衰减后等级开根号；其他技能按 [分身机制](clone.md#3-其他技能基底截断后重放加成) 的基底与 boost 重建：
 
 ```text
 cloned_level = ceil(sqrt(owner_current_level))
@@ -150,29 +152,28 @@ cloned_level = ceil(sqrt(owner_current_level))
 ### 衰减公式
 
 ```text
-new_level = floor(level * 0.75)       // 向下取整
-if new_level < 1 { new_level = 1 }    // 最低为 1
+new_level = max(ceil(level * 3 / 4), 1)    // 向上取整，最低为 1
 ```
 
 ### 衰减条件
 
-`level >= 4` 时触发（低于 4 时 0.75 倍下取整后 ≤ 2，实际行为由公式本身保证）。
+每次使用都计算公式；`level >= 4` 时等级才实际下降，1、2、3 经向上取整后保持原值。
 
 ### 对照表
 
 | 原等级 | 衰减后 |
 | ------ | ------ |
 | 1      | 1      |
-| 2      | 1      |
-| 3      | 2      |
+| 2      | 2      |
+| 3      | 3      |
 | 4      | 3      |
-| 5      | 3      |
-| 6      | 4      |
-| 7      | 5      |
+| 5      | 4      |
+| 6      | 5      |
+| 7      | 6      |
 | 8      | 6      |
-| 9      | 6      |
-| 10     | 7      |
-| 11     | 8      |
+| 9      | 7      |
+| 10     | 8      |
+| 11     | 9      |
 | 12     | 9      |
 | …      | …      |
 
@@ -189,6 +190,13 @@ if new_level < 1 { new_level = 1 }    // 最低为 1
 | 苏生术       | 16  | 半衰     | level ≥ 2 | `(level + 1) / 2`                             |
 | 分身（本体）   | 23  | 随机     | 每次使用  | `ceil(level * rand[64,127] / 128)` + 条件减半 |
 | 分身（克隆体） | 23  | 开根号   | 创建时    | `ceil(sqrt(owner_level))`                     |
-| 幻术         | 24  | 等比     | level ≥ 4 | `floor(level * 0.75)`, 最低 1                 |
+| 幻术         | 24  | 等比     | level ≥ 4 | `ceil(level * 3 / 4)`, 最低 1                 |
 
 这些衰减机制解释了为什么在高技能等级下某些技能的实际发动次数会受限——每次使用后熟练度下降，可能导致后续回合不再满足发动条件。
+
+## 当前源码依据
+
+- 生命之轮与分身：[skills_control.rs](../../crates/tswn_core/src/runtime/combat/skills_control.rs)，分别为 `drain_plain_exchange_skill_into` 与 `drain_plain_clone_skill_into`。
+- 治愈魔法：[skills_team.rs](../../crates/tswn_core/src/runtime/combat/skills_team.rs)，`drain_plain_heal_skill_into` 在当前等级大于 8 时减 1。
+- 苏生术与幻术：[skills_lifecycle.rs](../../crates/tswn_core/src/runtime/combat/skills_lifecycle.rs)，幻术使用整数 `saturating_mul(3).div_ceil(4).max(1)`。
+- 分身技能基底与 boost 重建：[entity/tests.rs](../../crates/tswn_core/src/runtime/entity/tests.rs#L234)、[plain_clone_skill_tests.rs](../../crates/tswn_core/src/runtime/tests/plain_clone_skill_tests.rs)。

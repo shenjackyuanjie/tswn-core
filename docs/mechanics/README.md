@@ -7,4 +7,4 @@
 - [name_factor 与 rq](name-factor-rq.md)：实际对打和胜率评估的差异。
 - [判胜语义](winner.md)：胜者定义、`alive_group_count` 的边界、Rust 与 legacy `md5.js` 的对照证据。
 
-这些文档保留分析时的术语、源码定位与接口示例；阅读当前调用方式请对照 [公共 API](../reference/public-api.md) 和源码。`why_ns` 的多份历史分析与修复复盘集中在 [历史归档](../archive/README.md)，避免把不同时期结论混为一谈。
+这些文档按当前 Runtime 源码说明机制，历史样本与 legacy 对照会单独标注；当前调用方式见 [公共 API](../reference/public-api.md)。`why_ns` 的多份历史分析与修复复盘集中在 [历史归档](../archive/README.md)，用于追溯不同时期的结论。

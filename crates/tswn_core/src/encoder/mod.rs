@@ -1,6 +1,6 @@
 //! FeatureEncoder：把 [`BattleModelState`] 编码为固定形状张量的纯 Rust 实现。
 //!
-//! 设计规格见 [feature-encoder-spec.md](../../../docs/design/feature-encoder-spec.md)；
+//! 设计规格见 [feature-encoder-spec.md](../../../../docs/design/feature-encoder-spec.md)；
 //! 本文档只说明模块边界，不重复规格内容。
 //!
 //! **落位约束**（外部评审结论）：encoder 只在 Rust 实现一次，供离线导出器（`tswn_pwp`）、

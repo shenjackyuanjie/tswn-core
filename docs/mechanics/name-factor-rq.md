@@ -1,220 +1,116 @@
-# name_factor 在 fight 和 bench/winrate 下的差异：为什么短号"变弱"了
+# name_factor 与 rq：对打和胜率评估的属性差异
+
+[返回机制索引](README.md)
 
 ## 简要结论
 
-tswn-core 里打架和算胜率用的 rq（评估严格度）不一样：
+当前普通对打默认使用 `rq=4.0`，胜率与评分入口默认使用 `rq=6.0`。这里的 `rq` 是名字评估参数，不是运行期伤害倍率：它在构造玩家时影响 `name_factor`，再影响由原始七围派生的战斗属性。
 
-| 场景               | rq      | 对应哪些接口                                                      |
-| ------------------ | ------- | ----------------------------------------------------------------- |
-| **实际对打**       | **4.0** | `tswn_runner_new_from_raw`、`tswn_prepared_runner_new_from_raw`   |
-| **算胜率 / bench** | **6.0** | `tswn_win_rate`、`tswn_prepared_win_rate`、CLI `bench` 和 `score` |
+| 场景 | 默认 rq | 当前入口 |
+| --- | --- | --- |
+| 普通对打 | 4.0 | `BattleOptions::default()`、`Runner::new_from_namerena_raw`、CLI `fight` |
+| 胜率 / 评分 | 6.0 | 胜率与评分绑定的默认参数、CLI `bench`、`namer-pf` |
+| 已准备的对局 | 构造时选定 | `PreparedRunner` 复用已构造的 roster；应在准备阶段指定要比较的 `eval_rq` |
 
-rq 越大，短号玩家的属性加成就被吃掉越多。结果就是：**同一个短号，拿去 bench / 算胜率，属性比真实打架要低**，所以胜率和评分也会跟着偏低。
+对负系数短名，rq=6 通常使系数更接近 0，因此属性加成小于 rq=4；这并不能单独推出某场战斗或某个胜率统计一定降低。队名、技能、对手和 seed 都参与最终结果。需要严格比较时，应显式对齐 `eval_rq`、输入分组与 seed。
 
----
+## 1. 当前构造链
 
-## 1. name_factor 是咋算出来的
+实现位于 [namerena/build.rs](../../crates/tswn_core/src/namerena/build.rs#L255-L263)，不是旧对象模型的 `impl_ctor.rs` / `Storage`：
 
-造玩家的时候，`impl_ctor.rs` 里有一大段算 `name_factor` 的逻辑：
-
-```rust
-// Player::new_and_init_inner() 后半段
-let name_factor = match player_type {
-    Test1 | Test2 | TestEx => 0.0,    // 特殊类型直接给 0
-    _ => {
-        let eval_rq = storage.eval_rq();   // ← 关键：取的是 Storage 里存的 rq
-        let factor_name = eval_name::eval_str_common_with_rq(&name, true, eval_rq);
-        let factor_team = match &team {
-            Some(team) => eval_name::eval_str_common_with_rq(team, true, eval_rq),
-            None => factor_name,
-        };
-        factor_name.max(factor_team - 6.0)  // 取名字分和队名分-6 的较大值
-    }
-};
+```text
+Test1 / Test2 / TestEx                           -> name_factor = 0
+带 overlay 且 name_factor_enabled=false          -> name_factor = 0
+其余玩家:
+    factor_name = eval_str_common_with_rq(name, true, eval_rq)
+    factor_team = eval_str_common_with_rq(clan_name, true, eval_rq)
+    name_factor = max(factor_name, factor_team - 6)
 ```
 
-也就是说 `name_factor` 终究是 `eval_str_common_with_rq` 算出来的，而这个函数具体咋算，**就看 rq 是多少**。
-
----
+因此仅计算名字字符串的分值，还不一定得到玩家的最终 `name_factor`：队名的 `factor_team - 6` 可能覆盖名字分值。DIY / OL 还可以关闭名字系数；特殊测试类型则始终为 0。
 
 ## 2. rq 改变了什么
 
-`eval_name.rs` 最末尾有个归一化步骤，**这就是 rq 唯一能插手的地方**：
-
-```rust
-// x 是名字的"不常见度"，负得越多表示名字越短、越常见
-
-if x > 0.0 {
-    x / (32768.0 - 3500.0)               // → 正数，极小，≈0
-} else if x < -rq {
-    (x + rq) / (3497.0 + rq - 3500.0)    // → 负值，会放大属性
-} else {
-    0.0                                   // → 钳位，name_factor = 0
-}
-```
-
-名字的 `x` 值大概长这样——纯数字、纯小写字母会让 `x` 特别负；混合大小写或加特殊字符会让 `x` 往 0 靠，甚至变正。
-
-| 名字          | 长啥样      | 大概的 x   | rq=4 下什么情况                  | rq=6 下什么情况              |
-| ------------- | ----------- | ---------- | -------------------------------- | ---------------------------- |
-| `1`           | 纯数字      | ≈ -14.6    | 进入负分支 → **name_factor < 0** | 一样                         |
-| `11`          | 纯数字      | ≈ -13.2    | 同上                             | 同上                         |
-| `111111`      | 纯数字      | ≈ -7.7     | **-4 < -7.7 → 进入负分支**       | **-6 < -7.7 → 也进入负分支** |
-| `abc`         | 纯小写      | ≈ -6 到 -8 | 进入负分支                       | 进入负分支                   |
-| `tOeyDD`      | 大小写混合  | ≈ -0.97    | **钳位到 0**                     | **钳位到 0**                 |
-| `Shabby_fish` | 混合+下划线 | ≈ +0.0009  | 正数分支 → ≈0                    | 正数分支 → ≈0                |
-
-**只有纯数字、纯小写的短名字**才能拿到非零的 name_factor。而 rq 差异只对 **x 落在 -6 到 -4 之间的名字** 有影响。
-
----
-
-## 3. 差异在哪：就是 -6 < x < -4 这个区间
-
-只有这个区间里，rq=4 和 rq=6 的结果才会不一样。
-
-比如一个名字 `x = -5.5`：
+[namerena/eval_name.rs](../../crates/tswn_core/src/namerena/eval_name.rs#L65-L224) 先按 UTF-16 码元统计字符类别、类型变化和长度，再计算类别权重乘积的自然对数。对数值经过分段压缩并减去 32，得到中间量 `x`。rq 只进入最后的归一化：
 
 ```text
-rq=4:  -5.5 < -4  → 进入负分支 → name_factor = (-5.5+4)/(3497+4-3500) = -1.5/1 ≈ -1.5
-rq=6:  -5.5 ≥ -6  → 被钳住    → name_factor = 0
+x > 0       : name_factor = x / (32768 - 3500)
+x < -rq     : name_factor = (x + rq) / (rq - 3)
+其他         : name_factor = 0
 ```
 
-差多少？看个具体例子：
+比较默认的 rq=4 与 rq=6：
 
-```rust
-// eval_name.rs 里有测试确认了这个差异
-#[test]
-fn win_rate_rq_changes_negative_threshold() {
-    let default_value = eval_str_common("111111", false);           // rq=4
-    let win_rate_value = eval_str_common_with_rq("111111", false, WIN_RATE_EVAL_RQ);  // rq=6
-    assert!(win_rate_value > default_value);
-    // rq=6 的结果更靠近 0（被钳了一部分），rq=4 的 name_factor 更负
-}
-```
+- `x >= -4`：两者结果相同；正分支是很小的正值，并非恒等于 0。
+- `-6 <= x < -4`：rq=4 进入负分支，rq=6 为 0。
+- `x < -6`：两者都进入负分支，但**分子和分母都不同**，结果仍有差异。
 
-`111111` 在 rq=4 下 `name_factor ≈ -3.68`，rq=6 下 `name_factor ≈ -0.56`——**差了 3 倍还多**。
+所以差异不仅发生在 -6 到 -4 之间，也不只限于某两种字符类型。超过 8 个字符会触发额外类别计数调整，不能简化为“超过 8 字符强制为 0”。
 
----
+### 可手算的短名示例
 
-## 4. name_factor 具体能影响多少属性
+下表计算的是**单个字符串**的评估值，尚未应用队名的 `max`。这些名字只有一种字符类别且长度不超过 8：数字使用权重 16，小写字母使用权重 32，故 `x = 字符数 × ln(权重) / 2 - 20`。
 
-`impl_attr.rs` 里 `update_states()` 拿 name_factor 去缩放开围（血量除外）：
+| 字符串 | x（约） | rq=4 的分值（约） | rq=6 的分值（约） |
+| --- | ---: | ---: | ---: |
+| `1` | -18.613706 | -14.613706 | -4.204569 |
+| `11` | -17.227411 | -13.227411 | -3.742470 |
+| `111111` | -11.682234 | -7.682234 | -1.894078 |
+| `a` | -18.267132 | -14.267132 | -4.089044 |
+| `abc` | -14.801396 | -10.801396 | -2.933799 |
 
-```rust
-self.status.attack     = scale_by_name_factor_i(attr[0], 128);
-self.status.defense    = scale_by_name_factor_i(attr[1], 128);
-self.status.speed      = scale_by_name_factor_i(attr[2], 128) + 160;
-self.status.agility    = scale_by_name_factor_i(attr[3], 128);
-self.status.magic      = scale_by_name_factor_i(attr[4], 128);
-self.status.resistance = scale_by_name_factor_i(attr[5], 128);
-self.status.wisdom     = scale_by_name_factor_i(attr[6], 80);
-```
+既有 `win_rate_rq_changes_negative_threshold` 测试验证 rq=6 的负分值更接近 0；具体数值应按上述完整公式计算，不要把 `x` 与最终系数混用。
 
-公式也很直白：
+## 3. 对属性的影响
 
-```rust
-fn scale_by_name_factor_i(&self, val: i32, factor2: i32) -> i32 {
-    (val as f64 * (1.0 - self.name_factor / factor2 as f64)).round() as i32
-}
-```
-
-name_factor 为负 → `1 - 负数/正数` = `1 + |负|/正数` > 1 → **属性被放大**。
-
-### 来点实际数字
-
-假设 `name_base` 随机出基础属性 `attr = [100, 80, 90, 70, 85, 75, 60, 200]`：
-
-**名字 `111111`（纯数字，短）：**
-
-| 属性 | 原始值 | rq=4 (nf≈-3.68)              | rq=6 (nf≈-0.56)              | 差值 |
-| ---- | ------ | ---------------------------- | ---------------------------- | ---- |
-| 攻击 | 100    | 100\*(1+3.68/128)≈**102**    | 100\*(1+0.56/128)≈**100**    | -2   |
-| 防御 | 80     | 80\*(1+3.68/128)≈**82**      | 80\*(1+0.56/128)≈**80**      | -2   |
-| 速度 | 90     | 90\*(1+3.68/128)+160≈**262** | 90\*(1+0.56/128)+160≈**260** | -2   |
-| 敏捷 | 70     | 70\*(1+3.68/128)≈**72**      | 70\*(1+0.56/128)≈**70**      | -2   |
-| 魔法 | 85     | 85\*(1+3.68/128)≈**87**      | 85\*(1+0.56/128)≈**85**      | -2   |
-| 抗性 | 75     | 75\*(1+3.68/128)≈**77**      | 75\*(1+0.56/128)≈**75**      | -2   |
-| 智慧 | 60     | 60\*(1+3.68/80)≈**62**       | 60\*(1+0.56/80)≈**60**       | -2   |
-| 血量 | 200    | **200**（不受影响）          | **200**（不受影响）          | 0    |
-
-七围总和差了 **大概 14 点**。单项 2~3 点看着不多，但基础属性差了，打架时经过技能公式、at_boost 一放大，影响就不小了。
-
-**名字 `abc`（纯小写 3 个字母，x≈-7，差异更大）：**
-
-| 属性 | 原始值 | rq=4 (nf≈-4.7)           | rq=6 (nf≈-1.6)           | 差值 |
-| ---- | ------ | ------------------------ | ------------------------ | ---- |
-| 攻击 | 100    | 100\*(1+4.7/128)≈**103** | 100\*(1+1.6/128)≈**101** | -2   |
-| 智慧 | 60     | 60\*(1+4.7/80)≈**63**    | 60\*(1+1.6/80)≈**61**    | -2   |
-
-**名字 `a`（单字母纯小写，x≈-13，差距还在但比例小了）：**
-
-| 属性 | 原始值 | rq=4 (nf≈-9.6)           | rq=6 (nf≈-7.6)           | 差值 |
-| ---- | ------ | ------------------------ | ------------------------ | ---- |
-| 攻击 | 100    | 100\*(1+9.6/128)≈**107** | 100\*(1+7.6/128)≈**105** | -2   |
-| 智慧 | 60     | 60\*(1+9.6/80)≈**67**    | 60\*(1+7.6/80)≈**65**    | -2   |
-
-`x=-13` 这种极端短名，两个 rq 还是会有差距（公式分子 `x+rq` 不一样），只不过 x 越偏离阈值，差距比例越小。
-
----
-
-## 5. 分布规律：什么时候有差异、差异多大
+普通构造的缩放见 [namerena/build.rs](../../crates/tswn_core/src/namerena/build.rs#L412-L439)；分身使用同类公式重新派生，见 [runtime/entity.rs](../../crates/tswn_core/src/runtime/entity.rs#L216-L230)。
 
 ```text
-
-     name_factor  (越负 → 属性加成越大)
-         │
-  -10 ─  │  两个 rq 都进负分支
-         │  但 name_factor 还是不一样
-         │  (因为分子 x+rq 不同)
-         │
-   -6 ─  │  rq=6 的钳位线
-         │  ┌─────────────── rq=4 进负分支，rq=6 被钳住
-   -4 ─  │  │  差异最大的区间！
-         │  │
-    0 ───┴──┴──────────────────────
-              ↑
-       名字"不常见度"从低到高
-       （纯数字 → 短英文 → 长英文 → 中文 → 乱码）
+攻击 / 防御 / 基础速度 / 敏捷 / 魔法 / 抗性:
+    round(raw_attr * (1 - name_factor / 128))
+智慧:
+    round(raw_attr * (1 - name_factor / 80))
+速度:
+    缩放后的基础速度 + 160
+HP:
+    不做 name_factor 缩放
 ```
 
-大白话总结：
+负系数令缩放倍率大于 1。以下是只展示该缩放步骤的算例，原始八围为 `[100,80,90,70,85,75,60,200]`，采用 `111111` 的字符串分值且假定队名不覆盖它，不叠加武器或其他修正：
 
-- **名字极短的号**（`a`、`1`、`aa`）——两个 rq 下都有加成，但 rq=6 的加成少一点
-- **名字中等短的号**（`abc`、`111111`、`test`）——rq=4 下还有加成，rq=6 下基本被削没了
-- **名字正常或偏长的号**（`tOeyDD`、`PlayerName`）——两个 rq 下都没加成，没区别
+| 属性 | 原始值 | rq=4（nf≈-7.682234） | rq=6（nf≈-1.894078） |
+| --- | ---: | ---: | ---: |
+| 攻击 | 100 | 106 | 101 |
+| 防御 | 80 | 85 | 81 |
+| 速度 | 90 | 255 | 251 |
+| 敏捷 | 70 | 74 | 71 |
+| 魔法 | 85 | 90 | 86 |
+| 抗性 | 75 | 80 | 76 |
+| 智慧 | 60 | 66 | 61 |
+| HP | 200 | 200 | 200 |
 
----
+这些是属性缩放算例，不是重新跑过的名字池胜率结果。
 
-## 6. bench/winrate 还有个不一样的地方：seed 生成
+## 4. seed 与 rq 是两个独立维度
 
-rq 不光影响 name_factor，连 seed（随机种子）生成方式都不同：
+当前胜率批处理的 [profile_seed_for_round](../../crates/tswn_core/src/runtime/batch.rs#L340-L348) 不按 rq 分支：
 
-```rust
-// win_rate.rs: run_prepared_win_rate_range()
-if eval_rq == WIN_RATE_EVAL_RQ {
-    // i=0: 没有 seed（第一轮裸打）
-    // i>0: seed = "seed:{PROFILE_START + i}@!"
-    //         → 比方说 seed:33554464@!
-} else {
-    // seed = "seed:{i}@!"
-    //         → 比方说 seed:1@!
-}
+```text
+round == 0  -> 不附加 profile seed
+round > 0   -> seed:{PROFILE_START + round}@!
 ```
 
-也就是说，同样的轮次，rq 不同，生成的假想对手都不一样——**不光属性有差，跟谁打都不一样**。通常这个影响比前面那几点属性差异还大。
+这些 seed 扰动同一组输入的战斗初始化，不是据 rq 生成另一批“假想对手”。评分的对手 profile 由独立评分构造链生成，也不能从上述 seed 规则推断。旧文档中引用 `win_rate.rs`、按 rq 选择两种 seed 格式的代码属于旧实现，不是当前行为。
 
----
+## 5. 如何对齐比较
 
-## 7. 总结
+- Rust / Python / WASM / C 调用时使用对应入口的显式 `eval_rq` 参数；普通战斗选项与进阶 runner 的位置见 [公共 API](../reference/public-api.md)。
+- CLI 的 `bench win-rate`、`bench group-win-rate`、`bench batch-rate`、`bench pair` 与 `namer-pf` 支持 `--keep-rq`，用于保留普通对打的 rq=4；`bench auto` 没有这个开关。当前参数以 [CLI 定义](../../crates/tswn_core/src/bin/tswn_cli/args/cli.rs) 为准。
+- `PreparedRunner` 已固定构造属性；比较不同 rq 时分别准备 roster，而不是只替换运行期 seed。
+- 对照输出时同时记录名字、队名、overlay 的 `name_factor_enabled`、rq、输入分组与 seed。
 
-| 名字类型        | 例子                    | 真实打架 (rq=4)                                | bench/winrate (rq=6)                  | 对胜率的影响方向 |
-| --------------- | ----------------------- | ---------------------------------------------- | ------------------------------------- | ---------------- |
-| 极短纯数字      | `1`, `11`, `111`        | name_factor ≈ -10~-14                          | name_factor ≈ -8~-12（削减了一点）    | 胜率偏低一点     |
-| 中短纯数字/字母 | `111111`, `abc`, `test` | name_factor ≈ -3~-5                            | name_factor ≈ -0.5~+0（**削减很多**） | **胜率明显偏低** |
-| 长短数字/字母   | `111111111111`          | name_factor ≈ 0（超 8 字符后走另一条逻辑钳位） | name_factor ≈ 0                       | 没区别           |
-| 中英文混合      | `tOeyDD`, `Shabby_fish` | name_factor ≈ 0                                | name_factor ≈ 0                       | 没区别           |
-| 特殊类型        | Test1/Test2/TestEx      | name_factor = 0（硬编码）                      | name_factor = 0（硬编码）             | 没区别           |
+验证名字评估单元测试：
 
-**总的来说：短号在 bench / 算胜率的时候会"虚低"，长号不受影响。**
-
-要怎么对齐呢？要么 bench/winrate 也改用 rq=4，要么就接受它——反正 md5.js ProfileMain 也是 rq=6，跟 tswn 现在一样，不算 bug，算"行为一致"。
+```powershell
+cargo test -p tswn_core --lib namerena::eval_name::test
+```

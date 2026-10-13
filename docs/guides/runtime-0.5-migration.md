@@ -11,11 +11,11 @@
 | `tswn_wasm` | `0.5.0` | 会话改用主 Runtime，JS/JSON shape 保持不变 |
 | `tswn_capi` | `0.6.0` | C ABI 版本由 `3` 升为 `4` |
 
-上述版本已经按 2026-07-18 的发布边界封板；release commit、tag 与推送由仓库发布流程分别执行。
+这张表记录 0.5 迁移时的历史版本边界，不是当前各 crate 的版本清单；当前公开入口与稳定性分层见 [公共 API](../reference/public-api.md)。
 
 ## Rust
 
-根级 `Runner` 与 `PreparedRunner` 是唯一正式执行入口：
+根级 `Runner` 与 `PreparedRunner` 是主 Runtime 的进阶执行入口。普通战斗展示与增量消费优先使用 `cli_api::BattleSession`；完整收集使用 `battle_replay`，当前示例见 [公共 API](../reference/public-api.md)。迁移旧执行代码可使用：
 
 ```rust
 use tswn_core::Runner;
@@ -36,18 +36,20 @@ let winner = runner.winner_team_index();
 
 ## CLI
 
-`fight`、`diff`、`raw`、`bench` 和 `runtime normalized-run` 都固定使用主 Runtime：
+当前 `fight`、`runtime diff`、`runtime normalized-run`、`bench` 与 `namer-pf` 都固定使用主 Runtime：
 
 ```powershell
 cargo run -p tswn_core --bin tswn-cli -- fight -f input.txt
+cargo run -p tswn_core --bin tswn-cli -- fight -f input.txt --jsonl --max-rounds 20000
+cargo run -p tswn_core --bin tswn-cli -- runtime diff -f input.txt
 cargo run -p tswn_core --bin tswn-cli -- runtime normalized-run -f input.txt --max-rounds 20000
 ```
 
-删除的命令面包括 `--runtime legacy`、其他执行器选择值和 `runtime parity`。需要验证行为时应运行冻结 corpus，而不是在生产 CLI 内切换执行器。
+删除的命令面包括 `--runtime legacy`、其他执行器选择值、`runtime parity`、顶层 `diff` / `raw` 和 `fight --out-raw`。结构化增量输出使用 `fight --jsonl`；诊断文本使用 `runtime diff`，normalized-run JSON 使用 `runtime normalized-run`。参数依据见 [CLI 定义](../../crates/tswn_core/src/bin/tswn_cli/args/cli.rs)。需要验证行为时运行冻结 corpus。
 
 ## Python
 
-保留 `Runner`、`PreparedRunner`、`RunUpdate(s)`、RC4、snapshot、replay、胜率和评分接口。常见迁移如下：
+0.5 迁移保留 `Runner`、`PreparedRunner`、`RunUpdate(s)`、RC4、snapshot、replay、胜率和评分接口；当前普通战斗入口已统一为 `BattleSession` / `battle_replay`，runner 对象查询属于进阶接口。常见旧调用迁移如下：
 
 | 已删除 | 替代方式 |
 | --- | --- |
@@ -60,7 +62,7 @@ cargo run -p tswn_core --bin tswn-cli -- runtime normalized-run -f input.txt --m
 
 ## C
 
-C 侧继续保留 opaque runner、prepared、updates、snapshot、score 与 win-rate 符号，只删除 `tswn_default_custom_runtime_parity_json`。公开函数签名和结构体布局不变，但 ABI 查询值已升级：
+0.5 迁移中 C 侧保留 opaque runner、prepared、updates、snapshot、score 与 win-rate 符号，删除 `tswn_default_custom_runtime_parity_json`，既有函数签名和结构体布局保持不变，ABI 查询值升为 4。当前还提供 `tswn_battle_session_*` 与 `tswn_battle_replay_json`；战斗选项 V1 prefix 和句柄生命周期见 [公共 API](../reference/public-api.md)。ABI 检查示例：
 
 ```c
 if (tswn_capi_abi_version() != 4) {
@@ -72,7 +74,7 @@ if (tswn_capi_abi_version() != 4) {
 
 ## WASM 与 replay
 
-`FightSession`、`WinRateSession`、`ReplayClip` 和 `ReplayTextPart` 的 JS/JSON shape 保持 GitHub main 的定义。正文渲染只读取 `ReplayClip.parts[]`：
+0.5 迁移保留 `FightSession`、`WinRateSession` 与原有 replay shape。当前普通战斗使用 `BattleSession` 的 canonical DTO，旧 `FightSession` / `WinRateSession` 属于兼容或进阶入口；定义以 [WASM battle 绑定](../../crates/tswn_wasm/src/battle.rs) 与 [共享 battle DTO](../../crates/tswn_core/src/cli_api/battle/dto.rs) 为准。正文渲染只读取 clip 的 `parts[]`：
 
 - HP swap 的双方 part 各自携带正确血条；
 - 百分比伤害的血条使用真实 score；

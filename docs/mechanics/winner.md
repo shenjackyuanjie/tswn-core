@@ -8,15 +8,15 @@
 结论先行：
 
 - 只有**恰好一个队伍仍有存活实体**才算分出胜负；两个及以上队伍存活、或全部阵亡，都是“尚无胜者”。
-- 判胜只在**某队最后一个成员离场**的时刻发生，判据是精确的“存活者是否同属一队”，与 `alive_group_count` 无关。
-- `alive_group_count`（legacy `Engine.y.a.Q`）是**粘性计数**：队伍被清空后复活不会补回。它只服务于 `> 2` 的智能选目标，
-  **不能用于判胜**。批量热路径曾误用它，已在 `0.5.3` 之后修正。
+- Rust 在行动开始前和回合结束时同步判胜；legacy 只在**某队最后一个成员离场**时检查。两者的判据都是精确的“存活者是否同属一队”，与 `alive_group_count` 无关。
+- `alive_group_count`（legacy `Engine.y.a.Q`）是**粘性计数**：队伍被清空后复活不会补回。它参与 `> 2` 的智能选目标，以及死亡行动者的 post-action 提前退出，
+  **不能用于判胜**。批量热路径曾误用它，当前已改为存活视图判胜。
 
 ---
 
 ## 1. Rust 侧定义
 
-`WorldArena::sync_winner`（`crates/tswn_core/src/runtime/world.rs`）扫描 `EntityArena` 的 `runtime.alive`：
+[WorldArena::sync_winner](../../crates/tswn_core/src/runtime/world.rs#L294-L311) 扫描 `EntityArena` 的 `runtime.alive`：
 
 ```rust
 pub fn sync_winner(&mut self, entities: &EntityArena) -> Option<usize> {
@@ -40,9 +40,7 @@ pub fn sync_winner(&mut self, entities: &EntityArena) -> Option<usize> {
 ```
 
 - 恰好一个队伍存活 → 该队伍编号；出现第二个队伍 → `None`；一个存活实体都没有 → `None`。
-- 判胜结果落在 `WorldArena.winner_team`，对外只暴露 `winner_team()` 与
-  `RuntimeRunner::input_group_won`（把 runtime 队伍映射回输入分组，因此可能对应多个输入分组，
-  数据集生成器要求胜者唯一）。
+- 判胜结果落在 `WorldArena.winner_team`。`RuntimeRunner` 的 `winner_team_index()`、`winner_team_indices()` 与 `input_group_won()` 把 runtime 队伍映射回输入分组；正式 `BattleResult.winner_team_indices` 也使用此映射。一个 runtime 队伍可能对应多个输入分组，数据集生成器要求标签胜者唯一。
 
 两条调用路径：
 
@@ -53,7 +51,7 @@ pub fn sync_winner(&mut self, entities: &EntityArena) -> Option<usize> {
 
 可交互路径在每个子回合开始前（`combat/round.rs` 的 `run_minimal_round_once_with_capture`）和回合结束时
 （`finish_round_with_capture`）各判一次。批量路径为了热路径性能省掉实体表扫描，但**必须给出与全量扫描完全相同的结论**；
-`winner_team` 是唯一对外结果，两条路径分歧就等于“同一局对出两个胜者”。
+两条路径必须产生相同的胜者及输入队伍映射；路径分歧就等于“同一局对出两个胜者”。
 
 `sync_winner_from_alive_views` 现在的实现按 `team_alive` 的非空槽位计数，复杂度 O(队伍数)：
 
@@ -73,11 +71,11 @@ self.winner_team = if alive_groups == 1 { winner } else { None };
 ```
 
 `team_alive` / `flat_alive` 由 `add_spawned_alive`、`revive_alive`、`remove_alive` 统一维护，
-`runtime/tests/winner_path_divergence_tests.rs` 会逐回合核对它们与实体表 `runtime.alive` 是否一致。
+[判胜路径一致性测试](../../crates/tswn_core/src/runtime/tests/winner_path_divergence_tests.rs) 会逐回合核对它们与实体表 `runtime.alive` 是否一致。
 
 ## 2. legacy 侧定义（`md5.js`）
 
-legacy 只在 `T.Grp.prototype.dj`（把实体移出存活视图）里判胜（行内注释为本文所加）：
+legacy 只在 `T.Grp.prototype.dj`（把实体移出存活视图）里判胜（行内注释为本文所加）。本节函数名与行号来自历史外部 `md5.js` 版本，用于保存对齐分析；该文件不在本仓库，行号不是当前源码定位：
 
 ```js
 dj(a) {
@@ -116,17 +114,16 @@ legacy `Engine.y.a.Q` 与 Rust `WorldArena.alive_group_count` 语义一致：
 | 初始化 | `md5.js` 17267 `this_.Q = i.length`，只数非空队伍；Rust 在 `WorldArena::from_entities` 同样按非空队伍计数 |
 | 某队被清空 | `md5.js` 17742 / Rust `remove_alive` 递减 |
 | 复活或入场 | `md5.js` `aZ` 17707-17725 与 `SklRevive` 15731-15741 都不碰 `Q`；Rust `revive_alive` 只在队伍槽位是新建时才 `+1` |
-| 唯一用途 | `md5.js` 18883 `if (this.gap().y.a.Q > 2)`；Rust 侧为多处 `world.alive_group_count() > 2` 的智能选目标 |
+| 相关用途 | `md5.js` 18883 `if (this.gap().y.a.Q > 2)`；Rust 侧为 `> 2` 的智能选目标，以及下述 post-action 提前退出 |
 
-因此它是“曾经存在过的队伍数”而不是“当前存活队伍数”。这一点在
+因此它按“初始非空队伍数 + 新建队伍槽次数 − 队伍清空次数（饱和减法）”维护；已有队伍槽复活不补回，所以既不是累计出现过的队伍数，也不是当前非空队伍数。这一 legacy 边界在
 [0.3.3 更新说明](../releases/0.3.3.md) 中已经写死，并明确警告过：
 
 > 如果下游代码把它当成实时非空队伍数使用，在 revive / addNew 场景下可能会看到不同结果；这是为对齐 JS 而做的修正。
 
 **判胜不属于它的合法用途。** 需要“当前存活队伍”时，用 `team_alive` 的非空槽位或实体表 `runtime.alive`。
 
-另有一处相关用法：`combat/round.rs` 的 post-action 状态循环用 `alive_group_count() <= 1` 判断“行动者已死亡且战斗同时结束”
-从而提前跳出。那是对 legacy 行为的有意对齐，与判胜无关，本文不改动；修改它需要先拿到能区分 legacy 行为的用例。
+另有一处相关用法：[post-action 状态循环](../../crates/tswn_core/src/runtime/combat/round.rs#L269) 在行动者已死亡且 `alive_group_count() <= 1` 时提前跳出。那是对 legacy 行为的有意对齐，与判胜无关，本文不改动；修改它需要先拿到能区分 legacy 行为的用例。
 
 ## 4. 历史缺陷与修复
 
@@ -144,7 +141,7 @@ legacy `Engine.y.a.Q` 与 Rust `WorldArena.alive_group_count` 语义一致：
 并把标签记成未完成。修复（`fix(runtime): 修正批量判胜在队伍复活后误判胜者`）把判据换成 `team_alive` 非空槽位计数，
 `alive_group_count` 的 legacy 语义保持不动（技能目标选择依赖它）。
 
-实测证据（名字池 `tests/sqp5900.txt` 的 2v2v2 抽样，3 队）：
+历史修复时的观测记录（本地名字池 `tests/sqp5900.txt` 的 2v2v2 抽样，3 队；该名字池未纳入版本库）。这些数字用于解释缺陷，不代表当前测试规模或本次重新执行的结果：
 
 | 样本 | 规模 | 复活 | 计数残留 | 判胜分歧 |
 | --- | --- | --- | --- | --- |
@@ -166,8 +163,8 @@ legacy 侧同样出现计数残留，甚至出现一次“`Q == 1` 但两队存�
 - 召唤、僵尸化、幻影等也会通过 `add_spawned_alive` / `revive_alive` 把实体放回存活视图。
 
 所以“某一帧该队伍 0 存活”**不等于**“该队伍已经出局”，判胜也因此不能退化成“按本体是否存活屏蔽队伍”。
-数据集侧实测：100k 数据集前 5 个分片、4 万个样本中，标签队伍在采样帧上 0 存活的比例是 `0 / 40000`
-——这份池子里从未发生，但这是经验事实，不是引擎保证。
+历史数据集观测：100k 数据集前 5 个分片、4 万个样本中，标签队伍在采样帧上 0 存活的比例是 `0 / 40000`
+——这份池子里从未发生，但这是经验事实，不是引擎保证或当前门禁。
 
 给张量化的直接结论：
 
@@ -197,16 +194,16 @@ node scripts/md5_winner_probe.cjs ..\fast-namerena\md5.js --case-dir crates/tswn
 node scripts/md5_winner_probe.cjs ..\fast-namerena\md5.js --names tests/sqp5900.txt --battles 10000
 ```
 
-`scripts/md5_winner_probe.cjs` 会在 `Grp.dj` / `Grp.aZ` 里插桩，统计清空次数、复活次数、
+[md5_winner_probe.cjs](../../scripts/md5_winner_probe.cjs) 会在 `Grp.dj` / `Grp.aZ` 里插桩，统计清空次数、复活次数、
 `Q` 残留次数、`Q == 1` 但两队存活的次数，以及判胜时的比较值，用于核对本文第 2、3 节的结论。
 
 ## 7. 源码定位
 
 | 主题 | Rust | legacy `md5.js` |
 | --- | --- | --- |
-| 判胜 | `runtime/world.rs` `sync_winner` / `sync_winner_from_alive_views` | `T.Grp.prototype.dj`（17726-17749） |
-| 存活视图维护 | `world.rs` `add_spawned_alive` / `revive_alive` / `remove_alive` | `T.Grp.prototype.aZ`（17707-17725）、`dj` |
-| 队伍计数 | `world.rs` `alive_group_count` | `Engine.y.a.Q`（初始化 17267、递减 17742、使用 18883） |
-| 回合循环 | `combat/round.rs` `run_minimal_round_with_capture` | `T.Engine.prototype.O`（17514-17588） |
-| 复活技能 | `combat/skills_lifecycle.rs` | `T.SklRevive.prototype.v`（15702-15748） |
-| 回归测试 | `runtime/tests/winner_path_divergence_tests.rs`、`world.rs` 单测 | `scripts/md5_winner_probe.cjs` |
+| 判胜 | [world.rs](../../crates/tswn_core/src/runtime/world.rs#L294-L335) `sync_winner` / `sync_winner_from_alive_views` | `T.Grp.prototype.dj`（17726-17749） |
+| 存活视图维护 | [world.rs](../../crates/tswn_core/src/runtime/world.rs) `add_spawned_alive` / `revive_alive` / `remove_alive` | `T.Grp.prototype.aZ`（17707-17725）、`dj` |
+| 队伍计数 | [world.rs](../../crates/tswn_core/src/runtime/world.rs#L248-L286) `alive_group_count` | `Engine.y.a.Q`（初始化 17267、递减 17742、使用 18883） |
+| 回合循环 | [round.rs](../../crates/tswn_core/src/runtime/combat/round.rs) `run_minimal_round_with_capture` | `T.Engine.prototype.O`（17514-17588） |
+| 复活技能 | [skills_lifecycle.rs](../../crates/tswn_core/src/runtime/combat/skills_lifecycle.rs) | `T.SklRevive.prototype.v`（15702-15748） |
+| 回归测试 | [winner_path_divergence_tests.rs](../../crates/tswn_core/src/runtime/tests/winner_path_divergence_tests.rs)、[world.rs 单测](../../crates/tswn_core/src/runtime/world.rs#L340) | [md5_winner_probe.cjs](../../scripts/md5_winner_probe.cjs) |

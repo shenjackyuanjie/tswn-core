@@ -7,12 +7,12 @@
 
 实现入口主要在：
 
-- `crates/tswn_core/src/namerena/overlay.rs`：overlay 解析、编码与 minion overlay 结构。
-- `crates/tswn_core/src/namerena/input.rs`：从名字行里切出 `+diy[...]` / `+ol:{...}` 段。
-- `crates/tswn_core/src/namerena/build.rs`：把 overlay 应用到本体与幻影／使魔／丧尸的构造结果。
-- `crates/tswn_core/src/namerena/stats.rs`、`crates/tswn_core/src/namerena/skill.rs`：属性与技能构成的最终值。
-- `crates/tswn_core/src/runtime/handlers/minions.rs`、`crates/tswn_core/src/runtime/plain_summon.rs`：使魔／召唤物的运行期行为。
-- `crates/tswn_core/src/runtime/combat/skills_control.rs`、`crates/tswn_core/src/runtime/entity/skill_loadout.rs`：幻影等分身技能的构造与技能表重建。
+- [overlay.rs](../../crates/tswn_core/src/namerena/overlay.rs)：overlay 解析、编码与 minion overlay 结构。
+- [input.rs](../../crates/tswn_core/src/namerena/input.rs)：从名字行里切出 `+diy[...]` / `+ol:{...}` 段。
+- [build.rs](../../crates/tswn_core/src/namerena/build.rs)：把 overlay 应用到本体与幻影／使魔／丧尸的构造结果。
+- [stats.rs](../../crates/tswn_core/src/namerena/stats.rs)、[skill.rs](../../crates/tswn_core/src/namerena/skill.rs)：属性与技能构成的最终值。
+- [minions.rs](../../crates/tswn_core/src/runtime/handlers/minions.rs)、[plain_summon.rs](../../crates/tswn_core/src/runtime/plain_summon.rs)：使魔／召唤物的运行期行为。
+- [skills_control.rs](../../crates/tswn_core/src/runtime/combat/skills_control.rs)、[skill_loadout.rs](../../crates/tswn_core/src/runtime/entity/skill_loadout.rs)：幻影等分身技能的构造与技能表重建。
 
 （旧 `crates/tswn_core/src/player/**` 是 0.x 时期布局，已随旧执行器一并删除。）
 
@@ -326,18 +326,18 @@ owner+ol:{
 
 DIY 玩家分身时，克隆体不会简单复制初始 overlay 等级。当前流程是：
 
-1. 按克隆体自己的名字重新 build。
-2. 应用本体 overlay 技能配置。
-3. 将克隆体技能截断到本体当前战斗中的技能等级。
-4. 根据 `SkillBoost` 元数据重新执行 `"2*base"` 或 `"base+boost"` 加成。
+1. 复制本体的技能布局与保存的构造元数据，不重新解析名字或随机 build。
+2. 对每个技能取 `min(build_level, owner_current_level)` 作为重建基底。
+3. 根据 `SkillBoost` 元数据重放加成：LastBoost 为基底 ×2；SlotBoost 为基底 + `min(saved_boost, 基底)`。
+4. 分身技能自身另以本体本次衰减后等级的 `ceil(sqrt(level))` 覆盖。
 
-这保证了 `sklshadow`、`sklclone`、`sklheal`、`sklrevive` 等会在战斗中衰减的技能，不会因为分身而刷新回初始熟练度。
+无加成技能保留等级下降；带加成技能可能恢复一部分等级，但不会无条件重置到初始值。实现见 [SkillLoadout::rebuilt_for_clone](../../crates/tswn_core/src/runtime/entity/skill_loadout.rs#L501-L518)，score profile 的特殊重建与数值示例见 [分身机制](../mechanics/clone.md)。
 
 ## Boss 与特殊玩家
 
 Overlay 不会改变玩家类型：
 
-- `name@!` 中的已知 Boss 仍是 `PlayerType::Boss`，Boss 免疫和专属运行时逻辑仍按 Boss 类型判断。
+- `name@!` 中的已知 Boss 仍是 `PlayerClass::Boss`，Boss 免疫和专属运行时逻辑仍按 Boss 类型判断。
 - 如果 Boss overlay 提供 `attrs`，这些属性会直接覆盖普通构建结果，不再额外叠加 Boss `appendAttr`。
 - 如果 Boss overlay 提供 `skills`，会走 DIY 技能覆盖；这会绕过 Boss 默认“普通技能等级全为 0”的构建分支。
 - `Test1` / `Test2` / `TestEx` 的 `name_factor` 仍强制为 0；`name_factor_enabled:false` 也会强制为 0。
@@ -370,14 +370,16 @@ cargo run -p tswn_core --bin tswn-cli -- to-diy -f names.txt --minions -o diy.tx
 
 `--minions` 只支持 `+ol` 输出，不能和 `--old` 同时使用。生成的模板会省略 0 熟练度技能；回读时缺失技能会按固定槽位补齐为 0。
 
+机器回读应使用 `-o/--out-file` 保存转换正文：`to-diy` 的 stdout 仍有 CLI 欢迎 banner，`--no-details` 只关闭额外属性详情，不关闭 banner。文件输出只写转换结果，见 [to_diy.rs](../../crates/tswn_core/src/bin/tswn_cli/to_diy.rs#L10-L28)。
+
 ## 验证
 
 相关测试集中在：
 
-- `crates/tswn_core/src/namerena/input.rs`（`parses_identity_weapon_and_overlay_without_splitting_quoted_plus`）
-- `crates/tswn_core/src/namerena/build.rs`（`native_minion_blueprints_apply_overlay_data`）
-- `crates/tswn_core/src/cli_api/parse.rs`（`+diy` / `+ol` 段解析与导出）
-- `crates/tswn_core/src/runtime/tests/custom_runner_import_tests.rs`、`crates/tswn_core/src/runtime/tests/plain_raw_import_tests.rs`
+- [input.rs](../../crates/tswn_core/src/namerena/input.rs)（`parses_identity_weapon_and_overlay_without_splitting_quoted_plus`）
+- [build.rs](../../crates/tswn_core/src/namerena/build.rs)（`native_minion_blueprints_apply_overlay_data`）
+- [parse.rs](../../crates/tswn_core/src/cli_api/parse.rs)（`+diy` / `+ol` 段解析与导出）
+- [custom_runner_import_tests.rs](../../crates/tswn_core/src/runtime/tests/custom_runner_import_tests.rs)、[plain_raw_import_tests.rs](../../crates/tswn_core/src/runtime/tests/plain_raw_import_tests.rs)
 
 常用验证命令：
 
@@ -390,6 +392,6 @@ cargo test -p tswn_core --lib -- --test-threads=1
 
 往返和对战过程验证见：
 
-- `docs/guides/diy-validation.md`
-- `track_diy_roundtrip.py`
-- 旧 `crates/tswn_core/src/bin/track_diy_roundtrip.rs` 已随旧执行器删除，仅保留 Python 脚本
+- [DIY 往返验证](../guides/diy-validation.md)：当前 JSONL 采样、测试与差异分级工作流。
+- [track_diy_roundtrip.py](../../track_diy_roundtrip.py)：历史采样工具，尚未适配当前 CLI 与初始状态格式，不能直接作为当前门禁。
+- 旧 `crates/tswn_core/src/bin/track_diy_roundtrip.rs` 已随旧执行器删除。

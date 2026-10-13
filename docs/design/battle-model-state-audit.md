@@ -6,7 +6,7 @@
 - [状态导出与数据生成](battle-analyze.md)
 - [FeatureEncoder 规格](feature-encoder-spec.md)
 
-本文是 [状态导出与胜率数据生成契约](battle-analyze.md) 的字段级依据；它只审计 Runtime 状态，不重新定义 `BattleSession` 的推进或公开 API。
+本文是 [状态导出与胜率数据生成契约](battle-analyze.md) 的字段级依据；它审计的是**已经实现**的 Runtime 状态投影，不重新定义 `BattleSession` 的推进或公开 API。当前 `MODEL_STATE_SCHEMA_VERSION = 1`，状态接口与 schema 仍属于 Experimental。
 
 审计边界是默认规则、初始化完成或完整主回合结束。导出目标是当前机制信息，不是用于恢复整个 Runtime 的存档格式。`ModelStateError` 拒绝不同注册表、非空效果队列、文本槽和无法映射的实体引用；高层 session 在失败后也拒绝导出。
 
@@ -62,3 +62,9 @@
 `BattleModelState::validate` 检查实体 ID、空槽范围、输入队伍、世界顺序、owner/root_owner、保护链、暗杀/反击目标、毒/魅惑及感染/Boss 引用。Parquet 校验层另外检查对局行序、标签唯一性、样本轮数、终局排除、样本计数和集合隔离。
 
 测试覆盖同 seed 逐边界比对、重复读取不改变实体/世界/RC4、当前注册表全部技能编号、内置 Boss、DIY 和动态生成、压缩状态与注册游标、实体数组重排、不同线程数生成及续跑。golden/corpus 基线不因本功能重生成。
+
+## 当前源码依据
+
+- [runtime/model_state.rs](../../crates/tswn_core/src/runtime/model_state.rs)：状态投影、实体引用校验、schema 版本、42 项技能映射，以及压缩状态和 slot 的投影测试。
+- [BattleModelSession](../../crates/tswn_core/src/cli_api/battle/model_session.rs)：复用 BattleDriver 的推进边界；同 seed 与回放逐边界一致、重复读取无副作用和 sticky failure 回归。
+- [generate.rs](../../crates/tswn_pwp/src/generate.rs)、[storage.rs](../../crates/tswn_pwp/src/storage.rs)、[validate.rs](../../crates/tswn_pwp/src/validate.rs)：两遍采样、Parquet 存储与数据集级校验。

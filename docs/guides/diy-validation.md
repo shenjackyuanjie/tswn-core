@@ -1,173 +1,119 @@
-# DIY 往返验证 — 工作流与执行计划
+# DIY 往返验证：当前工作流与历史记录
 
-这份文档描述 DIY overlay 系统的验证工作流：将普通对局中的每个玩家转换为 DIY 格式，然后验证 DIY 版本的**初始状态**（八围、技能等级、name_factor）是否与原始玩家一致。
+[返回指南索引](README.md)
 
-## 核心概念
+本文验证普通名字导出为 DIY / OL 后能否保持构造与战斗行为。当前格式与限制见 [DIY / OL Overlay 参考](../reference/diy-overlay.md)，对局增量接口见 [公共 API](../reference/public-api.md)。
 
-```text
-原始玩家:  PlayerA @Team  --build-->  attrs=[47,60,48,...], skills={fire:5,...}
-              ↓ to-diy
-DIY 玩家:   PlayerA+diy[83,96,84,...]{...} @Team  --build-->  attrs=[47,60,48,...], skills={fire:5,...}
-              ↓ 对比
-预期结果:   初始八围、技能等级、name_factor 完全一致
-                  ↓ 对战
-对战日志:   fight --out-raw (orig vs diy)
-                  ↓ 对比
-预期结果:   对战过程一致
-```
+## 1. 当前工具状态
 
-## 新增：对战过程比对
+[track_diy_roundtrip.py](../../track_diy_roundtrip.py) 是保留的历史采样脚本，**尚未适配当前 CLI**：
 
-现在会额外对比对战过程：
+- 对战比对仍调用已删除的 `fight --out-raw`；当前结构化战斗输出为 `fight --jsonl`。
+- 转换仍把名字作为 `to-diy` 的位置参数；当前要求 `-r/--raw` 或 `-f/--file`。
+- 初始状态仍通过旧人类可读输出的正则提取，并要求当前输出已不再打印的 `move_point` 字段。
 
-- 通过 `tswn-cli fight --out-raw` 输出标准化日志
-- 比较原始对战与 DIY 对战日志是否一致
-- 脚本默认使用 `ol:` 格式，技能按顺序排列（顺序即行动顺序），不再使用独立的 `skill_order` 字段
-- to-diy 输出会省略 0 熟练度技能，保留非零技能行动顺序，同时编码 boost 类型（`"2*base"` / `"base+boost"`）
+所以脚本的 `--skip-fight` 也不能使当前初始状态验证恢复可用。先使用下文的现行命令与源码测试；历史采样结果单独保留，脚本适配属于后续工具工作。
 
-如果你只关心 build 后的初始状态，或预期存在已知差异（如武器禁用），可使用 `--skip-fight` 跳过对战过程比对。
-
-## 执行原则
-
-1. **目标是初始状态一致**：原始玩家和 DIY 玩家 build 后的八围、技能等级、name_factor 应当匹配。
-2. **默认对战过程一致**：对战日志应与原始对局一致；如需跳过，用 `--skip-fight`。
-3. **先小样本验证**：默认用少量 case（64~200）快速验证，确认无问题后再扩大规模。
-4. **差异分级处理**：
-   - 八围不匹配 → `parse_diy` 或 `to_diy_compact` 的 ±36 逻辑有误
-   - 技能等级不匹配 → `apply_diy_skill_levels` 或 boost 逻辑有误
-   - name_factor 不匹配 → `name_factor_enabled` 处理有误
-   - 对战过程不一致 → 可能是技能槽顺序、武器禁用或其它逻辑差异
-   - 崩溃/无输出 → DIY 名字解析失败
-
-## 快速开始
-
-### 1. 编译
-
-```bash
-cargo build --bin tswn-cli
-```
-
-### 2. 运行验证
-
-```bash
-# 从号库生成 64 个 case 并验证
-python track_diy_roundtrip.py --library tests/sqp6000.txt --max-cases 64
-
-# 带偏移量
-python track_diy_roundtrip.py --library tests/sqp6000.txt --max-cases 64 --case-offset 64
-
-# 安静模式
-python track_diy_roundtrip.py -q --max-cases 64
-
-# 只比初始状态，跳过对战过程
-python track_diy_roundtrip.py -q --max-cases 64 --skip-fight
-```
-
-### 3. 查看结果
+## 2. 验证目标与层次
 
 ```text
-target/diy_roundtrip/
-├── summary.json              # 总体统计
-└── <case-id>/
-    ├── input_orig.txt         # 原始输入
-    ├── input_diy.txt          # DIY 输入
-    ├── status_orig.json       # 原始玩家初始状态
-    ├── status_diy.json        # DIY 玩家初始状态
-    ├── fight_orig.txt          # 原始对战日志
-    ├── fight_diy.txt           # DIY 对战日志
-    ├── fight_diff.txt          # 对战差异摘要（失败时）
-    └── diff.txt               # 状态差异（失败时）
+原始名字与队伍 -> 构造 roster -> 原始八围 / 技能布局 / 加成元数据 / name_factor
+        |
+        +-> to-diy 导出 OL -> 保留原分组回读 -> 比较构造数据
+                                      |
+原始输入与回读输入分别运行 fight --jsonl -> 比较 initial / frame / result
 ```
 
-## 测试规模建议
+验证时区分三层：
 
-| 阶段     | case 数 | 目标                 |
-| -------- | ------- | -------------------- |
-| 冒烟测试 | 16      | 快速验证基本功能     |
-| 小样本   | 200     | 发现常见差异模式     |
-| 中样本   | 2000    | 确认修复覆盖主流场景 |
-| 大样本   | 12000   | 最终验证             |
+1. **格式与构造层**：原始八围、技能等级、行动顺序、boost 类型、队名与名字系数配置。OL 和紧凑 DIY 的前七围都以 +36 编码，HP 不偏移。
+2. **展示状态层**：`initial` 事件的派生属性、HP、MP、`name_factor` 等。`BattlePlayerState` 不含完整技能 loadout，不能用这一层代替技能构造检查。
+3. **战斗层**：逐帧 updates、状态、终止原因、胜者与推进次数。初始状态相同还不足以证明分身重建、行动顺序和召唤物行为相同。
 
-## 已知差异排查指南
+源码层应对照 [PreparedPlayer 构造](../../crates/tswn_core/src/namerena/build.rs)、[SkillLoadoutSpec](../../crates/tswn_core/src/namerena/skill.rs)、[导出器](../../crates/tswn_core/src/cli_api/parse.rs#L83-L185) 与 [BattlePlayerState](../../crates/tswn_core/src/cli_api/battle/dto.rs#L40-L75)。
 
-### 1. DIY 名字生成失败
+## 3. 当前 CLI 冒烟工作流
 
-**现象**：`[WARN] 无法转换: ...`，或 DIY 玩家 build 失败。
+以下命令在仓库根目录的 PowerShell 中运行，使用无需外部号库的 1v1 小样本：
 
-**原因**：`tswn-cli to-diy` 未能解析玩家名字（如包含特殊字符）。
+```powershell
+cargo build -p tswn_core --bin tswn-cli
+New-Item -ItemType Directory -Force target/diy_docs_smoke | Out-Null
+$cli = './target/debug/tswn-cli.exe'
 
-### 2. 紧凑格式八围偏移
+# 原始输入保留队伍间空行；此例没有武器后缀。
+Set-Content -Encoding utf8 target/diy_docs_smoke/input_orig.txt "alpha`n`nbeta"
 
-**现象**：DIY 玩家初始八围与原始玩家不同。
+# 转换正文写入文件，避免 stdout 的欢迎 banner；按原分组回读。
+& $cli to-diy -r alpha -o target/diy_docs_smoke/alpha.ol.txt | Out-Null
+& $cli to-diy -r beta -o target/diy_docs_smoke/beta.ol.txt | Out-Null
+$alpha = Get-Content -Encoding utf8 target/diy_docs_smoke/alpha.ol.txt
+$beta = Get-Content -Encoding utf8 target/diy_docs_smoke/beta.ol.txt
+Set-Content -Encoding utf8 target/diy_docs_smoke/input_ol.txt "$alpha`n`n$beta"
 
-**原因**：`parse_diy` / `parse ol` 或导出逻辑的前七围 ±36 逻辑有误，或 HP 被错误处理。
+& $cli fight -f target/diy_docs_smoke/input_orig.txt --jsonl --max-rounds 20000 > target/diy_docs_smoke/fight_orig.jsonl
+& $cli fight -f target/diy_docs_smoke/input_ol.txt --jsonl --max-rounds 20000 > target/diy_docs_smoke/fight_ol.jsonl
+```
 
-**排查**：对比 `diff.txt` 中的 `attr` 字段，检查是否恰好差 36 或差某个固定偏移。
+PowerShell 示例使用原生换行转义；也可以直接写多行字符串。`to-diy --no-details` 仅关闭属性附加详情，不关闭 CLI 欢迎 banner，所以机器回读应使用 `-o` 输出文件，见 [to_diy.rs](../../crates/tswn_core/src/bin/tswn_cli/to_diy.rs#L10-L28) 与 [main.rs](../../crates/tswn_core/src/bin/tswn_cli/main.rs#L75-L86)。自动化时请统一 UTF-8 输出，并检查每次 CLI 的退出码与 stderr。JSONL 外壳固定为 `{"type":"initial|frame|result","data":...}`，不是旧的 raw 文本；实现与逐行刷新测试见 [fight/driver.rs](../../crates/tswn_core/src/bin/tswn_cli/fight/driver.rs)。
 
-### 3. OL 属性编码
+> 文件批量导出使用 `to-diy -f names.txt -o diy.txt`，按非空行输出名字；原始战斗中的空行分组需要由调用方保留，不能把批量转换结果直接当作已保留队伍边界的战斗文件。需要模板时加 `--minions`；此选项只支持 OL，不能与 `--old` 同时使用。
 
-`ol.attrs` 和紧凑 `diy[...]` 一样使用前七围 +36 编码，解析时前七围会 `-36`，HP 原样保留。手写 `ol:{...}` 时不要把内部八围原样写入 `attrs`。
+### 比较什么
 
-### 4. 武器差异
+- JSONL 第一条应为 `initial`，最后一条应为 `result`；中间 `frame` 的顺序不可重排。
+- 先按实体 ID 比较初始派生属性与 `name_factor`，再比较帧序列及结果。确有展示文本差异时，记录明确的忽略字段，不要一开始就广泛删字段。
+- 另在构造层核对技能等级、非零技能行动顺序和 `SkillBoost`。导出器按行动顺序写 `skills`，省略 0 等级技能；回读时补齐固定槽位，不保证任意 40 槽位的完整顺序被逐项导出。
+- 使用同一个 rq、相同的输入队伍边界和 seed。DIY 并不天然意味着“RNG 不同”；是否一致取决于原始身份、构造参数、顺序与 overlay 保留的信息，应比较实际输出。
 
-**现象**：原始玩家有武器，DIY 版本 `weapon_state=None`。
+## 4. 现有源码测试
 
-**原因**：当前 DIY 模式禁用了武器。`to_diy_compact` 不导出武器信息。
+```powershell
+# 导出格式、准备后导出和 overlay / 武器后缀切分
+cargo test -p tswn_core --lib cli_api::parse::tests
 
-**这是已知限制**：暂不支持武器还原。
+# 输入解析与召唤物模板构造
+cargo test -p tswn_core --lib namerena::input::tests
+cargo test -p tswn_core --lib namerena::build::tests
 
-### 5. 技能 boost 信息丢失 —— ✅ 已修复
+# 当前等级、构造基底与分身加成重建
+cargo test -p tswn_core --lib skill_loadout_rebuilds_clone_levels_from_build_baseline_before_boosts
+cargo test -p tswn_core --lib plain_clone_skill_tests
+cargo test -p tswn_core --lib plain_raw_import_tests
+```
 
-技能 boost 类型现已通过 `Skill.diy_boost` 在 build 阶段自动记录（`boost_if_not()` → `LastBoost`，`boost_level()` → `SlotBoost`）。to-diy 导出时正确编码为 `"2*base"` / `"base+boost"` 格式。
+这些是当前实现的定点覆盖，不等价于重新跑过所有历史号库 case。大样本工具恢复后，建议按 16 个冒烟、200 个小样本、2000 个中样本，再到更大规模递进，保留失败输入和逐层差异。
 
-### 6. name_factor 差异
+## 5. 差异分级与限制
 
-**现象**：DIY 玩家的 name_factor 与原始不同。
+| 现象 | 首要核对项 |
+| --- | --- |
+| 名字转换或回读失败 | `-r/-f` 参数、身份 / 队名 / quoted plus 的切分、overlay JSON 格式 |
+| 原始七围差固定值 | 前七围 +36 / -36 编码与 HP 不偏移规则 |
+| 展示属性不同 | `name_factor`、队名、rq、武器或其他构造修正；原始八围与派生属性不要混用 |
+| 技能等级相同但分身不同 | 保存的 build 基底、LastBoost / SlotBoost 类型及 SlotBoost 上限 |
+| 帧序列不同 | 非零技能行动顺序、seed、召唤物模板、武器行为与终止预算 |
+| 提前截断 | 检查 `result.stop_reason`；`max_rounds` / `no_progress` 是保护性终止，不是正常获胜 |
 
-**原因**：`to_ol_json` 输出 `name_factor_enabled:true`，但 DIY 名字计算的 name_factor 与原始不同。
+当前确定的限制与边界：
 
-**排查**：对比两个玩家的 `系数` 值。
+- **武器行为不能完整还原**：提供 attrs 或 skills 的 DIY / OL 会关闭武器构造，导出器也不输出武器信息。即使八围可被保存，武器技能或运行期行为仍可能不同，见 [build.rs](../../crates/tswn_core/src/namerena/build.rs#L274-L294)。
+- **加成由当前元数据表示**：`SkillBoost` 保留 Normal / LastBoost / SlotBoost；原生构造在技能已有 boosted 标记时跳过重复末端加成，见 [build.rs](../../crates/tswn_core/src/namerena/build.rs#L385-L408)。不要沿用旧 `Skill.diy_boost` 对象字段或把旧“双 boost 丢失”统计当作当前缺陷结论。
+- **模板导出有范围**：`to-diy --minions` 导出当前可生成或显式配置的 shadow / summon / zombie 模板，并省略 0 等级技能；它不是任意运行期实体与状态的存档格式。
 
-## 修复判定标准
+## 6. 历史验证记录
 
-| 情况                 | 判定        |
-| -------------------- | ----------- |
-| 初始八围完全一致     | ✅ 通过     |
-| 初始技能等级完全一致 | ✅ 通过     |
-| 所有 case 通过       | ✅ 全部通过 |
-| 八围/技能出现差异    | ❌ 需修复   |
-| 出现崩溃             | ❌ 需修复   |
+旧工作流记录过以下结果，使用当时的 CLI、输出格式和实现，保留为问题定位线索：
 
-## 当前验证状态
+| 历史样本 | 当时记录 |
+| --- | --- |
+| sqp6000 对战比对 | 64 / 64 通过 |
+| sqp5900 对战比对 | 498 / 500 通过（99.6%） |
 
-| 项目                                       |          状态           |
-| ------------------------------------------ | :---------------------: |
-| 初始八围、技能等级、name_factor 一致       |       ✅ 全部通过       |
-| sqp6000 对战过程一致（64 case）            |      ✅ 64/64 通过      |
-| sqp5900 对战过程一致（500 case）           | ✅ 498/500 通过 (99.6%) |
-| 完整 action order 往返（40 槽位）          |        ✅ 已实现        |
-| Boost 类型编码（LastBoost/SlotBoost）      |        ✅ 已实现        |
-| skill_order 移除，skills 有序列表          |        ✅ 已实现        |
-| boost 流程分离（普通 step A / DIY step B） |        ✅ 已实现        |
-| OL 召唤物模板与技能分类通道                |        ✅ 已实现        |
+这些数字不是当前版本的验收结果；本页不再宣称当前“全部通过”或 40 槽位完整 action order 往返。恢复采样脚本后，应重新生成报告，并记录提交版本、样本库、rq、seed、分组、忽略字段与命令。
 
-## 已知限制
+旧脚本写入 `target/diy_roundtrip/summary.json` 及每 case 的输入、初始状态、对战日志和差异文件。这种留存结构仍有价值；迁移时应改用当前 JSONL / DTO，不再解析人类可读行。
 
-1. **武器不支持**：DIY 模式下武器不计入（weapon_state = None）。
-2. **双 boost 技能**：同一技能同时被 LastBoost + SlotBoost 命中时（约占 0.4% case），diy_boost 元数据会丢失一个加成类型，导致往返不一致。
-3. **召唤物模板导出**：`to-diy --minions` 只导出当前可生成或已显式配置的 shadow/summon/zombie 模板，且省略 0 熟练度技能。
+## 7. 与 JS / Rust 对齐验证的关系
 
-## 最终目标
-
-- 初始状态一致（八围、技能等级、name_factor）。
-- 对战过程一致（sqp5900 500/500 通过）。
-
-## 与 sby_test.md 的关系
-
-| 维度         | sby_test.md         | diy-validation.md      |
-| ------------ | ------------------- | ---------------------- |
-| 比对对象     | TS（JS）vs Rust     | 原始 vs DIY（均为 Rust） |
-| 比对内容     | 对局 round-by-round | build 后初始状态       |
-| 工具         | bun + out_md5.ts    | tswn-cli to-diy        |
-| 目标         | Rust 对齐 JS 行为   | DIY 还原初始状态       |
-| RNG 是否一致 | 是（同 seed）       | 否（不同 name_base）   |
+[历史 sby 测试计划](../archive/sby-test-plan.md) 比较的是外部 JS 与 Rust；本文比较同一当前 Rust 中的原始名字与导出回读名字。两者验证对象不同，不能互相替代。冻结 JS exact trace 与压力 golden 的现行门禁见 [主 Runtime 0.5 迁移指南](runtime-0.5-migration.md#回归门禁)。

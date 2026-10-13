@@ -1,10 +1,10 @@
-# TSWN BattleSession + Web Streaming 最终重构计划
+# TSWN BattleSession + Web Streaming 重构计划与历史验收
 
-> 状态：FINAL / 已锁定  
-> 目标仓库：`shenjackyuanjie/tswn-core`  
-> 本文覆盖：BattleSession 公共 API、Python/WASM/C 同步、CLI 清理与 JSONL streaming、网页真实 streaming 迁移、性能基线、未来扩展准备  
-> 本文不覆盖：任何胜率模型、ModelState、训练数据、模型推理、模型 UI  
-> 本文取代此前 BattleSession 计划文档，作为本轮实现唯一规格。
+> 状态：历史设计档案；当前实现见下方“当前实现与源码依据”。
+> 目标仓库：`shenjackyuanjie/tswn-core`。
+> 原计划范围：BattleSession 公共 API、Python/WASM/C 同步、CLI 清理与 JSONL streaming、网页 streaming 迁移、性能基线和扩展准备。
+> 原阶段未包含 ModelState、训练数据、模型推理或模型 UI；后续已加入 Rust 机制状态导出与数据生成，不应把原阶段范围当作当前功能缺口。
+> 第 0–70 节保留当时的设计决策、实施顺序和验收清单，不再作为当前待执行规格。
 
 相关文档入口：
 
@@ -14,7 +14,27 @@
 
 ---
 
-## 0. 本轮最终目标
+## 当前实现与源码依据
+
+**BattleSession、跨语言会话、CLI JSONL 和网页增量播放均已落地。** 以下是本次文档维护直接核对源码及测试得到的现状；文末的历史测试和性能记录仍保留原时间及环境含义，本次未重跑完整测试或性能基准。
+
+| 当前行为 | 源码与测试依据 |
+| --- | --- |
+| 推进与停止策略统一在 `BattleDriver`；真实 `main_round` 次数计入预算，胜者优先于 `max_rounds` 和 `no_progress`，无进展阈值为当前实体数（至少 1）乘 16 | [driver.rs](../../crates/tswn_core/src/cli_api/battle/driver.rs#L63-L99)；[model_session.rs 的边界一致性与停止策略测试](../../crates/tswn_core/src/cli_api/battle/model_session.rs#L77-L162) |
+| `BattleSession` 负责展示 DTO、初始/当前快照和图标缓存，空回合也更新差分快照；`battle_replay()` 收集同一会话 | [session.rs](../../crates/tswn_core/src/cli_api/battle/session.rs#L16-L118)；[replay.rs](../../crates/tswn_core/src/cli_api/battle/replay.rs) |
+| `status()` 仍为 `running/finished/truncated`；正常终止后 `next_frame()` 返回空、`result()` 存在；Runtime 失败单独由 `is_failed()` 查询，重复推进返回同一错误，不生成正常结果 | [session.rs](../../crates/tswn_core/src/cli_api/battle/session.rs#L52-L118)；[driver.rs](../../crates/tswn_core/src/cli_api/battle/driver.rs#L56-L74) |
+| 默认 `max_rounds=20000`、`include_icons=false`；Python/WASM/C 已提供会话和失败查询；C ABI 仍为 4，options 读取永久冻结的 V1 前缀 | [dto.rs](../../crates/tswn_core/src/cli_api/battle/dto.rs#L6-L20)；[Python battle.rs](../../crates/tswn_py/src/battle.rs)；[WASM battle.rs](../../crates/tswn_wasm/src/battle.rs)；[C battle_api.rs](../../crates/tswn_capi/src/battle_api.rs#L8-L90)；[C lib.rs](../../crates/tswn_capi/src/lib.rs#L21) |
+| `fight -f input.txt --jsonl` 输出 `initial/frame/result` 并逐行刷新；诊断命令为 `runtime diff`，旧 `raw`、`--out-raw` 和 `!test!` 路由已移除；`-r/--raw` 仍是文本输入选项 | [CLI 参数](../../crates/tswn_core/src/bin/tswn_cli/args/cli.rs#L42-L150)；[CLI 输入选项](../../crates/tswn_core/src/bin/tswn_cli/args/input.rs)；[fight driver](../../crates/tswn_core/src/bin/tswn_cli/fight/driver.rs#L12-L98)；[cli_battle.rs](../../crates/tswn_core/tests/cli_battle.rs) |
+| 网页通过 WASM 会话按需拉帧；controller 的预取 buffer 为 2，历史追加，终局/失败释放 source，迟到结果受 generation 隔离 | [show-wasm.js](../../crates/tswn_wasm/examples/show-wasm.js#L123-L190)；[show-stream.js](../../crates/tswn_wasm/examples/show-stream.js#L1-L145)；[show-stream.test.mjs](../../crates/tswn_wasm/examples/show-stream.test.mjs) |
+| 后续已加入 `BattleSession::model_state()`、共用驱动的 `BattleModelSession`、pwp 数据生成和 Rust encoder；这属于原阶段之后的实现，不是本文历史范围清单中的未完成项 | [session.rs](../../crates/tswn_core/src/cli_api/battle/session.rs#L43-L48)；[model_session.rs](../../crates/tswn_core/src/cli_api/battle/model_session.rs#L23-L64)；[状态与数据生成说明](battle-analyze.md)；[FeatureEncoder 规格](feature-encoder-spec.md) |
+
+当前源码目录为 [cli_api/battle](../../crates/tswn_core/src/cli_api/battle/mod.rs)，包含 `dto.rs`、`driver.rs`、`session.rs`、`model_session.rs` 和 `replay.rs`，与早期仅列 DTO/session/replay 的规划树不同。API 加固的已修复项与保留契约见 [加固现状](battle-session-hardening.md#当前加固状态与源码依据)，当前使用入口见 [公共 API](../reference/public-api.md)。
+
+## 历史重构提案阅读说明
+
+以下第 0–70 节中的“本轮”“当前”“必须”“新增”和 Commit 编号均指原重构阶段；代码草图、文件拆分和勾选框是历史计划/验收记录。后续新增的失败查询、共享 driver 和 ModelState 以本节源码依据为准。提交与验证约定以根 [AGENTS.md](../../AGENTS.md) 为准，历史分块提交建议不是本次文档维护的操作要求。
+
+## 0. 历史阶段目标
 
 本轮完成后，TSWN 的对局执行只存在一套正式语义：
 
@@ -2826,11 +2846,7 @@ cargo test -p tswn_py
 cargo test -p tswn_wasm
 cargo test -p tswn_capi
 
-cargo clippy \
-  -p tswn_core \
-  -p tswn_py \
-  -p tswn_wasm \
-  -p tswn_capi
+cargo clippy -p tswn_core -p tswn_py -p tswn_wasm -p tswn_capi
 
 Python API 验证
 
@@ -2847,9 +2863,9 @@ CLI 契约测试
 
 ---
 
-## 69. 最终完成定义
+## 69. 历史阶段完成清单
 
-全部满足才结束本轮。
+下列勾选结果仅记录原阶段验收。尤其“未定义 ModelState”是当时的范围控制，后续已实现机制状态导出，见本文现状节。
 
 ### Core/API
 
@@ -2925,7 +2941,7 @@ CLI 契约测试
 
 ---
 
-## 70. 本轮结束后的系统状态
+## 70. 历史阶段结束时的系统状态
 
 最终：
 
@@ -2968,18 +2984,20 @@ result
 稳定流，而不需要再次修改 Runtime、回放语义、播放控制或跨语言 API。
 
 
-## 实施验收记录（2026-09-08）
+## 历史实施验收记录（2026-09-08）
+
+本节记录当时的执行结果、提交划分和性能数据，不表示本次文档维护重新运行了这些命令，也不覆盖后续共享 driver、失败查询和 ModelState 的增量实现。
 
 保留分块提交：Core 1–3、Python 4、WASM 5–6、C 7、CLI 8–10、Web 11–19、文档 20。最终回归发现的页面边界、Python 测试导入和 WASM 错误码引用各自独立修复提交；未 squash。
 
 | 规格范围 | 实现/证据 | 验证结果 |
 | --- | --- | --- |
 | 0–19：统一状态机、DTO、计数、终止、错误 | `crates/tswn_core/src/cli_api/battle/{dto,session,replay}.rs`；session 测试覆盖空 round 预算、空 updates 获胜、最后预算轮获胜、no_progress、重复 terminal、图标和 sticky runtime error | core 测试通过；collector 与 session 精确一致 |
-| 20：Python | `src/battle.rs`、`_types_battle.pyi`、`verify_py_cli_api.py` | 实际扩展的迭代器、全部 DTO keys、结果、ownership 与错误码验证通过 |
-| 21–22：WASM | `src/battle.rs`、`battle_types.d.ts`、兼容 FightSession | 原生测试、wasm32 build、真实 Node 包 7 项测试通过 |
-| 23：C | `src/battle_api.rs`、头文件、`examples/battle_session.c` | ABI 4、版本化 options、NULL/短结构/未来尾部/输出所有权、C 示例编译运行通过 |
+| 20：Python | [battle.rs](../../crates/tswn_py/src/battle.rs)、[_types_battle.pyi](../../crates/tswn_py/tswn_py/_types_battle.pyi)、[verify_py_cli_api.py](../../scripts/verify_py_cli_api.py) | 实际扩展的迭代器、全部 DTO keys、结果、ownership 与错误码验证通过 |
+| 21–22：WASM | [battle.rs](../../crates/tswn_wasm/src/battle.rs)、[battle_types.d.ts](../../crates/tswn_wasm/src/battle_types.d.ts)、[兼容 FightSession](../../crates/tswn_wasm/src/fight.rs) | 原生测试、wasm32 build、真实 Node 包 7 项测试通过 |
+| 23：C | [battle_api.rs](../../crates/tswn_capi/src/battle_api.rs)、[头文件](../../crates/tswn_capi/include/tswn_capi.h)、[battle_session.c](../../crates/tswn_capi/examples/battle_session.c) | ABI 4、版本化 options、NULL/短结构/未来尾部/输出所有权、C 示例编译运行通过 |
 | 24–25：CLI | fight driver、runtime 子命令、`crates/tswn_core/tests/cli_battle.rs` | human / JSONL / stdin / 非零错误退出 / 已删除路由验证通过；writer 测试验证逐行 flush |
-| 26–39：网页 source / controller / plan | `show-wasm.js`、`show-stream.js`、`show-replay.js` | 不调用 eager replay；首屏先于 pull；2 帧 buffer、observer 顺序、追加区间、terminal/dispose 测试通过 |
+| 26–39：网页 source / controller / plan | [show-wasm.js](../../crates/tswn_wasm/examples/show-wasm.js)、[show-stream.js](../../crates/tswn_wasm/examples/show-stream.js)、[show-replay.js](../../crates/tswn_wasm/examples/show-replay.js) | 不调用 eager replay；首屏先于 pull；2 帧 buffer、observer 顺序、追加区间、terminal/dispose 测试通过 |
 | 40–49：播放、导航、结算、重播、分享 | `show.js`、`verify_web_playback.mjs`、routing tests | normal/fast/turbo、pause/resume、单事件/单帧、回退、20 帧 checkpoint、历史续播、结算等待暂停恢复、重播不新建 source 均通过 |
 | 50–54：显示层与 renderer | `show-display.js`、display tests、canonical clip tests | frozen DTO 不变、昵称重建/未来帧、icon 去重、动态实体、HP/死亡/恢复/多目标/延时验证通过；真实浏览器截图检查通过 |
 | 55–56：错误与 generation | controller 和真实页面模块测试 | 中途错误保留历史不生成 result；异常后可回看；旧 pull/source 创建迟到结果隔离；显式 free |
@@ -2990,7 +3008,7 @@ result
 | 66–68：分块与最终回归 | git 提交历史；最终测试命令 | 四主要 crate 与全 workspace cargo test、指定 clippy、Python / WASM / CLI / Web 检查通过；nightly fmt、git diff --check 通过 |
 | 69–70：文档与最终架构 | public_api、各绑定 README/CHANGELOG、CLI 示例、性能表格/截图与复现脚本 | Rust/Python/WASM 文档示例实际运行，C 示例编译运行；相对链接检查通过 |
 
-最终命令：
+历史验收命令（并非本次维护执行清单）：
 
 ```text
 cargo test -p tswn_core -p tswn_py -p tswn_wasm -p tswn_capi
