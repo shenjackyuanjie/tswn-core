@@ -25,7 +25,7 @@
 | `status()` 仍为 `running/finished/truncated`；正常终止后 `next_frame()` 返回空、`result()` 存在；Runtime 失败单独由 `is_failed()` 查询，重复推进返回同一错误，不生成正常结果 | [session.rs](../../crates/tswn_core/src/cli_api/battle/session.rs#L52-L118)；[driver.rs](../../crates/tswn_core/src/cli_api/battle/driver.rs#L56-L74) |
 | 默认 `max_rounds=20000`、`include_icons=false`；Python/WASM/C 已提供会话和失败查询；C ABI 仍为 4，options 读取永久冻结的 V1 前缀 | [dto.rs](../../crates/tswn_core/src/cli_api/battle/dto.rs#L6-L20)；[Python battle.rs](../../crates/tswn_py/src/battle.rs)；[WASM battle.rs](../../crates/tswn_wasm/src/battle.rs)；[C battle_api.rs](../../crates/tswn_capi/src/battle_api.rs#L8-L90)；[C lib.rs](../../crates/tswn_capi/src/lib.rs#L21) |
 | `fight -f input.txt --jsonl` 输出 `initial/frame/result` 并逐行刷新；诊断命令为 `runtime diff`，旧 `raw`、`--out-raw` 和 `!test!` 路由已移除；`-r/--raw` 仍是文本输入选项 | [CLI 参数](../../crates/tswn_core/src/bin/tswn_cli/args/cli.rs#L42-L150)；[CLI 输入选项](../../crates/tswn_core/src/bin/tswn_cli/args/input.rs)；[fight driver](../../crates/tswn_core/src/bin/tswn_cli/fight/driver.rs#L12-L98)；[cli_battle.rs](../../crates/tswn_core/tests/cli_battle.rs) |
-| 网页通过 WASM 会话按需拉帧；controller 的预取 buffer 为 2，历史追加，终局/失败释放 source，迟到结果受 generation 隔离 | [show-wasm.js](../../crates/tswn_wasm/examples/show-wasm.js#L123-L190)；[show-stream.js](../../crates/tswn_wasm/examples/show-stream.js#L1-L145)；[show-stream.test.mjs](../../crates/tswn_wasm/examples/show-stream.test.mjs) |
+| 网页通过 WASM 会话按需拉帧；controller 的预取 buffer 为 2，历史追加，终局/失败释放 source，迟到结果受 generation 隔离 | [show-wasm.js](../../crates/tswn_wasm/examples/show-wasm.js#L123-L190)；[show-stream.js](../../crates/tswn_wasm/examples/show-stream.js#L1-L145)；[show-stream.test.mjs](../../crates/tswn_wasm/tests/show-stream.test.mjs) |
 | 后续已加入 `BattleSession::model_state()`、共用驱动的 `BattleModelSession`、pwp 数据生成和 Rust encoder；这属于原阶段之后的实现，不是本文历史范围清单中的未完成项 | [session.rs](../../crates/tswn_core/src/cli_api/battle/session.rs#L43-L48)；[model_session.rs](../../crates/tswn_core/src/cli_api/battle/model_session.rs#L23-L64)；[状态与数据生成说明](battle-analyze.md)；[FeatureEncoder 规格](feature-encoder-spec.md) |
 
 当前源码目录为 [cli_api/battle](../../crates/tswn_core/src/cli_api/battle/mod.rs)，包含 `dto.rs`、`driver.rs`、`session.rs`、`model_session.rs` 和 `replay.rs`，与早期仅列 DTO/session/replay 的规划树不同。API 加固的已修复项与保留契约见 [加固现状](battle-session-hardening.md#当前加固状态与源码依据)，当前使用入口见 [公共 API](../reference/public-api.md)。
@@ -3019,7 +3019,7 @@ python scripts/verify_py_cli_api.py
 cargo test -p tswn_core --test cli_battle
 node --test scripts/verify_wasm_battle.test.mjs
 python scripts/verify_battle_cross_binding.py
-node --test crates/tswn_wasm/examples/show-*.test.mjs
+node --test crates/tswn_wasm/tests/show-*.test.mjs
 node --experimental-vm-modules scripts/verify_web_playback.mjs
 node scripts/benchmark_web_streaming.mjs
 python scripts/verify_battle_docs.py

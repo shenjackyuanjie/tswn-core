@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { actorToken, buildFrameRows } from "./show-render.js";
-import { createBattleStreamSource } from "./show-wasm.js";
-import { actorHpMetrics } from "./show-utils.js";
+import { actorToken, buildFrameRows } from "../examples/show-render.js";
+import { createBattleStreamSource } from "../examples/show-wasm.js";
+import { actorHpMetrics } from "../examples/show-utils.js";
 
 function streamApi({ failAt = -1, initialFailure = false } = {}) {
   const calls = { pulls: 0, frees: 0, eager: 0, options: null };

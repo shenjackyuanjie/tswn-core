@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BattleMetrics, percentile } from "./show-metrics.js";
+import { BattleMetrics, percentile } from "../examples/show-metrics.js";
 
 test("stream metrics measure milestones and percentile samples without payloads", () => {
     let time = 100;

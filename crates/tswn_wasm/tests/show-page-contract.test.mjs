@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-const examplesDir = dirname(fileURLToPath(import.meta.url));
+const examplesDir = join(dirname(fileURLToPath(import.meta.url)), "../examples");
 
 async function readExampleFile(name) {
   return readFile(join(examplesDir, name), "utf8");

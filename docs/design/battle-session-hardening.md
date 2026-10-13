@@ -1181,7 +1181,7 @@ scripts/verify_py_cli_api.py
 cargo test -p tswn_core --test cli_battle
 scripts/verify_wasm_battle.test.mjs
 
-crates/tswn_wasm/examples/show-*.test.mjs
+crates/tswn_wasm/tests/show-*.test.mjs
 scripts/verify_web_playback.mjs
 ```
 
@@ -1212,7 +1212,7 @@ cargo clippy -p tswn_core -p tswn_py -p tswn_wasm -p tswn_capi --all-targets
 WASM/JS：
 
 ```bash
-node --test crates/tswn_wasm/examples/show-*.test.mjs
+node --test crates/tswn_wasm/tests/show-*.test.mjs
 node --experimental-vm-modules scripts/verify_web_playback.mjs
 node --test scripts/verify_wasm_battle.test.mjs
 ```

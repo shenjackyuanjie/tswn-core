@@ -57,7 +57,11 @@ node scripts/benchmark_web_streaming.mjs
 页面行为测试：
 
 ```powershell
-node --test crates/tswn_wasm/examples/show-*.test.mjs
+# 前端回归测试：Bun 与 Node 任选一种
+bun test ./crates/tswn_wasm/tests
+node --test crates/tswn_wasm/tests/show-*.test.mjs
+
+# 真实页面行为测试
 node --experimental-vm-modules scripts/verify_web_playback.mjs
 ```
 

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BattleDisplay } from "./show-display.js";
-import { createReplayPlan, appendFrameToReplayPlan } from "./show-replay.js";
+import { BattleDisplay } from "../examples/show-display.js";
+import { createReplayPlan, appendFrameToReplayPlan } from "../examples/show-replay.js";
 
 function freeze(value) {
     if (value && typeof value === "object") {

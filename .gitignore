@@ -19,6 +19,9 @@ tests
 !crates/tswn_core/src/runtime/tests/*.rs
 !crates/tswn_core/tests/
 !crates/tswn_core/tests/*.rs
+!crates/tswn_wasm/tests/
+!crates/tswn_wasm/tests/*.test.mjs
+!crates/tswn_wasm/tests/README.md
 .claude
 dist
 md5.js

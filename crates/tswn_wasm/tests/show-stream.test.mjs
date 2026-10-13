@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BattleStreamController, STREAM_BUFFER_FRAMES } from "./show-stream.js";
+import { BattleStreamController, STREAM_BUFFER_FRAMES } from "../examples/show-stream.js";
 
 function fakeSource(count = 8, { wait = null, failAt = -1 } = {}) {
     let index = 0;

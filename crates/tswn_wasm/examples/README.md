@@ -9,7 +9,7 @@
 - `show-metrics.js`：TTIS / TTFE、拉帧和渲染计时；`?perf=1` 才输出统计。
 - `show.js` / `show-replay.js`：可增长的播放计划、暂停/单步/历史检查点/重播。
 
-测试：`node --test crates/tswn_wasm/examples/show-*.test.mjs`；页面行为测试和浏览器基线命令见 [性能基线](../../../docs/perf/reports/web-streaming-baseline.md)。
+前端回归测试位于源码仓库的 `crates/tswn_wasm/tests/`，不随示例分发。在仓库根目录执行 `bun test ./crates/tswn_wasm/tests` 或 `node --test crates/tswn_wasm/tests/show-*.test.mjs`；页面行为测试和浏览器基线命令见 [性能基线](../../../docs/perf/reports/web-streaming-baseline.md)。
 
 ## 示例一览
 
@@ -41,7 +41,6 @@
 - normal 播放模式下，对战结束后等待 `1500ms` 再显示底部结算表；fast / turbo / 单步跳转保持即时显示。左侧玩家 HP 条变化使用较慢动画，方便观察血量变化。
 - 页面与角色详情面板跟随明暗主题切换。深色模式使用更清晰的蓝灰名字框、可读的死亡名字和状态标签；像素图标保留原图配色，通过浅色衬底区分原图的深色描边。
 - `show-wasm.js` 通过 `createBattleStreamSource()` 创建 `BattleSession`；页面先展示初始状态，再由 `BattleStreamController` 按需获取 core 提供的 `rows/clips/parts`。
-- `show-wasm.test.mjs` 覆盖 replay adapter 的纯输出和 `buildFrameRows()` HTML chunk 渲染；`show-routing.test.mjs` 覆盖 URL-safe input、旧 runtime 参数清理和分享链接行为。
 
 #### 控制栏快捷键
 

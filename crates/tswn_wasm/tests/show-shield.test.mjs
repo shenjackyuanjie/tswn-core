@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { actorShieldMetrics } from "./show-utils.js";
-import { actorToken, buildFrameRows, renderPlayers } from "./show-render.js";
+import { actorShieldMetrics } from "../examples/show-utils.js";
+import { actorToken, buildFrameRows, renderPlayers } from "../examples/show-render.js";
 
 const player = { id: 1, team_index: 0, id_name: "盾手", display_name: "盾手" };
 const state = { ...player, hp: 100, max_hp: 100, shield: 40, alive: true, magic_point: 0, move_point: 0 };

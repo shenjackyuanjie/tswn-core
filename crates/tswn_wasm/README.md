@@ -209,6 +209,19 @@ python -m http.server 8000
 
 详细运行说明见 `examples/README.md`。
 
+### 测试
+
+前端回归测试集中在 [`tests/`](tests/README.md)，与示例页面分开，不随示例分发。在仓库根目录执行：
+
+```powershell
+# 前端测试：Bun 与 Node 任选一种
+bun test ./crates/tswn_wasm/tests
+node --test crates/tswn_wasm/tests/show-*.test.mjs
+
+# Rust 测试
+cargo test -p tswn_wasm
+```
+
 ## 构建
 
 ```powershell

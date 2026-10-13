@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createReplayPlan, appendFrameToReplayPlan, markReplayPlanComplete } from "./show-replay.js";
+import { createReplayPlan, appendFrameToReplayPlan, markReplayPlanComplete } from "../examples/show-replay.js";
 
 export function fixtureFrame(index, previousHp = 100) {
     const states = [{ id: 0, hp: previousHp - 10, max_hp: 100, alive: true }];

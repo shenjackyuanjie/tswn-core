@@ -6,7 +6,7 @@ import {
   decodeBase64UrlUtf8,
   encodeBase64UrlUtf8,
   readStaticReplayInputFromSearch,
-} from "./show-routing.js";
+} from "../examples/show-routing.js";
 
 test("show routing decodes static replay input aliases", () => {
   const rawInput = "seed: fixed\nleft@red\n\nright@blue\n";
