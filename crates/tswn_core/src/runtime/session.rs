@@ -46,6 +46,8 @@ pub struct RuntimePlayerSnapshot {
     pub max_hp: i32,
     /// 剩余吸收护盾：合计常规蓄盾与 ShieldValue，不包含铁壁的单次减伤阈值；死亡时为 0。
     pub shield: i32,
+    /// 当前护盾技能熟练度，用于盾条上限；吞噬后重新读取，不限制实际盾值。
+    pub max_shield: u32,
     pub magic_point: i32,
     pub move_point: i32,
     pub attack: i32,
@@ -184,6 +186,13 @@ impl RuntimeRunner {
             hp: entity.runtime.hp,
             max_hp: entity.template.max_hp,
             shield: remaining_shield(entity),
+            max_shield: self
+                .runtime
+                .registry
+                .skill_id_by_export_name(DEFAULT_CORE_SHIELD_SKILL_EXPORT)
+                .and_then(|skill| entity.template.skills.skills().iter().position(|id| *id == skill))
+                .and_then(|lane| entity.template.skills.level_at(lane))
+                .unwrap_or(0),
             magic_point: entity.runtime.magic_point,
             move_point: entity.runtime.move_state.speed_points,
             attack: entity.runtime.attack,
@@ -349,6 +358,64 @@ mod tests {
         runtime.set_skill_handler(shield_skill, run_shield_pre_action_skill);
         runtime.set_state_handler(shield_state, run_shield_post_defend_state);
         (runner, shield_state, iron_state)
+    }
+
+    #[test]
+    fn snapshot_shield_capacity_follows_current_skill_level_and_merge() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let shield = builder
+            .register_skill(
+                "core",
+                "shield",
+                DEFAULT_CORE_SHIELD_SKILL_EXPORT,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .unwrap();
+        let kind = builder
+            .register_player_kind_with_policies(
+                "test",
+                "merge",
+                "test.merge",
+                PlayerKindFlags::default(),
+                PlayerKindPolicies {
+                    merge: MergePolicy::FixedLane,
+                    ..PlayerKindPolicies::default()
+                },
+            )
+            .unwrap();
+        let mut runner = RuntimeRunner::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::with_kind(1, "shield", kind, 0, 100, 3)
+                    .with_skill_loadout(SkillLoadout::from_skill_levels([(shield, 80)])),
+                PlayerTemplate::new(2, "food", 1, 200, 3).with_skill_loadout(SkillLoadout::from_skill_levels([(shield, 160)])),
+                PlayerTemplate::new(3, "enemy", 1, 100, 3),
+            ],
+            builder.build(),
+        ));
+        let initial = runner.player_snapshot(0).unwrap();
+        assert_eq!(initial.max_shield, 80);
+        assert_eq!(runner.player_snapshot(2).unwrap().max_shield, 0);
+        runner.runtime_mut().effects.push(QueuedEffect::Merge {
+            caster: EntityIdx(0),
+            target: EntityIdx(1),
+        });
+        runner.runtime_mut().flush_effects().unwrap();
+        let merged = runner.player_snapshot(0).unwrap();
+        assert!(merged.max_shield > initial.max_shield);
+        // 本组只合并技能，确认盾条容量不依赖最大 HP 是否变化。
+        assert_eq!(merged.max_hp, initial.max_hp);
+        assert_eq!(
+            merged.max_shield,
+            runner.runtime().entities.get(EntityIdx(0)).unwrap().template.skills.level_at(0).unwrap()
+        );
+
+        let owner = runner.runtime_mut().entities.get_mut(EntityIdx(0)).unwrap();
+        owner.template.skills.set_level_at(0, 20);
+        owner.runtime.shield = 100;
+        let lowered = runner.player_snapshot(0).unwrap();
+        assert_eq!(lowered.max_shield, 20);
+        assert_eq!(lowered.shield, 100);
     }
 
     #[test]

@@ -41,6 +41,8 @@ export interface BattlePlayerState {
     max_hp: number;
     /** 剩余吸收护盾，合计常规蓄盾与 ShieldValue；不含铁壁，死亡时为 0。 */
     shield: number;
+    /** 当前护盾技能熟练度，随吞噬等技能变化更新；不是实际盾值的硬上限。 */
+    max_shield: number;
     magic_point: number;
     move_point: number;
     attack: number;

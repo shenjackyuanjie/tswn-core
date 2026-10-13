@@ -30,6 +30,7 @@ fn state_from_core(state: &BattlePlayerState) -> PlayerState {
         hp: state.hp,
         max_hp: state.max_hp,
         shield: state.shield,
+        max_shield: state.max_shield,
         magic_point: state.magic_point,
         move_point: state.move_point,
         attack: state.attack,
@@ -265,6 +266,7 @@ mod tests {
             hp: 100,
             max_hp: 100,
             shield: 25,
+            max_shield: 80,
             magic_point: 0,
             move_point: 0,
             attack: 0,
@@ -288,6 +290,7 @@ mod tests {
         let legacy = state_from_core(&state);
         assert_eq!(legacy.owner_id, Some(7));
         assert_eq!(legacy.shield, 25);
+        assert_eq!(legacy.max_shield, 80);
         assert_eq!(state, original);
     }
 
@@ -299,17 +302,34 @@ right@blue+ol:{"skills":{}}
 seed:7@!"#;
         let mut legacy = FightSession::new_internal(raw.into(), FightOptions::default()).unwrap();
         assert!(legacy.state_vec().iter().all(|state| state.shield == 0));
+        assert_eq!(legacy.state_vec()[0].max_shield, 80);
         let mut canonical = BattleSession::new(raw, BattleOptions::default()).unwrap();
         let batch = legacy.run_to_end_internal(Some(3)).unwrap();
         assert_eq!(batch.frames.len(), 3);
         for frame in &batch.frames {
             let expected = canonical.next_frame().unwrap().unwrap();
             assert_eq!(
+                frame.states.iter().map(|state| state.max_shield).collect::<Vec<_>>(),
+                expected.states.iter().map(|state| state.max_shield).collect::<Vec<_>>()
+            );
+            assert_eq!(
                 frame.states.iter().map(|state| state.shield).collect::<Vec<_>>(),
                 expected.states.iter().map(|state| state.shield).collect::<Vec<_>>()
             );
             for (row, expected_row) in frame.rows.iter().zip(&expected.rows) {
                 for (clip, expected_clip) in row.clips.iter().zip(&expected_row.clips) {
+                    assert_eq!(
+                        clip.sidebar_states.iter().map(|state| state.max_shield).collect::<Vec<_>>(),
+                        expected_clip.sidebar_states.iter().map(|state| state.max_shield).collect::<Vec<_>>()
+                    );
+                    assert_eq!(
+                        clip.sidebar_previous_states.iter().map(|state| state.max_shield).collect::<Vec<_>>(),
+                        expected_clip
+                            .sidebar_previous_states
+                            .iter()
+                            .map(|state| state.max_shield)
+                            .collect::<Vec<_>>()
+                    );
                     assert_eq!(
                         clip.sidebar_states.iter().map(|state| state.shield).collect::<Vec<_>>(),
                         expected_clip.sidebar_states.iter().map(|state| state.shield).collect::<Vec<_>>()
@@ -322,6 +342,7 @@ seed:7@!"#;
             }
         }
         assert!(batch.final_states.iter().any(|state| state.shield > 0));
+        assert_eq!(batch.final_states[0].max_shield, 80);
         assert_eq!(
             batch.final_states.iter().map(|state| state.shield).collect::<Vec<_>>(),
             canonical.current_states().iter().map(|state| state.shield).collect::<Vec<_>>()

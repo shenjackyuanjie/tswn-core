@@ -36,6 +36,7 @@ class BattlePlayerState(TypedDict):
     hp: int
     max_hp: int
     shield: int
+    max_shield: int
     magic_point: int
     move_point: int
     attack: int

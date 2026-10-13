@@ -161,6 +161,7 @@ fn state_from_snapshot(snapshot: RuntimePlayerSnapshot, include_icons: bool) -> 
         hp: snapshot.hp,
         max_hp: snapshot.max_hp,
         shield: snapshot.shield,
+        max_shield: snapshot.max_shield,
         magic_point: snapshot.magic_point,
         move_point: snapshot.move_point,
         attack: snapshot.attack,
@@ -371,6 +372,8 @@ mod tests {
         let mut session = session(1);
         let initial_json = serde_json::to_value(session.initial_states()).unwrap();
         assert!(initial_json.as_array().unwrap().iter().all(|state| state["shield"] == 0));
+        let max_shield = session.initial_states()[1].max_shield;
+        assert_eq!(initial_json[1]["max_shield"], max_shield);
         session.driver.runner.runtime_mut().entities.get_mut(EntityIdx(1)).unwrap().runtime.shield = 40;
         let previous = states_from_runner(&session.driver.runner, false, &mut session.icon_cache);
         session.driver.runner.runtime_mut().entities.get_mut(EntityIdx(1)).unwrap().runtime.shield = 25;
@@ -382,6 +385,7 @@ mod tests {
         let frame = build_frame(&updates, &previous, &states, &session.driver.runner);
         let frame_json = serde_json::to_value(&frame).unwrap();
         assert_eq!(frame_json["states"][1]["shield"], 25);
+        assert_eq!(frame_json["states"][1]["max_shield"], max_shield);
         let clips = &frame_json["rows"][0]["clips"];
         assert_eq!(clips[0]["sidebar_previous_states"][1]["shield"], 40);
         assert_eq!(clips[0]["sidebar_states"][1]["shield"], 40);
@@ -389,6 +393,10 @@ mod tests {
         assert_eq!(clips[1]["sidebar_states"][1]["shield"], 25);
         assert_eq!(clips[2]["sidebar_previous_states"][1]["shield"], 25);
         assert_eq!(clips[2]["sidebar_states"][1]["shield"], 25);
+        for clip in clips.as_array().unwrap() {
+            assert_eq!(clip["sidebar_previous_states"][1]["max_shield"], max_shield);
+            assert_eq!(clip["sidebar_states"][1]["max_shield"], max_shield);
+        }
         assert_eq!(
             session.driver.runner.runtime().entities.get(EntityIdx(1)).unwrap().runtime.shield,
             25
@@ -398,6 +406,7 @@ mod tests {
         assert_eq!(session.next_frame().unwrap(), None);
         let result_json = serde_json::to_value(session.result().unwrap()).unwrap();
         assert_eq!(result_json["final_states"][1]["shield"], 25);
+        assert_eq!(result_json["final_states"][1]["max_shield"], max_shield);
     }
 
     #[test]

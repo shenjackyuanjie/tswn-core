@@ -34,6 +34,9 @@ for (const fixture of fixtures) {
         const replay = wasm.battle_replay(raw, options);
         assertPlain(replay);
         assert.deepEqual(session.initial_states(), replay.initial_states);
+        for (const state of replay.initial_states) {
+          assert.ok(Number.isInteger(state.max_shield) && state.max_shield >= 0);
+        }
         const frames = [];
         for (let frame; (frame = session.next_frame()) !== null;) frames.push(frame);
         assert.deepEqual(frames, replay.frames);
@@ -116,6 +119,8 @@ test("canonical TypeScript stable enums use exact literal aliases", () => {
       ["BattleUpdate", "message_template", "string"],
       ["BattleUpdate", "message_rendered", "string"],
       ["BattlePlayerState", "status_labels", "Array<string>"],
+      ["BattlePlayerState", "shield", "number"],
+      ["BattlePlayerState", "max_shield", "number"],
     ]) {
       const body = declaration.match(new RegExp(`export interface ${type}\\s*\\{([^}]+)\\}`))?.[1];
       assert.ok(body, `${file}: missing ${type}`);

@@ -117,6 +117,8 @@ pub struct PlayerState {
     pub max_hp: i32,
     /// 剩余吸收护盾，合计常规蓄盾与 ShieldValue；不含铁壁，死亡时为 0。
     pub shield: i32,
+    /// 当前护盾技能熟练度，随吞噬等技能变化更新；不是实际盾值的硬上限。
+    pub max_shield: u32,
     pub magic_point: i32,
     pub move_point: i32,
     pub attack: i32,
