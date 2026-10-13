@@ -35,6 +35,7 @@ class BattlePlayerState(TypedDict):
     icon_png_base64: str | None
     hp: int
     max_hp: int
+    shield: int
     magic_point: int
     move_point: int
     attack: int
