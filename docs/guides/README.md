@@ -3,6 +3,7 @@
 [返回文档中心](../README.md)
 
 - [全量构建与打包](build-all.md)：CLI、C、Python、WASM 与 Openbox 产物。
+- [开发入口与模块边界](development.md)：代码归属、测试选择、文档维护与提交范围。
 - [Windows C/C++ 接入](c-api-cpp-windows.md)：编译、链接和示例验证。
 - [OpenHarmony 交叉编译](openharmony.md)：SDK 环境与 OHOS 构建入口。
 - [DIY 往返验证](diy-validation.md)：角色导出与初始状态对比。

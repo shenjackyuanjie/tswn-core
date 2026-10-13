@@ -5,6 +5,7 @@
 ## 从这里开始
 
 - 构建与打包：[全量构建](guides/build-all.md)、[OpenHarmony 交叉编译](guides/openharmony.md)。
+- 参与开发：[模块边界与验证](guides/development.md)、[性能准则](perf/guides/performance.md)。
 - 接入对局：[公共 API 与跨语言契约](reference/public-api.md)、[Windows C/C++ 接入](guides/c-api-cpp-windows.md)。
 - 自定义角色：[DIY / OL 格式](reference/diy-overlay.md)、[往返验证](guides/diy-validation.md)。
 - 从旧版本迁移：[Runtime 0.5 迁移指南](guides/runtime-0.5-migration.md)。

@@ -8,7 +8,7 @@
 | --- | --- |
 | Rust 机制状态导出、共享逐回合驱动、无展示会话 | [runtime/model_state.rs](../../crates/tswn_core/src/runtime/model_state.rs)；[driver.rs](../../crates/tswn_core/src/cli_api/battle/driver.rs)；[model_session.rs](../../crates/tswn_core/src/cli_api/battle/model_session.rs)（含与回放边界一致、sticky failure 和停止策略测试） |
 | 两遍运行、分层抽样、Parquet 分片、恢复、校验与统计 | [generate.rs](../../crates/tswn_pwp/src/generate.rs)；[sampling.rs](../../crates/tswn_pwp/src/sampling.rs)；[storage.rs](../../crates/tswn_pwp/src/storage.rs)；[validate.rs](../../crates/tswn_pwp/src/validate.rs)；[stats.rs](../../crates/tswn_pwp/src/stats.rs)；[pwp 测试](../../crates/tswn_pwp/src/tests.rs) |
-| Rust 固定张量编码与容量/词表/数值/引用校验 | [encoder/encode.rs](../../crates/tswn_core/src/encoder/encode.rs#L390-L506)；[张量注册表](../../crates/tswn_core/src/encoder/batch.rs#L115-L546)；[编码器复核测试](../../crates/tswn_core/src/encoder/review_tests.rs) |
+| Rust 固定张量编码与容量/词表/数值/引用校验 | [encoder/encode.rs](../../crates/tswn_core/src/encoder/encode.rs#L390-L506)；[张量注册表](../../crates/tswn_core/src/encoder/batch.rs#L115-L546)；[编码器复核测试](../../crates/tswn_core/src/encoder/encode/tests/review.rs) |
 | 校准、完整契约发布与训练包导出 | [命令注册](../../crates/tswn_pwp/src/lib.rs)；[calibrate.rs](../../crates/tswn_pwp/src/calibrate.rs)；[manifest.rs](../../crates/tswn_pwp/src/manifest.rs)；[encode.rs](../../crates/tswn_pwp/src/encode.rs) |
 
 **落地边界：** `calibrate` 输出标量校准报告，`build-manifest` 发布通过核心门禁的完整契约；版本 2 的 `encode` 流式导出小端张量、标签、精确旁路和源行审计关联，默认过滤空标签，并通过源数据共享锁、空间预算、摘要回读和临时目录提交保障完整性。模型训练、推理、Python/WASM 编码/机制状态查询接口和胜率 UI 仍是后续工作，见 [FeatureEncoder 接口边界](feature-encoder-spec.md#14-接口边界)。

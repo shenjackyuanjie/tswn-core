@@ -7,8 +7,9 @@
 - `generate` / `validate` / `storage`：数据集生成、提交与完整性校验
 - `sampling` / `random` / `input`：确定性抽样、阵容输入与切分
 - `stats` / `bench` / `calibrate`：数据分布、生成规模统计与逐字段标量校准
-- `encode`：读取完整 EncoderManifest，使用核心 FeatureEncoder 导出张量批次
-- 后续扩展：`baseline`、`inference`
+- `manifest`：从 train 校准报告构造并验证完整 EncoderManifest
+- `encode`：编排流式张量导出；`encode/source.rs` 管理源锁、摘要与选样计数，`encode/output.rs` 管理预算、私有暂存与安全提交
+- [Python 只读 loader](../../scripts/read_encoded_batches.py) 与 [HP-only 基线](../../scripts/winprob_hp_baseline.py) 已在脚本侧提供；模型训练、推理及在线编码绑定仍未实现
 
 相关文档入口：
 

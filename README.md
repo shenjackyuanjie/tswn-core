@@ -25,7 +25,7 @@ crates/
   tswn_openbox_backend/  GUI/CLI 共用后端与预设资源
   tswn_lane_ranker/  lane 排名工具
   tswn_ladder/       天梯工具
-  tswn_pwp/          胜率数据集生成器（binary `tswn-pwp`）
+  tswn_pwp/          胜率数据集、校准与离线训练包（binary `tswn-pwp`）
   tswn_ds4/          ds4 相关数据处理和兼容实验
 
 docs/          架构、DIY、差分、性能、构建和更新记录
@@ -60,47 +60,11 @@ cargo build -p tswn_core --bin tswn-cli --profile release-fast --features no_deb
 cargo run -p tswn_core --bin tswn-cli -- fight -f input.txt
 cargo run -p tswn_core --bin tswn-cli -- fight --jsonl -f input.txt
 cargo run -p tswn_core --bin tswn-cli -- runtime diff -f input.txt
-cargo run -p tswn_core --bin tswn-cli -- runtime normalized-run -f input.txt --max-rounds 20000
 cargo run -p tswn_core --bin tswn-cli -- to-diy -r "mario@team+fire"
-cargo run -p tswn_core --bin tswn-cli -- to-diy -r "mario@team+fire" --old
-cargo run -p tswn_core --bin tswn-cli -- to-diy -f names.txt -o diy.txt
-cargo run -p tswn_core --bin tswn-cli -- to-diy -f names.txt --minions -o diy.txt
-cargo run -p tswn_core --bin tswn-cli -- bench win-rate -r "mario+luigi\npeach+bowser" -n 10000
-cargo run -p tswn_core --bin tswn-cli -- bench win-rate -f teams.txt --double-plus --keep-rq
-cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p players.txt --min-screen 60
-cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p players.txt -o out.txt --min-file 65
-cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p players.txt -o out.jsonl --log
-cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p players.txt -o names.txt --pure
-cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p players.txt --wr-precision 5
-cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l weighted-targets.toml -p players.txt --target-factored
-cargo run -p tswn_core --bin tswn-cli -- bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3
-cargo run -p tswn_core --bin tswn-cli -- bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 5 -o pair.txt --min-file 250
-cargo run -p tswn_core --bin tswn-cli -- bench pair -l weighted-targets.toml -p players.txt --teammate-list teammates.txt --head 3 --target-factored
+cargo run -p tswn_core --bin tswn-cli -- bench win-rate -f teams.txt -n 10000
 ```
 
-`fight` / `fight --jsonl` 使用正式 `BattleSession`；诊断使用 `runtime diff` / `runtime normalized-run`，评分和胜率使用明确的 `bench` 子命令。CLI 不再提供执行器选择器或 parity 子命令；C、Python 与 WASM 绑定也都从同一主 Runtime 会话读取完成态、快照、RC4、胜者与回放。
-
-`to-diy --minions` 会在 `+ol` 输出中附带可生成的 shadow / summon / zombie 模板，用于更接近原始名字的评分与对战行为。OL/DIY 的 `attrs` 都使用前七围 +36、HP 原样的编码；使魔模板的 `skills` 使用普通 JSON object 格式，两个火球固定命名为 `sklfire1`、`sklfire2`，自爆命名为 `sklexplode`，字段顺序就是行动顺序。0 熟练度技能会省略输出；解析时未带前缀的 `summon.skills` 只接受这三个 `skl` 槽位名，不再支持旧数组格式、`skill_order` 字段或旧的 `sklfire` 别名。
-
-OL 召唤物模板可以继续嵌套 `shadow` / `summon` / `zombie` 子模板，用来配置“召唤物的召唤物”。如果要给使魔模板配置普通玩家技能，需要写 `normal:` 前缀，例如 `{"normal:sklsummon":255,"sklfire1":9}`；普通玩家技能、使魔固定技能和幻影附体会分别保留独立编号通道，吞噬时不会互相串槽。使魔召唤出的子使魔会按直接来源链路传导伤害；使魔分身仍按 root owner 命名/随主人清理，但伤害分摊会直接传到主名字。
-
-`bench win-rate` 使用两行文本输入两队：两队之间用 `\n` 分隔，队内默认用 `+` 分隔；传入 `--double-plus` 时队内分隔符改为 `++`，方便保留名字里的 `+diy[...]` / `+ol:...`。`--keep-rq` 只切换玩家构造用的 rq，胜率模拟的 seed 仍固定使用 JS ProfileWinChance 口径：第 0 场无 seed，后续为 `seed:(33554431 + i)@!`。
-
-`bench pair` 会先把 `player-list` 中非 DIY/OL 的名字转换为默认 `+ol` 格式，再与 `teammate-list` 中每个队友组合组成对局。两个文件均按每行一个组合处理：选手默认使用单个 `+` 分隔成员，可用 `--player-list-double-plus` 改为 `++`；队友默认使用 `++`，可用 `--teammate-list-single-plus` 改为单个 `+`。带权靶子使用 `--target-factored` 读取 `[[targets]]` TOML，并按 `sum(胜率 * factor) / sum(factor)` 计算每个队友组合的平均值。
-
-例如，`players.txt`（默认 `+`）可以写成：
-
-```text
-a@team+b@team
-```
-
-`teammates.txt`（默认 `++`）可以写成：
-
-```text
-c@team++d@team
-```
-
-`bench batch-rate` 也支持 `--target-factored`；不加该选项时保持普通文本靶子的等权平均行为。
+普通战斗与绑定复用 `BattleSession`，诊断和评分使用主 Runtime；CLI 不提供执行器选择器。DIY/OL、带权靶子、批量筛选、pair 和技能榜的详细参数只在 [core README](crates/tswn_core/README.md) 维护。
 
 主 Runtime release 回归：
 
@@ -120,6 +84,7 @@ python scripts/check_runtime_release.py --corpus
 
 ## 文档入口
 
+- [开发入口与模块边界](docs/guides/development.md)：代码归属、测试和提交范围。
 - [文档中心](docs/README.md)：按用途浏览指南、接口参考、设计规格、机制分析、性能、版本记录与历史归档。
 - [公共 API 与跨语言契约](docs/reference/public-api.md)：BattleSession、快照、回放与错误模型。
 - [脚本与验证入口](scripts/README.md)：组件构建、聚合打包与跨语言验证。
@@ -137,6 +102,8 @@ python scripts/check_runtime_release.py --corpus
 - [`crates/tswn_wasm/README.md`](crates/tswn_wasm/README.md): WASM 绑定说明。
 - [`crates/tswn_capi/README.md`](crates/tswn_capi/README.md): C API 说明。
 - [Openbox 使用说明](crates/tswn_openbox/README.md)：GUI、无头 CLI 与共享后端。
+- [lane 排名服务](crates/tswn_lane_ranker/README.md) 与 [天梯更新器](crates/tswn_ladder/README.md)：数据库、数值工具和验证边界。
+- [DS4 批处理](crates/tswn_ds4/README.md)：单人/配对评分、历史缓存与外部 ABCP5。
 - [胜率数据集与离线特征编码](crates/tswn_pwp/README.md)：`tswn-pwp` 生成、校验、校准和编码入口。
 
 ## 开发注意事项

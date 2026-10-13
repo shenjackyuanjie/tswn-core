@@ -11,7 +11,7 @@
 - `0.3.2`
 - `0.4.0` Runtime
 
-本文保留历史测量，不表示当前版本的性能。当前复测命令见第 2 节，性能约束见 [rule.md](../../rule.md)。历史记录重点对应：
+本文保留历史测量，不表示当前版本的性能。当前复测命令见第 2 节，性能约束见 [性能准则](guides/performance.md)。历史记录重点对应：
 
 - `0.2.20` 在一轮结果一致性 / SBY diff 收口后，继续回收 `pre_action` / `Hide` / alive-group 热路径的性能回退
 - `0.3.1` 在补齐 WASM 查询接口后，按同口径补跑 benchmark，确认当时版本没有新异常，但相较 `0.2.20` 有一小段性能回退
@@ -61,7 +61,7 @@
 
 当前仓库可直接复测的入口包括 `tswn-cli bench win-rate --perf`、OpenBox
 `openbox_mem_probe` 和只依赖公开主 Runtime API 的 `perf_runtime` example；命令和发布要求见
-根目录 [rule.md](../../rule.md)。`perf_runtime` 支持原始 fixed30 输入的 FFA / 多队语义，并逐文件输出 JSON 行：
+[性能准则](guides/performance.md)。`perf_runtime` 支持原始 fixed30 输入的 FFA / 多队语义，并逐文件输出 JSON 行：
 
 ```powershell
 cargo build -p tswn_core --release --features no_debug --example perf_runtime

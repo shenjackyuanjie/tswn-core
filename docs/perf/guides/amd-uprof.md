@@ -9,10 +9,10 @@
 - 工具：AMD uProf 5.3+ 的 `AMDuProfCLI.exe`。
 - 权限：PMC / IBS 采样应从已提权的终端或已提权的 agent 会话启动。
 - 构建：使用 `--release --features no_debug --config "profile.release.debug=1"`，为本次采样显式保留符号。根 workspace 的 release profile 未设置 `debug = 1`；Windows 上保留与可执行文件同目录的 PDB，供 uProf 归因到 Rust 符号与源码。
-- 记录该 profile 覆盖；正式吞吐 A/B 仍按 [性能准则](../../../rule.md) 的普通 release 口径独立构建和测量。
+- 记录该 profile 覆盖；正式吞吐 A/B 仍按 [性能准则](performance.md) 的普通 release 口径独立构建和测量。
 
 不要把 uProf 数据作为吞吐 benchmark 的最终数字：采样和调用栈展开都有开销。性能是否成立
-仍遵循 [`rule.md`](../../../rule.md) 中同会话交替 A/B、取中位数且忽略小于 1.5% 差异的规则。
+仍遵循 [性能准则](performance.md) 中同会话交替 A/B、取中位数且忽略小于 1.5% 差异的规则。
 
 ## 标准热点采样
 

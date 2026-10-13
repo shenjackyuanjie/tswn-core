@@ -1,4 +1,6 @@
-# tswn-core 项目性能优化准则
+# 性能优化与验证准则
+
+[返回性能索引](../README.md)
 
 ## 核心准则
 
@@ -21,7 +23,7 @@ python scripts/check_runtime_release.py --corpus
 ```
 
 第二条命令运行 release/no_debug 主 Runtime、release CLI 与完整冻结 corpus。
-旧 API 与架构约定留在 [迁移指南](docs/guides/runtime-0.5-migration.md)，不以源码扫描或固定测试数量冻结实现。C、Python、WASM 和 OpenBox 等包装层修改还应运行：
+旧 API 与架构约定留在 [迁移指南](../../guides/runtime-0.5-migration.md)，不以源码扫描或固定测试数量冻结实现。C、Python、WASM 和 OpenBox 等包装层修改还应运行：
 
 ```powershell
 cargo test --workspace --all-targets --no-run
@@ -58,8 +60,8 @@ target\release\examples\perf_runtime.exe -n 13000 --threads 1 --timed
 target\release\examples\perf_runtime.exe --mode score -i docs\perf\score\mario.txt -n 13000 --timed
 ```
 
-输出字段、计时范围与自动线程口径见 [性能追踪](docs/perf/benchmark-history.md#2-30-case-固定-benchmark)。
-0.5.0 的完整发版数据、环境和 A/B 判定见 [历史发版基准](docs/perf/reports/runtime-0.5.0-749fcd1-release-benchmark.md)。
+输出字段、计时范围与自动线程口径见 [性能追踪](../benchmark-history.md#2-30-case-固定-benchmark)。
+0.5.0 的完整发版数据、环境和 A/B 判定见 [历史发版基准](../reports/runtime-0.5.0-749fcd1-release-benchmark.md)。
 该版本的 fixed30 与 score 使用临时外部 harness，现行 example 并非那个历史工具，不直接混用结果。
 
 正式结果必须记录被测 commit、rustc/Cargo 版本、feature、输入哈希、线程口径和原始轮次；
@@ -106,7 +108,7 @@ CLI 与 Openbox 的 profile 分别位于 `target/pgo/cli/`、`target/pgo/openbox
 
 Windows 的管理员态主 CPU profiler 是 **AMD uProf CLI**（本机为 Zen 3）。它会把热点函数、
 调用栈和源码归因写入 CSV，适合让自动化 agent 直接读取；`samply` 保留为手动查看 Firefox
-火焰图 / 时间线的备选工具。完整流程见 [`docs/perf/guides/amd-uprof.md`](docs/perf/guides/amd-uprof.md)。
+火焰图 / 时间线的备选工具。完整流程见 [AMD uProf 采样指南](amd-uprof.md)。
 
 先用 Time-Based Profile（TBP）定位热函数。采样工作负载应至少运行约 15 秒，且不要追加
 CLI 的 `--perf`（它会改变热路径的计时开销）：

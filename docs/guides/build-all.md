@@ -103,7 +103,7 @@ cargo build -p tswn_openbox --release --features no_debug,mimalloc_alloc
 
 CLI 的独立 PGO 流程可使用 `python scripts/pgo_build.py --kind cli`，要求匹配 rustc 的 LLVM 大版本，且训练需在本机单线程运行。性能结论需重新按同机 A/B 测量，历史收益不作为当前保证。
 
-Openbox 资源已迁到 `crates/tswn_openbox_backend/assets/`，但 `pgo_build.py` 的 Openbox 训练靶子仍指向旧的 `crates/tswn_openbox/assets/targets/`。因此在脚本适配前，全量打包推荐普通 `--release`；`build_all.py --pgo` 会同时启用 CLI 和 Openbox 的 PGO，不作为当前完整打包的推荐命令。约束见 [性能准则](../../rule.md#pgo-构建)。
+Openbox 资源已迁到 `crates/tswn_openbox_backend/assets/`，但 `pgo_build.py` 的 Openbox 训练靶子仍指向旧的 `crates/tswn_openbox/assets/targets/`。因此在脚本适配前，全量打包推荐普通 `--release`；`build_all.py --pgo` 会同时启用 CLI 和 Openbox 的 PGO，不作为当前完整打包的推荐命令。约束见 [性能准则](../perf/guides/performance.md#pgo-构建)。
 
 ### 可选 OHOS CLI
 
@@ -156,4 +156,4 @@ dist/all/<自动生成的 bundle 名>.zip
 - Python wheel 的 Python/平台标签符合部署环境；聚合脚本按 `tswn_py` 版本过滤 wheel/sdist，但同版本旧 wheel 的 core 或源码状态仍需主动核验，依赖或实现变动后重新构建。
 - WASM 的 JS glue 与 `.wasm` 来自同一次匹配版本的构建。
 
-当前发布行为门禁见 [Runtime 0.5 迁移指南](runtime-0.5-migration.md) 和 [性能准则](../../rule.md)；历史发布包快照见 [版本记录](../releases/README.md)。
+当前发布行为门禁见 [Runtime 0.5 迁移指南](runtime-0.5-migration.md) 和 [性能准则](../perf/guides/performance.md)；历史发布包快照见 [版本记录](../releases/README.md)。

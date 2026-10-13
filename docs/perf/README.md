@@ -2,10 +2,11 @@
 
 [返回文档中心](../README.md)
 
-报告按采样时的版本、提交和机器环境解读，不将不同口径直接视为当前性能。旧执行器与临时 harness 的命令可能已不可用；当前发布约束见 [rule.md](../../rule.md)。
+报告按采样时的版本、提交和机器环境解读，不将不同口径直接视为当前性能。旧执行器与临时 harness 的命令可能已不可用；当前发布约束见 [性能准则](guides/performance.md)。
 
 ## 方法与追踪
 
+- [性能优化与验证准则](guides/performance.md)：构建口径、行为回归、同机 A/B、PGO 与采样。
 - [性能追踪与历史比较](benchmark-history.md)：含当前 `perf_runtime` 复测入口。
 - [AMD uProf 采样指南](guides/amd-uprof.md)。
 - [fixed30 固定输入与历史工具口径](guides/fixed30-benchmark.md)。

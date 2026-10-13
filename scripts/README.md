@@ -11,6 +11,16 @@
 先用 `tswn-pwp validate` 校验完整性，再运行 `python scripts/read_winprob_dataset.py target/winprob-demo`。
 生成命令和数据契约见 [生成器说明](../crates/tswn_pwp/README.md)。
 
+## read_encoded_batches.py
+
+校验 `tswn-pwp encode` 生成的版本 2 训练包，包括 manifest、载荷长度/SHA-256、批布局、label/mask 语义与审计载荷；命令行检查仅用 Python 标准库：
+
+```powershell
+python scripts/read_encoded_batches.py target/encoded-train
+```
+
+训练代码调用 `iter_encoded_batches(root)` 时需 NumPy，逐批返回只读 memmap 的 `features` 和 `labels`。`extra_bits`、`order_key` 只在显式指定 `include_exact=True` 时进入 `exact`；审计数据不混入模型数组。流式迭代须消费到结尾才完成整包总数核对，全面验收使用 `load_export(root)`。契约、空间预算及失败恢复说明见 [PWP README](../crates/tswn_pwp/README.md#离线张量编码)。
+
 ## measure_encoder_capacity.py
 
 按 [FeatureEncoder 规格](../docs/design/feature-encoder-spec.md) 第 4 节的计费公式，统计数据集每样本的容量峰值
@@ -111,7 +121,7 @@ python scripts/pgo_build.py --kind cli --train-runs 8000
 
 默认训练覆盖 fixed30 与 score；默认 CLI 工作目录为 `target/pgo/cli/`，合并结果为其中的 `merged.profdata`。`--skip-train` 用于复用已有 profile，不替代新输入/新编译配置的训练。`llvm-profdata` 的 LLVM 大版本必须与 rustc 一致，脚本会检查。
 
-**Openbox 状态**：脚本的训练靶子仍指向迁移前的 `crates/tswn_openbox/assets/targets/`，实际资源在 `crates/tswn_openbox_backend/assets/targets/`。适配前不要把 `--kind openbox` 或包含 Openbox 的 `build_all.py --pgo` 当作可直接使用的发布流程；普通 `--release` 构建不受此限制。历史收益与当前 A/B 验证要求见 [性能准则](../rule.md#pgo-构建)。
+**Openbox 状态**：脚本的训练靶子仍指向迁移前的 `crates/tswn_openbox/assets/targets/`，实际资源在 `crates/tswn_openbox_backend/assets/targets/`。适配前不要把 `--kind openbox` 或包含 Openbox 的 `build_all.py --pgo` 当作可直接使用的发布流程；普通 `--release` 构建不受此限制。历史收益与当前 A/B 验证要求见 [性能准则](../docs/perf/guides/performance.md#pgo-构建)。
 
 ## build_wasm.py
 
