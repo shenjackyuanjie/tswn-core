@@ -10,7 +10,7 @@
 - **DIY 转换**：`tswn-cli to-diy -r NAME` 默认输出 `+ol`，加 `--old` 输出 `+diy`，也支持 `-f/--file` 和 `-o/--out-file`
 - **图标渲染**：玩家名称 → 16×16 像素头像（PNG / Base64 / RGBA）
 - **结构化回放视图**：`replay_view` 提供跨 WASM / Python / C 等包装层复用的分行、分帧、延迟、文本片段、血条和死亡特效规则
-- **DS4 流程**：通过 `tswn_ds4` crate 跟进 20260824 版本 ds4preview
+- **DS4 流程**：通过 `tswn_ds4` crate 执行 DS4 评分、配对与实战筛选，流程版本和外部模型要求见 [tswn_ds4](../tswn_ds4/README.md)
 
 ## 快速开始
 
@@ -21,7 +21,7 @@
 cargo build -p tswn_core --bin tswn-cli --release
 
 # 胜率基准测试
-./target/release/tswn-cli bench win-rate --total 100000 --perf
+./target/release/tswn-cli bench win-rate -r "mario\nluigi" -n 100000 --perf
 
 # 单局对战（stdin 输入）
 echo '<your raw input>' | ./target/release/tswn-cli fight
@@ -52,14 +52,14 @@ echo '<your raw input>' | ./target/release/tswn-cli fight
 ./target/release/tswn-cli namer-pf -f names.txt --metric pp:8000:pp.txt:7500 --no-screen
 ./target/release/tswn-cli namer-pf -f names.txt --skill-board score_now.toml --skill-board-out board.txt
 
-# 二人组队友筛选；player-list 和 teammate-list 都是每行一个名字
+# 二人组队友筛选；player-list 和 teammate-list 都是每行一个组合
 ./target/release/tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3
 ./target/release/tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 5 -o pair.txt --min-file 250
 ./target/release/tswn-cli bench pair -l weighted-targets.toml -p players.txt --teammate-list teammates.txt --head 3 --target-factored
 ./target/release/tswn-cli bench pair -l targets.txt -p players.txt --teammate-list weighted-mates.toml --teammate-factored --head 4 --detail top
 ```
 
-`fight --jsonl` 逐行输出 initial/frame/result 并立即 flush；评分和胜率使用明确的 `bench` 子命令。CLI 不再提供 `--runtime` 执行器选择器或 `runtime parity`；独立 `bench` 也已迁移到同一数据模型。
+`fight --jsonl` 逐行输出 initial/frame/result 并立即 flush；评分和胜率使用明确的 `bench` 子命令。CLI 不再提供 `--runtime` 执行器选择器或 `runtime parity`。
 
 `to-diy --minions` 会额外导出 shadow / summon / zombie 模板。OL/DIY 的 `attrs` 都使用前七围 +36、HP 原样的编码；summon 的两个火球分别用 `sklfire1`、`sklfire2` 表示，自爆用 `sklexplode`，`skills` 保持普通 JSON object 形态，字段顺序就是行动顺序。0 熟练度技能会省略输出，解析时未带前缀的 `summon.skills` 只接受这三个 `skl` 槽位名。
 
@@ -79,6 +79,7 @@ tswn_core = { path = "crates/tswn_core" }
 ```rust
 use tswn_core::Runner;
 
+let raw_input = "alpha\n\nbeta".to_owned();
 let mut runner = Runner::new_from_namerena_raw(raw_input).unwrap();
 let summary = runner.run_to_completion(20_000);
 ```
@@ -108,7 +109,10 @@ let summary = runner.run_to_completion(20_000);
 | feature      | 默认 | 说明                            |
 | ------------ | ---- | ------------------------------- |
 | `png_render` | ✅   | PNG 图标渲染支持                |
+| `mimalloc_alloc` | ✅ | 使用 mimalloc 分配器            |
 | `no_debug`   | ❌   | 关闭调试输出，用于 release 分发 |
+| `aux_bins`   | ❌   | 启用 `track_test` 辅助二进制     |
+| `battle-test-support` | ❌ | 供绑定测试注入 Runtime 校验故障 |
 
 ## 测试
 

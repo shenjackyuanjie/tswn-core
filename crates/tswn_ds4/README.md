@@ -54,9 +54,9 @@ tswn_ds4 openbox-cqp --root D:\path\to\workspace
 - `out/` 保存二人配对、可选 SP1 结果和被忽略的输入。
 - `3ren/` 保存本轮八类三人结果。
 - `file/` 保存历史单人和二人分类结果；`new/` 保存可选的本轮归档。
-- `abcp5/result.txt` 与 `abcp5/result_without_score.txt` 保存最终预测结果。
+- 未启用 Openbox 实战筛选时，`abcp5/result.txt` 与 `abcp5/result_without_score.txt` 保存最终预测结果；启用后成功归档会清空，结果保存在 `file/real_two.txt`。
 - `file/two_old.txt` 保存已预测的二人组合，`file/FC_old.txt`、`WC_old.txt`、`RH_old.txt` 保存三人流程各来源的预测缓存；未达到筛选阈值的组合也会记入缓存。
-- `tmp/two_new.txt` 仅包含本轮未预测过的组合；最终 ABCP5 结果合并历史并按分数降序排列，重复运行不会清空历史结果。
+- `tmp/two_new.txt` 仅包含本轮未预测过的组合；未启用 Openbox 实战筛选时，最终 ABCP5 结果合并历史并按分数降序排列，重复运行保留历史预测结果。
 
 ABCP5 失败时依次降低为请求线程数的一半、四分之一和 1 线程重试，保留输入和对应的 `*.failure.txt` 诊断。调整模型或筛选阈值后如需重新评估历史组合，应使用新工作目录重新处理。
 

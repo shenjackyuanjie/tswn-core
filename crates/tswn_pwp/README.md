@@ -1,13 +1,14 @@
 # tswn-pwp 数据集生成器
 
-本 crate 是 **tswn-pwp（player winchance predictor）** 的数据生成阶段，负责把 Rust Runtime 的机制状态采样为可校验的 Parquet 数据集；它不包含 FeatureEncoder、模型训练或线上推理。
+本 crate 是 **tswn-pwp（player winchance predictor）** 的数据工具，负责把 Rust Runtime 的机制状态采样为可校验的 Parquet 数据集，并调用 `tswn_core::encoder` 离线编码张量；模型训练和线上推理不在本 crate 内。
 
 当前模块边界：
 
 - `generate` / `validate` / `storage`：数据集生成、提交与完整性校验
 - `sampling` / `random` / `input`：确定性抽样、阵容输入与切分
 - `stats` / `bench` / `calibrate`：数据分布、生成规模统计与逐字段标量校准
-- 后续扩展：`encoder`、`baseline`、`inference`
+- `encode`：读取完整 EncoderManifest，使用核心 FeatureEncoder 导出张量批次
+- 后续扩展：`baseline`、`inference`
 
 相关文档入口：
 
@@ -90,6 +91,7 @@ Runtime 错误、panic、导出失败和两遍不一致都会停止生成。已�
 以及技能 ID、载荷 kind、模板 kind、Boss 与阵营分组频次：
 
 ```powershell
+cargo build -p tswn_pwp --bin tswn-pwp --release
 target/release/tswn-pwp.exe stats --out target/winprob-demo --json-out target/stats.json
 ```
 
@@ -125,8 +127,28 @@ target/release/tswn-pwp.exe calibrate --out target/winprob-100k --json-out targe
 实体 runtime 与模板标量、lane 等级与 boost、状态 priority 与各 payload 数值、
 `core.entity.minion_counter` 计数、`clone_build` 的属性/修正/名称因子叶子。分类、引用、bit、
 精确注册序和其余槽值不参与统计。缺字段时不写默认值，由 encoder 返回 `MissingCalibration`；
-`--keep-unlabeled` 可保留空标签行，`--print-fields` 打印逐字段摘要。校准只使用 train 行，
-Python 训练侧只加载结果，不重新拟合。
+`--keep-unlabeled` 可保留空标签行，`--print-fields` 打印逐字段摘要；`--split` 可选择其他集合做分布检查。
+用于训练的归一化常数仍应只从 `train` 拟合，Python 训练侧只加载结果，不重新拟合。
+
+## 离线张量编码
+
+`calibrate` 输出的是校准报告，**不是** `encode --manifest` 要求的完整 EncoderManifest。
+需要在 Rust 中将报告解析为 `tswn_core::encoder::manifest::CalibrationReport`，结合容量档位调用
+`EncoderManifest::from_calibration`，再设置 `manifest.contract_digest = Some(manifest.digest())` 并序列化。
+完整契约包含词表、张量布局、归一化常数与校准证据；组装、校验和编码仍由核心 encoder 统一负责。
+相关接口见 [manifest.rs](../tswn_core/src/encoder/manifest.rs)。
+
+假设已将完整契约保存为 `target/encoder-manifest.json`，先校验数据集，再编码：
+
+```powershell
+target/release/tswn-pwp.exe validate --out target/winprob-demo
+target/release/tswn-pwp.exe encode --dataset target/winprob-demo --manifest target/encoder-manifest.json --out target/winprob-encoded --split train --batch-size 8
+```
+
+- 输出根目录的 `manifest.json` 记录切分、样本数、批次数与 encoder 契约摘要。
+- 每个 `batch-NNNNNN/` 含各张量的 `.bin` 文件及 `batch-manifest.json`；张量为小端、C 连续布局，shape 首维为实际批次大小，尾批可以小于 `--batch-size`。
+- 批次清单记录 dtype、shape、字节数、契约摘要及输入行摘要。当前编码包只导出输入张量；胜者标签仍从原 Parquet 按相同切分和行序读取。空标签行也会编码，训练时需同步过滤张量与标签。
+- 当前实现先将选定切分的全部样本读入内存，再分批编码；`--batch-size` 控制张量批次大小，不限制数据集读取的总内存。
 
 ## Python 读取
 
@@ -136,7 +158,7 @@ Python 训练侧只加载结果，不重新拟合。
 python scripts/read_winprob_dataset.py target/winprob-demo
 ```
 
-该示例默认排除空标签，只读取 `state` 和 `winner_team_index` 两列。不要将 seed、原名字、阵容哈希、切分标记或最终 `progress` 混入模型输入。状态仍是机制数据，张量化、ID 引用处理、浮点 bit 转换和归一化属于后续训练工作。
+该示例默认排除空标签，只读取 `state` 和 `winner_team_index` 两列。不要将 seed、原名字、阵容哈希、切分标记或最终 `progress` 混入模型输入。张量化、ID 引用处理、浮点 bit 转换和归一化由 `tswn_core::encoder` 实现；Python 训练侧应加载同一完整契约和编码产物。
 
 Rust 固定数组和元组在当前 Parquet 中映射成字段名为 `0`、`1` 等的 struct；Python 读取后按这些编号还原顺序。可变长序列使用 list，无载荷枚举使用普通字符串。
 

@@ -24,11 +24,12 @@ cargo run -p tswn_core --bin tswn-cli -- runtime normalized-run -f input.txt --m
 ## track / track_test
 
 ```powershell
-cargo run -p tswn_core --bin track -- test --help
+cargo build -p tswn_core --features aux_bins --bin track --bin track_test
+./target/debug/track test --help
 cargo run -p tswn_core --features aux_bins --bin track_test -- --help
 ```
 
-`track` 只提供仍有对应目标的 `test` 转发。主 Runtime 的正式 release 回归不经过该 checkpoint 工具，而统一运行：
+`track test` 优先调用同目录的 `track_test`，因此先按上述命令构建两个二进制；当前 Cargo fallback 不会自动启用 `aux_bins`。也可直接用带 `aux_bins` 的 `cargo run` 调用 `track_test`。`track` 只提供 `test` 转发。主 Runtime 的正式 release 回归不经过该 checkpoint 工具，而统一运行：
 
 ```powershell
 python scripts/check_runtime_release.py --corpus

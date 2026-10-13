@@ -19,13 +19,13 @@
 在 workspace 根目录运行：
 
 ```powershell
-cargo run -p tswn_openbox
+cargo run -p tswn_openbox --bin tswn_openbox
 ```
 
 推荐的 release 构建命令：
 
 ```powershell
-cargo build -p tswn_openbox --release --features "no_debug,mimalloc_alloc"
+cargo build -p tswn_openbox --bin tswn_openbox --release --features "no_debug,mimalloc_alloc"
 ```
 
 构建完成后可直接双击：
@@ -39,8 +39,10 @@ Windows GUI 构建启用 `windows_subsystem = "windows"`，双击启动时不会
 ## openbox-cli（无头 CLI）
 
 ```powershell
-cargo run -p tswn_openbox --bin openbox-cli -- --help
+cargo run -p tswn_openbox --no-default-features --features mimalloc_alloc --bin openbox-cli -- --help
 ```
+
+默认 feature 包含 `gui`；上述无头命令关闭默认 feature，只保留分配器，从而无需编译 GUI 与 DS4 页面依赖。
 
 `openbox-cli` 复用 GUI 的后端与预设（`tswn_openbox_backend` crate），
 因此与面板共用解析、执行、文件输出格式、输出排序、标签清洗，
@@ -486,22 +488,6 @@ cargo run -p tswn_openbox --bin tswn_openbox --features ui_capture -- --capture-
 ## 0.3.9 说明
 
 `0.3.9` 重点修复 `cqd/cqp` 大批量双人组运行时的内存增长问题。Openbox 后端的批量胜率路径现在使用 uncached prepared runner，不再把 `tests\allCO3pure.txt` 这类高唯一度 matchup 写入全局 prepared 缓存。
-
-同时，`cqd/cqp` 的“每组胜率”和 `pair` 的“每组 cqp / 有效 cqp”屏幕输出统一为块状格式：
-
-```text
-分数 名字
-  分数 名字
-  分数 名字
-  分数 名字
-
-分数 名字
-  分数 名字
-  分数 名字
-  分数 名字
-```
-
-为了避免长任务继续积压内存，GUI 事件通道和后端 worker 事件通道都改为有界队列，主日志也会保留最近一段内容而不是无限增长。输出文件不受日志裁剪影响。
 
 ## 内存排查
 
