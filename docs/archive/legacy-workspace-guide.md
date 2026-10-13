@@ -1,5 +1,8 @@
 # namerena工作区指南
 
+> 本文由根目录 `rule.old.md` 归档，保留早期重写阶段的工作约定和旧工具命令，仅供历史复盘。
+> 当前仓库规范见 [AGENTS.md](../../AGENTS.md)，性能准则见 [rule.md](../../rule.md)，架构迁移见 [Runtime 0.5 迁移指南](../guides/runtime-0.5-migration.md)。
+
 现在用户正在进行一个dart项目的重写
 
 ## 源码说明

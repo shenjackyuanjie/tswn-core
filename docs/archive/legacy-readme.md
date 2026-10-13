@@ -1,5 +1,8 @@
 # namerena 但是 rust 版
 
+> 本文由根目录 `README.old.md` 归档，保留项目早期介绍与随笔，不代表当前构建、模块或接口状态。
+> 当前使用入口见 [仓库 README](../../README.md)，更多历史材料见 [归档索引](README.md)。
+
 > 坏了, 我真开始技术封锁了
 
 - 即日起 tswn 源码开启 Early Access 活动! (不是)

@@ -2,13 +2,13 @@
 
 `tswn-core` 是名字竞技场的 Rust 实现仓库。当前重点是把核心战斗逻辑、名字解析、技能系统、评分/胜率模拟、图标渲染和跨语言绑定集中维护在一个 Cargo workspace 里，并用差分工具持续对齐旧实现行为。
 
-旧 README 已保留为 [`README.old.md`](README.old.md)。
+旧 README 与早期工作约定集中保存在 [历史归档](docs/archive/README.md)；[旧 README 原文](docs/archive/legacy-readme.md)继续保留。
 
 ## 当前状态
 
 - 核心 crate `tswn_core` 已经是当前主要实现，包含玩家构建、技能系统、战斗 runner、评分/胜率、RC4、图标渲染和 CLI。
 - CLI 已覆盖普通对战、JSONL 流式日志、runtime diff 输出、benchmark、图标导出、DIY/OL overlay 导出等常用入口。
-- 仓库内同时维护 Python、WASM、C ABI、以及 `ds3` 相关实验/工具 crate。
+- 仓库内同时维护 Python、WASM、C ABI、Openbox GUI/CLI，以及 `ds4` 数据处理与 `tswn-pwp` 胜率数据集/特征编码工具。
 - 当前仍处在“行为兼容 + 差分追踪 + 性能整理”的开发状态，不是只提供稳定 SDK 的纯发布仓库。
 - `tests/`、`docs/diff/`、`tests/diff/`、`target/ts_diff_cases*` 一类目录主要服务于与旧 JS/TS 行为的差分定位。
 
@@ -22,6 +22,7 @@ crates/
   tswn_capi/         C ABI 动态库/静态库导出
   tswn_test/         跨 crate 集成测试与 golden/corpus 基线
   tswn_openbox/      图形界面工具与 openbox-cli
+  tswn_openbox_backend/  GUI/CLI 共用后端与预设资源
   tswn_lane_ranker/  lane 排名工具
   tswn_ladder/       天梯工具
   tswn_pwp/          胜率数据集生成器（binary `tswn-pwp`）
@@ -42,14 +43,16 @@ target/        Cargo 输出和本地差分产物
 构建和检查：
 
 ```powershell
-cargo check
-cargo build
+cargo check --workspace
+cargo build --workspace
 cargo test -p tswn_core
-cargo build --release --features no_debug,mimalloc_alloc
-cargo build --profile release-fast --features no_debug
+cargo clippy --workspace --all-targets
+cargo +nightly fmt --check
+cargo build -p tswn_core --bin tswn-cli --release --features no_debug,mimalloc_alloc
+cargo build -p tswn_core --bin tswn-cli --profile release-fast --features no_debug
 ```
 
-说明：`--release` 是正式 benchmark/发版口径；日常需要更快的优化构建时可以用 `--profile release-fast`。`tswn_core 0.5.0` 的原生默认 feature 已包含 `mimalloc_alloc`，正式 benchmark 与发布构建都保持默认 allocator；显式关闭默认 feature 的结果必须作为独立口径记录。
+说明：`--release` 是正式 benchmark/发版口径；日常需要更快的优化构建时可以用 `--profile release-fast`。当前 `tswn_core` 的原生默认 feature 包含 `mimalloc_alloc`，正式 benchmark 与发布构建都保持默认 allocator；显式关闭默认 feature 的结果必须作为独立口径记录。
 
 运行主 CLI：
 
@@ -110,12 +113,16 @@ python scripts/check_runtime_release.py --corpus
 ## 重要入口
 
 - `tswn-cli`: 日常调试和用户入口。
+- Openbox GUI：`cargo run -p tswn_openbox --bin tswn_openbox`。
+- Openbox 无头 CLI：`cargo run -p tswn_openbox --no-default-features --features mimalloc_alloc --bin openbox-cli -- --help`。
 - `python track.py test`: 主 Runtime corpus 跟踪器的短命令转发入口。
 - `track_test.py`: release corpus 的测试失败集 checkpoint 工具，默认运行完整 124 项。
 
 ## 文档入口
 
 - [文档中心](docs/README.md)：按用途浏览指南、接口参考、设计规格、机制分析、性能、版本记录与历史归档。
+- [公共 API 与跨语言契约](docs/reference/public-api.md)：BattleSession、快照、回放与错误模型。
+- [脚本与验证入口](scripts/README.md)：组件构建、聚合打包与跨语言验证。
 - [`docs/guides/runtime-0.5-migration.md`](docs/guides/runtime-0.5-migration.md): 0.5.0 主 Runtime 迁移指南。
 - [`docs/archive/dart-architecture.md`](docs/archive/dart-architecture.md): 原始 Dart 实现的历史架构说明。
 - [`docs/reference/diy-overlay.md`](docs/reference/diy-overlay.md): DIY/OL overlay 相关说明。
@@ -129,6 +136,8 @@ python scripts/check_runtime_release.py --corpus
 - [`crates/tswn_py/README.md`](crates/tswn_py/README.md): Python 绑定说明。
 - [`crates/tswn_wasm/README.md`](crates/tswn_wasm/README.md): WASM 绑定说明。
 - [`crates/tswn_capi/README.md`](crates/tswn_capi/README.md): C API 说明。
+- [Openbox 使用说明](crates/tswn_openbox/README.md)：GUI、无头 CLI 与共享后端。
+- [胜率数据集与离线特征编码](crates/tswn_pwp/README.md)：`tswn-pwp` 生成、校验、校准和编码入口。
 
 ## 开发注意事项
 

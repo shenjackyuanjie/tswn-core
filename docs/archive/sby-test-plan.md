@@ -8,6 +8,8 @@
 > python scripts/check_runtime_release.py --corpus
 > ```
 
+[返回归档索引](README.md)；当前验证入口见 [Runtime 0.5 迁移指南](../guides/runtime-0.5-migration.md)。
+
 ## 以下为历史原文
 
 以下内容保留当时的任务语气与命令，仅用于复盘 0.5.0 迁移过程。

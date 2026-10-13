@@ -8,8 +8,10 @@
 - 接入对局：[公共 API 与跨语言契约](reference/public-api.md)、[Windows C/C++ 接入](guides/c-api-cpp-windows.md)。
 - 自定义角色：[DIY / OL 格式](reference/diy-overlay.md)、[往返验证](guides/diy-validation.md)。
 - 从旧版本迁移：[Runtime 0.5 迁移指南](guides/runtime-0.5-migration.md)。
-- 查看 BattleSession 工作规格：[重构计划](design/battle-session-plan.md)、[API 冻结前加固要求](design/battle-session-hardening.md)。
+- 了解 BattleSession 实现与历史决策：[重构计划与验收](design/battle-session-plan.md)、[API 加固现状](design/battle-session-hardening.md)。
 - 性能测量与历史结果：[性能索引](perf/README.md)。
+- 构建脚本与验收命令：[脚本索引](../scripts/README.md)。
+- 项目旧说明与已淘汰工具：[历史归档](archive/README.md)。
 - 胜率预测模块：[tswn-pwp 设计索引](design/README.md)。
 
 ## 目录导航

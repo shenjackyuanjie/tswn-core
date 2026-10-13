@@ -4,6 +4,14 @@
 
 本目录保留历史上下文，不作为当前 API、模块结构或待实施任务。文中的“当前”指写作时的基线；部分源码、命令和行号已不存在。当前接口见 [公共 API](../reference/public-api.md)，架构切换结果见 [Runtime 0.5 迁移](../guides/runtime-0.5-migration.md)。
 
+## 根目录旧文档
+
+以下文件从根目录集中归档，原文与历史验收数据保留；旧文件名在 changelog 和历史报告中仍表示当时的路径。
+
+- [旧项目 README](legacy-readme.md)：原 `README.old.md`，早期介绍与随笔。
+- [早期工作区指南](legacy-workspace-guide.md)：原 `rule.old.md`，重写阶段的工作约定和工具。
+- [SBY 修复计划与历史记录](sby-test-plan.md)：原 `sby_test.md`，旧执行器的大样本差分排查流程。
+
 ## 项目与旧架构
 
 - [项目起源](project-origins.md)：从逆向 Dart 网页实现到 Rust 重写的背景随笔。
