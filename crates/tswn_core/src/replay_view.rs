@@ -70,6 +70,8 @@ pub trait ReplayState: Clone {
     fn hp(&self) -> i32;
     fn max_hp(&self) -> i32;
     fn alive(&self) -> bool;
+    fn shield(&self) -> i32 { 0 }
+    fn with_shield(&self, _shield: i32) -> Self { self.clone() }
     fn with_hp_alive(&self, hp: i32, alive: bool) -> Self;
 }
 
@@ -119,7 +121,7 @@ fn hp_delta_value(update: &RunUpdate) -> u32 {
     }
 }
 
-fn is_percent_hp_damage_update(update: &RunUpdate) -> bool {
+pub(crate) fn is_percent_hp_damage_update(update: &RunUpdate) -> bool {
     update.message.contains("体力减少") && update.message.contains("[2]%")
 }
 
@@ -191,8 +193,9 @@ pub fn build_replay_view_frame<S: ReplayState>(
         if is_death_effect_update(update) {
             apply_death_update(&mut running, update.target);
         }
+        let parts = build_clip_parts(update, &before, &running, player_names);
+        sync_visible_shields(&parts, &mut running, &frame_state_map);
         let after = running.clone();
-        let parts = build_clip_parts(update, &before, &after, player_names);
         let show_hp = parts.iter().any(|part| part.show_hp);
         let delay = clip_delay(
             frame_has_visible_clip,
@@ -304,7 +307,28 @@ fn sync_reappeared_participants<S: ReplayState>(
         if running.get(&id).is_some_and(ReplayState::alive) {
             continue;
         }
-        running.insert(id, frame_state.clone());
+        let shield = running.get(&id).map_or(0, ReplayState::shield);
+        running.insert(id, frame_state.with_shield(shield));
+    }
+}
+
+fn sync_visible_shields<S: ReplayState>(
+    parts: &[ReplayTextPart],
+    running: &mut HashMap<PlrId, S>,
+    frame_states: &HashMap<PlrId, S>,
+) {
+    // 护盾增减没有独立消息，只能按帧末净值协调；首次出现玩家文字时推进，后续片段沿用该值。
+    for id in parts.iter().filter_map(|part| part.player_id) {
+        let Some(state) = running.get(&id) else {
+            continue;
+        };
+        let Some(frame_state) = frame_states.get(&id) else {
+            continue;
+        };
+        let shield = if state.alive() { frame_state.shield() } else { 0 };
+        if state.shield() != shield {
+            running.insert(id, state.with_shield(shield));
+        }
     }
 }
 
@@ -562,6 +586,7 @@ mod tests {
         id: PlrId,
         hp: i32,
         max_hp: i32,
+        shield: i32,
         alive: bool,
     }
 
@@ -574,10 +599,20 @@ mod tests {
 
         fn alive(&self) -> bool { self.alive }
 
+        fn shield(&self) -> i32 { self.shield }
+
+        fn with_shield(&self, shield: i32) -> Self {
+            Self {
+                shield: if self.alive { shield } else { 0 },
+                ..self.clone()
+            }
+        }
+
         fn with_hp_alive(&self, hp: i32, alive: bool) -> Self {
             Self {
                 hp,
                 alive,
+                shield: if alive { self.shield } else { 0 },
                 ..self.clone()
             }
         }
@@ -590,6 +625,7 @@ mod tests {
             id,
             hp,
             max_hp: 100,
+            shield: 0,
             alive: hp > 0,
         }
     }
@@ -600,6 +636,100 @@ mod tests {
 
     fn player_parts(clip: &ReplayClip<TestState>) -> Vec<&ReplayTextPart> {
         clip.parts.iter().filter(|part| part.kind == ReplayTextPartKind::Player).collect()
+    }
+
+    #[test]
+    fn shield_changes_only_advance_on_the_first_visible_player_clip() {
+        let updates = [
+            RunUpdate::new("[0]发起攻击", 0, 1, 0),
+            RunUpdate::new("[1]受到[2]点伤害", 0, 1, 0),
+            RunUpdate::new("[1]挡住攻击", 0, 1, 0),
+            RunUpdate::new("[0]还剩[2]点血", 0, 1, 100),
+        ];
+        let events = updates
+            .iter()
+            .enumerate()
+            .map(|(index, update)| ReplayEventView {
+                update,
+                tone: if index == 1 { ReplayTone::Damage } else { ReplayTone::Normal },
+                message_rendered: "可见消息",
+            })
+            .collect::<Vec<_>>();
+        let previous = vec![state(0, 100), state(1, 100).with_shield(40)];
+        let frame = vec![state(0, 100).with_shield(10), state(1, 100).with_shield(25)];
+        let view = build_replay_view_frame(&events, &previous, &frame, &names(), false, &[]);
+        let clips = &view.rows[0].clips;
+        let pairs = clips
+            .iter()
+            .map(|clip| {
+                clip.sidebar_previous_states
+                    .iter()
+                    .zip(&clip.sidebar_states)
+                    .map(|(before, after)| (before.shield, after.shield))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            pairs,
+            vec![
+                vec![(0, 10), (40, 40)],
+                vec![(10, 10), (40, 25)],
+                vec![(10, 10), (25, 25)],
+                vec![(10, 10), (25, 25)],
+            ]
+        );
+        // 零体力伤害仍可消耗护盾，血条行为保持原样。
+        assert!(!player_part(&clips[1]).show_hp);
+        assert_eq!((player_part(&clips[1]).hp_before, player_part(&clips[1]).hp_after), (100, 100));
+    }
+
+    #[test]
+    fn newly_appeared_participant_shield_waits_for_its_visible_player_part() {
+        let updates = [RunUpdate::new("[0]召唤目标", 0, 1, 0), RunUpdate::new("[1]开始行动", 1, 1, 0)];
+        let events = updates
+            .iter()
+            .map(|update| ReplayEventView {
+                update,
+                tone: ReplayTone::Normal,
+                message_rendered: "可见消息",
+            })
+            .collect::<Vec<_>>();
+        let previous = vec![state(0, 100)];
+        let frame = vec![state(0, 100), state(1, 100).with_shield(20)];
+        let view = build_replay_view_frame(&events, &previous, &frame, &names(), false, &[]);
+        let clips = &view.rows[0].clips;
+        assert_eq!(clips[0].sidebar_states[1].shield, 0);
+        assert_eq!(clips[1].sidebar_previous_states[1].shield, 0);
+        assert_eq!(clips[1].sidebar_states[1].shield, 20);
+    }
+
+    #[test]
+    fn lethal_clip_clears_shield_and_following_death_clip_does_not_repeat_it() {
+        let damage = RunUpdate::new("[1]受到[2]点伤害", 0, 1, 50);
+        let death = RunUpdate::new("[1]被击倒了", 0, 1, 0);
+        let events = [
+            ReplayEventView {
+                update: &damage,
+                tone: ReplayTone::Damage,
+                message_rendered: "伤害",
+            },
+            ReplayEventView {
+                update: &death,
+                tone: ReplayTone::Knockout,
+                message_rendered: "击倒",
+            },
+        ];
+        let previous = vec![state(0, 100), state(1, 50).with_shield(20)];
+        let frame = vec![state(0, 100), state(1, 0)];
+        let view = build_replay_view_frame(&events, &previous, &frame, &names(), false, &[]);
+        let clips = &view.rows[0].clips;
+        assert_eq!(clips[0].sidebar_previous_states[1].shield, 20);
+        assert_eq!(clips[0].sidebar_states[1].shield, 0);
+        assert!(!clips[0].sidebar_states[1].alive);
+        assert_eq!(clips[1].sidebar_previous_states[1].shield, 0);
+        assert_eq!(clips[1].sidebar_states[1].shield, 0);
+        assert!(player_part(&clips[1]).death_effect);
+        assert!(!player_part(&clips[1]).show_hp);
     }
 
     #[test]

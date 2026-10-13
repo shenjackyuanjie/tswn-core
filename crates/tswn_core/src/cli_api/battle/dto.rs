@@ -54,6 +54,8 @@ pub struct BattlePlayerState {
     pub icon_png_base64: Option<String>,
     pub hp: i32,
     pub max_hp: i32,
+    /// 剩余吸收护盾，合计常规蓄盾与 ShieldValue；不含铁壁，死亡时为 0。
+    pub shield: i32,
     pub magic_point: i32,
     pub move_point: i32,
     pub attack: i32,
@@ -83,10 +85,20 @@ impl ReplayState for BattlePlayerState {
 
     fn alive(&self) -> bool { self.alive }
 
+    fn shield(&self) -> i32 { self.shield }
+
+    fn with_shield(&self, shield: i32) -> Self {
+        Self {
+            shield: if self.alive { shield.max(0) } else { 0 },
+            ..self.clone()
+        }
+    }
+
     fn with_hp_alive(&self, hp: i32, alive: bool) -> Self {
         Self {
             hp,
             alive,
+            shield: if alive { self.shield } else { 0 },
             ..self.clone()
         }
     }

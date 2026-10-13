@@ -29,6 +29,7 @@ fn state_from_core(state: &BattlePlayerState) -> PlayerState {
         },
         hp: state.hp,
         max_hp: state.max_hp,
+        shield: state.shield,
         magic_point: state.magic_point,
         move_point: state.move_point,
         attack: state.attack,
@@ -263,6 +264,7 @@ mod tests {
             icon_png_base64: None,
             hp: 100,
             max_hp: 100,
+            shield: 25,
             magic_point: 0,
             move_point: 0,
             attack: 0,
@@ -285,7 +287,96 @@ mod tests {
         let original = state.clone();
         let legacy = state_from_core(&state);
         assert_eq!(legacy.owner_id, Some(7));
+        assert_eq!(legacy.shield, 25);
         assert_eq!(state, original);
+    }
+
+    #[test]
+    fn legacy_shield_projection_covers_initial_frame_sidebar_and_batch_final_states() {
+        let raw = r#"left@red+ol:{"skills":{"shield":80}}
+
+right@blue+ol:{"skills":{}}
+seed:7@!"#;
+        let mut legacy = FightSession::new_internal(raw.into(), FightOptions::default()).unwrap();
+        assert!(legacy.state_vec().iter().all(|state| state.shield == 0));
+        let mut canonical = BattleSession::new(raw, BattleOptions::default()).unwrap();
+        let batch = legacy.run_to_end_internal(Some(3)).unwrap();
+        assert_eq!(batch.frames.len(), 3);
+        for frame in &batch.frames {
+            let expected = canonical.next_frame().unwrap().unwrap();
+            assert_eq!(
+                frame.states.iter().map(|state| state.shield).collect::<Vec<_>>(),
+                expected.states.iter().map(|state| state.shield).collect::<Vec<_>>()
+            );
+            for (row, expected_row) in frame.rows.iter().zip(&expected.rows) {
+                for (clip, expected_clip) in row.clips.iter().zip(&expected_row.clips) {
+                    assert_eq!(
+                        clip.sidebar_states.iter().map(|state| state.shield).collect::<Vec<_>>(),
+                        expected_clip.sidebar_states.iter().map(|state| state.shield).collect::<Vec<_>>()
+                    );
+                    assert_eq!(
+                        clip.sidebar_previous_states.iter().map(|state| state.shield).collect::<Vec<_>>(),
+                        expected_clip.sidebar_previous_states.iter().map(|state| state.shield).collect::<Vec<_>>()
+                    );
+                }
+            }
+        }
+        assert!(batch.final_states.iter().any(|state| state.shield > 0));
+        assert_eq!(
+            batch.final_states.iter().map(|state| state.shield).collect::<Vec<_>>(),
+            canonical.current_states().iter().map(|state| state.shield).collect::<Vec<_>>()
+        );
+        let complete = legacy.run_to_end_internal(None).unwrap();
+        assert!(complete.final_states.iter().filter(|state| !state.alive).all(|state| state.shield == 0));
+        assert!(<PlayerState as tsify::Tsify>::DECL.contains("shield: number"));
+        assert!(include_str!("battle_types.d.ts").contains("shield: number"));
+    }
+
+    #[test]
+    fn legacy_half_percent_message_preserves_damage_tone_and_hp_parts() {
+        let raw =
+            "My_Generation lrSP5W8@芒萁\nUnbound v7mEDujiDSLN@芒萁\n\n潮汐-糖藷愠颏@涵虚\n风驰-xtxxgwcb@涵虚\nseed:33554538@!";
+        let mut canonical = BattleSession::new(raw, BattleOptions::default()).unwrap();
+        while let Some(frame) = canonical.next_frame().unwrap() {
+            let Some(update_index) = frame
+                .updates
+                .iter()
+                .position(|update| update.message_template == "[1]体力减少[2]%" && update.score > 0)
+            else {
+                continue;
+            };
+            let actual = frame_from_core(frame.clone());
+            let update = &actual.updates[update_index];
+            assert!(matches!(update.tone, MessageTone::Damage));
+            assert_eq!(update.hp_delta, frame.updates[update_index].hp_delta);
+            let expected = frame
+                .rows
+                .iter()
+                .flat_map(|row| &row.clips)
+                .find(|clip| {
+                    clip.tone == "damage"
+                        && clip.parts.iter().any(|part| part.player_id == Some(update.target_id) && part.show_hp)
+                })
+                .unwrap();
+            let clip = actual
+                .rows
+                .iter()
+                .flat_map(|row| &row.clips)
+                .find(|clip| {
+                    matches!(clip.tone, MessageTone::Damage)
+                        && clip.parts.iter().any(|part| part.player_id == Some(update.target_id) && part.show_hp)
+                })
+                .unwrap();
+            for (part, expected_part) in clip.parts.iter().zip(&expected.parts) {
+                assert_eq!(part.show_hp, expected_part.show_hp);
+                assert_eq!(
+                    (part.hp_before, part.hp_after),
+                    (expected_part.hp_before, expected_part.hp_after)
+                );
+            }
+            return;
+        }
+        panic!("固定输入应产生瘟疫百分比伤害句");
     }
 
     #[test]

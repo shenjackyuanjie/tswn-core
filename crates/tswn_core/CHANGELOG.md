@@ -2,6 +2,12 @@
 
 ## [Unreleased] - 0.7.1
 
+### 新增
+
+- `RuntimePlayerSnapshot` 与 `BattlePlayerState` 新增 `shield`，合计常规蓄盾与 `ShieldValue` 的非负剩余值，使用饱和加法；死亡或 HP 不大于零时投影为零，铁壁阈值不纳入可消耗护盾。
+- 公共 replay view 在角色首次实际出现在消息文字时推进该回合的护盾净值，后续片段沿用更新值，避免重复展示；`ReplayState` 的盾值方法提供兼容默认实现。
+- 上述公开输出结构体增加字段，外部 Rust 结构体字面量构造需补充 `shield`；文本片段协议与战斗机制保持原样。
+
 ### 依赖更新
 
 - `sha2` 升级到 `0.11`。该版本的摘要类型不再实现 `LowerHex`，`EncoderManifest::digest()` 改为
@@ -9,6 +15,8 @@
 - wasm 目标的 `js-sys` 升级到 `0.3.106`，与 `tswn_wasm` 的 `wasm-bindgen 0.2.129` 配套。
 
 ### 修复
+
+- 百分比体力损失消息（如瘟疫的 `[1]体力减少[2]%`）正确归类为 `Damage`，恢复结构化回放中的 HP 条；血量变化继续采用 `score` 的实际伤害，文本百分比 `param` 仅用于显示。
 
 - `tswn-cli bench pair` 与 `cli_api::pair_rate` / `pair_rate_factored`：队友改为和选手一样按“逐个成员单独构建”
   冻结成 `+ol` 后再组队。此前只冻结选手，同公会（`@队名` 相同）的队友会单方面吃到组队加成，
@@ -28,6 +36,7 @@
 
 - `cargo test -p tswn_core --no-default-features --features png_render`：`tswn_core` lib 602 项、
   `tswn-cli` 89 项通过；`cargo +nightly fmt --check` 无输出。
+- 补充护盾双池吸收、耗尽、铁壁区分、溢出、死亡、片段归属与真实瘟疫百分比伤害回归；默认配置完整测试在工作区临时目录下通过。
 
 ## [0.7.0] - 2026-09-30
 

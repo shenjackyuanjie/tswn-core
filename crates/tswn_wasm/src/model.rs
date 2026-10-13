@@ -115,6 +115,8 @@ pub struct PlayerState {
     pub minion_kind: Option<MinionKindView>,
     pub hp: i32,
     pub max_hp: i32,
+    /// 剩余吸收护盾，合计常规蓄盾与 ShieldValue；不含铁壁，死亡时为 0。
+    pub shield: i32,
     pub magic_point: i32,
     pub move_point: i32,
     pub attack: i32,

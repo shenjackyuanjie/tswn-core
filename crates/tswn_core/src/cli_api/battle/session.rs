@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::namerena::icon_render::render_icon_b64_from_name;
 use crate::replay_view::{
     ReplayClip, ReplayEventView, ReplayRow, ReplayTextPart, ReplayTextPartKind, ReplayTone, build_replay_view_frame,
-    hp_delta_for_tone, render_update_message,
+    hp_delta_for_tone, is_percent_hp_damage_update, render_update_message,
 };
 use crate::runtime::update::{RunUpdates, UpdateType};
 use crate::runtime::{PlrId, RuntimeMinionKind, RuntimePlayerSnapshot, RuntimeRunner};
@@ -160,6 +160,7 @@ fn state_from_snapshot(snapshot: RuntimePlayerSnapshot, include_icons: bool) -> 
         icon_png_base64: include_icons.then(|| render_icon_b64_from_name(&icon_key)),
         hp: snapshot.hp,
         max_hp: snapshot.max_hp,
+        shield: snapshot.shield,
         magic_point: snapshot.magic_point,
         move_point: snapshot.move_point,
         attack: snapshot.attack,
@@ -261,7 +262,7 @@ fn classify_tone(update: &crate::RunUpdate) -> ReplayTone {
         ReplayTone::Recover
     } else if message.contains("被击倒") || message.contains("消失了") {
         ReplayTone::Knockout
-    } else if message.contains("点伤害") {
+    } else if message.contains("点伤害") || is_percent_hp_damage_update(update) {
         ReplayTone::Damage
     } else if is_status_exit_message(message) {
         ReplayTone::StatusExit
@@ -363,6 +364,135 @@ mod tests {
         for id in session.driver.runner.all_player_ids() {
             session.driver.runner.runtime_mut().world.remove_round_actor(EntityIdx(id as u32));
         }
+    }
+
+    #[test]
+    fn shield_serializes_through_initial_frame_clip_and_final_states() {
+        let mut session = session(1);
+        let initial_json = serde_json::to_value(session.initial_states()).unwrap();
+        assert!(initial_json.as_array().unwrap().iter().all(|state| state["shield"] == 0));
+        session.driver.runner.runtime_mut().entities.get_mut(EntityIdx(1)).unwrap().runtime.shield = 40;
+        let previous = states_from_runner(&session.driver.runner, false, &mut session.icon_cache);
+        session.driver.runner.runtime_mut().entities.get_mut(EntityIdx(1)).unwrap().runtime.shield = 25;
+        let states = states_from_runner(&session.driver.runner, false, &mut session.icon_cache);
+        let mut updates = RunUpdates::new();
+        updates.add(crate::RunUpdate::new("[0]发起攻击", 0, 1, 0));
+        updates.add(crate::RunUpdate::new("[1]受到[2]点伤害", 0, 1, 0));
+        updates.add(crate::RunUpdate::new("[1]挡住攻击", 0, 1, 0));
+        let frame = build_frame(&updates, &previous, &states, &session.driver.runner);
+        let frame_json = serde_json::to_value(&frame).unwrap();
+        assert_eq!(frame_json["states"][1]["shield"], 25);
+        let clips = &frame_json["rows"][0]["clips"];
+        assert_eq!(clips[0]["sidebar_previous_states"][1]["shield"], 40);
+        assert_eq!(clips[0]["sidebar_states"][1]["shield"], 40);
+        assert_eq!(clips[1]["sidebar_previous_states"][1]["shield"], 40);
+        assert_eq!(clips[1]["sidebar_states"][1]["shield"], 25);
+        assert_eq!(clips[2]["sidebar_previous_states"][1]["shield"], 25);
+        assert_eq!(clips[2]["sidebar_states"][1]["shield"], 25);
+        assert_eq!(
+            session.driver.runner.runtime().entities.get(EntityIdx(1)).unwrap().runtime.shield,
+            25
+        );
+
+        remove_round_actors(&mut session);
+        assert_eq!(session.next_frame().unwrap(), None);
+        let result_json = serde_json::to_value(session.result().unwrap()).unwrap();
+        assert_eq!(result_json["final_states"][1]["shield"], 25);
+    }
+
+    #[test]
+    fn half_skill_percent_message_classifies_as_damage_and_preserves_actual_hp_pair() {
+        let mut session = session(1);
+        let runtime = session.driver.runner.runtime_mut();
+        let caster = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+        caster.runtime.wisdom = 512;
+        caster.runtime.magic = 0;
+        let target = runtime.entities.get_mut(EntityIdx(1)).unwrap();
+        target.runtime.hp = 20;
+        target.runtime.resistance = 0;
+        target.runtime.agility = 0;
+        target.template.skills = Default::default();
+        let previous = states_from_runner(&session.driver.runner, false, &mut session.icon_cache);
+        let mut updates = RunUpdates::new();
+        session
+            .driver
+            .runner
+            .runtime_mut()
+            .drain_plain_half_skill_into(EntityIdx(0), EntityIdx(1), &mut updates);
+        let states = states_from_runner(&session.driver.runner, false, &mut session.icon_cache);
+        let frame = build_frame(&updates, &previous, &states, &session.driver.runner);
+        assert_eq!(frame.updates[0].message_template, "[0]使用[瘟疫]");
+        assert_eq!(frame.updates[1].message_template, "[1]体力减少[2]%");
+        assert_eq!(frame.updates[1].tone, "damage");
+        assert_eq!(frame.updates[1].param, Some(47));
+        assert_eq!(frame.updates[1].score, 9);
+        assert_eq!(frame.updates[1].hp_delta, Some(-9));
+        let clips = &frame.rows[0].clips;
+        assert!(clips[0].parts.iter().all(|part| !part.show_hp));
+        let part = clips[1].parts.iter().find(|part| part.player_id == Some(1)).unwrap();
+        assert!(part.show_hp);
+        assert_eq!((part.hp_before, part.hp_after), (20, 11));
+        let json = serde_json::to_value(&frame).unwrap();
+        assert_eq!(json["updates"][1]["hp_delta"], -9);
+        assert_eq!(json["rows"][0]["clips"][1]["parts"][0]["show_hp"], true);
+    }
+
+    #[test]
+    fn stress_half_fixture_exposes_percent_hp_parts() {
+        let raw =
+            "My_Generation lrSP5W8@芒萁\nUnbound v7mEDujiDSLN@芒萁\n\n潮汐-糖藷愠颏@涵虚\n风驰-xtxxgwcb@涵虚\nseed:33554538@!";
+        let mut session = BattleSession::new(raw, BattleOptions::default()).unwrap();
+        let mut saw_half = false;
+        while let Some(frame) = session.next_frame().unwrap() {
+            for update in &frame.updates {
+                if update.message_template == "[1]体力减少[2]%" && update.score > 0 {
+                    if !saw_half {
+                        println!(
+                            "瘟疫百分比句首次出现：frame={} round={} {}",
+                            frame.frame_index, frame.round_index, update.message_rendered
+                        );
+                    }
+                    saw_half = true;
+                    assert_eq!(update.tone, "damage");
+                    assert_eq!(update.hp_delta, Some(-(update.score as i32)));
+                    assert!(frame.rows.iter().flat_map(|row| &row.clips).any(|clip| {
+                        clip.tone == "damage"
+                            && clip
+                                .parts
+                                .iter()
+                                .any(|part| part.player_id == update.target_id && part.show_hp && part.hp_before > part.hp_after)
+                    }));
+                }
+            }
+        }
+        assert!(saw_half);
+    }
+
+    #[test]
+    fn shield_overlay_fixture_exposes_positive_snapshot_and_clip_delta() {
+        let raw = r#"left@red+ol:{"skills":{"shield":80}}
+
+right@blue+ol:{"skills":{}}
+seed:7@!"#;
+        let mut session = BattleSession::new(raw, BattleOptions::default()).unwrap();
+        let mut saw_shield = false;
+        let mut saw_consumption = false;
+        while let Some(frame) = session.next_frame().unwrap() {
+            if !saw_shield && frame.states.iter().any(|state| state.shield > 0) {
+                saw_shield = true;
+                println!("护盾首次出现：frame={} round={}", frame.frame_index, frame.round_index);
+            }
+            for clip in frame.rows.iter().flat_map(|row| &row.clips) {
+                for (before, after) in clip.sidebar_previous_states.iter().zip(&clip.sidebar_states) {
+                    if before.shield > after.shield {
+                        saw_consumption = true;
+                        assert!(clip.parts.iter().any(|part| part.player_id == Some(after.id)));
+                    }
+                }
+            }
+        }
+        assert!(saw_shield);
+        assert!(saw_consumption);
     }
 
     #[test]

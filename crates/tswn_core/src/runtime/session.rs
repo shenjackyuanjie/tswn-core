@@ -44,6 +44,8 @@ pub struct RuntimePlayerSnapshot {
     pub minion_kind: Option<RuntimeMinionKind>,
     pub hp: i32,
     pub max_hp: i32,
+    /// 剩余吸收护盾：合计常规蓄盾与 ShieldValue，不包含铁壁的单次减伤阈值；死亡时为 0。
+    pub shield: i32,
     pub magic_point: i32,
     pub move_point: i32,
     pub attack: i32,
@@ -181,6 +183,7 @@ impl RuntimeRunner {
             minion_kind,
             hp: entity.runtime.hp,
             max_hp: entity.template.max_hp,
+            shield: remaining_shield(entity),
             magic_point: entity.runtime.magic_point,
             move_point: entity.runtime.move_state.speed_points,
             attack: entity.runtime.attack,
@@ -233,6 +236,19 @@ impl RuntimeRunner {
             _ => "Normal",
         }
     }
+}
+
+fn remaining_shield(entity: &EntityRecord) -> i32 {
+    if !entity.runtime.alive || entity.runtime.hp <= 0 {
+        return 0;
+    }
+    entity.states.entries().iter().fold(entity.runtime.shield.max(0), |shield, entry| {
+        if let StatePayload::ShieldValue(value) = entry.payload {
+            shield.saturating_add(value.max(0))
+        } else {
+            shield
+        }
+    })
 }
 
 fn push_status_label(labels: &mut Vec<String>, label: impl Into<String>) {
@@ -302,6 +318,124 @@ fn status_labels(entity: &EntityRecord) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn shield_runner() -> (RuntimeRunner, StateId, StateId) {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let shield_skill = builder
+            .register_skill_with_hooks(
+                "core",
+                "shield",
+                DEFAULT_CORE_SHIELD_SKILL_EXPORT,
+                ProcMask::PRE_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .unwrap();
+        let shield_state = builder
+            .register_state("test", "shield", "test.shield", ProcMask::POST_DEFEND, SkillPriority(6000))
+            .unwrap();
+        let iron_state = builder
+            .register_state("test", "iron", "test.iron", ProcMask::POST_DEFEND, SkillPriority(10))
+            .unwrap();
+        let mut runner = RuntimeRunner::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "shield", 0, 100, 3)
+                    .with_skill_loadout(SkillLoadout::from_skill_levels([(shield_skill, 80)])),
+                PlayerTemplate::new(2, "enemy", 1, 100, 3),
+            ],
+            builder.build(),
+        ));
+        let runtime = runner.runtime_mut();
+        runtime.set_skill_handler(shield_skill, run_shield_pre_action_skill);
+        runtime.set_state_handler(shield_state, run_shield_post_defend_state);
+        (runner, shield_state, iron_state)
+    }
+
+    #[test]
+    fn snapshot_tracks_generated_consumed_and_broken_runtime_shield() {
+        let (mut runner, _, _) = shield_runner();
+        assert_eq!(runner.player_snapshot(0).unwrap().shield, 0);
+        let runtime = runner.runtime_mut();
+        let plan = runtime
+            .scheduler
+            .skill_hook_plan(&runtime.entities, &runtime.registry, EntityIdx(0), ProcMask::PRE_ACTION);
+        let mut updates = RunUpdates::new();
+        runtime.drain_skill_hook_plan_into(&plan, &mut updates);
+        let generated = runtime.entities.get(EntityIdx(0)).unwrap().runtime.shield;
+        assert!(generated > 0);
+        assert!(updates.updates.is_empty());
+        assert_eq!(runner.player_snapshot(0).unwrap().shield, generated);
+
+        runner.runtime_mut().entities.get_mut(EntityIdx(0)).unwrap().runtime.shield = 20;
+        for (damage, remaining, hp_damage) in [(7, 13, 0), (13, 0, 0)] {
+            let mut value = RuntimeDefendValue::Damage {
+                value: damage,
+                caster: EntityIdx(1),
+                target: EntityIdx(0),
+            };
+            runner.runtime_mut().apply_runtime_shield_post_defend(EntityIdx(0), &mut value);
+            assert_eq!(runner.player_snapshot(0).unwrap().shield, remaining);
+            assert_eq!(value.damage(), Some(hp_damage));
+        }
+        runner.runtime_mut().entities.get_mut(EntityIdx(0)).unwrap().runtime.shield = 10;
+        let mut value = RuntimeDefendValue::Damage {
+            value: 11,
+            caster: EntityIdx(1),
+            target: EntityIdx(0),
+        };
+        runner.runtime_mut().apply_runtime_shield_post_defend(EntityIdx(0), &mut value);
+        assert_eq!(runner.player_snapshot(0).unwrap().shield, 0);
+        // 超过护盾的攻击仍保留完整伤害，快照字段不改变既有破盾规则。
+        assert_eq!(value.damage(), Some(11));
+    }
+
+    #[test]
+    fn snapshot_sums_runtime_and_state_shield_after_absorption_and_break() {
+        let (mut runner, shield_state, _) = shield_runner();
+        let owner = runner.runtime_mut().entities.get_mut(EntityIdx(0)).unwrap();
+        owner.runtime.shield = 10;
+        owner.states.add_entry(StateEntry::shield(77, shield_state, 30, SkillPriority(6000)));
+        assert_eq!(runner.player_snapshot(0).unwrap().shield, 40);
+
+        // 相同优先级时 ShieldValue 先于常规盾执行；合计只投影剩余值，不合并两池的吸收规则。
+        for (damage, remaining, hp_damage) in [(20, 20, 0), (11, 0, 11)] {
+            let mut value = RuntimeDefendValue::Damage {
+                value: damage,
+                caster: EntityIdx(1),
+                target: EntityIdx(0),
+            };
+            runner
+                .runtime_mut()
+                .drain_post_defend_hooks_into(EntityIdx(0), &mut RunUpdates::new(), &mut value);
+            assert_eq!(runner.player_snapshot(0).unwrap().shield, remaining);
+            assert_eq!(value.damage(), Some(hp_damage));
+        }
+    }
+
+    #[test]
+    fn snapshot_shield_excludes_iron_and_clamps_dead_negative_and_overflow_values() {
+        let (mut runner, shield_state, iron_state) = shield_runner();
+        let owner = runner.runtime_mut().entities.get_mut(EntityIdx(0)).unwrap();
+        owner.runtime.shield = 10;
+        owner.states.add_entry(StateEntry::shield(77, shield_state, 30, SkillPriority(6000)));
+        owner.states.add_entry(StateEntry::shield(78, shield_state, -5, SkillPriority(6000)));
+        owner.states.add_entry(StateEntry::iron(79, iron_state, 500, 3, SkillPriority(10)));
+        assert_eq!(runner.player_snapshot(0).unwrap().shield, 40);
+        assert!(runner.player_snapshot(0).unwrap().status_labels.contains(&"铁壁 +500".to_owned()));
+
+        runner.runtime_mut().entities.get_mut(EntityIdx(0)).unwrap().runtime.shield = -10;
+        assert_eq!(runner.player_snapshot(0).unwrap().shield, 30);
+        let owner = runner.runtime_mut().entities.get_mut(EntityIdx(0)).unwrap();
+        assert_eq!(owner.runtime.shield, -10);
+        owner.runtime.shield = i32::MAX;
+        assert_eq!(runner.player_snapshot(0).unwrap().shield, i32::MAX);
+        runner.runtime_mut().entities.get_mut(EntityIdx(0)).unwrap().runtime.alive = false;
+        assert_eq!(runner.player_snapshot(0).unwrap().shield, 0);
+        let owner = runner.runtime_mut().entities.get_mut(EntityIdx(0)).unwrap();
+        owner.runtime.alive = true;
+        owner.runtime.hp = 0;
+        assert_eq!(runner.player_snapshot(0).unwrap().shield, 0);
+    }
 
     #[test]
     fn binding_snapshot_and_completion_use_main_runtime() {
