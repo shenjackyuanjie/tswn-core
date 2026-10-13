@@ -11,12 +11,12 @@
 - `0.3.2`
 - `0.4.0` Runtime
 
-当前这份记录重点对应：
+本文保留历史测量，不表示当前版本的性能。当前复测命令见第 2 节，性能约束见 [rule.md](../../rule.md)。历史记录重点对应：
 
 - `0.2.20` 在一轮结果一致性 / SBY diff 收口后，继续回收 `pre_action` / `Hide` / alive-group 热路径的性能回退
-- `0.3.1` 在补齐 WASM 查询接口后，按同口径补跑 benchmark，确认当前版本没有新异常，但相较 `0.2.20` 有一小段性能回退
+- `0.3.1` 在补齐 WASM 查询接口后，按同口径补跑 benchmark，确认当时版本没有新异常，但相较 `0.2.20` 有一小段性能回退
 - `0.3.2` 新增 DIY / overlay 覆盖系统，按同口径补跑确认非 DIY 通路无性能回退
-- 当前表格已同步到 `0.3.2` 的稳定重跑结果，可直接和 `0.3.1`、`0.2.20`、`0.2.14` 做横向比较
+- 历史表格记录至 `0.3.2` 的稳定重跑结果，可直接和 `0.3.1`、`0.2.20`、`0.2.14` 做横向比较
 - `0.4.0` 的 fixed30、score、win-rate 与 CQP/CQD 统一结果另见 `docs/perf/reports/runtime-0.4.0-baseline.md`
 - `0.5.0` 主 Runtime 独立化后的完整发版结果与 0.4.3 同机交替 A/B 见 `docs/perf/reports/runtime-0.5.0-749fcd1-release-benchmark.md`
 
@@ -34,14 +34,14 @@
 
 说明：
 
-- Runtime `0.4.0` 的当前回归基线与 legacy score 硬目标见 [`runtime-0.4.0-baseline.md`](reports/runtime-0.4.0-baseline.md)；
+- Runtime `0.4.0` 的历史回归基线与 legacy score 硬目标见 [`runtime-0.4.0-baseline.md`](reports/runtime-0.4.0-baseline.md)；
 - Runtime `0.5.0` 的发版基准与 3% 回退门禁见 [`runtime-0.5.0-749fcd1-release-benchmark.md`](reports/runtime-0.5.0-749fcd1-release-benchmark.md)；
 
 - `Bun` 与 `0.2.12` 的数据来自 `docs\releases\0.2.12.md` 中的同机历史记录；
 - `0.2.13` 数据来自 detached worktree：`f9b0e3c`；
 - `0.2.14` 数据来自当时主线；
-- `0.2.20` 数据来自当前工作树（已步进版本号并继续回收本轮性能回退）；
-- `0.3.1` 数据来自当前工作树（2026-05-10 按同口径补跑）；
+- `0.2.20` 数据来自当时工作树（已步进版本号并继续回收本轮性能回退）；
+- `0.3.1` 数据来自当时工作树（2026-05-10 按同口径补跑）；
 - `100k` 更适合做快速横向参考；
 - `1M` 更适合做当前版本之间的稳定吞吐比较。
 
@@ -61,7 +61,7 @@
 
 当前仓库可直接复测的入口包括 `tswn-cli bench win-rate --perf`、OpenBox
 `openbox_mem_probe` 和只依赖公开主 Runtime API 的 `perf_runtime` example；命令和发布要求见
-根目录 `rule.md`。`perf_runtime` 支持原始 fixed30 输入的 FFA / 多队语义，并逐文件输出 JSON 行：
+根目录 [rule.md](../../rule.md)。`perf_runtime` 支持原始 fixed30 输入的 FFA / 多队语义，并逐文件输出 JSON 行：
 
 ```powershell
 cargo build -p tswn_core --release --features no_debug --example perf_runtime
@@ -80,7 +80,7 @@ target\release\examples\perf_runtime.exe --mode score -i docs\perf\cqp\sqp6000_f
 而 `samply` 仅作为人工查看火焰图和时间线的补充。采集命令、报告结构和 A/B 判读约束见
 [`amd-uprof.md`](guides/amd-uprof.md)。
 
-2026-09-05 的当前版本 uProf 调查、RC4 实验及受伤被动计划优化的完整 A/B 结果见
+2026-09-05 当时版本的 uProf 调查、RC4 实验及受伤被动计划优化的完整 A/B 结果见
 [`rc4-profile-2026-09-05.md`](reports/rc4-profile-2026-09-05.md)。
 
 ---
@@ -123,7 +123,7 @@ target\release\examples\perf_runtime.exe --mode score -i docs\perf\cqp\sqp6000_f
 
 ---
 
-## 5. 当前 `0.3.2` 快速查看
+## 5. 历史版本 `0.3.2` 快速查看
 
 | 样本           | 单线程 `100k` | 多线程 `100k` | 单线程 `1M` | 多线程 `1M` |
 | -------------- | ------------: | ------------: | ----------: | ----------: |

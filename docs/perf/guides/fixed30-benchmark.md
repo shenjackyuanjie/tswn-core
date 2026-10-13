@@ -2,10 +2,20 @@
 
 这份文档记录固定 30 个 case 的长期性能口径。它是当前仓库唯一维护的固定性能回归集合：覆盖多人、队伍、FFA 和复杂战斗路径，并追加强化 1v1 / 2v2 核心场景。
 
-> 0.5.0 状态：固定输入继续保留，但原 `track_perf_cases` 已随旧执行器删除。
+> 当前状态：固定输入继续保留，使用公开主 Runtime API 的 `perf_runtime` example 复测。
+> 原 `track_perf_cases` 已在 0.5.0 随旧执行器删除。
 > 下方 0.4.x 工具命令和输出结构仅作历史记录，不能在当前分支直接执行。
 > 0.5.0 的实际发版结果见
 > [`runtime-0.5.0-749fcd1-release-benchmark.md`](../reports/runtime-0.5.0-749fcd1-release-benchmark.md)。
+
+## 当前复测入口
+
+```powershell
+cargo build -p tswn_core --release --features no_debug --example perf_runtime
+target\release\examples\perf_runtime.exe -i docs\perf\fixed_cases_30 -n 13000 --threads 1 --timed
+```
+
+输出按文件名排序的 JSONL，保留 FFA/多队输入语义。`--timed` 开启逐场 init/fight 计时；正常热路径采样时去掉它。自动线程使用 `--threads 0`，score 入口、输出字段与 A/B 要求见 [性能追踪](../benchmark-history.md#2-30-case-固定-benchmark)。当前输出与下方旧工具的分组报告结构不同，原始历史报告保留原口径。
 
 ## 1. 固定输入
 
@@ -18,7 +28,7 @@
 - `01` 到 `20` 是原阶梯覆盖输入，继续保留在 30-case 集合中；
 - `21` 到 `30` 是新增核心 1v1 / 2v2 case；
 - 文件名中的 `mode-hash` 来自固定输入内容，输入文本稳定时 id 稳定；
-- benchmark 默认使用 `prepared_win_rate` 的固定 seed 调度，不依赖外部随机源。
+- 历史 `track_perf_cases` 使用旧 `prepared_win_rate` 的固定 seed 调度；该 API 已删除。当前 `perf_runtime` 使用主 Runtime 的批量胜率 API，比较时固定输入、次数与线程配置。
 
 ## 2. 新增 case 覆盖
 
@@ -35,7 +45,7 @@
 |  29 | `2v2-b1e08a4b5faf6712` | 2v2 群体技能/多目标   | AoE、全体效果、队伍遍历和多目标 effect application。        |
 |  30 | `2v2-a2fa863c153307e2` | 2v2 队友交互/连锁触发 | 保护、协作、反击、死亡/连锁触发等 2v2 额外交互路径。        |
 
-## 3. 运行口径
+## 3. 历史工具的运行口径
 
 - 编译参数：0.4.x 正式留档使用 `--release --features aux_bins,no_debug`。
 - 历史工具：`track_perf_cases`（0.5.0 已删除）
@@ -43,7 +53,7 @@
 - 单线程：`--thread 1`
 - 每个 case：`13000` 场
 - 总量：`30 * 13000 = 390000` 场
-- 当前机器实测目标耗时：约 `18.2s`（`0.4.0` / 单线程 / release + `no_debug` + 默认 mimalloc）
+- 当时机器实测目标耗时：约 `18.2s`（`0.4.0` / 单线程 / release + `no_debug` + 默认 mimalloc）
 
 说明：`release-fast` profile 用于日常快速验证，编译更快；它的性能结果不要和本文长期 `--release` 留档数据混用。`0.4.0` 起 `tswn_core` 原生默认 feature 已包含 `mimalloc_alloc`，正式基线保持默认 feature 开启；若显式关闭默认 feature，必须作为另一套口径单独记录。
 
@@ -74,7 +84,7 @@ cargo run --release --features aux_bins,no_debug --bin track_perf_cases -- `
 
 每个分组包含：case 数、runs、win rate、elapsed、`us/场`、`场/s`、`init us/场`、`fight us/场`。
 
-当前 `0.4.0` 正式基线见 [`runtime-0.4.0-baseline.md`](../reports/runtime-0.4.0-baseline.md)：单线程 overall 为 `46.729 µs/场`，stress_multi 为 `97.614 µs/场`，分别比 `0.3.10` 留档快 `32.23%` 与 `30.85%`；自动线程 overall 为 `5.872 µs/场`。
+历史 `0.4.0` 正式基线见 [`runtime-0.4.0-baseline.md`](../reports/runtime-0.4.0-baseline.md)：单线程 overall 为 `46.729 µs/场`，stress_multi 为 `97.614 µs/场`，分别比 `0.3.10` 留档快 `32.23%` 与 `30.85%`；自动线程 overall 为 `5.872 µs/场`。
 
 ## 5. 判读
 

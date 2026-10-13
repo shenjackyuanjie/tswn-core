@@ -8,8 +8,8 @@
 - CPU：AMD Zen 系列；当前开发机为 Ryzen 7 5800X（Zen 3）。
 - 工具：AMD uProf 5.3+ 的 `AMDuProfCLI.exe`。
 - 权限：PMC / IBS 采样应从已提权的终端或已提权的 agent 会话启动。
-- 构建：使用 `--release --features no_debug`。workspace 的 release profile 已保留
-  `debug = 1`，uProf 可通过同目录 PDB 归因到 Rust 符号与源码。
+- 构建：使用 `--release --features no_debug --config "profile.release.debug=1"`，为本次采样显式保留符号。根 workspace 的 release profile 未设置 `debug = 1`；Windows 上保留与可执行文件同目录的 PDB，供 uProf 归因到 Rust 符号与源码。
+- 记录该 profile 覆盖；正式吞吐 A/B 仍按 [性能准则](../../../rule.md) 的普通 release 口径独立构建和测量。
 
 不要把 uProf 数据作为吞吐 benchmark 的最终数字：采样和调用栈展开都有开销。性能是否成立
 仍遵循 [`rule.md`](../../../rule.md) 中同会话交替 A/B、取中位数且忽略小于 1.5% 差异的规则。
@@ -17,12 +17,12 @@
 ## 标准热点采样
 
 TBP（Time-Based Profile）用于先找 CPU 热函数；`-g` 要求收集用户态调用栈。选择能运行至少
-约 15 秒的固定输入，避免样本太少。下面的 case 在当前机器很快，因此将次数调到 600 万
+约 15 秒的固定输入，避免样本太少。下面的 case 在当时的测量机器很快，因此将次数调到 600 万
 （2026-09-05 实测 300 万场约 13 秒，600 万场约 27 秒）：
 
 ```powershell
 $uProf = (Get-Command AMDuProfCLI.exe -ErrorAction Stop).Source
-cargo build -p tswn_core --release --features no_debug --bin tswn-cli
+cargo build -p tswn_core --release --features no_debug --bin tswn-cli --config "profile.release.debug=1"
 & $uProf collect --config tbp -g `
   -o target\amduprof\before `
   target\release\tswn-cli.exe bench win-rate `
@@ -71,5 +71,5 @@ TBP 只回答“CPU 时间主要花在哪里”。确认热点后可对同一负
 ## 无管理员权限时
 
 AMD uProf 的硬件采样不可用时，不要试图用 `samply` 或 `wpr` 绕过 Windows 的内核采样权限。
-继续使用 CLI benchmark / `--perf` 做回归定位，并运行 `scripts/pgo_build.py` 取得 LLVM
+继续使用 CLI benchmark / `--perf` 做回归定位，并运行 `python scripts/pgo_build.py --kind cli` 取得 LLVM
 instrumentation 的函数执行热度；需要可视化时间线时，待有管理员会话后再运行 `samply`。

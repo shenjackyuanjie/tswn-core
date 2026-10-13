@@ -7,6 +7,11 @@
 本文记录 `tswn_pwp` 在 10k / 100k 规模下的吞吐、存储、内存与校验开销，
 以及修复“每局一个 Parquet 行组”缺陷前后的对比。它是 handoff 中 Commit 4 的交付物。
 
+> **历史基线口径**：本文保留采集时的 profile、列路径与统计结果。当前数据格式以
+> [PWP 使用说明](../../../crates/tswn_pwp/README.md)和[行结构定义](../../../crates/tswn_pwp/src/generate.rs)为准：
+> `seed` 存于 `battles.parquet`，`samples.parquet` 通过 `battle_id` 关联它。下文 `seed` 的样本列字节占比
+> 属历史记录；本文尚未按当前 schema 重新采集，不将该占比当作当前样本列集或容量估算依据。
+
 ## 结论
 
 1. **行组缺陷是本次最大的发现。** `SampleRow.state` 约 450 个叶子列，`max_row_group_bytes`

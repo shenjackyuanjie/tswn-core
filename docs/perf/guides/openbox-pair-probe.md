@@ -2,7 +2,7 @@
 
 [返回性能索引](../README.md)
 
-OpenBox 的 `pair` 平时只能在 GUI 里触发，路径是 `backend::run_pair`：它把
+Openbox GUI 与 `openbox-cli pair` 共用 `tswn_openbox_backend` 的 `run_pair` 路径：它把
 「选手 × 队友 × 靶子」矩阵按窗口切分后交给 `tswn_core` 的共享 CQP/CQD 调度器。
 `crates/tswn_openbox/src/bin/openbox_pair_probe.rs` 是这个后端的 headless 入口，
 用来在没有窗口、没有 GUI 事件通道的条件下测量整批墙钟并核对输出。
@@ -11,7 +11,7 @@ OpenBox 的 `pair` 平时只能在 GUI 里触发，路径是 `backend::run_pair`
 
 | 入口 | 覆盖的调度层 | 何时用 |
 | --- | --- | --- |
-| `openbox_pair_probe`（本页） | OpenBox GUI 后端的窗口化矩阵 + 共享 CQP/CQD 调度器 | 验证 OpenBox 内部的 pair 改动 |
+| `openbox_pair_probe`（本页） | Openbox GUI/CLI 共用后端的窗口化矩阵 + 共享 CQP/CQD 调度器 | 验证 Openbox 后端的 pair 改动 |
 | `tswn-cli bench pair` | CLI 外层并行（`bench_sched` + `bench/batch.rs`） | 验证 CLI 侧的 pair 改动 |
 
 两者共用 `tswn_core::runtime::runtime_cqp_matchups`，但外层切分方式不同，不能互相替代。
@@ -31,18 +31,20 @@ cargo build --release -p tswn_openbox --bin openbox_pair_probe
 ```text
 用法: openbox_pair_probe [选项]
 
-  --players <FILE>             选手列表，每行一个组合（必填）
-  --teammates <FILE>           队友列表，每行一个组合（必填）
-  --targets <FILE>             靶子列表（必填）
+  --players <FILE>             选手列表，每行一个组合
+  --teammates <FILE>           队友列表，每行一个组合
+  --targets <FILE>             靶子列表
   --count <N>                  每个 matchup 的场数，默认 100
   --threads <N|auto|0>         线程数，auto/0 为自动线程，默认 auto
   --head <N>                   每名选手保留最高的 N 个队友组合，默认 5
   --detail <none|top|every>    屏幕日志的 cqp 明细模式，默认 top
   --teammate-factored          队友文件按带权 TOML（[[targets]]）解析
   --target-factored            靶子文件按带权 TOML（[[targets]]）解析
+  --live                       测量 GUI 收件箱通路与首条结果延迟
   -h, --help                   打印本说明
 ```
 
+- 解析器当前为三个输入设置了默认文件（见下方全网格示例）；复测时显式传入它们，确保输入可追溯。`--help` 中的“必填”文字与这一默认行为有差异，以实际参数解析和文件内容为准。
 - `--count` 对应 GUI 的精度档：`100` = 1%、`1000` = 10%、`10000` = 100%。
 - `--threads auto` 与 `openbox_mem_probe --threads 0` 同义；自动线程按逻辑核数取 1.5 倍
   （`--count <= 100`）或 2 倍（其它档），本机 16 逻辑核即 24 / 32 个 worker。
@@ -94,7 +96,7 @@ probe elapsed_s=0.009746 lines=3 progress_ticks=2 progress_last=2 progress_total
 ## 4. 同机交替 A/B 流程
 
 1. 两个隔离 worktree 各自 checkout 一个提交并构建 release，双方使用同一份输入；
-2. 每个配置先各预热 1 轮，再跑 3 轮以上；奇数轮 旧→新、偶数轮 新→旧，抵消频率与温度漂移；
+2. 每个配置先各预热 1 轮，再跑至少 5 轮；奇数轮 旧→新、偶数轮 新→旧，抵消频率与温度漂移；
 3. 取墙钟中位数，并同时比较 stdout 哈希。
 
 ```powershell
@@ -176,7 +178,11 @@ SHA-256 `400B4ED3EC0A5769B127BEA59DFCA395FFAEC760CE84EB302131357F145E1EB8`）；
 增加 `--live` 可让 probe 使用 GUI 的结构化观察接口和 `LiveFeed`，每 100ms 消费一批结果：
 
 ```powershell
-cargo run --release -p tswn_openbox --bin openbox_pair_probe -- --count 100 --threads 8 --detail every --live
+cargo run --release -p tswn_openbox --bin openbox_pair_probe -- `
+  --players docs\perf\cqp\sqp6000_first20.txt `
+  --teammates crates\tswn_openbox_backend\assets\teammates\teammate_fz.txt `
+  --targets crates\tswn_openbox_backend\assets\targets\target2.txt `
+  --count 100 --threads 8 --detail every --live
 ```
 
 该模式 stdout 是带输入序号的最终分数，不能与旧格式直接比较哈希；不传 `--live` 保持原来的

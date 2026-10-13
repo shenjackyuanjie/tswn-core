@@ -14,6 +14,9 @@
 
 ## 调查报告
 
+- [Openbox 实时通路基线（2026-09-29）](reports/openbox-live-2026-09-29.md)：LiveFeed、首条结果延迟与实时输出。
+- [Openbox 全面检查报告（2026-09-29）](reports/openbox-review-2026-09-29.md)：缓存、文件排序、胜率窗口化与 GUI 通路。
+
 - [OpenBox pair 并行修复复测（2026-09-15）](reports/openbox-pair-parallelism-2026-09-15.md)：
   fixed30 / CQP / CQD / pair 的同机交替 A/B，含仪表伪影排查与原始样本。
 - [winprob 数据集生成规模基线](reports/winprob-dataset-scale-baseline.md)：10k/100k 局生成的吞吐、存储、内存与校验开销，含 Parquet 行组缺陷的修复前后对比。

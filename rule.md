@@ -50,9 +50,17 @@ target\release\openbox_mem_probe.exe `
   --limit all --target-limit all --count 1000 --threads 0
 ```
 
-0.5.0 的 fixed30、score、win-rate 与 OpenBox 完整发版数据、环境和 A/B 判定见
-`docs/perf/reports/runtime-0.5.0-749fcd1-release-benchmark.md`。fixed30 与 score 当时使用的临时
-外部 harness 不属于发布源码，因此不能用已删除的旧 binary 复跑。
+当前 fixed30 与 score 使用公开主 Runtime API 的 `perf_runtime` example：
+
+```powershell
+cargo build -p tswn_core --release --features no_debug --example perf_runtime
+target\release\examples\perf_runtime.exe -n 13000 --threads 1 --timed
+target\release\examples\perf_runtime.exe --mode score -i docs\perf\score\mario.txt -n 13000 --timed
+```
+
+输出字段、计时范围与自动线程口径见 [性能追踪](docs/perf/benchmark-history.md#2-30-case-固定-benchmark)。
+0.5.0 的完整发版数据、环境和 A/B 判定见 [历史发版基准](docs/perf/reports/runtime-0.5.0-749fcd1-release-benchmark.md)。
+该版本的 fixed30 与 score 使用临时外部 harness，现行 example 并非那个历史工具，不直接混用结果。
 
 正式结果必须记录被测 commit、rustc/Cargo 版本、feature、输入哈希、线程口径和原始轮次；
 机器状态变化时，以同一会话中交替顺序的旧版/新版 A/B 为准。
@@ -65,28 +73,32 @@ target\release\openbox_mem_probe.exe `
 同一个二进制在**不同会话之间**可以差到 3%（实测：`5.266/5.303/5.398` vs
 `5.103/5.141/5.226`）。因此：
 
-- 必须**同会话交替顺序**跑新旧二进制，至少 4~5 轮取中位数；
+- 必须**同会话交替顺序**跑新旧二进制，至少 5 轮取中位数；
 - 小于 **1.5%** 的差异不得作为优化成立的依据，也不要写进长期表格；
 - "先跑三次旧的，再跑三次新的"这种方式量到的 2%~3% 基本都是机器漂移。
 
 ## PGO 构建
 
-PGO 是当前收益最大的一项（非训练输入实测 -25% 左右），且不改运行时代码：
+PGO 不改运行时代码；历史非训练输入曾测得约 25% 的收益，当前提交仍需按同机 A/B 重新验收。CLI 可使用独立流程：
 
 ```powershell
-python scripts/pgo_build.py                    # CLI：插桩 -> 训练 -> merge -> profile-use
-python scripts/pgo_build.py --kind openbox     # Openbox：训练负载走 openbox_mem_probe 的 CQP
-python scripts/pgo_build.py --train-runs 8000  # 加大训练量
-python scripts/pgo_build.py --skip-train       # 复用已有 profdata 只重建
-python scripts/build_all.py --release --pgo    # 发布包的 CLI 与 Openbox 都用 PGO 产物
+python scripts/pgo_build.py --kind cli                   # 插桩 -> 训练 -> merge -> profile-use
+python scripts/pgo_build.py --kind cli --train-runs 8000 # 加大训练量
+python scripts/pgo_build.py --kind cli --skip-train      # 仅在已有匹配 profile 时复用
 ```
+
+Openbox 的资源已迁到 `crates/tswn_openbox_backend/assets/`，但脚本的训练靶子仍使用旧
+`crates/tswn_openbox/assets/targets/`。这一路径适配前，`--kind openbox` 及同时给 CLI/Openbox
+启用 PGO 的 `build_all.py --pgo` 不作为当前完整发布流程；聚合包使用普通 `--release`。
+CLI 与 Openbox 的 profile 分别位于 `target/pgo/cli/`、`target/pgo/openbox/`，不要混用。
 
 约束：
 
 - `llvm-profdata` 的 LLVM 大版本必须等于 `rustc -vV` 的 LLVM 大版本，脚本会强制校验；
   没有时用 `rustup component add llvm-tools-preview`。
 - 训练强制单线程：LLVM 的 IR 插桩计数器不是原子的，多线程训练会丢计数。
-- 训练输入默认覆盖 `docs/perf/fixed_cases_30` 全部 30 个 case 加 score 路径；
+- 训练需运行本机二进制，不能与 `build_all.py --target` 的交叉编译流程同时使用。
+- CLI 训练输入默认覆盖 `docs/perf/fixed_cases_30` 全部 30 个 case 加 score 路径；
   只用单一样本训练会削弱泛化性。
 - PGO 结果留档必须同时记录 profdata 的生成参数，不同 profile 的结果不可直接比较。
 
@@ -101,13 +113,15 @@ CLI 的 `--perf`（它会改变热路径的计时开销）：
 
 ```powershell
 $uProf = (Get-Command AMDuProfCLI.exe -ErrorAction Stop).Source
-cargo build -p tswn_core --release --features no_debug --bin tswn-cli
+cargo build -p tswn_core --release --features no_debug --bin tswn-cli --config "profile.release.debug=1"
 & $uProf collect --config tbp -g `
   -o target\amduprof\before `
   target\release\tswn-cli.exe bench win-rate `
   -f docs\perf\fixed_cases_30\01_1v1-6a2ace7473581042.txt -n 6000000 -s
 & $uProf report -i target\amduprof\before --detail -g
 ```
+
+上述构建为采样显式启用 `debug=1`，Windows 上保留同目录 PDB；根 release profile 默认未启用该设置。正式吞吐 A/B 使用普通 release 构建，分别记录配置。
 
 uProf 5.3 的 `report` 不接受旧版本文档中的 `-o`；它会自动在采样目录创建
 `report.csv`。先看其中的 `HOTTEST FUNCTIONS` / `HOTTEST CALLSTACKS`，优化后再以新目录
@@ -119,7 +133,7 @@ AMD uProf 的 PMC / IBS 采样需要在已提权的终端（或已提权的 agen
 
 ```powershell
 python scripts/pgo_build.py
-llvm-profdata show --topn=45 target\pgo\merged.profdata
+llvm-profdata show --topn=45 target\pgo\cli\merged.profdata
 ```
 
 结构体体积用 `cargo +nightly rustc -p tswn_core --release --lib -- -Zprint-type-sizes`。
@@ -127,9 +141,9 @@ llvm-profdata show --topn=45 target\pgo\merged.profdata
 有管理员权限时，也可用 `samply` 直接采样公开 CLI，用于手动查看时间线：
 
 ```powershell
-cargo build -p tswn_core --release --features no_debug --bin tswn-cli
+cargo build -p tswn_core --release --features no_debug --bin tswn-cli --config "profile.release.debug=1"
 samply record --save-only --unstable-presymbolicate `
   --windows-symbol-server https://msdl.microsoft.com/download/symbols `
   -o target\samply_tswn_cli.json.gz -- `
-  target\release\tswn-cli.exe bench win-rate -f input.txt -n 13000 -s --perf
+  target\release\tswn-cli.exe bench win-rate -f input.txt -n 13000 -s
 ```
