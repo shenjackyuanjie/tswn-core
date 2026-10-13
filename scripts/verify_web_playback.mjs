@@ -9,7 +9,7 @@ const { window } = parseHTML(await readFile(resolve(root, 'index.html'), 'utf8')
 window.matchMedia = () => ({ matches: false, addEventListener() {} });
 window.requestAnimationFrame = fn => setTimeout(fn, 0);
 window.location = { href: 'http://localhost/index.html', search: '' };
-const savedSettings = new Map();
+const savedSettings = new Map([["tswn-show-shield", "false"]]);
 window.localStorage = { getItem(key) { return savedSettings.get(key) ?? null; }, setItem(key, value) { savedSettings.set(key, value); } };
 window.HTMLElement.prototype.focus = function () {};
 window.HTMLElement.prototype.select = function () {};
@@ -38,7 +38,6 @@ async function load(path) {
   if (path.endsWith('show.js')) code = code.replace('void main();', '') + `
 export const pageTest = {
  startBattle, pausePlayback, resumePlayback, replayCurrent, stepPlaybackTo, stepPlaybackForward,
- restoreShieldDisplay, setShieldDisplay,
  nextVisibleCursor, nextFrameCursor, previousVisibleCursor, previousFrameCursor, openPlayerDetail, saveCurrentNickname,
  get battle() { return currentBattle; }, get plan() { return currentPlan; },
  get cursor() { return playbackCursor; }, get finished() { return playbackFinished; },
@@ -52,40 +51,10 @@ export const pageTest = {
 const main = await load(resolve(root, 'show.js'));
 await main.evaluate();
 const page = main.namespace.pageTest;
-// 盾条开关默认关闭，显式保存的 true 才恢复为开启。
-const shieldButton = window.document.querySelector("#shieldBtn");
 const rootElement = window.document.documentElement;
-assert.equal(rootElement.dataset.showShield, "false");
-assert.equal(shieldButton.getAttribute("aria-pressed"), "false");
-assert.equal(shieldButton.getAttribute("aria-keyshortcuts"), "B");
-shieldButton.click();
-assert.equal(rootElement.dataset.showShield, "true");
-assert.equal(shieldButton.getAttribute("aria-pressed"), "true");
-assert.equal(shieldButton.classList.contains("is-active"), true);
-assert.equal(savedSettings.get("tswn-show-shield"), "true");
-page.restoreShieldDisplay();
-assert.equal(rootElement.dataset.showShield, "true");
-for (const value of ["false", "invalid", undefined]) {
-  savedSettings.set("tswn-show-shield", value);
-  page.restoreShieldDisplay();
-  assert.equal(rootElement.dataset.showShield, "false");
-}
-const getSetting = window.localStorage.getItem;
-const setSetting = window.localStorage.setItem;
-window.localStorage.getItem = () => { throw new Error("存储不可用"); };
-window.localStorage.setItem = () => { throw new Error("存储不可用"); };
-page.restoreShieldDisplay();
-assert.equal(rootElement.dataset.showShield, "false");
-shieldButton.click();
-assert.equal(rootElement.dataset.showShield, "true");
-shieldButton.click();
-assert.equal(rootElement.dataset.showShield, "false");
-window.localStorage.getItem = getSetting;
-window.localStorage.setItem = setSetting;
-console.log("PASS: 盾条默认关闭、按钮反馈、持久化恢复和存储不可用时的切换");
 
 const state = id => ({ id, id_name: `player${id}`, icon_key: `player${id}`, display_name: `player${id}`,
-  team_index: id, hp: 100, max_hp: 100, shield: 0, alive: true, status_labels: [], move_point: 0, magic_point: 0 });
+  team_index: id, hp: 100, max_hp: 100, shield: 0, max_shield: 80, alive: true, status_labels: [], move_point: 0, magic_point: 0 });
 const initial = [state(1), state(2)];
 const frame = index => ({ frame_index: index, round_index: index + 1, states: initial, updates: [], total_delay: 0,
   rows: [{ indent: false, clips: [{ delay: 0, color: '000000', tone: 'normal', parts: [{ kind: 'text', text: `event${index}` }] }] }] });
@@ -271,21 +240,6 @@ assert.equal(emitted, 30);
 console.log('PASS: abort/generation isolation; source creation race; streaming error history; turbo visible-chunk yields');
 
 const canonicalBefore = JSON.stringify(page.battle);
-const planBeforeShieldToggle = page.plan;
-const cursorBeforeShieldToggle = page.cursor;
-const historyBeforeShieldToggle = window.document.querySelector("#battleRows").innerHTML;
-shieldButton.click();
-assert.equal(rootElement.dataset.showShield, "true");
-assert.equal(page.plan, planBeforeShieldToggle);
-assert.equal(page.cursor, cursorBeforeShieldToggle);
-assert.equal(window.document.querySelector("#battleRows").innerHTML, historyBeforeShieldToggle);
-assert.equal(JSON.stringify(page.battle), canonicalBefore);
-page.stepPlaybackTo(0);
-await page.stepPlaybackForward(true);
-assert.equal(rootElement.dataset.showShield, "true", "历史跳转保持盾条开关");
-shieldButton.click();
-assert.equal(rootElement.dataset.showShield, "false");
-console.log("PASS: 盾条切换不改 canonical、播放计划、游标或历史 DOM，跳转保持设置");
 page.openPlayerDetail(1);
 window.document.querySelector('#nicknameInput').value = '新的昵称';
 page.saveCurrentNickname();
@@ -321,13 +275,12 @@ renderShield(40, 0);
 const playerRow = list.querySelector("tr[data-player-id]");
 let shieldTrack = list.querySelector(".shieldwrap");
 assert.equal(shieldTrack.hidden, false);
-assert.equal(shieldTrack.title, "护盾：40");
+assert.equal(shieldTrack.title, "护盾：40 / 80");
 assert.equal(shieldTrack.querySelector(".shield-fill").style.width, "10px");
 const effects = playerRow.querySelector(".player-effects");
 assert.equal(effects.hidden, false);
 assert.equal(effects.querySelectorAll(".status-pill.positive").length, 2);
 assert.equal(effects.textContent, "聚气护盾 +40");
-assert.equal(rootElement.dataset.showShield, "false", "关闭盾条时仍显示护盾状态标签");
 renderShield(20, 40);
 assert.equal(list.querySelector("tr[data-player-id]"), playerRow, "更新护盾不重建玩家行");
 assert.equal(shieldTrack.querySelector(".shield-delta").className, "shield-delta is-damage");
@@ -336,12 +289,15 @@ assert.equal(playerRow.querySelector(".player-effects"), effects);
 assert.equal(effects.textContent, "聚气护盾 +20");
 renderShield(0, 20);
 assert.equal(shieldTrack.hidden, false);
-assert.equal(shieldTrack.title, "护盾：0");
+assert.equal(shieldTrack.title, "护盾：0 / 80");
 assert.equal(effects.textContent, "聚气", "破盾移除护盾标签，保留其他状态");
 assert.equal(effects.hidden, false);
 assert.equal(shieldTrack.querySelector(".shield-delta").style.width, "5px");
 renderShield(0, 0);
-assert.equal(shieldTrack.hidden, true);
+assert.equal(shieldTrack.hidden, false, "有护盾技能时空底轨仍常驻");
+renderModule.namespace.renderPlayers([shieldPlayer], [{ ...shieldPlayer, shield: 0, max_shield: 160 }], shieldStates(0), null, list, new Map());
+assert.equal(shieldTrack.style.width, "40px", "吞噬后底轨扩展");
+assert.equal(list.querySelector("tr[data-player-id]"), playerRow);
 renderShield(40, 0);
 renderModule.namespace.renderPlayers([shieldPlayer], [{ ...shieldPlayer, hp: 0, alive: false, shield: 40 }], shieldStates(40), null, list, new Map());
 assert.equal(effects.textContent, "聚气", "死亡快照中的残留盾值不展示标签");
@@ -349,3 +305,13 @@ renderModule.namespace.renderPlayers([shieldPlayer], [{ ...shieldPlayer, shield:
 assert.equal(effects.textContent, "聚气", "旧数据缺盾字段时不制造标签");
 assert.equal(list.querySelector("tr[data-player-id]"), playerRow);
 console.log("PASS: 侧栏盾条与正面护盾标签完整渲染、增量更新、破盾和死亡归零，旧数据兼容");
+
+nextSource = { ...source(1), players: [shieldPlayer], initial_states: shieldStates(40) };
+await page.startBattle();
+page.pausePlayback();
+page.openPlayerDetail(9);
+assert.match(window.document.querySelector("#detailContent").textContent, /状态聚气、护盾 \+40/);
+assert.equal(window.document.querySelector(".shieldwrap").hidden, false);
+assert.equal(savedSettings.get("tswn-show-shield"), "false");
+assert.equal(JSON.stringify(page.battle.initial_states), JSON.stringify(shieldStates(40)));
+console.log("PASS: 真实详情面板读取当前护盾标签，常驻盾条忽略旧隐藏偏好且不修改回放数据");

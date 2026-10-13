@@ -376,10 +376,10 @@
     background: linear-gradient(90deg, var(--hp) 0%, var(--hp) 100%);
 }
 
-/* 盾条预先渲染，默认隐藏；开关即时作用于侧栏和已播放的所有消息。 */
+/* 有护盾熟练度的角色常驻显示盾条，不受本地历史开关影响。 */
 .shieldwrap,
 .actor-shield {
-    display: none;
+    display: block;
     position: relative;
     height: 4px;
     overflow: hidden;
@@ -389,9 +389,8 @@
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
 }
 
-:root[data-show-shield="true"] .shieldwrap:not([hidden]),
-:root[data-show-shield="true"] .actor-shield {
-    display: block;
+.shieldwrap[hidden] {
+    display: none;
 }
 
 .shieldwrap {
@@ -399,9 +398,10 @@
 }
 
 .actor-shield {
-    position: absolute;
-    top: -8px;
-    left: 0;
+    flex: none;
+    border-radius: 0 2px 2px 0;
+    outline: none;
+    box-shadow: inset 0 0 0 1px var(--shield-outline);
     z-index: 2;
 }
 
@@ -422,9 +422,9 @@
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
 
-/* 正文中的绝对定位盾条也要计入行高，不能盖到上一行文字。 */
-:root[data-show-shield="true"] .actor-token.has-shield {
-    margin-top: 8px;
+/* 正文中的 HP/护盾拼接条也要计入行高，不能盖到上一行文字。 */
+.actor-token.has-shield {
+    margin-top: 6px;
 }
 
 .shield-delta.is-damage,

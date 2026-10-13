@@ -491,7 +491,7 @@ export function statusText(state) {
 
 /**
  * 计算 HP 条的布局度量，包括当前/上一帧宽度、变化宽度等。
- * 宽度会根据 maxHp 自适应，范围 20~56（乘以 1.5 缩放）。
+ * 宽度按最大 HP 的每 4 点 1px 自适应，底轨至少 20px。
  *
  * @param {FightState} state — 当前状态
  * @param {FightState} [previousState=state] — 上一帧状态（默认同当前，表示无变化）
@@ -532,11 +532,11 @@ export function actorHpMetrics(state, previousState) {
 }
 
 /**
- * 按与 HP 相同的每 4 点 1px 比例计算盾条，容量容纳当前与上一片段的盾值。
- * 死亡、缺省和无效盾值按零处理；护盾可以超过 max_hp。
+ * 按每 4 点 1px 计算盾条，上限取当前护盾熟练度，不借用 max_hp。
+ * 实际盾值可超过熟练度，条形截在上限内但数值保留；旧数据缺省上限时用前后盾值回退。
  * @param {FightState} state
  * @param {FightState} [previousState=state]
- * @returns {(HpMetrics & { currentValue: number, previousValue: number })|null}
+ * @returns {(HpMetrics & { currentValue: number, previousValue: number, maxValue: number })|null}
  */
 export function actorShieldMetrics(state, previousState) {
   if (!state) return null;
@@ -545,21 +545,32 @@ export function actorShieldMetrics(state, previousState) {
   const previousValue = previousState
     ? previousState.alive === false ? 0 : value(previousState.shield)
     : currentValue;
-  const maxValue = Math.max(value(state.max_hp), value(previousState?.max_hp), currentValue, previousValue);
-  const totalWidth = Math.max(20, Math.ceil(maxValue / 4));
-  const fillWidth = Math.ceil(currentValue / 4);
-  const previousWidth = Math.ceil(previousValue / 4);
+  const maxValue = state.max_shield == null ? Math.max(currentValue, previousValue) : value(state.max_shield);
+  const totalWidth = Math.ceil(maxValue / 4);
+  const fillWidth = Math.ceil(Math.min(currentValue, maxValue) / 4);
+  const previousWidth = Math.ceil(Math.min(previousValue, maxValue) / 4);
   const isRecover = currentValue > previousValue;
   return {
     currentValue,
     previousValue,
+    maxValue,
     totalWidth,
     fillWidth,
     previousWidth,
     deltaLeft: isRecover ? previousWidth : fillWidth,
-    deltaWidth: currentValue === previousValue ? 0 : Math.max(1, Math.abs(fillWidth - previousWidth)),
+    deltaWidth: Math.abs(fillWidth - previousWidth),
     deltaKind: isRecover ? "recover" : currentValue < previousValue ? "damage" : "none",
   };
+}
+
+/** 侧栏和角色详情共用的实时状态标签，不修改规范快照。 */
+export function playerStatusLabels(state) {
+  const labels = Array.isArray(state?.status_labels)
+    ? state.status_labels.filter(label => !label.startsWith("护盾 +"))
+    : [];
+  const shield = actorShieldMetrics(state)?.currentValue ?? 0;
+  if (shield > 0) labels.push(`护盾 +${shield}`);
+  return [...new Set(labels)];
 }
 
 // ============================================================================

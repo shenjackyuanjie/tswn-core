@@ -34,6 +34,7 @@ import {
   escapeHtml,
   actorHpMetrics,
   actorShieldMetrics,
+  playerStatusLabels,
   statusText,
   buildStateMap,
   replayDisplayName,
@@ -58,7 +59,7 @@ function replayHighlightColorStyle(color) {
  * @param {FightPlayer} player — 玩家对象
  * @param {FightState} state — 当前状态
  * @param {FightState} previousState — 上一帧状态
- * @param {{ showHp?: boolean, forceHp?: boolean, deathEffect?: boolean }} [options] — 是否显示 HP mini bar / 死亡效果
+ * @param {{ showHp?: boolean, forceHp?: boolean, deathEffect?: boolean }} [options] — HP 变化段和死亡效果；常驻盾条会配上当前 HP 底轨
  * @returns {string} HTML 字符串
  */
 export function actorToken(player, state, previousState, update, { showHp = true, forceHp = false, deathEffect = false } = {}) {
@@ -67,7 +68,10 @@ export function actorToken(player, state, previousState, update, { showHp = true
   const isNew = state?._is_new_in_frame;
   const hpChanged = isNew || (previousState != null && Number(state.hp) !== Number(previousState.hp));
   const shouldShowHp = showHp && (forceHp || hpChanged);
-  const hpMetrics = shouldShowHp ? actorHpMetrics(state, previousState) : null;
+  const shieldMetrics = actorShieldMetrics(state, previousState);
+  const hasShield = !deathEffect && shieldMetrics?.totalWidth > 0;
+  // 盾条接在完整 HP 条右侧；非扣血消息只配当前 HP，不凭快照差值制造额外扣血动画。
+  const hpMetrics = shouldShowHp || hasShield ? actorHpMetrics(state, shouldShowHp ? previousState : state) : null;
   const hpBar = hpMetrics
     ? `
             <span class="actor-hp" style="width:${hpMetrics.totalWidth}px">
@@ -76,10 +80,8 @@ export function actorToken(player, state, previousState, update, { showHp = true
             </span>
         `
     : "";
-  const shieldMetrics = actorShieldMetrics(state, previousState);
-  const shieldChanged = shieldMetrics && (shieldMetrics.currentValue !== shieldMetrics.previousValue || (isNew && shieldMetrics.currentValue > 0));
-  const shieldBar = shieldChanged && !deathEffect
-    ? `<span class="actor-shield" style="width:${shieldMetrics.totalWidth}px" title="护盾：${shieldMetrics.currentValue}">
+  const shieldBar = hasShield
+    ? `<span class="actor-shield" style="width:${shieldMetrics.totalWidth}px" title="护盾：${shieldMetrics.currentValue} / ${shieldMetrics.maxValue}">
         <span class="actor-shield-fill" style="width:${shieldMetrics.fillWidth}px"></span>
         ${shieldMetrics.deltaWidth > 0 ? `<span class="actor-shield-delta is-${shieldMetrics.deltaKind}" style="left:${shieldMetrics.deltaLeft}px;width:${shieldMetrics.deltaWidth}px"></span>` : ""}
       </span>`
@@ -88,8 +90,10 @@ export function actorToken(player, state, previousState, update, { showHp = true
   const shieldClass = shieldBar ? " has-shield" : "";
   const isKnockout = deathEffect === true;
   const nameClass = `actor-name${isKnockout ? " namedie" : ""}`;
+  const vitals = hpBar || shieldBar ? `<span class="actor-vitals">${hpBar}${shieldBar}</span>` : "";
+  const nameWidth = hasShield ? ` style="min-width:${(hpMetrics?.totalWidth ?? 0) + shieldMetrics.totalWidth}px"` : "";
 
-  return `<span class="actor-token${hpClass}${shieldClass}" data-player-id="${player.id}"><span class="actor-avatar-wrap">${renderIconSprite(playerIconClassId(player), "msg-avatar icon-sprite")}</span><span class="${nameClass}">${hpBar}${shieldBar}${escapeHtml(player.display_name)}</span></span>`;
+  return `<span class="actor-token${hpClass}${shieldClass}" data-player-id="${player.id}"><span class="actor-avatar-wrap">${renderIconSprite(playerIconClassId(player), "msg-avatar icon-sprite")}</span><span class="${nameClass}"${nameWidth}>${vitals}${escapeHtml(player.display_name)}</span></span>`;
 }
 
 /**
@@ -163,14 +167,6 @@ export function renderIdleState(playerList, battleRows, plistMeta, headerMeta) {
   headerMeta.textContent = "目前显示的是 show 风格回放视图。";
 }
 
-function sidebarStatusLabels(state) {
-  const labels = Array.isArray(state?.status_labels) ? [...state.status_labels] : [];
-  const shield = actorShieldMetrics(state)?.currentValue ?? 0;
-  // 数值标签与其他状态常驻展示，盾条开关只控制条形显示。
-  if (shield > 0) labels.push(`护盾 +${shield}`);
-  return labels;
-}
-
 const POSITIVE_STATUS_LABELS = new Set([
   "聚气",
   "蓄力",
@@ -200,7 +196,7 @@ function renderStatusPill(label) {
 }
 
 function renderPlayerStatusPills(state) {
-  const labels = sidebarStatusLabels(state);
+  const labels = playerStatusLabels(state);
   const chips = labels.map(renderStatusPill).join("");
   return `<div class="detail-line player-effects"${labels.length ? "" : " hidden"}>${chips}</div>`;
 }
@@ -255,7 +251,7 @@ function playerMpMetrics(state, previousState) {
 
 function renderPlayerShieldBar(state, previousState) {
   const metrics = actorShieldMetrics(state, previousState);
-  return `<div class="shieldwrap" style="width:${metrics.totalWidth}px" title="护盾：${metrics.currentValue}"${metrics.currentValue > 0 || metrics.previousValue > 0 ? "" : " hidden"}>
+  return `<div class="shieldwrap" style="width:${metrics.totalWidth}px" title="护盾：${metrics.currentValue} / ${metrics.maxValue}"${metrics.totalWidth > 0 ? "" : " hidden"}>
     <div class="shield-fill" style="width:${metrics.fillWidth}px"></div>
     <div class="shield-delta is-${metrics.deltaKind}" style="left:${metrics.deltaLeft}px;width:${metrics.deltaWidth}px"></div>
   </div>`;
@@ -588,9 +584,9 @@ export function renderPlayers(
       const shieldMetrics = actorShieldMetrics(state, previous);
       const shieldwrapEl = row.querySelector(".shieldwrap");
       if (shieldwrapEl) {
-        shieldwrapEl.hidden = shieldMetrics.currentValue === 0 && shieldMetrics.previousValue === 0;
+        shieldwrapEl.hidden = shieldMetrics.totalWidth === 0;
         shieldwrapEl.style.width = shieldMetrics.totalWidth + "px";
-        shieldwrapEl.title = `护盾：${shieldMetrics.currentValue}`;
+        shieldwrapEl.title = `护盾：${shieldMetrics.currentValue} / ${shieldMetrics.maxValue}`;
         shieldwrapEl.querySelector(".shield-fill").style.width = shieldMetrics.fillWidth + "px";
         const deltaEl = shieldwrapEl.querySelector(".shield-delta");
         deltaEl.className = `shield-delta is-${shieldMetrics.deltaKind}`;
@@ -645,7 +641,7 @@ export function renderPlayers(
 
       const effectsEl = row.querySelector(".player-effects");
       if (effectsEl) {
-        const labels = sidebarStatusLabels(state);
+        const labels = playerStatusLabels(state);
         effectsEl.hidden = labels.length === 0;
         effectsEl.innerHTML = labels.map(renderStatusPill).join("");
       }

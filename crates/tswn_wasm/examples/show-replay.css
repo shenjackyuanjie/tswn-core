@@ -187,15 +187,32 @@
 }
 
 
-.actor-hp {
+.actor-vitals {
     position: absolute;
     top: -2px;
     left: 0;
+    display: flex;
+    align-items: center;
+    z-index: 2;
+}
+
+.has-shield .actor-vitals {
+    top: -5px;
+}
+
+.actor-hp {
+    position: relative;
+    flex: none;
     height: 2px;
     display: block;
     overflow: hidden;
     background: var(--hp-background);
     z-index: 2;
+}
+
+.has-shield .actor-hp {
+    height: 4px;
+    border-radius: 2px 0 0 2px;
 }
 
 .actor-hp-fill {

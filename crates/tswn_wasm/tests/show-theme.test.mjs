@@ -24,3 +24,11 @@ test("深色配色的文字、名字框与图标衬底保持可读对比度", as
   const iconBackground = iconRule.match(/background-color: (#[\da-f]{6});/)[1];
   assert.ok(contrast("#404040", iconBackground) >= 6, "原图深色边缘与图标衬底区分");
 });
+
+test("浅色模式的新增护盾区段能与底轨及已有护盾区分", async () => {
+  const css = await readFile(new URL("../examples/show-base.css", import.meta.url), "utf8");
+  const palette = css.match(/:root\s*\{([^}]+)\}/)[1];
+  const colors = Object.fromEntries([...palette.matchAll(/--([\w-]+): (#[\da-f]{6});/g)].map(match => [match[1], match[2]]));
+  assert.ok(contrast(colors["shield-recover"], colors["shield-background"]) >= 3);
+  assert.ok(contrast(colors["shield-recover"], colors.shield) >= 3);
+});
