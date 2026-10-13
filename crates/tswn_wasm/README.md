@@ -41,7 +41,7 @@
 - `BattleTone`：`normal | damage | recover | knockout | status_exit`，用于 `BattleUpdate.tone` 和 `BattleReplayClip.tone`。
 - `BattleReplayTextPartKind`：`text | highlight | player | data`，用于 `BattleReplayTextPart.kind`。
 
-`player_type`、`color`、message 和 `status_labels` 仍使用字符串类型；运行时 DTO shape 不变。
+`player_type`、`color`、message 和 `status_labels` 仍使用字符串类型；上述 literal 别名不改变对应字段的运行时表示。
 
 Runtime error 后会话进入 sticky failure（poisoned）：`is_failed() = true`，`is_done() = false`，`result()` 与 `stop_reason()` 为 None / null，`status()` 仍为 running，不是 truncated。`is_done()` 只表示已产生正常 terminal BattleResult；后续 `next_frame()` 返回同一错误 code 和 message。调用方应停止推进并释放 session；`is_failed()` 是查询方法，不增加 DTO 字段或 BattleStatus 枚举值。
 
@@ -115,7 +115,7 @@ try {
 | 类型                 | 说明                                                                                                                                                   |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `PlayerMeta`         | 玩家元数据：`id`, `team_index`, `id_name`, `display_name`, `icon_png_base64?`                                                                          |
-| `PlayerState`        | 玩家状态：`hp`, `max_hp`, `magic_point`, `attack`, `defense`, …, `owner_id?`, `display_index`, `alive`, `status_labels?`（实时状态标签，如 `"聚气"`/`"隐匿"`/`"狂暴"`） |
+| `PlayerState`        | 玩家状态：`hp`, `max_hp`, `shield`, `max_shield`, `magic_point`, `attack`, `defense`, …, `owner_id?`, `display_index`, `alive`, `status_labels?`（实时状态标签，如 `"聚气"`/`"隐匿"`/`"狂暴"`） |
 | `RoundFrame`         | 回合帧：`finished`, `winner_ids`, `updates[]`, `rows[]`, `states[]`, `total_delay`                                                                     |
 | `UpdateView`         | 单条更新消息：`caster_id`, `target_id`, `message_rendered`, `message_template`, `tone`, …                                                              |
 | `ReplayRow`          | 回放行：`indent`, `clips[]`；一般首行不缩进，后续行缩进                                                                                                 |
@@ -165,13 +165,15 @@ show 页面右下角控制栏还支持 `C/P/F/T/I/R/S/D` 字母快捷键；字�
 
 ### 实时状态标签
 
+`shield` 是当前实际吸收护盾；`max_shield` 是当前护盾技能熟练度，吞噬等技能变更后随快照更新，用作盾条展示上限而不是战斗规则的硬上限。规范 `BattlePlayerState` 与兼容 `PlayerState` 的初始、帧、片段前后和最终快照均包含这两个字段。
+
 `PlayerState.status_labels` 会在每个回合帧中收集玩家当前生效的技能运行时态和状态效果，前端可直接用于渲染状态提示 pill。
 
 正面状态（绿色）：`聚气`、`蓄力`、`隐匿`、`潜行`、`狂暴`、`疾走`、`铁壁`、`守护`
 
 负面状态（红色）：`魅惑`、`诅咒`、`冰冻`、`中毒`、`迟缓`、`垂死`
 
-`examples/index.html` 演示页面已内置状态标签渲染，在玩家面板中显示彩色 pill。
+`examples/index.html` 演示页面已内置状态标签渲染，在玩家面板中显示彩色 pill；侧栏和角色详情会从实时 `shield` 补出 `护盾 +数值`，不修改规范 `status_labels`。盾条常驻，右侧与 HP 底轨同高拼接，详见 [示例说明](examples/README.md#indexhtml--完整对局动画展示)。
 
 ### 头像 Sprite 渲染
 
