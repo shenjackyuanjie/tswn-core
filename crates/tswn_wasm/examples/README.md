@@ -16,7 +16,7 @@
 ### `demo.html` — 快速功能验证
 
 - 提供输入区、战斗控制区和胜率控制区。
-- 调用 `fight()` / `fight_summary()` / `win_rate_sync()` 等顶层导出接口。
+- 使用 `fight_summary()` 获取摘要，通过 `FightSession` 逐帧推进对局，通过 `WinRateSession` 分批统计胜率。
 - 适合快速测试 wasm 是否正确构建、核心战斗逻辑是否正常。
 
 ### `index.html` — 完整对局动画展示
@@ -34,7 +34,7 @@
 - 页面按需拉取公共 `BattleSession` 的 canonical replay view；历史 `engine` / `runtime` 参数会从分享链接中清理，不再提供 `FightSession` fallback。
 - 支持在右下角控制栏复制当前对局的分享链接，链接会使用同一套 `input` 参数格式。
 - 召唤单位（clone / summon / shadow / zombie）会按类型显示对应的中文名；分身名字里的编号使用底层 `display_index`，左侧仍单独保留 `#playerId`。
-- 只消费 `RoundFrame.rows[].clips[]` 结构化 replay view，由 WASM 提供延迟、文本片段、血条变化、死亡特效和侧栏快照信息；战斗正文不再从 `message_template` / `message_rendered` / `hp_delta` 反推展示语义。
+- 只消费 `BattleReplayFrame.rows[].clips[]` 结构化 replay view，由 WASM 提供延迟、文本片段、血条变化、死亡特效和侧栏快照信息；战斗正文不再从 `message_template` / `message_rendered` / `hp_delta` 反推展示语义。
 - normal 播放模式下，对战结束后等待 `1500ms` 再显示底部结算表；fast / turbo / 单步跳转保持即时显示。左侧玩家 HP 条变化使用较慢动画，方便观察血量变化。
 - 角色详情面板跟随页面明暗主题切换；白天模式使用深色正文文字配浅色详情卡片，夜间模式使用浅色正文文字配深色详情卡片。
 - `show-wasm.js` 通过 `createBattleStreamSource()` 创建 `BattleSession`；页面先展示初始状态，再由 `BattleStreamController` 按需获取 core 提供的 `rows/clips/parts`。
@@ -99,6 +99,6 @@ python -m http.server 8000
 
 ## 说明
 
-- JS 文件会优先尝试从打包结果目录的 `../pkg/tswn_wasm.js` 加载 wasm glue。
-- 若直接在源码目录下调试，也会回退尝试 `../dist/wasm/pkg/tswn_wasm.js`。
+- 两套页面都优先从 `../pkg/tswn_wasm.js` 加载 wasm glue，推荐按上述分发目录启动。
+- `demo.js` 还会尝试 `../dist/wasm/pkg/tswn_wasm.js`，支持从源码示例目录调试；`show-wasm.js` 的另一个候选是 `./pkg/tswn_wasm.js`，用于页面与 `pkg/` 同级的扁平部署。
 - 由于浏览器的 ES module / wasm 加载要求，示例需要通过 HTTP 服务访问，不能直接双击本地文件运行。

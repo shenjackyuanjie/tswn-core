@@ -1,6 +1,6 @@
-# Scripts
+# 脚本与验证入口
 
-仓库根目录下原本分散的 Python 辅助脚本统一收纳到这里。
+本目录维护组件构建、数据集分析、差分辅助与跨语言验证脚本。下面的命令默认从仓库根目录执行；各脚本的额外依赖和输入分别准备。
 
 从仓库根目录运行时，推荐命令形式为 `uv run scripts/<name>.py ...`（Windows 侧使用 `uv` 管理环境），
 也可用 `python scripts/<name>.py ...`（需确保已激活虚拟环境）。
@@ -56,7 +56,7 @@ python scripts/check_runtime_release.py --corpus
 - `capi`: 现场构建并整理分发目录
 - `cli`: 现场构建并整理可执行文件
 - `openbox`: 现场构建 GUI 与 `openbox-cli`，两份可执行文件均收录到聚合 ZIP
-- `py`: 只收集当前已经存在的 Python wheel / 产物，不现场构建
+- `py`: 只收集当前 `tswn_py` 版本的现有 wheel / sdist 及其他包文件，不现场构建
 - `wasm`: 现场构建 `tswn_wasm`，并整理浏览器可直接消费的 `wasm-bindgen` 包
 
 典型用法：
@@ -71,10 +71,13 @@ python scripts/check_runtime_release.py --corpus
 - `--bundle-name NAME`: 自定义 bundle 目录名与 zip 基名（默认按 core/capi/py/wasm/openbox 版本自动生成）
 - `--release`: 对 capi/cli/openbox/wasm 使用 release 构建
 - `--clean`: 构建前清空 bundle 目录与最终 zip
-- `--target TRIPLE`: 指定 cargo target triple
+- `--target TRIPLE`: 指定 capi/cli/openbox 的 Cargo target triple；WASM 保持自己的 target
 - `--skip-capi` / `--skip-cli` / `--skip-openbox` / `--skip-py` / `--skip-wasm`: 跳过对应组件
 - `--capi-with-example-build`: 传给 `build_capi.py`，额外尝试编译 C examples
-- `--cli-features FEATURES`: CLI 构建 features，逗号分隔（默认 `no_debug`；传空字符串表示不追加）
+- `--cli-features FEATURES`: CLI 追加 features，逗号分隔（默认 `no_debug,mimalloc_alloc`；传空字符串表示不追加）
+- `--openbox-features FEATURES`: Openbox 追加 features（默认 `no_debug,mimalloc_alloc`）
+- `--include-ohos-cli`: 额外构建未签名 OHOS CLI；SDK 与 target 准备见 [OpenHarmony 指南](../docs/guides/openharmony.md)
+- `--pgo`: 对 CLI 与 Openbox 同时启用 PGO；当前 Openbox 训练路径待适配，参见下方 [PGO 状态](#pgo_buildpy)
 - `--cargo ...`: 追加到 cargo/build_capi 的额外参数（放在最后）
 
 默认输出位置：
@@ -91,8 +94,23 @@ python scripts/check_runtime_release.py --corpus
 - `capi/`: 头文件、动态库、C examples
 - `cli/`: 带版本号的 `tswn-cli` 可执行文件
 - `openbox/`: 带版本号的 GUI 与 `openbox-cli` 可执行文件、包说明与 changelog
-- `py/`: 当前已有 wheel 与 Python examples
+- `py/`: 当前版本的现有 wheel/sdist、其他包文件与 Python examples
 - `wasm/`: `pkg/`、原始 `.wasm`、静态页面 examples 与 changelog
+
+跨平台流程、两种 `--clean` 的范围和聚合验收见 [全量构建指南](../docs/guides/build-all.md)。
+
+## pgo_build.py
+
+CLI 的插桩、单线程训练、合并与 `profile-use` 重建入口：
+
+```powershell
+python scripts/pgo_build.py --kind cli
+python scripts/pgo_build.py --kind cli --train-runs 8000
+```
+
+默认训练覆盖 fixed30 与 score；默认 CLI 工作目录为 `target/pgo/cli/`，合并结果为其中的 `merged.profdata`。`--skip-train` 用于复用已有 profile，不替代新输入/新编译配置的训练。`llvm-profdata` 的 LLVM 大版本必须与 rustc 一致，脚本会检查。
+
+**Openbox 状态**：脚本的训练靶子仍指向迁移前的 `crates/tswn_openbox/assets/targets/`，实际资源在 `crates/tswn_openbox_backend/assets/targets/`。适配前不要把 `--kind openbox` 或包含 Openbox 的 `build_all.py --pgo` 当作可直接使用的发布流程；普通 `--release` 构建不受此限制。历史收益与当前 A/B 验证要求见 [性能准则](../rule.md#pgo-构建)。
 
 ## build_wasm.py
 
@@ -167,7 +185,7 @@ python scripts/check_runtime_release.py --corpus
 
 ## build_py.py
 
-构建 `tswn_py` 的 wheel。
+构建 `tswn_py` 的 wheel，需要 Python 3.12+；使用的解释器决定 wheel 的 Python/平台标签。详细依赖见 [Python 构建说明](../crates/tswn_py/README_BUILD.md)。
 
 典型用法：
 
@@ -181,7 +199,7 @@ python scripts/check_runtime_release.py --corpus
 - `-o DIR` / `--output-dir DIR`: wheel 输出目录（默认 `crates/tswn_py/dist`）
 - `--clean`: 构建前清空输出目录
 - `--no-isolation`: 跳过 PEP 517 隔离环境，直接使用当前 Python 环境（更快；需已安装 setuptools、setuptools-rust、wheel）
-- `--verify`: 构建完成后安装 wheel 并验证 `import tswn_py`
+- `--verify`: 构建完成后向当前 Python 环境强制安装 wheel 并验证 `import tswn_py`；使用独立虚拟环境执行
 
 默认输出位置：
 
@@ -190,8 +208,8 @@ python scripts/check_runtime_release.py --corpus
 说明：
 
 - 该脚本用于构建 Python wheel
-- 多平台 / 多环境产物可以共同放在 `crates/tswn_py/dist/` 下
-- 聚合打包脚本会直接收集这里已有的内容
+- 多平台 / 多环境产物可以共同放在 `crates/tswn_py/dist/` 下；`--clean` 会清空整个目录，通常仅在第一轮执行
+- 聚合脚本仅收集其中与当前 `tswn_py` 版本匹配的 wheel/sdist；同版本的旧 core/源码产物仍需重新构建或主动核验
 - 脚本会自动检测并安装 `build` 包（通过 `uv pip install build`）
 
 ## verify_py_cli_api.py
@@ -210,7 +228,7 @@ python scripts/check_runtime_release.py --corpus
 
 - `win_rate_summary` / `team_win_rate_summary` / `group_win_rate_summary` 与旧 `win_rate` / `group_win_rate` 的一致性
 - `score`、`namer_pf`、`batch_rate`、`pair_rate` 的可复算关系、重复名跳过和结果字段
-- `to_diy(..., minions=True)` 的 Runner roundtrip 初始状态一致性
+- `to_diy(..., minions=True)` 的 BattleSession 往返初始状态一致性
 - `icon_info` 与 PNG/RGBA helper 的基础结构一致性
 - `parse_group_lines` 的 `+` / `++` 组解析行为
 
@@ -289,7 +307,7 @@ Bun 脚本，用于对 tswn-md5 模块进行 profile trace。
 
 - `verify_py_cli_api.py`：构建 Python 扩展并检查 TypedDict、迭代器、错误码与 session/replay 一致性。
 - `verify_wasm_battle.test.mjs`：真实 Node WASM 包的 canonical DTO、错误与旧 FightSession 兼容测试。
-- `verify_cli_battle.py`：CLI JSONL、stdin、人类输出与删除命令的错误路径。已迁移为 Rust 集成测试 `crates/tswn_core/tests/cli_battle.rs`，运行 `cargo test -p tswn_core --test cli_battle`。
+- Rust 集成测试 [`cli_battle.rs`](../crates/tswn_core/tests/cli_battle.rs)：CLI JSONL、stdin、人类输出与删除命令的错误路径，运行 `cargo test -p tswn_core --test cli_battle`；原 `verify_cli_battle.py` 已删除。
 - `verify_battle_cross_binding.py`：真实 Rust CLI / Python / C / WASM 的完整 payload 精确对比；调用 `dump_battle_wasm.mjs` 读取 Node WASM 输出。
 - `verify_web_playback.mjs`：真实页面模块与 DOM 的延迟 source 测试，需 `--experimental-vm-modules` 和 target/web-test-tools 下的 linkedom。
 - `benchmark_web_streaming.mjs`：独立桌面浏览器四组各 20 次性能测试，生成 timing JSON、表格和截图。

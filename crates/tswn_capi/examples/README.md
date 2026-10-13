@@ -2,6 +2,7 @@
 
 本目录提供 `tswn_capi` 的最小 C 示例。
 
+- `battle_session.c`：正式增量对局，按 initial、frame、result 输出 JSON
 - `version_and_error.c`: 版本、常量与错误读取
 - `error_handling.c`: 状态码、last-error 与失败后恢复调用流程
 - `runner_fight.c`: 从 raw 输入创建 `Runner` 并跑完整场对局
@@ -90,11 +91,18 @@
 
 ## 编译示例
 
-下面假设你当前位于 `crates/tswn_capi/` 根目录，并以 `examples/version_and_error.c` 为例。
+先从仓库根目录生成分发包，再进入包目录；下面的 `include/`、`lib/`、`examples/` 路径均相对于该包目录，而不是源 crate 根目录：
+
+```powershell
+uv run scripts/build_capi.py --release
+cd crates/tswn_capi/dist/capi
+```
+
+以下以 `examples/version_and_error.c` 为例。若收到的是已打包的 C API，直接进入包含上述三个目录的包根目录即可。
 
 ### MSVC (`cl`)
 
-如果当前 shell 中没有 `cl`，可先执行 `start-vs-pwsh.ps1` 进入 Visual Studio Developer PowerShell 环境。
+使用 Visual Studio Developer PowerShell 或 Developer Command Prompt，让 `cl` 与 Windows SDK 链接库进入当前环境。
 
 典型命令：
 
@@ -114,7 +122,9 @@
 
 典型命令（静态链接 `tswn_capi.lib`，仍可能需要补系统库）：
 
-`clang -Iinclude examples/version_and_error.c lib/tswn_capi.lib "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64\ntdll.lib" -o examples/version_and_error.exe`
+`clang -Iinclude examples/version_and_error.c lib/tswn_capi.lib ntdll.lib -o examples/version_and_error.exe`
+
+上述命令使用 Developer PowerShell 配置的 SDK 库搜索路径；其他环境应传入本机实际 SDK 版本和目标架构下的 `ntdll.lib` 完整路径。
 
 说明：
 
@@ -130,6 +140,8 @@
 
 `gcc -Iinclude examples/version_and_error.c lib/tswn_capi.dll.lib -o examples/version_and_error.exe`
 
+该命令要求 MinGW 工具链能读取 MSVC import lib；格式不兼容时应先从 DLL 生成 `.dll.a`，步骤见 [Windows C++ 链接指南](../../../docs/guides/c-api-cpp-windows.md#9-g-更稳的做法先生成-dlla)。
+
 ### clang / gcc / cc（Linux/macOS）
 
 若目录中是 `libtswn_capi.so` / `libtswn_capi.dylib`，可使用：
@@ -142,6 +154,7 @@
 - Windows 下如使用 MSVC 链接，通常需要 `.lib` 文件
 - 若你使用的是 `tswn_capi.dll.lib`，则运行时请确保动态库可被找到；最简单的方式通常是把生成的 `.exe` 与 `tswn_capi.dll` 放在同一目录
 - 若运行时提示找不到 `tswn_capi.dll`，可先把 `lib/tswn_capi.dll` 复制到生成的 `.exe` 同目录，再重新执行
+- Linux/macOS 动态链接示例也需要配置库搜索路径；在包目录可分别用 `LD_LIBRARY_PATH=./lib ./examples/version_and_error` 或 `DYLD_LIBRARY_PATH=./lib ./examples/version_and_error` 运行。
 - 若你使用的是 `tswn_capi.lib`，则 `tswn_capi` 本体会在链接时进入最终可执行文件，但仍可能需要额外补充 Windows 系统库
 - 若你想编译别的示例，只需把上述命令里的 `examples/version_and_error.c` 替换成对应源文件即可
 

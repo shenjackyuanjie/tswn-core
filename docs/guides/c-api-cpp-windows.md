@@ -1,6 +1,6 @@
 # Windows 下使用 `tswn_capi` 编译 C++ 示例
 
-本文记录在 Windows 环境下使用 `tswn_capi` 编译和运行 C++ 示例时的推荐做法，以及这次实际踩到的几个坑。
+本文说明在 Windows 环境下链接 `tswn_capi` 的推荐做法，以及 `PreparedRunner` 的 seed 与运行目录约定。
 
 适用场景：
 
@@ -14,32 +14,27 @@
 
 ## 1. 目录与前提
 
-假设当前仓库根目录为：
+从仓库根目录生成 C API 包，然后进入包根目录：
 
-```text
-tswn-core
+```powershell
+uv run scripts/build_capi.py --release
+cd crates/tswn_capi/dist/capi
 ```
 
-假设当前工作目录为：
+Windows MSVC 构建的关键布局如下；从整合发布包使用时，同样进入其中的 `capi/` 子目录：
 
 ```text
-tswn-core/dist/all
+capi/
+  include/tswn_capi.h
+  lib/tswn_capi.dll
+  lib/tswn_capi.dll.lib
+  lib/tswn_capi.lib
+  examples/*.c
 ```
 
-此时关键文件路径如下：
+后文命令均从这个包根目录运行。`openbox_capi.cpp`、`openbox_capi_prepare.cpp` 和 `input.txt` 是**自备调用程序及输入的示例文件名**，不随当前包提供；使用这些命令前先将自己的文件放到包根目录。仓库现成用例见 [C 示例说明](../../crates/tswn_capi/examples/README.md)、[prepared_runner.c](../../crates/tswn_capi/examples/prepared_runner.c) 和 [runner_fight.c](../../crates/tswn_capi/examples/runner_fight.c)。
 
-```text
-dist/all/
-  openbox_capi.cpp
-  openbox_capi_prepare.cpp
-  input.txt
-  tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/
-    capi/
-      include/tswn_capi.h
-      lib/tswn_capi.dll
-      lib/tswn_capi.dll.lib
-      lib/tswn_capi.lib
-```
+请在 Visual Studio Developer PowerShell 中运行 Windows MSVC 链接命令，确认 LLVM 使用 MSVC 目标，且程序、Rust 库与 Windows SDK 的架构一致。当前 C ABI 版本为 4；头文件和库应来自同一构建。`PreparedRunner` 兼容接口仍保留，正式战斗会话用法可参考 [battle_session.c](../../crates/tswn_capi/examples/battle_session.c)。
 
 ---
 
@@ -56,7 +51,7 @@ dist/all/
 然后在编译命令里传：
 
 ```text
--Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
+-Iinclude
 ```
 
 不推荐再写这种相对路径 include：
@@ -94,7 +89,7 @@ dist/all/
 
 ## 3. `PreparedRunner` 的 seed 格式
 
-这是本次最关键的坑。
+`PreparedRunner` 只预解析队伍；每局的 seed 由创建 Runner 时的参数提供，原始文本中的 seed 不会保存在 prepared 句柄里。
 
 ### 3.1 错误写法
 
@@ -104,10 +99,7 @@ dist/all/
 33554431@!
 ```
 
-这会导致：
-
-- `raw` 路径和 `prepared` 路径结果不一致
-- 在实际测试中，`10000` 场的胜率会出现明显偏差
+裸值不是完整 seed 行，无法保证与 raw 文本中 `seed:...` 的输入语义一致；对照两条路径时应使用完整格式。
 
 ### 3.2 正确写法
 
@@ -132,59 +124,30 @@ seed:33554431@!
 
 为了保持与 `raw` 路径一致，`prepared` 路径也必须传同样格式的字符串。
 
-### 3.4 实测结论
-
-实测发现：
-
-- `raw` + `seed:...`
-- `prepared` + 裸 seed
-
-结果不一致。
-
-修正为：
-
-- `prepared` + 完整 `seed:...`
-
-之后两边结果对齐。
-
 ---
 
 ## 4. `raw` 无 seed 与 `prepared` 无 seed 是否一致
 
-这个问题已经通过 Rust 测试验证。
+相同队伍和 `eval_rq` 下，raw 不含 seed 行、prepared 创建 Runner 时传 `NULL`，使用的是同一条无 seed 初始化路径。
+[C API 实现](../../crates/tswn_capi/src/runner_api.rs) 将 raw 拆成队伍和 seed，再调用核心 Runner；
+[核心会话构造](../../crates/tswn_core/src/runtime/session.rs) 的 raw 路径也先准备队伍，再以 seed 创建对局。
 
-结论：
-
-- `raw` 不给 seed
-- `prepared` 不给 seed（即 `NULL` / 空 seed）
-
-结果一致。
-
-验证方式包括比较：
-
-- winner
-- battle score
-- 回合数
-- replay trace
-
-因此可以认为：
-
-- no-seed 情况下，`raw` 与 `prepared` 是一致的
-- 有 seed 时也可以一致，但前提是 `prepared` 必须传完整 `seed:...` 行
+有 seed 时，将 raw 文本中的完整 `seed:...` 行传给 `tswn_runner_new_from_prepared()`，即可保持相同的输入语义。
 
 ---
 
 ## 5. Windows 下的链接形式
 
-当前 Windows 打包结果中通常包含：
+当前 Windows MSVC 打包结果中通常包含（文件均位于 `lib/`）：
 
 ```text
 tswn_capi.dll
 tswn_capi.dll.lib
 tswn_capi.lib
 tswn_capi.dll.exp
-tswn_capi.pdb
 ```
+
+`tswn_capi.pdb` 是启用调试信息时的可选产物，默认 release 包不保证包含它；打包脚本只收集当前构建中实际存在的文件。
 
 含义：
 
@@ -201,22 +164,22 @@ tswn_capi.pdb
 
 这是 Windows 下最稳妥、最省心的方案。
 
-假设当前在：
+以下命令继续以 C API 包根目录为工作目录：
 
 ```text
-dist/all
+crates/tswn_capi/dist/capi
 ```
 
 ### 6.1 编译 `raw` 版
 
 ```powershell
-clang++ openbox_capi.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.dll.lib -o openbox_capi.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
+clang++ openbox_capi.cpp lib/tswn_capi.dll.lib -o openbox_capi.exe -O3 -ffast-math -funroll-loops -Iinclude
 ```
 
 ### 6.2 编译 `prepared` 版
 
 ```powershell
-clang++ openbox_capi_prepare.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.dll.lib -o openbox_capi_prepare.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
+clang++ openbox_capi_prepare.cpp lib/tswn_capi.dll.lib -o openbox_capi_prepare.exe -O3 -ffast-math -funroll-loops -Iinclude
 ```
 
 ### 6.3 运行前需要 DLL
@@ -226,7 +189,7 @@ clang++ openbox_capi_prepare.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/cap
 最简单做法是把 DLL 复制到当前目录：
 
 ```powershell
-copy tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle\capi\lib\tswn_capi.dll .
+copy lib\tswn_capi.dll .
 ```
 
 然后运行：
@@ -253,16 +216,18 @@ copy tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle\capi\lib\tswn_capi.dll .
 - 当前已验证的一种情况是需要：
   - `ntdll.lib`
 
+Developer PowerShell 已配置 Windows SDK 库搜索路径，因此命令可直接写 `ntdll.lib`；其他环境应传入本机实际 SDK 版本与目标架构下的完整路径。其余系统库依具体链接器和错误信息补充。
+
 ### 7.1 编译 `raw` 版
 
 ```powershell
-clang++ openbox_capi.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.lib "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64\ntdll.lib" -o openbox_capi.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
+clang++ openbox_capi.cpp lib/tswn_capi.lib ntdll.lib -o openbox_capi.exe -O3 -ffast-math -funroll-loops -Iinclude
 ```
 
 ### 7.2 编译 `prepared` 版
 
 ```powershell
-clang++ openbox_capi_prepare.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.lib "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64\ntdll.lib" -o openbox_capi_prepare.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
+clang++ openbox_capi_prepare.cpp lib/tswn_capi.lib ntdll.lib -o openbox_capi_prepare.exe -O3 -ffast-math -funroll-loops -Iinclude
 ```
 
 ### 7.3 静态链接时的现象
@@ -284,11 +249,11 @@ fatal error LNK1120
 ### 8.1 可尝试命令
 
 ```powershell
-g++ openbox_capi.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.dll.lib -o openbox_capi.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
+g++ openbox_capi.cpp lib/tswn_capi.dll.lib -o openbox_capi.exe -O3 -ffast-math -funroll-loops -Iinclude
 ```
 
 ```powershell
-g++ openbox_capi_prepare.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.dll.lib -o openbox_capi_prepare.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
+g++ openbox_capi_prepare.cpp lib/tswn_capi.dll.lib -o openbox_capi_prepare.exe -O3 -ffast-math -funroll-loops -Iinclude
 ```
 
 ### 8.2 但需要注意
@@ -321,7 +286,7 @@ libtswn_capi.dll.a
 ### 9.1 从 DLL 生成 `.def`
 
 ```powershell
-gendef tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle\capi\lib\tswn_capi.dll
+gendef lib\tswn_capi.dll
 ```
 
 ### 9.2 从 `.def` 生成 `.dll.a`
@@ -333,11 +298,11 @@ dlltool -d tswn_capi.def -l libtswn_capi.dll.a -D tswn_capi.dll
 ### 9.3 然后再用 `g++`
 
 ```powershell
-g++ openbox_capi.cpp libtswn_capi.dll.a -o openbox_capi.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
+g++ openbox_capi.cpp libtswn_capi.dll.a -o openbox_capi.exe -O3 -ffast-math -funroll-loops -Iinclude
 ```
 
 ```powershell
-g++ openbox_capi_prepare.cpp libtswn_capi.dll.a -o openbox_capi_prepare.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
+g++ openbox_capi_prepare.cpp libtswn_capi.dll.a -o openbox_capi_prepare.exe -O3 -ffast-math -funroll-loops -Iinclude
 ```
 
 运行时仍然需要 `tswn_capi.dll`。
@@ -376,7 +341,7 @@ g++ openbox_capi_prepare.cpp libtswn_capi.dll.a -o openbox_capi_prepare.exe -O3 
 
 ## 11. 运行时输入
 
-示例程序通常从当前目录读取：
+若自备程序采用文件输入，可约定从当前目录读取：
 
 ```text
 input.txt
@@ -389,43 +354,19 @@ input.txt
 蕾蒂·怀特洛可-65HEZHB264LFPFQ@Squall
 ```
 
-运行后再从标准输入输入测试次数，例如：
+若自备程序还接受标准输入中的测试次数，可以输入：
 
 ```text
 10000
 ```
 
----
-
-## 12. 已确认的结论
-
-### 12.1 `PreparedRunner` seed 规则
-
-- `NULL`：不传 seed
-- `seed:33554431@!`：正确
-- `33554431@!`：错误，不应这样传
-
-### 12.2 无 seed 一致性
-
-已通过 Rust 测试确认：
-
-- `raw` 不给 seed
-- `prepared` 不给 seed
-
-二者一致。
-
-### 12.3 有 seed 一致性
-
-已通过实际对战验证：
-
-- `prepared` 若传完整 `seed:...`
-- 则与 `raw` 路径结果一致
+这些输入约定由调用程序决定；仓库的 C 示例使用内置输入，不要求额外提供 `input.txt` 或次数。
 
 ---
 
-## 13. 常见报错与排查
+## 12. 常见报错与排查
 
-### 13.1 找不到头文件
+### 12.1 找不到头文件
 
 若报：
 
@@ -438,11 +379,11 @@ fatal error: 'tswn_capi.h' file not found
 - 是否用了：
   - `#include "tswn_capi.h"`
 - 是否传了：
-  - `-Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include`
+  - `-Iinclude`
 
 ---
 
-### 13.2 动态运行时找不到 DLL
+### 12.2 动态运行时找不到 DLL
 
 若报找不到 `tswn_capi.dll`：
 
@@ -451,17 +392,17 @@ fatal error: 'tswn_capi.h' file not found
 
 ---
 
-### 13.3 静态链接缺少 `NtWriteFile` / `RtlNtStatusToDosError`
+### 12.3 静态链接缺少 `NtWriteFile` / `RtlNtStatusToDosError`
 
 补：
 
 ```text
-"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64\ntdll.lib"
+ntdll.lib
 ```
 
 ---
 
-### 13.4 `g++` 不认 `.dll.lib`
+### 12.4 `g++` 不认 `.dll.lib`
 
 这是库格式兼容问题，不是命令写错。  
 解决方式：
@@ -469,41 +410,9 @@ fatal error: 'tswn_capi.h' file not found
 - 换用 `clang++`
 - 或先把 DLL 转成 `.dll.a`
 
----
+## 13. 备注
 
-## 14. 最短可用命令总结
-
-### `clang++` 动态链接
-
-```powershell
-clang++ openbox_capi.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.dll.lib -o openbox_capi.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
-```
-
-```powershell
-clang++ openbox_capi_prepare.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.dll.lib -o openbox_capi_prepare.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
-```
-
-运行前：
-
-```powershell
-copy tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle\capi\lib\tswn_capi.dll .
-```
-
-### `clang++` 静态链接
-
-```powershell
-clang++ openbox_capi.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.lib "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64\ntdll.lib" -o openbox_capi.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
-```
-
-```powershell
-clang++ openbox_capi_prepare.cpp tswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/lib/tswn_capi.lib "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64\ntdll.lib" -o openbox_capi_prepare.exe -O3 -ffast-math -funroll-loops -Itswn_core_0_2_11_capi_0_1_1_py_0_1_9_bundle/capi/include
-```
-
----
-
-## 15. 备注
-
-如果后续还会长期维护这两个 C++ 示例，建议继续保持以下约定：
+长期维护自己的 C++ 调用程序时，建议保持以下约定：
 
 - 头文件统一 `#include "tswn_capi.h"`
 - 不在源码里写 `#pragma comment(lib, ...)`

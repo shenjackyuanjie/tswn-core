@@ -1,288 +1,159 @@
-# 全量构建
+# 全量构建与聚合打包
 
-本文记录当前仓库实际可用的一套聚合构建流程，用于同时准备：
+[返回指南索引](README.md)
 
-- Windows `tswn_py` wheel
-- WSL / Linux `tswn_py` wheel
-- WSL / Linux `tswn-cli`
-- OpenHarmony/OHOS `tswn-cli` 未签名二进制（可选）
-- Windows `capi` / `cli`
-- Windows `tswn_openbox` GUI
-- 浏览器侧 `tswn_wasm` 包
-- 最终 `build_all` 聚合包
+本文说明从仓库根目录构建组件并生成聚合 ZIP 的流程。版本由各 crate 的 `Cargo.toml` 和 Python 的 `pyproject.toml` 读取，不在本文维护另一份版本表。脚本参数全集见 [脚本索引](../../scripts/README.md) 或各脚本的 `--help`。
 
-## 前提
+## 1. 构建范围与前提
 
-- Windows 侧可用：`uv`、`cargo`
-- Windows 侧建议额外安装：`wasm-bindgen-cli`
-- 如需构建 OHOS CLI：设置 `OHOS_NATIVE_SDK` 指向 OpenHarmony native SDK，且已安装 Rust target `aarch64-unknown-linux-ohos`
-- WSL 侧可用：`cargo`
-- WSL Python 构建请使用仓库根目录下的 `.venv-wsl`
+| 组件 | `build_all.py` 的行为 | 主要产物 |
+| --- | --- | --- |
+| `cli` | 构建当前主机的 `tswn-cli` | 带 core 版本号的可执行文件 |
+| `capi` | 调用 `build_capi.py` 构建当前平台分发包 | 头文件、库和 C examples |
+| `openbox` | 构建当前主机的 GUI 与 `openbox-cli`，两者都必须存在 | 两份带版本号的可执行文件 |
+| `py` | 收集现有产物，不构建 wheel | 当前 `tswn_py` 版本的 wheel / sdist、包文件和 examples |
+| `wasm` | 调用 `build_wasm.py` 构建浏览器包 | JS glue、WASM、静态页面 examples |
 
-说明：
+需要 Rust/Cargo、`uv` 和 Python **3.12 或更高版本**。Windows 的 MSVC 构建还需要 Visual Studio 2022 Build Tools 的 C++ 工作负载与 Windows SDK，建议在 Developer PowerShell 中运行，环境准备见 [Windows C/C++ 指南](c-api-cpp-windows.md)。Openbox GUI 还需要平台的图形库与链接依赖，见 [Openbox README](../../crates/tswn_openbox/README.md)。
 
-- 仓库使用 `uv` 管理 Python 环境（`.venv` 由 `uv` 创建）
-- Windows 侧的 Python 构建/聚合脚本推荐用 `uv run scripts/...` 替代 `python scripts/...`
-- `scripts/build_all.py` 不会现场构建 Python wheel，只会收集 `crates/tswn_py/dist/` 中已经存在的产物
-- `scripts/build_all.py` 会现场构建当前平台的 `capi` / `cli` / `tswn_openbox`，并构建 `tswn_wasm` 浏览器包
-- `scripts/build_all.py` 的 Windows CLI 默认 feature 为 `no_debug,mimalloc_alloc`；如需覆盖，可使用 `--cli-features`
-- `scripts/build_all.py --include-ohos-cli` 会额外构建 OHOS CLI，默认 feature 为 `no_debug`，产物名为 `tswn-cli_alpha_<core版本>_aarch64_unknown_linux_ohos_unsigned.bin`
-- `scripts/build_all.py` 的 Windows Openbox 默认 feature 为 `no_debug,mimalloc_alloc`；如需覆盖，可使用 `--openbox-features`
-- `scripts/build_all.py --release --pgo` 会改用 `scripts/pgo_build.py` 的 PGO 流程构建 Windows CLI：
-  插桩构建 → 用 `docs/perf/fixed_cases_30` 加评分输入做单线程训练 → `profile-use` 重建。
-  非训练输入实测约 `-25%`，代价是多一次完整构建加一轮训练；训练量用 `--pgo-train-runs` 调整。
-  PGO 需要在本机跑训练，因此不能与 `--target` 交叉编译同时使用，也要求 `llvm-profdata` 与 rustc 的 LLVM 大版本一致
-- `--pgo` 同时作用于 Windows Openbox：训练负载走 `openbox_mem_probe` 的 CQP 批量胜率
-  （探针内部计时实测 `2.897s -> 2.262s`，约 `-21.9%`），场数用 `--pgo-openbox-train-runs` 调整。
-  CLI 与 Openbox 各用各的 profile，分别存放在 `target/pgo/cli/` 与 `target/pgo/openbox/`
-- 若仓库 `target/release/` 下已经存在 WSL 构建出的 Linux `tswn-cli` / `tswn_openbox` / `libtswn_capi.so`，聚合脚本也会一并收集
-- `tswn_wasm` 打包默认依赖 `wasm-bindgen-cli`，可通过 `cargo install wasm-bindgen-cli` 安装
-
-## 推荐顺序
-
-建议在仓库根目录 `D:\githubs\namer\tswn-core` 下，按下面顺序执行。
-
-### 1. 构建 Windows Python wheel
+WASM 需要安装 `wasm32-unknown-unknown` target，并让 `wasm-bindgen-cli` 的版本与 `Cargo.lock` 中的 `wasm-bindgen` **完全一致**；脚本会检查版本。安装与独立构建见 [WASM README](../../crates/tswn_wasm/README.md)。
 
 ```powershell
-uv run scripts/build_py.py --clean
+rustup target add wasm32-unknown-unknown
 ```
 
-说明：
+正式发布使用 `--release`；原生 CLI/Openbox 默认追加 `no_debug,mimalloc_alloc`。默认 Cargo feature 仍开启，传空 feature 字符串只表示不追加 feature，不表示关闭默认 feature。
 
-- 这一步会清空 `crates/tswn_py/dist/`
-- 所以通常只在第一步做一次 `--clean`
-- 使用 `uv run` 会自动使用 `.venv` 中的 Python 环境，无需手动激活
+## 2. 当前主机的最短流程
 
-### 2. 构建 WSL Python wheel
+以下 PowerShell 命令适用于 Windows。首次准备 Python 环境时执行第一行；已有 Python 3.12+ 环境时直接使用。
 
 ```powershell
-wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && python scripts/build_py.py"
+uv venv --python 3.12 .venv
+uv run --python 3.12 scripts/build_py.py --clean
+uv run --python 3.12 scripts/build_all.py --release --clean
 ```
 
-说明：
-
-- WSL 下不要直接用系统 Python 跑这个脚本
-- 需要先激活 `.venv-wsl`
-- 否则脚本内部可能会误走别的环境，导致 `uv` / `build` 检测失败
-- WSL 侧如果也安装了 `uv`，可以考虑改用 `uv run scripts/build_py.py`（但需要确保 `.venv-wsl` 也是 `uv` 管理的）
-
-### 3. 构建 WSL CLI
-
-```powershell
-wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && cargo build -p tswn_core --bin tswn-cli --release --features no_debug,mimalloc_alloc"
-```
-
-说明：
-
-- 这里激活 `.venv-wsl` 主要是为了统一 WSL 环境入口
-- 真正参与 CLI 构建的是 WSL 里的 Rust 工具链
-- `tswn_core 0.4.0` 起原生默认 feature 已包含 `mimalloc_alloc`；最终发布与正式 benchmark 均保持默认 allocator，显式关闭默认 feature 时必须单独记录口径
-
-### 4. 构建 WSL Openbox（如需 Linux GUI 产物）
-
-```powershell
-wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && cargo build -p tswn_openbox --release --features no_debug,mimalloc_alloc"
-```
-
-说明：
-
-- `scripts/build_all.py` 会现场构建 Windows `tswn_openbox`
-- 这一步只用于提前准备 Linux `tswn_openbox`，存在时聚合脚本会一并收集
-- 如果只需要 Windows Openbox，可以跳过这一步
-
-### 5. 执行聚合打包
-
-```powershell
-uv run scripts/build_all.py --release --clean
-```
-
-这一步会：
-
-- 现场构建 Windows `tswn_capi`
-- 现场构建 Windows `tswn-cli`
-- 现场构建 Windows `tswn_openbox`
-- 现场构建 `tswn_wasm` 浏览器包
-- 收集 `crates/tswn_py/dist/` 下已有的 wheel
-- 若存在 Linux `target/release/tswn-cli` / `target/release/tswn_openbox`，也会一起打进 bundle
-
-如果需要把 OHOS CLI 一并打入聚合包：
-
-```powershell
-$env:OHOS_NATIVE_SDK="<path-to-openharmony-native-sdk>"
-rustup target add aarch64-unknown-linux-ohos
-uv run scripts/build_all.py --release --clean --include-ohos-cli
-```
-
-也可以不用环境变量，直接传 `--ohos-sdk <path-to-openharmony-native-sdk>`。
-
-## 产物位置
-
-### Python wheel 构建
-
-输出目录：
-
-```text
-crates/tswn_py/dist/
-```
-
-当前通常会看到：
-
-- `tswn_py-...-win_amd64.whl`
-- `tswn_py-...-linux_x86_64.whl`
-
-### 聚合包
-
-默认输出目录：
-
-```text
-dist/all/
-```
-
-当前 bundle 命名规则示例：
-
-```text
-dist/all/tswn_core_0_3_11_capi_0_4_0_py_0_2_1_wasm_0_2_9_openbox_0_3_6_bundle/
-dist/all/tswn_core_0_3_11_capi_0_4_0_py_0_2_1_wasm_0_2_9_openbox_0_3_6_bundle.zip
-```
-
-### 聚合包内容
-
-- `capi/`
-  - `lib/`：Windows `dll`、Windows staticlib `.lib` 与已存在的 Linux `.so`
-  - `include/tswn_capi.h`
-  - `examples/`
-  - `changelog/CHANGELOG.md`
-- `cli/`
-  - `bin/`：Windows `tswn-cli_alpha_*.exe`
-  - 若已存在，也会额外收集 Linux `tswn-cli_alpha_*.bin`
-  - 传 `--include-ohos-cli` 时会额外构建 OHOS `tswn-cli_alpha_*_aarch64_unknown_linux_ohos_unsigned.bin`
-  - `changelog/CHANGELOG.md`
-- `openbox/`
-  - `bin/`：Windows `tswn_openbox_alpha_*.exe`
-  - 若已存在，也会额外收集 Linux `tswn_openbox_alpha_*.bin`
-  - `changelog/CHANGELOG.md`
-  - `tswn_openbox` 首次启动会在当前工作目录自动生成 `setting/` 默认预设目录
-- `py/`
-  - `dist/`：已有的 Windows / Linux wheel（`*.whl` / `*.tar.gz`）与 `tswn_py/`
-  - `examples/`
-  - `changelog/CHANGELOG.md`
-- `wasm/`
-  - `pkg/tswn_wasm.js`
-  - `pkg/tswn_wasm_bg.wasm`
-  - `raw/tswn_wasm.wasm`
-  - `examples/demo.html`
-  - `changelog/CHANGELOG.md`
-- 包根与每个子目录另含 `README.txt` 与 `MANIFEST.txt`
-
-## 一次跑完的命令清单（完整版）
-
-如果只是按当前推荐流程完整跑一遍，可以直接依次执行：
-
-### Windows 平台（使用 uv）
-
-```powershell
-uv run scripts/build_py.py --clean
-wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && python scripts/build_py.py"
-wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && cargo build -p tswn_core --bin tswn-cli --release --features no_debug,mimalloc_alloc"
-wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && cargo build -p tswn_openbox --release --features no_debug,mimalloc_alloc"
-uv run scripts/build_all.py --release --clean
-```
-
-如果不需要 Linux Openbox GUI 产物，可以跳过第 4 条 `cargo build -p tswn_openbox` 的 WSL 命令。
-
-### WSL / Linux 纯环境（仅构建 Linux 产物）
-
-如果只在 WSL/Linux 下构建，不需要 Windows 侧的产物：
+Linux 上可在仓库根目录使用独立的 Linux 虚拟环境，然后运行同样的脚本：
 
 ```bash
-# 激活 WSL venv
-. .venv-wsl/bin/activate
-
-# 构建 Linux Python wheel
+uv venv --python 3.12 .venv
+. .venv/bin/activate
 python scripts/build_py.py --clean
-
-# 构建 Linux CLI
-cargo build -p tswn_core --bin tswn-cli --release --features no_debug,mimalloc_alloc
-
-# 构建 Linux Openbox
-cargo build -p tswn_openbox --release --features no_debug,mimalloc_alloc
-
-# 构建 Linux capi
-cargo build -p tswn_capi --release
-
-# 聚合打包（Linux 下会构建当前平台 cli/openbox/wasm，并收集 py wheel；capi 需提前构建好）
 python scripts/build_all.py --release --clean
 ```
 
-### uv 用户的 WSL 增强方案
+聚合脚本会现场构建当前平台的 C API、CLI、Openbox GUI/CLI 和 WASM，无需提前重复构建这些组件。仅 Python wheel 需要提前构建；详细依赖与 wheel 验证见 [Python 构建说明](../../crates/tswn_py/README_BUILD.md)。
 
-如果 WSL 侧也安装了 `uv`，可以用 `uv` 统一管理 WSL 环境：
+两种 `--clean` 的范围不同：
 
-```powershell
-# 在 WSL 中安装 uv（如果未安装）
-wsl sh -lc "curl -LsSf https://astral.sh/uv/install.sh | sh"
+- `build_py.py --clean` 清空整个 `crates/tswn_py/dist/`。多平台 wheel 共用目录时，只在第一轮执行，后续平台不加此选项。
+- `build_all.py --clean` 清空本次 bundle 目录与同名 ZIP，不清空 Python wheel 源目录或 Cargo 构建缓存。
 
-# 然后用 uv run 替代直接 python 调用
-wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && uv run scripts/build_py.py"
+## 3. Windows 包额外收录 WSL/Linux 产物
+
+如需同时分发 Windows 与 Linux 产物，先构建 Windows wheel，再在 **WSL 终端**切换到同一份仓库的 Linux 挂载路径。以下命令从该仓库根目录执行，不要求特定开发机路径。
+
+```bash
+# 首次创建；与 Windows 的 .venv 分开保存
+uv venv --python 3.12 .venv-wsl
+. .venv-wsl/bin/activate
+
+# 保留先前的 Windows wheel，不加 --clean
+python scripts/build_py.py
+
+# 按需准备额外的 Linux 产物
+cargo build -p tswn_core --bin tswn-cli --release --features no_debug,mimalloc_alloc
+cargo build -p tswn_openbox --release --features no_debug,mimalloc_alloc
+cargo build -p tswn_capi --release
 ```
 
-## 备选：单个步骤的 uv 快捷命令
-
-### 仅构建 Windows Python wheel
+再回到 Windows 的仓库根目录执行：
 
 ```powershell
+uv run --python 3.12 scripts/build_all.py --release --clean
+```
+
+Windows 聚合脚本会额外收集已存在的 `target/release/tswn-cli`、`target/release/tswn_openbox` 和 `target/release/libtswn_capi.so`。这只是收集，不会自动调用 WSL 重建，也不会核验额外 Linux 二进制的版本；请先按待发布提交重新构建。
+
+当前主机的 Openbox GUI 与 `openbox-cli` 都会进入 ZIP；**Windows 侧额外收集 Linux Openbox 的逻辑目前只收 GUI，不收 Linux `openbox-cli`**。需要完整 Linux GUI/CLI 包时，在 Linux 上运行聚合脚本。
+
+Windows 和 WSL 的 Python 环境分别使用 `.venv` / `.venv-wsl`；在共享仓库中保持二者独立，WSL 构建时先激活 `.venv-wsl`，再使用其中的 `python`。
+
+## 4. 常用选项与独立构建
+
+```powershell
+# 自定义名称和输出目录
+uv run scripts/build_all.py --release --bundle-name my_bundle -o dist/all
+
+# 不收录 Python，或跳过不需要的组件
+uv run scripts/build_all.py --release --skip-py
+uv run scripts/build_all.py --release --skip-openbox
+
+# 单独构建与打包
 uv run scripts/build_py.py
-```
-
-### 仅构建（或更新）聚合包
-
-如果 wheel 没变、只需要重新打包 capi + cli + openbox + wasm：
-
-```powershell
-uv run scripts/build_all.py --release --clean
-```
-
-### 额外包含 OHOS CLI
-
-```powershell
-$env:OHOS_NATIVE_SDK="<path-to-openharmony-native-sdk>"
-uv run scripts/build_all.py --release --clean --include-ohos-cli
-```
-
-OHOS CLI 只会产出未签名 ELF 二进制；脚本不会做应用/系统签名。
-
-### 仅构建 Windows capi
-
-```powershell
-uv run scripts/build_capi.py --release
-```
-
-### 仅构建 Windows Openbox
-
-```powershell
+uv run scripts/build_capi.py --release --with-example-build
+uv run scripts/build_wasm.py --release --clean
 cargo build -p tswn_openbox --release --features no_debug,mimalloc_alloc
 ```
 
-## 备注
+`--target TRIPLE` 作用于 C API、CLI 和 Openbox 的 Cargo 构建；WASM 使用自己的 `wasm32-unknown-unknown` target。CLI/Openbox 的追加 feature 分别由 `--cli-features` / `--openbox-features` 覆盖。附加 Cargo 参数通过 `--cargo ...` 传递，放在命令最后。
 
-- 如果只想更新聚合包，但 `py` wheel 没变，可以跳过前两步
-- 如果只想更新 Linux `cli` 被聚合收集的版本，可以只重跑第 3 步和第 5 步
-- 如果只想更新 Linux `openbox` 被聚合收集的版本，可以只重跑第 4 步和第 5 步
-- 若后续还需要把 Linux `capi` 一并放进聚合包，可以先在 WSL 中额外执行：
+### PGO 状态
 
-```powershell
-wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && cargo build -p tswn_capi --release"
+CLI 的独立 PGO 流程可使用 `python scripts/pgo_build.py --kind cli`，要求匹配 rustc 的 LLVM 大版本，且训练需在本机单线程运行。性能结论需重新按同机 A/B 测量，历史收益不作为当前保证。
+
+Openbox 资源已迁到 `crates/tswn_openbox_backend/assets/`，但 `pgo_build.py` 的 Openbox 训练靶子仍指向旧的 `crates/tswn_openbox/assets/targets/`。因此在脚本适配前，全量打包推荐普通 `--release`；`build_all.py --pgo` 会同时启用 CLI 和 Openbox 的 PGO，不作为当前完整打包的推荐命令。约束见 [性能准则](../../rule.md#pgo-构建)。
+
+### 可选 OHOS CLI
+
+`--include-ohos-cli` 可额外构建并收录 OHOS CLI 的未签名 ELF；SDK、target、部署与签名流程见 [OpenHarmony 交叉编译指南](openharmony.md)。聚合脚本不执行设备部署或签名。
+
+## 5. 输出与验收
+
+默认输出：
+
+```text
+dist/all/<自动生成的 bundle 名>/
+dist/all/<自动生成的 bundle 名>.zip
 ```
 
-## 版本对照
+自动名称依次包含 core、capi、py、wasm、openbox 的版本，版本中的点替换为下划线。也可用 `--bundle-name` 固定名称。典型目录结构为：
 
-当前构建产出版本：
+```text
+<bundle>/
+  README.txt / MANIFEST.txt
+  capi/
+    include/tswn_capi.h
+    lib/
+    examples/
+    changelog/
+  cli/
+    bin/tswn-cli_alpha_<core版本>.*
+    changelog/
+  openbox/
+    bin/tswn_openbox_alpha_<openbox版本>.*
+    bin/openbox-cli_alpha_<openbox版本>.*
+    changelog/
+  py/
+    dist/
+    examples/
+    changelog/
+  wasm/
+    pkg/tswn_wasm.js
+    pkg/tswn_wasm_bg.wasm
+    raw/tswn_wasm.wasm
+    examples/
+    changelog/
+```
 
-| 组件         | 版本  |
-| ------------ | ----- |
-| tswn_core    | 0.5.0 |
-| tswn_capi    | 0.6.0 |
-| tswn_py      | 0.5.0 |
-| tswn_wasm    | 0.5.0 |
-| tswn_openbox | 0.3.12 |
+各组件另有 `README.txt` 和 `MANIFEST.txt`。Openbox 首次启动会在当前工作目录生成 `setting/` 默认预设，部署时选择可写目录。
+
+打包完成后核对根和组件清单，以及 ZIP 中的实际文件：
+
+- CLI、Openbox GUI 与 `openbox-cli` 的平台、版本与待发布提交一致。
+- C API 包含头文件、目标平台的库与 examples。
+- Python wheel 的 Python/平台标签符合部署环境；聚合脚本按 `tswn_py` 版本过滤 wheel/sdist，但同版本旧 wheel 的 core 或源码状态仍需主动核验，依赖或实现变动后重新构建。
+- WASM 的 JS glue 与 `.wasm` 来自同一次匹配版本的构建。
+
+当前发布行为门禁见 [Runtime 0.5 迁移指南](runtime-0.5-migration.md) 和 [性能准则](../../rule.md)；历史发布包快照见 [版本记录](../releases/README.md)。

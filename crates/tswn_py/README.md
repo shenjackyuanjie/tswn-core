@@ -156,6 +156,7 @@ replay view 中的玩家文本会使用该序号，而唯一对象编号仍保�
 
 | 类               | 说明                                          |
 | ---------------- | --------------------------------------------- |
+| `BattleSession`  | 正式增量对局接口，返回跨语言统一的帧与结果 |
 | `Runner`         | 主 Runtime 对战会话，支持逐回合推进或一次跑完 |
 | `PreparedRunner` | 预处理后的复用模板，支持 `win_rate(...)`      |
 | `RunUpdates`     | 回合更新容器                                  |
@@ -170,11 +171,13 @@ replay view 中的玩家文本会使用该序号，而唯一对象编号仍保�
 
 详细构建说明见 [README_BUILD.md](./README_BUILD.md)。
 
+以下命令从仓库根目录执行：
+
 ```powershell
 # 构建 wheel
 uv run scripts/build_py.py
 
-# 构建并验证
+# 清空 wheel 输出目录，构建后安装到当前 Python 环境并验证
 uv run scripts/build_py.py --clean --verify
 
 # 验证 CLI 对齐的 Python helper

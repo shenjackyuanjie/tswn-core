@@ -85,19 +85,24 @@ session.free(); // 显式释放
 
 ### WinRateSession
 
-增量式胜率统计，不阻塞主线程：
+增量式胜率统计：每次 `step()` 同步执行一批对局。浏览器调用方应在批次之间让出事件循环，或放入 Web Worker；直接同步循环仍会占用主线程。以下示例放在 async 函数或 ES module 中执行：
 
 ```js
 const session = new wasm.WinRateSession(rawInput, 5000, {
   eval_rq: 0.8, // 可选，名称评分参数（默认 win_rate_eval_rq()）
-  thread: 1, // 可选，wasm 目标下恒为 1
+  thread: 1, // 可选，wasm 目标只接受 0（自动）或 1（单线程）
 });
-session.eval_rq(); // number — 当前 eval_rq 值
-while (!session.is_finished()) {
-  session.step(100); // batch_size 可选，默认 100；返回 WinRateProgress
-  console.log(session.progress()); // { done, rounds_done, total_rounds, wins, percent }
+try {
+  session.eval_rq(); // number — 当前 eval_rq 值
+  while (!session.is_finished()) {
+    session.step(100); // batch_size 可选，默认 100；返回 WinRateProgress
+    console.log(session.progress()); // { done, rounds_done, total_rounds, wins, percent }
+    await new Promise(resolve => setTimeout(resolve, 0)); // 批次之间交还控制权
+  }
+  session.result(); // WinRateResult — 含 timing（init_nanos, fight_nanos）
+} finally {
+  session.free();
 }
-session.result(); // WinRateResult — 含 timing（init_nanos, fight_nanos）
 ```
 
 ### 命名约定
@@ -121,7 +126,7 @@ session.result(); // WinRateResult — 含 timing（init_nanos, fight_nanos）
 | `FightSummary`       | 轻量摘要：`finished`, `players`, `winner_ids`, `final_states`                                                                                          |
 | `WinRateProgress`    | 增量进度：`done`, `rounds_done`, `total_rounds`, `wins`, `percent`                                                                                     |
 | `WinRateResult`      | 最终结果：`done`, `rounds_done`, `total_rounds`, `wins`, `percent`, `timing?`                                                                          |
-| `WinRateTiming`      | 耗时统计：`init_nanos`, `fight_nanos`（wasm32 下均为 0）                                                                                               |
+| `WinRateTiming`      | 耗时统计：`init_nanos`, `fight_nanos`（wasm32 使用 `Date.now()` 毫秒计时后换算为纳秒，短批次可能为 0）                                                                                               |
 | `GroupWinRateResult` | 批量胜率结果：`opponent`, `result`                                                                                                                     |
 | `Cli*Result`         | 与 `tswn-cli` / `tswn_py` 高层 helper 对齐的一组结果类型                                                                                                |
 
@@ -133,7 +138,7 @@ frame 首句 `900ms`，雷击/地裂行首句 `150ms`，展示血条的句子 `6
 “`[2]变成了[1]`”等实体转化句会为旧对象和新对象分别输出 `player` part，因此 show 可继续对被转化对象应用普通名字与头像效果。
 死亡特效只读取死亡句中 player part 的 `death_effect`；附体、自爆或 owner 死亡牵连等机制死亡会由底层在“被击倒/消失”句同步 HP 为 `0`。任何 `death_effect == true` 的 player part 都会同时返回 `show_hp == false`。
 
-`examples/index.html` 的战斗正文渲染只消费 `RoundFrame.rows[].clips[]` 结构化 replay view：分行、分段 delay、文本片段、高亮色、玩家 HP 条、死亡效果和侧栏快照均来自底层字段。前端不再从 `message_template`、`message_rendered` 或 `hp_delta` 反推展示语义；`updates[]` 仅保留给结算统计等非正文渲染用途。
+`examples/index.html` 的战斗正文渲染只消费 `BattleReplayFrame.rows[].clips[]` 结构化 replay view：分行、分段 delay、文本片段、高亮色、玩家 HP 条、死亡效果和侧栏快照均来自底层字段。前端不再从 `message_template`、`message_rendered` 或 `hp_delta` 反推展示语义；`updates[]` 仅保留给结算统计等非正文渲染用途。
 
 show 示例会完整保留 `initial_states`、帧内 `states` 与 `final_states` 的字段，角色详情优先读取当前可见快照，缺失时依次回退到历史、最终和初始快照。苏生 `0 -> x` 的 HP mini bar 只渲染回复段；角色名字是否使用阵亡样式只由对应 `player` part 的 `death_effect` 决定，不按 `alive` 猜测。
 
@@ -160,7 +165,7 @@ show 页面右下角控制栏还支持 `C/P/F/T/I/R/S/D` 字母快捷键；字�
 
 ### 实时状态标签
 
-`PlayerState.statusLabels` 会在每个回合帧中收集玩家当前生效的技能运行时态和状态效果，前端可直接用于渲染状态提示 pill。
+`PlayerState.status_labels` 会在每个回合帧中收集玩家当前生效的技能运行时态和状态效果，前端可直接用于渲染状态提示 pill。
 
 正面状态（绿色）：`聚气`、`蓄力`、`隐匿`、`潜行`、`狂暴`、`疾走`、`铁壁`、`守护`
 
@@ -211,10 +216,11 @@ python -m http.server 8000
 uv run scripts/build_wasm.py --release
 ```
 
-前置依赖：`wasm-bindgen-cli`
+前置依赖：`wasm32-unknown-unknown` target 和与根 [Cargo.lock](../../Cargo.lock) 中 `wasm-bindgen` **完全同版本**的 `wasm-bindgen-cli`。当前锁定版本是 `0.2.129`；脚本会校验版本匹配。
 
 ```powershell
-cargo install wasm-bindgen-cli
+rustup target add wasm32-unknown-unknown
+cargo install -f wasm-bindgen-cli --version 0.2.129
 ```
 
 ## 版本
