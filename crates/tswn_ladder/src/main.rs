@@ -4,7 +4,8 @@ mod matching;
 mod storage;
 mod updator;
 
-use battle::*;
+#[cfg(test)]
+use battle::run_battle_winner;
 use config::*;
 use matching::*;
 use storage::connect_postgres;

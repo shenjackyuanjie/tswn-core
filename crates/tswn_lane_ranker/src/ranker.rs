@@ -27,12 +27,6 @@ pub const DEFAULT_TOTAL_ROUNDS: usize = 10_000_000;
 /// 默认 1000% 精度，即 100000 场。
 pub const DEFAULT_WIN_RATE_SAMPLES: usize = 100_000;
 
-/// 胜率补算支持浏览器传入外层 worker：
-///
-/// - outer_workers = 0：外层按系统可用并行度自动开 worker，并用动态队列分发 pair。
-/// - outer_workers > 0：外层使用指定 worker 数，并按静态区间分块。
-/// - inner_workers 固定写死为 1，不再暴露给浏览器端。
-
 /// 默认粘性：单人组 10，双人组 20，x 人组 10 * x。
 pub const DEFAULT_STICKINESS_PER_MEMBER: usize = 10;
 
@@ -60,6 +54,11 @@ pub fn archive_avg_cqd_threshold(lane_size: usize) -> f64 {
 /// 和浏览器折叠 UI 保持一致：每个主行的折叠内部只保留前 20 个子项；超出的子项会被封存。
 pub const FOLDED_CHILD_KEEP_LIMIT: usize = 20;
 
+/// 胜率补算支持浏览器传入外层 worker：
+///
+/// - outer_workers = 0：外层按系统可用并行度自动开 worker，并用动态队列分发 pair。
+/// - outer_workers > 0：外层使用指定 worker 数，并按静态区间分块。
+/// - inner_workers 固定写死为 1，不再暴露给浏览器端。
 #[derive(Debug, Clone)]
 pub struct RankerConfig {
     pub warmup_rounds: usize,
