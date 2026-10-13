@@ -9,15 +9,15 @@
 | Rust 机制状态导出、共享逐回合驱动、无展示会话 | [runtime/model_state.rs](../../crates/tswn_core/src/runtime/model_state.rs)；[driver.rs](../../crates/tswn_core/src/cli_api/battle/driver.rs)；[model_session.rs](../../crates/tswn_core/src/cli_api/battle/model_session.rs)（含与回放边界一致、sticky failure 和停止策略测试） |
 | 两遍运行、分层抽样、Parquet 分片、恢复、校验与统计 | [generate.rs](../../crates/tswn_pwp/src/generate.rs)；[sampling.rs](../../crates/tswn_pwp/src/sampling.rs)；[storage.rs](../../crates/tswn_pwp/src/storage.rs)；[validate.rs](../../crates/tswn_pwp/src/validate.rs)；[stats.rs](../../crates/tswn_pwp/src/stats.rs)；[pwp 测试](../../crates/tswn_pwp/src/tests.rs) |
 | Rust 固定张量编码与容量/词表/数值/引用校验 | [encoder/encode.rs](../../crates/tswn_core/src/encoder/encode.rs#L390-L506)；[张量注册表](../../crates/tswn_core/src/encoder/batch.rs#L115-L546)；[编码器复核测试](../../crates/tswn_core/src/encoder/review_tests.rs) |
-| `calibrate` 与基础 `encode` 离线命令 | [命令注册](../../crates/tswn_pwp/src/lib.rs#L29-L42)；[calibrate.rs](../../crates/tswn_pwp/src/calibrate.rs#L22-L38)；[encode.rs](../../crates/tswn_pwp/src/encode.rs#L14-L146) |
+| 校准、完整契约发布与训练包导出 | [命令注册](../../crates/tswn_pwp/src/lib.rs)；[calibrate.rs](../../crates/tswn_pwp/src/calibrate.rs)；[manifest.rs](../../crates/tswn_pwp/src/manifest.rs)；[encode.rs](../../crates/tswn_pwp/src/encode.rs) |
 
-**落地边界：** `calibrate` 输出可用于组装 manifest 的标量校准报告；`encode` 用已组装的完整 manifest 将所选 split 编成逐批小端张量文件，目前不输出标签或逐行审计关联，也不按空标签过滤。模型训练、推理、Python/WASM 编码/机制状态查询接口和胜率 UI 仍是后续工作。完整编码包目标与现有基础导出的差异见 [FeatureEncoder 接口边界](feature-encoder-spec.md#14-接口边界)。本次维护核对源码与测试定义，未重跑完整数据生成或性能基准。
+**落地边界：** `calibrate` 输出标量校准报告，`build-manifest` 发布通过核心门禁的完整契约；版本 2 的 `encode` 包含逐批小端张量、标签、精确旁路和源行审计关联，并默认过滤空标签。流式读入与文件完整性加固仍需完善。模型训练、推理、Python/WASM 编码/机制状态查询接口和胜率 UI 仍是后续工作，见 [FeatureEncoder 接口边界](feature-encoder-spec.md#14-接口边界)。
 
 ## 目标与边界
 
 最终目标是在战斗进行中，根据当前机制状态预测各输入队伍最终获胜概率。Rust 状态导出、无展示推进、Parquet 数据生成和校验已交付；后续又加入 Rust encoder、标量校准和基础张量导出。模型训练、推理、Python/WASM 机制状态查询和胜率网页 UI 不在当前交付范围。
 
-预测对象是最终胜者。`max_rounds` 和 `no_progress` 只是生成时的计算保护：截断局仍保存状态，标签为空，不强行标负、不增加“未决胜者”类别。训练读取器应默认排除空标签；当前 `calibrate` 默认如此，基础 `encode` 尚不执行该过滤，也不导出标签。训练前必须检查截断比例和分布，以免把有标签子集误认为完整对局分布。
+预测对象是最终胜者。`max_rounds` 和 `no_progress` 只是生成时的计算保护：截断局仍保存状态，标签为空，不强行标负、不增加“未决胜者”类别。`calibrate` 与 `encode` 默认排除空标签；`encode --keep-unlabeled` 仅用于诊断，空标签写为 -1/mask=0。训练前必须检查截断比例和分布，以免把有标签子集误认为完整对局分布。
 
 覆盖当前默认规则中的普通角色、内置 Boss、已支持的 DIY、分身、幻影、使魔、丧尸及复活。第三方注册表或未审计状态不在契约内，导出时明确报错。导入成功但执行失败的低层自定义配置会终止数据生成并保存复现信息。
 
@@ -94,7 +94,7 @@ Runtime 错误、panic、导出错误、胜者不能唯一映射或两遍运行�
 
 ## 后续训练和网页约束
 
-张量化实现已落地：**encoder 只在 Rust 实现一次，基础离线导出由 `tswn-pwp encode` 调用**。原始 `state` 仍是唯一事实来源，Parquet 格式不变。完整训练包、WASM/Python 编码绑定和推理接口是后续工作，均应复用同一个 encoder；Python 只负责训练、评估与指标，不再实现另一套 bit、引用或归一化转换，以保持训练与推理数值语义一致。
+张量化与训练数据通道已落地：**encoder 只在 Rust 实现一次，离线导出由 `tswn-pwp encode` 调用**。原始 `state` 仍是唯一事实来源，Parquet 格式不变。WASM/Python 编码绑定和推理接口是后续工作，均应复用同一个 encoder；Python 读取已编码数组，只负责训练、评估与指标，不再实现另一套 bit、引用或归一化转换，以保持训练与推理数值语义一致。
 
 先用已决训练集建立 HP 等简单基线，再评估实体/队伍聚合模型。队伍独立评分后直接 softmax 无法充分表达第三队对前两队相对胜率的影响，应加入全局或对手上下文。获胜资格已按引擎语义固定：只有恰好一个队伍仍有存活实体才判胜，全部阵亡也不判胜；复活是内置主动技能，因此“某帧该队 0 存活”不等于出局，不能按本体存活屏蔽队伍，也不能用 `alive_group_count` 当 mask。定义、源码定位与实测分布见 [判胜语义](../mechanics/winner.md)。
 

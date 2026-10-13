@@ -4,7 +4,7 @@
 
 本文承接 [状态导出与数据生成契约](battle-analyze.md)，字段语义以 [BattleModelState Runtime 审计](battle-model-state-audit.md) 为准；生成器和 Parquet 文件说明见 [winprob 数据集 README](../../crates/tswn_pwp/README.md)。
 
-> 状态：Rust encoder 的全部八族张量、`baseline-64`、标量校准与基础离线导出已落地；Python/WASM 编码接口及完整训练包验收仍属后续工作。输入 schema v1，encoder 为 `encoder-v1`。本文是 **tswn-pwp（player winchance predictor）** 的特征编码层规格，不定义最终神经网络结构。
+> 状态：Rust encoder 的全部八族张量、`baseline-64`、标量校准、完整契约发布与版本 2 训练数据通道已落地；流式/完整性加固及 Python/WASM 编码绑定仍需单独验收。输入 schema v1，encoder 为 `encoder-v1`。本文是 **tswn-pwp（player winchance predictor）** 的特征编码层规格，不定义最终神经网络结构。
 
 ## 当前实现与验收边界
 
@@ -12,10 +12,10 @@
 | --- | --- |
 | 全部张量族 | global／entity／template／lane／state／slot／list／extra 的字段写入、presence、引用重映射和容量预检已实现；[encode.rs](../../crates/tswn_core/src/encoder/encode.rs#L462-L494) 调用全部族的写入器。[TENSOR_SPECS](../../crates/tswn_core/src/encoder/batch.rs#L115-L546) 登记 69 个张量，已不是早期三族 28 个。 |
 | 容量与运行配置 | [capacity.rs](../../crates/tswn_core/src/encoder/capacity.rs#L19-L65) 是 `BASELINE_64` 和计费式的唯一权威；[manifest.rs](../../crates/tswn_core/src/encoder/manifest.rs#L304-L400) 提供 manifest、摘要和校准报告组装，[FeatureEncoder::new](../../crates/tswn_core/src/encoder/encode.rs#L401-L447) 交叉校验词表、数值槽与支持域。 |
-| 校准 | [calibrate.rs](../../crates/tswn_pwp/src/calibrate.rs#L22-L38) 默认选择有标签 train 行，输出标量报告及来源摘要；报告须通过 `EncoderManifest::from_calibration` 等组装成完整 manifest，不能直接作为 `encode --manifest` 的输入。 |
-| 基础离线导出 | [pwp 命令注册](../../crates/tswn_pwp/src/lib.rs#L29-L42) 已包含 `encode`；[encode.rs](../../crates/tswn_pwp/src/encode.rs#L62-L146) 读取完整 manifest 和所选 split，调用同一 encoder，写根 `manifest.json`、各批 `batch-manifest.json` 及 69 个小端 `.bin`，尾批使用实际 B。 |
-| 跨绑定与完整训练包 | Python/WASM 当前没有 encoder 公共接口；完整训练包目标见第 14 节。基础导出未写标签/label_mask、逐行审计关联或每个张量文件摘要，也不筛除空标签、不复制 encoder manifest。它先收集所选 split 的所有原始行再分批编码，尚不是流式读入。 |
-| 轻量包检查 | [read_encoded_batches.py](../../scripts/read_encoded_batches.py) 检查 dtype/shape 对应字节数、批与根的 encoder 摘要一致和样本总数；不执行重编码数值对齐或张量文件摘要校验。 |
+| 校准与契约发布 | [calibrate.rs](../../crates/tswn_pwp/src/calibrate.rs) 默认选择有标签 train 行，输出标量报告及来源摘要；[build-manifest](../../crates/tswn_pwp/src/manifest.rs) 调用核心组装并通过 `FeatureEncoder::new` 门禁后发布完整契约。报告不能直接作为 `encode --manifest` 的输入。 |
+| 离线训练包 | [encode.rs](../../crates/tswn_pwp/src/encode.rs) 输出版本 2 编码包，附带完整 encoder manifest，按 features/exact/labels/audit 分通道，默认过滤空标签并记录过滤前的源行位置；尾批使用实际 B。 |
+| 跨绑定与规模加固 | Python/WASM 当前没有 encoder 公共接口。导出仍先收集所选 split 的全部状态，流式读入、文件摘要与安全提交属于下一块加固。 |
+| Python 消费 | [read_encoded_batches.py](../../scripts/read_encoded_batches.py) 验证 dtype/shape/长度、批布局、标签和审计行数，提供逐批只读 NumPy 内存映射；不重做编码。 |
 
 本次文档维护核对源码和测试定义，未重跑完整测试、数据生成或校准。后文容量实测及原生验收数字属于各自记录时的环境与输入，不代表本次复测。
 
@@ -29,7 +29,7 @@
 
 遵循 [后续训练和网页约束](battle-analyze.md#后续训练和网页约束)：encoder 只在 Rust 实现一次，另加导出通道；原始 Parquet `state` 是唯一事实来源，格式不变，Python 只负责训练与评估。当前已实现编码与基础导出；模型训练和推理仍属后续阶段。本次文档维护不新增 crate，不修改已有数据或 golden/corpus。
 
-下文“规定”描述编码契约；“后续目标／拟议”专指尚未落地的完整训练包、绑定或模型相关约束。当前公共接口以第 14 节为准。`M:行` 指 [runtime/model_state.rs](../../crates/tswn_core/src/runtime/model_state.rs) 的源码定位；其余缩写在第 17 节给出完整路径。复合类型叶子已在第 3.1 节展开，默认槽语义白名单已在第 3.2 节与实现中冻结；跨端与导出完整验收边界单独记录，见第 15／16 节。
+下文“规定”描述编码契约；“后续目标／拟议”专指尚未落地的规模加固、绑定或模型相关约束。当前公共接口以第 14 节为准。`M:行` 指 [runtime/model_state.rs](../../crates/tswn_core/src/runtime/model_state.rs) 的源码定位；其余缩写在第 17 节给出完整路径。复合类型叶子已在第 3.1 节展开，默认槽语义白名单已在第 3.2 节与实现中冻结；跨端与导出完整验收边界单独记录，见第 15／16 节。
 
 ## 2. 输入契约
 
@@ -545,15 +545,15 @@ deferred 保存原列表顺序和精确 `state_cursor`，与实体状态注册�
 | --- | --- |
 | 原始数据集 | 继续保存现有 state 和标签，不增加编码列；可重建的张量缓存不能反过来替代原始 state |
 | Rust encoder | 引用／词表／数值／mask 的唯一实现；不依赖 Python、展示 DTO、文件格式或模型参数 |
-| Rust 数据适配器 | 基础导出器已读取 Parquet、选择 split 并将 state 交 encoder；它当前保留 null 标签行。训练通道默认过滤 null 标签是后续完整训练包目标；Arrow/Parquet 留在工具侧，沿用[依赖隔离](battle-analyze.md#输入切分和-parquet) |
+| Rust 数据适配器 | 读取 Parquet、选择 split，将 state 交 encoder；默认过滤 null 标签，诊断模式可保留并写 -1/零 label_mask。Arrow/Parquet 留在工具侧，沿用[依赖隔离](battle-analyze.md#输入切分和-parquet) |
 | Python 训练／评估（后续） | 读取已编码数组、标签和审计关联表；只做训练、推理比较、校准与评估，不转换 bit、不重排引用、不另算归一化 |
 | Rust 推理（后续） | 使用同 encoder manifest 和模型所声明摘要，摘要不符立即拒绝，不自动采用最新版本 |
 | WASM／Python 绑定（后续） | 直接调用同一个 Rust 编码函数，传输连续 typed buffer；不把 u64 装入 JS Number，不重写编码算法 |
 | 网页概率展示（后续） | 生成对应帧时保存预测及 generation/frame 关联，播完该帧再展示；session 释放后仍可读缓存，见[网页约束](battle-analyze.md#后续训练和网页约束)。已有战斗播放缓存不等于已接入胜率推理 |
 
-**当前基础编码包。** [pwp/encode.rs](../../crates/tswn_pwp/src/encode.rs#L32-L146) 的根 `manifest.json` 记录 `format=tswn-core/encoded-dataset`、state schema、split、请求批大小、encoder 契约摘要、批数与样本数。每个 `batch-000000/` 等目录含 `batch-manifest.json` 与 69 个按张量名命名的小端 C 连续 `.bin`；批清单记录实际 B、encoder 摘要及各张量的 name/dtype/shape/byte_length/file。尾批使用实际 B，内部容量不变。
+**当前训练编码包。** [pwp/encode.rs](../../crates/tswn_pwp/src/encode.rs) 的根 `manifest.json` 记录 `format=tswn-core/encoded-dataset`、`format_version=2`、state schema、split、空标签策略、请求批大小、encoder 契约摘要、批数与样本数，另存完整 `encoder-manifest.json`。每批含 69 个小端 C 连续张量，`batch-manifest.json` 按 features/exact/labels/audit 分离清单；`extra_bits` 和 `order_key` 进入 exact，尾批使用实际 B，内部容量不变。
 
-批清单的 `rows_sha256` 只对该批按顺序拼接的 `battle_id` 与 `rounds_advanced` 的小端字节取摘要，不是张量载荷摘要，也不是可还原源行的审计表。当前包没有标签文件、label_mask、四类清单分离、逐行源位置或 encoder manifest 副本；读取端需另保留原始数据与完整 manifest。当前实现先收集所选 split 的全部 `SampleRow`，再按批分配张量，不能将其称为流式读取。
+labels 是 i32 `[B]` 的 `winner_team_index` 与 u8 `[B]` 的 `label_mask`；默认过滤空标签，`--keep-unlabeled` 写 -1/mask=0。`rows.json` 按批槽位记录源分片、过滤前行号、battle_id、阵容、帧边界和 progress，不包含 state 或特征数组，不能由 features 清单枚举到。当前仍先收集所选 split 的全部 `SampleRow`，再按批分配张量，不能将其称为流式读取。
 
 从仓库根目录使用已生成的数据集与**已组装且填写 `contract_digest` 的完整 EncoderManifest**：
 
@@ -562,11 +562,11 @@ cargo run --release -p tswn_pwp --bin tswn-pwp -- encode --dataset <数据集目
 python scripts/read_encoded_batches.py <编码包目录>
 ```
 
-`calibrate --json-out` 产生的是校准报告，不是上述 `--manifest` 所需文件；组装入口是 `EncoderManifest::from_calibration`，没有将“校准并发布完整 manifest”合成一个 CLI 命令。本次未执行上述导出命令。
+`calibrate --json-out` 产生的是校准报告，不是上述 `--manifest` 所需文件；先执行 `tswn-pwp build-manifest --calibration <校准报告.json> --out <完整manifest.json>`。该命令只接受有标签 train 报告，复用核心组装、完整数值槽与词表门禁，并填写契约摘要。
 
-**完整训练包的后续目标。** 在基础容器之上附带 `encoder-manifest.json`，为每个张量文件登记摘要，并分离 features、精确旁路、labels、审计关联表四个清单。labels 目标为 i32 `[B]` 的 `winner_team_index` 与 u8 `[B]` 的 `label_mask`，空标签存 -1/mask=0；默认训练导出过滤空标签，诊断导出可保留。审计关联包含源分片／行号及帧 ID，只用于追溯，不可被训练代码的 features 清单枚举到。JSON 只描述编码包，不装载 state 或整块特征内容。
+**后续规模与完整性加固。** 训练数据通道已落地；后续需要逐批流式读取、安全提交输出目录，并为每个张量与审计文件登记摘要。JSON 只描述编码包与审计关联，不装载 state 或整块特征内容。
 
-完整包的缓存键还应包括原始数据摘要、schema、encoder 版本、profile 与 manifest 摘要，更改任一项必须重编码；错误应同时返回源行定位与字段路径。基础导出目前只转述 encoder 错误，不附源行定位，也未建立这些完整缓存与审计字段。文件容器和张量契约继续留在现有 crate，不需要另建编码算法。
+完整包的缓存键还应包括原始数据摘要、schema、encoder 版本、profile 与 manifest 摘要，更改任一项必须重编码。编码错误已附源分片/行号与 battle_id，同时保留核心字段路径；原始数据完整摘要和安全缓存提交仍需完善。文件容器和张量契约继续留在现有 crate，不需要另建编码算法。
 
 补充序列化约定：`owner_scope` 的 1–9 依次为 global/entity/template/state/slot/list/input_team/runtime_team/lane；global owner 固定为 0，其他 owner 必须引用有效行。`list_index=(owner_scope,owner,field_class,ordinal,target)` 承载下表登记的有序引用，target 域按 field_class 固定；ordinal 是该 owner 下该类源列表的原下标。`extra_index` 的四元索引由 `field_class` 决定值类型与引用域；`extra_num/extra_ref/extra_bool/extra_cat/extra_bits` 中恰有一条有效通道，其余清零（ref 填 -1）。记录存在性统一使用 `extra_mask`；未知字段或类型不符拒绝，不能猜测或哈希字段名。
 

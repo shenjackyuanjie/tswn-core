@@ -2,6 +2,14 @@
 
 ## [Unreleased] - 0.0.2
 
+### 新增
+
+- 新增 `build-manifest` 命令，将有标签 train 校准报告组装成 `baseline-64` 完整编码契约；
+  校验全部必需数值槽与词表，填写契约摘要后发布，不以默认常数补缺字段。
+- 离线导出升级为版本 2 训练包，附带完整 encoder manifest，分离 features、精确旁路、labels
+  与逐行审计关联；默认过滤空标签，`--keep-unlabeled` 以 -1/零 mask 保留诊断样本。
+- Python 读取器验证批布局、标签与源行关联数量，并提供逐批只读 NumPy 内存映射入口。
+
 ### 依赖更新
 
 - `arrow-array`、`arrow-schema`、`parquet` 升级到 `60.0`，`sha2` 升级到 `0.11`；

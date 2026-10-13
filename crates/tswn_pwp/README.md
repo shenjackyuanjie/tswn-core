@@ -133,22 +133,32 @@ target/release/tswn-pwp.exe calibrate --out target/winprob-100k --json-out targe
 ## 离线张量编码
 
 `calibrate` 输出的是校准报告，**不是** `encode --manifest` 要求的完整 EncoderManifest。
-需要在 Rust 中将报告解析为 `tswn_core::encoder::manifest::CalibrationReport`，结合容量档位调用
-`EncoderManifest::from_calibration`，再设置 `manifest.contract_digest = Some(manifest.digest())` 并序列化。
-完整契约包含词表、张量布局、归一化常数与校准证据；组装、校验和编码仍由核心 encoder 统一负责。
-相关接口见 [manifest.rs](../tswn_core/src/encoder/manifest.rs)。
+使用 `build-manifest` 将有标签 `train` 报告组装为 `baseline-64` 完整契约，填写契约摘要并通过
+核心 `FeatureEncoder::new` 门禁后才写入文件。缺少任何必需字段时明确报 `MissingCalibration`，
+应补足训练数据中的机制观测并重新校准，不使用人工默认常数。组装、词表和编码仍只在核心实现。
 
-假设已将完整契约保存为 `target/encoder-manifest.json`，先校验数据集，再编码：
+从已生成的数据集开始，先校验，再校准、发布契约和编码：
 
 ```powershell
 target/release/tswn-pwp.exe validate --out target/winprob-demo
+target/release/tswn-pwp.exe calibrate --out target/winprob-demo --json-out target/encoder-calibration.json
+target/release/tswn-pwp.exe build-manifest --calibration target/encoder-calibration.json --out target/encoder-manifest.json
 target/release/tswn-pwp.exe encode --dataset target/winprob-demo --manifest target/encoder-manifest.json --out target/winprob-encoded --split train --batch-size 8
+python scripts/read_encoded_batches.py target/winprob-encoded
 ```
 
-- 输出根目录的 `manifest.json` 记录切分、样本数、批次数与 encoder 契约摘要。
+- 输出为版本 2 训练包；根目录保存完整 `encoder-manifest.json`，`manifest.json` 记录切分、标签策略、样本数、批次数与契约摘要。旧版基础导出包需要重新编码。
 - 每个 `batch-NNNNNN/` 含各张量的 `.bin` 文件及 `batch-manifest.json`；张量为小端、C 连续布局，shape 首维为实际批次大小，尾批可以小于 `--batch-size`。
-- 批次清单记录 dtype、shape、字节数、契约摘要及输入行摘要。当前编码包只导出输入张量；胜者标签仍从原 Parquet 按相同切分和行序读取。空标签行也会编码，训练时需同步过滤张量与标签。
+- 批清单分为 `features`、`exact`、`labels`、`audit` 四个通道；`extra_bits` 与 `order_key` 属精确旁路，不默认作为数值模型输入。
+- 标签是小端 i32 `[B]` 的 `winner_team_index` 和 u8 `[B]` 的 `label_mask`。默认过滤空标签；诊断导出可用 `--keep-unlabeled`，此时空标签为 -1/mask=0，不能给予监督权重。
+- `rows.json` 数组与批内槽位一一对应，记录源分片/原始行号、battle_id、阵容、帧边界及 progress。源行号在过滤前计数；标签无需另读 Parquet 拼接，审计列不进入 `features`。
 - 当前实现先将选定切分的全部样本读入内存，再分批编码；`--batch-size` 控制张量批次大小，不限制数据集读取的总内存。
+
+安装 NumPy 后，训练侧可使用 `scripts/read_encoded_batches.py` 的 `iter_encoded_batches(root)`：
+逐批返回只读内存映射的 `features` 和 `labels`，无需 PyArrow；需要关系计算旁路时显式传入
+`include_exact=True`。该读取器只加载已编码数组，不重写 bit、引用或归一化逻辑。
+示例名字池不保证观测到所有罕见机制，因此可能不足以发布完整契约；生成器能保存的 Boss 专属载荷
+也不等于当前 encoder 已支持这些载荷，详见契约的 `support` 声明。
 
 ## Python 读取
 
