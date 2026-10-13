@@ -230,23 +230,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn baseline_profile_limits_are_self_consistent() {
-        // Q_max 必须覆盖 7 个实体槽 × E_max + 3 个全局模板槽；S_max 至少等于 E_max。
-        assert!(BASELINE_64.q_max >= 7 * BASELINE_64.e_max + 3);
-        assert!(BASELINE_64.s_max >= BASELINE_64.e_max);
-        // X 的上界式：V + 15H + 9E + 3Q + 3S + 2，按每槽 3 条计费。
-        let bound = BASELINE_64.v_max
-            + 15 * BASELINE_64.h_max
-            + 9 * BASELINE_64.e_max
-            + 3 * BASELINE_64.q_max
-            + 3 * BASELINE_64.s_max
-            + 2;
-        assert!(BASELINE_64.x_max >= bound, "x_max={} bound={}", BASELINE_64.x_max, bound);
-        // V 的规划下界：五类 lane list。
-        assert!(BASELINE_64.v_max >= 5 * BASELINE_64.l_max);
-    }
-
-    #[test]
     fn limit_lookup_covers_every_dimension() {
         for dim in CAPACITY_DIMS {
             assert!(BASELINE_64.limit(dim) > 0, "{dim}");

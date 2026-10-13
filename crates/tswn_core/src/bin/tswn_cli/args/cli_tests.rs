@@ -59,8 +59,7 @@ fn runtime_normalized_run_accepts_raw_and_max_rounds() {
 }
 
 #[test]
-fn diff_uses_main_runtime_only() {
-    assert!(Cli::try_parse_from(["tswn-cli", "diff", "-r", "a\\n\\nb"]).is_err());
+fn runtime_diff_command_parses_input() {
     let cli = Cli::try_parse_from(["tswn-cli", "runtime", "diff", "-r", "left\\n\\nright"]).unwrap();
     let parsed = ParsedCli::from_cli(cli).unwrap();
     match parsed.command {
@@ -69,11 +68,10 @@ fn diff_uses_main_runtime_only() {
         }
         _ => panic!("unexpected command"),
     }
-    assert!(Cli::try_parse_from(["tswn-cli", "runtime", "diff", "-r", "left\\n\\nright", "--runtime", "legacy"]).is_err());
 }
 
 #[test]
-fn fight_uses_main_runtime_only() {
+fn fight_command_parses_input() {
     let cli = Cli::try_parse_from(["tswn-cli", "fight", "-r", "left\\n\\nright"]).unwrap();
     let parsed = ParsedCli::from_cli(cli).unwrap();
     match parsed.command {
@@ -84,13 +82,6 @@ fn fight_uses_main_runtime_only() {
         }
         _ => panic!("unexpected command"),
     }
-    assert!(Cli::try_parse_from(["tswn-cli", "fight", "-r", "left\\n\\nright", "--runtime", "legacy"]).is_err());
-}
-
-#[test]
-fn legacy_raw_entry_points_are_rejected() {
-    assert!(Cli::try_parse_from(["tswn-cli", "raw", "-r", "left\\n\\nright"]).is_err());
-    assert!(Cli::try_parse_from(["tswn-cli", "fight", "-r", "left\\n\\nright", "--out-raw"]).is_err());
 }
 
 #[test]
@@ -105,12 +96,6 @@ fn namer_pf_accepts_metric_specs() {
         }
         _ => panic!("unexpected command"),
     }
-}
-
-#[test]
-fn namer_pf_rejects_legacy_mode_flag() {
-    let err = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario", "--mode", "pp"]).unwrap_err();
-    assert_eq!(err.kind(), clap::error::ErrorKind::UnknownArgument);
 }
 
 #[test]

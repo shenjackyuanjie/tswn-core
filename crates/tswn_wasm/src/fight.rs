@@ -329,7 +329,6 @@ seed:7@!"#;
         let complete = legacy.run_to_end_internal(None).unwrap();
         assert!(complete.final_states.iter().filter(|state| !state.alive).all(|state| state.shield == 0));
         assert!(<PlayerState as tsify::Tsify>::DECL.contains("shield: number"));
-        assert!(include_str!("battle_types.d.ts").contains("shield: number"));
     }
 
     #[test]

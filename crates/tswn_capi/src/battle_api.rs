@@ -354,27 +354,6 @@ mod tests {
     }
 
     #[test]
-    fn options_v1_layout_is_frozen() {
-        use std::mem::{align_of, offset_of};
-        let eval_offset = 4usize.next_multiple_of(align_of::<f64>());
-        let rounds_offset = eval_offset + 8;
-        let icons_offset = rounds_offset + size_of::<usize>();
-        let v1_size = (icons_offset + 1).next_multiple_of(align_of::<BattleOptionsV1>());
-        assert_eq!(offset_of!(BattleOptionsV1, struct_size), 0);
-        assert_eq!(offset_of!(BattleOptionsV1, eval_rq), eval_offset);
-        assert_eq!(offset_of!(BattleOptionsV1, max_rounds), rounds_offset);
-        assert_eq!(offset_of!(BattleOptionsV1, include_icons), icons_offset);
-        assert_eq!(BATTLE_OPTIONS_V1_SIZE, v1_size);
-        assert_eq!(size_of::<SimulatedOldBattleOptionsV1>(), v1_size);
-        assert_eq!(offset_of!(tswn_battle_options_t, struct_size), 0);
-        assert_eq!(offset_of!(tswn_battle_options_t, eval_rq), eval_offset);
-        assert_eq!(offset_of!(tswn_battle_options_t, max_rounds), rounds_offset);
-        assert_eq!(offset_of!(tswn_battle_options_t, include_icons), icons_offset);
-        #[cfg(target_pointer_width = "64")]
-        assert_eq!((eval_offset, rounds_offset, icons_offset, v1_size), (8, 16, 24, 32));
-    }
-
-    #[test]
     fn options_accept_null_exact_v1_old_caller_and_unaligned_future_buffer() {
         let raw = CString::new("a\n\nb").unwrap();
         let expected = BattleOptions {

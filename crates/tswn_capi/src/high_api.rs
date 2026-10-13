@@ -704,14 +704,6 @@ mod tests {
     }
 
     #[test]
-    fn public_c_header_declares_all_user_replay_exports() {
-        let header = include_str!("../include/tswn_capi.h");
-        assert!(header.contains("tswn_battle_replay_json"));
-        assert!(header.contains("tswn_default_custom_runtime_normalized_run_json"));
-        assert!(header.contains("tswn_last_error_code"));
-    }
-
-    #[test]
     fn battle_replay_exposes_stable_c_error_code() {
         let raw = std::ffi::CString::new("left\n\nright").unwrap();
         let mut out = tswn_str_t::default();

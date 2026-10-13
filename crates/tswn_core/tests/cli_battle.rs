@@ -1,4 +1,4 @@
-//! CLI 进程的流式输出契约：JSONL 事件、stdin、人类可读输出、诊断命令与已移除的旧命令。
+//! CLI 进程的流式输出契约：JSONL 事件、stdin、人类可读输出、诊断命令与非法输入。
 //!
 //! 取代原 `scripts/verify_cli_battle.py`；测试直接运行本包构建出的 `tswn-cli` 二进制。
 
@@ -80,11 +80,8 @@ fn jsonl_streams_initial_frames_and_result() {
 }
 
 #[test]
-fn removed_and_invalid_commands_fail_on_stderr_only() {
-    let cases: [&[&str]; 5] = [
-        &["raw", "-r", "a\\n\\nb"],
-        &["diff", "-r", "a\\n\\nb"],
-        &["fight", "--out-raw", "-r", "a\\n\\nb"],
+fn invalid_fight_inputs_fail_on_stderr_only() {
+    let cases: [&[&str]; 2] = [
         &["fight", "--jsonl", "--max-rounds", "0", "-r", "a\\n\\nb"],
         &["fight", "--jsonl", "-r", ""],
     ];

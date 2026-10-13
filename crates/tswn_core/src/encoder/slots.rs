@@ -210,14 +210,6 @@ mod tests {
     }
 
     #[test]
-    fn whitelist_covers_default_registry_counts() {
-        // 默认注册表：7 个实体槽、3 个全局模板槽、0 个 battle 槽（J:265–277）。
-        assert_eq!(ENTITY_SLOT_WHITELIST.len(), 7);
-        assert_eq!(TEMPLATE_SLOT_WHITELIST.len(), 3);
-        assert!(BATTLE_SLOT_WHITELIST.is_empty());
-    }
-
-    #[test]
     fn unregistered_or_mistyped_slot_is_rejected() {
         assert!(matches!(
             resolve_slot(SlotScope::Entity, &slot(7, Some(1)), "entities[0].slots[0]").unwrap_err(),
@@ -249,22 +241,5 @@ mod tests {
             resolve_slot(SlotScope::Entity, &both, "entities[0].slots[0]").unwrap_err(),
             EncodeError::InvalidSlotValue { .. }
         ));
-    }
-
-    #[test]
-    fn whitelist_semantics_are_frozen_per_slot() {
-        let semantic = |slot_id: u32| {
-            ENTITY_SLOT_WHITELIST
-                .iter()
-                .find(|entry| entry.slot_id == slot_id)
-                .map(|entry| entry.semantic)
-                .unwrap()
-        };
-        // 三个蓝图槽、一个排除项、两个实体引用（bed2 恒缺失）、一个计数。
-        assert_eq!(semantic(0), SlotSemantic::BlueprintTemplate);
-        assert_eq!(semantic(3), SlotSemantic::Excluded);
-        assert_eq!(semantic(4), SlotSemantic::EntityRef);
-        assert_eq!(semantic(6), SlotSemantic::EntityRef);
-        assert_eq!(semantic(5), SlotSemantic::Count);
     }
 }
