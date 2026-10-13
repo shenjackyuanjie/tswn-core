@@ -1,3 +1,22 @@
+//! lane 排名与管理服务：SQLite 存储、core 胜率和 Axum Web 接口。
+//!
+//! # 运行与副作用
+//!
+//! `cargo run -p tswn_lane_ranker` 启动长期服务，默认监听 `127.0.0.1:3000`，
+//! 初始化当前目录 `lane_ranker.sqlite3`。`LANE_RANKER_BIND` / `LANE_RANKER_DB`
+//! 可覆盖地址和库路径；排名、归档、校准与靶子任务将结果保存到数据库。
+//!
+//! # 数据流
+//!
+//! `web → service 后台任务 → ranker / pairwise → winrate → tswn_core`，
+//! `db` 保存组合、两两胜率、排名与审计。Raw/Golden 迭代在战斗结果之上表达排名策略。
+//! 内层胜率 worker 固定为 1，外层按任务并行，集中管理计算并行度。
+//! 严格校准与靶子求解另行调用 Python 数值工具，以完整数值流程验证接入结果。
+//!
+//! 这是按需构建和部署的应用 binary，通过 Web 接口使用。
+//! 环境变量、校准依赖和模块说明见
+//! [lane ranker README](https://github.com/shenjackyuanjie/tswn-core/tree/main/crates/tswn_lane_ranker)。
+
 mod db;
 mod model;
 mod pairwise;

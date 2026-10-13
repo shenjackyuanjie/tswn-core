@@ -21,10 +21,15 @@ const BATTLE_OPTIONS_V1_SIZE: usize = size_of::<BattleOptionsV1>();
 
 #[repr(C)]
 #[derive(Clone, Copy)]
+/// C 战斗选项；通过 default 函数初始化，struct_size 声明兼容前缀范围。
 pub struct tswn_battle_options_t {
+    /// 调用方可读的选项结构尺寸，由默认初始化函数填写。
     pub struct_size: u32,
+    /// 名字评估口径，默认普通 fight 参数。
     pub eval_rq: f64,
+    /// 正整数的 Runtime 推进上限。
     pub max_rounds: usize,
+    /// 0 或 1，选择是否在快照附图标。
     pub include_icons: u8,
 }
 impl Default for tswn_battle_options_t {
@@ -38,6 +43,7 @@ impl Default for tswn_battle_options_t {
         }
     }
 }
+/// opaque 会话句柄；由 new 创建，由对应 free 释放。
 pub struct tswn_battle_session_t {
     inner: BattleSession,
 }

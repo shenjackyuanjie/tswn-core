@@ -20,6 +20,7 @@ pub(crate) fn dto_to_python<T: serde::Serialize + ?Sized>(py: Python<'_>, dto: &
 }
 
 #[pyclass(name = "BattleSession")]
+/// Python 可迭代战斗对象，序列化 core 规范 DTO 为 dict/list。
 pub struct PyBattleSession {
     inner: BattleSession,
 }

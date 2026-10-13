@@ -1,7 +1,9 @@
-//! 后端业务逻辑模块。
+//! 共用业务任务门面：DIY、namer-pf、批量胜率与 pair。
 //!
-//! 重新导出各子模块的公开任务函数（`run_to_diy`、`run_namer_pf` 等）及类型，
-//! 供 `app::actions` 在独立线程中调用后端计算并通过 channel 回传进度事件。
+//! 输入通过 [`BatchRateInput`]、[`PairInput`] 等明确结构表达，传统任务入口回传
+//! [`ProgressEvent`]，`run_*_observed` 还提供 [`live`] 的结构化增量结果。
+//! 所有计算同步执行，GUI 将其放在后台线程，CLI 根据输出模式消费事件。
+//! 输出与筛选策略属于业务层，实际角色构建、评分和战斗复用 core。
 
 mod batch;
 mod format;

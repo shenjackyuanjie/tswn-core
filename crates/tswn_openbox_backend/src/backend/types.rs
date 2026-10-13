@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, atomic::AtomicBool};
 
 #[derive(Debug, Clone)]
+/// 任务事件：日志、高亮、技能榜、进度与最终结果，供 GUI/CLI 消费。
 pub enum ProgressEvent {
     Log(String),
     HighlightLog(String),
@@ -17,6 +18,7 @@ pub enum ProgressEvent {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 业务结果的输出形式：交互日志、JSONL 或纯文本。
 pub enum OutputMode {
     Log,
     Jsonl,
@@ -47,6 +49,7 @@ impl NamerPfMetric {
 }
 
 #[derive(Debug, Clone)]
+/// 共用局数、线程、rq、筛选阈值和显示精度；由各任务按其口径使用。
 pub struct CommonBenchOptions {
     pub count: usize,
     pub threads: Option<usize>,

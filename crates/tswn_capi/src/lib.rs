@@ -1,7 +1,40 @@
-//! tswn-capi — tswn-core 的 C ABI 动态库绑定。
+//! C ABI 接入层：把 core 的战斗与工具 API 暴露为动态库或静态库。
 //!
-//! 提供稳定的 C 语言接口，供 FFI 调用方（C/C++/其他语言）调用战斗引擎。
-//! 所有公开函数均以 `tswn_` 前缀命名，并遵循 `tswn_status_t` 约定返回状态码。
+//! 本 crate 共享 core 战斗规则。C/C++ 调用方以分发包中的 `include/tswn_capi.h`
+//! 为签名权威；Rust 应用直接依赖 `tswn_core` 更合适。
+//! 当前 ABI 通过 [`tswn_capi_abi_version`] 查询，包装层和核心版本分别查询
+//! [`tswn_capi_version`] / [`tswn_core_version`]。
+//!
+//! # 入口选择
+//!
+//! | 需求 | C 函数族 | 接入成本 |
+//! | --- | --- | --- |
+//! | 逐帧对局 | `tswn_battle_session_*` | 推荐；core 规范 JSON DTO |
+//! | 一次完整回放 | `tswn_battle_replay_json` | 简单，但需保存整场回放 |
+//! | 评分、胜率、DIY | `tswn_*_json` / `tswn_to_diy` | 高层校验与统一错误 |
+//! | 自行控制低层对局 | `tswn_runner_*` / `tswn_prepared_*` | Advanced 句柄接口 |
+//! | 图标 | `tswn_name_to_*` | RGBA、PNG 或 Base64 |
+//!
+//! # 资源的创建与释放
+//!
+//! - 输入为调用期间有效、以 NUL 结尾的 UTF-8 C 字符串。
+//! - 返回 [`tswn_str_t`] 用 [`tswn_str_free`]；返回 [`tswn_bytes_t`] 用 [`tswn_bytes_free`]。
+//! - 会话和 runner 句柄使用对应 `*_free`；每块资源恰好释放一次。
+//! - 使用同一份库的分配器完成创建与释放。
+//! - 在一个执行上下文中推进同一可变句柄，并保持指针在调用期间有效。
+//!
+//! # 流式协议与错误
+//!
+//! `new → initial_states_json → next_frame_json 循环 → result_json → free`。
+//! `next_frame_json` / `result_json` 通过 `has` 明确区分可选值。
+//! 普通失败由 [`tswn_status_t`] 表示，再读取线程局部的
+//! [`tswn_last_error_code`] / [`tswn_last_error_message`]；这些返回字符串同样需要释放。
+//! 正常截断提供 result；sticky Runtime failure 保存在错误通道，处理后释放 session。
+//!
+//! options 的 `struct_size` 用于历史前缀兼容；用 `tswn_battle_options_default` 初始化，
+//! 得到正确的结构尺寸。详细边界、完整可编译 C 示例及链接方法见
+//! [C ABI 使用说明](https://github.com/shenjackyuanjie/tswn-core/tree/main/crates/tswn_capi)。
+//! 默认 rustdoc 主要展示根类型；需要查看内部导出函数页时可加 `--document-private-items`。
 
 #![allow(non_camel_case_types, non_snake_case)]
 
@@ -32,6 +65,7 @@ struct LastError {
 
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// ABI 调用状态，供调用方判断成功或错误。
 pub enum tswn_status_t {
     TSWN_OK = 0,
     TSWN_ERR_NULL = 1,
@@ -43,6 +77,7 @@ pub enum tswn_status_t {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
+/// 由库返回的 UTF-8 字符串缓冲；读取 `len` 字节后用 [`tswn_str_free`] 释放。
 pub struct tswn_str_t {
     pub ptr: *const c_char,
     pub len: usize,
@@ -50,6 +85,7 @@ pub struct tswn_str_t {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
+/// 由库返回的二进制缓冲，读取后用 [`tswn_bytes_free`] 释放。
 pub struct tswn_bytes_t {
     pub ptr: *const u8,
     pub len: usize,

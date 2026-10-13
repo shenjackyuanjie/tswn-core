@@ -1,4 +1,20 @@
-//! tswn 各运行引擎共用的测试框架。
+//! 跨 crate 行为验收、引擎适配与冻结 golden/corpus 的测试辅助库。
+//!
+//! # 使用方式
+//!
+//! [`EngineAdapter`] 约定构造、单轮推进、胜者与可选 RNG 游标查询；
+//! [`RuntimeEngine`] 接入当前主 Runtime。[`test_engine_suite!`] 为适配器生成
+//! 共享行为测试，[`suite`] 保存 case 的断言，[`golden`] 读取基线消息。
+//! [`EventSnapshot`] 提供行为比较需要的事件摘要。
+//!
+//! ```text
+//! cargo test -p tswn_test --features runtime-corpus
+//! python scripts/check_runtime_release.py --corpus
+//! ```
+//!
+//! `runtime-corpus` 启用完整 corpus 集成测试。基线位于 `cases/`，语义更新时结合
+//! 差分明确审阅。测试验证实际行为、兼容性、数据格式和资源生命周期；模块布局与
+//! 维护约定由开发文档说明。此 crate 以 `publish = false` 作为项目测试辅助维护。
 
 pub mod golden;
 pub mod suite;

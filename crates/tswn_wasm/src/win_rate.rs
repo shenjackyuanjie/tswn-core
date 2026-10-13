@@ -31,6 +31,7 @@ fn build_prepared_runner(raw_input: String, eval_rq: f64) -> WasmResult<Prepared
 fn nanos_to_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
 
 #[wasm_bindgen]
+/// 保存准备阵容和累计结果的分批胜率对象；每次 step 同步执行，宿主安排批间调度。
 pub struct WinRateSession {
     prepared: PreparedRuntimeRunner,
     total_rounds: usize,

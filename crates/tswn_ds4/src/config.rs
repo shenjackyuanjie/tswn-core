@@ -84,6 +84,9 @@ pub struct ThreeThreshold {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
+/// 一次 DS4 工作目录流程的模型、阈值、并行和输出配置。
+///
+/// [`Self::load_from_root`] 自动选择 JSON / TOML / TXT，JSON 编辑可用 [`Self::from_json`] 校验。
 pub struct Config {
     pub team_name: Option<String>,
     pub threads: usize,

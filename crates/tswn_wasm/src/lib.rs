@@ -1,12 +1,46 @@
-//! tswn-wasm — tswn-core 的 WebAssembly 绑定。
+//! JavaScript / WebAssembly 接入层与浏览器示例的计算接口。
 //!
-//! 通过 `wasm-bindgen` 将战斗引擎的核心功能导出为 JavaScript 可调用的 API，
-//! 包括单次战斗回放、胜率统计及玩家图标生成。
+//! 游戏规则来自 core；本 crate 负责 wasm-bindgen 边界、对象生命周期、DTO 转换及
+//! TypeScript 声明。页面主题、播放游标和 DOM 渲染位于 `examples/` 展示层。
 //!
-//! 导出边界统一用 `tsify::Ts<T>` 收发领域类型：参数收 `Option<Ts<T>>`，返回
-//! `Ts<T>` / `Vec<Ts<T>>`，并在函数体内经 [`convert`] 转成普通 Rust 类型。这样
-//! （反）序列化失败能按稳定错误码抛出，不会像旧的 ABI 边界转换那样 `throw_str`
-//! 并泄漏内存；生成的 TypeScript 声明与之前一致。
+//! # 推荐接口
+//!
+//! | 接口 | 用途 | 执行方式 |
+//! | --- | --- | --- |
+//! | [`BattleSession`] | 规范的逐帧对局 | 按需 `next_frame`，返回 core DTO |
+//! | [`battle_replay`] | 完整回放 | 同步收集整场 |
+//! | [`WinRateSession`] | 大批胜率与进度 | 主动分批 step，调用方负责让出事件循环 |
+//! | [`win_rate_sync`] | 小批同步胜率 | 调用完成前不让出事件循环 |
+//! | [`FightSession`] / [`fight()`] | 兼容旧页面的字段投影 | 保留已有页面使用的接口形状 |
+//! | [`name_to_png_bytes`] / [`to_diy`] | 图标及输入格式导出 | 同步 helper |
+//!
+//! ```javascript
+//! import init, { BattleSession } from "./tswn_wasm.js";
+//! await init();
+//! const session = new BattleSession("left@red\n\nright@blue");
+//! try {
+//!   console.log(session.initial_states());
+//!   for (let frame; (frame = session.next_frame()) !== null;) {
+//!     console.log(frame.frame_index);
+//!   }
+//!   console.log(session.result());
+//! } finally {
+//!   session.free(); // wasm-bindgen 对象的显式释放
+//! }
+//! ```
+//!
+//! 将对象调用放在创建与 `free()` 之间。异常与正常终止分开：错误含稳定 code，Runtime 失败
+//! 后会话保持失败标记而不产生正常 result；调用方应停止推进并在 finally 释放。
+//! 原生 Cargo doc 展示 Rust 适配实现，实际 JS 返回形状以生成的 `.d.ts` 和规范 DTO 为准。
+//!
+//! # 转换、线程与构建
+//!
+//! `tsify::Ts<T>` 经内部转换函数显式检查输入/输出；规范 Battle DTO 使用
+//! JSON-compatible 的 serde-wasm-bindgen 序列化，按相应类型校验转换。
+//! WASM 胜率使用单 worker；分批 step 协作式执行，宿主可安排事件循环或 Web Worker。
+//! 绑定版本与核心版本分别由 [`version`] / [`core_version`] 返回。
+//! 打包、网页运行、Node/Bun 验证和资源路径见
+//! [WASM 使用说明](https://github.com/shenjackyuanjie/tswn-core/tree/main/crates/tswn_wasm)。
 
 mod battle;
 mod convert;

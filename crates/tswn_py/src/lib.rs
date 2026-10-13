@@ -1,8 +1,34 @@
-//! tswn-py — tswn-core 的 Python 绑定。
+//! Python / PyO3 适配层，通过 Python 数据与对象接口复用 core 规则。
 //!
-//! 通过 `pyo3` 暴露主 Runtime、预构建胜率计算、RC4 快照以及图标渲染函数。
-//! Python 侧接口尽量保持直接：复杂对局仍由 `Runner` / `PreparedRunner` 承担，
-//! 批量胜率和图标输出则提供便于脚本调用的顶层函数。
+//! # Python 使用入口
+//!
+//! | 需求 | Python 接口 | 数据形式 |
+//! | --- | --- | --- |
+//! | 逐帧战斗 | `tswn_py.BattleSession` | 可迭代会话，dict / list 规范 DTO |
+//! | 完整回放与 CLI 工具 | `tswn_py.cli_api` | 高层结果与稳定错误 code |
+//! | 批量复用阵容 | `Runner` / `PreparedRunner`、`win_rate` | 同步计算；百分比胜率 |
+//! | 机制诊断与随机快照 | [`wrapper`] | 低层 pyclass 封装 |
+//! | 图标 | `name_to_png_bytes` / `name_to_png_base64` | PNG 或 Base64 |
+//!
+//! ```python
+//! import tswn_py
+//!
+//! session = tswn_py.BattleSession("left@red\n\nright@blue")
+//! initial = session.initial_states()
+//! for frame in session:
+//!     print(frame["frame_index"], frame["round_index"])
+//! result = session.result()
+//! ```
+//!
+//! 会话 DTO 由 core 序列化后转为 Python 数据，类型声明位于 Python 包的 `.pyi`。
+//! `next_frame()` 结束返回 `None`；Runtime 错误抛出异常并保留 sticky failure，
+//! 此时 `is_failed()` 为真、`result()` 为 None，调用方沿异常通道处理。
+//! 预构建的 `eval_rq` 保持固定，换口径时重新准备。Rust 端的 [`run_prepared_win_rate`] 是绑定辅助，
+//! 普通 Rust 调用方应直接使用 core。
+//!
+//! 安装、maturin 构建和完整 Python 签名见
+//! [Python 绑定说明](https://github.com/shenjackyuanjie/tswn-core/tree/main/crates/tswn_py)。
+//! Cargo doc 用于阅读 Rust 适配实现，Python 签名由 `.pyi` 与运行时 help 提供。
 
 /// 类型 wrapper
 mod battle;
@@ -27,6 +53,7 @@ fn ensure_win_rate_group_count(groups: &[Vec<String>]) -> PyResult<()> {
     }
 }
 
+/// 运行预构建阵容的胜率批任务，返回百分比；错误转换为 Python runner 异常。
 pub fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, thread: u32) -> PyResult<f64> {
     let summary =
         tswn_core::runtime::prepared_runtime_win_rate(prepared, n, thread).map_err(wrapper::error::PyRunnerError::new)?;

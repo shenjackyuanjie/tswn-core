@@ -1,7 +1,34 @@
-//! DS4 单人评分、增量配对和筛选流程的 Rust API。
+//! DS4 文件工作流：单人评分、增量配对、外部 ABCP5 与实战筛选。
 //!
-//! 使用 [`Config::load_from_root`] 读取配置，再调用 [`run`]；CLI 和界面共用同一执行路径。
-//! 每个工作目录保存独立的历史缓存，同一目录不应并发执行。
+//! # 快速接入
+//!
+//! ```no_run
+//! use std::path::Path;
+//! use tswn_ds4::{Config, Ds4Result};
+//!
+//! let root = Path::new("ds4-workspace");
+//! let config = Config::load_from_root(root)?;
+//! let report = tswn_ds4::run(root, &config)?;
+//! println!("本轮有效输入：{}", report.stage1.dedup.remaining);
+//! # Ok::<(), tswn_ds4::Ds4Error>(())
+//! ```
+//!
+//! [`run`] / [`run_with_progress`] 与 CLI 共用执行路径，返回 [`FullRunReport`] 或
+//! [`Ds4Error`]，由宿主统一处理失败。调用同步执行，进度回调报告 [`RunStage`]；
+//! 当前流程运行到完成或错误，同一工作目录按任务串行使用。
+//!
+//! # 哪些计算来自哪里
+//!
+//! | 阶段 | 实现来源 | 注意事项 |
+//! | --- | --- | --- |
+//! | 去重、单人/配对模型、排序和归档 | 本 crate | 更新工作目录和历史缓存 |
+//! | ABCP5 二人/三人预测 | 外部程序与模型资源 | 本 crate 不分发模型或运行库 |
+//! | Openbox CQP 实战筛选 | `tswn_openbox_backend → tswn_core` | 直接调用共用 library |
+//!
+//! [`Config::load_from_root`] 优先 JSON，仍支持旧 TOML/TXT；
+//! [`DEFAULT_CONFIG_JSON`] 可用于创建配置。模型或阈值改变后，使用新的工作目录
+//! 重新生成对应缓存。文件布局、ABCP5 资源与局部命令见
+//! [DS4 README](https://github.com/shenjackyuanjie/tswn-core/tree/main/crates/tswn_ds4)。
 
 mod abcp;
 mod cli;

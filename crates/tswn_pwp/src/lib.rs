@@ -1,4 +1,35 @@
-//! 确定性的战斗状态生成、Parquet 分片与完整性校验。
+//! 胜率学习数据工具：确定性采样、Parquet 分片、校准和离线张量包。
+//!
+//! # 已实现的管线
+//!
+//! ```text
+//! generate → validate → stats / calibrate → build-manifest → encode
+//!    ↓          ↓                             ↓              ↓
+//! Parquet    摘要/引用检查                 EncoderManifest   v2 训练包
+//! ```
+//!
+//! [`run`] 分发 [`Cli`] / [`Command`]，binary 为 `tswn-pwp`。
+//! `generate` 使用 core 的 BattleModelSession，按相同 seed 跑两遍：先确认边界与结果，
+//! 再导出选中的状态。机制 state 保存当前机制输入，名字、seed、标签与审计独立组织。
+//! 同一规范化阵容的 seed 与队伍排列变体使用同一 train/validation/test 切分组。
+//!
+//! # 对外数据
+//!
+//! - [`DatasetConfig`]：保存续跑校验所需的可复现配置。
+//! - [`BattleRow`]：每局 seed、结果和样本计数。
+//! - [`SampleRow`]：帧末机制 state、可空标签和来源审计。
+//! - `encode`：调用 core 唯一的 FeatureEncoder，输出小端 C 连续张量、mask 与精确旁路。
+//!
+//! # 文件与失败策略
+//!
+//! 分片先写临时目录，回读校验后提交；输出目录有进程文件锁。
+//! `--resume` 校验输入、配置和可执行文件摘要；发现已提交分片损坏时保留现场并报错。
+//! Runtime 错误、panic、导出失败或两遍不一致时，保存复现信息并结束本次生成。
+//! `stats` / `validate` / `calibrate` 读取数据，`generate` / `bench` / `encode` 会写文件。
+//!
+//! 当前已完成数据与编码链路；模型训练、推理和网页在线接入可沿此继续建设。
+//! 命令、目录格式、标签与 NumPy 读取器见
+//! [PWP README](https://github.com/shenjackyuanjie/tswn-core/tree/main/crates/tswn_pwp)。
 mod bench;
 mod calibrate;
 mod capacity;
@@ -21,12 +52,14 @@ use tswn_core::runtime::model_state::BattleModelState;
 
 #[derive(Debug, Parser)]
 #[command(name = "tswn-pwp", about = "生成或校验战斗机制状态数据集")]
+/// tswn-pwp 的 Clap 参数根，亦可构造后交给 [`run`]。
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
 }
 
 #[derive(Debug, Subcommand)]
+/// 数据生成、检查、统计、校准与编码子命令。
 pub enum Command {
     Generate(GenerateArgs),
     Validate {
@@ -46,6 +79,7 @@ pub enum Command {
 }
 
 #[derive(Debug, Clone, Args)]
+/// 生成配置：输入源、固定 seed、抽样、分片、并行度与输出目录。
 pub struct GenerateArgs {
     /// 固定对局文件，或递归读取其中 .txt 文件的目录。
     #[arg(
@@ -83,6 +117,7 @@ pub struct GenerateArgs {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// 写入 manifest 的可复现配置与摘要，续跑时用于身份校验。
 pub struct DatasetConfig {
     pub format_version: u32,
     pub state_schema_version: u32,
@@ -102,19 +137,21 @@ pub struct DatasetConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// 一份过程样本：机制 state、可空胜者标签及来源审计。
 pub struct SampleRow {
     pub battle_id: u64,
     pub matchup_id: String,
     pub split: String,
     pub frame: Option<BattleModelFrame>,
     pub rounds_advanced: usize,
-    /// 审计用最终进度；不得作为模型特征。
+    /// 根据最终长度计算的采样进度，保存在 audit 通道。
     pub progress: f64,
     pub winner_team_index: Option<usize>,
     pub state: BattleModelState,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// 每局对局身份、seed、终止结果和样本计数。
 pub struct BattleRow {
     pub battle_id: u64,
     pub case_index: usize,
@@ -125,6 +162,7 @@ pub struct BattleRow {
     pub samples: usize,
 }
 
+/// 执行一个子命令；文件或机制失败按 Result 交给宿主处理。
 pub fn run(cli: Cli) -> Result<()> {
     match cli.command {
         Command::Generate(args) => generate::generate(&args),

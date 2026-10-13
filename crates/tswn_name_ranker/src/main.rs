@@ -1,3 +1,14 @@
+//! 单号排名服务：独立 SQLite、ABCP 校准资源和 Axum HTTP 接口。
+//!
+//! 本 crate 在根 workspace 的 `exclude` 列表中，需要单独用 `--manifest-path`
+//! 构建、验证或生成文档。
+//! 编译期读取 `abcp_directional_calibrator.json` 与 `abcp_calibration_features.tsv`，
+//! 构建前准备这两份独立校准资源。
+//!
+//! `web → service → ranker / name_profile → tswn_core`，`db` 持久化任务与排名。
+//! `NAME_RANKER_DB` / `NAME_RANKER_BIND` 覆盖库路径和地址，默认本机端口 3001。
+//! 启动和后台任务将结果写入数据库；它作为内部服务单独构建和部署。
+
 mod abcp_calibration;
 mod db;
 mod model;

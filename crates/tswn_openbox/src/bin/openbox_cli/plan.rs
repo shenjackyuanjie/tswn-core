@@ -27,7 +27,7 @@ impl MetricSpec {
 ///
 /// `enabled = false` 时其余字段无意义；`config = None` 表示按 GUI 惯例读
 /// `./setting/score_now.toml`，由后端解析。屏幕输出与否由 `enabled` 与
-/// 顶层 `--no-screen` 在[tools::skill_board_options] 统一推导。
+/// 顶层 `--no-screen` 在 `tools::skill_board_options` 统一推导。
 #[derive(Debug, Clone, Default)]
 pub(super) struct SkillBoardPlan {
     pub enabled: bool,

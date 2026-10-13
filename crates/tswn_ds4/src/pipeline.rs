@@ -1,7 +1,7 @@
 //! 全流程执行管道。
 //!
-//! `run_full()` 按序执行合并→去重→排序→评分（单字/字对）各阶段，
-//! 并在每个阶段完成后输出进度报告。
+//! [`run_full`] / [`run_with_progress`] 按配置处理输入、单人评分、增量配对、
+//! 三人预测、ABCP5、实战筛选与历史归档，返回本轮各阶段统计。
 
 #![allow(dead_code)]
 
@@ -23,12 +23,14 @@ use crate::store::Store;
 use crate::three::{self, ThreeMode};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+/// 输入合并与去重结果，供判断本轮新增工作量。
 pub struct Stage1Report {
     pub merged_files: usize,
     pub dedup: DedupStats,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+/// 五类单人结果的记录计数。
 pub struct SingleReport {
     pub bc: usize,
     pub fz: usize,
@@ -38,6 +40,7 @@ pub struct SingleReport {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+/// FC、WC、RH 三类二人结果的记录计数。
 pub struct PairReport {
     pub fc: usize,
     pub wc: usize,
@@ -45,6 +48,7 @@ pub struct PairReport {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+/// 一次完整文件工作流的统计；历史与明细保存到工作目录。
 pub struct FullRunReport {
     pub stage1: Stage1Report,
     pub single: SingleReport,

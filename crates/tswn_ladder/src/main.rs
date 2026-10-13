@@ -1,3 +1,21 @@
+//! PostgreSQL 天梯更新进程：匹配、实际战斗、ELO/handicap 与排名历史。
+//!
+//! # 注意：启动会更新数据
+//!
+//! `DATABASE_URL` 指定数据库；默认按 cron 周期运行，`LADDER_RUN_ONCE` 可只执行一轮。
+//! 调试使用独立测试数据库，便于检查完整更新和回写结果。
+//!
+//! # 一轮工作
+//!
+//! `storage 读玩家 → matching 配对 → battle 调用 core → 更新评分 → storage 回写/日志`。
+//! `config` 管理分组、cron 和关闭信号，`updator` 管理周期、资源与错误编排。
+//! seed 时间戳固定 Asia/Shanghai，PostgreSQL 关闭连接后尝试重连，其余错误由
+//! 更新编排记录并处理。ELO、handicap、配额与衰减在 core 结果之上表达天梯策略。
+//!
+//! 以 binary 和数据库协议接入；单元测试覆盖纯逻辑，真实数据库测试验证回写。
+//! 运行环境与配置见
+//! [ladder README](https://github.com/shenjackyuanjie/tswn-core/tree/main/crates/tswn_ladder)。
+
 mod battle;
 mod config;
 mod matching;

@@ -18,6 +18,7 @@ pub(crate) fn dto_to_js<T: Serialize + ?Sized>(dto: &T) -> WasmResult<JsValue> {
 }
 
 #[wasm_bindgen]
+/// wasm-bindgen 规范对局对象；按需取帧，并在 JS finally 中调用生成的 free()。
 pub struct BattleSession {
     inner: CoreBattleSession,
 }
@@ -25,6 +26,7 @@ pub struct BattleSession {
 #[wasm_bindgen]
 impl BattleSession {
     #[wasm_bindgen(constructor)]
+    /// 解析 raw 和可选 options，创建 core 会话；错误转换为带 code 的 JS Error。
     pub fn new(raw_input: String, options: Option<Ts<BattleOptions>>) -> WasmResult<BattleSession> {
         crate::install_panic_hook();
         let options = ts_in(options)?;
@@ -33,10 +35,13 @@ impl BattleSession {
         })
     }
     #[wasm_bindgen(unchecked_return_type = "BattlePlayerState[]")]
+    /// 返回创建时的规范玩家快照数组。
     pub fn initial_states(&self) -> WasmResult<JsValue> { dto_to_js(self.inner.initial_states()) }
     #[wasm_bindgen(unchecked_return_type = "BattlePlayerState[]")]
+    /// 返回当前边界的规范玩家快照数组。
     pub fn current_states(&self) -> WasmResult<JsValue> { dto_to_js(self.inner.current_states()) }
     #[wasm_bindgen(unchecked_return_type = "BattleReplayFrame | null")]
+    /// 同步推进至下一可见帧，正常结束返回 JS null。
     pub fn next_frame(&mut self) -> WasmResult<JsValue> { dto_to_js(&self.inner.next_frame().map_err(cli_api_error)?) }
     #[wasm_bindgen(unchecked_return_type = "BattleStatus")]
     pub fn status(&self) -> WasmResult<JsValue> { dto_to_js(&self.inner.status()) }
@@ -49,6 +54,7 @@ impl BattleSession {
     pub fn rounds_advanced(&self) -> usize { self.inner.rounds_advanced() }
     pub fn frames_emitted(&self) -> usize { self.inner.frames_emitted() }
     #[wasm_bindgen(unchecked_return_type = "BattleResult | null")]
+    /// 读取正常 terminal 结果，运行中或失败时返回 JS null。
     pub fn result(&self) -> WasmResult<JsValue> { dto_to_js(&self.inner.result()) }
 }
 
