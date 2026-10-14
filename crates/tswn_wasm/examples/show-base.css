@@ -71,11 +71,10 @@
     --border: rgba(76, 119, 139, 0.75);
     --border-soft: rgba(76, 119, 139, 0.55);
     --muted: #9bb2bd;
-    /* 名字底色用深黄牛皮纸色，靠底色本身和正文区分，不再描边。 */
-    --name-bg: #634d1f;
+    --name-bg: #2c495d;
     --dead-bg: #394550;
     --dead-text: #c3cdd5;
-    --message-bg: #634d1f;
+    --message-bg: #2c495d;
     --message-text: #edf5fa;
     --message-shadow: transparent;
     --damage: #ffad66;
