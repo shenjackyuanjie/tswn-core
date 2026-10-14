@@ -143,3 +143,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - [effect/](../../crates/tswn_core/src/runtime/effect)：上下文、handler 和队列。
 - [profile/registry.rs](../../crates/tswn_core/src/runtime/profile/registry.rs)、[hooks.rs](../../crates/tswn_core/src/runtime/profile/hooks.rs)：默认规则的元数据与实现。
 - [combat/round.rs](../../crates/tswn_core/src/runtime/combat/round.rs)：具体生命周期调用位置。
+
+---
+
+[指南首页](README.md) · 上一篇：[战斗流程](battle-flow.md) · 下一篇：[状态与召唤物](statuses-and-minions.md)

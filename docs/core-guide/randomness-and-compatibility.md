@@ -108,3 +108,7 @@ PWP 另外将阵容、seed 派生、采样和分片写入 manifest，再用两�
 - [normalized.rs](../../crates/tswn_core/src/runtime/normalized.rs)、[trace.rs](../../crates/tswn_core/src/runtime/trace.rs)。
 - [batch.rs](../../crates/tswn_core/src/runtime/batch.rs)：局号与复用执行。
 - [测试框架](../../crates/tswn_test/src/lib.rs)、[差分文档](../diff/README.md)。
+
+---
+
+[指南首页](README.md) · 上一篇：[状态与召唤物](statuses-and-minions.md) · 下一篇：[会话与回放](sessions-and-replay.md)

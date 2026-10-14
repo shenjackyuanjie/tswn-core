@@ -1,6 +1,6 @@
 # 项目地图：规则、接口与工具怎样组成 tswn
 
-[指南首页](README.md) · 下一篇：[从名字到角色](name-to-player.md)
+[指南首页](README.md) · 上一篇：[指南导读](README.md) · 下一篇：[从名字到角色](name-to-player.md)
 
 tswn 把 namerena 的角色构建和战斗机制实现为 Rust 核心，再围绕核心组织语言绑定、交互界面、批量评估、排名和学习数据工具。理解项目时，最有用的划分是“规则在哪里”“谁调用规则”“结果保存在哪里”。
 
@@ -100,3 +100,7 @@ flowchart TD
 - [core 库入口](../../crates/tswn_core/src/lib.rs)：公开模块与 Runner 别名。
 - [开发指南](../guides/development.md)：修改归属与验收范围。
 - 各工具的运行参数从对应 [crate README](../../README.md#文档入口) 继续查阅。
+
+---
+
+[指南首页](README.md) · 上一篇：[指南导读](README.md) · 下一篇：[从名字到角色](name-to-player.md)

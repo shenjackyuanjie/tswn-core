@@ -165,3 +165,7 @@ Openbox 使用结构化任务、进度和预设组织 core 的 batch/pair/namer-
 - [model_state.rs](../../crates/tswn_core/src/runtime/model_state.rs)、[BattleModelSession](../../crates/tswn_core/src/cli_api/battle/model_session.rs)。
 - [encoder/](../../crates/tswn_core/src/encoder)、[PWP 实现](../../crates/tswn_pwp/src)。
 - [设计索引](../design/README.md)、[编码包读取器](../../scripts/read_encoded_batches.py)。
+
+---
+
+[指南首页](README.md) · 上一篇：[交互与工具](interfaces-and-tools.md) · 下一篇：[开发与排查](contributing-and-debugging.md)

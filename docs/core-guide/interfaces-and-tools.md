@@ -132,3 +132,7 @@ openbox-cli 数据行输出到 stdout，进度与状态输出到 stderr，适合
 - [公共 API 契约](../reference/public-api.md)、[构建与打包](../guides/build-all.md)。
 - [DS4](../../crates/tswn_ds4/README.md)、[lane ranker](../../crates/tswn_lane_ranker/README.md)、[ladder](../../crates/tswn_ladder/README.md)。
 - [网页模块说明](../../crates/tswn_wasm/examples/README.md)、[脚本验证入口](../../scripts/README.md)。
+
+---
+
+[指南首页](README.md) · 上一篇：[会话与回放](sessions-and-replay.md) · 下一篇：[数据与批量计算](datasets-and-extension.md)

@@ -107,3 +107,7 @@ flowchart TD
 - [handlers/](../../crates/tswn_core/src/runtime/handlers)：导出的默认状态 handler。
 - [combat/skills_lifecycle.rs](../../crates/tswn_core/src/runtime/combat/skills_lifecycle.rs)、[lifecycle.rs](../../crates/tswn_core/src/runtime/combat/lifecycle.rs)：实体生命周期。
 - [session.rs](../../crates/tswn_core/src/runtime/session.rs)：护盾、归属与状态标签投影。
+
+---
+
+[指南首页](README.md) · 上一篇：[技能与 hook](skills-and-hooks.md) · 下一篇：[随机与兼容](randomness-and-compatibility.md)

@@ -106,3 +106,7 @@ dirty 标记、generation 和缓存用来减少重复分配与无变化复位。
 - [entity.rs](../../crates/tswn_core/src/runtime/entity.rs) 与 [entity/runtime.rs](../../crates/tswn_core/src/runtime/entity/runtime.rs)。
 - [world.rs](../../crates/tswn_core/src/runtime/world.rs)、[slot.rs](../../crates/tswn_core/src/runtime/slot.rs)。
 - [state/store.rs](../../crates/tswn_core/src/runtime/entity/state/store.rs)、[skill_loadout.rs](../../crates/tswn_core/src/runtime/entity/skill_loadout.rs)。
+
+---
+
+[指南首页](README.md) · 上一篇：[角色构建](name-to-player.md) · 下一篇：[战斗流程](battle-flow.md)

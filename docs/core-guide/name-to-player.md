@@ -123,3 +123,7 @@ cargo run -p tswn_core --bin tswn-cli -- to-diy -r "alice@red" --minions
 - [eval_name.rs](../../crates/tswn_core/src/namerena/eval_name.rs)：字符评估和 rq 常量。
 - [profile/import.rs](../../crates/tswn_core/src/runtime/profile/import.rs)：构建数据导入运行时。
 - [prepared_init/](../../crates/tswn_core/src/runtime/prepared_init)：本场排序、seed 与初始状态。
+
+---
+
+[指南首页](README.md) · 上一篇：[项目地图](project-map.md) · 下一篇：[运行时模型](runtime-model.md)

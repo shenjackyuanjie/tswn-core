@@ -1,6 +1,6 @@
 # 开发与排查：从游戏现象找到对应实现
 
-[指南首页](README.md) · 上一篇：[数据与批量计算](datasets-and-extension.md)
+[指南首页](README.md) · 上一篇：[数据与批量计算](datasets-and-extension.md) · 下一篇：[延伸阅读：文档中心](../README.md)
 
 理解引擎后，最有效的开发方式是把“游戏里观察到的现象”转成“特定输入下的一段状态变化”，再沿职责链定位、修改和验证。这一章给出源码导航、排查路线和可直接使用的验证入口。
 
@@ -126,3 +126,7 @@ git ls-remote gitea refs/heads/main
 - [开发指南](../guides/development.md)、[公共 API](../reference/public-api.md)。
 - [Runtime 迁移背景](../guides/runtime-0.5-migration.md)、[机制分析](../mechanics/README.md)。
 - [项目工作约定](../../AGENTS.md)、[文档中心](../README.md)。
+
+---
+
+[指南首页](README.md) · 上一篇：[数据与批量计算](datasets-and-extension.md) · 下一篇：[延伸阅读：文档中心](../README.md)

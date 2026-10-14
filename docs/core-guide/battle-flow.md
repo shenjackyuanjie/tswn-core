@@ -140,3 +140,7 @@ Runtime 校验失败走错误通道；会话保存第一次错误，调用方读
 - [combat/effects.rs](../../crates/tswn_core/src/runtime/combat/effects.rs)：效果提交分支。
 - [entity/runtime.rs](../../crates/tswn_core/src/runtime/entity/runtime.rs)：威力与有效属性。
 - [battle/driver.rs](../../crates/tswn_core/src/cli_api/battle/driver.rs)：规范会话终止策略。
+
+---
+
+[指南首页](README.md) · 上一篇：[运行时模型](runtime-model.md) · 下一篇：[技能与 hook](skills-and-hooks.md)

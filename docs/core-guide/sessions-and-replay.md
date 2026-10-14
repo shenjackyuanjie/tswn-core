@@ -134,3 +134,7 @@ flowchart TD
 - [battle/session.rs](../../crates/tswn_core/src/cli_api/battle/session.rs)、[driver.rs](../../crates/tswn_core/src/cli_api/battle/driver.rs)、[model_session.rs](../../crates/tswn_core/src/cli_api/battle/model_session.rs)。
 - [replay_view.rs](../../crates/tswn_core/src/replay_view.rs)：消息到 row/clip 的投影。
 - [公共 API 契约](../reference/public-api.md)：跨语言一致的字段、错误和生命周期。
+
+---
+
+[指南首页](README.md) · 上一篇：[随机与兼容](randomness-and-compatibility.md) · 下一篇：[交互与工具](interfaces-and-tools.md)
