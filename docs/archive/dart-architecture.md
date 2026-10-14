@@ -205,7 +205,7 @@
 - 示例用例定位（Entry 用法遍布技能/weapon 子目录，例如 `weapon/rinick_modifier.dart`）：
 
 ```dart
-// weapon/r inick_modifier.dart#L80-130
+// weapon/rinick_modifier.dart#L80-130
 ```
 
 ---
@@ -296,13 +296,11 @@ sequenceDiagram
 
 ---
 
-## 7. 下一步建议（可选任务）
+## 7. 可继续深入的方向
 
-- 我可以为你生成：
-  - 一个最小重写骨架（接口 + 最简单实现 + 单元测试用例），或者
-  - 更细的模块化文档（例如单独的 `Plr.md`、`Skill.md`、`Weapon.md`），或者
-  - 基于你指定语言/框架的重写起始模板。
-- 请选择你想要的下一步（例如 “生成最小骨架” 或 “先做 Plr 的单元测试” 等）。
+- 最小重写骨架：接口、最简单实现与单元测试用例。
+- 更细的模块化文档：例如单独的 `Plr.md`、`Skill.md`、`Weapon.md`。
+- 基于指定语言或框架的重写起始模板。
 
 ---
 
