@@ -2,37 +2,37 @@
 
 ## 方法
 
-- bun: 对官方 md5.js::ProfileWinChance 做最小补丁，只把 callback 粒度从 100 场改成 1 场，不改胜负逻辑。
-- tswn: 使用 `bench auto --buckets-step 1` 输出每局累计胜场。
-- 对比方式: 逐 round 比较 team1 是否获胜，得到真实分叉 round。
-- seed 规则: 第 1 局无 seed；第 N 局 (N>1) 对应 `seed:` + (33554431 + N - 1)。
+- bun 侧：对官方 `md5.js::ProfileWinChance` 做最小补丁，只把 callback 粒度从 100 场改成 1 场，不改胜负逻辑。
+- tswn 侧：使用 `bench auto --buckets-step 1` 输出每局累计胜场。
+- 对比方式：逐 round 比较 team1 是否获胜，据此得到真实分叉 round。
+- seed 规则：第 1 局无 seed；第 N 局（N>1）对应 `seed:` + (33554431 + N - 1)。
 
 ## 汇总
 
-- case 数: 20
-- 总分叉 round 数: 0
+- case 数：20
+- 总分叉 round 数：0
 
 ## QF9iBQK4HfUAE+Mmt0ZrdGnlpjwB
 
-- 时间: 2026/04/20 1776657980000 / shenjack的bot
-- 旧消息显示: bun=46.42% / tswn(old)=46.33% / diff=-0.09
-- 本次精确结果: bun=4642/10000 / tswn=4642/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/04/20 1776657980000 / shenjack的bot
+- 旧消息显示：bun=46.42% / tswn(old)=46.33% / diff=-0.09
+- 本次精确结果：bun=4642/10000 / tswn=4642/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 三猴一体 vFz1cu21MCaW@TigerStar
 涵虚不等式 PFVKEUPBU@TigerStar
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 H6PeQOTNUlx@tyakasha
 Orbital #sfPTzSpZz@tyakasha
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
@@ -49,25 +49,25 @@ Orbital #sfPTzSpZz@tyakasha
 
 ## QF9iBQK4HfUAE+MpsB4DH2nlptYB
 
-- 时间: 2026/04/20 1776658134000 / shenjack的bot
-- 旧消息显示: bun=47.85% / tswn(old)=47.88% / diff=+0.03
-- 本次精确结果: bun=4785/10000 / tswn=4785/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/04/20 1776658134000 / shenjack的bot
+- 旧消息显示：bun=47.85% / tswn(old)=47.88% / diff=+0.03
+- 本次精确结果：bun=4785/10000 / tswn=4785/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 湖心 SHVPEMAPV@TigerStar
 涵伯发威 TGDPANBQM@TigerStar
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 H6PeQOTNUlx@tyakasha
 Orbital #sfPTzSpZz@tyakasha
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
@@ -84,25 +84,25 @@ Orbital #sfPTzSpZz@tyakasha
 
 ## Jm0MGgK4HfUAAQ5u8M44wWnlpzQB
 
-- 时间: 2026/04/20 1776658228000 / rua！
-- 旧消息显示: bun=53.59% / tswn(old)=53.61% / diff=+0.02
-- 本次精确结果: bun=5359/10000 / tswn=5359/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/04/20 1776658228000 / rua！
+- 旧消息显示：bun=53.59% / tswn(old)=53.61% / diff=+0.02
+- 本次精确结果：bun=5359/10000 / tswn=5359/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 Beijing_Beijing #buBfAkjNf@Shabby_fish
 luogu.com.cn/paste/q9h8sdzk@Shabby_fish
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 H6PeQOTNUlx@tyakasha
 Orbital #sfPTzSpZz@tyakasha
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
@@ -119,25 +119,25 @@ Orbital #sfPTzSpZz@tyakasha
 
 ## Jm0MGgK4HfUAAQ5yKW59XGnlp0EB
 
-- 时间: 2026/04/20 1776658241000 / rua！
-- 旧消息显示: bun=41.53% / tswn(old)=41.54% / diff=+0.01
-- 本次精确结果: bun=4153/10000 / tswn=4153/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/04/20 1776658241000 / rua！
+- 旧消息显示：bun=41.53% / tswn(old)=41.54% / diff=+0.01
+- 本次精确结果：bun=4153/10000 / tswn=4153/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 Tik_Tok #IBxWzGZtr@Shabby_fish
 青霉素 #gRybM8geD@Shabby_fish
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 H6PeQOTNUlx@tyakasha
 Orbital #sfPTzSpZz@tyakasha
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
@@ -154,25 +154,25 @@ Orbital #sfPTzSpZz@tyakasha
 
 ## Jm0MGgK4HfUAAQ565d9J3mnlp7UB
 
-- 时间: 2026/04/20 1776658357001 / rua！
-- 旧消息显示: bun=51.99% / tswn(old)=52.00% / diff=+0.01
-- 本次精确结果: bun=5199/10000 / tswn=5199/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/04/20 1776658357001 / rua！
+- 旧消息显示：bun=51.99% / tswn(old)=52.00% / diff=+0.01
+- 本次精确结果：bun=5199/10000 / tswn=5199/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 Tik_Tok #IBxWzGZtr@Shabby_fish
 Mythic YK!,o,dT@Shabby_fish
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 H6PeQOTNUlx@tyakasha
 Orbital #sfPTzSpZz@tyakasha
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
@@ -189,25 +189,25 @@ Orbital #sfPTzSpZz@tyakasha
 
 ## Jm0MGgK4HfUAAQ59YmDV0WnlqCcB
 
-- 时间: 2026/04/20 1776658471001 / rua！
-- 旧消息显示: bun=47.44% / tswn(old)=47.45% / diff=+0.01
-- 本次精确结果: bun=4744/10000 / tswn=4744/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/04/20 1776658471001 / rua！
+- 旧消息显示：bun=47.44% / tswn(old)=47.45% / diff=+0.01
+- 本次精确结果：bun=4744/10000 / tswn=4744/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 Italian_Love #5Agn8kVYl@Shabby_fish
 我会回来的 #yTneTj00J@Shabby_fish
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 H6PeQOTNUlx@tyakasha
 Orbital #sfPTzSpZz@tyakasha
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
@@ -224,25 +224,25 @@ Orbital #sfPTzSpZz@tyakasha
 
 ## Jm0MGgK4HfUAAQ6FZnIJEGnlqR8B
 
-- 时间: 2026/04/20 1776658719001 / rua！
-- 旧消息显示: bun=44.78% / tswn(old)=44.77% / diff=-0.01
-- 本次精确结果: bun=4478/10000 / tswn=4478/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/04/20 1776658719001 / rua！
+- 旧消息显示：bun=44.78% / tswn(old)=44.77% / diff=-0.01
+- 本次精确结果：bun=4478/10000 / tswn=4478/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 Instantaneous #LxiPNA8jV@Shabby_fish
 Diffindo #3WzDmhsqL@Shabby_fish
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 H6PeQOTNUlx@tyakasha
 Orbital #sfPTzSpZz@tyakasha
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
@@ -259,25 +259,25 @@ Orbital #sfPTzSpZz@tyakasha
 
 ## QF9iBQK4HfUAE+M1GSOv6Wnlq/oB
 
-- 时间: 2026/04/20 1776659450000 / shenjack的bot
-- 旧消息显示: bun=49.34% / tswn(old)=49.27% / diff=-0.07
-- 本次精确结果: bun=4934/10000 / tswn=4934/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/04/20 1776659450000 / shenjack的bot
+- 旧消息显示：bun=49.34% / tswn(old)=49.27% / diff=-0.07
+- 本次精确结果：bun=4934/10000 / tswn=4934/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 H6PeQOTNUlx@tyakasha
 Orbital #sfPTzSpZz@tyakasha
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 Tachibana_akira #BydbIMidbs@🥒
 𝚐𝚒𝚛𝚕𝚜.𝚎𝚡𝚎 #JgLghHnHgP@🥒
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
@@ -294,25 +294,25 @@ Tachibana_akira #BydbIMidbs@🥒
 
 ## Jm0MGgK4HfUAAQ6MYo7rXGnlxeYB
 
-- 时间: 2026/04/20 1776666086004 / rua！
-- 旧消息显示: bun=42.05% / tswn(old)=42.08% / diff=+0.03
-- 本次精确结果: bun=4205/10000 / tswn=4205/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/04/20 1776666086004 / rua！
+- 旧消息显示：bun=42.05% / tswn(old)=42.08% / diff=+0.03
+- 本次精确结果：bun=4205/10000 / tswn=4205/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 killer YFgziuYJGUOW93Ryni2X@czr2012
 huk Fkua7Pj7AzG9CW4QZiGJ@czr2012
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 H6PeQOTNUlx@tyakasha
 Orbital #sfPTzSpZz@tyakasha
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
@@ -329,25 +329,25 @@ Orbital #sfPTzSpZz@tyakasha
 
 ## Jm0MGgK4HfUAAQ6V8AOp8GnlxmkB
 
-- 时间: 2026/04/20 1776666217000 / rua！
-- 旧消息显示: bun=39.71% / tswn(old)=39.68% / diff=-0.03
-- 本次精确结果: bun=3971/10000 / tswn=3971/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/04/20 1776666217000 / rua！
+- 旧消息显示：bun=39.71% / tswn(old)=39.68% / diff=-0.03
+- 本次精确结果：bun=3971/10000 / tswn=3971/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 killer YFgziuYJGUOW93Ryni2X@czr2012
 dust lmHylvLqY4hn0QIMnCia@czr2012
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 H6PeQOTNUlx@tyakasha
 Orbital #sfPTzSpZz@tyakasha
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
@@ -364,23 +364,23 @@ Orbital #sfPTzSpZz@tyakasha
 
 ## QF9iBQK4HfUAE/HjYZR2WGnt5foB
 
-- 时间: 2026/04/26 1777198586000 / shenjack的bot
-- 旧消息显示: bun=42.87% / tswn(old)=42.88% / diff=+0.01
-- 本次精确结果: bun=4287/10000 / tswn=4287/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/04/26 1777198586000 / shenjack的bot
+- 旧消息显示：bun=42.87% / tswn(old)=42.88% / diff=+0.01
+- 本次精确结果：bun=4287/10000 / tswn=4287/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 随之任之 #kNPyDNhppy@🥒
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 Ⅹ q5H2HO5@新纪元
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
@@ -397,25 +397,25 @@ Orbital #sfPTzSpZz@tyakasha
 
 ## QF9iBQK4HfUAE/QeiKV6MGnu3OIB
 
-- 时间: 2026/04/27 1777261794000 / shenjack的bot
-- 旧消息显示: bun=57.30% / tswn(old)=57.31% / diff=+0.01
-- 本次精确结果: bun=5730/10000 / tswn=5730/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/04/27 1777261794000 / shenjack的bot
+- 旧消息显示：bun=57.30% / tswn(old)=57.31% / diff=+0.01
+- 本次精确结果：bun=5730/10000 / tswn=5730/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 Cosmo #CLjFsRj@Arcadia
 Wispy #6uttTRg@Arcadia
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 预言 yyDH8z1LkOOU@芒萁
 硫 xL8rdIlimAPy@芒萁
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
@@ -432,25 +432,25 @@ Wispy #6uttTRg@Arcadia
 
 ## QF9iBQK4HfUAE/lWjx76DmnyAhYB
 
-- 时间: 2026/04/29 1777467926000 / shenjack的bot
-- 旧消息显示: bun=62.82% / tswn(old)=62.80% / diff=-0.02
-- 本次精确结果: bun=6282/10000 / tswn=6282/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/04/29 1777467926000 / shenjack的bot
+- 旧消息显示：bun=62.82% / tswn(old)=62.80% / diff=-0.02
+- 本次精确结果：bun=6282/10000 / tswn=6282/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 Orbital #FdIt7oZLt@tyakasha
 Orbital #uToMNkhhZ@tyakasha
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 镜湖TVWAFPFHB@涵虚
 田柤钿坥畑租鉏组佃怚钿组@涵虚
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
@@ -467,25 +467,25 @@ Orbital #uToMNkhhZ@tyakasha
 
 ## QF9iBQK4HfUAE/lZ+dgrkGnyAkAB
 
-- 时间: 2026/04/29 1777467968000 / shenjack的bot
-- 旧消息显示: bun=45.63% / tswn(old)=45.62% / diff=-0.01
-- 本次精确结果: bun=4563/10000 / tswn=4563/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/04/29 1777467968000 / shenjack的bot
+- 旧消息显示：bun=45.63% / tswn(old)=45.62% / diff=-0.01
+- 本次精确结果：bun=4563/10000 / tswn=4563/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 H6PeQOTNUlx@tyakasha
 Orbital #sfPTzSpZz@tyakasha
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 镜湖TVWAFPFHB@涵虚
 田柤钿坥畑租鉏组佃怚钿组@涵虚
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
@@ -502,25 +502,25 @@ Orbital #sfPTzSpZz@tyakasha
 
 ## QF9iBQK4HfUAFA97RnwMbmn8gEQB
 
-- 时间: 2026/05/07 1778155588000 / shenjack的bot
-- 旧消息显示: bun=59.36% / tswn(old)=59.35% / diff=-0.01
-- 本次精确结果: bun=5936/10000 / tswn=5936/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/05/07 1778155588000 / shenjack的bot
+- 旧消息显示：bun=59.36% / tswn(old)=59.35% / diff=-0.01
+- 本次精确结果：bun=5936/10000 / tswn=5936/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 冥河 WyO8MUZPPtKH@Afterglow
 光 jKLA6V5mirfs@Afterglow
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 樱井光 #CQMQFHIEV@无惨
 朝雾和梦 KIJKUMJIA@无惨
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
@@ -537,25 +537,25 @@ Orbital #sfPTzSpZz@tyakasha
 
 ## QF9iBQK4HfUAFBCcvlX8Emn8khwB
 
-- 时间: 2026/05/07 1778160156000 / shenjack的bot
-- 旧消息显示: bun=61.09% / tswn(old)=61.08% / diff=-0.01
-- 本次精确结果: bun=6109/10000 / tswn=6109/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/05/07 1778160156000 / shenjack的bot
+- 旧消息显示：bun=61.09% / tswn(old)=61.08% / diff=-0.01
+- 本次精确结果：bun=6109/10000 / tswn=6109/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 syVS:et@Hell
 'Yz|AS}@Hell
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 004TO9kah@仲夏夜梦
 oCDFIl@仲夏夜梦
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
@@ -572,23 +572,23 @@ oCDFIl@仲夏夜梦
 
 ## QF9iBQK4HfUAFBV75kAW62n9OqcB
 
-- 时间: 2026/05/08 1778203303000 / shenjack的bot
-- 旧消息显示: bun=61.13% / tswn(old)=61.53% / diff=+0.40
-- 本次精确结果: bun=6113/10000 / tswn=6113/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/05/08 1778203303000 / shenjack的bot
+- 旧消息显示：bun=61.13% / tswn(old)=61.53% / diff=+0.40
+- 本次精确结果：bun=6113/10000 / tswn=6113/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 tyakasha@tyakasha
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 名竞大王@名竞大王
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
@@ -605,23 +605,23 @@ tyakasha@tyakasha
 
 ## QF9iBQK4HfUAFBV+CZ+mFWn9OrYB
 
-- 时间: 2026/05/08 1778203318001 / shenjack的bot
-- 旧消息显示: bun=42.02% / tswn(old)=40.52% / diff=-1.50
-- 本次精确结果: bun=4202/10000 / tswn=4202/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/05/08 1778203318001 / shenjack的bot
+- 旧消息显示：bun=42.02% / tswn(old)=40.52% / diff=-1.50
+- 本次精确结果：bun=4202/10000 / tswn=4202/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 czr2012@czr2012
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 名竞大王@名竞大王
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
@@ -638,23 +638,23 @@ czr2012@czr2012
 
 ## QF9iBQK4HfUAFBWVYq6wqWn9PBIB
 
-- 时间: 2026/05/08 1778203666000 / shenjack的bot
-- 旧消息显示: bun=44.61% / tswn(old)=45.41% / diff=+0.80
-- 本次精确结果: bun=4461/10000 / tswn=4461/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/05/08 1778203666000 / shenjack的bot
+- 旧消息显示：bun=44.61% / tswn(old)=45.41% / diff=+0.80
+- 本次精确结果：bun=4461/10000 / tswn=4461/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 a@a
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 b@b
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
@@ -671,23 +671,23 @@ b@b
 
 ## QF9iBQK4HfUAFDuRzBfDYGoIZisB
 
-- 时间: 2026/05/16 1778935339001 / shenjack的bot
-- 旧消息显示: bun=45.99% / tswn(old)=46.00% / diff=+0.01
-- 本次精确结果: bun=4599/10000 / tswn=4599/10000
-- bun md5.js: D:\githubs\namer\tswn-core\md5.js
-- 队 1:
+- 时间：2026/05/16 1778935339001 / shenjack的bot
+- 旧消息显示：bun=45.99% / tswn(old)=46.00% / diff=+0.01
+- 本次精确结果：bun=4599/10000 / tswn=4599/10000
+- bun md5.js：D:\githubs\namer\tswn-core\md5.js
+- 队 1：
 
 ```text
 #pl-2 1TTN=Oh@YJC
 ```
 
-- 队 2:
+- 队 2：
 
 ```text
 CL.IRLCKBPEG@巡洋舰
 ```
 
-- 真实分叉 round 数: 0
+- 真实分叉 round 数：0
 
 ### 1000 场分段
 
