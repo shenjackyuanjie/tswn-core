@@ -12,7 +12,7 @@
 - 固定 `max_rounds=20_000`、`include_icons=false`；`eval_rq` 使用当前默认值 4.0。模块和 fixture 文件加载不计时；每场重新创建会话，保留正常 GC。
 - `session_create_ms` 只计构造函数。`next_frame_wall_ms` 包含 Runtime 推进和完整 DTO 转换，按该类全部调用合并计算 nearest-rank p50/p95，包含最后一次返回 None/null 的调用。Python 每帧对象在该次调用计时之后释放；WASM 对象按正常 JS GC 回收。
 - `total_session_ms` 从构造前到最后一次空返回，包含循环、计时和逐帧处理/释放的开销；不调用 `initial_states()`，不保留完整回放，也不将 `result()` 转换、结果断言或会话释放计入总耗时。每场都在计时后检查正常胜者、帧数和轮数。
-- 因首轮 ffa_8 接近 1 ms，完整重复测量一次。下表报告复测结果，后表同时保留首轮 p95；未筛除较慢样本或异常峰值。两輪使用相同 Python/WASM 二进制，文件 SHA-256、输入 SHA-256、环境和全部逐次样本见[原始数据](../python_battle_session_samples.json)。
+- 因首轮 ffa_8 接近 1 ms，完整重复测量一次。下表报告复测结果，后表同时保留首轮 p95；未筛除较慢样本或异常峰值。两轮使用相同 Python/WASM 二进制，文件 SHA-256、输入 SHA-256、环境和全部逐次样本见[原始数据](../python_battle_session_samples.json)。
 
 本基线测量的是 Python 用户看到的 `next_frame()` 总耗时，无法单独归因于 DTO 转换；没有修改转换实现，也没有手工 PyDict/PyList 的 A/B 结果。
 
