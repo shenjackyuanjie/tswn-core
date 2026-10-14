@@ -48,7 +48,7 @@
 - 召唤单位（clone / summon / shadow / zombie）会按类型显示对应的中文名；分身名字里的编号使用底层 `display_index`，左侧仍单独保留 `#playerId`。
 - 只消费 `BattleReplayFrame.rows[].clips[]` 结构化 replay view，由 WASM 提供延迟、文本片段、血条变化、死亡特效和侧栏快照信息；战斗正文不再从 `message_template` / `message_rendered` / `hp_delta` 反推展示语义。
 - normal 播放模式下，对战结束后等待 `1500ms` 再显示底部结算表；fast / turbo / 单步跳转保持即时显示。左侧玩家 HP 条变化使用较慢动画，方便观察血量变化。
-- 页面与角色详情面板跟随明暗主题切换。深色模式使用更清晰的蓝灰名字框、可读的死亡名字和状态标签；像素图标保留原图配色，通过浅色衬底区分原图的深色描边。
+- 页面与角色详情面板跟随明暗主题切换。深色模式的名字（侧栏 `.name`、正文 `.actor-name`）改用深黄牛皮纸底色并去掉描边，死亡名字和状态标签保持可读；像素图标保留原图配色，通过浅色衬底区分原图的深色描边。
 - `show-wasm.js` 通过 `createBattleStreamSource()` 创建 `BattleSession`；页面先展示初始状态，再由 `BattleStreamController` 按需获取 core 提供的 `rows/clips/parts`。
 
 #### 控制栏快捷键
