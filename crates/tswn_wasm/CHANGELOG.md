@@ -1,6 +1,15 @@
 # 更新日志
 
-## [Unreleased] - 0.5.8
+## [0.5.8] - 2026-10-13
+
+### 变更
+
+- 深色模式的名字底色（侧栏 `.name`、正文 `.actor-name`）由蓝灰改为深黄牛皮纸色 `#634d1f`，并移除 `.name` / `.actor-name` / 阵亡名字的 1px 内描边；名字框只靠底色与页面区分，对比度仍满足既有主题回归阈值。
+
+### 验证
+
+- `node --test crates/tswn_wasm/tests/show-*.test.mjs` 37 项通过，含深色配色与浅色护盾区段的对比度回归。
+- `scripts/verify_web_playback.mjs` 页面行为验证与真实浏览器截图核对通过，深色模式截图为 `docs/images/wasm-show/shield-dark.png` 与 `shield-details.png`。
 
 ## [0.5.7] - 2026-10-13
 
