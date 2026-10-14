@@ -1,14 +1,19 @@
-# Runtime 架构评估与重构建议：保留行为，重写执行内核
+# Runtime 架构评估与重构建议：保留行为，重整执行内核
 
 - 评估日期：2026-10-14。
-- 评估基线：`main` 的 `6dd89dc7b193c73b3d010a8846c5c4b1064a24a6`。
-- 状态：设计提案，尚未实现；本次提交仅增加本文。
+- 初评代码基线：`6dd89dc7b193c73b3d010a8846c5c4b1064a24a6`。
+- 二次复核基线：`main` 的 `04fc7b0ead0e3dd6a8c49831bc2e0519782082ca`；相对初评仅增加本文，runtime 与测试源码未变化。
+- 状态：设计提案，尚未实现；本次仅修订文档。
 - 约束：不保留旧 Rust API、hook API、类型布局、模块路径或序列化格式的兼容层；保留有意的战斗与对外可观察行为。
-- 方法：审阅当前执行链、数据结构、上下文、队列、复用入口及代表性行为测试。未运行 Cargo 测试或性能基准；下文不把静态判断当成已验证的性能收益，也不把建议增加的测试写成已通过。
+- 方法：初评审阅执行链及核心定向测试；二次复核补充 `tswn_test` 的适配器、共享套件注册、golden 计算与断言、corpus 入口、会话一致性测试、Cargo feature 门控、release 脚本，以及核心 reset/并行测试。未运行 Cargo 测试或性能基准，也未逐个重新验证所有 fixture 的期望值；“已有覆盖”指已读到的源码断言，不是本次通过记录。
 
 ## 1. 结论
 
-**建议整体重构 runtime 的执行内核，但不建议推倒整个 tswn-core，更不建议把现有 hook 系统换成更通用的事件总线。**
+**建议对 runtime 的执行内核做结构性重构，但不要求从零重写整个 runtime，更不建议把现有 hook 系统换成更通用的事件总线。**
+
+二次复核修正：初评低估了现有行为验收基础。`tswn_test` 已经有 `EngineAdapter`、87 项共享 trace/行为用例和 37 项冻结 stress 用例，后者比较逐回合摘要；另有会话一致性测试与 release 回归脚本。不能把“新建一套回归框架”列为重构前置条件。正确做法是直接复用这些资产，只调整新版引擎的测试接线，并按实际改动补强观察盲区。[R1][r1] [R2][r2] [R3][r3] [R4][r4] [R5][r5]
+
+这一修正改变实施路线和工作量判断，不自动证明重构更迫切。现有代码已有大量行为保护；建议重构的理由仍是执行控制权分散、接口语义重叠，而不是已经证实引擎错误、性能不足或缺少测试。
 
 问题不是“八个 hook 阶段太多”。当前复杂度的主要来源是：同一条规则需要穿过通用 hook、内置技能专用分支、递归效果结算、状态注册顺序及更新结束回调；这些地方共同决定执行顺序，而接口没有完整表达这种顺序。把几个 hook 合并、改名或藏进 trait，并不能减少需要理解的规则。[S1][s1] [S2][s2] [S3][s3]
 
@@ -22,10 +27,10 @@
 | --- | --- | --- | --- |
 | 只拆文件、合并 Context、减少函数数量 | 局部阅读体验 | 多条执行链、隐式时序与日志控制状态仍然存在 | 不足以解决当前问题 |
 | 继续完善通用 hook / event bus / 全面 ECS | 更一般的注册与组合能力 | 本游戏的顺序例外会变成更多 priority、事件重入和特殊上下文；存储优化不能自动解决结算语义 | 不选 |
-| **重写执行内核，保留领域算法和行为基线** | 统一控制权、显式表达时序、缩小扩展权限 | 需要严肃的逐边界差分验证 | **推荐** |
+| **重整执行内核，保留领域算法和既有回归套件** | 统一控制权、显式表达时序、缩小扩展权限 | 复用现有逐回合 golden；仅对迁移涉及的盲区增加状态诊断 | **推荐** |
 | 同时重写解析、构建、所有绑定、数据集和 UI | 能统一整个仓库 | 扩大验证面，使数值差异和接口接线错误难以定位 | 不作为此次范围 |
 
-这里的“整体”指目标架构完整替换，不是一次提交重写全部代码。实施可以分段，但正式运行只保留一条新执行链；旧引擎仅作为迁移期间的测试参照，不做长期运行回退。
+这里的“整体”指统一执行职责，不是改写每个模块。可以在现有 runtime 内按切片重构，也可以用测试适配器接入新实现；两者都不需要生产兼容层。若保留旧实现作参照，只用于迁移测试，不做长期运行回退。
 
 ## 2. 当前架构：已经做对了什么，问题在哪里
 
@@ -35,7 +40,7 @@
 
 `PreparedRuntimeRunner` 支持每个 worker 复用实例、恢复基线、重新应用 seed，并复用评分构造中的缓冲区。主循环已有 `CAPTURE_UPDATES` 常量路径、内联小容器和内置静态分派。新方案应保留这种热路径意识，不能以架构整洁为由退回每击分配 trait object、每局重新解析阵容。[S1][s1] [S3][s3] [S5][s5]
 
-现有测试不只验证胜者，也覆盖 RNG 完整状态、终局短路、待生成实体、状态清除、精度及批量判胜一致性。这些是重构资产，不能为了让新版通过而直接重生成 golden。[S6][s6] [S7][s7] [S8][s8] [S9][s9] [S10][s10]
+现有验收有多个层次：`tswn_test` 的共享 trace/分数/开局断言和逐回合冻结摘要；同 corpus 上的 session/replay 状态一致性；`tswn_core` 的完整 RC4 状态、终局短路、待生成实体、状态清除、精度与判胜定向断言。核心还已有 fresh/reset、并行胜率及评分一致性测试。不能把其中某一层未观察的字段误写成整个项目没有测试，也不能为新版通过而重生成 golden。具体范围和限制见第 9 节。[R1][r1] [R2][r2] [R3][r3] [R4][r4] [R7][r7] [S6][s6] [S7][s7] [S8][s8] [S9][s9] [S10][s10]
 
 ### 2.2 可以直接定位的结构性问题
 
@@ -74,6 +79,12 @@
 对于疑似旧 bug：先补最小复现并明确规则决策，单独变更，不夹带在重构中。只比较最终胜率或只看“多数 seed 对上”不构成通过。
 
 ## 4. 建议的新架构
+
+### 4.0 必做边界与可选实现分开
+
+第一轮只要求三件事：把更新对象中的机制控制状态收回执行器；把行动尾链及不同受击路线写成可追踪的流程；把内置/扩展的绑定和调用职责理清。它们可以先在现有数据结构上完成，不以“先写完新框架”为条件。
+
+下图中的 `BattleBlueprint`、`TurnDriver`、`ResolutionMachine` 是职责名称，不是要求立即新增一组框架类型。蓝图与局内数据可以先通过封装和命名区分；通用 continuation 栈、完整 RulesBuilder 编译框架、arena 更换、ECS 和新 crate 拆分都不是首轮前置项。若普通同步函数与有限分支足以表达流程，就保留这种更简单的实现。
 
 ```text
 名字 / DIY / 阵容 / eval_rq
@@ -306,9 +317,9 @@ fn resolve_fatal(input: FatalInput, cx: &mut FatalCtx)
 
 ### 8.4 Reset 与批量性能
 
-只读蓝图和编译规则可以共享；每个 worker 独占可变 Battle、RNG 和 scratch。第一版先实现容易审计的正确 reset，再迁移 dirty reset 和容量复用优化。
+只读蓝图和编译规则可以共享；每个 worker 独占可变 Battle、RNG 和 scratch。优先保留既有复用路径；只有状态组织变化导致必须改写 reset 时，才先采用容易审计的实现，再恢复 dirty reset 和容量复用优化。
 
-reset 的验收不是“HP 回满”：必须清理新增实体、技能变化、状态顺序、隐藏压缩标记、归属关系、世界游标、扩展数据、批次任务、RNG、规则局内数据和缓存失效状态。以 `fresh(seed)` 对比经历复杂上一局后的 `reset(seed)`，还要验证评分场景更换 roster 的路径。[S5][s5]
+reset 的验收不是“HP 回满”：必须清理新增实体、技能变化、状态顺序、隐藏压缩标记、归属关系、世界游标、扩展数据、批次任务、RNG、规则局内数据和缓存失效状态。已有 `reusable_runner_reset_matches_fresh_runner` 在 32 个 seed 上比较 completion summary 与输入队伍胜负；并行和评分回归也已存在。迁移时首先保留这些断言，仅在改动了 reset/状态归属的切片上补充逐边界状态比较或特定污染场景，不另建重复套件。[S5][s5] [R7][r7]
 
 性能目标是防止显著回退，不预先宣称会加速。对相同构建模式、相同硬件与 seed 集，分别测普通 1v1、多队伍、召唤/复活密集、自定义规则、fresh/reset、capture/no-capture 的吞吐、尾延迟、分配次数和峰值内存。先记录当前基线，再确定允许的回退预算；不要拿未测量的百分比作结论。
 
@@ -318,55 +329,94 @@ reset 的验收不是“HP 回满”：必须清理新增实体、技能变化�
 
 内部差分或未来续跑存档可以包含完整 RNG、规则版本和执行位置，但使用单独类型，不能流入模型输入。模型投影保留局内机制、身份关系和原输入队伍映射，不泄漏未来胜者、随机流、trace 或进程分配编号。新 schema 可直接升级，不做旧格式转换层，但不把旧数据静默解释成新版。
 
-## 9. 行为验收矩阵
+## 9. 行为验收：以现有 tswn_test 为主线
 
-“已有依据”表示本次读到了实现或测试，并不表示本次执行了它们。
+### 9.1 二次复核确认的现有资产
 
-| 场景 | 必须比较的结果 | 已有依据 / 新版需要补充 |
+| 现有资产 | 实际断言或用途 | 复用方式与边界 |
 | --- | --- | --- |
-| 行动条等于/大于阈值、解冻、预留生成空槽 | actor、行动点、边界、RNG | `scheduler.rs`；扩展边界组合用例 |
-| 主动技能、普通/强制攻击、状态接管 | 主体行动、目标、RNG 与尾链是否执行 | `round.rs`；逐路线 golden |
-| 终局普通行动 | 不恢复 MP、不再执行行动后状态、事件尾部 | `plain_terminal_round_tests.rs` |
-| 击杀最后一敌 / 尚有敌人 / 冻结敌人 / pending spawn | 击杀链资格、生成阵营、RNG | `plain_kill_hook_tests.rs` |
-| 亡灵成功与失败后吞噬 | 短路、尸体类型、后续 RNG | 同上 |
-| 反弹、递归守护、净化、毒、自爆 | 入路、嵌套顺序、属性、伤害、死亡时点、事件 | `combat/effects.rs`、`defense.rs`；补共享队列已有工作的组合用例 |
-| HP 为零但尚未登记死亡、致命救回、关联使魔清理 | 微步骤可见状态、world 顺序、最终存活 | `defense.rs`；补跨路线组合用例 |
-| 吞噬中途启用技能、early/deferred/state/late | 运行期顺序、只执行一次、状态延迟清理 | `round.rs`；补完整 action-tail trace |
-| 立即清除后续状态 | 被移除状态不再执行 | `state_hook_generation_tests.rs` |
-| 反击批次内多次受击、改变目标、连锁到上限 | 去重范围、RNG、批次尾任务和残留状态 | `passive.rs`；补 64 轮边界用例 |
-| 队伍清空后被魅惑施法者复活 | 存活索引与实体一致、无提前胜者、历史计数不被误替换 | `winner_path_divergence_tests.rs` |
-| at_boost 浮点尾数 | bits、取整位置、伤害 | `plain_at_boost_precision_tests.rs` |
-| Fresh vs reset，包括更换评分 roster | 每边界完整机制状态与 RNG | `runner.rs`；补污染上一局的 reset 用例 |
-| FullCapture / NoCapture / trace / model | 同一推进边界与机制状态，不因观察方式改变战斗 | `round.rs`、`update.rs`、模型审计；补跨模式差分 |
-| 自定义规则、无效绑定、无权限读取、生成蓝图 | 行为可表达、开局前错误、访问拒绝、引用正确 | `extension.rs`、Context 和 readiness；迁移为新接口测试 |
-| 模型读取与内部 checkpoint | 重复读取无副作用；模型不含随机秘密；标签映射正确 | `battle-model-state-audit.md` |
+| `EngineAdapter` + `test_engine_suite!` | 构造、主回合输出、胜者、可选队伍与 RNG 游标；宏注册 87 项共享行为用例 | 新版实现同一测试适配器即可接共享 suite，不保留旧生产 API |
+| `suite/` 与 fixtures | 规范化回放、事件顺序、分数、胜者及特定开局；含大型、多队伍和召唤场景 | 保持现有期望值；87 是仓库定义的用例清单，不表示 87 个用例全都断言完整状态或完整回放 |
+| 37 项 stress + `golden.json` | 输入 SHA-256、`eval_rq`、胜者队伍、回合数、总分、最终 RC4 `i/j`、每回合摘要 | 冻结 golden 作为独立期望；不是只比较最终胜率 |
+| `battle_session_replay_parity_on_frozen_corpus` | 同 37 份输入的初始状态、逐帧 payload、最终状态、终止原因、胜者和推进计数 | 已检查 clone/summon/shadow/zombie、苏生/守护/魅惑及空 Runtime 回合；另有 round budget/icons 用例 |
+| 核心定向与 batch 测试 | 完整 RC4 数组、具体数值/顺序、存活索引；32 个 seed 的 reset/fresh completion；不同 worker 的胜率/评分统计及分块边界 | 继续保留；摘要级、状态级和单机制断言作用不同，不互相替代 |
+| `check_runtime_release.py --corpus` | release 核心、`no_debug` 核心、release CLI 定向测试和 release corpus | 已有发布验证入口，不需要重建同类调度脚本 |
 
-### 差分方式
+依据：[R1][r1] [R2][r2] [R3][r3] [R4][r4] [R5][r5] [R7][r7] [R9][r9] [S6][s6] [S9][s9]。
 
-固定旧实现 SHA，构建测试专用参照程序或保存逐边界基线。新旧代码可以通过独立进程输出同一种测试归一化记录，无需在生产 API 中兼容旧类型。
+**37 项 stress 的逐回合摘要确实覆盖了推进边界。** `capture_case` 每推进一次都生成 digest，包括该回合没有可见事件的情况。digest 输入含 round index、事件数、事件 kind、message、caster name、score、回合后 RC4 `i/j` 和 winner team。摘要比较失败时已经能报告首个不一致回合；共享 trace 的比较器也已有邻近行上下文与 trace/RC4 调试开关。初评不能把这些诊断能力当作待新建资产。[R2][r2] [R3][r3]
 
-记录至少包含：主体行动、规则微步骤（用于定位首个分歧）、实体存在/死亡/归属、基础和有效属性、完整技能与状态顺序、world 列表及游标、待生效数据、事件序列、当前终局/截断状态和完整 RNG。允许忽略容量、地址、派生缓存和进程全局日志 ID；局内批次关系、注册游标等会影响机制的信息不能被归一化丢掉。
+不过需准确区分覆盖粒度：
 
-将游戏行为的变化与展示格式的变化分开比较。现有 golden 不自动重生成；发生差异时缩小到最早的规则步骤，再补最小回归。不同 worker 数使用相同的 seed 分配和结果排序验证，不能只比较聚合胜率。
+- `EngineAdapter::rc4_state` 与 `Rc4Golden` 只有 `i/j`，没有完整置换数组或完整消耗计数。`NormalizedRngCheckpoint` 另外在非 `no_debug` 下保存 `byte_count`，也不保存置换数组；核心定向测试中则已有完整 RC4 比较。因此“corpus 已覆盖完整随机状态”和“项目完全没有完整随机状态测试”都不准确。[R1][r1] [R2][r2] [R8][r8] [S6][s6]
+- stress digest 不直接包含 HP/MP、技能/状态注册顺序、pending 队列、裸 target ID 或动画 delay；其中部分信息通过事件消息间接体现。session/replay 测试会比较更完整的帧和状态，但它比较的是同一实现的两种入口，不是另一个独立引擎的正确性证明。[R2][r2] [R3][r3] [R4][r4]
+- 共享 trace 会按已有规则规范化标记和空白，部分用例还有名称噪声归一化；不能把所有共享 trace 通过表述为“每个展示字节都已验证”。保持现有规范化边界，不在迁移时扩大忽略范围来掩盖差异。[R3][r3] [R9][r9]
 
-正式实施时建议至少运行：
+这些是断言的观察边界，不是已经发现的缺陷，也不等于对应机制没有通过黑盒回归被覆盖。
+
+### 9.2 新 runtime 如何直接接入
+
+共享的 87 项用例保持输入、断言与 fixture 不变，新增测试侧 `NewRuntimeEngine: EngineAdapter`，然后用 `test_engine_suite!(NewRuntimeEngine)` 注册。原地替换实现时也可直接改现有 `RuntimeEngine` 的接线。适配器输出现有 `EventSnapshot` 与回合边界；不要在新生产 API 中实现旧 RuntimeRunner/Context 兼容层。
+
+37 项 stress 需要一次很小的测试接线改造：`capture_case<E: EngineAdapter>` 已经泛型化，但 `build_runtime_runner` 和公开 `assert_runtime_matches_frozen_golden*` 仍绑定当前 `RuntimeEngine`。将构造后的 runner 注入现有泛型捕获器，或泛型化相应 helper，即可让新版消费**同一份** `STRESS_CASES` 和 `golden.json`。不能误说“只新增适配器，现有 37 项就会自动测试新版”。构造必须保留各 case 的 `eval_rq` 和 `unescape_x02`，这些输入差异不能丢失。[R2][r2] [R10][r10]
+
+复用原 digest 实现的编码、字段顺序和最终摘要算法，不另写一个近似格式，不因 DTO 改名重算期望值。输入 hash 允许的换行规范化继续沿现有实现。
+
+有必要观察新旧隐藏状态时，才在同一 corpus 输入或已有最小回归上添加**测试专用**记录：先复用 `NormalizedOutcome`，再按此次改动补充完整 RNG、状态登记顺序、批次任务等缺失字段。只在失败时按需展开微步骤；不把全量续跑存档、通用 trace 平台或另一套基线生成器当作先决条件。[R8][r8]
+
+已有 `scripts/tswn_diff.py round` 用于复核历史 Bun/tswn 的 round 分歧，但需要 PostgreSQL、Bun 和外部 `md5.js`。它可在需要时辅助溯源，不是运行冻结 corpus 的依赖，也不应作为每个重构切片的必跑条件。[R11][r11]
+
+### 9.3 按实际改动补强，不重复建设
+
+以下是迁移验收清单，不是“当前缺失测试清单”。标记为需检查的组合，先查已有 fixture/断言，只有观察粒度不足才加测试；本次静态审阅不宣称已穷尽全仓测试。
+
+| 重构切片 | 先复用的现有资产 | 仅在需要时补强 |
+| --- | --- | --- |
+| 行动条、主动/强制行动、状态接管 | 共享 suite、逐回合 digest、scheduler 与终局定向测试 | 被改动路径的行动点、主体行动边界和完整 RNG 对照 |
+| 受击、反弹、守护、净化、毒、自爆 | 共享/corpus 黑盒回归及 `plain_*`、`summon_explode_*` 核心测试 | 若改变 drain 点或递归方式，比较队列已有工作时的顺序和延迟死亡中间态 |
+| 吞噬与行动尾链 | 共享 trace、corpus、状态 generation/kill/charge 等定向测试 | 迁移游标时核对已执行条目不重跑、运行期登记及立即清除/到期清除差别 |
+| 抽离反击与更新批次 | counter 及伤害回归，capture/no-capture 执行路径 | 核对批次身份、改变目标、批次尾任务和 64 轮上限的精确边界；先审计已有断言 |
+| 实体/世界视图与判胜 | corpus、`winner_path_divergence_tests`、会话最终状态 | 已变动的死亡/复活/归属入口在同一边界保持索引和历史计数语义 |
+| reset 与批量复用 | `reusable_runner_reset_matches_fresh_runner`、评分缺陷回归、并行/分块测试 | 仅在移动状态或改复位算法时补逐边界状态、残留任务与污染上一局场景 |
+| 展示、会话与模型 | session/replay 全 corpus parity、模型审计与核心模型测试 | 更换 projector/控制状态后增加跨观察模式比较；模型继续排除 RNG |
+| 自定义规则和绑定 | 核心 custom、handler、capability 测试及既有绑定验收 | 改成新接口后保留对应行为断言；未绑定状态/效果的构建期验证按新边界补充 |
+
+补强时以首个分歧定位为目标，不要求给每个执行阶段永久保存一份新的 golden。内存容量、地址和缓存不是行为；局内批次关系、状态登记游标及有意的历史计数则不能被归一化掉。
+
+### 9.4 必须启用的回归入口
+
+`crates/tswn_test/Cargo.toml` 的 `[[test]] name = "runtime"` 指向 `runtime_corpus.rs`，并声明 `required-features = ["runtime-corpus"]`。普通 `cargo test --workspace` 或不带 feature 的 `cargo test -p tswn_test` 不会执行这 124 项 corpus 目标；但 `tswn_test` 的默认库测试仍会执行其中的会话测试等，不能说默认命令完全不碰 stress 输入。[R1][r1] [R4][r4] [R6][r6]
+
+正式实施时优先使用现有脚本，并补足它没有运行的组合：
 
 ```sh
-cargo test -p tswn_core
-cargo test -p tswn_core --features no_debug
+# 既有入口：release / no_debug 核心、CLI 与 release corpus
+python scripts/check_runtime_release.py --corpus
+
+# 明确运行完整 corpus 的 debug 构建
+cargo test -p tswn_test --features runtime-corpus --test runtime
+
+# 补充组合：让 tswn_test 的被测 tswn_core 也开启 no_debug
+cargo test -p tswn_test --features runtime-corpus,tswn_core/no_debug --test runtime --release
+
+# 默认库测试包含 session/replay 跨模块验收；同时回归整个工作区
 cargo test --workspace
 cargo +nightly fmt --check
 ```
 
-这些是后续实施的验证命令，不是本次运行记录。绑定/目标平台构建、差分工具和性能基准还需按具体实施提交补充。
+完整 release corpus 的独立命令为 `cargo test -p tswn_test --features runtime-corpus --test runtime --release`，已由脚本的 `--corpus` 分支调用。脚本不带 `--corpus` 时只对 corpus 执行 `--no-run`；脚本中的 `no_debug` 是核心定向测试，不等于已经执行了 `no_debug` 的完整 corpus。[R5][r5]
+
+这些是从现有配置整理的实施命令，不是本次运行记录。二次复核时本机 Windows 执行连接仍离线，当前容器没有 Cargo 且无法解析 GitHub 域名，未能实跑 Rust 回归；不把源码检查或此前项目中的通过记录当作本次通过。
 
 ## 10. 实施顺序与停止条件
 
-### 阶段 A：把行为边界写成可执行基线
+### 阶段 A：启用既有门禁，接入被测实现
 
-交付固定 SHA 的参照、归一化记录、跨 capture/reset 的差分工具，以及本矩阵中的高风险组合用例。先分清空推进、事件边界、主体行动和终局，不动正式数值规则。
+先运行 `check_runtime_release.py --corpus` 和必要的 debug/no_debug 组合，记录基线 SHA、构建模式及实际执行的测试目标；不要用默认 `cargo test` 代替完整 corpus。保持 87 项共享用例、37 项 stress 输入和 golden 不变。
 
-通过条件：能定位到第一个行为分歧，而不只是得到一个不同胜率。参照来自测试构建，不在生产中引入双 runtime 开关。
+新版通过 `EngineAdapter` 接共享套件，调整 stress helper 的构造接线以复用既有泛型捕获器。当前代码已经能定位 trace 行或首个不一致回合；只有首批重构涉及的内部状态无法定位时才扩展测试观察记录，不先建设另一套差分框架。
+
+通过条件：确认新实现实际被现有 suite/corpus 调用，没有误跑旧实现、遗漏 feature 或扩大规范化范围；本阶段的交付是测试接线与基线运行记录，而不是新框架。若尚无新实现，则先完成当前基线记录，接线随首个实现切片交付。
 
 ### 阶段 B：抽离控制状态，收拢数据修改
 
@@ -396,15 +446,17 @@ cargo +nightly fmt --check
 
 ## 11. 本次评估的边界与最终建议
 
-本次确认了当前存在的控制路径、接口职责重叠和若干必须保留的细粒度行为；没有证明现有 runtime 全部正确，没有完成全部技能的穷尽审计，也没有测得任何性能提升。测试文件名与断言是行为证据，不是本次测试通过记录。
+二次复核确认：初评没有审阅项目的主要跨引擎验收层 `tswn_test`，因此把阶段 A 写成新建基线/差分能力并遗漏 `runtime-corpus` 执行入口是不准确的，现已修正。现有套件应作为重构主验收资产，而非被替代。
 
-最终建议是：**启动一次有明确行为基线的 runtime 内核重构。保留规则的复杂性，去掉表达这些规则时额外制造的复杂性。**
+本次确认了执行职责重叠、已有断言的具体观察范围及少数可按需补强的盲区；没有证明现有 runtime 错误，没有完成全部技能和 fixture 的穷尽审计，也没有测得性能收益。推荐结构性重构不等于要求所有数据结构和模块重写。
+
+最终建议是：**复用现有 `tswn_test`，分切片重整 runtime 的执行内核。保留规则的复杂性，去掉表达这些规则时额外制造的复杂性。**
 
 不要把目标设成“hook 从八个减到三个”，也不要“所有东西都是事件”。更好的目标是：阅读一个主动技能能够找到它的完整主体，阅读一种受击路线能够看到其全部阶段，阅读行动尾链能够解释吞噬和状态穿插，关闭日志不会改变控制流程，复位不会漏掉机制状态。
 
 ## 源码依据
 
-以下链接固定到评估 SHA；正文中的“当前”均指该版本。
+S 系列链接固定到初评代码 SHA；R 系列固定到二次复核 SHA。两者 runtime 与测试源码相同，后者仅多出初版评估文档。
 
 - [S1：行动主线与行动尾链][s1]
 - [S2：扩展元数据、ProcMask 与注册契约][s2]
@@ -426,6 +478,18 @@ cargo +nightly fmt --check
 - [S18：专用受伤链、反击批次及 64 轮处理上限][s18]
 - [S19：模型状态投影与随机信息隔离审计][s19]
 - [S20：队列、handler 类型与展示出口定义][s20]
+- [R1：测试适配器与 87 项共享 suite 注册][r1]
+- [R2：37 项 stress 清单、digest 与冻结 golden 断言][r2]
+- [R3：RuntimeEngine 接线、trace 收集/规范化与差异上下文][r3]
+- [R4：完整 stress 输入的 session/replay 一致性][r4]
+- [R5：release/no_debug/corpus 验证脚本][r5]
+- [R6：runtime-corpus feature 门控与测试目标][r6]
+- [R7：reset/fresh、评分、并行及分块回归][r7]
+- [R8：已有行为归一化记录及 RNG 观察范围][r8]
+- [R9：共享完整 trace、分数和开局断言示例][r9]
+- [R10：runtime corpus 集成入口][r10]
+- [R11：历史差分与跨语言验证工具的现有依赖说明][r11]
+- [R12：冻结 golden 的版本、数量与摘要格式][r12]
 
 [s1]: https://github.com/shenjackyuanjie/tswn-core/blob/6dd89dc7b193c73b3d010a8846c5c4b1064a24a6/crates/tswn_core/src/runtime/combat/round.rs
 [s2]: https://github.com/shenjackyuanjie/tswn-core/blob/6dd89dc7b193c73b3d010a8846c5c4b1064a24a6/crates/tswn_core/src/runtime/extension.rs
@@ -447,3 +511,16 @@ cargo +nightly fmt --check
 [s18]: https://github.com/shenjackyuanjie/tswn-core/blob/6dd89dc7b193c73b3d010a8846c5c4b1064a24a6/crates/tswn_core/src/runtime/combat/passive.rs
 [s19]: https://github.com/shenjackyuanjie/tswn-core/blob/6dd89dc7b193c73b3d010a8846c5c4b1064a24a6/docs/design/battle-model-state-audit.md
 [s20]: https://github.com/shenjackyuanjie/tswn-core/blob/6dd89dc7b193c73b3d010a8846c5c4b1064a24a6/crates/tswn_core/src/runtime/effect.rs
+
+[r1]: https://github.com/shenjackyuanjie/tswn-core/blob/04fc7b0ead0e3dd6a8c49831bc2e0519782082ca/crates/tswn_test/src/lib.rs
+[r2]: https://github.com/shenjackyuanjie/tswn-core/blob/04fc7b0ead0e3dd6a8c49831bc2e0519782082ca/crates/tswn_test/src/golden.rs
+[r3]: https://github.com/shenjackyuanjie/tswn-core/blob/04fc7b0ead0e3dd6a8c49831bc2e0519782082ca/crates/tswn_test/src/suite/mod.rs
+[r4]: https://github.com/shenjackyuanjie/tswn-core/blob/04fc7b0ead0e3dd6a8c49831bc2e0519782082ca/crates/tswn_test/src/battle_session.rs
+[r5]: https://github.com/shenjackyuanjie/tswn-core/blob/04fc7b0ead0e3dd6a8c49831bc2e0519782082ca/scripts/check_runtime_release.py
+[r6]: https://github.com/shenjackyuanjie/tswn-core/blob/04fc7b0ead0e3dd6a8c49831bc2e0519782082ca/crates/tswn_test/Cargo.toml
+[r7]: https://github.com/shenjackyuanjie/tswn-core/blob/04fc7b0ead0e3dd6a8c49831bc2e0519782082ca/crates/tswn_core/src/runtime/batch.rs
+[r8]: https://github.com/shenjackyuanjie/tswn-core/blob/04fc7b0ead0e3dd6a8c49831bc2e0519782082ca/crates/tswn_core/src/runtime/normalized.rs
+[r9]: https://github.com/shenjackyuanjie/tswn-core/blob/04fc7b0ead0e3dd6a8c49831bc2e0519782082ca/crates/tswn_test/src/suite/simple.rs
+[r10]: https://github.com/shenjackyuanjie/tswn-core/blob/04fc7b0ead0e3dd6a8c49831bc2e0519782082ca/crates/tswn_test/runtime_corpus.rs
+[r11]: https://github.com/shenjackyuanjie/tswn-core/blob/04fc7b0ead0e3dd6a8c49831bc2e0519782082ca/scripts/README.md
+[r12]: https://github.com/shenjackyuanjie/tswn-core/blob/04fc7b0ead0e3dd6a8c49831bc2e0519782082ca/crates/tswn_test/cases/runtime_stress/golden.json
