@@ -19,7 +19,7 @@
 
 本次训练包改动验证实际导出文件、标签/源行对应、尾批、与核心逐字节对齐、流式失败现场、锁与覆盖冲突以及 Python 消费端。同一篇后文的容量深测和历史性能数字仍属于各自记录时的环境与输入，本次没有重新生成那些大规模基线。
 
-**模块边界。** 编码模块落位见 [encoder/mod.rs](../../crates/tswn_core/src/encoder/mod.rs)：encoder 只在 Rust 实现一次，当前由基础离线导出器调用，Python／WASM 绑定是后续复用点；该模块**不依赖 Arrow/Parquet、文件系统或模型参数**。容量权威位于 `tswn_core::encoder::capacity`（`BASELINE_64` 与计费式），`tswn_pwp::capacity` 只做再导出，不保留第二份常量。批缓冲按张量分配（`encoder::batch`），批槽位偏移为 `batch_index × 该张量每样本元素数`；未写入位置按 0／-1 填充，复用前 `clear_slot` 恢复 padding。规格第 3.2 节白名单已固化为 `encoder::slots` 的数据表；第 16 节第 7 条指出的三处校验缺口（charm `group_id`、槽内 U64 实体引用、载荷 kind 与分支匹配）由 `FeatureEncoder::validate_state` 闭合，`BattleModelState::validate` 仍不是替代品。
+**模块边界。** 编码模块落位见 [encoder/mod.rs](../../crates/tswn_core/src/encoder/mod.rs)：encoder 只在 Rust 实现一次，当前由流式训练包导出器调用，Python／WASM 绑定是后续复用点；该模块**不依赖 Arrow/Parquet、文件系统或模型参数**。容量权威位于 `tswn_core::encoder::capacity`（`BASELINE_64` 与计费式），`tswn_pwp::capacity` 只做再导出，不保留第二份常量。批缓冲按张量分配（`encoder::batch`），批槽位偏移为 `batch_index × 该张量每样本元素数`；未写入位置按 0／-1 填充，复用前 `clear_slot` 恢复 padding。规格第 3.2 节白名单已固化为 `encoder::slots` 的数据表；第 16 节第 7 条指出的三处校验缺口（charm `group_id`、槽内 U64 实体引用、载荷 kind 与分支匹配）由 `FeatureEncoder::validate_state` 闭合，`BattleModelState::validate` 仍不是替代品。
 
 **历史原生验收记录。** astra 针对 `e3925bf0` 的静态复核发现已在 `ebe5d75f` 修复，格式修正为 `b2ff92d9`；当时 `tswn_core` 在关闭默认 `mimalloc`、保留 `png_render` 的配置下通过 599 项测试（2 项依赖外部输入而忽略）。这是历史记录，不是当前测试数量或本次维护的执行结果。版本 2 训练包的文件与消费端回归现已补齐；WASM 数值一致性和跨绑定闭环仍需分别确认，原生结果不能替代跨端验收。
 
@@ -27,7 +27,7 @@
 
 目标是把当前机制状态编码为固定形状张量，供模型输出各输入队伍的最终获胜概率。本文决定字段去向、形状、引用、数值转换、资格 mask、导出和验收契约；不决定网络结构、损失函数、优化器或校准模型。
 
-遵循 [后续训练和网页约束](battle-analyze.md#后续训练和网页约束)：encoder 只在 Rust 实现一次，另加导出通道；原始 Parquet `state` 是唯一事实来源，格式不变，Python 只负责训练与评估。当前已实现编码与基础导出；模型训练和推理仍属后续阶段。本次文档维护不新增 crate，不修改已有数据或 golden/corpus。
+遵循 [后续训练和网页约束](battle-analyze.md#后续训练和网页约束)：原始 Parquet `state` 是机制事实来源；核心 encoder 负责固定张量转换，`tswn-pwp encode` 负责流式训练包，Python 读取已编码数组开展训练与评估。模型训练和推理属于后续阶段。
 
 下文“规定”描述编码契约；“后续目标／拟议”专指尚未落地的绑定或模型相关约束。当前公共接口以第 14 节为准。`M:行` 指 [runtime/model_state.rs](../../crates/tswn_core/src/runtime/model_state.rs) 的源码定位；其余缩写在第 17 节给出完整路径。复合类型叶子已在第 3.1 节展开，默认槽语义白名单已在第 3.2 节与实现中冻结；跨端与导出完整验收边界单独记录，见第 15／16 节。
 
@@ -397,7 +397,7 @@ P:160 的样本轮数 p99=61、max=146 来自 `SampleRow.rounds_advanced`（[sta
 
 当前共享工件是完整 `EncoderManifest` JSON，可命名为 `encoder-manifest.json`。它保存协议／encoder／布局／数值策略版本、profile 容量、分类词表、数值槽声明、拟合常数及分布证据、来源摘要和支持域；完整字段布局由版本化 Rust 注册表与本规格共同冻结，manifest 不内嵌整张字段表，也没有逐字段裁剪率字段。后续训练、原生推理与绑定应加载同一工件及摘要，Python 不另拟合或覆盖常数。
 
-**manifest 类型与组装已实现**（[manifest.rs](../../crates/tswn_core/src/encoder/manifest.rs#L304-L490)）：`EncoderManifest` 登记协议身份（`ENCODER_MANIFEST_SCHEMA` 与 `encoder-v1`）、容量 `ProfileSpec`、分类词表、逐槽归一化声明、校准证据、支持域与契约摘要（sha256，摘录自身置空后计算）。`EncoderManifest::from_calibration` 从 `tswn-pwp calibrate` 的报告组装：固定计数槽写 `FixedCount` 声明、不要求观测；报告中其余数值字段写 `Fitted`，常数来自报告，缺字段由 `FeatureEncoder::new` 的完整槽门禁拒绝。组装结果的 `contract_digest` 初始为 None，发布前须以 `digest()` 填写，基础导出器要求其匹配。`validate()` 只查自洽性，与实现的交叉核对在 `FeatureEncoder::new` 完成。`s_f`/`c_f` 同时保存十进制与 f64 bit 表示，读取时校验一致，避免 JSON 重写工具改变数值身份。
+**manifest 类型与组装已实现**（[manifest.rs](../../crates/tswn_core/src/encoder/manifest.rs)）：`EncoderManifest` 登记协议身份（`ENCODER_MANIFEST_SCHEMA` 与 `encoder-v1`）、容量 `ProfileSpec`、分类词表、逐槽归一化声明、校准证据、支持域与契约摘要（sha256，摘录自身置空后计算）。`EncoderManifest::from_calibration` 从 `tswn-pwp calibrate` 的报告组装：固定计数槽写 `FixedCount` 声明、不要求观测；报告中其余数值字段写 `Fitted`，常数来自报告，缺字段由 `FeatureEncoder::new` 的完整槽门禁拒绝。[build-manifest](../../crates/tswn_pwp/src/manifest.rs) 调用该组装入口，填写 `contract_digest` 并通过核心门禁后发布；流式导出器核对摘要。`validate()` 检查自洽性，与实现的交叉核对在 `FeatureEncoder::new` 完成。`s_f`/`c_f` 同时保存十进制与 f64 bit 表示，读取时校验一致，保持数值身份。
 
 没有观测值的字段不能悄悄令 `s_f=c_f=1`，也不接受登记人工常数：只能补足 train 观测后重新拟合，否则返回 `MissingCalibration{path}`。所有有效 f32 必须有限，NaN/Inf 返回 `NonFiniteValue`；裁剪只作用数值特征，不改引用、mask、原始 bit。公式与组装方法已经冻结；每个数值 manifest 的发布仍须基于对应 train 数据校准并通过门禁，不能把历史分布表当作可直接部署的常数。
 
@@ -670,7 +670,7 @@ target/release/tswn-pwp.exe calibrate --out target/winprob-100k --json-out targe
 git diff --check
 ```
 
-现有 `stats` 不能生成第 5 节的标量尺度；已实现的 [calibrate.rs](../../crates/tswn_pwp/src/calibrate.rs#L442-L462) 输出字段分布、拟合常数、输入／可执行文件摘要及 train 选择记录。完整 manifest 仍需组装、写入契约摘要并通过 `FeatureEncoder::new` 的实现门禁；上面的统计命令不等于完整训练包或跨端验收。
+`stats` 提供数量与容量统计；[calibrate.rs](../../crates/tswn_pwp/src/calibrate.rs) 输出第 5 节所需的标量分布、拟合常数、来源摘要和 train 选择记录。[build-manifest](../../crates/tswn_pwp/src/manifest.rs) 将校准报告发布为完整契约，再由 `encode` 生成训练包，完整命令见 [PWP README](../../crates/tswn_pwp/README.md#离线张量编码)。跨端数值一致性按上表另行验收。
 
 ## 16. 冻结决策与后续验收事项
 

@@ -11,7 +11,7 @@
 | 数据集生成、训练样本导出（Experimental） | `cli_api::battle::BattleModelSession` | 生成器在 `PreparedRunner` 之上以相同 seed 两遍运行；`next_frame()` 给可见帧边界，`model_state()` 导出当前机制状态 |
 | 同一模板按 seed 大批量复用 | 根级 `PreparedRunner` | 批量热路径用 `run_to_completion_prevalidated`，跳过 immutable handler 就绪扫描 |
 
-`Advanced / Compatibility` 描述的是调用方需要自己承担的部分（seed 行格式、模板复用与生命周期、批量并行策略），不是“不推荐使用”。根级 `Runner` / `PreparedRunner` 是唯一执行内核入口；CLI 和胜率评分使用这层入口，数据集生成则在其之上通过 Experimental `cli_api::battle::BattleModelSession` 驱动两遍运行与状态采样，不能概括为直接调用 `Runner` 导出训练样本。历史迁移背景见 [主 Runtime 0.5 迁移指南](../guides/runtime-0.5-migration.md)，执行内核层与正式会话 API 各有分工。
+`Advanced / Compatibility` 入口适合由调用方管理 seed 行格式、模板复用、生命周期与批量并行策略。根级 `Runner` / `PreparedRunner` 提供执行内核，CLI 战斗通过 `BattleSession` 消费它，胜率与评分直接复用它；数据集生成在 prepared 阵容之上，通过 `BattleModelSession` 驱动两遍运行和状态采样。分层理由见 [会话设计](../design/battle-session.md)，旧版本替代关系见 [Runtime 迁移指南](../guides/runtime-0.5-migration.md)。
 
 两条执行路径的判胜实现不同：`run_until_winner` 走 `sync_winner`（全量扫描实体表），`run_to_completion` / `run_to_completion_prevalidated` 走 `sync_winner_from_alive_views`（只读存活视图）。两者结论必须一致；语义、历史缺陷与回归测试见[判胜语义](../mechanics/winner.md)。任何入口都不要用 `alive_group_count()` 判断胜负；它保留 legacy 计数语义，参与多人目标选择与死亡行动者的 post-action 提前退出。
 
@@ -61,6 +61,8 @@ Runtime error 后会话进入 sticky failure（poisoned）：`is_failed() = true
 - `rows[].clips[].parts[]`：文本、玩家、高亮、数值、HP before/after 和 death effect，展示语义由 core 提供。消费者不应再从消息模板或伤害值推断展示效果。
 - `BattleResult`：`status`、`stop_reason`、`finished`、`truncated`、`rounds_advanced`、`frames_emitted`、`winner_ids`、`winner_team_indices`、`final_states`。
 - `BattleReplay`：保留 `initial_states`、`frames`、全部 result 字段和固定为 `round` 的 `state_granularity`。`collect(BattleSession)` 与 `battle_replay` 的帧和结果相同。Rust 的 `BattleReplayOptions` 是已弃用兼容别名。
+
+护盾字段中，`shield` 是当前剩余吸收量，合计普通蓄盾与 `ShieldValue`，死亡时为 0；铁壁由独立状态表达。`max_shield` 是当前护盾技能熟练度，供展示条计算比例，实际盾值可以超过它。它和 `max_hp` 都随当前模板更新，能反映吞噬等机制的变化。身份字段 `owner_id` 表示直接主人，`source_id` 表示根来源。
 
 调用方应保持 canonical snapshots 不变。昵称、图标 CSS 类、播放计划、检查点都是显示层数据。Python/WASM 的快照脱离会话持有的 Rust 内存，修改返回对象不会修改 Runtime。
 
@@ -167,9 +169,11 @@ Web streaming 架构（BattleStreamSource / BattleStreamController）
 BattleModelState（MODEL_STATE_SCHEMA_VERSION）
 BattleModelSession
 数据集格式（manifest 的 format_version / state_schema_version）
-FeatureEncoder 与 WinProbFeatures（tswn_core::encoder；全八族核心张量编码与
-                    tswn-pwp encode 基础离线导出已落地，完整训练包仍有后续项）
+FeatureEncoder 与 WinProbFeatures（tswn_core::encoder；全八族核心张量、完整
+                    manifest、版本 2 流式训练包与只读 NumPy loader 已交付）
 模型结构与推理接口
 ```
 
-当前 encoder 由 [encode_into](../../crates/tswn_core/src/encoder/encode.rs#L462-L480) 写入 global / entity / template / lane / state / slot / list / extra 八族，完整注册表见 [TENSOR_SPECS](../../crates/tswn_core/src/encoder/batch.rs#L115)。[tswn-pwp encode](../../crates/tswn_pwp/src/encode.rs) 已支持按 split 输出小端 `.bin`、每批 `batch-manifest.json` 与根 `manifest.json`；这是基础张量导出，尚不输出 labels / label_mask、逐行 audit 与源行定位，不复制 encoder manifest，也不提供逐文件摘要或流式分片读入。当前 Python / WASM 尚无 encoder 绑定；完整训练包验收与模型接口见 [FeatureEncoder 规格](../design/feature-encoder-spec.md)。
+当前 [FeatureEncoder](../../crates/tswn_core/src/encoder/encode.rs) 写入 global / entity / template / lane / state / slot / list / extra 八族，完整注册表见 [TENSOR_SPECS](../../crates/tswn_core/src/encoder/batch.rs)。[tswn-pwp encode](../../crates/tswn_pwp/src/encode.rs) 导出版本 2 流式训练包，包含完整 encoder manifest、features/exact/labels/audit 四个通道、逐行源位置和文件摘要；[NumPy loader](../../scripts/read_encoded_batches.py) 校验文件后逐批读取已编码数组。
+
+完整数据格式、支持域和训练包约定见 [FeatureEncoder 规格](../design/feature-encoder-spec.md#14-接口边界)，运行流程见 [PWP README](../../crates/tswn_pwp/README.md#离线张量编码)。在线 Python/WASM 编码绑定、模型训练与推理属于后续目标，继续复用同一核心 encoder 和契约。

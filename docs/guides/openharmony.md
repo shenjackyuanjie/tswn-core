@@ -1,6 +1,8 @@
 # OpenHarmony 交叉编译
 
-本仓库不提交本机 SDK 绝对路径。先设置 `OHOS_NATIVE_SDK` 指向
+[返回使用指南](README.md)
+
+通过环境变量为本机构建提供 SDK 路径。先设置 `OHOS_NATIVE_SDK` 指向
 OpenHarmony native SDK 目录，也就是包含 `llvm/bin`、`sysroot` 和
 `build/cmake/ohos.toolchain.cmake` 的目录。
 
@@ -32,7 +34,7 @@ uv run scripts/build_all.py --release --clean --include-ohos-cli
 输出文件位于聚合包的 `cli/bin/` 下，命名形如：
 
 ```text
-tswn-cli_alpha_0_3_11_aarch64_unknown_linux_ohos_unsigned.bin
+tswn-cli_alpha_<core版本，点替换为下划线>_aarch64_unknown_linux_ohos_unsigned.bin
 ```
 
 该文件是未签名 ELF 二进制；需要正式部署到受签名策略限制的位置时，仍需按目标环境要求另行签名。
@@ -46,7 +48,8 @@ cargo build --target aarch64-unknown-linux-ohos -p tswn_capi --release
 脚本会为 `aarch64-unknown-linux-ohos` 导出 Cargo target linker、`AR`、
 `CC`、`CXX`、`CFLAGS`、`CXXFLAGS`、`CARGO_ENCODED_RUSTFLAGS`、
 `CC_SHELL_ESCAPED_FLAGS` 和 CMake toolchain。`CARGO_ENCODED_RUSTFLAGS`
-同时包含本项目 release 路径需要的 `-Z mutable-noalias=no`。
+包含目标、sysroot 和 MUSL 链接参数，并追加已有的同名环境变量内容。
+配置逻辑见 [PowerShell 脚本](../../scripts/ohos-env.ps1) 和 [POSIX 脚本](../../scripts/ohos-env.sh)。
 
 如果要检查除 Python/WASM/GUI 绑定之外的 native workspace：
 

@@ -15,7 +15,7 @@
 
 ## 目标与边界
 
-最终目标是在战斗进行中，根据当前机制状态预测各输入队伍最终获胜概率。Rust 状态导出、无展示推进、Parquet 数据生成和校验已交付；后续又加入 Rust encoder、标量校准和基础张量导出。模型训练、推理、Python/WASM 机制状态查询和胜率网页 UI 不在当前交付范围。
+最终目标是在战斗进行中，根据当前机制状态预测各输入队伍最终获胜概率。现阶段提供状态采样、可校验的数据集，以及校准、完整编码契约和流式训练包；下一阶段将使用这些产物开展模型训练、推理、在线绑定与胜率展示。
 
 预测对象是最终胜者。`max_rounds` 和 `no_progress` 只是生成时的计算保护：截断局仍保存状态，标签为空，不强行标负、不增加“未决胜者”类别。`calibrate` 与 `encode` 默认排除空标签；`encode --keep-unlabeled` 仅用于诊断，空标签写为 -1/mask=0。训练前必须检查截断比例和分布，以免把有标签子集误认为完整对局分布。
 
@@ -23,7 +23,7 @@
 
 ## 状态与 Rust 接口
 
-`runtime::model_state::BattleModelState` 是版本化、类型化的机制数据。包含输入队伍、实体、模板、当前属性、技能、状态载荷、引用关系、世界顺序、调度信息和运行时槽。整数、布尔值和浮点 bit 按原精度保留；暂不统一转成 f32 或固定张量。
+`runtime::model_state::BattleModelState` 是版本化、类型化的机制数据。包含输入队伍、实体、模板、当前属性、技能、状态载荷、引用关系、世界顺序、调度信息和运行时槽。原始 state 保留整数、布尔值和浮点 bit 的精度；固定张量与 f32 数值模型通道由后续 encoder 转换生成。
 
 当前 Rust 方法签名见 [展示会话](../../crates/tswn_core/src/cli_api/battle/session.rs#L43-L48) 和 [无展示会话](../../crates/tswn_core/src/cli_api/battle/model_session.rs#L30-L64)：
 
@@ -78,7 +78,7 @@ Rust 直接输出嵌套 Parquet。Arrow/Parquet/serde_arrow 依赖仅在独立�
 | `battles.parquet` | 对局编号、阵容编号、seed、split、终止结果和样本数 |
 | `samples.parquet` | 对局编号、帧边界、审计 progress、可空 winner_team_index 和嵌套 state |
 
-后续训练读取器只应选择 `state` 和 `winner_team_index`，默认过滤空标签。原始输入、阵容哈希、seed、split 和 progress 都不能进入训练特征。
+原始 Parquet 的 [只读示例](../../scripts/read_winprob_dataset.py) 选择 `state` 和 `winner_team_index`，默认过滤空标签；训练包的 [NumPy loader](../../scripts/read_encoded_batches.py) 直接提供已编码 features 与 labels。原始输入、阵容哈希、seed、split 和 progress 保留在审计通道，用于复现、集合选择和分桶分析。
 
 ## 确定性、恢复和失败
 

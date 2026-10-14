@@ -390,8 +390,4 @@ cargo test -p tswn_core runtime::tests::custom_runner_import_tests --lib -- --te
 cargo test -p tswn_core --lib -- --test-threads=1
 ```
 
-往返和对战过程验证见：
-
-- [DIY 往返验证](../guides/diy-validation.md)：当前 JSONL 采样、测试与差异分级工作流。
-- [track_diy_roundtrip.py](../../track_diy_roundtrip.py)：历史采样工具，尚未适配当前 CLI 与初始状态格式，不能直接作为当前门禁。
-- 旧 `crates/tswn_core/src/bin/track_diy_roundtrip.rs` 已随旧执行器删除。
+往返和对战过程见 [DIY 往返验证](../guides/diy-validation.md)：集中维护 JSONL 采样、差异分级、历史工具状态与运行记录。
