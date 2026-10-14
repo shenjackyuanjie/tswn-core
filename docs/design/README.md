@@ -1,22 +1,21 @@
-# 设计与实施规格
+# 设计与机制规格
 
 [返回文档中心](../README.md)
 
-本目录保留设计推导、实施规格和验收记录。阅读时先看各篇开头的**当前落地状态**：正文中的历史备选方案、阶段计划和当时的待办，不等于当前 API。现行调用契约以 [公共 API](../reference/public-api.md) 与源码为准。
+本目录说明现行架构取舍、机制字段来源和固定张量契约。使用方式见 [原理指南](../core-guide/README.md)，调用契约见 [公共 API](../reference/public-api.md)，各工具命令见所属 crate README。
 
-胜率预测链路统一归属于 **tswn-pwp（player winchance predictor）**。当前已实现机制状态导出、两遍分层采样、Parquet / 续跑基础设施、FeatureEncoder 全八族核心张量、完整 manifest 发布、版本 2 流式训练包与 NumPy 只读 loader。HP-only 基线已完成；模型训练、线上推理与 Python/WASM 在线编码绑定仍未实现。状态、数据集与 encoder 契约均属于 Experimental，与正式 BattleSession / DTO 的稳定性边界分开。
+胜率预测数据链路归属于 **tswn-pwp（player winchance predictor）**，交付状态与完整流程见 [PWP README](../../crates/tswn_pwp/README.md)。状态、数据集与 encoder 按 Experimental 契约演进；各篇将已交付能力和后续模型/绑定目标分别说明。
 
-| 文档 | 当前定位 |
+| 文档 | 主要解决的问题 |
 | --- | --- |
-| [BattleSession 与 Web Streaming 重构计划](battle-session-plan.md) | 核心会话、跨语言 DTO、CLI JSONL 与网页流式架构已落地；保留原始设计、历史备选与验收过程 |
-| [BattleSession API 冻结前加固要求](battle-session-hardening.md) | 关键加固已落地，包括 C options V1 prefix、sticky failure、绑定类型与释放约定；历史 FINAL / 可执行清单按开篇对照阅读 |
-| [战斗状态导出与胜率数据生成](battle-analyze.md) | 已实现 Rust 状态接口、两遍分层抽样、Parquet、续跑与带标签训练导出；保留生成方案和数据契约依据 |
-| [BattleModelState Runtime 审计](battle-model-state-audit.md) | 已实现状态投影的字段来源、名字机制派生和缓存排除理由；不是 Runtime 存档格式 |
-| [FeatureEncoder 设计规格](feature-encoder-spec.md) | 已实现八族、69 个张量、完整契约、训练/审计分离、校验与安全提交；跨绑定编码和模型推理仍待验收 |
+| [BattleSession 与网页增量播放](battle-session.md) | 驱动与两种会话如何分层，源端/历史/播放如何独立，关键兼容决策为何这样选择 |
+| [战斗状态导出与胜率数据生成](battle-analyze.md) | 两遍采样、标签、切分、Parquet、恢复和后续模型接入如何组织 |
+| [BattleModelState Runtime 审计](battle-model-state-audit.md) | 每类机制字段从哪里导出，身份如何派生，机制状态与存档/缓存各有什么用途 |
+| [FeatureEncoder 设计规格](feature-encoder-spec.md) | 状态如何映射到固定张量，容量、引用、数值、标签与审计通道如何约定 |
 
 ## 阅读关系
 
-BattleSession 的前两篇按表中顺序阅读：先看 [重构计划](battle-session-plan.md)，再看 [API 加固要求](battle-session-hardening.md)；当前调用方式见 [公共 API](../reference/public-api.md)。
+会话接入先看 [公共 API](../reference/public-api.md)，理解内部职责时再看 [会话设计](battle-session.md)。
 
 `tswn-pwp` 数据链路先看 [状态导出与数据生成](battle-analyze.md) 确认状态边界和 Parquet 契约，再看 [Runtime 状态审计](battle-model-state-audit.md) 追溯字段来源，最后看 [FeatureEncoder 规格](feature-encoder-spec.md) 了解固定张量映射与导出边界。生成器命令与文件格式补充说明见 [tswn-pwp README](../../crates/tswn_pwp/README.md)。
 
@@ -26,4 +25,4 @@ BattleSession 的前两篇按表中顺序阅读：先看 [重构计划](battle-s
 - 实验状态接口与数据链路：[BattleModelSession](../../crates/tswn_core/src/cli_api/battle/model_session.rs)、[Runtime 状态投影](../../crates/tswn_core/src/runtime/model_state.rs)、[生成器](../../crates/tswn_pwp/src/generate.rs)。
 - 核心张量与离线导出：[张量注册表](../../crates/tswn_core/src/encoder/batch.rs)、[FeatureEncoder](../../crates/tswn_core/src/encoder/encode.rs)、[manifest 命令](../../crates/tswn_pwp/src/manifest.rs)、[encode 命令](../../crates/tswn_pwp/src/encode.rs)、[Python loader](../../scripts/read_encoded_batches.py)。
 
-已完成的旧 Runtime 重构过程见 [历史归档](../archive/README.md)。
+旧版本升级见 [Runtime 迁移指南](../guides/runtime-0.5-migration.md)；已完成的长篇实施计划可从对应文档的 Git 历史查阅。

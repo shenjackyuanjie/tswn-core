@@ -1,6 +1,6 @@
 # 文档中心
 
-按用途选择入口。接口接入以 [公共 API](reference/public-api.md)、各 crate README 和源码类型为准；设计规格、机制分析与历史记录不等同于当前接口承诺。
+按用途选择入口：[core 原理指南](core-guide/README.md)解释概念和数据流，[公共 API](reference/public-api.md)维护调用契约，各 crate README 维护安装和运行方式。设计文档补充关键取舍与字段规格，历史记录按写作时的版本和环境阅读。
 
 ## 从这里开始
 
@@ -11,10 +11,11 @@
 - 接入对局：[公共 API 与跨语言契约](reference/public-api.md)、[Windows C/C++ 接入](guides/c-api-cpp-windows.md)。
 - 自定义角色：[DIY / OL 格式](reference/diy-overlay.md)、[往返验证](guides/diy-validation.md)。
 - 从旧版本迁移：[Runtime 0.5 迁移指南](guides/runtime-0.5-migration.md)。
-- 了解 BattleSession 实现与历史决策：[重构计划与验收](design/battle-session-plan.md)、[API 加固现状](design/battle-session-hardening.md)。
+- 了解 BattleSession 的分层与设计取舍：[会话与网页增量播放](design/battle-session.md)。
 - 性能测量与历史结果：[性能索引](perf/README.md)。
+- 从外部号库继续发现差异：[SBY Test 回归方案](archive/sby-test-plan.md)，与仓库固定 corpus 配合使用。
 - 构建脚本与验收命令：[脚本索引](../scripts/README.md)。
-- 项目旧说明与已淘汰工具：[历史归档](archive/README.md)。
+- 项目起源、原始 Dart 与兼容排查复盘：[历史资料](archive/README.md)。
 - 胜率预测模块：[tswn-pwp 设计索引](design/README.md)。
 
 ## 目录导航
@@ -24,19 +25,20 @@
 | [core-guide/](core-guide/README.md) | 面向 namerena 玩家与项目新读者的图文原理指南 |
 | [guides/](guides/README.md) | 使用、构建、验证与迁移指南 |
 | [reference/](reference/README.md) | 公共 API 契约与输入输出格式 |
-| [design/](design/README.md) | 实施计划、加固要求与验收规格；状态以正文为准 |
+| [design/](design/README.md) | 现行架构取舍、状态字段审计与特征编码规格 |
 | [mechanics/](mechanics/README.md) | 分身、技能衰减、name_factor / rq 等机制分析 |
 | [perf/](perf/README.md) | 性能方法、调查报告、历史基线、固定输入与原始数据 |
 | [diff/](diff/README.md) | JS / Rust 差分报告与样例 |
 | [releases/](releases/README.md) | 按版本保存的更新记录，包括标为开发中的记录 |
-| [archive/](archive/README.md) | 项目起源、已淘汰架构与历史分析；不作为当前实现说明 |
+| [archive/](archive/README.md) | 项目起源、个人随笔、原始 Dart 分析与兼容复盘 |
 
 ## 文档约定
 
-- 除入口 `README.md` 和版本号文件外，手写文档使用小写英文、连字符分词，例如 `battle-session-hardening.md`；不使用序号前缀、含糊的 `original` / `short` 或重复的 `tswn_` 前缀。
+- 除入口 `README.md` 和版本号文件外，手写文档使用小写英文、连字符分词，以主题命名，例如 `battle-session.md`。
 - 文件名说明主题；标题使用清晰的中文或 API 名称。一个文档只有一个一级标题，正文逐级分节。
 - 每篇文档从所属分类索引可达。新增或移动文档时，同时更新索引、相对链接、仓库内引用和读取该文档的脚本。
-- 设计和历史文档保留当时结论、状态与证据；归档不表示重新验收。旧源码路径、旧命令与历史外部链接可能失效。
+- 同一主题按用途维护权威来源：接口字段在 `reference/`，操作命令在所属指南或 crate README，设计理由在 `design/`；原理指南通过链接衔接详细资料。
+- 已完成的实施清单和被替代的分析精简到当前结论，有独立价值的证据留在报告中，完整过程可从 Git 历史查阅。发布记录与历史测量保留版本、环境和原始结果。
 - `perf/` 和 `diff/` 的固定输入、原始 JSON、图片及工具生成报告保留原文件名与路径，不套用手写文档命名规则，不重生成基线。性能报告中的测量值、版本、提交与原始数据内容不因整理而改写。
 - 示例命令默认从仓库根目录执行；Markdown 链接相对当前文档。
 

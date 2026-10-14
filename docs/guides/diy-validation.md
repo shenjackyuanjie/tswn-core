@@ -116,4 +116,4 @@ cargo test -p tswn_core --lib plain_raw_import_tests
 
 ## 7. 与 JS / Rust 对齐验证的关系
 
-[历史 sby 测试计划](../archive/sby-test-plan.md) 比较的是外部 JS 与 Rust；本文比较同一当前 Rust 中的原始名字与导出回读名字。两者验证对象不同，不能互相替代。冻结 JS exact trace 与压力 golden 的现行门禁见 [主 Runtime 0.5 迁移指南](runtime-0.5-migration.md#回归门禁)。
+本文比较同一 Rust 实现中的原始名字与导出回读名字；JS / Rust 差分比较两种实现的行为。号库采样和失败定位方案见 [SBY Test](../archive/sby-test-plan.md)，历史差异复核工具见 [tswn_diff.py](../../scripts/README.md#tswn_diffpy)。冻结 JS exact trace 与压力 golden 的现行门禁见 [主 Runtime 迁移指南](runtime-0.5-migration.md#回归门禁)。两类验证分别提供往返保真和实现兼容性的证据。

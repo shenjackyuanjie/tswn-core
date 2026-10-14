@@ -1,6 +1,6 @@
 # 项目架构文档（面向重写者）—— 技术与架构视角
 
-> 历史文档：本文描述原始 Dart 源实现，不是 `tswn_core 0.5.0` 的模块或公开 API。当前迁移说明见 [`runtime-0.5-migration.md`](../guides/runtime-0.5-migration.md)。
+> 历史资料：本文记录原始 Dart 源实现的模块和调用时序，供兼容行为研究使用。现行 Rust 架构见 [core 原理指南](../core-guide/README.md)，旧版本升级见 [Runtime 迁移指南](../guides/runtime-0.5-migration.md)。
 
 说明与目标
 

@@ -1,30 +1,25 @@
-# 历史归档
+# 项目历史与兼容复盘
 
 [返回文档中心](../README.md)
 
-本目录保留历史上下文，不作为当前 API、模块结构或待实施任务。文中的“当前”指写作时的基线；部分源码、命令和行号已不存在。当前接口见 [公共 API](../reference/public-api.md)，架构切换结果见 [Runtime 0.5 迁移](../guides/runtime-0.5-migration.md)。
+本目录保留具有独立阅读价值的项目背景、原始实现研究和排查结论。历史材料按注明的基线阅读；现行 Rust 架构见 [core 原理指南](../core-guide/README.md)，调用契约见 [公共 API](../reference/public-api.md)。
 
-## 根目录旧文档
-
-以下文件从根目录集中归档，原文与历史验收数据保留；旧文件名在 changelog 和历史报告中仍表示当时的路径。
-
-- [旧项目 README](legacy-readme.md)：原 `README.old.md`，早期介绍与随笔。
-- [早期工作区指南](legacy-workspace-guide.md)：原 `rule.old.md`，重写阶段的工作约定和工具。
-- [SBY 修复计划与历史记录](sby-test-plan.md)：原 `sby_test.md`，旧执行器的大样本差分排查流程。
-
-## 项目与旧架构
+## 项目背景
 
 - [项目起源](project-origins.md)：从逆向 Dart 网页实现到 Rust 重写的背景随笔。
-- [原始 Dart 架构](dart-architecture.md)：面向重写者的源实现架构分析。
-- [Storage 内部可变性分析](storage-refactor.md)：已删除的旧 Rust 对象模型。
-- [Runtime 核心重构实施规格](runtime-refactor-plan.md)：已完成的主 Runtime 迁移过程。
-- [Custom Runtime 迁移审计](custom-runtime-migration.md)：已完成的 custom 产品线行为迁移审计。
+- [旧项目 README](legacy-readme.md)：原 `README.old.md`，保留作者的早期介绍与开发随笔。
 
-## why_ns 历史分析
+## 原始实现与兼容经验
 
-以下文档存在不同阶段的判断，保留而不合并。涉及修复后结论时先阅读复盘；其余材料用于追溯推理过程，不代表今天的实现。
+- [原始 Dart 架构](dart-architecture.md)：Dart 模块与调用时序，供原始行为研究使用。
+- [why_ns 机制与排查复盘](why-ns-review.md)：合并原四篇分析，说明 JS 构造序号、门控与已定位的兼容差异。
 
-- [修复复盘](why-ns-fix-review.md)：2026-05-18 修复后的分析。
-- [机制概览](why-ns-overview.md)：JS 构造序号、退款与重置机制。
-- [早期判断](why-ns-early-analysis.md)：保留“尚未实现”阶段的结论。
-- [Rust 实现分析](why-ns-rust-analysis.md)：2026-05-18 的旧路径分析。
+## 号库回归方案
+
+- [SBY Test 号库差分回归方案](sby-test-plan.md)：保留完整目标、六种对局模式、分档采样、失败定位及历史运行记录。`tests/sqp5900.txt`、`tests/sqp6000.txt` 是本地外部号库，按 `.gitignore` 约定另行准备；仓库中的固定 corpus 保存部分已发现缺陷的回归样例。号库方案用于继续发现固定样例之外的行为差异，执行前按当前 CLI 和 JS 工具核对原文命令。
+
+## 查阅完整历史
+
+已完成的 Runtime/custom 迁移、旧 Storage 方案和旧工作区约定，其完整过程可从 [整理前的 Git 快照](https://github.com/shenjackyuanjie/tswn-core/tree/821e3d47439983099e256bc2a07898a8b999bef8/docs/archive) 查阅。升级替代关系继续维护在 [Runtime 迁移指南](../guides/runtime-0.5-migration.md)，开发约定维护在 [AGENTS.md](../../AGENTS.md)。
+
+版本和实验的原始证据分别保存在 [版本记录](../releases/README.md)、[性能资料](../perf/README.md) 和 [差分报告](../diff/README.md)。

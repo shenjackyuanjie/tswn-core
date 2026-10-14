@@ -2,7 +2,7 @@
 
 `tswn-core` 是名字竞技场的 Rust 实现仓库。当前重点是把核心战斗逻辑、名字解析、技能系统、评分/胜率模拟、图标渲染和跨语言绑定集中维护在一个 Cargo workspace 里，并用差分工具持续对齐旧实现行为。
 
-旧 README 与早期工作约定集中保存在 [历史归档](docs/archive/README.md)；[旧 README 原文](docs/archive/legacy-readme.md)继续保留。
+项目起源与原始实现研究见 [历史资料](docs/archive/README.md)；作者的早期随笔继续保存在 [旧 README](docs/archive/legacy-readme.md)。开发约定统一维护在 [AGENTS.md](AGENTS.md)。
 
 ## 当前状态
 

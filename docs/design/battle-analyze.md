@@ -1,6 +1,6 @@
 # tswn-pwp：战斗状态导出与胜率数据生成
 
-本文记录 **tswn-pwp（player winchance predictor）** 已落地的状态导出、数据生成和分析机制，并单独保留后续训练/网页设计。推进语义来自 [BattleSession 现状与历史计划](battle-session-plan.md) 和 [API 加固现状](battle-session-hardening.md)；字段审计见 [battle-model-state-audit.md](battle-model-state-audit.md)，固定张量映射见 [FeatureEncoder 规格](feature-encoder-spec.md)，运行命令见 [生成器说明](../../crates/tswn_pwp/README.md)。
+本文记录 **tswn-pwp（player winchance predictor）** 已落地的状态导出、数据生成和分析机制，并单独说明后续训练/网页设计。推进语义见 [公共会话契约](../reference/public-api.md#会话与结果)，分层理由见 [会话设计](battle-session.md)；字段审计见 [BattleModelState 审计](battle-model-state-audit.md)，固定张量映射见 [FeatureEncoder 规格](feature-encoder-spec.md)，运行命令见 [生成器说明](../../crates/tswn_pwp/README.md)。
 
 ## 当前实现与源码依据
 
