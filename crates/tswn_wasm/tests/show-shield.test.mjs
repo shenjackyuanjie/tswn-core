@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { actorShieldMetrics } from "../examples/show-utils.js";
 import { actorToken, buildFrameRows, renderPlayers } from "../examples/show-render.js";
 import { buildPlayerDetailHtml } from "../examples/show-detail.js";
@@ -22,32 +23,73 @@ test("盾条按当前护盾熟练度确定长度，并保留增减区段", () =>
   assert.equal(damage.deltaKind, "damage");
 });
 
-test("盾值超过熟练度时条形不越界，仍保留真实值；旧数据回退到盾值", () => {
+test("盾条满格取熟练度，盾值超过熟练度时由当前值撑开；旧数据回退到盾值", () => {
   const large = actorShieldMetrics({ ...state, shield: 160 });
-  assert.equal(large.totalWidth, 20);
-  assert.equal(large.fillWidth, 20);
+  assert.equal(large.maxValue, 160);
+  assert.equal(large.totalWidth, 40);
+  assert.equal(large.fillWidth, 40);
   assert.equal(large.currentValue, 160);
-  assert.equal(actorShieldMetrics({ ...state, max_shield: undefined, shield: 160 }).totalWidth, 40);
+  const legacy = actorShieldMetrics({ ...state, max_shield: undefined, shield: 160 });
+  assert.equal(legacy.maxValue, 160);
+  assert.equal(legacy.totalWidth, 40);
+  const trimmed = actorShieldMetrics({ ...state, shield: 40 }, { ...state, shield: 40 });
+  assert.equal(trimmed.maxValue, 80, "熟练度仍决定满格长度");
+  assert.equal(trimmed.totalWidth, 20);
   for (const shield of [undefined, -1, NaN, Infinity]) {
     const metrics = actorShieldMetrics({ ...state, shield });
     assert.equal(metrics.fillWidth, 0);
     assert.equal(metrics.deltaWidth, 0);
+    assert.equal(metrics.maxValue, 80);
   }
+  assert.equal(actorShieldMetrics({ ...state, max_shield: 0, shield: 0 }).totalWidth, 0);
   assert.equal(actorShieldMetrics({ ...state, alive: false }).fillWidth, 0);
   assert.equal(actorShieldMetrics({ ...state, shield: 1 }).fillWidth, 1);
   assert.equal(actorShieldMetrics(null), null);
 });
 
-test("正文盾条常驻并接在 HP 条之后，破盾保留消耗区段", () => {
+test("正文盾条只在护盾变化时出现，并叠在体力条正上方", () => {
   const gained = actorToken(player, state, { ...state, shield: 0 }, {}, { showHp: false });
   assert.match(gained, /actor-shield/);
   assert.match(gained, /actor-shield-delta is-recover/);
-  assert.match(gained, /actor-hp[\s\S]*actor-shield/);
+  // DOM 顺序保持 hp → shield，竖排（column-reverse）后盾条落在体力条上方。
+  assert.match(gained, /class="actor-vitals">[\s\S]*class="actor-hp"[\s\S]*class="actor-shield"/);
   assert.match(gained, /class="actor-vitals"/);
+  assert.match(gained, /class="actor-token has-hp has-shield"/);
   const broken = actorToken(player, { ...state, shield: 0 }, state, {}, { showHp: false });
   assert.match(broken, /actor-shield-delta is-damage/);
-  assert.match(actorToken(player, state, state, {}, { showHp: false }), /actor-shield/);
+  // 护盾没变化时两侧都不出现，和体力条一样不做常驻底轨。
+  assert.doesNotMatch(actorToken(player, state, state, {}, { showHp: false }), /actor-shield/);
+  assert.doesNotMatch(actorToken(player, state, state, {}, { showHp: false }), /has-shield/);
   assert.doesNotMatch(actorToken(player, { ...state, shield: 0, alive: false }, state, {}, { deathEffect: true }), /actor-shield/);
+});
+
+test("叠起来的盾条与体力条正好贴合，不重叠也不留缝", async () => {
+  const [replay, players] = await Promise.all([
+    readFile(new URL("../examples/show-replay.css", import.meta.url), "utf8"),
+    readFile(new URL("../examples/show-players.css", import.meta.url), "utf8"),
+  ]);
+  const ruleBlock = (css, selector) => {
+    const index = css.indexOf(selector);
+    assert.ok(index >= 0, `缺少样式规则：${selector}`);
+    const start = css.indexOf("{", index);
+    return css.slice(start + 1, css.indexOf("}", start));
+  };
+  const px = (css, selector, property) => {
+    const match = ruleBlock(css, selector).match(new RegExp(`${property}:\\s*(-?[\\d.]+)px`));
+    return match ? Number(match[1]) : Number.NaN;
+  };
+  const shieldHeight = px(players, ".actor-shield {", "height");
+  const hpHeight = px(replay, ".actor-hp {", "height");
+  const vitalsTop = px(replay, ".has-shield .actor-vitals {", "top");
+  const direction = ruleBlock(replay, ".has-shield .actor-vitals {").match(/flex-direction:\s*([\w-]+)/)?.[1];
+  assert.equal(shieldHeight, 2, "盾条高度");
+  assert.equal(hpHeight, 2, "体力条高度");
+  assert.equal(direction, "column-reverse", "盾条排在体力条上方");
+  // 容器上移量等于两条高度之和：盾条底边正好压在体力条顶边上。
+  assert.equal(vitalsTop, -(hpHeight + shieldHeight), "两条条形紧贴");
+  assert.equal(px(players, ".actor-token.has-shield {", "margin-top"), hpHeight + shieldHeight, "行高留白");
+  assert.equal(ruleBlock(players, ".actor-shield {").includes("box-shadow"), false, "盾条不再描边或加高光");
+  assert.doesNotMatch(actorToken(player, { ...state, shield: 40 }, { ...state, shield: 0 }, {}), /min-width:/, "名字框不再为条形撑宽");
 });
 
 test("结构化片段使用每位角色的前后盾值，保持原始回放不变", () => {
@@ -65,25 +107,35 @@ test("结构化片段使用每位角色的前后盾值，保持原始回放不�
   assert.equal(JSON.stringify(frame), before);
 });
 
-test("侧栏盾条按熟练度常驻，无护盾技能时不留空条", () => {
+test("侧栏盾条在护盾变化时显示并按熟练度定长，空盾不留痕", () => {
   const list = { dataset: {}, querySelectorAll() { return []; }, innerHTML: "" };
   renderPlayers([player], [state], [{ ...state, shield: 20 }], null, list, new Map());
   assert.match(list.innerHTML, /class="shieldwrap"/);
   assert.match(list.innerHTML, /title="护盾：40 \/ 80"/);
   assert.match(list.innerHTML, /shield-delta is-recover/);
-  renderPlayers([player], [{ ...state, shield: 0 }], [{ ...state, shield: 0 }], null, list, new Map());
+  renderPlayers([player], [{ ...state, shield: 0 }], [{ ...state, shield: 20 }], null, list, new Map());
   assert.doesNotMatch(list.innerHTML, /class="shieldwrap"[^>]* hidden/);
+  renderPlayers([player], [{ ...state, shield: 0 }], [{ ...state, shield: 0 }], null, list, new Map());
+  assert.match(list.innerHTML, /class="shieldwrap"[^>]* hidden/);
+  // 缺熟练度时退回盾值当满格，仍有盾就照样显示。
+  renderPlayers([player], [{ ...state, max_shield: 0 }], [], null, list, new Map());
+  assert.doesNotMatch(list.innerHTML, /class="shieldwrap"[^>]* hidden/);
+  assert.match(list.innerHTML, /title="护盾：40 \/ 40"/);
   renderPlayers([player], [{ ...state, shield: 0, max_shield: 0 }], [], null, list, new Map());
   assert.match(list.innerHTML, /class="shieldwrap"[^>]* hidden/);
 });
 
-test("护盾条跟随吞噬后的熟练度扩展，也能缩回当前上限，不借用 max_hp", () => {
+test("熟练度变化只改满格长度，超过熟练度的盾值由当前值撑开", () => {
   assert.equal(actorShieldMetrics({ ...state, max_hp: 9999 }).totalWidth, 20);
   assert.equal(actorShieldMetrics({ ...state, max_shield: 160 }, state).totalWidth, 40);
-  const lowered = actorShieldMetrics({ ...state, max_shield: 8 }, state);
-  assert.equal(lowered.totalWidth, 2);
-  assert.equal(lowered.fillWidth, 2);
-  assert.equal(lowered.previousWidth, 2);
+  const raised = actorShieldMetrics({ ...state, shield: 20, max_shield: 160 }, { ...state, shield: 20 });
+  assert.equal(raised.totalWidth, 40, "吞噬抬高熟练度后条更长");
+  assert.equal(raised.fillWidth, 5);
+  const lowered = actorShieldMetrics({ ...state, shield: 20, max_shield: 8 }, { ...state, shield: 20 });
+  assert.equal(lowered.maxValue, 80, "同一对片段里沿用较大熟练度，避免动画抖动");
+  const overflow = actorShieldMetrics({ ...state, shield: 160, max_shield: 8 });
+  assert.equal(overflow.totalWidth, 40, "超过熟练度的叠加盾值也完整显示");
+  assert.equal(overflow.fillWidth, 40);
 });
 
 test("角色详情与侧栏使用同一份实时状态标签，包含护盾且不改原数据", () => {

@@ -69,8 +69,11 @@ export function actorToken(player, state, previousState, update, { showHp = true
   const hpChanged = isNew || (previousState != null && Number(state.hp) !== Number(previousState.hp));
   const shouldShowHp = showHp && (forceHp || hpChanged);
   const shieldMetrics = actorShieldMetrics(state, previousState);
-  const hasShield = !deathEffect && shieldMetrics?.totalWidth > 0;
-  // 盾条接在完整 HP 条右侧；非扣血消息只配当前 HP，不凭快照差值制造额外扣血动画。
+  // 盾条只在护盾变化（或新角色带盾出现）时出现，与体力条一样不做常驻底轨。
+  const shieldChanged = shieldMetrics != null
+    && (shieldMetrics.currentValue !== shieldMetrics.previousValue || (isNew && shieldMetrics.currentValue > 0));
+  const hasShield = shieldChanged && !deathEffect;
+  // 盾条叠在体力条正上方；非扣血消息只配当前 HP，不凭快照差值制造额外扣血动画。
   const hpMetrics = shouldShowHp || hasShield ? actorHpMetrics(state, shouldShowHp ? previousState : state) : null;
   const hpBar = hpMetrics
     ? `
@@ -91,9 +94,8 @@ export function actorToken(player, state, previousState, update, { showHp = true
   const isKnockout = deathEffect === true;
   const nameClass = `actor-name${isKnockout ? " namedie" : ""}`;
   const vitals = hpBar || shieldBar ? `<span class="actor-vitals">${hpBar}${shieldBar}</span>` : "";
-  const nameWidth = hasShield ? ` style="min-width:${(hpMetrics?.totalWidth ?? 0) + shieldMetrics.totalWidth}px"` : "";
 
-  return `<span class="actor-token${hpClass}${shieldClass}" data-player-id="${player.id}"><span class="actor-avatar-wrap">${renderIconSprite(playerIconClassId(player), "msg-avatar icon-sprite")}</span><span class="${nameClass}"${nameWidth}>${vitals}${escapeHtml(player.display_name)}</span></span>`;
+  return `<span class="actor-token${hpClass}${shieldClass}" data-player-id="${player.id}"><span class="actor-avatar-wrap">${renderIconSprite(playerIconClassId(player), "msg-avatar icon-sprite")}</span><span class="${nameClass}">${vitals}${escapeHtml(player.display_name)}</span></span>`;
 }
 
 /**
@@ -251,7 +253,7 @@ function playerMpMetrics(state, previousState) {
 
 function renderPlayerShieldBar(state, previousState) {
   const metrics = actorShieldMetrics(state, previousState);
-  return `<div class="shieldwrap" style="width:${metrics.totalWidth}px" title="护盾：${metrics.currentValue} / ${metrics.maxValue}"${metrics.totalWidth > 0 ? "" : " hidden"}>
+  return `<div class="shieldwrap" style="width:${metrics.totalWidth}px" title="护盾：${metrics.currentValue} / ${metrics.maxValue}"${metrics.currentValue > 0 || metrics.previousValue > 0 ? "" : " hidden"}>
     <div class="shield-fill" style="width:${metrics.fillWidth}px"></div>
     <div class="shield-delta is-${metrics.deltaKind}" style="left:${metrics.deltaLeft}px;width:${metrics.deltaWidth}px"></div>
   </div>`;
@@ -584,7 +586,7 @@ export function renderPlayers(
       const shieldMetrics = actorShieldMetrics(state, previous);
       const shieldwrapEl = row.querySelector(".shieldwrap");
       if (shieldwrapEl) {
-        shieldwrapEl.hidden = shieldMetrics.totalWidth === 0;
+        shieldwrapEl.hidden = shieldMetrics.currentValue === 0 && shieldMetrics.previousValue === 0;
         shieldwrapEl.style.width = shieldMetrics.totalWidth + "px";
         shieldwrapEl.title = `护盾：${shieldMetrics.currentValue} / ${shieldMetrics.maxValue}`;
         shieldwrapEl.querySelector(".shield-fill").style.width = shieldMetrics.fillWidth + "px";

@@ -196,8 +196,11 @@
     z-index: 2;
 }
 
+/* 盾条叠在体力条正上方：竖排、左端对齐、上下紧贴，总高度正好是两条之和。 */
 .has-shield .actor-vitals {
-    top: -5px;
+    top: -4px;
+    flex-direction: column-reverse;
+    align-items: flex-start;
 }
 
 .actor-hp {
@@ -208,11 +211,6 @@
     overflow: hidden;
     background: var(--hp-background);
     z-index: 2;
-}
-
-.has-shield .actor-hp {
-    height: 4px;
-    border-radius: 2px 0 0 2px;
 }
 
 .actor-hp-fill {

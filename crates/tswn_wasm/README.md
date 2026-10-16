@@ -173,7 +173,7 @@ show 页面右下角控制栏还支持 `C/P/F/T/I/R/S/D` 字母快捷键；字�
 
 负面状态（红色）：`魅惑`、`诅咒`、`冰冻`、`中毒`、`迟缓`、`垂死`
 
-`examples/index.html` 演示页面已内置状态标签渲染，在玩家面板中显示彩色 pill；侧栏和角色详情会从实时 `shield` 补出 `护盾 +数值`，不修改规范 `status_labels`。盾条常驻，右侧与 HP 底轨同高拼接，详见 [示例说明](examples/README.md#indexhtml--完整对局动画展示)。
+`examples/index.html` 演示页面已内置状态标签渲染，在玩家面板中显示彩色 pill；侧栏和角色详情会从实时 `shield` 补出 `护盾 +数值`，不修改规范 `status_labels`。盾条只随护盾变化出现，正文里叠在 HP 底轨正上方（左端对齐、紧贴不重叠），详见 [示例说明](examples/README.md#indexhtml--完整对局动画展示)。
 
 ### 头像 Sprite 渲染
 

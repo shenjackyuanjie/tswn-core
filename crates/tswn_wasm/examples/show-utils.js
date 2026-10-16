@@ -532,8 +532,9 @@ export function actorHpMetrics(state, previousState) {
 }
 
 /**
- * 按每 4 点 1px 计算盾条，上限取当前护盾熟练度，不借用 max_hp。
- * 实际盾值可超过熟练度，条形截在上限内但数值保留；旧数据缺省上限时用前后盾值回退。
+ * 按每 4 点 1px 计算盾条，满格长度取护盾熟练度（`max_shield`），不借用 `max_hp`。
+ * 与实际盾值取较大值：护盾叠到超过熟练度时由当前盾值撑开，保证完整显示；
+ * 旧数据缺省熟练度时退回前后盾值。
  * @param {FightState} state
  * @param {FightState} [previousState=state]
  * @returns {(HpMetrics & { currentValue: number, previousValue: number, maxValue: number })|null}
@@ -545,10 +546,15 @@ export function actorShieldMetrics(state, previousState) {
   const previousValue = previousState
     ? previousState.alive === false ? 0 : value(previousState.shield)
     : currentValue;
-  const maxValue = state.max_shield == null ? Math.max(currentValue, previousValue) : value(state.max_shield);
-  const totalWidth = Math.ceil(maxValue / 4);
-  const fillWidth = Math.ceil(Math.min(currentValue, maxValue) / 4);
-  const previousWidth = Math.ceil(Math.min(previousValue, maxValue) / 4);
+  const maxValue = Math.max(
+    value(state.max_shield),
+    value(previousState?.max_shield),
+    currentValue,
+    previousValue,
+  );
+  const totalWidth = maxValue > 0 ? Math.max(1, Math.ceil(maxValue / 4)) : 0;
+  const fillWidth = Math.ceil(currentValue / 4);
+  const previousWidth = Math.ceil(previousValue / 4);
   const isRecover = currentValue > previousValue;
   return {
     currentValue,
@@ -558,7 +564,7 @@ export function actorShieldMetrics(state, previousState) {
     fillWidth,
     previousWidth,
     deltaLeft: isRecover ? previousWidth : fillWidth,
-    deltaWidth: Math.abs(fillWidth - previousWidth),
+    deltaWidth: currentValue === previousValue ? 0 : Math.max(1, Math.abs(fillWidth - previousWidth)),
     deltaKind: isRecover ? "recover" : currentValue < previousValue ? "damage" : "none",
   };
 }

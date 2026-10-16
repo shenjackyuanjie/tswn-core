@@ -294,9 +294,10 @@ assert.equal(effects.textContent, "聚气", "破盾移除护盾标签，保留�
 assert.equal(effects.hidden, false);
 assert.equal(shieldTrack.querySelector(".shield-delta").style.width, "5px");
 renderShield(0, 0);
-assert.equal(shieldTrack.hidden, false, "有护盾技能时空底轨仍常驻");
-renderModule.namespace.renderPlayers([shieldPlayer], [{ ...shieldPlayer, shield: 0, max_shield: 160 }], shieldStates(0), null, list, new Map());
+assert.equal(shieldTrack.hidden, true, "破盾归零后侧栏不留空条");
+renderModule.namespace.renderPlayers([shieldPlayer], [{ ...shieldPlayer, shield: 0, max_shield: 160 }], shieldStates(10), null, list, new Map());
 assert.equal(shieldTrack.style.width, "40px", "吞噬后底轨扩展");
+assert.equal(shieldTrack.hidden, false, "上一片段仍有盾时保留消耗区段");
 assert.equal(list.querySelector("tr[data-player-id]"), playerRow);
 renderShield(40, 0);
 renderModule.namespace.renderPlayers([shieldPlayer], [{ ...shieldPlayer, hp: 0, alive: false, shield: 40 }], shieldStates(40), null, list, new Map());
@@ -304,7 +305,15 @@ assert.equal(effects.textContent, "聚气", "死亡快照中的残留盾值不�
 renderModule.namespace.renderPlayers([shieldPlayer], [{ ...shieldPlayer, shield: undefined }], shieldStates(0), null, list, new Map());
 assert.equal(effects.textContent, "聚气", "旧数据缺盾字段时不制造标签");
 assert.equal(list.querySelector("tr[data-player-id]"), playerRow);
-console.log("PASS: 侧栏盾条与正面护盾标签完整渲染、增量更新、破盾和死亡归零，旧数据兼容");
+// 正文 token：盾条在护盾变化时出现，与体力条竖排叠放，体力条作为底轨一并出现。
+const shieldTokens = renderModule.namespace.actorToken(
+  { id: 9, display_name: "盾手" }, { ...shieldPlayer, shield: 40 }, { ...shieldPlayer, shield: 0 }, {}, { showHp: false });
+assert.match(shieldTokens, /class="actor-token has-hp has-shield"/);
+assert.match(shieldTokens, /class="actor-vitals">[\s\S]*class="actor-hp"[\s\S]*class="actor-shield"/);
+const quietToken = renderModule.namespace.actorToken(
+  { id: 9, display_name: "盾手" }, { ...shieldPlayer, shield: 40 }, { ...shieldPlayer, shield: 40 }, {}, { showHp: false });
+assert.doesNotMatch(quietToken, /actor-shield/, "护盾没变化时正文不画盾条");
+console.log("PASS: 侧栏盾条与正面护盾标签完整渲染、增量更新、破盾和死亡归零，正文盾条叠在体力条上方，旧数据兼容");
 
 nextSource = { ...source(1), players: [shieldPlayer], initial_states: shieldStates(40) };
 await page.startBattle();
@@ -314,4 +323,4 @@ assert.match(window.document.querySelector("#detailContent").textContent, /状�
 assert.equal(window.document.querySelector(".shieldwrap").hidden, false);
 assert.equal(savedSettings.get("tswn-show-shield"), "false");
 assert.equal(JSON.stringify(page.battle.initial_states), JSON.stringify(shieldStates(40)));
-console.log("PASS: 真实详情面板读取当前护盾标签，常驻盾条忽略旧隐藏偏好且不修改回放数据");
+console.log("PASS: 真实详情面板读取当前护盾标签，盾条不再有隐藏开关且不修改回放数据");

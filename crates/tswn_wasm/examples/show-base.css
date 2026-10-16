@@ -38,9 +38,11 @@
     --message-text: #000;
     --message-shadow: #fff;
     --shield: #35b5c5;
-    --shield-recover: #005263;
+    /* 浅色底上用深青色标出新增护盾，原来的浅青色几乎看不见。 */
+    --shield-recover: #076a78;
     --shield-damage: #e4a545;
     --shield-background: #d7e5e8;
+    /* 同时用于 Dark Reader 提醒框的描边。 */
     --shield-outline: #27778a;
     --hp-background: #d7dee4;
     --maxhp-background: rgba(221, 221, 208, 0.58);

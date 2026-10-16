@@ -376,17 +376,14 @@
     background: linear-gradient(90deg, var(--hp) 0%, var(--hp) 100%);
 }
 
-/* 有护盾熟练度的角色常驻显示盾条，不受本地历史开关影响。 */
+/* 有护盾熟练度的角色在护盾出现时显示盾条，不受本地历史开关影响。 */
 .shieldwrap,
 .actor-shield {
     display: block;
     position: relative;
-    height: 4px;
+    height: 2px;
     overflow: hidden;
     background: var(--shield-background);
-    outline: 1px solid var(--shield-outline);
-    border-radius: 2px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
 }
 
 .shieldwrap[hidden] {
@@ -394,14 +391,11 @@
 }
 
 .shieldwrap {
-    margin-top: 3px;
+    margin-top: 1px;
 }
 
 .actor-shield {
     flex: none;
-    border-radius: 0 2px 2px 0;
-    outline: none;
-    box-shadow: inset 0 0 0 1px var(--shield-outline);
     z-index: 2;
 }
 
@@ -419,12 +413,11 @@
 .shield-fill,
 .actor-shield-fill {
     background: var(--shield);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
 
-/* 正文中的 HP/护盾拼接条也要计入行高，不能盖到上一行文字。 */
+/* 正文中的盾条与体力条各 2px，为叠起来的两行留出行高，不能盖到上一行文字。 */
 .actor-token.has-shield {
-    margin-top: 6px;
+    margin-top: 4px;
 }
 
 .shield-delta.is-damage,
