@@ -32,6 +32,7 @@
  *   alive: boolean,
  *   frozen: boolean,
  *   team_index: number,
+ *   input_team_index?: number|null,
  *   owner_id?: number,
  *   status_labels?: string[]
  * }} FightState
@@ -40,6 +41,7 @@
  * @typedef {{
  *   id: number,
  *   team_index: number,
+ *   input_team_index?: number|null,
  *   id_name: string,
  *   icon_key: string,
  *   display_name: string,

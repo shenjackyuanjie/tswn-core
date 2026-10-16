@@ -105,11 +105,13 @@ test("explicitly disabled death effect keeps a normal actor name", () => {
 
 test("stream players retain all sidebar detail fields", async () => {
   const fake = streamApi();
-  Object.assign(fake.initial[0], { attack: 55, defense: 41, speed: 184 });
+  Object.assign(fake.initial[0], { attack: 55, defense: 41, speed: 184, team_index: 0, input_team_index: 3 });
   const source = await createBattleStreamSource("alpha", null, null, null, { api: fake.api });
   assert.equal(source.players[0].attack, 55);
   assert.equal(source.players[0].defense, 41);
   assert.equal(source.players[0].speed, 184);
+  assert.equal(source.players[0].team_index, 0);
+  assert.equal(source.players[0].input_team_index, 3, "输入分组序号随玩家一起下发");
   source.dispose();
 });
 

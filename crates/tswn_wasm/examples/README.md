@@ -46,6 +46,7 @@
 - 页面按需拉取公共 `BattleSession` 的 canonical replay view；历史 `engine` / `runtime` 参数会从分享链接中清理，不再提供 `FightSession` fallback。
 - 支持在右下角控制栏复制当前对局的分享链接，链接会使用同一套 `input` 参数格式。
 - 召唤单位（clone / summon / shadow / zombie）会按类型显示对应的中文名；分身名字里的编号使用底层 `display_index`，左侧仍单独保留 `#playerId`。
+- 左侧玩家列表按**输入顺序**排列：分组用输入的队伍序号（`input_team_index`，即空行/`@队名` 分出的第几组），组内按对象 id 排列，`Team N` 标签也对应输入的第 N 组。运行时分队号由对局内部分配（可能与输入相反），只用于胜负判定，不再影响列表顺序；召唤单位仍紧跟其主人，缺输入序号的旧数据退回运行时分队号。
 - 只消费 `BattleReplayFrame.rows[].clips[]` 结构化 replay view，由 WASM 提供延迟、文本片段、血条变化、死亡特效和侧栏快照信息；战斗正文不再从 `message_template` / `message_rendered` / `hp_delta` 反推展示语义。
 - normal 播放模式下，对战结束后等待 `1500ms` 再显示底部结算表；fast / turbo / 单步跳转保持即时显示。左侧玩家 HP 条变化使用较慢动画，方便观察血量变化。
 - 页面与角色详情面板跟随明暗主题切换。深色模式的名字（侧栏 `.name`、正文 `.actor-name`）保持原有蓝灰底色但不描边，只靠底色与页面区分，死亡名字和状态标签保持可读；像素图标保留原图配色，通过浅色衬底区分原图的深色描边。

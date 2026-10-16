@@ -275,6 +275,7 @@ function playerWithCurrentState(player, state) {
   return {
     ...player,
     team_index: state?.team_index ?? player.team_index ?? 0,
+    input_team_index: state?.input_team_index ?? player.input_team_index ?? null,
     owner_id: state?.owner_id ?? player.owner_id ?? null,
     minion_kind: state?.minion_kind ?? player.minion_kind ?? null,
     display_index: state?.display_index ?? player.display_index ?? 0,
@@ -286,9 +287,25 @@ function playerWithCurrentState(player, state) {
   };
 }
 
+/**
+ * 左侧列表的排序、分组与队名都按输入分组序号（`input_team_index`）走，
+ * 保证名字顺序与输入一致；运行时 `team_index` 只用于胜负判定。
+ * 旧数据或召唤单位缺该字段时退回运行时队伍号。
+ * @param {{ input_team_index?: number|null, team_index?: number }} player
+ * @returns {number}
+ */
+function displayGroupIndex(player) {
+  const inputGroup = player?.input_team_index;
+  // 注意 null 会被 Number() 转成 0，必须先判空再判有限性。
+  if (inputGroup != null && Number.isFinite(Number(inputGroup))) {
+    return Number(inputGroup);
+  }
+  return player?.team_index ?? 0;
+}
+
 function compareDisplayPlayers(left, right) {
-  const leftTeam = left.team_index ?? 0;
-  const rightTeam = right.team_index ?? 0;
+  const leftTeam = displayGroupIndex(left);
+  const rightTeam = displayGroupIndex(right);
   if (leftTeam !== rightTeam) {
     return leftTeam - rightTeam;
   }
@@ -373,7 +390,8 @@ export function renderPlayers(
   const previousStateMap = buildStateMap(previousStates);
   const seedLine = playerList.dataset.seedLine ?? "";
   const allPlayers = orderedDisplayPlayers(players, states, stateMap, playersById);
-  const layoutKey = allPlayers.map((player) => `${player.team_index}:${player.id}`).join("|");
+  // 布局键带上输入分组序号：运行时分队号与输入顺序不同，换组时要重建整表。
+  const layoutKey = allPlayers.map((player) => `${displayGroupIndex(player)}:${player.id}`).join("|");
 
   const existingRows = playerList.querySelectorAll("tr[data-player-id]");
   const shouldRenderFullList =
@@ -382,16 +400,17 @@ export function renderPlayers(
     // —— 全量渲染（首次、玩家数量变化或展示顺序变化时） ——
     const teams = new Map();
     for (const player of allPlayers) {
-      const items = teams.get(player.team_index) ?? [];
+      const group = displayGroupIndex(player);
+      const items = teams.get(group) ?? [];
       items.push(player);
-      teams.set(player.team_index, items);
+      teams.set(group, items);
     }
 
     const sortedTeams = [...teams.entries()].sort((left, right) => left[0] - right[0]);
     const firstTeamIsSingle = sortedTeams.length > 0 && sortedTeams[0][1].length === 1;
 
     const teamHtml = sortedTeams
-      .map(([teamIndex, teamPlayers]) => {
+      .map(([groupIndex, teamPlayers]) => {
         const members = teamPlayers
           .map((player) => {
             const state = stateMap.get(player.id);
@@ -458,7 +477,7 @@ export function renderPlayers(
           .join("");
 
         const isSingle = teamPlayers.length === 1;
-        const labelHtml = !isSingle ? `<div class="team-label">Team ${teamIndex + 1}</div>` : "";
+        const labelHtml = !isSingle ? `<div class="team-label">Team ${groupIndex + 1}</div>` : "";
         const theadHtml = !isSingle
           ? `
                         <thead>
