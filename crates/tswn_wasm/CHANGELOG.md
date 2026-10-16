@@ -1,5 +1,23 @@
 # 更新日志
 
+## [0.5.10] - 2026-10-17
+
+### 修复
+
+- 左侧玩家列表改为按**输入顺序**排列：分组与 `Team N` 标签使用 `input_team_index`（输入里第几组），组内按对象 id 排列。此前按运行时 `team_index` 排序，而运行时分队号与输入分组相反（输入的第一组常被判为 team 1），列表顺序与输入对不上。
+- 展示层把 `input_team_index` 一并带入玩家对象（`show-wasm.js` 之前只保留运行时 `team_index`）；缺失该字段的旧数据退回运行时分队号，召唤单位继续紧跟其主人。
+- 布局键改用输入分组序号，换组时能重建整张表；`displayGroupIndex()` 先判空再判有限性，避免 `Number(null) === 0` 把「无输入序号」误判成第 1 组。
+
+### 兼容性
+
+- 只调整 WASM 展示层的排序与分组：`team_index`、`input_team_index` 字段、core 战斗规则、胜负判定与 Python／C 绑定契约都不变。
+
+### 验证
+
+- `node --test crates/tswn_wasm/tests/show-*.test.mjs` 42 项通过；新增 `show-order.test.mjs` 覆盖「按输入顺序排列且与运行时分队号无关」「缺字段退回运行时分队号」「召唤单位紧随主人」「换组重建整表且布局键含输入分组序号」。
+- `scripts/verify_web_playback.mjs` 8 组页面行为通过。
+- 真实页面用 `z_last/a_first` + `m_third/b_second` 两组输入核对：列表顺序与输入一致，标签为 `Team 1` / `Team 2`。
+
 ## [0.5.9] - 2026-10-13
 
 ### 变更
