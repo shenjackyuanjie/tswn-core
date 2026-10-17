@@ -4746,7 +4746,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_wasm"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",

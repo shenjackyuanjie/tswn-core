@@ -1,5 +1,17 @@
 # 更新日志
 
+## [0.5.11] - 2026-10-17
+
+### 变更
+
+- 正文里两条条形各按自己的变化出现：只有护盾变化时**只画盾条**，并直接占用体力条的位置（`.actor-vitals` 默认槽位，不再强配当前 HP 底轨）；体力与护盾同时变化时才叠放——体力条在下、盾条紧贴其上（`.has-shield.has-hp`）。原先只要盾条出现就会同时画出体力条。
+- 行高留白只在叠放时保留（`.actor-token.has-shield.has-hp { margin-top: 4px }`），单盾条不再额外上移。
+
+### 验证
+
+- `node --test crates/tswn_wasm/tests/show-*.test.mjs` 43 项通过；新增用例分别覆盖「只有护盾变化 → 无 `has-hp`、无 `.actor-hp`、盾条独占 `.actor-vitals`」「体力与护盾同时变化 → `has-hp has-shield` 且 DOM 顺序 hp → shield」「单盾条落在 `.actor-vitals` 默认槽位、叠放时容器上移两条之和」。
+- `scripts/verify_web_playback.mjs` 8 组页面行为通过；验收截图与示例说明同步为 0.5.11 口径。
+
 ## [0.5.10] - 2026-10-17
 
 ### 修复
