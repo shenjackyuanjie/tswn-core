@@ -73,8 +73,9 @@ export function actorToken(player, state, previousState, update, { showHp = true
   const shieldChanged = shieldMetrics != null
     && (shieldMetrics.currentValue !== shieldMetrics.previousValue || (isNew && shieldMetrics.currentValue > 0));
   const hasShield = shieldChanged && !deathEffect;
-  // 盾条叠在体力条正上方；非扣血消息只配当前 HP，不凭快照差值制造额外扣血动画。
-  const hpMetrics = shouldShowHp || hasShield ? actorHpMetrics(state, shouldShowHp ? previousState : state) : null;
+  // 两条条形各自按自己的变化出现：只有护盾变化时不画体力条，让盾条占体力条的位置；
+  // 两条同时出现时由 CSS 竖排叠放。非扣血消息不凭快照差值制造额外扣血动画。
+  const hpMetrics = shouldShowHp ? actorHpMetrics(state, previousState) : null;
   const hpBar = hpMetrics
     ? `
             <span class="actor-hp" style="width:${hpMetrics.totalWidth}px">

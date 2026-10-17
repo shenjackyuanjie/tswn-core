@@ -47,23 +47,36 @@ test("盾条满格取熟练度，盾值超过熟练度时由当前值撑开；�
   assert.equal(actorShieldMetrics(null), null);
 });
 
-test("正文盾条只在护盾变化时出现，并叠在体力条正上方", () => {
+test("只有护盾变化时只画盾条，并占用体力条的位置", () => {
   const gained = actorToken(player, state, { ...state, shield: 0 }, {}, { showHp: false });
   assert.match(gained, /actor-shield/);
   assert.match(gained, /actor-shield-delta is-recover/);
-  // DOM 顺序保持 hp → shield，竖排（column-reverse）后盾条落在体力条上方。
-  assert.match(gained, /class="actor-vitals">[\s\S]*class="actor-hp"[\s\S]*class="actor-shield"/);
-  assert.match(gained, /class="actor-vitals"/);
-  assert.match(gained, /class="actor-token has-hp has-shield"/);
+  // 体力没变化 → 不画体力条，盾条单独占用体力条的槽位（CSS 默认 top: -2px）。
+  assert.doesNotMatch(gained, /class="actor-hp"/);
+  assert.doesNotMatch(gained, /has-hp/);
+  assert.match(gained, /class="actor-vitals"><span class="actor-shield"/);
+  assert.match(gained, /class="actor-token has-shield"/);
   const broken = actorToken(player, { ...state, shield: 0 }, state, {}, { showHp: false });
   assert.match(broken, /actor-shield-delta is-damage/);
+  assert.doesNotMatch(broken, /class="actor-hp"/);
   // 护盾没变化时两侧都不出现，和体力条一样不做常驻底轨。
   assert.doesNotMatch(actorToken(player, state, state, {}, { showHp: false }), /actor-shield/);
   assert.doesNotMatch(actorToken(player, state, state, {}, { showHp: false }), /has-shield/);
   assert.doesNotMatch(actorToken(player, { ...state, shield: 0, alive: false }, state, {}, { deathEffect: true }), /actor-shield/);
 });
 
-test("叠起来的盾条与体力条正好贴合，不重叠也不留缝", async () => {
+test("体力与护盾同时变化时才叠放：体力条在下、盾条紧贴其上", () => {
+  const both = actorToken(player, { ...state, hp: 60 }, { ...state, hp: 100, shield: 0 }, {}, { showHp: true });
+  assert.match(both, /class="actor-token has-hp has-shield"/);
+  // DOM 顺序保持 hp → shield，竖排（column-reverse）后盾条落在体力条上方。
+  assert.match(both, /class="actor-vitals">[\s\S]*class="actor-hp"[\s\S]*class="actor-shield"/);
+  assert.match(both, /actor-hp-delta is-damage/);
+  const hpOnly = actorToken(player, { ...state, hp: 60 }, { ...state, hp: 100 }, {}, { showHp: true });
+  assert.match(hpOnly, /class="actor-token has-hp"/);
+  assert.doesNotMatch(hpOnly, /actor-shield/);
+});
+
+test("叠起来的盾条与体力条正好贴合，单盾条则落在体力条槽位", async () => {
   const [replay, players] = await Promise.all([
     readFile(new URL("../examples/show-replay.css", import.meta.url), "utf8"),
     readFile(new URL("../examples/show-players.css", import.meta.url), "utf8"),
@@ -80,14 +93,18 @@ test("叠起来的盾条与体力条正好贴合，不重叠也不留缝", async
   };
   const shieldHeight = px(players, ".actor-shield {", "height");
   const hpHeight = px(replay, ".actor-hp {", "height");
-  const vitalsTop = px(replay, ".has-shield .actor-vitals {", "top");
-  const direction = ruleBlock(replay, ".has-shield .actor-vitals {").match(/flex-direction:\s*([\w-]+)/)?.[1];
+  const vitalsTop = px(replay, ".actor-vitals {", "top");
+  const stackedTop = px(replay, ".has-shield.has-hp .actor-vitals {", "top");
+  const direction = ruleBlock(replay, ".has-shield.has-hp .actor-vitals {").match(/flex-direction:\s*([\w-]+)/)?.[1];
   assert.equal(shieldHeight, 2, "盾条高度");
   assert.equal(hpHeight, 2, "体力条高度");
-  assert.equal(direction, "column-reverse", "盾条排在体力条上方");
+  assert.equal(vitalsTop, -hpHeight, "没有体力条时盾条就落在体力条槽位");
+  assert.equal(direction, "column-reverse", "两条同时出现时盾条排在体力条上方");
   // 容器上移量等于两条高度之和：盾条底边正好压在体力条顶边上。
-  assert.equal(vitalsTop, -(hpHeight + shieldHeight), "两条条形紧贴");
-  assert.equal(px(players, ".actor-token.has-shield {", "margin-top"), hpHeight + shieldHeight, "行高留白");
+  assert.equal(stackedTop, -(hpHeight + shieldHeight), "两条条形紧贴");
+  assert.equal(px(players, ".actor-token.has-shield.has-hp {", "margin-top"), hpHeight + shieldHeight, "叠放时的行高留白");
+  assert.equal(ruleBlock(players, ".actor-token.has-shield.has-hp {").includes("margin-top"), true);
+  assert.equal(players.includes(".actor-token.has-shield {"), false, "单盾条不再额外留白");
   assert.equal(ruleBlock(players, ".actor-shield {").includes("box-shadow"), false, "盾条不再描边或加高光");
   assert.doesNotMatch(actorToken(player, { ...state, shield: 40 }, { ...state, shield: 0 }, {}), /min-width:/, "名字框不再为条形撑宽");
 });

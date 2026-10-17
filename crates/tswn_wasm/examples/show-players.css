@@ -415,8 +415,8 @@
     background: var(--shield);
 }
 
-/* 正文中的盾条与体力条各 2px，为叠起来的两行留出行高，不能盖到上一行文字。 */
-.actor-token.has-shield {
+/* 盾条与体力条叠放时各占 2px，为这两行留出行高，不能盖到上一行文字；单盾条不需要额外留白。 */
+.actor-token.has-shield.has-hp {
     margin-top: 4px;
 }
 

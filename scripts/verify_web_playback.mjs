@@ -305,15 +305,20 @@ assert.equal(effects.textContent, "聚气", "死亡快照中的残留盾值不�
 renderModule.namespace.renderPlayers([shieldPlayer], [{ ...shieldPlayer, shield: undefined }], shieldStates(0), null, list, new Map());
 assert.equal(effects.textContent, "聚气", "旧数据缺盾字段时不制造标签");
 assert.equal(list.querySelector("tr[data-player-id]"), playerRow);
-// 正文 token：盾条在护盾变化时出现，与体力条竖排叠放，体力条作为底轨一并出现。
-const shieldTokens = renderModule.namespace.actorToken(
+// 正文 token：只有护盾变化时只画盾条并占用体力条槽位；体力与护盾同时变化时才叠放。
+const shieldOnlyToken = renderModule.namespace.actorToken(
   { id: 9, display_name: "盾手" }, { ...shieldPlayer, shield: 40 }, { ...shieldPlayer, shield: 0 }, {}, { showHp: false });
-assert.match(shieldTokens, /class="actor-token has-hp has-shield"/);
-assert.match(shieldTokens, /class="actor-vitals">[\s\S]*class="actor-hp"[\s\S]*class="actor-shield"/);
+assert.match(shieldOnlyToken, /class="actor-token has-shield"/);
+assert.doesNotMatch(shieldOnlyToken, /class="actor-hp"/);
+assert.match(shieldOnlyToken, /class="actor-vitals"><span class="actor-shield"/);
+const stackedToken = renderModule.namespace.actorToken(
+  { id: 9, display_name: "盾手" }, { ...shieldPlayer, hp: 60, shield: 40 }, { ...shieldPlayer, hp: 100, shield: 0 }, {}, { showHp: true });
+assert.match(stackedToken, /class="actor-token has-hp has-shield"/);
+assert.match(stackedToken, /class="actor-vitals">[\s\S]*class="actor-hp"[\s\S]*class="actor-shield"/);
 const quietToken = renderModule.namespace.actorToken(
   { id: 9, display_name: "盾手" }, { ...shieldPlayer, shield: 40 }, { ...shieldPlayer, shield: 40 }, {}, { showHp: false });
 assert.doesNotMatch(quietToken, /actor-shield/, "护盾没变化时正文不画盾条");
-console.log("PASS: 侧栏盾条与正面护盾标签完整渲染、增量更新、破盾和死亡归零，正文盾条叠在体力条上方，旧数据兼容");
+console.log("PASS: 侧栏盾条与正面护盾标签完整渲染、增量更新、破盾和死亡归零，正文盾条单显占体力条槽位、双显叠放，旧数据兼容");
 
 nextSource = { ...source(1), players: [shieldPlayer], initial_states: shieldStates(40) };
 await page.startBattle();
