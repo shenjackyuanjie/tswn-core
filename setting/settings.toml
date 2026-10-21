@@ -1,12 +1,16 @@
+# Openbox 默认预设。GUI 与 openbox-cli 共用这份配置，改它会同时影响两者。
+# 靶子/队友使用 setting/ 下已同步的带权 TOML；手动靶子/队友仍按文本列表解析。
 [[targets]]
 id = 1
 name = "单人组"
-file = "targets/target1.txt"
+file = "targets/newTarget1.toml"
+factor_enabled = true
 
 [[targets]]
 id = 2
 name = "双人组"
-file = "targets/target2.txt"
+file = "targets/newTarget2.toml"
+factor_enabled = true
 
 [[targets]]
 id = 3
@@ -14,26 +18,31 @@ name = "三人组"
 file = "targets/target3.txt"
 
 [[teammate]]
-head = 5
+head = 4
 name = "刺评"
-file = "teammates/teammate_fz.txt"
+file = "teammates/teammate_fz.toml"
+factor_enabled = true
 
 [[teammate]]
-head = 5
+head = 4
 name = "辅评"
-file = "teammates/teammate_bc.txt"
+file = "teammates/teammate_bc.toml"
+factor_enabled = true
 
 [[teammate]]
-head = 5
+head = 4
 name = "无刺评"
-file = "teammates/teammate_wc.txt"
+file = "teammates/teammate_wc.toml"
+factor_enabled = true
 
 [[teammate]]
-head = 3
+head = 4
 name = "分身评"
-file = "teammates/teammate_pj.txt"
+file = "teammates/teammate_pj.toml"
+factor_enabled = true
 
 [[teammate]]
-head = 3
+head = 4
 name = "配件评"
-file = "teammates/teammate_fs.txt"
+file = "teammates/teammate_fs.toml"
+factor_enabled = true
