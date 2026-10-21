@@ -44,15 +44,34 @@ target/        Cargo 输出和本地差分产物
 
 ```powershell
 cargo check --workspace
-cargo build --workspace
 cargo test -p tswn_core
 cargo clippy --workspace --all-targets
 cargo +nightly fmt --check
-cargo build -p tswn_core --bin tswn-cli --release --features no_debug,mimalloc_alloc
-cargo build -p tswn_core --bin tswn-cli --profile release-fast --features no_debug
+# 线上/发布口径（唯一允许部署的构建）
+cargo build -p tswn_core --bin tswn-cli --release --features "no_debug,mimalloc_alloc"
 ```
 
-说明：`--release` 是正式 benchmark/发版口径；日常需要更快的优化构建时可以用 `--profile release-fast`。当前 `tswn_core` 的原生默认 feature 包含 `mimalloc_alloc`，正式 benchmark 与发布构建都保持默认 allocator；显式关闭默认 feature 的结果必须作为独立口径记录。
+说明：`debug` / `release-fast` 只用于本地开发与测试，**不要部署**；线上统一
+`--release` 且启用 `no_debug,mimalloc_alloc`。`tswn_core` 默认 feature 已包含
+`mimalloc_alloc`，但命令里仍显式写出，避免默认 feature 变化时口径漂移。
+
+## 编译口径（部署/线上）
+
+所有部署到服务器的 tswn-core 产物必须用 `--release`，并启用
+`no_debug,mimalloc_alloc`：
+
+| 产物 | 命令 |
+| --- | --- |
+| `tswn-cli` | `cargo build --release -p tswn_core --bin tswn-cli --features "no_debug,mimalloc_alloc"` |
+| `tswn_openbox` GUI | `cargo build --release -p tswn_openbox --bin tswn_openbox --features "no_debug,mimalloc_alloc"` |
+| `openbox-cli` | `cargo build --release -p tswn_openbox --no-default-features --features "no_debug,mimalloc_alloc" --bin openbox-cli` |
+| `tswn_ladder` | `cargo build --release -p tswn_ladder --features "no_debug,mimalloc_alloc"` |
+| `tswn_py` | `cargo build --release -p tswn_py --features "no_debug,mimalloc_alloc"` |
+
+`tswn_py` 的依赖已固定启用 `tswn_core` 的这两个 feature，同时提供同名转发
+feature，所以统一命令可以直接用于它。不要用 `target/debug` / `target/release-fast`
+的二进制部署；部署前检查 `target/release` 的时间戳，并确认对应 fingerprint 的
+features 含 `no_debug` 与 `mimalloc_alloc`。
 
 运行主 CLI：
 

@@ -6,6 +6,12 @@
 
 - `pyo3` 升级到 `0.29`；Python API、类型存根与返回结构保持不变。
 
+### 构建
+
+- 新增 `no_debug` / `mimalloc_alloc` 转发 feature；`build_dist.py` 默认
+  `--release --features "no_debug,mimalloc_alloc"`，统一线上编译口径。
+  `Cargo.toml` 的 `tswn_core` 依赖仍固定启用这两个 feature。
+
 ### 验证
 
 - `cargo check -p tswn_py --all-targets` 通过（本机以临时关闭 mimalloc 的配置绕过

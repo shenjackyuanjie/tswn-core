@@ -2,9 +2,17 @@
 
 内部天梯更新器：从 PostgreSQL 读取玩家，生成对局并运行 core 战斗，更新 ELO、handicap、排名与历史记录。不进入默认聚合分发包。
 
+## 构建（线上口径）
+
+```bash
+cargo build --release -p tswn_ladder --features "no_debug,mimalloc_alloc"
+```
+
+线上服务使用 `target/release/tswn_ladder`；不要用 debug 或 release-fast 产物部署。
+
 ## 运行
 
-先配置环境变量，再从仓库根目录执行 `cargo run -p tswn_ladder`。启动会连接指定数据库并执行更新，不是只读查询工具；调试时使用独立测试数据库。
+先配置环境变量，再从仓库根目录执行 `cargo run --release -p tswn_ladder --features "no_debug,mimalloc_alloc"`。启动会连接指定数据库并执行更新，不是只读查询工具；调试时使用独立测试数据库。
 
 | 环境变量 | 用途 |
 | --- | --- |

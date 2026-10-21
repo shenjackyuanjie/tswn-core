@@ -15,12 +15,20 @@
 - `base`：单个原始名字的 128 字节 roll、属性与技能槽
 - `DS4`：工作目录中的评分、增量配对与实战筛选
 
+## 编译口径
+
+部署/线上产物统一用 `--release` 且启用 `no_debug,mimalloc_alloc`；`debug` 和
+`release-fast` 只用于本地开发，不要部署。
+
+- GUI：`cargo build --release -p tswn_openbox --bin tswn_openbox --features "no_debug,mimalloc_alloc"`
+- CLI：`cargo build --release -p tswn_openbox --no-default-features --features "no_debug,mimalloc_alloc" --bin openbox-cli`
+
 ## 运行
 
 在 workspace 根目录运行：
 
 ```powershell
-cargo run -p tswn_openbox --bin tswn_openbox
+cargo run --release -p tswn_openbox --bin tswn_openbox --features "no_debug,mimalloc_alloc"
 ```
 
 推荐的 release 构建命令：
@@ -40,10 +48,11 @@ Windows GUI 构建启用 `windows_subsystem = "windows"`，双击启动时不会
 ## openbox-cli（无头 CLI）
 
 ```powershell
-cargo run -p tswn_openbox --no-default-features --features mimalloc_alloc --bin openbox-cli -- --help
+cargo run --release -p tswn_openbox --no-default-features --features "no_debug,mimalloc_alloc" --bin openbox-cli -- --help
 ```
 
-默认 feature 包含 `gui`；上述无头命令关闭默认 feature，只保留分配器，从而无需编译 GUI 与 DS4 页面依赖。
+默认 feature 包含 `gui`；上述无头命令关闭默认 feature，只保留 allocator 与
+`no_debug`，从而无需编译 GUI 与 DS4 页面依赖。
 
 `openbox-cli` 复用 GUI 的后端与预设（`tswn_openbox_backend` crate），
 因此与面板共用解析、执行、文件输出格式、输出排序、标签清洗，

@@ -134,11 +134,28 @@ def _cargo_build_args(
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="构建 tswn_py 并生成 dist/tswn_py 包目录")
-    p.add_argument("--release", action="store_true", help="使用 release 构建（默认 debug）")
+    build = p.add_mutually_exclusive_group()
+    build.add_argument(
+        "--release",
+        dest="release",
+        action="store_true",
+        default=True,
+        help="使用 release 构建（默认；线上口径）",
+    )
+    build.add_argument(
+        "--debug",
+        dest="release",
+        action="store_false",
+        help="debug 构建（仅本地开发，不要部署）",
+    )
     p.add_argument("--clean-dist", action="store_true", help="先删除 dist/tswn_py 再生成")
     p.add_argument("--python", default=None, help="指定 python 可执行文件（可选）")
     p.add_argument("--target", default=None, help="cargo target triple（可选）")
-    p.add_argument("--features", default=None, help="cargo features（逗号分隔），例如 a,b")
+    p.add_argument(
+        "--features",
+        default="no_debug,mimalloc_alloc",
+        help="cargo features（逗号分隔）；默认 no_debug,mimalloc_alloc",
+    )
     p.add_argument("--no-default-features", action="store_true", help="传给 cargo 的 --no-default-features")
     p.add_argument(
         "--cargo",

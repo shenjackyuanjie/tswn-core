@@ -14,5 +14,12 @@ tswn_core = { path = "../tswn_core", features = ["no_debug", "mimalloc_alloc"] }
 name = "tswn_py"
 crate-type = ["cdylib"]
 
+[features]
+# 与 tswn_core 保持同一套线上编译口径。下面的依赖已经固定启用这两个 feature，
+# 这里补上同名的转发 feature，使统一构建命令也能直接用于本 crate：
+#   cargo build --release -p tswn_py --features "no_debug,mimalloc_alloc"
+no_debug = ["tswn_core/no_debug"]
+mimalloc_alloc = ["tswn_core/mimalloc_alloc"]
+
 [dev-dependencies]
 tswn_core = { path = "../tswn_core", default-features = false, features = ["battle-test-support"] }

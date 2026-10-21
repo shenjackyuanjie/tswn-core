@@ -22,8 +22,8 @@
 ### CLI
 
 ```powershell
-# 构建
-cargo build -p tswn_core --bin tswn-cli --release
+# 构建（线上/发布口径，必须带 no_debug,mimalloc_alloc）
+cargo build -p tswn_core --bin tswn-cli --release --features "no_debug,mimalloc_alloc"
 
 # 胜率基准测试
 ./target/release/tswn-cli bench win-rate -r "mario\nluigi" -n 100000 --perf

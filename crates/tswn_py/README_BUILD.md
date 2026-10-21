@@ -4,6 +4,11 @@
 
 本文件描述对外分发的 **wheel** 构建方式。当前最低要求是 Python 3.12（见 [pyproject.toml](pyproject.toml)）；wheel 内的扩展模块文件名带有 Python/ABI/平台 tag（例如 `tswn_py.cp312-win_amd64.pyd`），可区分 cp312、cp313 等解释器环境。
 
+> **线上/部署口径**：wheel 必须是 release 构建，且 `tswn_core` 启用
+> `no_debug,mimalloc_alloc`。`Cargo.toml` 已固定依赖的这两个 feature；
+> `build_dist.py` 现在默认 `--release --features "no_debug,mimalloc_alloc"`，
+> 只有本地开发才显式加 `--debug`。
+
 ---
 
 ## 你最终会得到什么

@@ -2,6 +2,11 @@
 
 ## [0.1.1] - 2026-10-13
 
+### 构建
+
+- 线上构建统一 `--release --features "no_debug,mimalloc_alloc"`；部署使用
+  `target/release/tswn_ladder`，不要用 debug / release-fast 产物。
+
 ### 修复（部署特化）
 
 - seed 生成的时间戳固定使用 `Asia/Shanghai`，不再受部署主机本地时区影响。
