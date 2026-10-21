@@ -137,6 +137,18 @@ pub(super) enum Command {
     ///   openbox-cli pair -p players.txt --teammates mates.txt --head 3 --detail top
     #[command(name = "pair", verbatim_doc_comment)]
     Pair(PairArgs),
+
+    /// base 工具：输出单个原始名字的 128 字节 roll、属性与 16 个技能槽。
+    ///
+    /// 只接受单个原始名字（不支持 `+diy` / `+ol` / 武器后缀），一次只输出一个名字，
+    /// 避免在群里刷屏。输出与社区 base 工具一致：HP 区间、10 个 HP 原始字节、
+    /// 七围的 `值 / 值 (原始三元组)`、以及按行动顺序排列的 16 个技能槽。
+    /// 面板的「末尾主动」与「末尾座位加成」会单独标在对应技能行下一行。
+    ///
+    /// 示例:
+    ///   openbox-cli base -r "mario@team"
+    #[command(name = "base", verbatim_doc_comment)]
+    Base(BaseArgs),
 }
 
 /// 四个工具共用的基准参数（对齐 GUI 的公共设置区）。
@@ -196,6 +208,22 @@ pub(super) struct ToDiyArgs {
     /// `-f/--file` 批量模式本来就不输出详情。
     #[arg(long = "no-details")]
     no_details: bool,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct BaseArgs {
+    /// 单个玩家名字（namerena raw 格式，只支持原始名字，不支持 `+diy` / `+ol` / 武器）。
+    #[arg(
+        short = 'r',
+        long = "raw",
+        value_name = "NAME",
+        conflicts_with = "file"
+    )]
+    raw: Option<String>,
+
+    /// 从文件读取名字；文件里必须恰好有一个非空行。
+    #[arg(short = 'f', long = "file", value_name = "FILE")]
+    file: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -685,6 +713,11 @@ pub(super) struct ToDiyPlan {
     pub output_file: Option<PathBuf>,
 }
 
+#[derive(Debug)]
+pub(super) struct BasePlan {
+    pub raw: String,
+}
+
 fn output_mode(log: bool, pure: bool) -> OutputMode {
     if pure {
         OutputMode::Pure
@@ -714,6 +747,10 @@ impl Cli {
                     details: !args.no_details && !from_file,
                     output_file: args.out_file,
                 })
+            }
+            Command::Base(args) => {
+                let raw = read_input(args.raw.as_ref(), args.file.as_ref(), "base")?;
+                Job::Base(BasePlan { raw })
             }
             Command::NamerPf(args) => {
                 let raw = read_input(args.raw.as_ref(), args.file.as_ref(), "namer-pf")?;
@@ -797,6 +834,7 @@ impl Cli {
 #[derive(Debug)]
 pub(super) enum Job {
     ToDiy(ToDiyPlan),
+    Base(BasePlan),
     NamerPf(NamerPfPlan),
     Cqd(CqdPlan),
     Pair(PairPlan),

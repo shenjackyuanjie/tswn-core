@@ -13,6 +13,7 @@
 //! - 未实现 GUI 的“停止”按钮：Ctrl+C 直接终止进程。
 
 mod args;
+mod base;
 mod input;
 mod plan;
 mod tools;
@@ -36,21 +37,34 @@ fn main() {
     let job = cli.plan().unwrap_or_else(|err| err.exit());
     let cancel = Arc::new(AtomicBool::new(false));
 
-    // `to-diy` 的后端是同步接口（无进度事件），直接执行。
-    if let args::Job::ToDiy(plan) = job {
-        let writes_file = plan.output_file.is_some();
-        let result = backend::run_to_diy(&plan.raw, plan.old, plan.minions, plan.details, plan.output_file, &cancel);
-        match result {
-            // 输出到屏幕时返回值就是数据本体（stdout）；写文件时是完成状态（stderr）。
-            Ok(message) if writes_file => eprintln!("{message}"),
-            Ok(message) => println!("{message}"),
-            Err(err) => {
-                eprintln!("{err}");
-                std::process::exit(1);
+    // `to-diy` / `base` 的后端是同步接口（无进度事件），直接执行。
+    let job = match job {
+        args::Job::ToDiy(plan) => {
+            let writes_file = plan.output_file.is_some();
+            let result = backend::run_to_diy(&plan.raw, plan.old, plan.minions, plan.details, plan.output_file, &cancel);
+            match result {
+                // 输出到屏幕时返回值就是数据本体（stdout）；写文件时是完成状态（stderr）。
+                Ok(message) if writes_file => eprintln!("{message}"),
+                Ok(message) => println!("{message}"),
+                Err(err) => {
+                    eprintln!("{err}");
+                    std::process::exit(1);
+                }
             }
+            return;
         }
-        return;
-    }
+        args::Job::Base(plan) => {
+            match base::run(&plan.raw) {
+                Ok(text) => println!("{text}"),
+                Err(err) => {
+                    eprintln!("{err}");
+                    std::process::exit(1);
+                }
+            }
+            return;
+        }
+        job => job,
+    };
 
     let (tx, rx) = sync_channel(EVENT_CHANNEL_CAPACITY);
     let worker_cancel = Arc::clone(&cancel);

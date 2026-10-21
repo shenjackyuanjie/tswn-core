@@ -12,6 +12,7 @@
 - `namer-pf`
 - `cqd/cqp`，对应原 `bench batch-rate`
 - `pair`
+- `base`：单个原始名字的 128 字节 roll、属性与技能槽
 - `DS4`：工作目录中的评分、增量配对与实战筛选
 
 ## 运行
@@ -50,7 +51,7 @@ cargo run -p tswn_openbox --no-default-features --features mimalloc_alloc --bin 
 自动释放内嵌默认资源），技能榜阈值默认读 `./setting/score_now.toml`。
 数据行走 stdout，进度与状态走 stderr，方便管道与重定向。
 
-以下四个子命令对应原有 GUI 面板；DS4 保留独立的统一 `tswn_ds4` CLI 出口：
+以下五个子命令对应原有 GUI 面板；DS4 保留独立的统一 `tswn_ds4` CLI 出口：
 
 ```powershell
 # to-diy：-r 单号默认追加详情日志；--no-details 关闭；-f 批量不输出详情；--old / --minions 同 GUI
@@ -71,6 +72,9 @@ openbox-cli cqp -l targets.txt -p players.txt --no-show-matchups --min-screen 60
 # pair：默认 id=2 靶子预设 + 第一个队友预设（head/factor 一并生效）
 openbox-cli pair -p players.txt --teammate-preset 刺评 --head 4
 openbox-cli pair -l targets.txt -p players.txt --teammates mates.toml --detail top
+
+# base：单个原始名字的 128 字节 roll 与技能槽（不支持 +diy / +ol / 武器）
+openbox-cli base -r "mario@team"
 ```
 
 与 GUI 的刻意差异（均为 CLI 合理性考虑）：高亮颜色降级为普通行；
@@ -250,6 +254,25 @@ HP 259 攻 71 防 80 速 59 敏 70 魔 75 抗 56 智 67 八围 564.3 嘲讽275
 - 技能按行动顺序列出 `中文名 熟练度`（与技能榜同一张名字表），跳过 0 熟练度技能；
   `"2*6"` 这类 boost 只体现在熟练度数值里，不会打印成字符串。
 - 属性前七围与导出行一样是 DIY/OL 的 +36 编码，HP 原样，所以数值与导出行一致。
+
+### base
+
+`openbox-cli base -r "mario@team"` 输出单个原始名字的 128 字节 roll、HP 区间、
+七围的「值 / 值 (原始三元组)」以及按行动顺序排列的 16 个技能槽，与社区 base 工具
+一致。只接受单个原始名字，不支持 `+diy` / `+ol` / 武器后缀。
+
+```text
+HP: 327 / 349
+(53,50,22,31,30,58,48,44,55,11)
+攻: 85 / 86 (49,16,50)
+...
+#07 铁壁: 88 / 90 (57,55,54,60)
+    ↑末尾主动
+#15 空技能
+```
+
+`↑末尾主动` 标在最后一个主动技能下一行；槽位 14/15 的末尾座位加成会另起一行
+`↑末尾座位加成: aa bb`。
 
 ### namer-pf
 
