@@ -399,7 +399,37 @@ c@team++d@team
 
 如果文件不存在，启动时会从内嵌资源自动写入默认 `settings.toml` 和默认预设文本；如果文件存在但格式损坏，会在界面中显示警告。
 
-示例：
+仓库自带的 `setting/settings.toml` 使用已同步的带权预设，GUI 与 `openbox-cli` 共用：
+
+```toml
+[[targets]]
+id = 1
+name = "单人组"
+file = "targets/newTarget1.toml"
+factor_enabled = true
+
+[[targets]]
+id = 2
+name = "双人组"
+file = "targets/newTarget2.toml"
+factor_enabled = true
+
+[[targets]]
+id = 3
+name = "三人组"
+file = "targets/target3.txt"
+
+[[teammate]]
+head = 4
+name = "刺评"
+file = "teammates/teammate_fz.toml"
+factor_enabled = true
+
+# 其余四个队友预设（辅评/无刺评/分身评/配件评）结构相同
+```
+
+改这份配置会同时影响 GUI 和 `openbox-cli`；手动靶子/队友仍按文本列表解析。一个
+使用普通文本列表、不带权的最小示例：
 
 ```toml
 [[targets]]
@@ -407,27 +437,10 @@ id = 1
 name = "默认靶子"
 file = "targets/default.txt"
 
-[[targets]]
-id = 2
-name = "pair默认靶子"
-file = "targets/pair-default.txt"
-
-[[targets]]
-id = 3
-name = "带权二人组"
-file = "targets/weighted-pairs.toml"
-factor_enabled = true
-
 [[teammate]]
 head = 3
 name = "默认队友"
 file = "teammates/default.txt"
-
-[[teammate]]
-head = 3
-name = "带权队友"
-file = "teammates/weighted.toml"
-factor_enabled = true
 ```
 
 说明：
