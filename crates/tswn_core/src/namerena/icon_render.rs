@@ -11,20 +11,16 @@
 //!
 //! ## 功能标志
 //!
-//! PNG 输出功能需要 `png_render` feature：
+//! `png_render` 默认启用；关闭默认 features 的依赖需在编译时显式开启它，
+//! 才能使用 PNG / Base64 输出函数。Cargo package 名和 Rust 导入名均为 `tswn_core`。
+//! 可在仓库中执行：
 //!
-//! ```toml
-//! [dependencies]
-//! tswn-core = { version = "0.1.6", features = ["png_render"] }
+//! ```text
+//! cargo run --locked -p tswn_core --bin tswn-cli --features png_render -- icon b64 mario
 //! ```
 //!
-//! 或者在运行时启用：
-//!
-//! ```bash
-//! cargo run --bin namerena_cli --features png_render -- --icon mario
-//! ```
-//!
-//! **注意**: `render_icon_vec` 函数不需要 `png_render` feature，可以直接使用。
+//! [`render_icon_vec`] 始终可用，返回独立拥有的 RGBA 像素向量；
+//! 图标渲染使用名字派生的局部状态，不消费战斗 Runtime 的 RNG。
 //!
 //! ## 渲染流程
 //!
@@ -102,7 +98,11 @@ fn draw_shape(canvas: &mut [[u8; 4]; 256], alpha_map: &[u8; 256], fg: [u8; 3]) {
 
 // ── 公共 API ────────────────────────────────────────────────────────────────
 
-/// 将 `IconResult` 渲染为 16×16 RGBA 像素数据 (1024 字节, 行主序)。
+/// 将图标渲染为独立拥有的 1024 字节 RGBA 像素向量，按 16×16 行主序排列。
+///
+/// 输入通常来自 [`crate::namerena::icon::icon_from_raw_name`]。手工构造的 `IconResult`
+/// 需保证形状下标小于 38、边框下标小于 8，且每个形状都有对应前景色，否则会 panic。
+/// 不访问文件或全局战斗状态，透明像素的 RGB 分量归零以保持 Canvas 兼容。
 pub fn render_icon_vec(icon: &IconResult) -> Vec<u8> {
     let mut canvas = [[0u8; 4]; 256]; // 16×16, 初始完全透明
 
@@ -153,8 +153,10 @@ pub fn render_icon_png(icon: &IconResult) -> Vec<u8> {
     out
 }
 
-/// 将图标渲染为 base64 data URL (`data:image/png;base64,...`),
-/// 匹配 JS `canvas.toDataURL("image/png")` 的输出。
+/// 返回 `data:image/png;base64,...` 形式的完整 data URL，可直接交给图像控件。
+///
+/// 像素遵循 Canvas 兼容规则；PNG 的压缩与封装由 png crate 决定，
+/// 不承诺与浏览器 `canvas.toDataURL("image/png")` 的编码字节完全一致。
 #[cfg(feature = "png_render")]
 pub fn render_icon_b64(icon: &IconResult) -> String {
     let png = render_icon_png(icon);
@@ -191,5 +193,5 @@ fn base64_encode(data: &[u8]) -> String {
     out
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "png_render"))]
 mod test;
