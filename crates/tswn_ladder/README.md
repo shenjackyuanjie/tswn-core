@@ -107,6 +107,10 @@ score = score - step
 - 没有信号的行按 `(number, player1_id, player2_id)` 精确删除，不再每轮全组扫一遍；
 - 每 `HANDICAP_MAINTENANCE_EVERY` 轮清理一次「对局双方已不活跃」的行，避免表随历史
   玩家数量一直膨胀；
+- 每 `HANDICAP_VACUUM_EVERY` 轮自己跑一次 `VACUUM (ANALYZE) handicap`。线上实测共享集群的
+  autovacuum 会整小时不启动（`last_autovacuum` 停在 6 小时前，期间死元组涨到 4.5 万，
+  索引和堆一起膨胀），不能指望它按时干活；表只有几 MB，自己收一次是毫秒级，
+  而且 `VACUUM` 只取 SHARE UPDATE EXCLUSIVE，不挡天梯自己的读写；
 - 分数和名次合并成一条 `UPDATE`（旧实现分成两条，同一批行写两次），并跳过没有变化的行。
 
 ## 数据库维护

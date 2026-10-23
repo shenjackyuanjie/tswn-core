@@ -291,6 +291,26 @@ impl Updator {
         Ok((handicap_rows.len(), handicap_deletes.len()))
     }
 
+    /// 自己 VACUUM 一次 `handicap`，不依赖 autovacuum 是否按时启动。
+    ///
+    /// `VACUUM (ANALYZE)` 只取 SHARE UPDATE EXCLUSIVE，不挡天梯自己的读写；
+    /// 表只有几 MB，代价是毫秒级。ANALYZE 顺带把 `relpages`/`reltuples` 刷新到最新。
+    pub(super) async fn vacuum_handicap(&mut self) -> Result<()> {
+        if self.config.dry_run {
+            return Ok(());
+        }
+        // 用 simple query 协议：VACUUM 是 utility 语句，走扩展协议在部分版本/驱动下
+        // 会被「不能在事务块里执行」拦掉；simple query 在自动提交下是安全的。
+        let _ = self
+            .client
+            .simple_query("VACUUM (ANALYZE) handicap")
+            .await
+            .context("vacuum handicap")?
+            .into_iter()
+            .count();
+        Ok(())
+    }
+
     /// 删除「对局双方里有已经离开天梯的玩家」的 handicap 行。
     ///
     /// 这类行不会再被匹配到，留着只会让表随历史玩家数量一直膨胀。

@@ -92,6 +92,15 @@ impl Updator {
             }
         }
         self.round_index = self.round_index.wrapping_add(1);
+
+        // handicap 自维护：不依赖 autovacuum（共享集群里它可能整小时不启动）。
+        // 放在所有组跑完之后做一次，而不是每组各做一次。
+        if HANDICAP_VACUUM_EVERY > 0 && self.round_index % HANDICAP_VACUUM_EVERY == 0 {
+            if let Err(err) = self.vacuum_handicap().await {
+                eprintln!("[db] VACUUM handicap 失败: {err:#}");
+            }
+        }
+
         if MATCHCOUNT_SAVE_EVERY > 0 && self.round_index % MATCHCOUNT_SAVE_EVERY == 0 {
             self.flush_state();
         }

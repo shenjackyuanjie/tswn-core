@@ -20,6 +20,8 @@
 - 去掉每轮那条全组 `DELETE FROM handicap WHERE match_count = 0 AND ...`，改成按
   `(number, player1_id, player2_id)` 精确删除没有信号的行。
 - 新增每 30 轮一次的维护：删除「对局双方已不活跃」的 handicap 行。
+- 新增每 10 轮一次的自维护 `VACUUM (ANALYZE) handicap`：线上实测共享集群的 autovacuum
+  会整小时不启动，不能指望它回收死元组；表只有几 MB，毫秒级代价，且不阻塞读写。
 - 分数与名次合并成一条 `UPDATE member ... FROM UNNEST(...)`，并跳过没有变化的行
   （旧实现先写分数再写名次，同一批行写两次）。
 

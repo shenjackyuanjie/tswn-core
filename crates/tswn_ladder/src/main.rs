@@ -64,6 +64,13 @@ const HANDICAP_PRECISION: u32 = 2;
 const HANDICAP_PERSIST_QUANTUM: f64 = 1.0;
 /// 每隔多少轮清理一次「对局双方已不活跃」的 handicap 行。
 const HANDICAP_MAINTENANCE_EVERY: u32 = 30;
+/// 每隔多少轮自己 VACUUM 一次 handicap。
+///
+/// 这张表每分钟要更新约 1800 行，全靠 autovacuum 回收死元组；线上实测
+/// autovacuum 在共享集群里会整小时不启动（`last_autovacuum` 停在 6 小时前，
+/// 期间 `n_dead_tup` 涨到 4.5 万，索引和堆一起膨胀）。表本身只有几 MB，
+/// 自己收一次是毫秒级，且 `VACUUM` 只拿 SHARE UPDATE EXCLUSIVE，不挡读写。
+const HANDICAP_VACUUM_EVERY: u32 = 10;
 /// 每轮结束后隔多少轮把累计场次快照落盘一次。
 const MATCHCOUNT_SAVE_EVERY: u32 = 10;
 const MATCHCOUNT_STATE_FILE: &str = "ladder_matchcount.txt";
