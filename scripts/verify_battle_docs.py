@@ -1,4 +1,9 @@
-"""Run executable examples extracted from docs/reference/public-api.md against local artifacts."""
+"""提取公共 API 文档中的 Rust、Python、WASM 示例并实际执行。
+
+Rust 示例在 target/battle_docs_smoke 生成临时 crate，并离线运行；Python 使用
+target/py_cli_api_verify/import，WASM 使用 target/battle_wasm_node 中的 Node 包。
+后两者需提前构建且与源码一致；脚本不安装依赖，也不提供 --help 参数。
+"""
 from pathlib import Path
 import os
 import re
@@ -19,8 +24,10 @@ edition = "2024"
 tswn_core = { path = "../../crates/tswn_core" }
 ''', encoding='utf8')
 (smoke / 'src/main.rs').write_text(blocks['rust'], encoding='utf8')
-subprocess.run(['cargo', 'run', '--offline', '--quiet', '--manifest-path', str(smoke / 'Cargo.toml'),
-                '--target-dir', str(ROOT / 'target')], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
+# 保留 Rust 示例输出用于失败排查，也避免依赖受限 Windows 环境中的 NUL 设备。
+with (smoke / 'rust.stdout.log').open('w', encoding='utf8') as output:
+    subprocess.run(['cargo', 'run', '--offline', '--quiet', '--manifest-path', str(smoke / 'Cargo.toml'),
+                    '--target-dir', str(ROOT / 'target')], cwd=ROOT, check=True, stdout=output)
 env = {**os.environ, 'PYTHONPATH': str(ROOT / 'target/py_cli_api_verify/import')}
 subprocess.run([sys.executable, '-c', blocks['python']], cwd=ROOT, env=env, check=True)
 js = '''import { createRequire } from 'node:module';
