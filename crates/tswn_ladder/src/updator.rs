@@ -186,6 +186,9 @@ impl Updator {
         let mut handicap_map = self.load_handicap_data(&players, group).await?;
         let first_matches = self.generate_base_matches(&mut players, &handicap_map);
         let base_matches = self.generate_second_matches(&mut players, &handicap_map, &first_matches);
+        // 补位/退火保持关闭：实测只会把「handicap 诱导偏置」这个二阶量优化掉，
+        // 天梯侧的波动与准确度没有任何变化，却要多打 21% 的对局。
+        // 结论与数据见 `main.rs` 里 MAX_MATCHES 的注释。
         let supplement_matches: Vec<MatchPair> = Vec::new();
         let matches = base_matches.iter().copied().chain(supplement_matches.iter().copied()).collect::<Vec<_>>();
 
