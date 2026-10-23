@@ -463,43 +463,51 @@ impl Updator {
     }
 }
 
-/// 读取累计场次快照（每行 `member_id 场次`）。
+/// 读取玩家跨轮状态快照（每行 `member_id 累计场次 [名称哈希 [K恢复截止轮]]`）。
 ///
-/// 这个数字只用于把 K 从「新玩家」平滑收缩到「老玩家」，属于可丢的缓存：文件缺失、
-/// 损坏或被清掉时退回空表，所有人按新玩家 K 打几十轮就重新收敛。
-pub(super) fn load_match_counts(dir: &std::path::Path) -> HashMap<i32, f64> {
+/// 只用于「自适应 K + 换号识别」，属于可丢的缓存：文件缺失、损坏或被清掉时退回空表，
+/// 所有人按新玩家 K 打几十轮就重新收敛，只是这段时间的 K 恢复不生效。
+/// 旧版只有前两个字段，缺的字段按 0 处理（不视为换号）。
+pub(super) fn load_member_state(dir: &std::path::Path) -> HashMap<i32, MemberState> {
     let path = dir.join(MATCHCOUNT_STATE_FILE);
     let Ok(text) = std::fs::read_to_string(&path) else {
         return HashMap::new();
     };
 
-    let mut counts = HashMap::new();
+    let mut state = HashMap::new();
     for line in text.lines() {
         let mut parts = line.split_whitespace();
-        let (Some(id), Some(count)) = (parts.next(), parts.next()) else {
-            continue;
-        };
-        let (Ok(id), Ok(count)) = (id.parse::<i32>(), count.parse::<f64>()) else {
-            continue;
-        };
-        if count.is_finite() && count >= 0.0 {
-            counts.insert(id, count);
-        }
+        let Some(id) = parts.next() else { continue };
+        let Ok(id) = id.parse::<i32>() else { continue };
+        let matches = parts.next().and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+        let name_hash = parts.next().and_then(|v| u64::from_str_radix(v, 16).ok()).unwrap_or(0);
+        let boost_until = parts.next().and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
+        state.insert(
+            id,
+            MemberState {
+                matches: if matches.is_finite() && matches >= 0.0 { matches } else { 0.0 },
+                name_hash,
+                boost_until,
+            },
+        );
     }
-    counts
+    state
 }
 
-/// 原子写回累计场次快照；返回是否写成功（失败由调用方决定要不要提示）。
-pub(super) fn save_match_counts(dir: &std::path::Path, counts: &HashMap<i32, f64>) -> bool {
+/// 原子写回玩家跨轮状态快照；返回是否写成功（失败由调用方决定要不要提示）。
+pub(super) fn save_member_state(dir: &std::path::Path, state: &HashMap<i32, MemberState>) -> bool {
     let path = dir.join(MATCHCOUNT_STATE_FILE);
     let tmp = dir.join(format!("{MATCHCOUNT_STATE_FILE}.tmp"));
 
-    let mut ids = counts.keys().copied().collect::<Vec<_>>();
+    let mut ids = state.keys().copied().collect::<Vec<_>>();
     ids.sort_unstable();
-    let mut text = String::with_capacity(ids.len() * 16);
+    let mut text = String::with_capacity(ids.len() * 24);
     for id in ids {
-        let count = counts.get(&id).copied().unwrap_or(0.0);
-        text.push_str(&format!("{id} {count:.0}\n"));
+        let entry = state.get(&id).copied().unwrap_or_default();
+        text.push_str(&format!(
+            "{id} {:.0} {:016x} {}\n",
+            entry.matches, entry.name_hash, entry.boost_until
+        ));
     }
 
     std::fs::create_dir_all(dir).is_ok() && std::fs::write(&tmp, text.as_bytes()).is_ok() && std::fs::rename(&tmp, &path).is_ok()

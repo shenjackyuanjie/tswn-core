@@ -93,8 +93,10 @@ impl Updator {
                 players[j].score += 1;
             }
 
-            *self.match_counts.entry(players[i].id).or_insert(0.0) += 1.0;
-            *self.match_counts.entry(players[j].id).or_insert(0.0) += 1.0;
+            let played = self.member_state.entry(players[i].id).or_default();
+            played.matches += 1.0;
+            let played = self.member_state.entry(players[j].id).or_default();
+            played.matches += 1.0;
 
             total_delta += (actual_delta as f64).abs();
 

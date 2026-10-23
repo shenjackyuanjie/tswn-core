@@ -5,31 +5,31 @@ use super::*;
 impl Updator {
     pub(super) fn new(client: Client, config: Config) -> Self {
         eprintln!("[start] Updator已启动");
-        let match_counts = load_match_counts(&config.state_dir);
-        eprintln!("[state] 累计场次快照 {} 人", match_counts.len());
+        let member_state = load_member_state(&config.state_dir);
+        eprintln!("[state] 玩家状态快照 {} 人", member_state.len());
         Self {
             client,
             config,
             rng: fastrand::Rng::new(),
             battle_error_count: 0,
             battle_error_suppressed: 0,
-            match_counts,
+            member_state,
             round_index: 0,
             state_save_warned: false,
         }
     }
 
-    /// 落盘累计场次快照；失败只提示一次（通常是 `LADDER_STATE_DIR` 对服务用户不可写）。
+    /// 落盘玩家状态快照；失败只提示一次（通常是 `LADDER_STATE_DIR` 对服务用户不可写）。
     pub(super) fn flush_state(&mut self) {
         if self.config.dry_run {
             return;
         }
-        if save_match_counts(&self.config.state_dir, &self.match_counts) || self.state_save_warned {
+        if save_member_state(&self.config.state_dir, &self.member_state) || self.state_save_warned {
             return;
         }
         self.state_save_warned = true;
         eprintln!(
-            "[state] 累计场次快照写入失败（{}），自适应 K 会在进程重启后从 0 重新累计",
+            "[state] 玩家状态快照写入失败（{}），自适应 K 会在进程重启后从 0 重新累计",
             self.config.state_dir.display()
         );
     }
@@ -38,9 +38,37 @@ impl Updator {
     ///
     /// 一分钟一轮、每人每轮约 9 场，一天上万场；固定 K=80 时稳态误差比真实实力差还大，
     /// 排名每分钟都在大幅互穿。这里让新玩家用完整 K 快速就位，老玩家收敛到下限。
+    ///
+    /// 例外：成员换号时（站点会扣 10% 分数并清 handicap），K 临时恢复满值
+    /// `LADDER_K_BOOST_ROUNDS` 轮，把扣掉的分按原来 ~3 小时的节奏补回来。
     pub(super) fn k_factor(&self, member_id: i32) -> f64 {
-        let played = self.match_counts.get(&member_id).copied().unwrap_or(0.0);
-        adaptive_k(played, self.config.k_shrink_matches, self.config.k_floor)
+        let state = self.member_state.get(&member_id).copied().unwrap_or_default();
+        if state.boost_until > self.round_index {
+            return BASE_K_FACTOR;
+        }
+        adaptive_k(state.matches, self.config.k_shrink_matches, self.config.k_floor)
+    }
+
+    /// 用成员名称变化识别换号，并给对应的玩家临时恢复满 K。
+    ///
+    /// 站点换号走的是 `app/main/team_routes.py`：改 `member.name` 的同时把分数打 9 折
+    /// 并删掉该成员在两个方向上的 handicap 行。天梯这边只看得到名称变化，
+    /// 所以把它当作「评分不确定性变大」的信号。
+    pub(super) fn sync_member_names(&mut self, players: &[PlayerRow]) {
+        let boost_rounds = self.config.k_boost_rounds;
+        let round_index = self.round_index;
+        for player in players {
+            let current = name_hash(&player.name);
+            let entry = self.member_state.entry(player.id).or_default();
+            if let Some(until) = rename_boost_until(entry.name_hash, current, boost_rounds, round_index) {
+                eprintln!(
+                    "[state] 检测到换号: member={} 名字哈希 {:016x} -> {:016x}，K 恢复到满值直至第 {} 轮",
+                    player.id, entry.name_hash, current, until
+                );
+                entry.boost_until = until;
+            }
+            entry.name_hash = current;
+        }
     }
 
     pub(super) async fn run_forever(&mut self) -> Result<()> {
@@ -125,6 +153,10 @@ impl Updator {
             eprintln!("[group:{group}] 活跃玩家不足2人，跳过");
             return Ok(());
         }
+
+        // 换号识别：站点的换号 = 改 member.name + 扣 10% 分数 + 清 handicap，
+        // 天梯这边靠名称变化给该玩家临时恢复满 K，让扣掉的分按原来的节奏补回来。
+        self.sync_member_names(&players);
 
         eprintln!("[group:{group}] 玩家={}", players.len());
 

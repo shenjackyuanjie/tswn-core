@@ -26,7 +26,7 @@ mod updator;
 use battle::run_battle_winner;
 use config::*;
 use matching::*;
-use storage::{connect_postgres, load_match_counts, save_match_counts};
+use storage::{connect_postgres, load_member_state, save_member_state};
 
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -74,6 +74,13 @@ const HANDICAP_VACUUM_EVERY: u32 = 10;
 /// 每轮结束后隔多少轮把累计场次快照落盘一次。
 const MATCHCOUNT_SAVE_EVERY: u32 = 10;
 const MATCHCOUNT_STATE_FILE: &str = "ladder_matchcount.txt";
+/// 换号后保持满 K 的轮数。
+///
+/// 站点的换号逻辑（`app/main/team_routes.py`）会扣 10% 分数并清掉该成员的 handicap，
+/// 旧版 K=80 时这笔分大约 3 小时补回来；降到 K=12 之后同样的缺口要 20 小时才补回，
+/// 相当于把处罚悄悄加重了 6 倍。检测到成员名称变化（=换号）时，临时恢复满 K 跑
+/// `LADDER_K_BOOST_ROUNDS` 轮，把回补速度拉回原来的量级；设 0 关闭。
+const K_BOOST_ROUNDS: u32 = 250;
 const BATTLE_ERROR_LOG_LIMIT: usize = 3;
 
 const MAX_ACTIVE_MATCHES: usize = 7;
@@ -173,14 +180,25 @@ impl MatchPair {
     fn key(self) -> (usize, usize) { if self.0 < self.1 { (self.0, self.1) } else { (self.1, self.0) } }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct MemberState {
+    /// 累计参赛场次，决定自适应 K。
+    matches: f64,
+    /// 上一轮看到的成员名称哈希（0 表示还没记录过）。站点的换号逻辑会改名称，
+    /// 所以「名称变了」就是「换号了」的信号。
+    name_hash: u64,
+    /// 在此之前保持满 K（换号后快速回补被扣掉的分数）。
+    boost_until: u32,
+}
+
 struct Updator {
     client: Client,
     config: Config,
     rng: fastrand::Rng,
     battle_error_count: usize,
     battle_error_suppressed: usize,
-    /// 玩家累计参赛场次（用于自适应 K）。启动时从状态文件恢复，定期落盘。
-    match_counts: HashMap<i32, f64>,
+    /// 玩家的跨轮状态（累计场次 / 名称哈希 / K 恢复截止轮次）。
+    member_state: HashMap<i32, MemberState>,
     /// 已经跑过的轮次，用来驱动周期性维护（handicap 清理 / 场次落盘）。
     round_index: u32,
     /// 场次快照写入失败只提示一次，避免每 10 轮刷一条重复日志。
@@ -222,6 +240,28 @@ pub(crate) fn adaptive_k(played: f64, shrink_matches: f64, floor: f64) -> f64 {
 pub(crate) fn handicap_needs_persist(persisted_value: f64, persisted_count: f64, value: f64, count: f64, quantum: f64) -> bool {
     let quantum = if quantum > 0.0 { quantum } else { 1.0 };
     (value - persisted_value).abs() >= quantum || (count - persisted_count).abs() >= quantum
+}
+
+/// 成员名称的 FNV-1a 哈希。用哈希而不是原字符串，是因为名字里会有空格和中文，
+/// 直接写进快照再按空白切分会坏掉。
+pub(crate) fn name_hash(name: &str) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in name.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
+/// 换号检测：名称从「已知的 A」变成「B」时，返回该玩家新的 `boost_until`。
+///
+/// `previous_hash == 0` 表示第一次记录（还不知道原来叫什么），不算换号；
+/// `boost_rounds == 0` 表示功能关闭。返回 `None` 表示不需要动 K。
+pub(crate) fn rename_boost_until(previous_hash: u64, current_hash: u64, boost_rounds: u32, round_index: u32) -> Option<u32> {
+    if previous_hash == 0 || previous_hash == current_hash || boost_rounds == 0 {
+        return None;
+    }
+    Some(round_index.saturating_add(boost_rounds))
 }
 
 #[cfg(test)]
@@ -294,22 +334,65 @@ mod tests {
     }
 
     #[test]
-    fn match_count_snapshot_round_trips() {
+    fn member_state_snapshot_round_trips() {
         let dir = std::env::temp_dir().join(format!("tswn_ladder_state_{}", std::process::id()));
-        let mut counts = HashMap::new();
-        counts.insert(7, 1_234.0);
-        counts.insert(3, 0.0);
-        save_match_counts(&dir, &counts);
-        let loaded = load_match_counts(&dir);
-        assert_eq!(loaded.get(&7), Some(&1_234.0));
-        assert_eq!(loaded.get(&3), Some(&0.0));
+        let mut state = HashMap::new();
+        state.insert(
+            7,
+            MemberState {
+                matches: 1_234.0,
+                name_hash: name_hash("乌云阻拦明月涌河湾 9fPX"),
+                boost_until: 42,
+            },
+        );
+        state.insert(3, MemberState::default());
+        save_member_state(&dir, &state);
+        let loaded = load_member_state(&dir);
+        assert_eq!(loaded.get(&7).map(|s| s.matches), Some(1_234.0));
+        assert_eq!(loaded.get(&7).map(|s| s.name_hash), Some(name_hash("乌云阻拦明月涌河湾 9fPX")));
+        assert_eq!(loaded.get(&7).map(|s| s.boost_until), Some(42));
+        assert_eq!(loaded.get(&3).map(|s| s.matches), Some(0.0));
         assert_eq!(loaded.len(), 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn match_count_snapshot_missing_dir_is_empty() {
+    fn member_state_snapshot_reads_old_two_field_format() {
+        let dir = std::env::temp_dir().join(format!("tswn_ladder_old_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        std::fs::write(dir.join(MATCHCOUNT_STATE_FILE), "11 90\n12 8\n").expect("write snapshot");
+        let loaded = load_member_state(&dir);
+        assert_eq!(loaded.get(&11).map(|s| s.matches), Some(90.0));
+        assert_eq!(loaded.get(&12).map(|s| s.matches), Some(8.0));
+        // 老格式没有名称哈希，视为「还不知道」而不是换号
+        assert_eq!(loaded.get(&11).map(|s| s.name_hash), Some(0));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn member_state_snapshot_missing_dir_is_empty() {
         let missing = std::env::temp_dir().join(format!("tswn_ladder_absent_{}", std::process::id()));
-        assert!(load_match_counts(&missing).is_empty());
+        assert!(load_member_state(&missing).is_empty());
+    }
+
+    #[test]
+    fn name_hash_is_stable_and_distinguishes_names() {
+        assert_eq!(name_hash("abc"), name_hash("abc"));
+        assert_ne!(name_hash("abc"), name_hash("abd"));
+        assert_ne!(name_hash(""), 0);
+    }
+
+    #[test]
+    fn rename_boosts_only_on_actual_change() {
+        let a = name_hash("旧名字");
+        let b = name_hash("新名字");
+        // 第一次记录（还不知原来叫什么）→ 不动 K
+        assert_eq!(rename_boost_until(0, a, K_BOOST_ROUNDS, 100), None);
+        // 名字没变 → 不动 K
+        assert_eq!(rename_boost_until(a, a, K_BOOST_ROUNDS, 100), None);
+        // 名字变了 → 从当前轮次起保持满 K
+        assert_eq!(rename_boost_until(a, b, K_BOOST_ROUNDS, 100), Some(100 + K_BOOST_ROUNDS));
+        // 关掉功能 → 不动 K
+        assert_eq!(rename_boost_until(a, b, 0, 100), None);
     }
 }

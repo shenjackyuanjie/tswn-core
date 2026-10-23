@@ -20,6 +20,8 @@ pub(super) struct Config {
     /// 只算不写：跑完一整轮但不执行任何 UPDATE/INSERT/DELETE（`LADDER_DRY_RUN`）。
     /// 用于在线上库上做真实负载的干跑验证。
     pub(super) dry_run: bool,
+    /// 换号后保持满 K 的轮数（`LADDER_K_BOOST_ROUNDS`，0 = 关闭）。
+    pub(super) k_boost_rounds: u32,
 }
 
 impl Config {
@@ -47,6 +49,7 @@ impl Config {
         let k_floor = read_env_f64("LADDER_K_FLOOR", BASE_K_FACTOR * K_FLOOR_RATIO);
         let handicap_persist_quantum = read_env_f64("LADDER_HANDICAP_PERSIST_QUANTUM", HANDICAP_PERSIST_QUANTUM);
         let dry_run = read_env_bool("LADDER_DRY_RUN", false);
+        let k_boost_rounds = read_env_f64("LADDER_K_BOOST_ROUNDS", K_BOOST_ROUNDS as f64).clamp(0.0, 100_000.0) as u32;
 
         Ok(Self {
             database_url,
@@ -59,6 +62,7 @@ impl Config {
             k_floor,
             handicap_persist_quantum,
             dry_run,
+            k_boost_rounds,
         })
     }
 }

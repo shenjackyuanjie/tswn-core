@@ -28,6 +28,12 @@
 ### 新增
 
 - `LADDER_DRY_RUN`：完整跑一轮但不执行任何 UPDATE/INSERT/DELETE，用于线上干跑验证写入量。
+- 换号识别：成员名称变化时该玩家临时恢复满 K（`LADDER_K_BOOST_ROUNDS`，默认 250 轮）。
+  站点换号会扣 10% 分数并清 handicap，旧版 K=80 时约 3 小时补回；降到 K=12 之后同样的
+  缺口要 20 小时（配对模拟实测 50% 需 552 轮、90% 需 1181 轮）。恢复满 K 后 50%/90%
+  回补分别缩到 47/62 轮，与旧版持平且不影响其他玩家的波动。
+- 玩家状态快照扩展为 `id 累计场次 名称哈希 K恢复截止轮`，仍兼容旧的 `id 累计场次` 格式
+  （缺的字段按 0 处理，不会被误判成换号）。
 - 环境变量 `LADDER_STATE_DIR`、`LADDER_K_SHRINK_MATCHES`、`LADDER_K_FLOOR`、
   `LADDER_HANDICAP_PERSIST_QUANTUM`，线上调参不必重新编译。
 - `sql/handicap_maintenance.sql`：handicap 表空间回收（`VACUUM FULL`）、去掉三个无用索引、
