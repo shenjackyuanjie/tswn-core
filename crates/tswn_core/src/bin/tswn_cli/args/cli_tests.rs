@@ -105,6 +105,35 @@ fn namer_pf_rejects_unknown_metric_name() {
 }
 
 #[test]
+fn namer_pf_rejects_non_finite_metric_thresholds() {
+    for spec in ["pp:NaN", "pp:inf", "pp::out.txt:NaN", "pp::out.txt:inf"] {
+        let error = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario", "--metric", spec]).unwrap_err();
+        assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
+    }
+}
+
+#[test]
+fn namer_pf_metric_paths_keep_drive_and_unc_but_reject_extra_colons() {
+    for path in [r"C:\scores\out.txt", r"\\server\share\out.txt"] {
+        let spec = format!("pp::{path}:1");
+        let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario", "--metric", &spec]).unwrap();
+        let CliCommand::NamerPf(command) = cli.command else {
+            panic!("命令类型不符")
+        };
+        assert_eq!(command.metrics[0].output_file.as_deref(), Some(Path::new(path)));
+        assert_eq!(command.metrics[0].min_file, Some(1.0));
+    }
+    for spec in [
+        r"pp::C:\scores\out.txt:stream",
+        r"pp::C:\scores\out.txt:stream:1",
+        r"pp::\\server\share\out.txt:stream",
+    ] {
+        let error = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario", "--metric", spec]).unwrap_err();
+        assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
+    }
+}
+
+#[test]
 fn namer_pf_defaults_to_all_five_metrics_in_fixed_order() {
     let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario"]).unwrap();
     let parsed = ParsedCli::from_cli(cli).unwrap();

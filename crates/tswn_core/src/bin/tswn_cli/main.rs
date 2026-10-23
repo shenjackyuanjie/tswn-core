@@ -63,9 +63,6 @@ mod to_diy;
 
 use args::ParsedCommand;
 
-/// 小批量 benchmark 不值得承担线程调度开销，超过该阈值后再考虑并行路径。
-pub const BENCH_PARALLEL_THRESHOLD: usize = 64;
-
 fn print_banner() {
     println!("欢迎来到 tswn - {}, 使用 --help/-h 获取帮助信息谢谢喵", tswn_core::version());
     println!("WARNING: ALPHA 版本, 仅供测试使用, 已知有 bug, 暂未实现: 天卫、Boss、武器");
