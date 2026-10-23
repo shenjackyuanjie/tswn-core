@@ -1,4 +1,7 @@
-/** 本地浏览器基准测试。安装工具：npm install --prefix target/web-test-tools playwright linkedom */
+/** 本地浏览器基准测试。安装工具：npm install --prefix target/web-test-tools playwright linkedom
+ * TSWN_BENCH_WEB_RUNS 指定每类输入的重复次数；PACKAGE 选择 WASM 包目录，OUTPUT 隔离报告和截图。
+ * 未指定时保持每类 20 次、target/web_streaming/pkg 读取包及 target/web_streaming 输出。
+ */
 import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
@@ -7,7 +10,13 @@ import { chromium } from '../target/web-test-tools/node_modules/playwright/index
 import { percentile } from '../crates/tswn_wasm/examples/show-metrics.js';
 
 const examples = resolve('crates/tswn_wasm/examples');
-const output = resolve('target/web_streaming');
+const output = resolve(process.env.TSWN_BENCH_WEB_OUTPUT ?? 'target/web_streaming');
+const packageDir = resolve(process.env.TSWN_BENCH_WEB_PACKAGE ?? resolve(output, 'pkg'));
+const runsText = process.env.TSWN_BENCH_WEB_RUNS ?? '20';
+const runsPerFixture = Number(runsText);
+if (!/^[1-9][0-9]*$/.test(runsText) || !Number.isSafeInteger(runsPerFixture)) {
+  throw new Error('TSWN_BENCH_WEB_RUNS 必须是正整数');
+}
 await mkdir(output, { recursive: true });
 const hook = `
 const recordInitial = BattleMetrics.prototype.initialRendered;
@@ -28,7 +37,7 @@ globalThis.battleBenchmark = {
 const server = createServer(async (req, res) => {
   try {
     const pathname = new URL(req.url, 'http://localhost').pathname;
-    const base = pathname.startsWith('/pkg/') ? resolve(output, 'pkg') : examples;
+    const base = pathname.startsWith('/pkg/') ? packageDir : examples;
     const relative = pathname.startsWith('/pkg/') ? pathname.slice(5) : pathname.slice(1) || 'index.html';
     const file = resolve(base, relative);
     if (!file.startsWith(base + '\\') && !file.startsWith(base + '/')) { res.writeHead(403); res.end(); return; }
@@ -52,7 +61,7 @@ try {
   const runs = [];
   for (const fixture of fixtures) {
     const raw = await readFile(resolve('crates/tswn_test/cases/runtime_stress', fixture + '.txt'), 'utf8');
-    for (let run = 0; run < 20; run++) {
+    for (let run = 0; run < runsPerFixture; run++) {
       const initial = await page.evaluate(raw => battleBenchmark.start(raw), raw);
       if (initial.frames > 2 || initial.ttis == null) throw new Error('startup eagerly pulled before initial render');
       await page.waitForFunction(() => battleBenchmark.done || battleBenchmark.error, null, { timeout: 120_000 });
@@ -60,11 +69,11 @@ try {
       if (result.error || errors.length) throw new Error(JSON.stringify({ result: result.error, errors }));
       runs.push({ fixture, run, ...result });
       if (run === 0 && fixture.startsWith('2v2')) await page.screenshot({ path: resolve(output, 'streaming_result.png'), fullPage: false });
-      console.log(`${fixture} ${run + 1}/20: TTIS=${result.ttis_ms.toFixed(2)} TTFE=${result.ttfe_ms.toFixed(2)} pull-p95=${result.frame_pull_p95_ms.toFixed(2)} frames=${result.frames_received}`);
+      console.log(`${fixture} ${run + 1}/${runsPerFixture}: TTIS=${result.ttis_ms.toFixed(2)} TTFE=${result.ttfe_ms.toFixed(2)} pull-p95=${result.frame_pull_p95_ms.toFixed(2)} frames=${result.frames_received}`);
     }
   }
   const environment = { browser: await browser.version(), os: `${platform()} ${release()}`, cpu: cpus()[0].model,
-    viewport: '1440x1000', build: 'cargo release, wasm-bindgen --target web', mode: 'headless Edge, warm WASM module, fresh session/icons each run, turbo playback' };
+    viewport: '1440x1000', runs_per_fixture: runsPerFixture, build: 'cargo release, wasm-bindgen --target web', mode: 'headless Edge, warm WASM module, fresh session/icons each run, turbo playback' };
   await writeFile(resolve(output, 'baseline.json'), JSON.stringify({ environment, runs }, null, 2));
   const rows = fixtures.map(fixture => {
     const group = runs.filter(run => run.fixture === fixture);
