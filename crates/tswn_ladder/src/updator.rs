@@ -5,13 +5,26 @@ use super::*;
 impl Updator {
     pub(super) fn new(client: Client, config: Config) -> Self {
         eprintln!("[start] Updator已启动");
+        let match_counts = load_match_counts(&config.state_dir);
+        eprintln!("[state] 累计场次快照 {} 人", match_counts.len());
         Self {
             client,
             config,
             rng: fastrand::Rng::new(),
             battle_error_count: 0,
             battle_error_suppressed: 0,
+            match_counts,
+            round_index: 0,
         }
+    }
+
+    /// 自适应 K：累计场次越多，单场改分越小。
+    ///
+    /// 一分钟一轮、每人每轮约 9 场，一天上万场；固定 K=80 时稳态误差比真实实力差还大，
+    /// 排名每分钟都在大幅互穿。这里让新玩家用完整 K 快速就位，老玩家收敛到下限。
+    pub(super) fn k_factor(&self, member_id: i32) -> f64 {
+        let played = self.match_counts.get(&member_id).copied().unwrap_or(0.0);
+        adaptive_k(played, self.config.k_shrink_matches, self.config.k_floor)
     }
 
     pub(super) async fn run_forever(&mut self) -> Result<()> {
@@ -34,6 +47,9 @@ impl Updator {
                 signal = shutdown_signal() => {
                     signal?;
                     eprintln!("[shutdown] 收到退出信号");
+                    if !self.config.dry_run {
+                        save_match_counts(&self.config.state_dir, &self.match_counts);
+                    }
                     return Ok(());
                 }
             }
@@ -61,6 +77,10 @@ impl Updator {
                 self.reconnect_after_postgres_error(&err).await;
             }
         }
+        self.round_index = self.round_index.wrapping_add(1);
+        if !self.config.dry_run && MATCHCOUNT_SAVE_EVERY > 0 && self.round_index % MATCHCOUNT_SAVE_EVERY == 0 {
+            save_match_counts(&self.config.state_dir, &self.match_counts);
+        }
         self.check_memory_usage();
         eprintln!("[tick] 天梯匹配轮次结束");
         Ok(())
@@ -85,8 +105,16 @@ impl Updator {
 
         eprintln!("[group:{group}] 玩家={}", players.len());
 
+        // 赛季衰减改成「每人扣掉同一个量」：等于组内平均分按 DROPRATE 会掉的那一份。
+        // 原来的 `score * DROPRATE` 是按分数比例扣，扣得最多的是高分端，等于持续把
+        // 分差往中间挤；分差被压缩后同样的改分噪声会造成更大的名次抖动，而且「分数
+        // 尺度」和 K 绑在一起（降 K 就等于压缩全榜分数）。扣同一个量时均值同样停在
+        // ~11000（它随均值自适应），但分差不受影响。
+        let mean_loaded = players.iter().map(|p| p.loaded_score).sum::<f64>() / players.len() as f64;
+        let decay = decay_step(mean_loaded);
+
         for player in &mut players {
-            player.score = self.probabilistic_round(player.loaded_score * DROPRATE);
+            player.score = self.probabilistic_round(player.loaded_score - decay);
             player.original_score = player.score;
             player.total_matches = 0;
             player.base_matches = 0;
@@ -130,18 +158,29 @@ impl Updator {
             return Ok(());
         }
 
-        self.persist_results(&mut players, &mut handicap_map, &update_results.changed_handicaps, group)
+        if HANDICAP_MAINTENANCE_EVERY > 0 && self.round_index % HANDICAP_MAINTENANCE_EVERY == 0 {
+            match self.prune_stale_handicap(group).await {
+                Ok(0) => {}
+                Ok(n) => eprintln!("[group:{group}] 清理失效 handicap 行 {n} 条"),
+                Err(err) => eprintln!("[group:{group}] 清理 handicap 失败: {err:#}"),
+            }
+        }
+
+        let (handicap_written, handicap_deleted) = self
+            .persist_results(&mut players, &mut handicap_map, &update_results.changed_handicaps, group)
             .await?;
         self.update_ranks_and_logs(&mut players, update_results.history_records, group).await?;
 
         eprintln!(
-            "[group:{group}] 完成 | avgDelta={:.1} | quality={:.1}% | success={} failed={} | handicapAvgCount={:.1} | handicapAvgValue={:.1}",
+            "[group:{group}] 完成 | avgDelta={:.1} | quality={:.1}% | success={} failed={} | handicapAvgCount={:.1} | handicapAvgValue={:.1} | handicap写入={} 删除={}",
             update_results.avg_delta,
             update_results.match_quality,
             update_results.executed_matches,
             update_results.failed_matches,
             update_results.handicap_stats.avg_match_count,
-            update_results.handicap_stats.avg_handicap
+            update_results.handicap_stats.avg_handicap,
+            handicap_written,
+            handicap_deleted
         );
 
         Ok(())

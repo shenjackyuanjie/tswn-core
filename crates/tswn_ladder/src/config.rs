@@ -9,6 +9,17 @@ pub(super) struct Config {
     pub(super) groups: Vec<String>,
     pub(super) run_once: bool,
     pub(super) rank_log_dir: PathBuf,
+    /// 运行状态目录（累计场次快照等），默认与 rank 日志同目录。
+    pub(super) state_dir: PathBuf,
+    /// 自适应 K 的收缩尺度与下限（可用 `LADDER_K_SHRINK_MATCHES` /
+    /// `LADDER_K_FLOOR` 覆盖，便于线上不改二进制就调参）。
+    pub(super) k_shrink_matches: f64,
+    pub(super) k_floor: f64,
+    /// handicap 回写刻度（`LADDER_HANDICAP_PERSIST_QUANTUM`）。
+    pub(super) handicap_persist_quantum: f64,
+    /// 只算不写：跑完一整轮但不执行任何 UPDATE/INSERT/DELETE（`LADDER_DRY_RUN`）。
+    /// 用于在线上库上做真实负载的干跑验证。
+    pub(super) dry_run: bool,
 }
 
 impl Config {
@@ -31,6 +42,11 @@ impl Config {
         let rank_log_dir = env::var("LADDER_RANK_LOG_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|_| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let state_dir = env::var("LADDER_STATE_DIR").map(PathBuf::from).unwrap_or_else(|_| rank_log_dir.clone());
+        let k_shrink_matches = read_env_f64("LADDER_K_SHRINK_MATCHES", K_SHRINK_MATCHES);
+        let k_floor = read_env_f64("LADDER_K_FLOOR", BASE_K_FACTOR * K_FLOOR_RATIO);
+        let handicap_persist_quantum = read_env_f64("LADDER_HANDICAP_PERSIST_QUANTUM", HANDICAP_PERSIST_QUANTUM);
+        let dry_run = read_env_bool("LADDER_DRY_RUN", false);
 
         Ok(Self {
             database_url,
@@ -38,7 +54,19 @@ impl Config {
             groups,
             run_once,
             rank_log_dir,
+            state_dir,
+            k_shrink_matches,
+            k_floor,
+            handicap_persist_quantum,
+            dry_run,
         })
+    }
+}
+
+fn read_env_f64(name: &str, default: f64) -> f64 {
+    match env::var(name).ok().and_then(|value| value.trim().parse::<f64>().ok()) {
+        Some(value) if value.is_finite() => value,
+        _ => default,
     }
 }
 

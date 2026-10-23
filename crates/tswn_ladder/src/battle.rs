@@ -74,9 +74,14 @@ impl Updator {
             executed_matches += 1;
 
             let actual = if result == 1 { 1.0 } else { 0.0 };
-            let delta = BASE_K_FACTOR * (actual - expected_base);
-            let p1_new_score = self.probabilistic_round(players[i].score as f64 + delta);
-            let p2_new_score = self.probabilistic_round(players[j].score as f64 - delta);
+            // 每人用自己的 K：新玩家用满 K 快速就位，打了几千场的老玩家用收缩后的 K，
+            // 稳态误差随之下降，名次不再每分钟大幅互穿。
+            let k_i = self.k_factor(players[i].id);
+            let k_j = self.k_factor(players[j].id);
+            let delta_i = k_i * (actual - expected_base);
+            let delta_j = k_j * (actual - expected_base);
+            let p1_new_score = self.probabilistic_round(players[i].score as f64 + delta_i);
+            let p2_new_score = self.probabilistic_round(players[j].score as f64 - delta_j);
             let actual_delta = p1_new_score - players[i].score;
 
             players[i].score = p1_new_score;
@@ -87,6 +92,9 @@ impl Updator {
             } else {
                 players[j].score += 1;
             }
+
+            *self.match_counts.entry(players[i].id).or_insert(0.0) += 1.0;
+            *self.match_counts.entry(players[j].id).or_insert(0.0) += 1.0;
 
             total_delta += (actual_delta as f64).abs();
 
@@ -107,6 +115,8 @@ impl Updator {
                         disturbed_value: initial_handicap,
                         basic_value: initial_handicap,
                         count: 1.0,
+                        persisted_value: 0.0,
+                        persisted_count: 0.0,
                     },
                 );
 

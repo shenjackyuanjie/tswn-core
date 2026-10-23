@@ -1,5 +1,46 @@
 # 更新日志
 
+## [0.2.0] - 2026-10-23
+
+### 变更（评分）
+
+- 自适应 K：`K_i = BASE_K_FACTOR / (1 + 累计场次_i / 200)`，下限 12。一分钟一轮、每人
+  每轮约 9 场的前提下，固定 K=80 的稳态估计误差超过真实实力差，是排名每分钟大幅互穿的
+  主因。累计场次保存在 `LADDER_STATE_DIR` 下的小文本快照里（默认 `ladder_matchcount.txt`），
+  每 10 轮和收到退出信号时原子写回；快照丢失只影响后续两小时的收敛速度，不影响数据。
+- 统一衰减：赛季衰减从 `score * DROPRATE` 改成每人扣掉 `(1 - DROPRATE) * 组内平均分`。
+  按比例扣会持续压缩分差（高分端扣得多），既放大了名次抖动，又把「分数尺度」和 K 绑在
+  一起；改成扣同一个量后均值仍稳定在 ~11000，分差不再受影响。
+
+### 变更（数据库写入）
+
+- handicap 回写改成「只写与库里值差 ≥ 1.0 的行」。旧实现每轮把活跃玩家的全部两两组合
+  （线上约 1.8 万行）无条件 upsert 一遍，是 `handicap` 表膨胀到 24 GB 的直接原因。
+- 只读取本轮活跃玩家之间的 handicap 行；离开天梯的玩家留下的行不再参与读取和回写。
+- 去掉每轮那条全组 `DELETE FROM handicap WHERE match_count = 0 AND ...`，改成按
+  `(number, player1_id, player2_id)` 精确删除没有信号的行。
+- 新增每 30 轮一次的维护：删除「对局双方已不活跃」的 handicap 行。
+- 分数与名次合并成一条 `UPDATE member ... FROM UNNEST(...)`，并跳过没有变化的行
+  （旧实现先写分数再写名次，同一批行写两次）。
+
+### 新增
+
+- `LADDER_DRY_RUN`：完整跑一轮但不执行任何 UPDATE/INSERT/DELETE，用于线上干跑验证写入量。
+- 环境变量 `LADDER_STATE_DIR`、`LADDER_K_SHRINK_MATCHES`、`LADDER_K_FLOOR`、
+  `LADDER_HANDICAP_PERSIST_QUANTUM`，线上调参不必重新编译。
+- `sql/handicap_maintenance.sql`：handicap 表空间回收（`VACUUM FULL`）、去掉三个无用索引、
+  设置 `fillfactor = 70`。
+- 每组日志追加 `handicap写入=<n> 删除=<n>`，便于观察写入量。
+
+### 验证
+
+- `cargo test -p tswn_ladder`：10 项通过（新增统一衰减的分差不变性、自适应 K 的收缩与
+  下限、handicap 回写刻度、场次快照往返）。
+- 线上干跑（2026-10-23，`LADDER_DRY_RUN=1`，五组）：对局 1812 场与旧版一致，
+  handicap 回写 1810 行（旧版同口径约 18,700 行），history 3624 行不变。
+- 新 DML 语句在 `pg_temp` 临时表上逐条验证：第二次相同的 member `UPDATE` 影响 0 行
+  （跳过未变化行的判断生效），handicap upsert/精确删除/维护删除均按预期命中主键索引。
+
 ## [0.1.1] - 2026-10-13
 
 ### 构建
@@ -40,7 +81,7 @@
 
 ### 变更
 
-- 战斗执行迁移至 core 的主 Runtime `Runner`，适配旧执行器与对象模型删除后的初始化和判胜接口。
+- 战斗执行迁移至 core 的主 Runtime `Runner`，适配旧执行器与对象模型删除后的接口。
 
 ### 说明
 
