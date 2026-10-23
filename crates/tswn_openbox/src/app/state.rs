@@ -1,7 +1,9 @@
 //! 应用全局状态定义。
 //!
-//! 定义工具枚举 [`Tool`] 及各工具的独立状态结构体（`ToDiyState`、`NamerPfState` 等），
-//! 以及聚合所有状态的顶层 [`OpenboxApp`] 结构体。
+//! 各工具状态保存输入、选项及独立结果视图，顶层 OpenboxApp 聚合运行中任务与
+//! 共享取消令牌。界面状态由 UI 线程修改，计算线程只接收拥有所有权的后端输入。
+//! 注意 Default 不是无副作用构造：批量/配队默认状态会同步加载预设，并可能在
+//! 当前工作目录写出 setting 内置资源。单元测试或嵌入调用不能假定默认构造没有 I/O。
 
 use std::sync::{Arc, atomic::AtomicBool};
 use std::time::Instant;

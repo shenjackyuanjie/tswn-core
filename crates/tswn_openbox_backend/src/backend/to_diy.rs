@@ -1,4 +1,8 @@
 //! 名字导出与属性、技能详情。
+//!
+//! 同步逐行转换，每行按组合构队后导出；详情只供日志，文件仅包含导出行。
+//! 错误直接返回 Result；取消在每行开始检查，已发送的增量仍有效，但未完成的
+//! 汇总不会写入最终文件。观察者接收自有文本，不借用输入或构建中的玩家。
 
 use super::format::SKILL_CN_NAMES;
 use super::live::{EntryKind, ResultFinish, ResultKind, ResultObserver, ResultUpdate};
@@ -26,6 +30,10 @@ pub fn run_to_diy(
     run_to_diy_observed(raw, old, minions, details, output_file, cancel, None)
 }
 
+/// 带同步增量观察者的 DIY 导出；每完成一行发布一组自有结果。
+///
+/// observer=None 时返回传统完整文本；启用 observer 且没有文件输出时仅返回完成摘要。
+/// 输出文件在全部转换成功后写入，已有同名文件会被截断；取消返回 Ok("已停止。")。
 #[allow(clippy::too_many_arguments)]
 pub fn run_to_diy_observed(
     raw: &str,

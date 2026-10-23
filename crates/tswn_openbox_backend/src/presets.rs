@@ -1,4 +1,10 @@
-//! 从 `setting/settings.toml` 加载预设。
+//! 从工作目录的 `setting/settings.toml` 加载靶子、队友与默认资源。
+//!
+//! load/reload 是同步文件操作：配置缺失时写出内置配置，已有配置也会补齐缺失的
+//! 默认资源，但不覆盖已有自定义文件。配置列表只记录路径，文本在选中后另行读取；
+//! 文件读取移除开头 BOM，I/O 与 TOML 错误保存到状态或以 Result 返回。
+//! 默认入口依赖进程当前目录并具有写文件副作用，不能当作无 I/O 的状态构造函数；
+//! 需要指定目录时使用显式 root 入口，不要为并行任务临时切换进程工作目录。
 
 use std::fs;
 use std::io::{ErrorKind, Write};
@@ -55,6 +61,7 @@ pub struct TargetPreset {
 }
 
 #[derive(Debug, Clone)]
+/// 靶子预设列表、按 id 的选择及最近加载错误；失败时可保留错误供界面展示。
 pub struct TargetPresetState {
     pub items: Vec<TargetPreset>,
     pub selected_id: Option<u64>,
@@ -70,6 +77,7 @@ pub struct TeammatePreset {
 }
 
 #[derive(Debug, Clone)]
+/// 队友预设列表及按位置的选择；reload 尝试保留可用下标，而非按名字匹配。
 pub struct TeammatePresetState {
     pub items: Vec<TeammatePreset>,
     pub selected_index: Option<usize>,
@@ -79,6 +87,7 @@ pub struct TeammatePresetState {
 impl TargetPresetState {
     pub fn load() -> Self { Self::load_with_preferred_id(None) }
 
+    /// 同步加载并写出缺失默认资源；优先选择存在的 preferred_id，否则选择第一项。
     pub fn load_with_preferred_id(preferred_id: Option<u64>) -> Self {
         match load_setting_file().map(load_target_presets) {
             Ok(items) => {
@@ -188,7 +197,8 @@ pub fn load_selected_target_text(state: &TargetPresetState) -> Result<String, St
     load_target_preset_text(preset)
 }
 
-/// 读取指定靶子预设的文件内容（CLI 按 id 直接解析预设时使用）。
+/// 同步读取指定靶子文件为自有 UTF-8 文本，去除开头 BOM；不自动解析普通/带权格式。
+/// 路径不存在、不可读或编码无效时返回含路径的错误，不改写原文件。
 pub fn load_target_preset_text(preset: &TargetPreset) -> Result<String, String> { read_preset_text(&preset.path) }
 
 pub fn load_selected_teammate_text(state: &TeammatePresetState) -> Result<String, String> {
@@ -196,7 +206,8 @@ pub fn load_selected_teammate_text(state: &TeammatePresetState) -> Result<String
     load_teammate_preset_text(preset)
 }
 
-/// 读取指定队友预设的文件内容（CLI 按名字直接解析预设时使用）。
+/// 同步读取指定队友文件为自有 UTF-8 文本，去除开头 BOM；格式由调用方根据预设解释。
+/// 不借用预设或文件句柄，读取错误直接返回，不改写原文件。
 pub fn load_teammate_preset_text(preset: &TeammatePreset) -> Result<String, String> { read_preset_text(&preset.path) }
 
 fn read_preset_text(path: &Path) -> Result<String, String> {
@@ -240,7 +251,10 @@ fn load_teammate_presets(loaded: LoadedSettingFile) -> Vec<TeammatePreset> {
 
 fn load_setting_file() -> Result<LoadedSettingFile, String> { load_setting_file_from_root(&current_dir()?) }
 
-/// 从指定工作目录读取靶子预设，不修改进程当前目录；缺失时释放内置资源。
+/// 从显式 root 的 setting 子目录加载靶子预设，不修改进程当前目录。
+///
+/// 会写出缺失的内置资源，因此 root 需可写；返回的路径相对 root 解析，
+/// 不提前读取每份靶子文本。I/O 或配置解析失败返回 Err，不修改已有配置内容。
 pub fn load_target_presets_from_root(root: &Path) -> Result<Vec<TargetPreset>, String> {
     load_setting_file_from_root(root).map(load_target_presets)
 }

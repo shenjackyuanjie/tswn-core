@@ -8,7 +8,10 @@ use std::path::PathBuf;
 use std::sync::{Arc, atomic::AtomicBool};
 
 #[derive(Debug, Clone)]
-/// 任务事件：日志、高亮、技能榜、进度与最终结果，供 GUI/CLI 消费。
+/// 自有任务事件，可跨线程转交给 GUI/CLI；日志内容无需借用计算任务。
+///
+/// Progress 是当前完成数/总数，Done 携带成功摘要或错误；仅收到进度不表示结果已落盘。
+/// 事件回调本身同步执行，使用有界通道时调用方需持续消费，避免反向阻塞生产者。
 pub enum ProgressEvent {
     Log(String),
     HighlightLog(String),
@@ -49,7 +52,11 @@ impl NamerPfMetric {
 }
 
 #[derive(Debug, Clone)]
-/// 共用局数、线程、rq、筛选阈值和显示精度；由各任务按其口径使用。
+/// 批量胜率与配队共用选项，筛选不改变底层对局规则。
+///
+/// count 在任务入口至少按 1 处理；threads=None 表示自动，keep_rq=true 选择普通
+/// 构建口径。屏幕/文件阈值分别作用于各自输出，配队得分可能超过 100；显示精度
+/// 最多保留 9 位，不能据格式化结果反推内部计算精度。
 pub struct CommonBenchOptions {
     pub count: usize,
     pub threads: Option<usize>,
@@ -80,6 +87,8 @@ pub struct NamerPfSkillBoardOptions {
 }
 
 #[derive(Debug, Clone)]
+/// 一次评分任务的自有输入；raw 每行一个名字组合，metrics 决定需要计算和输出的指标。
+/// 技能榜可额外加载阈值配置；cancel 只共享停止信号，结果通过任务事件交还。
 pub struct NamerPfInput {
     pub raw: String,
     pub count: usize,
@@ -92,6 +101,9 @@ pub struct NamerPfInput {
 }
 
 #[derive(Debug, Clone)]
+/// 批量比较候选组与靶子的自有输入；文本不是文件路径，读取文件由上层完成。
+/// target_factor_enabled 时 target_text 为带权 TOML，否则由分隔开关解析；
+/// output_file 可创建目录并截断已有文件，cancel 为协作式停止请求。
 pub struct BatchRateInput {
     pub target_text: String,
     pub player_text: String,
@@ -107,6 +119,10 @@ pub struct BatchRateInput {
 }
 
 #[derive(Debug, Clone)]
+/// 选手×队友×靶子的配队任务；head 控制头部搭档汇总数量。
+///
+/// 选手和队友在计算前按成员冻结构建，避免组合时再次获得同公会加成；展示标签
+/// 保留原输入。带权开关分别选择靶子/队友 TOML，输出路径及取消令牌由任务持有。
 pub struct PairInput {
     pub target_text: String,
     pub target_factor_enabled: bool,

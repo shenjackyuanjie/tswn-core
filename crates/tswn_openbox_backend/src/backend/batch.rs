@@ -1,4 +1,7 @@
 //! 批量胜率的有界请求执行与稳定汇总。
+//!
+//! 候选/靶子文本先归一化为请求窗口，镜像与重名按业务规则处理；完成的组才输出最终汇总。
+//! 文件可在任务开始时创建并截断，错误通过 Done 上报；取消不回滚已写结果。
 
 use std::fs::File;
 use std::io::Write as _;
@@ -20,9 +23,14 @@ use super::types::{BatchRateInput, ProgressEvent};
 
 const MATCHUP_WINDOW: usize = 4096;
 
+/// 同步执行候选组对靶子的批量胜率，借 send 传回日志、进度及 Done(Result)。
+/// 输入按值移交，取消通过 input.cancel 请求；回调失败或 panic 不在此入口捕获。
 pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) { run_batch_rate_observed(input, send, None); }
 
-/// GUI 可选增量观察接口；None 保留原来的输出契约。
+/// 在原任务事件之外发布结构化增量；observer=None 保留传统文本输出。
+///
+/// 观察者仅在本次同步调用期间借用，可能在计算 worker 并发执行；应把自有更新
+/// 转交收件箱，不直接访问 UI。完成前的明细只是预览，最终状态以 Done 为准。
 pub fn run_batch_rate_observed(input: BatchRateInput, send: impl Fn(ProgressEvent), observer: ResultObserver<'_>) {
     run_batch_rate_windowed(input, send, observer, MATCHUP_WINDOW);
 }

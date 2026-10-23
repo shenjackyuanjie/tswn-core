@@ -1,4 +1,8 @@
 //! 文件创建与结果排序；独立于计算和屏幕输出。
+//!
+//! 创建输出会补父目录并截断已有文件；排序先刷新、关闭写句柄，再整文件读入内存，
+//! 按分数降序与文本次序重写。Pure 保留原顺序，Log/JSONL 的空行不保留；无效记录
+//! 放在可解析分数之后。I/O 失败直接返回错误，不提供原子替换或旧内容回滚。
 
 use std::cmp::Ordering as CmpOrdering;
 use std::fs::{self, File};
@@ -7,6 +11,7 @@ use std::path::Path;
 
 use super::types::OutputMode;
 
+/// 创建或截断输出文件，必要时创建父目录；目录路径和缺失文件名均返回错误。
 pub(super) fn create_output_file(path: &Path) -> Result<File, String> {
     if path.file_name().is_none() {
         return Err(format!("输出路径必须包含文件名: {}", path.display()));
