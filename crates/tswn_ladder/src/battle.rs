@@ -1,4 +1,8 @@
 //! 战斗执行、ELO/handicap 校准与错误记录。
+//!
+//! 一轮匹配共用带上海时间戳的 seed，每场调用 core 最多推进 20,000 轮。
+//! 只有输入双方之一成为唯一胜者才更新分数、handicap 和双向历史；无胜者、解析失败
+//! 或运行失败均记为失败场次。全部计划对局失败时返回跳过持久化的标记，不回写评分衰减。
 
 use super::*;
 
@@ -38,7 +42,7 @@ impl Updator {
             let key = PairKey::new(players[i].id, players[j].id);
             let handicap = handicap_map.get(&key).map(|data| data.basic_value).unwrap_or(0.0);
 
-            let score_diff_with_handicap = (players[i].score - players[j].score) as f64
+            let score_diff_with_handicap = (players[i].score as f64 - players[j].score as f64)
                 + if players[i].id < players[j].id {
                     handicap * HANDICAP_SCALE
                 } else {
@@ -46,7 +50,7 @@ impl Updator {
                 };
             let expected_with_handicap = logistic_expected(score_diff_with_handicap);
 
-            let score_diff_base = (players[i].score - players[j].score) as f64;
+            let score_diff_base = players[i].score as f64 - players[j].score as f64;
             let expected_base = logistic_expected(score_diff_base);
 
             if (0.45..=0.55).contains(&expected_with_handicap) {
@@ -319,7 +323,9 @@ pub(super) fn generate_unique_seed(rng: &mut fastrand::Rng) -> String {
     format!("{seed} #{basic_seed}")
 }
 
-/// seed 时间戳固定用 `Asia/Shanghai`，不随部署主机时区变化。
+/// 将调用方给定的 UTC 时刻格式化为上海时间，精度到分钟。
+///
+/// 这里只生成 seed 的时间前缀，不读取系统时钟或随机源；不同主机时区不会改变相同时刻的输出。
 pub(super) fn format_seed_timestamp(now: DateTime<Utc>) -> String {
     now.with_timezone(&Shanghai).format("%Y-%m-%d %H:%M").to_string()
 }
