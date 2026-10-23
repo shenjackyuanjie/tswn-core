@@ -112,6 +112,27 @@ class Params:
     # 是否每轮都写 member 分数/名次（只有变化才写）
     member_write_changed_only: bool = True
 
+    # ── 补位（旧实现的模拟退火入口）─────────────────────────────────────────
+    # >0 时在 base+second 之后按「降低 handicap 诱导偏置」再补每人最多这么多场
+    # （旧实现是 2 场：MAX_MATCHES=11 vs PRE_SA_MAX_MATCHES=9）。
+    supplement_slots: int = 0
+    supp_lo: float = 0.30
+    supp_hi: float = 0.70
+    # True = 修好的版本：只收 gain>0 的对，且整体 loss 必须真的下降才采纳
+    # False = 复刻旧实现：贪心无条件补位（连让 loss 变大的也收）
+    supp_gate: bool = True
+    supp_only_positive: bool = True
+
+    # ── 资格门里 handicap 的权重（1.0 = 现状，0 = 完全不用 handicap 配对）──────
+    handicap_weight: float = 1.0
+    # 资格门的胜率区间：第一轮 / 第二轮
+    gate_base: tuple = (0.45, 0.55)
+    gate_second: tuple = (0.40, 0.60)
+    # 候选搜索半径（名次距离）：0 = 沿用旧规则（n<30 取 25，否则 40）
+    search_radius: int = 0
+    # 算分时是否也扣掉克制项：False = 现状（只用分数差算期望）
+    update_with_handicap: bool = False
+
 
 def lag_metrics(rank_hist: np.ndarray, lag: int) -> dict:
     """rank_hist: (T, n) 每个人的名次；返回与 rank_volatility.py 同口径的指标。"""
@@ -156,6 +177,11 @@ class GroupSim:
     rows_written: list = field(default_factory=list)
     match_counts: list = field(default_factory=list)
     score_drift: list = field(default_factory=list)
+    supp_loss_base: list = field(default_factory=list)
+    supp_loss_after: list = field(default_factory=list)
+    fairness: list = field(default_factory=list)
+    # 每对玩家的固有对位优势（分数尺度，反对称）。None = 没有对位效应。
+    pair_bias: np.ndarray | None = None
     _rows_this_round: int = 0
 
     @classmethod
@@ -189,7 +215,8 @@ class GroupSim:
         """按 Rust 的 i±1..radius 顺序预生成邻居位置表（缓存）。"""
         if getattr(self, "_neigh", None) is None:
             n = self.n
-            radius = min(25, n - 1) if n < 30 else 40
+            radius = self.params.search_radius or (min(25, n - 1) if n < 30 else 40)
+            radius = min(radius, n - 1)
             cols = []
             for offset in range(1, radius + 1):
                 cols.append((np.arange(n) + offset) % n)
@@ -208,9 +235,77 @@ class GroupSim:
     def win_probs(self, order, disturbed):
         sc = self.score[order].astype(float)
         diff = sc[:, None] - sc[None, :]
-        h = disturbed[np.ix_(order, order)]
+        h = disturbed[np.ix_(order, order)] * self.params.handicap_weight
         sign = np.where(order[:, None] < order[None, :], 1.0, -1.0)
         return logistic(diff + h * HANDICAP_SCALE * sign)
+
+    # ── 补位：旧实现被关掉的那一段 ──────────────────────────────────────────
+    def _supplement(self, matched, probs, order, total_cnt, k_eff):
+        """按「降低 Σ(handicap 诱导的期望改分)²」给每人补 1~2 场。
+
+        返回 (新的 matched, 补位前 loss, 补位后 loss)。`probs` 是含 handicap 的预期胜率
+        （按名次位置索引），`order[a]` 是位置 a 对应的玩家下标。
+        """
+        p = self.params
+        n = self.n
+        pairs = sorted((key // n, key % n) for key in matched)
+        sc = self.score[order].astype(float)
+        p_base = logistic(sc[:, None] - sc[None, :])
+        k_pos = k_eff[order]  # 按名次位置取每人的 K
+
+        delta = np.zeros(n)
+        for a, b in pairs:
+            dc = k_pos[a] * (probs[a, b] - p_base[a, b])
+            delta[a] += dc
+            delta[b] -= dc
+        base_loss = float(np.sum(delta * delta))
+
+        if p.supplement_slots <= 0:
+            return matched, base_loss, base_loss
+
+        limit = p.pre_sa_max + p.supplement_slots
+        cnt = total_cnt.copy()
+        used = set(pairs)
+        new_pairs = []
+
+        for a in np.argsort(-np.abs(delta)):
+            a = int(a)
+            if cnt[a] >= limit:
+                continue
+            best = None
+            for b in range(n):
+                if b == a or cnt[b] >= limit:
+                    continue
+                key = (a, b) if a < b else (b, a)
+                if key in used:
+                    continue
+                w = probs[a, b]
+                if not (p.supp_lo <= w <= p.supp_hi):
+                    continue
+                dc = k_pos[a] * (probs[a, b] - p_base[a, b])
+                gain = (delta[a] ** 2 + delta[b] ** 2) - ((delta[a] + dc) ** 2 + (delta[b] - dc) ** 2)
+                if best is None or gain > best[0]:
+                    best = (gain, b, dc)
+            if best is None:
+                continue
+            gain, b, dc = best
+            if p.supp_only_positive and gain <= 0:
+                continue
+            used.add((a, b) if a < b else (b, a))
+            new_pairs.append((a, b) if a < b else (b, a))
+            delta[a] += dc
+            delta[b] -= dc
+            cnt[a] += 1
+            cnt[b] += 1
+
+        after_loss = float(np.sum(delta * delta))
+        if p.supp_gate and after_loss >= base_loss:
+            # 修好的版本：整体没变好就不采纳（旧实现缺这一层，可能越补越差）
+            return matched, base_loss, base_loss
+        if not new_pairs:
+            return matched, base_loss, base_loss
+        extra = {a * n + b for a, b in new_pairs}
+        return matched | extra, base_loss, after_loss
 
     # ── 单轮 ────────────────────────────────────────────────────────────────
     def step(self):
@@ -288,7 +383,7 @@ class GroupSim:
 
         for i in shuffle_order:
             i = int(i)
-            for j in candidates(i, 0.45, 0.55, matched):
+            for j in candidates(i, p.gate_base[0], p.gate_base[1], matched):
                 if base_cnt[i] >= p.max_active or total_cnt[i] >= p.pre_sa_max:
                     break
                 if base_cnt[j] >= p.max_passive or total_cnt[j] >= p.pre_sa_max:
@@ -304,7 +399,7 @@ class GroupSim:
 
         for i in shuffle_order:
             i = int(i)
-            for j in candidates(i, 0.40, 0.60, matched):
+            for j in candidates(i, p.gate_second[0], p.gate_second[1], matched):
                 if second_cnt[i] >= p.second_active or total_cnt[i] >= p.pre_sa_max:
                     break
                 if second_cnt[j] >= p.second_passive or total_cnt[j] >= p.pre_sa_max:
@@ -320,9 +415,6 @@ class GroupSim:
                 base_cnt[i] += 1
                 base_cnt[j] += 1
 
-        pairs = sorted((k // n, k % n) for k in matched)
-        del matched
-
         # 自适应 K
         if p.k_shrink_matches > 0:
             k_eff = p.update_k_scale * p.k_base / (1.0 + self.lifetime_matches / p.k_shrink_matches)
@@ -330,8 +422,26 @@ class GroupSim:
         else:
             k_eff = np.full(n, p.update_k_scale * p.k_base)
 
+        # 补位（旧实现的模拟退火入口）：以「降低 handicap 诱导偏置」为目标给每人多配 1~2 场
+        matched, loss_base, loss_after = self._supplement(matched, probs, order, total_cnt, k_eff)
+        self.supp_loss_base.append(loss_base)
+        self.supp_loss_after.append(loss_after)
+
+        pairs = sorted((k // n, k % n) for k in matched)
+        del matched
+
+        # 真实公平度：本局实际对上的组合，真实胜率离 50/50 有多远
+        if self.pair_bias is not None and pairs:
+            ii = np.fromiter((order[a] for a, _ in pairs), dtype=np.int64, count=len(pairs))
+            jj = np.fromiter((order[b] for _, b in pairs), dtype=np.int64, count=len(pairs))
+            p_true = logistic(self.true_strength[ii] - self.true_strength[jj] + self.pair_bias[ii, jj])
+            self.fairness.append(float(np.mean(np.abs(p_true - 0.5))))
+        else:
+            self.fairness.append(0.0)
+
         new_score = score0.tolist()
         strength = self.true_strength.tolist()
+        bias = self.pair_bias.tolist() if self.pair_bias is not None else None
         dmat = disturbed.tolist()
         hb = self.h_basic
         hc = self.h_count
@@ -352,7 +462,9 @@ class GroupSim:
             diff = new_score[i] - new_score[j]
             exp_h = 1.0 / (1.0 + 10.0 ** (-(diff + hs) / scale))
             exp_b = 1.0 / (1.0 + 10.0 ** (-diff / scale))
-            p_win = 1.0 / (1.0 + 10.0 ** (-(strength[i] - strength[j]) / scale))
+            if self.params.update_with_handicap:
+                exp_b = exp_h
+            p_win = 1.0 / (1.0 + 10.0 ** (-(strength[i] - strength[j] + (bias[i][j] if bias else 0.0)) / scale))
             actual = 1.0 if rnd() < p_win else 0.0
 
             d = k_eff_l[i] * (actual - exp_b)
@@ -451,9 +563,14 @@ class GroupSim:
             "score_sd": float(np.std(self.score)),
             "score_mean": float(np.mean(self.score)),
             "score_drift": float(np.mean(self.score_drift[warm:])),
+            "fairness": float(np.mean(self.fairness[warm:])) if self.fairness else 0.0,
+            "supp_loss_base": float(np.mean(self.supp_loss_base[warm:])) if self.supp_loss_base else 0.0,
+            "supp_loss_after": float(np.mean(self.supp_loss_after[warm:])) if self.supp_loss_after else 0.0,
         }
         for lag in (1, 5, 15, 60):
             m = lag_metrics(R, lag)
+            if not m:
+                continue
             out[f"mean_abs_delta_{lag}"] = m["mean_abs"]
             out[f"moved_{lag}"] = m["moved"]
             out[f"spearman_{lag}"] = m["spearman"]
@@ -505,14 +622,14 @@ def run(params: Params, groups=None, table: dict | None = None) -> dict:
         "rows_per_round": sum(v["rows_per_round"] for v in per_group.values()),
         "live_rows": sum(v["live_rows"] for v in per_group.values()),
         "matches_per_round": sum(v["matches_per_round"] for v in per_group.values()),
-        "mean_abs_delta_1": float(np.mean([v["mean_abs_delta_1"] for v in per_group.values()])),
-        "spearman_1": float(np.mean([v["spearman_1"] for v in per_group.values()])),
-        "mean_abs_delta_60": float(np.mean([v["mean_abs_delta_60"] for v in per_group.values()])),
-        "spearman_60": float(np.mean([v["spearman_60"] for v in per_group.values()])),
-        "moved_1": float(np.mean([v["moved_1"] for v in per_group.values()])),
+        "mean_abs_delta_1": float(np.mean([v.get("mean_abs_delta_1", 0.0) for v in per_group.values()])),
+        "spearman_1": float(np.mean([v.get("spearman_1", 0.0) for v in per_group.values()])),
+        "mean_abs_delta_60": float(np.mean([v.get("mean_abs_delta_60", 0.0) for v in per_group.values()])),
+        "spearman_60": float(np.mean([v.get("spearman_60", 0.0) for v in per_group.values()])),
+        "moved_1": float(np.mean([v.get("moved_1", 0.0) for v in per_group.values()])),
         "p95_1": float(np.mean([v["p95_1"] for v in per_group.values()])),
-        "score_sd": float(np.mean([v["score_sd"] for v in per_group.values()])),        "top10_change": float(np.mean([v["top10_change"] for v in per_group.values()])),
-        "true_spearman": float(np.mean([v["true_spearman"] for v in per_group.values()])),
+        "score_sd": float(np.mean([v["score_sd"] for v in per_group.values()])),        "top10_change": float(np.mean([v.get("top10_change", 0.0) for v in per_group.values()])),
+        "true_spearman": float(np.mean([v.get("true_spearman", 0.0) for v in per_group.values()])),
         "score_drift": float(np.mean([v["score_drift"] for v in per_group.values()])),
     }
     return {"groups": per_group, "total": tot}
