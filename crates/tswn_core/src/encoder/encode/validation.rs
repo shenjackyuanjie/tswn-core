@@ -1,4 +1,8 @@
 //! 状态支持域、引用、载荷与容量校验。
+//!
+//! 在任何张量字段写入前检查状态 schema、未决条件、实体唯一性、引用归属与槽白名单，
+//! 并返回同一次九维容量计量供后续写入核对。这里不替代各张量写入层对类别与数值的检查；
+//! 校验失败同样由编码主入口处理目标槽位恢复，不改变输入状态。
 
 use super::*;
 
@@ -32,7 +36,8 @@ impl FeatureEncoder {
     ///
     /// 注意 [`BattleModelState::validate`] 不是替代品：它未覆盖 charm `group_id` 实体引用、
     /// 槽内 U64 实体引用与载荷分支一致性（规格第 16 节第 7 条）。
-    pub(super) fn validate_state(&self, state: &BattleModelState) -> Result<(), EncodeError> {
+    /// 成功返回本次容量计量，供写入结束后核对精确旁路行数，避免再次遍历输入。
+    pub(super) fn validate_state(&self, state: &BattleModelState) -> Result<CapacityMeasure, EncodeError> {
         if state.schema_version != MODEL_STATE_SCHEMA_VERSION {
             return Err(EncodeError::SchemaMismatch {
                 path: "schema_version".to_owned(),
@@ -185,14 +190,7 @@ impl FeatureEncoder {
                 });
             }
         }
-        if measure.l > self.profile.l_max {
-            return Err(EncodeError::CapacityExceeded {
-                path: dim_path("l"),
-                actual: measure.l,
-                limit: self.profile.l_max,
-            });
-        }
-        Ok(())
+        Ok(measure)
     }
 }
 
