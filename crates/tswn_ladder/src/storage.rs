@@ -469,8 +469,8 @@ pub(super) fn load_match_counts(dir: &std::path::Path) -> HashMap<i32, f64> {
     counts
 }
 
-/// 原子写回累计场次快照；失败只打印日志，不影响天梯运行。
-pub(super) fn save_match_counts(dir: &std::path::Path, counts: &HashMap<i32, f64>) {
+/// 原子写回累计场次快照；返回是否写成功（失败由调用方决定要不要提示）。
+pub(super) fn save_match_counts(dir: &std::path::Path, counts: &HashMap<i32, f64>) -> bool {
     let path = dir.join(MATCHCOUNT_STATE_FILE);
     let tmp = dir.join(format!("{MATCHCOUNT_STATE_FILE}.tmp"));
 
@@ -482,12 +482,7 @@ pub(super) fn save_match_counts(dir: &std::path::Path, counts: &HashMap<i32, f64
         text.push_str(&format!("{id} {count:.0}\n"));
     }
 
-    let saved = std::fs::create_dir_all(dir).is_ok()
-        && std::fs::write(&tmp, text.as_bytes()).is_ok()
-        && std::fs::rename(&tmp, &path).is_ok();
-    if !saved {
-        eprintln!("[state] 累计场次快照写入失败: {}", path.display());
-    }
+    std::fs::create_dir_all(dir).is_ok() && std::fs::write(&tmp, text.as_bytes()).is_ok() && std::fs::rename(&tmp, &path).is_ok()
 }
 
 pub(super) fn numeric_to_f64(row: &tokio_postgres::Row, idx: usize) -> f64 {

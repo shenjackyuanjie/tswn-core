@@ -15,7 +15,23 @@ impl Updator {
             battle_error_suppressed: 0,
             match_counts,
             round_index: 0,
+            state_save_warned: false,
         }
+    }
+
+    /// 落盘累计场次快照；失败只提示一次（通常是 `LADDER_STATE_DIR` 对服务用户不可写）。
+    pub(super) fn flush_state(&mut self) {
+        if self.config.dry_run {
+            return;
+        }
+        if save_match_counts(&self.config.state_dir, &self.match_counts) || self.state_save_warned {
+            return;
+        }
+        self.state_save_warned = true;
+        eprintln!(
+            "[state] 累计场次快照写入失败（{}），自适应 K 会在进程重启后从 0 重新累计",
+            self.config.state_dir.display()
+        );
     }
 
     /// 自适应 K：累计场次越多，单场改分越小。
@@ -47,9 +63,7 @@ impl Updator {
                 signal = shutdown_signal() => {
                     signal?;
                     eprintln!("[shutdown] 收到退出信号");
-                    if !self.config.dry_run {
-                        save_match_counts(&self.config.state_dir, &self.match_counts);
-                    }
+                    self.flush_state();
                     return Ok(());
                 }
             }
@@ -78,8 +92,8 @@ impl Updator {
             }
         }
         self.round_index = self.round_index.wrapping_add(1);
-        if !self.config.dry_run && MATCHCOUNT_SAVE_EVERY > 0 && self.round_index % MATCHCOUNT_SAVE_EVERY == 0 {
-            save_match_counts(&self.config.state_dir, &self.match_counts);
+        if MATCHCOUNT_SAVE_EVERY > 0 && self.round_index % MATCHCOUNT_SAVE_EVERY == 0 {
+            self.flush_state();
         }
         self.check_memory_usage();
         eprintln!("[tick] 天梯匹配轮次结束");

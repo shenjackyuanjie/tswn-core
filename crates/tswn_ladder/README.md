@@ -67,6 +67,19 @@ K_i = BASE_K_FACTOR / (1 + 累计场次_i / LADDER_K_SHRINK_MATCHES)，不低于
 每 `MATCHCOUNT_SAVE_EVERY` 轮和收到退出信号时原子写回；文件丢了只会让所有人按新玩家
 K 重新跑两小时，不影响数据正确性。
 
+> 部署提醒：`LADDER_STATE_DIR` **必须对服务用户可写**。仓库目录 `/myfile/tswn-core`
+> 属主是 root、服务用户只有读权限，所以线上用 systemd drop-in 指到自己的状态目录：
+>
+> ```ini
+> # /etc/systemd/system/tswn-ladder.service.d/state-dir.conf
+> [Service]
+> Environment="LADDER_STATE_DIR=/var/lib/tswn-ladder"
+> ReadWritePaths=/var/lib/tswn-ladder
+> ```
+>
+> 目录要 `install -d -o tswn-ladder -g tswn-ladder -m 700 /var/lib/tswn-ladder`。
+> 写不进去时日志会提示一次（不会每 10 轮刷屏），天梯照常运行，只是重启后 K 从新玩家重新累计。
+
 ### 统一衰减
 
 原来的赛季衰减是 `score * 0.9996`，按分数比例扣，扣得最多的是高分端，等于持续把分差

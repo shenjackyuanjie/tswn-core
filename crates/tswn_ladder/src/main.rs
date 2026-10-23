@@ -176,6 +176,8 @@ struct Updator {
     match_counts: HashMap<i32, f64>,
     /// 已经跑过的轮次，用来驱动周期性维护（handicap 清理 / 场次落盘）。
     round_index: u32,
+    /// 场次快照写入失败只提示一次，避免每 10 轮刷一条重复日志。
+    state_save_warned: bool,
 }
 
 #[tokio::main]
@@ -185,9 +187,7 @@ async fn main() -> Result<()> {
     let mut updator = Updator::new(client, config);
     if updator.config.run_once {
         updator.run_round().await?;
-        if !updator.config.dry_run {
-            save_match_counts(&updator.config.state_dir, &updator.match_counts);
-        }
+        updator.flush_state();
         return Ok(());
     }
 

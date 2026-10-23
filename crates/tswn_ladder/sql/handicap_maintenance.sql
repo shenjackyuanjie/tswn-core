@@ -11,8 +11,18 @@
 --   * 新版 tswn_ladder 已经部署并至少跑过一个完整轮次（确认写入量降到每轮
 --     约 1800 行，见日志里的 `handicap写入=`）；
 --   * 选低峰时段。VACUUM FULL 会持有 ACCESS EXCLUSIVE 锁，期间天梯那一轮会被
---     阻塞、卡在 `[db]` 读取手势上；表很空，实际耗时主要是把 22 GB 页面读一遍。
+--     阻塞、卡在 `[db]` 读取手势上；表很空，实际耗时主要是把 22 GB 页面读一遍
+--     （线上实测第一次 17.7 s）。
 --   * 确认磁盘有至少 1 GB 余量（表的有效数据只有几 MB，VACUUM FULL 会重写一份新的）。
+--
+-- 跑完如果发现它报告「found 0 removable, N nonremovable row versions」并且表还是
+-- 几百 MB（2026-10-23 首次执行就遇到了），说明那一刻数据库里有一个很老的快照把
+-- VACUUM 的可清理边界钉住了（`VACUUM (VERBOSE) 表名` 会打印 `removable cutoff`）。
+-- 处理办法：先查是谁钉的，等那个事务结束（或者重启持有旧连接的进程）之后，
+-- 再跑一次本脚本的第 4 步 —— 那时它会把剩下的死元组一次清干净并直接把表缩到目标大小。
+-- 查法：
+--   SELECT pid, usename, datname, state, now()-xact_start AS age, age(backend_xmin)
+--   FROM pg_stat_activity WHERE backend_xmin IS NOT NULL ORDER BY xact_start;
 --
 -- 不建议：
 --   * 直接 TRUNCATE —— 会丢掉全部对局克制数据，天梯要重新学；只有确认可以接受
