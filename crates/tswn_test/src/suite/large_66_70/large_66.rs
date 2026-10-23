@@ -1,6 +1,8 @@
 use super::*;
 
-/// 用来测试 clamp
+/// 幻影、分身与多次蓄力的固定对局回归，覆盖历史 clamp 排障样例的完整输出。
+///
+/// 此处通过日志行为间接约束数值边界，不直接断言内部 clamp 实现或单独冻结总分。
 pub fn large_66<E: crate::EngineAdapter>() {
     const CASE: &str = r#"太阳帝国 #Sc2WCffta@Shabby_fish
 机械革命 #nYHCsQ1ak@Shabby_fish

@@ -1,7 +1,9 @@
 //! 生成与校验的规模基准采集。
 //!
 //! 只在本进程内运行 `generate`/`validate` 并采样自身资源占用，再读取产物的 Parquet 元数据；
-//! 不改变数据集格式，也不重新实现任何抽样或校验逻辑。
+//! 不改变数据集格式，也不重新实现任何抽样或校验逻辑。默认会生成数据，
+//! --skip-generate 才只分析既有产物；--json-out 另外覆盖报告文件。
+//! 资源峰值为轮询近似，CPU 时间取进程累计值，并非严格的阶段增量，比较基准需保持采样口径。
 
 use crate::{GenerateArgs, storage};
 use anyhow::{Context, Result};

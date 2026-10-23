@@ -1,4 +1,8 @@
 //! 校准报告到完整编码契约的命令适配；词表和数值规则仍由核心 encoder 负责。
+//!
+//! 只接受有标签 train 且选中样本非空的报告，绑定 BASELINE_64 并计算 contract_digest。
+//! 先构造 FeatureEncoder 验证完整词表/数值槽，再创建父目录并覆盖目标 JSON。
+//! 不重新拟合字段，也不将诊断切分的报告静默转成训练契约。
 use anyhow::{Context, Result, ensure};
 use std::path::PathBuf;
 use tswn_core::encoder::{

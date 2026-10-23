@@ -1,6 +1,8 @@
 use super::*;
 
-/// diff_case 09
+/// 差分样例 09：同一 seed 下另一双人阵容，覆盖减速、幻影与潜行路径。
+///
+/// 断言完整规范化日志及预算内结束；输入与期望都保持内嵌，不依赖外部生成步骤。
 pub fn large_64<E: crate::EngineAdapter>() {
     const CASE: &str = r#"三猴一体 vFz1cu21MCaW@TigerStar
 涵虚不等式 PFVKEUPBU@TigerStar

@@ -1,6 +1,8 @@
 use super::*;
 
-/// 跟上面的一样
+/// 对编号 46 的同阵容使用 seed:3，覆盖零伤害与伤害反弹的另一条执行路径。
+///
+/// 期望日志逐行比较，总分固定为 705，避免只按阵容而忽略 seed 的回归差异。
 pub fn large_47<E: crate::EngineAdapter>() {
     const CASE: &str = r#"Momomomo #YAORzaY@Arcadia
 泠珞 itVMnXnsL@807139

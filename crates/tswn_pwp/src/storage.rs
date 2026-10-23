@@ -1,3 +1,9 @@
+//! JSON、Parquet 和分片完成回执的同步 I/O。
+//!
+//! TableWriter 持有文件和 Arrow schema，分批写入后必须消费 finish，才能关闭 Parquet 尾部并同步文件。
+//! JSON 写入直接覆盖给定路径；安全发布和目录锁由 generate/encode 上层负责。
+//! 分片回执以半开 battle_id 范围和两份文件摘要确认字节身份，语义校验另由 validate 执行。
+
 use anyhow::{Context, Result, ensure};
 use arrow_schema::{DataType, FieldRef, Schema};
 use parquet::{
@@ -64,10 +70,9 @@ fn portable_field(field: &FieldRef) -> FieldRef {
 
 /// 单个行组的最大行数。
 ///
-/// 行组只用行数控制，不能用 `max_row_group_bytes`：`SampleRow.state` 是约 450 个叶子列的
-/// 超宽嵌套结构，parquet 的字节估算按每个列写入器的缓冲容量累加，一次 append（一局 8 个样本）
-/// 就会被判为超过 16 MiB，于是每局都新开一个行组。实测每局一个行组时列块数量放大到
-/// 每分片约 11 万个，压缩比从约 20 倍降到 1.28 倍，写入与回读都被拖慢两个数量级。
+/// 嵌套 state 含很多叶子列，按列缓冲容量估计的字节阈值可能在少量行后就触发分组；
+/// 这里仅按行数划组，使行组边界不随暂存列容量变化。它不是内存字节硬上限，
+/// 超大状态仍可能占用较多缓冲；实际空间与耗时应以具体数据集的 bench 报告为准。
 pub const ROW_GROUP_ROWS: usize = 1024;
 
 pub struct TableWriter<T> {

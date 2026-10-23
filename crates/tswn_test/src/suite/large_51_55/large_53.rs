@@ -1,6 +1,8 @@
 use super::*;
 
-/// covid
+/// 四人组合对 covid Boss 的固定回放，覆盖分身/幻影等召唤物参与的事件顺序。
+///
+/// 以泛型适配器逐行比较完整日志和总分 2557，不把当前引擎输出重新生成基线。
 pub fn large_53<E: crate::EngineAdapter>() {
     const CASE: &str = r#"我力 7#W2ib8D@仙蛊屋+123
 万我 68#huMG43@仙蛊屋+123

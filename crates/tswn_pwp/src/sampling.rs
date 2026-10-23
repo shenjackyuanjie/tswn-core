@@ -1,7 +1,16 @@
+//! 在已完成首遍运行的可见帧边界上确定性分层抽样。
+//!
+//! 初始状态占一个样本名额，由调用方单独导出；本模块只返回 frames 的位置下标。
+//! 首先按推进轮数划桶随机选一帧，再从剩余帧补齐，最终按时间顺序排列。
+//! Winner 对局排除已决终局帧，截断对局保留末帧；不会因请求上限很大而创建同样多的空桶。
+
 use crate::random::Random;
 use tswn_core::cli_api::battle::{BattleModelFrame, BattleModelOutcome, BattleStopReason};
 
-/// 返回待导出帧的下标，按时间排序；初始状态由调用方单独处理。
+/// 返回最多 count-1 个唯一帧位置，按 frames 顺序升序排列，不包含初始状态。
+///
+/// frames/outcome 应来自同一次完整首遍运行，帧顺序对应时间顺序；相同输入和 seed
+/// 得到相同选择。count<=1 或总推进轮数为 0 时返回空向量，候选不足则全部保留。
 pub fn select(frames: &[BattleModelFrame], outcome: &BattleModelOutcome, count: usize, seed: &str) -> Vec<usize> {
     let wanted = count.saturating_sub(1);
     if wanted == 0 || outcome.rounds_advanced == 0 {

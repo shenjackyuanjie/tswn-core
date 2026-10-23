@@ -1,6 +1,8 @@
 use super::*;
 
-/// 护盾 vs 净化
+/// 护盾与净化对局的无额外 seed 回归，检查零伤害、潜行识破和背刺收尾日志。
+///
+/// 比较完整规范化事件行和总分 550；角色是否获胜由冻结日志中的结尾行为约束。
 pub fn large_46<E: crate::EngineAdapter>() {
     const CASE: &str = r#"Momomomo #YAORzaY@Arcadia
 泠珞 itVMnXnsL@807139

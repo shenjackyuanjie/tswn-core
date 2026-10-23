@@ -1,6 +1,8 @@
 use super::*;
 
-/// saitama
+/// 四人组合对 saitama Boss 的长回放，覆盖狂暴攻击、守护及离开战场的事件序列。
+///
+/// 比较完整规范化日志和总分 11370，不以只验证终局代替中间轮次兼容性检查。
 pub fn large_55<E: crate::EngineAdapter>() {
     const CASE: &str = r#"我力 7#W2ib8D@仙蛊屋+123
 万我 68#huMG43@仙蛊屋+123

@@ -24,7 +24,8 @@
 //!
 //! 分片先写临时目录，回读校验后提交；输出目录有进程文件锁。
 //! `--resume` 校验输入、配置和可执行文件摘要；发现已提交分片损坏时保留现场并报错。
-//! Runtime 错误、panic、导出失败或两遍不一致时，保存复现信息并结束本次生成。
+//! Runtime 错误、unwind panic 或两遍不一致时尽力保存复现信息，等待各 worker 后返回失败；
+//! 强制终止、abort 和掉电不会执行 Drop，不保证留下当前对局的复现文件。
 //! `stats` / `validate` / `calibrate` 读取数据，`generate` / `bench` / `encode` 会写文件。
 //!
 //! 当前已完成数据与编码链路；模型训练、推理和网页在线接入可沿此继续建设。
@@ -68,9 +69,9 @@ pub enum Command {
     },
     /// 汇总已完成数据集的分布统计，不修改数据。
     Stats(stats::StatsArgs),
-    /// 采集生成与校验的规模基准，不修改数据。
+    /// 采集生成与校验的规模基准；默认生成数据，跳过生成时只读已有产物。
     Bench(bench::BenchArgs),
-    /// 拟合逐字段归一化常数，输出 encoder-manifest 的数值部分，不修改数据。
+    /// 从源数据拟合逐字段归一化常数，可另写报告，不修改源分片。
     Calibrate(calibrate::CalibrateArgs),
     /// 将有标签 train 校准报告组装并校验为完整编码契约。
     BuildManifest(manifest::BuildManifestArgs),
@@ -80,6 +81,9 @@ pub enum Command {
 
 #[derive(Debug, Clone, Args)]
 /// 生成配置：输入源、固定 seed、抽样、分片、并行度与输出目录。
+///
+/// 文件输入与名字池二选一，生成前还会检查正次数和有限 eval_rq。threads 只影响分片调度，
+/// 不进入 DatasetConfig 的续跑身份；其他复现配置及输入/可执行文件摘要必须与旧 manifest 一致。
 pub struct GenerateArgs {
     /// 固定对局文件，或递归读取其中 .txt 文件的目录。
     #[arg(
@@ -117,7 +121,10 @@ pub struct GenerateArgs {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-/// 写入 manifest 的可复现配置与摘要，续跑时用于身份校验。
+/// 写入 manifest 的可复现配置与摘要，续跑时对整份值逐字段比较。
+///
+/// cases 保留输入来源、原始文本和规范队伍；input_sha256 绑定输入字节而非仅阵容集合。
+/// 不包含 worker 数，因此可改变并行度续跑；可执行文件变化则不能与旧分片混合。
 pub struct DatasetConfig {
     pub format_version: u32,
     pub state_schema_version: u32,
@@ -137,7 +144,10 @@ pub struct DatasetConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-/// 一份过程样本：机制 state、可空胜者标签及来源审计。
+/// 拥有一份机制 state 的过程样本，标签与审计保持在特征之外。
+///
+/// frame=None 表示未推进初始状态，Some 表示已完成的可见帧；已决终局不作为特征样本。
+/// winner_team_index 是最终唯一输入队伍索引，截断时为 None；progress 依赖最终长度，仅用于审计。
 pub struct SampleRow {
     pub battle_id: u64,
     pub matchup_id: String,
@@ -151,7 +161,10 @@ pub struct SampleRow {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-/// 每局对局身份、seed、终止结果和样本计数。
+/// 每局对局身份、派生 seed、终止结果和实际样本计数；不复制逐帧机制 state。
+///
+/// battle_id 决定阵容和局次，split 由忽略队伍/成员顺序的 matchup_id 派生。
+/// 截断可产生无标签样本，初始即终止的对局样本数为 0，不补造监督行。
 pub struct BattleRow {
     pub battle_id: u64,
     pub case_index: usize,
@@ -162,7 +175,10 @@ pub struct BattleRow {
     pub samples: usize,
 }
 
-/// 执行一个子命令；文件或机制失败按 Result 交给宿主处理。
+/// 同步执行子命令，将报告写到 stdout、进度写到 stderr，失败通过 Result 返回。
+///
+/// generate/bench/encode/build-manifest 会写文件，其他命令也可指定报告输出。
+/// 生成或导出失败可能保留临时现场和已提交分片，不自动回滚其他成功阶段。
 pub fn run(cli: Cli) -> Result<()> {
     match cli.command {
         Command::Generate(args) => generate::generate(&args),

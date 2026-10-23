@@ -1,6 +1,9 @@
 //! 共用回放测试套件。
 //!
-//! 本模块中的 fixture 不依赖具体引擎，只读取原始输入、渲染后的更新快照、胜者和分数。
+//! 泛型 fixture 只依赖 EngineAdapter 的原始输入、更新快照、胜者和分数；
+//! RuntimeEngine 的具体适配也在此集中实现，stress helper 则明确绑定当前 Runtime。
+//! 日志 helper 可去掉样式标记并按 NextLine 合行；积分仍逐事件累计，不从渲染文本反推。
+//! 所有回放都有轮数预算，耗尽预算不自动代表获胜，是否完成由各 case 断言。
 
 use std::collections::HashMap;
 
@@ -160,6 +163,10 @@ fn collect_replay_events<E: EngineAdapter>(
     (events, guard, total_score)
 }
 
+/// 推进最多 max_rounds 轮，将排版事件分组为日志行，返回日志、实际调用轮数和总积分。
+///
+/// normalize 只去掉样式标记与外围空白；NextLine 不计分，同轮多段以逗号空格连接。
+/// 返回时可能尚无胜者，调用方需要单独判断终止条件；诊断环境变量可额外向 stderr 打印 RC4。
 pub fn collect_replay_lines<E: EngineAdapter>(
     runner: &mut E::Runner,
     max_rounds: usize,

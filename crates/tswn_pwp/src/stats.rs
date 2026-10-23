@@ -2,6 +2,8 @@
 //!
 //! 统计口径必须与 `SampleRow`/`BattleRow` 的 schema 保持一致，因此放在生成器里而不是
 //! 训练侧脚本：`validate` 已经依赖同一套类型和 `storage::read_rows`，这里复用同一条读取路径。
+//! 统计假定源 manifest/分片已独立 validate 且读取时不变化，不再次验证回执或加目录锁。
+//! 分位数保留完整数列后排序，内存随行数增长；可选 JSON 报告应写到源数据目录之外。
 
 use crate::{
     BattleRow, DatasetConfig, SampleRow,
@@ -24,7 +26,9 @@ const PROGRESS_BUCKETS: [(f64, &str); 5] = [
     (1.01, "80-100%"),
 ];
 
-/// 整数序列的汇总；`histogram` 保留逐值计数，便于直接看长尾。
+/// 数列的汇总统计；整数测量带逐值 histogram，连续 progress 的 histogram 为空。
+///
+/// 分位数取排序后 round((n-1)*q) 的元素，不做插值；空序列各数值返回 0，以 count=0 区分。
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ValueStats {
     pub count: usize,
@@ -146,7 +150,10 @@ pub struct DatasetStats {
     pub capacity: CapacityStats,
 }
 
-/// 汇总一个已完成数据集；要求每个分片都已提交。
+/// 读取已完成数据集的全部对局和样本，返回分布、内容频次和 BASELINE_64 容量统计。
+///
+/// 调用方须先 validate，确保配置非零、分片完整且读取期间静止；本函数不重复核对摘要。
+/// 各序列为计算精确样本分位数保留全部值，读取或反序列化失败通过 Result 返回。
 pub fn collect(out: &Path) -> Result<DatasetStats> {
     let config: DatasetConfig = storage::read_json(&out.join("manifest.json")).context("读取 manifest")?;
     let total = config.cases.len() * config.games_per_matchup;
