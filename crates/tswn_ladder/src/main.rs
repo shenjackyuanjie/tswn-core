@@ -266,7 +266,7 @@ pub(crate) fn rename_boost_until(previous_hash: u64, current_hash: u64, boost_ro
 
 #[cfg(test)]
 mod tests {
-    use super::battle::{format_seed_timestamp, generate_unique_seed};
+    use super::battle::{format_seed_timestamp, generate_unique_seed, settle_round};
     use super::*;
 
     #[test]
@@ -388,6 +388,27 @@ mod tests {
         assert_eq!(name_hash("abc"), name_hash("abc"));
         assert_ne!(name_hash("abc"), name_hash("abd"));
         assert_ne!(name_hash(""), 0);
+    }
+
+    #[test]
+    fn round_settlement_uses_round_start_scores() {
+        // 12000 的人一轮打 11000 和 10000 各一场，两场都赢。
+        let scores = [12_000, 11_000, 10_000];
+        let k = [80.0, 80.0, 80.0];
+        let forward = settle_round(&scores, &[(0, 1), (0, 2)], &[true, true], &k);
+        let backward = settle_round(&scores, &[(0, 2), (0, 1)], &[true, true], &k);
+
+        // 顺序无关：这正是旧实现的 bug（后打的场次会用被前几场改过的分数算期望）
+        assert!((forward[0] - backward[0]).abs() < 1e-9);
+
+        // 两场都以轮初的 12000 为基准算期望，再加两个胜场 +1
+        let expected = 12_000.0 + 80.0 * (1.0 - logistic_expected(1_000.0)) + 80.0 * (1.0 - logistic_expected(2_000.0)) + 2.0;
+        assert!((forward[0] - expected).abs() < 1e-9);
+        // 对手各输一场
+        assert!((forward[1] - (11_000.0 - 80.0 * (1.0 - logistic_expected(1_000.0)))).abs() < 1e-9);
+        assert!((forward[2] - (10_000.0 - 80.0 * (1.0 - logistic_expected(2_000.0)))).abs() < 1e-9);
+        // 未参赛的人不动
+        assert!((settle_round(&scores, &[], &[], &k)[0] - 12_000.0).abs() < 1e-9);
     }
 
     #[test]
