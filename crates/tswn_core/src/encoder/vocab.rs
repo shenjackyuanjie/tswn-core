@@ -1,4 +1,4 @@
-//! 分类词表：原始 u32 → 局内稠密 ID。
+//! 分类词表：原始 u32 → 编码契约内固定的稠密 ID。
 //!
 //! 规格第 4 节：分类通道只存**按冻结词表重映射后的稠密 ID**（0=PAD，有效类从 1 起），
 //! 原始值只进精确旁路。同一份 manifest 在所有样本、所有消费端之间冻结同一张表，
@@ -27,7 +27,10 @@ impl Vocabulary {
         Ok(vocabulary)
     }
 
-    /// 自校验；`path` 是 manifest 中该词表的键名（如 `runtime.kind`）。
+    /// 校验 ID 恰好覆盖 `1..=K`，允许空表，拒绝零、负数、越界与重复 ID。
+    ///
+    /// 独立词表不知道自己在 manifest 中的名称，因此错误路径为空；
+    /// [`EncoderManifest::validate`](super::manifest::EncoderManifest::validate) 会补上分类域路径。
     pub fn validate(&self) -> Result<(), EncodeError> {
         let count = self.entries.len();
         let mut seen = vec![false; count];

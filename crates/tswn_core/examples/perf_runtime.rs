@@ -1,5 +1,14 @@
 //! 只使用公开主 Runtime API 的 fixed30 / score benchmark 与 uProf 采样入口。
-//! cargo run -p tswn_core --release --features no_debug --example perf_runtime -- --help
+//!
+//! 接收一个 raw 文本文件，或非递归扫描目录内的 `.txt` 文件并按路径排序运行。
+//! 每个文件在 stdout 输出一行 JSON，包含组大小、场数、耗时及错误/截断计数；
+//! `score` 模式合并该文件各组的统计，`win-rate` 模式保留多队布局。
+//!
+//! 外层耗时从输入读取和分组之后开始，到该文件的全部计算完成为止，不含 JSON 输出。
+//! `--timed` 额外采集逐场 init/fight 耗时，会引入测量扰动；比较结果应保持该选项一致，
+//! uProf 采样时宜关闭。若对局错误数非零，会先输出该文件统计，再以错误结束后续文件处理。
+//!
+//! 用法：`cargo run -p tswn_core --release --features no_debug --example perf_runtime -- --help`。
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;

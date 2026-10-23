@@ -28,6 +28,11 @@ pub struct PreparedPlayer {
     pub overlay: Option<PlayerOverlay>,
 }
 
+/// 完成名字推导与同阵营团队强化的构建结果，不包含本场战斗 RNG。
+///
+/// `players` 仍以输入时分配的连续 ID 索引，`groups` 保存这些 ID；
+/// 组内顺序会按构建规则排序以应用团队强化，不等于 Runtime 的随机行动顺序。
+/// 同一构建结果可重复导入，不会因之后的战斗自动改变。
 #[derive(Debug, Clone)]
 pub struct PreparedRoster {
     pub players: Vec<PreparedPlayer>,
@@ -72,6 +77,11 @@ struct PlayerBuild {
 }
 
 impl PreparedRoster {
+    /// 使用指定名字评估口径构建属性、技能与团队强化，不推进战斗。
+    ///
+    /// `input.seed` 不参与属性构建，仅在后续战斗初始化时使用；空阵容返回空结果。
+    /// 输入解析的长度约束应已成立，`eval_rq` 沿用底层评估函数的参数语义。
+    /// 当前 `PreparedRosterError` 没有可构造变体，Result 保留既有接口形状。
     pub fn build(input: &NamerenaInput, eval_rq: f64) -> Result<Self, PreparedRosterError> {
         let mut builds = Vec::new();
         let mut groups = Vec::with_capacity(input.groups.len());

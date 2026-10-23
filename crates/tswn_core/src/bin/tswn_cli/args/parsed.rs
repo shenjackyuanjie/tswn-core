@@ -91,7 +91,7 @@ pub enum PairDetailMode {
 /// 归一化后的 CLI 命令。
 ///
 /// 这里的每个字段都已经过输入来源统一、基础校验和必要的文本转换：
-/// - `raw` 字符串已经完成 `\n` 还原；
+/// - 命令行 `--raw` 字符串已完成字面量 `\n` 还原，文件与 stdin 保留文本中的换行语义；
 /// - 列表文件已经被读入并拆成执行阶段需要的结构；
 /// - 线程模式已经从 `--single-thread` / `--thread` 整理成统一表示。
 #[derive(Debug)]
@@ -189,7 +189,7 @@ pub enum ParsedCommand {
         force: bool,
         /// 是否保持 `rq=4`，不模拟 JS `win_rate` 对 `rq` 的污染。
         keep_rq: bool,
-        /// 仅在输出到文件时生效：每行输出 `winrate<space>name`。
+        /// 仅在输出到文件时生效：输出 JSONL；未启用时默认每行输出 `winrate<space>name`。
         log: bool,
         /// 仅在输出到文件时生效：每行只输出 `name`。
         pure: bool,
@@ -215,11 +215,11 @@ pub enum ParsedCommand {
         teammate_factored: bool,
         /// 与队友列表对应的权重；普通文本队友全部为 `1.0`。
         teammate_factors: Vec<f64>,
-        /// `player-list` 文件中的选手；每行一个名字。
+        /// `player-list` 文件中的选手组合，已将组内成员拆为换行分隔的 raw。
         players: Vec<String>,
         /// 选手组合的原始行标签。
         player_labels: Vec<String>,
-        /// `teammate-list` 文件中的队友；每行一个名字。
+        /// `teammate-list` 文件中的队友组合，已将组内成员拆为换行分隔的 raw。
         teammates: Vec<String>,
         /// 队友组合的原始行标签。
         teammate_labels: Vec<String>,

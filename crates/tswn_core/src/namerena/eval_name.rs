@@ -42,13 +42,9 @@
 //! println!("强度分数: {}", score);
 //! ```
 
-//! 以防你好奇的点进来然后懵逼的发现这个巨长的注释
-//!
-//! 这里存了:
-//!
-//! - 3500 个常用字符的表
-//! - 直接使用 match 的方式来判断是否是常用字符
-//! - 使用这个常用字符表来计算一个字符串"是否常见" 的函数
+//! 返回值用于名字系数计算，不是胜率或归一化到 0–1 的概率。
+//! UTF-16 代理对按两个码元分类；`ladder_version` 仅控制高复杂度分段的上限，
+//! `rq` 则单独选择普通对局或胜率构建口径。模块末尾的字符表用于保持兼容分类。
 
 /// 默认 `$.rq()` 等价值（普通 fight 模式）。
 pub const DEFAULT_EVAL_RQ: f64 = 4.0;
@@ -56,12 +52,18 @@ pub const DEFAULT_EVAL_RQ: f64 = 4.0;
 /// JS ProfileWinChance / `win_rate` 模式下实际表现出来的 `$.rq()` 等价值。
 pub const WIN_RATE_EVAL_RQ: f64 = 6.0;
 
-/// 以防底下的注释太长, 先把实际计算函数写了
+/// 使用普通对局的 [`DEFAULT_EVAL_RQ`] 返回名字常见度系数。
 ///
-/// 用于计算一个字符串 "是否常见"
+/// 逐个 UTF-16 码元分类并汇总，不构造字符向量；空串和 ASCII 空格仍按同一公式处理。
+/// `ladder_version` 启用高复杂度区间的上限，不会自动切换为胜率的 rq。
 pub fn eval_str_common(s: &str, ladder_version: bool) -> f64 { eval_str_common_with_rq(s, ladder_version, DEFAULT_EVAL_RQ) }
 
-/// 用于计算一个字符串 "是否常见"，并显式指定 `$.rq()` 等价值。
+/// 按 UTF-16 分类、类型切换和长度惩罚计算常见度系数，显式指定 `$.rq()` 等价值。
+///
+/// 普通对局通常用 [`DEFAULT_EVAL_RQ`]，胜率构建用 [`WIN_RATE_EVAL_RQ`]。
+/// `ladder_version` 控制高复杂度分段的截顶；`rq` 只参与最后的负区间归一化。
+/// 此低层函数不校验 rq，保留 f64 的 NaN/无穷传播语义；例如 rq 为 3 时
+/// 负区间分母可能为 0。调用方应选择与所需规则匹配的参数，而不是把返回值当作概率。
 pub fn eval_str_common_with_rq(s: &str, ladder_version: bool, rq: f64) -> f64 {
     let mut diff: i32 = -2; // 类型变化计数，可为负，后续会被钳位
     let mut last_char: i32 = -1; // 上一个字符类别（用 i32 方便与常量比较）
@@ -480,13 +482,10 @@ const CHAR_LST: [u32; 3500] = [
     40723, 40736, 40763, 40784, 40831, 40836, 40857, 40863,
 ];
 
-/// 用来让编译器骂娘般的检查进来的字符是不是在字符表里
+/// 判断给定整数码点是否属于固定的 3500 常用字集合。
 ///
-/// 编译器: 我谢谢你啊
-///
-/// 以及考虑到如果用 macro, 编译时间又得 +++
-///
-/// allow 了 match_like_matches
+/// 不做字符解码或 Unicode 规范化；代理码元、集合外码点及超出 Unicode 范围的整数
+/// 都返回 false。名字评估会将 UTF-16 码元逐项转换为 u32 后调用此函数。
 #[allow(clippy::match_like_matches_macro)]
 pub fn char_in_common_char_lst(c: u32) -> bool {
     match c {

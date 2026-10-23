@@ -20,7 +20,11 @@ pub struct BattleModelOutcome {
     pub winner_team_indices: Vec<usize>,
 }
 
-/// 与回放会话使用同一推进和终止策略的数据生成会话。
+/// 与回放会话使用同一推进和终止策略，只输出帧末边界的数据生成会话。
+///
+/// 本对象独占可变对局，不构造展示快照、回放行或图标；`BattleOptions::include_icons`
+/// 在此入口不生效。调用 [`Self::next_frame`] 推进，再用 [`Self::model_state`] 读取机制值，
+/// 读取不改变 RNG。运行中和粘性失败时无正常结果，终止后可重复查询结果而不推进。
 #[derive(Debug)]
 pub struct BattleModelSession {
     driver: BattleDriver,
@@ -32,7 +36,11 @@ impl BattleModelSession {
             driver: BattleDriver::from_raw(raw, options)?,
         })
     }
-    /// eval_rq 已固化在 prepared 中，构造时只接收本场 seed 和回合上限。
+    /// 从准备模板创建独立对局，不借用模板或 seed，也不立即推进战斗。
+    ///
+    /// `eval_rq` 与阵容配置已固化在 `prepared`，只接收本场 seed 和正整数回合上限。
+    /// 初始化失败或 `max_rounds == 0` 返回错误；多 worker 可共享不可变模板，
+    /// 各自创建会话以隔离 RNG 和可变机制状态。
     pub fn from_prepared(prepared: &PreparedRuntimeRunner, seed: &[String], max_rounds: usize) -> CliApiResult<Self> {
         let runner =
             RuntimeRunner::new_from_prepared_with_seed(prepared, seed).map_err(|e| CliApiError::RunnerInit(e.to_string()))?;

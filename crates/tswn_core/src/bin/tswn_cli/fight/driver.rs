@@ -1,4 +1,8 @@
 //! 规范战斗流的人类和 JSONL 消费端。
+//!
+//! 两种输出共用 `BattleSession`：JSONL 按 initial、frame、result 顺序逐条序列化并刷新，
+//! 人类模式输出规范展示行和显式截断原因。序列化或 I/O 失败立即停止，不继续推进后续帧；
+//! 对局自身的错误由 session 返回，命令入口统一在 stderr 输出并以非零状态退出。
 use serde::Serialize;
 use std::{
     collections::HashMap,

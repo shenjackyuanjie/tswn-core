@@ -20,6 +20,11 @@
 //!
 //! 失败会保存第一次错误，后续推进返回相同错误。调用方处理错误后释放会话。
 //! 正常终止后的推进则幂等地返回 `None`。
+//!
+//! 同一回合的终止优先级是胜者、`max_rounds`、无可见进展；无进展判据为连续
+//! 无可见更新的回合数达到 `max(当前实体数, 1) * 16`，不是对 HP 或机制状态完全不变的检测。
+//! 查询机制状态不消费随机流；`BattleOptions::include_icons` 仅影响展示快照，
+//! [`BattleModelSession`] 不生成图标或回放，prepared 构造还会沿用模板中固化的 `eval_rq`。
 mod driver;
 mod dto;
 mod model_session;

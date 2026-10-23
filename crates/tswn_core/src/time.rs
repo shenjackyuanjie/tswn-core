@@ -1,8 +1,8 @@
 //! 跨平台计时辅助。
 //!
 //! `wasm32-unknown-unknown` 上 `std::time::Instant::now()` 会直接 panic：std 没有为
-//! 该 target 实现时钟（见 `library/std/src/sys/time/unsupported.rs`），而 wasm-bindgen
-//! 运行环境（浏览器、Node）也不暴露其它系统时钟。因此这里在 wasm 上改用
+//! 该 target 实现时钟（见 `library/std/src/sys/time/unsupported.rs`），也不会自动桥接
+//! 浏览器或 Node 提供的 JavaScript 时钟。因此这里在 wasm 上改用
 //! `js_sys::Date::now()`：毫秒精度且不保证严格单调，但足够承载 `*_timed` 诊断字段
 //! （`init_nanos` / `fight_nanos` / matchup 墙钟耗时）。
 //!
@@ -13,23 +13,31 @@
 pub(crate) use self::wasm::Stopwatch;
 #[cfg(target_family = "wasm")]
 mod wasm {
-    /// 计时点；记录 `Date::now()` 的毫秒时间戳。
+    /// WASM 计时点，记录 `Date::now()` 的毫秒时间戳。
+    ///
+    /// 时间源为系统墙钟，可能回拨；仅用于诊断耗时，不作为战斗顺序或随机数来源。
     #[derive(Clone, Copy, Debug)]
     pub struct Stopwatch(f64);
 
     impl Stopwatch {
         pub fn now() -> Self { Self(js_sys::Date::now()) }
 
-        /// 自本计时点起经过的纳秒数；时钟回拨时记为 0。
+        /// 将当前墙钟与计时点的差换算为纳秒数，时钟回拨时返回 `0`。
+        ///
+        /// 返回单位为纳秒不代表纳秒精度；底层仍为 `Date::now()` 的毫秒级时间源。
         pub fn elapsed_nanos(&self) -> u128 { elapsed_nanos(self.0, js_sys::Date::now()) }
 
-        /// 与 [`std::time::Instant::duration_since`] 同语义。
+        /// 返回从 `earlier` 到当前计时点的非负时长，反向区间饱和为零。
+        ///
+        /// 仅比较已经采集的两个时间点，不再次读取时钟；精度沿用本平台时间源。
         pub fn duration_since(&self, earlier: Self) -> std::time::Duration {
             std::time::Duration::from_nanos(elapsed_nanos(earlier.0, self.0) as u64)
         }
     }
 
-    /// 聚合 CQP 结果时要比较最早开始 / 最晚结束，`Instant` 原生可比较，这里补齐同语义。
+    /// 按采集到的时间戳比较计时点，供 CQP 聚合最早开始与最晚结束。
+    ///
+    /// 系统墙钟回拨时，时间戳顺序不等同于真实执行先后；比较仅服务于诊断统计。
     impl PartialEq for Stopwatch {
         fn eq(&self, other: &Self) -> bool { self.0 == other.0 }
     }
@@ -54,21 +62,29 @@ mod wasm {
 pub(crate) use self::native::Stopwatch;
 #[cfg(not(target_family = "wasm"))]
 mod native {
-    /// 计时点；包装 [`std::time::Instant`]，与 wasm 分支保持同一接口。
+    /// 原生平台计时点，包装 [`std::time::Instant`] 的单调时间源。
+    ///
+    /// 与 WASM 分支提供相同接口，使批量执行层无需针对计时编写条件分支。
     #[derive(Clone, Copy, Debug)]
     pub struct Stopwatch(std::time::Instant);
 
     impl Stopwatch {
         pub fn now() -> Self { Self(std::time::Instant::now()) }
 
-        /// 自本计时点起经过的纳秒数。
+        /// 返回从采集计时点到本次调用经过的纳秒数。
+        ///
+        /// 精度由操作系统单调时钟决定；该诊断数据不参与战斗结果与采样身份。
         pub fn elapsed_nanos(&self) -> u128 { self.0.elapsed().as_nanos() }
 
-        /// 与 [`std::time::Instant::duration_since`] 同语义。
+        /// 返回从 `earlier` 到当前计时点的非负时长，反向区间饱和为零。
+        ///
+        /// 仅比较已经采集的两个时间点，不再次读取时钟；精度沿用本平台时间源。
         pub fn duration_since(&self, earlier: Self) -> std::time::Duration { self.0.saturating_duration_since(earlier.0) }
     }
 
-    /// 与 [`std::time::Instant`] 保持一致的比较语义，供 CQP 聚合最早开始 / 最晚结束。
+    /// 按底层单调时间点比较，供 CQP 聚合最早开始与最晚结束。
+    ///
+    /// 比较不读取时钟，也不对战斗状态或批量执行顺序施加约束。
     impl PartialEq for Stopwatch {
         fn eq(&self, other: &Self) -> bool { self.0 == other.0 }
     }

@@ -1,4 +1,8 @@
 //! 主 Runtime 的对战日志格式化与 trace 归一化逻辑。
+//!
+//! 收集入口会推进传入 runner，直到出现胜者或用尽回合预算；返回消息行、实际推进轮数
+//! 和累计战斗分。名字缺失时用 `#ID` 显示，归一化模式移除展示标签及空白装饰，
+//! 只用于文本诊断，不是机器可读事件或机制检查点。
 
 use tswn_core::runtime::update::{RunUpdate, UpdateType};
 use tswn_core::runtime::{EntityIdx, RuntimeRunner};

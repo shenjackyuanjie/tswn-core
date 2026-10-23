@@ -49,7 +49,11 @@
 //! // 输出: PlayerStats{正常,存活 分数: 0, hp: 100 移动点数: 0 sums:0,0,0 攻|50 防|0 速|0 敏|0 魔|0 magic_point|0 抗|0 智|0 }
 //! ```
 
-/// 玩家状态结构体，存储玩家的各种属性和状态。
+/// 名字构建完成后的属性与初始状态值，供 Runtime 导入或导出配置使用。
+///
+/// 这是独立拥有的纯数据，不会跟随战斗内伤害、状态或吞噬自动更新；
+/// 当前战斗展示值应读取 Runtime 快照。字段可独立赋值，构造方负责维持体力、
+/// 存活标记与派生总和的一致性，默认值不等于一个已完成构建的可战斗玩家。
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PlayerStats {
     /// 是否被冻结
@@ -99,11 +103,11 @@ impl PlayerStats {
     /// 检查是否存活
     #[inline]
     pub fn alive(&self) -> bool { self.alive }
-    /// 获取移动点数 (已弃用，请使用 move_point())
-    #[deprecated(note = "请使用 move_point()")]
+    /// 返回原始移动点数；兼容旧调用，新代码直接读取 `move_point` 字段。
+    #[deprecated(note = "请直接读取 move_point 字段")]
     #[inline]
     pub fn spsum(&self) -> i32 { self.move_point }
-    /// 检查是否可以移动
+    /// 判断移动点是否严格超过行动阈值；不检查冻结、存活或体力，也不扣除移动点。
     #[inline]
     pub fn check_move(&self) -> bool { self.move_point > crate::runtime::MOVE_POINT_THRESHOLD }
 
@@ -119,7 +123,7 @@ impl PlayerStats {
     #[deprecated(note = "self.resistance")]
     pub fn mdf(&self) -> i32 { self.resistance }
 
-    /// 获取智利 (已弃用，请使用 self.wisdom)
+    /// 获取智力；兼容旧调用，新代码直接读取 `wisdom` 字段。
     #[inline]
     #[deprecated(note = "self.wisdom")]
     pub fn itl(&self) -> i32 { self.wisdom }

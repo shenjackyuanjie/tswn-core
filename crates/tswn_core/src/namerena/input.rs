@@ -18,6 +18,10 @@ pub enum PlayerClass {
     TestEx,
 }
 
+/// 已解析的单个名字输入，分别保留原文、身份、阵营、武器与覆盖配置。
+///
+/// 身份与展示名不是战斗实体主键。构建阶段使用这里的阵营参与名字推导，
+/// 对战分组则由 [`NamerenaInput`] 单独保存；同阵营不等于同一输入队伍。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerSpec {
     pub raw: String,
@@ -45,6 +49,10 @@ impl fmt::Display for PlayerSpecError {
 
 impl std::error::Error for PlayerSpecError {}
 
+/// 保留输入队伍顺序的已解析对局材料，seed 行不占玩家位置。
+///
+/// `groups` 与 `seed` 各自拥有文本数据，可独立传给构建与战斗初始化；
+/// 此类型本身不生成随机流或推进对局。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NamerenaInput {
     pub groups: Vec<Vec<PlayerSpec>>,
@@ -52,6 +60,11 @@ pub struct NamerenaInput {
 }
 
 impl PlayerSpec {
+    /// 拆分单个名字的 `@` 阵营与引号外 `+` 后缀，并按 UTF-8 字节数校验长度。
+    ///
+    /// 名字与有效阵营各最多 256 字节，超限返回错误；空阵营或含 `:` 的阵营
+    /// 按无阵营处理。此入口不拒绝空名字，也不将普通武器后缀当作非法输入；
+    /// 对局级空输入检查由高层 API 负责。
     pub fn parse(raw: &str) -> Result<Self, PlayerSpecError> {
         let raw = trim_js_line_end(raw);
         let (identity, suffix) = raw.split_once('+').map_or((raw, None), |(identity, suffix)| (identity, Some(suffix)));
@@ -113,6 +126,11 @@ impl PlayerSpec {
 }
 
 impl NamerenaInput {
+    /// 规范化换行后解析整个对局，按空行决定输入队伍并提取 seed 行。
+    ///
+    /// 移除末尾空行后，存在空行则按连续块组队，否则每行独立成队；
+    /// `seed:` 前缀匹配区分大小写，seed 原文按出现顺序保存，且不进入玩家列表。
+    /// 任一玩家长度超限则返回错误；全空或只有 seed 的输入可得到空阵容。
     pub fn parse(raw_input: &str) -> Result<Self, PlayerSpecError> {
         let normalized = raw_input.replace("\r\n", "\n").replace('\r', "\n");
         let mut lines = normalized.split('\n').map(trim_js_line_end).map(str::to_owned).collect::<Vec<_>>();

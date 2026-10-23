@@ -4,8 +4,9 @@
 //! 不随容量放大），**逐字段标量**用 train 拟合的 `N_f`。任一数值槽只归一类，
 //! 禁止先线性缩放再套 `N_f`；`list_position`/`order_rank` 是结构关系变换，不在此列。
 //!
-//! 所有变换先在 f64 计算，再按 IEEE 最近偶数舍入到 f32；NaN/Inf 在进入变换前报
-//! [`EncodeError::NonFiniteValue`]，不产生“看起来正常”的数值样本。
+//! 归一化在 f64 中计算，编码器再按 IEEE 最近偶数舍入到 f32。
+//! 下层归一化函数不返回错误，调用方须先检查原值与尺度；编码器会在变换前拒绝 NaN/Inf，
+//! [`to_f32_checked`] 则同时检查转换前后的有限性，返回 [`EncodeError::NonFiniteValue`]。
 
 use serde::{Deserialize, Serialize};
 
@@ -69,11 +70,11 @@ mod tests {
 
     #[test]
     fn fitted_maps_scale_and_clip_points() {
-        // s_f=c_f=1 时 x=1 恰好映射到 1，x=c_f 是裁剪点。
+        // s_f=c_f=1 时 x=c_f=1 恰好映射到 1，尚未触及 ±4 裁剪边界。
         assert_eq!(normalize_fitted(0.0, 1.0, 1.0), 0.0);
         assert_eq!(normalize_fitted(1.0, 1.0, 1.0), 1.0);
         assert_eq!(normalize_fitted(-1.0, 1.0, 1.0), -1.0);
-        // 超过 c_f 后饱和到 +4/-4，不越界。
+        // 足够大的正负输入会饱和到 +4/-4，不越界。
         assert_eq!(normalize_fitted(1e9, 1.0, 1.0), 4.0);
         assert_eq!(normalize_fitted(-1e9, 1.0, 1.0), -4.0);
     }
