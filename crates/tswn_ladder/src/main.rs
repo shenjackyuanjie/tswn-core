@@ -346,13 +346,17 @@ mod tests {
             },
         );
         state.insert(3, MemberState::default());
-        save_member_state(&dir, &state);
+        save_member_state(&dir, 12_345, &state);
         let loaded = load_member_state(&dir);
-        assert_eq!(loaded.get(&7).map(|s| s.matches), Some(1_234.0));
-        assert_eq!(loaded.get(&7).map(|s| s.name_hash), Some(name_hash("乌云阻拦明月涌河湾 9fPX")));
-        assert_eq!(loaded.get(&7).map(|s| s.boost_until), Some(42));
-        assert_eq!(loaded.get(&3).map(|s| s.matches), Some(0.0));
-        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded.round, 12_345);
+        assert_eq!(loaded.players.get(&7).map(|s| s.matches), Some(1_234.0));
+        assert_eq!(
+            loaded.players.get(&7).map(|s| s.name_hash),
+            Some(name_hash("乌云阻拦明月涌河湾 9fPX"))
+        );
+        assert_eq!(loaded.players.get(&7).map(|s| s.boost_until), Some(42));
+        assert_eq!(loaded.players.get(&3).map(|s| s.matches), Some(0.0));
+        assert_eq!(loaded.players.len(), 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -362,17 +366,21 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("create temp dir");
         std::fs::write(dir.join(MATCHCOUNT_STATE_FILE), "11 90\n12 8\n").expect("write snapshot");
         let loaded = load_member_state(&dir);
-        assert_eq!(loaded.get(&11).map(|s| s.matches), Some(90.0));
-        assert_eq!(loaded.get(&12).map(|s| s.matches), Some(8.0));
+        // 老格式没有轮次行，从 0 开始数
+        assert_eq!(loaded.round, 0);
+        assert_eq!(loaded.players.get(&11).map(|s| s.matches), Some(90.0));
+        assert_eq!(loaded.players.get(&12).map(|s| s.matches), Some(8.0));
         // 老格式没有名称哈希，视为「还不知道」而不是换号
-        assert_eq!(loaded.get(&11).map(|s| s.name_hash), Some(0));
+        assert_eq!(loaded.players.get(&11).map(|s| s.name_hash), Some(0));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn member_state_snapshot_missing_dir_is_empty() {
         let missing = std::env::temp_dir().join(format!("tswn_ladder_absent_{}", std::process::id()));
-        assert!(load_member_state(&missing).is_empty());
+        let loaded = load_member_state(&missing);
+        assert!(loaded.players.is_empty());
+        assert_eq!(loaded.round, 0);
     }
 
     #[test]

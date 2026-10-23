@@ -463,26 +463,44 @@ impl Updator {
     }
 }
 
-/// 读取玩家跨轮状态快照（每行 `member_id 累计场次 [名称哈希 [K恢复截止轮]]`）。
+/// 玩家跨轮状态快照：全局轮次 + 每个玩家的状态。
 ///
+/// 轮次必须一起存盘：`boost_until`（换号后 K 恢复的截止轮）和周期维护（VACUUM / 清理）
+/// 都用它做基准，如果每次重启都从 0 重新数，重启会把这个窗口无限续期。
+pub(super) struct MemberStateSnapshot {
+    pub(super) round: u32,
+    pub(super) players: HashMap<i32, MemberState>,
+}
+
+/// 读取玩家跨轮状态快照。
+///
+/// 文件格式：首行 `r <轮次>`，之后每行 `member_id 累计场次 [名称哈希 [K恢复截止轮]]`。
 /// 只用于「自适应 K + 换号识别」，属于可丢的缓存：文件缺失、损坏或被清掉时退回空表，
 /// 所有人按新玩家 K 打几十轮就重新收敛，只是这段时间的 K 恢复不生效。
-/// 旧版只有前两个字段，缺的字段按 0 处理（不视为换号）。
-pub(super) fn load_member_state(dir: &std::path::Path) -> HashMap<i32, MemberState> {
+/// 旧版只有 `member_id 累计场次` 两列且没有首行，缺的字段按 0 处理（不会被误判成换号）。
+pub(super) fn load_member_state(dir: &std::path::Path) -> MemberStateSnapshot {
     let path = dir.join(MATCHCOUNT_STATE_FILE);
     let Ok(text) = std::fs::read_to_string(&path) else {
-        return HashMap::new();
+        return MemberStateSnapshot {
+            round: 0,
+            players: HashMap::new(),
+        };
     };
 
-    let mut state = HashMap::new();
+    let mut round = 0u32;
+    let mut players = HashMap::new();
     for line in text.lines() {
         let mut parts = line.split_whitespace();
-        let Some(id) = parts.next() else { continue };
-        let Ok(id) = id.parse::<i32>() else { continue };
+        let Some(first) = parts.next() else { continue };
+        if first == "r" {
+            round = parts.next().and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
+            continue;
+        }
+        let Ok(id) = first.parse::<i32>() else { continue };
         let matches = parts.next().and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
         let name_hash = parts.next().and_then(|v| u64::from_str_radix(v, 16).ok()).unwrap_or(0);
         let boost_until = parts.next().and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
-        state.insert(
+        players.insert(
             id,
             MemberState {
                 matches: if matches.is_finite() && matches >= 0.0 { matches } else { 0.0 },
@@ -491,17 +509,18 @@ pub(super) fn load_member_state(dir: &std::path::Path) -> HashMap<i32, MemberSta
             },
         );
     }
-    state
+    MemberStateSnapshot { round, players }
 }
 
 /// 原子写回玩家跨轮状态快照；返回是否写成功（失败由调用方决定要不要提示）。
-pub(super) fn save_member_state(dir: &std::path::Path, state: &HashMap<i32, MemberState>) -> bool {
+pub(super) fn save_member_state(dir: &std::path::Path, round: u32, state: &HashMap<i32, MemberState>) -> bool {
     let path = dir.join(MATCHCOUNT_STATE_FILE);
     let tmp = dir.join(format!("{MATCHCOUNT_STATE_FILE}.tmp"));
 
     let mut ids = state.keys().copied().collect::<Vec<_>>();
     ids.sort_unstable();
-    let mut text = String::with_capacity(ids.len() * 24);
+    let mut text = String::with_capacity(ids.len() * 24 + 16);
+    text.push_str(&format!("r {round}\n"));
     for id in ids {
         let entry = state.get(&id).copied().unwrap_or_default();
         text.push_str(&format!(

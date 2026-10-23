@@ -5,16 +5,16 @@ use super::*;
 impl Updator {
     pub(super) fn new(client: Client, config: Config) -> Self {
         eprintln!("[start] Updator已启动");
-        let member_state = load_member_state(&config.state_dir);
-        eprintln!("[state] 玩家状态快照 {} 人", member_state.len());
+        let snapshot = load_member_state(&config.state_dir);
+        eprintln!("[state] 玩家状态快照 {} 人，轮次 {}", snapshot.players.len(), snapshot.round);
         Self {
             client,
             config,
             rng: fastrand::Rng::new(),
             battle_error_count: 0,
             battle_error_suppressed: 0,
-            member_state,
-            round_index: 0,
+            member_state: snapshot.players,
+            round_index: snapshot.round,
             state_save_warned: false,
         }
     }
@@ -24,7 +24,7 @@ impl Updator {
         if self.config.dry_run {
             return;
         }
-        if save_member_state(&self.config.state_dir, &self.member_state) || self.state_save_warned {
+        if save_member_state(&self.config.state_dir, self.round_index, &self.member_state) || self.state_save_warned {
             return;
         }
         self.state_save_warned = true;
