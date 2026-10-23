@@ -2,6 +2,11 @@
 //!
 //! 本模块提供统一的调试环境变量管理。
 //!
+//! 常规开关在首次查询时一起读取环境，初始化完成前并发查询会等待；之后只读取缓存标志。
+//! bool 开关按变量是否存在启用，因此值为 `0` 仍表示开启。ACTION、DIE、UPGRADE 额外要求
+//! 值是有效 Unicode，启用后每次查询仍读取当前文本；调用方应在启动工作线程前设置环境。
+//! `TSWN_PROBE_*` 等文本探针则各自按首次查询缓存，后续环境变更不生效。
+//!
 //! ## 支持的环境变量
 //!
 //! | 环境变量 | 说明 |
@@ -26,7 +31,7 @@
 //! | `TSWN_TRACE_RC4` | 追踪 RC4 随机数状态 |
 
 use std::sync::{
-    OnceLock,
+    Once, OnceLock,
     atomic::{AtomicBool, Ordering},
 };
 
@@ -48,32 +53,29 @@ static DEBUG_UPGRADE: AtomicBool = AtomicBool::new(false);
 static DEBUG_REFLECT: AtomicBool = AtomicBool::new(false);
 static DEBUG_DAMAGE: AtomicBool = AtomicBool::new(false);
 static TRACE_RC4: AtomicBool = AtomicBool::new(false);
-static INITIALIZED: AtomicBool = AtomicBool::new(false);
+static INITIALIZED: Once = Once::new();
 
 fn init_once() {
-    if INITIALIZED.load(Ordering::Relaxed) {
-        return;
-    }
-    INITIALIZED.store(true, Ordering::Relaxed);
-
-    DEBUG_ACTION.store(std::env::var("TSWN_DEBUG_ACTION").is_ok(), Ordering::Relaxed);
-    DEBUG_STATS.store(std::env::var_os("TSWN_DEBUG_STATS").is_some(), Ordering::Relaxed);
-    DEBUG_WORLD.store(std::env::var_os("TSWN_DEBUG_WORLD").is_some(), Ordering::Relaxed);
-    DEBUG_TICK.store(std::env::var_os("TSWN_DEBUG_TICK").is_some(), Ordering::Relaxed);
-    DEBUG_PICK.store(std::env::var_os("TSWN_DEBUG_PICK").is_some(), Ordering::Relaxed);
-    DEBUG_DODGE.store(std::env::var_os("TSWN_DEBUG_DODGE").is_some(), Ordering::Relaxed);
-    DEBUG_DODGE_ALL.store(std::env::var_os("TSWN_DEBUG_DODGE_ALL").is_some(), Ordering::Relaxed);
-    DEBUG_DIE.store(std::env::var("TSWN_DEBUG_DIE").is_ok(), Ordering::Relaxed);
-    DEBUG_STATE.store(std::env::var_os("TSWN_DEBUG_STATE").is_some(), Ordering::Relaxed);
-    DEBUG_POST_ACTION.store(std::env::var_os("TSWN_DEBUG_POST_ACTION").is_some(), Ordering::Relaxed);
-    DEBUG_FORCED_SKILL.store(std::env::var_os("TSWN_DEBUG_FORCED_SKILL").is_some(), Ordering::Relaxed);
-    DEBUG_COVID.store(std::env::var_os("TSWN_DEBUG_COVID").is_some(), Ordering::Relaxed);
-    DEBUG_FIRE.store(std::env::var_os("TSWN_DEBUG_FIRE").is_some(), Ordering::Relaxed);
-    DEBUG_HEAL.store(std::env::var_os("TSWN_DEBUG_HEAL").is_some(), Ordering::Relaxed);
-    DEBUG_UPGRADE.store(std::env::var("TSWN_DEBUG_UPGRADE").is_ok(), Ordering::Relaxed);
-    DEBUG_REFLECT.store(std::env::var_os("TSWN_DEBUG_REFLECT").is_some(), Ordering::Relaxed);
-    DEBUG_DAMAGE.store(std::env::var_os("TSWN_DEBUG_DAMAGE").is_some(), Ordering::Relaxed);
-    TRACE_RC4.store(std::env::var_os("TSWN_TRACE_RC4").is_some(), Ordering::Relaxed);
+    INITIALIZED.call_once(|| {
+        DEBUG_ACTION.store(std::env::var("TSWN_DEBUG_ACTION").is_ok(), Ordering::Relaxed);
+        DEBUG_STATS.store(std::env::var_os("TSWN_DEBUG_STATS").is_some(), Ordering::Relaxed);
+        DEBUG_WORLD.store(std::env::var_os("TSWN_DEBUG_WORLD").is_some(), Ordering::Relaxed);
+        DEBUG_TICK.store(std::env::var_os("TSWN_DEBUG_TICK").is_some(), Ordering::Relaxed);
+        DEBUG_PICK.store(std::env::var_os("TSWN_DEBUG_PICK").is_some(), Ordering::Relaxed);
+        DEBUG_DODGE.store(std::env::var_os("TSWN_DEBUG_DODGE").is_some(), Ordering::Relaxed);
+        DEBUG_DODGE_ALL.store(std::env::var_os("TSWN_DEBUG_DODGE_ALL").is_some(), Ordering::Relaxed);
+        DEBUG_DIE.store(std::env::var("TSWN_DEBUG_DIE").is_ok(), Ordering::Relaxed);
+        DEBUG_STATE.store(std::env::var_os("TSWN_DEBUG_STATE").is_some(), Ordering::Relaxed);
+        DEBUG_POST_ACTION.store(std::env::var_os("TSWN_DEBUG_POST_ACTION").is_some(), Ordering::Relaxed);
+        DEBUG_FORCED_SKILL.store(std::env::var_os("TSWN_DEBUG_FORCED_SKILL").is_some(), Ordering::Relaxed);
+        DEBUG_COVID.store(std::env::var_os("TSWN_DEBUG_COVID").is_some(), Ordering::Relaxed);
+        DEBUG_FIRE.store(std::env::var_os("TSWN_DEBUG_FIRE").is_some(), Ordering::Relaxed);
+        DEBUG_HEAL.store(std::env::var_os("TSWN_DEBUG_HEAL").is_some(), Ordering::Relaxed);
+        DEBUG_UPGRADE.store(std::env::var("TSWN_DEBUG_UPGRADE").is_ok(), Ordering::Relaxed);
+        DEBUG_REFLECT.store(std::env::var_os("TSWN_DEBUG_REFLECT").is_some(), Ordering::Relaxed);
+        DEBUG_DAMAGE.store(std::env::var_os("TSWN_DEBUG_DAMAGE").is_some(), Ordering::Relaxed);
+        TRACE_RC4.store(std::env::var_os("TSWN_TRACE_RC4").is_some(), Ordering::Relaxed);
+    });
 }
 
 #[inline]
@@ -210,10 +212,9 @@ pub fn trace_rc4() -> bool {
 
 /// 缓存一次性的 `TSWN_PROBE_*` / `TSWN_DEBUG_*` 探针取值。
 ///
-/// 这些探针只在手动排障时开启，但调用点在每 tick、每次技能结算等热路径上。
-/// 直接调用 `std::env::var` 每次都会进内核并取进程级环境锁：8 个 worker 并行时
-/// 生成同一批对局的 CPU 时间从 21 s 涨到 61 s、墙钟从 21 s 只降到 14.7 s，
-/// 换成 8 个独立进程只要 4.9 s。缓存后热路径只剩一次原子读。
+/// 每个探针独立缓存首次查询的 Unicode 字符串，未设置或非 Unicode 的值缓存为 `None`。
+/// 返回值借用进程生命周期内的缓存，不复制字符串，也不在后续查询时重新读取环境；
+/// 环境值应在启动查询线程前配置。此处只定义取值方式，打印时机由调用点决定。
 macro_rules! cached_probe {
     ($(#[$meta:meta])* $name:ident, $var:literal) => {
         $(#[$meta])*
@@ -295,3 +296,85 @@ cached_probe!(
     debug_tick_order,
     "TSWN_DEBUG_TICK_ORDER"
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn concurrent_first_queries_observe_initialized_environment() {
+        const CHILD_ENV: &str = "TSWN_DEBUG_INIT_TEST_CHILD";
+        if std::env::var_os(CHILD_ENV).is_some() {
+            let barrier = std::sync::Barrier::new(32);
+            std::thread::scope(|scope| {
+                for _ in 0..32 {
+                    let barrier = &barrier;
+                    scope.spawn(move || {
+                        barrier.wait();
+                        assert!(trace_rc4(), "首次并发查询必须等待全部标志初始化");
+                        for query in [
+                            debug_stats,
+                            debug_world,
+                            debug_tick,
+                            debug_pick,
+                            debug_dodge,
+                            debug_dodge_all,
+                            debug_state,
+                            debug_post_action,
+                            debug_forced_skill,
+                            debug_covid,
+                            debug_fire,
+                            debug_heal,
+                            debug_reflect,
+                            debug_damage,
+                        ] {
+                            assert!(query());
+                        }
+                        assert_eq!(debug_action().as_deref(), Some("测试角色"));
+                        assert!(debug_action_matches("测试角色分身"));
+                        assert_eq!(debug_die().as_deref(), Some("测试角色"));
+                        assert_eq!(debug_upgrade().as_deref(), Some("测试角色"));
+                    });
+                }
+            });
+            return;
+        }
+
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap());
+        child.args([
+            "--exact",
+            "debug::tests::concurrent_first_queries_observe_initialized_environment",
+            "--nocapture",
+        ]);
+        child.env(CHILD_ENV, "1");
+        for name in [
+            "TSWN_DEBUG_ACTION",
+            "TSWN_DEBUG_STATS",
+            "TSWN_DEBUG_WORLD",
+            "TSWN_DEBUG_TICK",
+            "TSWN_DEBUG_PICK",
+            "TSWN_DEBUG_DODGE",
+            "TSWN_DEBUG_DODGE_ALL",
+            "TSWN_DEBUG_DIE",
+            "TSWN_DEBUG_STATE",
+            "TSWN_DEBUG_POST_ACTION",
+            "TSWN_DEBUG_FORCED_SKILL",
+            "TSWN_DEBUG_COVID",
+            "TSWN_DEBUG_FIRE",
+            "TSWN_DEBUG_HEAL",
+            "TSWN_DEBUG_UPGRADE",
+            "TSWN_DEBUG_REFLECT",
+            "TSWN_DEBUG_DAMAGE",
+            "TSWN_TRACE_RC4",
+        ] {
+            child.env(name, "测试角色");
+        }
+        let output = child.output().expect("应能运行隔离环境的测试子进程");
+        assert!(
+            output.status.success(),
+            "并发首次查询失败：\n{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+    }
+}
