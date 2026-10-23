@@ -1,3 +1,9 @@
+//! Raw/Golden 排名与自动归档的同步编排。
+//!
+//! 每轮按成员不重复和合并队伍上限选择 50 个标准组合，胜率只按实际用到的列补算。
+//! 组数或合法标准集合不足时清空已存结果并进入 waiting；默认归档后继续重算直到稳定。
+//! skip_archived=false 才全量复核并替换封存集合。函数会持续更新数据库进度与缓存。
+
 mod algorithm;
 mod archive;
 mod rates;
@@ -24,13 +30,17 @@ pub const TEAM_LIMIT: usize = 5;
 pub const DEFAULT_WARMUP_ROUNDS: usize = 10_000;
 pub const DEFAULT_TOTAL_ROUNDS: usize = 10_000_000;
 
-/// 默认 1000% 精度，即 100000 场。
+/// 每条缺失配对边默认采样 100,000 场，不表示统计误差保证或胜率精度。
+///
+/// 外部可覆盖采样数，但已有缓存读取不据此失效；复测需由宿主管理历史观测。
 pub const DEFAULT_WIN_RATE_SAMPLES: usize = 100_000;
 
 /// 默认粘性：单人组 10，双人组 20，x 人组 10 * x。
 pub const DEFAULT_STICKINESS_PER_MEMBER: usize = 10;
 
-/// 100000 轮后开始检查三位小数平均 CQD 是否稳定。
+/// 第 100,000 轮起检查平均 CQD 的三位小数，连续稳定轮数由 EARLY_STOP_STABLE_ROUNDS 指定。
+///
+/// 这是有限精度的提前终止条件，不等价于所有底层胜率、支持集合或实数分数已经收敛。
 pub const EARLY_STOP_START_ROUND: usize = 100_000;
 pub const EARLY_STOP_STABLE_ROUNDS: usize = 100;
 

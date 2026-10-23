@@ -1,7 +1,9 @@
 //! 评分引擎核心类型与算法。
 //!
-//! 定义 [`ScoreMode`]、[`NameFeature`]（汉字特征提取）、[`ScoreContext`]（评分上下文），
-//! 以及基础分 `base_score()` 与梯度函数 `gradient()` 实现。
+//! [`NameFeature`] 按 UTF-8 原始字节展开 name@team，生成属性、技能和 shadow 派生的 46 维输入，
+//! 不走 core 的 DIY 解析。使用最后一个 @ 分隔名称和队伍，二者都不能为空。
+//! [`ScoreContext`] 固定线性/二次系数索引；base_score 与 gradient 必须使用同一套索引表
+//! 和 1124 项模型，省略的交叉项以 None 表示。顺序与数值属于旧 DS4 兼容口径。
 
 use crate::error::{Ds4Error, Ds4Result};
 
@@ -118,7 +120,7 @@ impl NameFeature {
         }
 
         // 匹配 C++ build() 的裁剪规则：
-        // - 仅裁剪首尾的 ' ' 和 '+'
+        // - 仅裁剪首尾的空格、NUL 和 '+'
         // - 保留其他尾随字符（尤其是 '\r'）
         let mut l = 0i32;
         let mut r = bytes.len() as i32 - 1;

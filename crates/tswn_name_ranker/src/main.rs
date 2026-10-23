@@ -3,7 +3,8 @@
 //! 本 crate 在根 workspace 的 `exclude` 列表中，需要单独用 `--manifest-path`
 //! 构建、验证或生成文档。
 //! 编译期读取 `abcp_directional_calibrator.json` 与 `abcp_calibration_features.tsv`，
-//! 构建前准备这两份独立校准资源。
+//! 构建前准备这两份独立校准资源；缺失时连单元测试也不能编译，不生成占位模型绕过检查。
+//! ABCP 外部预测另外需要可执行文件、ONNX 与 scale，资源完整性要在部署环境单独验证。
 //!
 //! `web → service → ranker / name_profile → tswn_core`，`db` 持久化任务与排名。
 //! `NAME_RANKER_DB` / `NAME_RANKER_BIND` 覆盖库路径和地址，默认本机端口 3001。

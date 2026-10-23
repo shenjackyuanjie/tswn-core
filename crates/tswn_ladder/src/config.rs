@@ -1,4 +1,8 @@
 //! 运行配置、cron 解析和关闭信号。
+//!
+//! 启动时从环境读取连接串、分组与调度表达式；本模块只解析参数，不连接数据库。
+//! 五字段 cron 会补上固定为 0 的秒字段，六/七字段交给 cron 库校验；实际调度按 UTC
+//! 计算，与用于战斗 seed 的上海时间戳无关。关闭信号只在调度等待期间被轮询。
 
 use super::*;
 
@@ -42,6 +46,10 @@ impl Config {
     }
 }
 
+/// 接受常见五字段 cron 或库支持的完整表达式，返回可复用的调度表。
+///
+/// 五字段输入表示按分钟触发，秒固定为 0；无效字段或表达式返回带原输入的解析错误。
+/// 时区由调用调度表的一方决定，此函数不读取主机时区。
 pub(super) fn parse_cron_schedule(value: &str) -> Result<Schedule> {
     let parts = value.split_whitespace().count();
     if parts == 5 {

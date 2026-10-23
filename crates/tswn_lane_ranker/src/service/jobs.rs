@@ -1,4 +1,8 @@
 //! 后台排名与约束选择任务的启动和状态更新。
+//!
+//! 每个任务持有 Db/Config 克隆并运行在 Tokio blocking 池，成功后将 job 标记为 done。
+//! 普通 Result 失败会尽力写入 failed/error 和上下文；这些状态回写失败被忽略。
+//! 当前不捕获任务 panic，不保留 JoinHandle，也不提供取消、重启续接或同赛道互斥。
 
 use super::*;
 

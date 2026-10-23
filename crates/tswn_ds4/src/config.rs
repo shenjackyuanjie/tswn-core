@@ -1,7 +1,9 @@
 //! 工具全局配置与模式定义。
 //!
-//! 定义 [`Config`] 结构体（从文件加载的运行时配置）、单字评分模式枚举
-//! [`SingleMode`]（Bc/Fz/Wc/Fs/Pj）及字对评分模式枚举 [`PairMode`]（Fc/Wc/Rh）。
+//! [`Config`] 保存模型阈值和文件流程选项；单人模式与配对模式的短名同时决定文件名。
+//! 自动查找按 JSON、TOML、TXT 优先，选中的文件解析失败不会继续尝试低优先级文件。
+//! JSON 使用 DS4 的数字开关和宽松默认值；旧 TOML/TXT 只配置基础评分与配对，
+//! 不包含 JSON 的 team_name、SP1、三人和外部模型流程。
 
 #![allow(dead_code)]
 
@@ -12,6 +14,9 @@ use std::path::{Path, PathBuf};
 use crate::error::{Ds4Error, Ds4Result};
 use serde_json::Value;
 
+/// 五套基础单人模型的选择；短名用于输入、归档和排序文件的命名。
+///
+/// 这些模式代表 DS4 模型的评分门槛，不等价于 core 战斗机制中的角色类型。
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum SingleMode {
     Bc,
@@ -35,6 +40,9 @@ impl SingleMode {
     }
 }
 
+/// 二人配对策略：分别绑定 FZ/BC、WC/WC 和 FS/PJ 模型组合。
+///
+/// 模式决定计算公式和输出文件名；是否执行、通过分数由 [`PairThreshold`] 单独控制。
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum PairMode {
     Fc,
@@ -59,18 +67,27 @@ impl Display for PairMode {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+/// 单人筛选的基础分与潜力分下限；任一分数达到对应下限即可保留。
+///
+/// 数值直接传给各模型，不做跨模型的归一化；0 也是实际门槛而非禁用标记。
 pub struct SingleThreshold {
     pub score: i32,
     pub potential: i32,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+/// 配对或 ABCP 阶段的启用标记与分数下限。
+///
+/// `enabled` 为 false 时整个阶段跳过，`sieve` 本身不决定是否启用。
 pub struct PairThreshold {
     pub enabled: bool,
     pub sieve: i32,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+/// SP1 单人评分及可选技能筛选门槛，数组顺序为 QP/QD/PP/PD/CQD。
+///
+/// `skill_sieve` 是相对技能最高分表的容差，只支持 QP/QD/PP；None 表示不写技能筛选文件。
 pub struct Sp1Threshold {
     pub enabled: bool,
     pub sieve: i32,
@@ -78,6 +95,9 @@ pub struct Sp1Threshold {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+/// 三人模式的启用标记与总分下限，按配置的八类模式顺序应用。
+///
+/// 只有总开关 `Config::get_3` 启用时，单模式开关才进入增量组合阶段。
 pub struct ThreeThreshold {
     pub enabled: bool,
     pub sieve: i32,
@@ -87,6 +107,8 @@ pub struct ThreeThreshold {
 /// 一次 DS4 工作目录流程的模型、阈值、并行和输出配置。
 ///
 /// [`Self::load_from_root`] 自动选择 JSON / TOML / TXT，JSON 编辑可用 [`Self::from_json`] 校验。
+/// 配置只保存参数，不加载模型文件或锁定工作目录；启用外部阶段后仍会在执行时检查资源。
+/// 有 team_name 的配置走完整 DS4 分支；没有该字段的旧格式走基础评分、配对和归档分支。
 pub struct Config {
     pub team_name: Option<String>,
     pub threads: usize,
@@ -110,7 +132,11 @@ pub struct Config {
 }
 
 impl Config {
-    /// 从 DS4 JSON 文本构建配置，便于界面校验编辑后的配置。
+    /// 从 DS4 JSON 文本构建配置，不访问文件系统或检查外部模型资源。
+    ///
+    /// team_name 必须为非空字符串；启用三人或 Openbox 阶段时，二人 ABCP 门槛必须为正。
+    /// 其他整数缺失、类型错误或超出 i32 时按 0 处理，线程数至少为 1；数字开关非零即启用。
+    /// 因而成功返回不表示每个未知字段都被校验，也不接受 JSON bool 作为数字开关。
     pub fn from_json(source: &str) -> Ds4Result<Self> { parse_ds4_json(source) }
 
     pub fn single(&self, mode: SingleMode) -> SingleThreshold {
@@ -131,6 +157,9 @@ impl Config {
         }
     }
 
+    /// 从工作目录按 config.json、config.toml、config.txt 顺序选择首个存在的文件。
+    ///
+    /// 已存在文件的读取或解析失败直接返回；全部缺失时返回含已检查路径的 MissingConfig。
     pub fn load_from_root(root: &Path) -> Ds4Result<Self> {
         let json_path = root.join("config.json");
         let toml_path = root.join("config.toml");
@@ -152,6 +181,10 @@ impl Config {
         })
     }
 
+    /// 读取 UTF-8 配置并移除开头的 BOM，优先按不区分大小写的扩展名选择解析器。
+    ///
+    /// json/toml 之外的文件依据等号或节标记识别旧 TOML，否则按至少 19 个整数的旧 TXT 解析。
+    /// 这里的 TOML 是只支持已知键的兼容子集，不是通用 TOML 实现。
     pub fn load_from_path(path: &Path) -> Ds4Result<Self> {
         let data = fs::read_to_string(path)?;
         let data = data.strip_prefix('\u{feff}').unwrap_or(&data);

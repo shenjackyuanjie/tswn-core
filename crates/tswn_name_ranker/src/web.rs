@@ -1,3 +1,9 @@
+//! 单号内部服务的 Axum 路由、静态页面与错误映射。
+//!
+//! Router 共享同一个 Service；重算接口只负责排队，结果和进度通过独立 GET 查询。
+//! measure-one 直接同步计算缺失边，导入/导出也可能阻塞请求处理线程。
+//! 此层未提供认证，业务错误统一映射为 500 JSON；部署到其他网络前应由宿主配置访问控制。
+
 use crate::{
     model::{RecomputeRequest, TextRequest},
     service::Service,

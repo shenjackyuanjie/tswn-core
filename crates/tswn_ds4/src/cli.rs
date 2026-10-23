@@ -1,7 +1,9 @@
 //! 命令行参数定义。
 //!
-//! 定义 [`Cli`] 结构体及 [`Command`] 枚举（Run/ShowConfig/Merge/Dedup/Sort/Score/Pair），
-//! 以及各子命令所需的选项结构体（[`ScoreCli`]、[`PairCli`]）。
+//! 接收不含程序名的字符串参数；无参数默认在当前目录执行完整流程，帮助和版本不读配置。
+//! 局部命令直接使用给定输入/输出路径，只有 run、show-config 与 openbox-cqp 加载配置。
+//! sort 的列号面向用户从 1 开始，pair 的类型 0 表示同集合、1 表示左右集合。
+//! 参数解析失败返回 Cli 错误；执行失败可能已写入部分文件，不进行跨文件回滚。
 
 use std::path::{Path, PathBuf};
 

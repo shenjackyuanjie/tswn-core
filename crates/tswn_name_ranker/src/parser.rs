@@ -1,3 +1,9 @@
+//! HTTP 文本入口的名称列表与正权重双号靶子解析。
+//!
+//! 名称按行 trim 并去掉空行，保留重复项，core 角色构建由 service 继续校验。
+//! 靶子按 weight<TAB>left+right 读取，跳过空行和 # 注释行，权重须有限且严格为正。
+//! 组合在第一个 + 处分开，不负责解析 DIY 或验证两个名称能否构建。
+
 use anyhow::{Context, bail};
 
 pub fn parse_names(text: &str) -> anyhow::Result<Vec<String>> {

@@ -1,3 +1,9 @@
+//! Axum HTTP 路由、静态页面和应用错误的 JSON 映射。
+//!
+//! Router 通过 Arc 共享 AppService，结果/进度查询与重算排队分离。靶子生成和手动
+//! 胜率计算移交 spawn_blocking，部分同步校验仍在请求线程执行。
+//! 此层无认证，业务错误统一返回 500；监听范围和外部访问控制由部署方负责。
+
 use std::sync::Arc;
 
 use axum::{

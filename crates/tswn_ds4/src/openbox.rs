@@ -12,7 +12,11 @@ use tswn_openbox_backend::presets::{load_target_preset_text, load_target_presets
 use crate::error::{Ds4Error, Ds4Result};
 use crate::output::{append_file, write_bytes_atomic};
 
-/// 使用工作目录中 Openbox 靶子预设 2 进行三轮筛选。
+/// 读取工作目录中的 Openbox 靶子预设 2，对 ABCP 二人候选做 100/1000/10000 局三轮筛选。
+///
+/// sieve 必须为正，三轮胜率下限分别为 sieve/100 + 1/+2/+2，整数除法向零截断。
+/// 每轮结果写入 tmp，最终结果追加到 file/real_two.txt；归档成功后才清空 ABCP 输入结果。
+/// 缺配置、输入或后端失败返回错误；调用同步阻塞，线程数至少为 1，不提供取消句柄。
 pub fn screen_pairs(root: &Path, sieve: i32, threads: usize) -> Ds4Result<()> {
     let presets = load_target_presets_from_root(root).map_err(Ds4Error::parse)?;
     let preset = presets

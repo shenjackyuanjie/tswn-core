@@ -1,3 +1,9 @@
+//! 组合排名应用门面：导入、屏蔽、重算、校准和靶子生成。
+//!
+//! 排队接口先持久化任务/赛道状态，再把同步计算移交 Tokio blocking 任务；返回成功
+//! 表示已提交，不表示计算完成。同一赛道多次请求当前不会自动合并或串行化。
+//! 每次运行克隆配置并固定内部 worker 为 1，外部并行度由请求覆盖；跨步骤没有全局事务。
+
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::process::Command;
