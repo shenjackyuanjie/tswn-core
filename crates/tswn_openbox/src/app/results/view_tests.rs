@@ -411,6 +411,7 @@ fn scrolling_to_the_bottom_restores_follow() {
                 egui::Event::PointerMoved(pointer),
                 egui::Event::MouseWheel {
                     unit: egui::MouseWheelUnit::Point,
+                    source: egui::MouseWheelSource::Unknown,
                     phase: egui::TouchPhase::Move,
                     delta: egui::vec2(0.0, -100_000.0),
                     modifiers: egui::Modifiers::NONE,

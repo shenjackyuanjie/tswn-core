@@ -4,8 +4,8 @@ version = "0.5.4"
 edition = "2024"
 
 [dependencies]
-pyo3 = { version = "0.29", features = ["smallvec"] }
-smallvec = "1.16.0"
+pyo3 = { version = "0.30.1", features = ["smallvec"] }
+smallvec = "1.16.3"
 serde_json = "1"
 serde = "1"
 tswn_core = { path = "../tswn_core", features = ["no_debug", "mimalloc_alloc"] }

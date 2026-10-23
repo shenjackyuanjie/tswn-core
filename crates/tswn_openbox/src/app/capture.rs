@@ -1,4 +1,11 @@
-//! 可选的原生 UI 截图校验驱动。使用真实任务和渲染回传，不操作桌面鼠标或截取其他窗口。
+//! 可选的原生 UI 截图校验驱动，使用本应用真实任务和渲染回传，不操作桌面鼠标。
+//!
+//! 仅启用 ui_capture 时编译；未指定 capture_dir 时仍正常启动 GUI。capture_dir
+//! 指定 PNG 输出目录，light/ds4/diy/align 选择既有验收场景，不改变正式工具的外观。
+//! egui 的一次性截图回调只移交自有图像并请求重绘，下一次 UI 更新再保存和切换阶段，
+//! 保持一项待回传请求，避免回调直接借用应用状态。
+//! 驱动在 60 秒内未收到完整渲染回传时记录失败并关闭窗口；保存错误同样停止任务。
+//! 需要可用的原生渲染环境，只验证本窗口内置场景，不是跨平台像素一致性或其他窗口截图。
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -47,6 +54,7 @@ struct CaptureApp {
     directory: PathBuf,
     stage: usize,
     pending: bool,
+    screenshot: Arc<Mutex<Option<Arc<egui::ColorImage>>>>,
     frame: usize,
     next_frame: usize,
     started: Instant,
@@ -92,24 +100,21 @@ impl eframe::App for CaptureApp {
             self.fail(&ctx, "截图校验超时：60 秒内未完成渲染回传。".into());
             return;
         }
-        for event in ctx.input(|input| input.raw.events.clone()) {
-            if let egui::Event::Screenshot { image, .. } = event {
-                if !self.pending {
-                    continue;
-                }
-                if let Err(err) = self.save_screenshot(&image) {
-                    self.fail(&ctx, err);
-                    return;
-                }
-                self.stage += 1;
-                self.pending = false;
-                // 模式切换后先完整绘制一帧，下一帧才请求该视图的截图。
-                self.next_frame = self.frame + 2;
-                if self.ds4 {
-                    self.app.more_settings_open = self.stage == 1;
-                    self.app.active_help = (self.stage == 2).then_some(super::help::HelpTopic::Ds4Battle);
-                    continue;
-                }
+        // 渲染回调只交还图像所有权；保存与阶段推进留在下一次 UI 更新中。
+        let screenshot = self.screenshot.lock().unwrap().take();
+        if let Some(image) = screenshot.filter(|_| self.pending) {
+            if let Err(err) = self.save_screenshot(&image) {
+                self.fail(&ctx, err);
+                return;
+            }
+            self.stage += 1;
+            self.pending = false;
+            // 模式切换后先完整绘制一帧，下一帧才请求该视图的截图。
+            self.next_frame = self.frame + 2;
+            if self.ds4 {
+                self.app.more_settings_open = self.stage == 1;
+                self.app.active_help = (self.stage == 2).then_some(super::help::HelpTopic::Ds4Battle);
+            } else {
                 let page = self.app.tool as usize;
                 match self.stage {
                     1 => self.app.views[page].mode = ViewMode::Table,
@@ -138,7 +143,12 @@ impl eframe::App for CaptureApp {
             && (!self.ds4 || !self.app.running)
         {
             self.pending = true;
-            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+            let screenshot = self.screenshot.clone();
+            let repaint = ctx.clone();
+            ctx.request_screenshot(move |image| {
+                *screenshot.lock().unwrap() = Some(image);
+                repaint.request_repaint();
+            });
         }
         ctx.request_repaint_after(Duration::from_millis(100));
     }
@@ -218,6 +228,7 @@ fn run_capture(directory: PathBuf, light: bool, ds4: bool, diy: bool, align: Col
                 directory,
                 stage: 0,
                 pending: false,
+                screenshot: Arc::default(),
                 frame: 0,
                 next_frame: 4,
                 started: Instant::now(),

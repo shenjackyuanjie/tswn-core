@@ -1,4 +1,8 @@
-//! 每个 Openbox 工具的 egui 渲染。
+//! 每个 Openbox 工具的 egui 渲染与表单编辑。
+//!
+//! 仅从 UI 线程读写应用状态，运行任务的参数冻结与校验由 actions 完成；日志和
+//! 结构化视图消费后台移交的数据，不在绘制回调中执行战斗。滚动和布局偏好可随帧
+//! 改变，不影响已经启动的任务输入或结果文件口径。
 
 use std::cell::Cell;
 
@@ -486,7 +490,7 @@ impl OpenboxApp {
             });
             // 滑到底部时自动恢复“跟随最新”，与卡片和表格的判断一致。
             self.views[page].set_log_extent(scroll.content_size.y, scroll.inner_rect.height());
-            if super::results::scrolled_to_end(scroll.content_size, scroll.inner_rect, scroll.state.offset) {
+            if super::results::scrolled_to_end(scroll.content_size, scroll.inner_rect, scroll.state.clamped_offset()) {
                 self.views[page].follow = true;
             }
         }

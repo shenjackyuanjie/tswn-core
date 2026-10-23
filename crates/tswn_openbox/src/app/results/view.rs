@@ -1,4 +1,8 @@
-//! 结果控件与可见行绘制；数据更新、索引及裁剪由父模块维护。
+//! 结果控件与可见行绘制，数据更新、索引及裁剪由父模块维护。
+//!
+//! 输入是 UI 线程持有的 ResultsView 和 egui Ui；控件只修改展开、选择、跟随与
+//! 排版偏好，不执行对局。卡片、表格与日志共享文字度量，滚动边界以有效范围内
+//! 的偏移判断；被缓存裁剪的数据不会在本模块重新计算。
 
 use super::{
     ColumnAlign, DetailLine, Record, ResultRow, ResultsView, TABLE_AUTO_RATIO, TABLE_HEIGHT_AUTO, TABLE_HEIGHT_MAX,
@@ -354,7 +358,7 @@ impl ResultsView {
         // 垂直滚动区（`scroll.inner`）才是结果列表本身：跟随判定与跳转度量都以它为准。
         let rows_area = scroll.inner;
         self.set_results_extent(rows_area.content_size.y, rows_area.inner_rect.height());
-        if scrolled_to_end(rows_area.content_size, rows_area.inner_rect, rows_area.state.offset) {
+        if scrolled_to_end(rows_area.content_size, rows_area.inner_rect, rows_area.state.clamped_offset()) {
             self.follow = true;
         }
         if let Some(group) = toggle {
@@ -438,7 +442,7 @@ fn resize_column(ui: &mut egui::Ui, index: usize, rect: egui::Rect, width: &mut 
         egui::pos2(rect.right() + 2.0, rect.bottom()),
     );
     let response = ui
-        .interact(handle, ui.id().with(("column_resize", index)), egui::Sense::drag())
+        .interact(handle, ui.scope_id().with(("column_resize", index)), egui::Sense::drag())
         .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
     if response.dragged() {
         *width = (*width + ui.input(|input| input.pointer.delta().x)).clamp(60.0, 640.0);

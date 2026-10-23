@@ -1,4 +1,8 @@
-//! Openbox 控件的上下文帮助。
+//! Openbox 控件的上下文帮助与固定说明窗口。
+//!
+//! 工具通过 HelpTopic 选择静态说明，悬停短提示与固定窗口复用同一主题；窗口只
+//! 保存当前主题及展开状态，不执行任务或读取输入文件。固定窗口使用稳定 egui id，
+//! 避免正文和标题变化改变跨帧状态。
 
 use std::cell::Cell;
 
@@ -202,7 +206,7 @@ pub(crate) fn show_help_window(ctx: &egui::Context, active: &mut Option<HelpTopi
     };
     let mut open = true;
     egui::Window::new(format!("说明 - {}", topic.title()))
-        .id(egui::Id::new("openbox_pinned_help"))
+        .id(egui::Id::unique("openbox_pinned_help"))
         .open(&mut open)
         .collapsible(false)
         .resizable(true)

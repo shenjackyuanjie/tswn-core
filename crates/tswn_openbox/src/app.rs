@@ -206,7 +206,7 @@ fn status_pill(ui: &mut egui::Ui, app: &OpenboxApp) {
 fn show_about_window(ctx: &egui::Context, open: &mut bool) {
     let mut is_open = *open;
     egui::Window::new("关于")
-        .id(egui::Id::new("openbox_about"))
+        .id(egui::Id::unique("openbox_about"))
         .open(&mut is_open)
         .collapsible(false)
         .resizable(false)

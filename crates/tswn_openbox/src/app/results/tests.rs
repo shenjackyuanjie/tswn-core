@@ -220,6 +220,7 @@ fn horizontal_table_scroll_keeps_header_and_data_columns_together() {
             egui::Event::PointerMoved(pointer),
             egui::Event::MouseWheel {
                 unit: egui::MouseWheelUnit::Point,
+                source: egui::MouseWheelSource::Unknown,
                 phase: egui::TouchPhase::Move,
                 delta: egui::vec2(-100.0, 0.0),
                 modifiers: egui::Modifiers::NONE,
