@@ -15,6 +15,7 @@
 
 ## 调查报告
 
+- [维护前后完整性能与正确性复测（2026-10-24）](reports/maintenance-2026-10-24.md)：34配置五轮A/B、三组七轮独立确认、绑定长尾与17项正确性门禁；明确记录PWP真实校准缺口。
 - [Openbox 实时通路基线（2026-09-29）](reports/openbox-live-2026-09-29.md)：LiveFeed、首条结果延迟与实时输出。
 - [Openbox 全面检查报告（2026-09-29）](reports/openbox-review-2026-09-29.md)：缓存、文件排序、胜率窗口化与 GUI 通路。
 
@@ -50,6 +51,8 @@
 | [score/](score/)、[cqp/](cqp/)、[win_rate/](win_rate/)、[pgo_training/](pgo_training/) | score、CQP、胜率与 PGO 输入 |
 | `runtime_*.json` | 对应 Runtime 报告的原始结果；从报告内链接进入 |
 | [openbox_pair_parallelism_9b07a04e_ab_samples.json](openbox_pair_parallelism_9b07a04e_ab_samples.json) | OpenBox pair 并行修复复测的逐轮样本与输入哈希 |
+| [maintenance_2026-10-24_benchmark.json](maintenance_2026-10-24_benchmark.json) | 维护前后逐轮统计、独立确认、原始样本合并分位数、哈希及正确性状态 |
+| [maintenance_2026-10-24_raw.zip](archives/maintenance_2026-10-24_raw.zip) | 原始测量/监测证据、失败和污染现场及执行脚本；不受 cargo clean 影响 |
 | [rc4_20260905_profile.json](rc4_20260905_profile.json) | RC4 调查数据 |
 | [python_battle_session_samples.json](python_battle_session_samples.json) | Python BattleSession DTO 转换基线的逐次样本 |
 | [web_streaming_result.png](web_streaming_result.png) | Web Streaming 页面截图 |
