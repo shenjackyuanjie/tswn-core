@@ -32,7 +32,7 @@ Rust 侧负责读取已保存结果、补算缺失胜率、调用 Python 求解�
 ```powershell
 cargo test -p tswn_lane_ranker
 node --check crates/tswn_lane_ranker/static/app.js
-cargo +nightly fmt --check
+cargo +nightly fmt -p tswn_lane_ranker --check
 ```
 
 单元测试验证组合解析、SQLite 结果/归档管理、Raw/Golden 重建和胜率补算范围。接入真实数据库、Python 数值工具和服务页面时还需对应的端到端验证。

@@ -29,7 +29,7 @@
 
 ```powershell
 cargo test -p tswn_ladder
-cargo +nightly fmt --check
+cargo +nightly fmt -p tswn_ladder --check
 ```
 
 单元测试覆盖 cron 与 core 胜者映射，不需要数据库。完整更新、事务回写和信号处理仍需在测试数据库中单独验收，不能把单元测试当作数据库端到端验证。

@@ -258,7 +258,7 @@ uv run scripts/tswn_diff.py pf --tswn-version 0.3.12
 uv run scripts/tswn_diff.py round --case-id MESSAGE_ID
 ```
 
-三个子命令均通过 `--dsn` 或环境变量 `TSWN_PG_DSN` 连接 PostgreSQL；默认 schema、table 和 senderId 保持原来的值。
+三个子命令都需要 `psycopg`（即使只查看帮助也会导入），通过 `--dsn` 或环境变量 `TSWN_PG_DSN` 连接 PostgreSQL；默认 schema、table 和 senderId 保持原来的值。使用具备所需表读取权限的账号，连接信息仅在本地环境提供；不要把 DSN 写入命令示例或报告。
 
 | 子命令 | 用途 | 常用参数 |
 | --- | --- | --- |
@@ -306,6 +306,14 @@ Bun 脚本，用于对 tswn-md5 模块进行 profile trace。
 
 输出为 JSON，包含 `win_count` 和 `raw_data`（每轮的 round/wins）。
 
+## 其他差分与测量脚本
+
+- `benchmark_md5_runtime.cjs`：使用外部 `md5.js` 测量 fixed/win-rate/score/matrix；参数由脚本解析，不提供 `--help`。固定输入、线程和 `eval_rq` 后再比较，历史口径见 [四方报告](../docs/perf/reports/runtime-four-way-2026-07-15.md)。
+- `bun_score_trace.js`：与 `bun_profile_trace.js` 一样接收 `--input-file`、`--rounds`、`--md5`，但采集 score 的逐轮结果；补丁依赖外部 JS 产物的源码形态，不是通用 JS 调试器。
+- `ohos-env.ps1` / `ohos-env.sh`：由当前 shell 点导入以设置交叉编译环境；需要已有 SDK，不是自动安装器，见 [OpenHarmony 指南](../docs/guides/openharmony.md)。
+- `test_build_all.py` / `test_read_encoded_batches.py`：脚本单元测试，覆盖打包内容与真实编码文件读取；NumPy 数组测试需要 NumPy。运行方式见 [开发指南](../docs/guides/development.md#验证怎么选)。
+- `_tswn_diff/` 是 `tswn_diff.py` 的内部实现，统一通过顶层入口调用，不直接执行包内模块。
+
 ## 关于 uv
 
 仓库使用 `uv` 管理 Python 虚拟环境：
@@ -325,4 +333,6 @@ Bun 脚本，用于对 tswn-md5 模块进行 profile trace。
 - `benchmark_py_battle_session.py`：构建本地 release Python 扩展，测量 `BattleSession.next_frame()` 的端到端 DTO 开销；传入 Node WASM 包时同时按相同输入比较两端结果。基线与复现口径见 [Python BattleSession DTO 转换基线](../docs/perf/reports/python-battle-session-baseline.md)。
 - `verify_battle_docs.py`：从公共 API 文档提取 Rust / Python / WASM 示例并实际运行。
 
-完整构建与复现步骤见 [Web streaming 基线](../docs/perf/reports/web-streaming-baseline.md)。
+这些验证脚本不统一提供命令行帮助：`verify_battle_docs.py`、`verify_battle_cross_binding.py` 直接执行验证，不接受 `--help`；`dump_battle_wasm.mjs` 与 `benchmark_wasm_battle_session.mjs` 从 stdin 接收 JSON，供上游脚本调用。Node 包默认位于 `target/battle_wasm_node/`，跨绑定桥接还支持 `TSWN_WASM_NODE_PACKAGE` 指定包文件。跨绑定脚本当前只自动定位 Windows DLL 和 Linux SO，macOS 的动态库路径需要适配。
+
+浏览器性能脚本还需要 Playwright 和可用的 Edge；DOM 验证需要 linkedom，均安装到独立的 `target/web-test-tools/`。完整构建与复现步骤见 [Web streaming 基线](../docs/perf/reports/web-streaming-baseline.md)；其中测量日期、旧工具版本和性能数字按历史记录阅读，重新构建 WASM 时始终匹配当前 Cargo.lock。

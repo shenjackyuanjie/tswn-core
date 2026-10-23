@@ -12,6 +12,7 @@
 | [战斗状态导出与胜率数据生成](battle-analyze.md) | 两遍采样、标签、切分、Parquet、恢复和后续模型接入如何组织 |
 | [BattleModelState Runtime 审计](battle-model-state-audit.md) | 每类机制字段从哪里导出，身份如何派生，机制状态与存档/缓存各有什么用途 |
 | [FeatureEncoder 设计规格](feature-encoder-spec.md) | 状态如何映射到固定张量，容量、引用、数值、标签与审计通道如何约定 |
+| [Runtime 架构评估（未实施提案）](runtime-redesign-assessment.md) | 基于文中提交的执行内核评估与候选重构路线；不是当前 API 或已经完成的实施说明 |
 
 ## 阅读关系
 
