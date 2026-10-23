@@ -1,4 +1,8 @@
 //! 规范战斗流的 C 所有权与选项校验。
+//!
+//! 会话持有运行时，调用方只借用输入文本并独占推进句柄；快照和帧 JSON 为独立分配。
+//! 可选输出在检查输入前重置 has 和字符串描述符，调用前应先释放旧输出，避免覆盖泄漏。
+//! 正常结束与截断均可读取结果；Runtime 失败保留 sticky error，而状态仍可能为 Running。
 use crate::{
     FfiResult, ffi_boundary, ffi_error, high_api::cli_api_error, read_utf8, tswn_status_t, tswn_str_t, write_json_result,
 };
@@ -43,7 +47,8 @@ impl Default for tswn_battle_options_t {
         }
     }
 }
-/// opaque 会话句柄；由 new 创建，由对应 free 释放。
+/// 独占运行时的 opaque 会话句柄；new 只借用输入，free 后所有句柄副本均失效。
+/// 已返回的 JSON 缓冲与句柄独立，仍需分别释放。
 pub struct tswn_battle_session_t {
     inner: BattleSession,
 }
@@ -110,6 +115,8 @@ unsafe fn reset_optional(out_has: *mut u8, out_json: *mut tswn_str_t) -> FfiResu
     Ok(())
 }
 
+/// 写入历史 V1 默认选项，包含正数回合上限及关闭图标；NULL 无操作。
+///
 /// # Safety
 /// `options` 为 null，或至少指向 V1_SIZE 字节可写存储。
 /// 此历史初始化函数永久只写 V1；未来更大的选项需新增带容量参数的初始化接口。
@@ -127,6 +134,11 @@ pub unsafe extern "C" fn tswn_battle_options_default(options: *mut tswn_battle_o
     }
 }
 
+/// 从名竞队伍文本创建会话；选项为空时使用 core 默认值。
+///
+/// `max_rounds` 必须为正数，`include_icons` 仅接受 0/1。有效的输出槽先被清零，
+/// 初始化失败时不返回句柄；状态码和当前线程错误通道给出原因。
+///
 /// # Safety
 /// 输入是有效的 UTF-8 C 字符串；options 为 null，或至少有 struct_size 个可读字节。out_session 可写。
 /// 返回的句柄必须恰好释放一次。
@@ -149,6 +161,8 @@ pub unsafe extern "C" fn tswn_battle_session_new(
     })
 }
 
+/// 释放会话及运行时；不释放已交给调用方的字符串输出。
+///
 /// # Safety
 /// session 为 null，或是由 new 返回的、归调用方所有的存活句柄；本次调用后不得再使用它。
 #[unsafe(no_mangle)]
@@ -166,6 +180,11 @@ pub unsafe extern "C" fn tswn_battle_session_is_failed(session: *const tswn_batt
     u8::from(unsafe { session.as_ref() }.is_some_and(|session| session.inner.is_failed()))
 }
 
+/// 推进至下一可见帧；成功且 has=1 时输出规范帧 JSON。
+///
+/// 正常终止后重复调用返回 has=0；Runtime 失败返回相同 sticky error，
+/// has=0 且 JSON 为 `{NULL, 0}`，应停止推进并释放会话。
+///
 /// # Safety
 /// session 存活且被独占借用；输出指针可写。返回的字符串归调用方所有，必须用 tswn_str_free 释放。
 #[unsafe(no_mangle)]
@@ -185,6 +204,10 @@ pub unsafe extern "C" fn tswn_battle_session_next_frame_json(
     })
 }
 
+/// 读取正常结束或截断后的结果 JSON；运行中和 Runtime 失败时 has=0。
+///
+/// 此查询不推进会话，也不消费结果；重复读取会各自产生需释放的字符串。
+///
 /// # Safety
 /// session 存活；输出指针可写。用 tswn_str_free 释放返回的 JSON。
 #[unsafe(no_mangle)]

@@ -1,4 +1,8 @@
-//! 规范的面向用户流式 API；DTO 直接从 core 序列化。
+//! 规范的同步流式战斗 API；DTO 直接从 core 序列化为普通 JS 对象。
+//!
+//! 会话独占运行时，JS 宿主负责调用 free；DTO 为独立副本，不借用会话内存。
+//! next_frame 先推进再序列化，输出转换失败不会回滚已经产生的帧。
+//! 领域错误抛出带 code/message 的普通值，panic hook 不构成异常恢复边界。
 use crate::{
     convert::ts_in,
     error::{WasmResult, cli_api_error, internal_error},
@@ -18,7 +22,10 @@ pub(crate) fn dto_to_js<T: Serialize + ?Sized>(dto: &T) -> WasmResult<JsValue> {
 }
 
 #[wasm_bindgen]
-/// wasm-bindgen 规范对局对象；按需取帧，并在 JS finally 中调用生成的 free()。
+/// 持有 core 运行时的 wasm-bindgen 对局对象，按需同步取帧。
+///
+/// JS 宿主在 finally 中调用生成的 free()；释放前返回的普通 DTO 可继续读取。
+/// Runtime 失败不等同于正常终止，is_done 为 false 时也应检查 is_failed。
 pub struct BattleSession {
     inner: CoreBattleSession,
 }
@@ -26,7 +33,8 @@ pub struct BattleSession {
 #[wasm_bindgen]
 impl BattleSession {
     #[wasm_bindgen(constructor)]
-    /// 解析 raw 和可选 options，创建 core 会话；错误转换为带 code 的 JS Error。
+    /// 解析空行分队的 raw 和可选 options；max_rounds 为正数回合预算。
+    /// 未提供选项时使用 core 默认值；错误抛出 `{code, message}`，不是 Error 实例。
     pub fn new(raw_input: String, options: Option<Ts<BattleOptions>>) -> WasmResult<BattleSession> {
         crate::install_panic_hook();
         let options = ts_in(options)?;
@@ -41,12 +49,14 @@ impl BattleSession {
     /// 返回当前边界的规范玩家快照数组。
     pub fn current_states(&self) -> WasmResult<JsValue> { dto_to_js(self.inner.current_states()) }
     #[wasm_bindgen(unchecked_return_type = "BattleReplayFrame | null")]
-    /// 同步推进至下一可见帧，正常结束返回 JS null。
+    /// 同步推进至下一可见帧；正常结束或截断后返回 JS null，可重复调用。
+    /// Runtime 失败会保留 sticky error 并重复抛错，应停止推进并释放会话。
     pub fn next_frame(&mut self) -> WasmResult<JsValue> { dto_to_js(&self.inner.next_frame().map_err(cli_api_error)?) }
     #[wasm_bindgen(unchecked_return_type = "BattleStatus")]
     pub fn status(&self) -> WasmResult<JsValue> { dto_to_js(&self.inner.status()) }
     #[wasm_bindgen(unchecked_return_type = "BattleStopReason | null")]
     pub fn stop_reason(&self) -> WasmResult<JsValue> { dto_to_js(&self.inner.stop_reason()) }
+    /// 只表示正常结束或截断；失败应另查 is_failed，不属于正常结果。
     pub fn is_done(&self) -> bool { self.inner.is_done() }
     pub fn is_failed(&self) -> bool { self.inner.is_failed() }
     pub fn is_finished(&self) -> bool { self.inner.is_finished() }

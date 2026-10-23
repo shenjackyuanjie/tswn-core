@@ -1,15 +1,18 @@
 //! RC4 伪随机数生成器的 Python 封装。
 //!
 //! 将 [`RC4`] 的完整接口暴露给 Python，
-//! 包括状态读写、字节加解密、各种概率判断方法（c94/c75/c50 等）及范围随机方法（r256/r64 等）。
+//! 包括状态读写、字节变换、概率判断方法（c94/c75/c50 等）及范围随机方法（r256/r64 等）。
+//! 这些接口服务于战斗复现，不提供密码学安全随机数。字节序列输入转为 Rust 自有副本，
+//! 返回修改后的序列；Python 原列表不被原地改写，生成器状态则随调用推进。
 
 use pyo3::{PyResult, exceptions::PyValueError, pyclass, pymethods};
 
 use tswn_core::rc4::{RC4, VAL_LEN};
 
-/// RC4 的 Python 封装
+/// 独立持有 RC4 排列表与游标的可变 Python 对象。
 ///
-/// 很多麻烦事都是从这里来的
+/// 创建、update 和 round 拒绝空 key，返回 ValueError；round=None 使用对应 core 默认值。
+/// i/j 和排列表写入接口用于恢复状态，应仅使用有效快照，任意写入会破坏可复现性。
 #[pyclass]
 #[pyo3(name = "RC4")]
 pub struct PyRC4 {
@@ -99,6 +102,7 @@ impl PyRC4 {
         Ok(())
     }
 
+    /// 查看下一字节但不推进状态，便于与实际 next_u8 结果对照。
     pub fn peek_next_u8(&self) -> u8 { self.inner.peek_next_u8() }
 
     pub fn c94(&mut self) -> bool { self.inner.c94() }

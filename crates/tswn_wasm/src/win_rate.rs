@@ -2,6 +2,8 @@
 //!
 //! 提供 `WinRateSession`（分批次步进执行，支持进度轮询）及 `run_win_rate_sync`
 //! 一次性同步函数，计算第一组玩家对其余组的胜率百分比。
+//! 会话复用准备后的阵容并按试验索引累计；step 只拆计算批次，不负责事件循环调度。
+//! JS 端显式 free 释放模板；progress/result 返回独立快照，可在完成前读取。
 
 use tsify::Ts;
 use tswn_core::Runner;
@@ -31,7 +33,10 @@ fn build_prepared_runner(raw_input: String, eval_rq: f64) -> WasmResult<Prepared
 fn nanos_to_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
 
 #[wasm_bindgen]
-/// 保存准备阵容和累计结果的分批胜率对象；每次 step 同步执行，宿主安排批间调度。
+/// 保存准备阵容与累计统计的分批胜率对象，不自行创建 Worker 或异步调度。
+///
+/// 宿主在 step 之间让出事件循环，并在结束或失败后 free；total_rounds=0 时立即完成。
+/// 只有 thread=0/1 可用，其他值返回 UNSUPPORTED_OPTION。
 pub struct WinRateSession {
     prepared: PreparedRuntimeRunner,
     total_rounds: usize,
@@ -123,10 +128,12 @@ impl WinRateSession {
 
     pub fn progress(&self) -> WasmResult<Ts<WinRateProgress>> { ts_out(&self.progress_value()) }
 
+    /// 同步执行至多 batch_size 次剩余试验；省略为 100，0 按 1 处理，完成后不再新增试验。
     pub fn step(&mut self, batch_size: Option<usize>) -> WasmResult<Ts<WinRateProgress>> {
         self.step_internal(batch_size.unwrap_or(100)).and_then(|progress| ts_out(&progress))
     }
 
+    /// 复制当前累计结果，不要求已完成；宿主应检查 done，percent 的分母是 rounds_done。
     pub fn result(&self) -> WasmResult<Ts<WinRateResult>> { ts_out(&self.result_value()) }
 
     pub fn eval_rq(&self) -> f64 { self.eval_rq }

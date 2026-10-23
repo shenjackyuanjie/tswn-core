@@ -1,4 +1,8 @@
 //! 规范 core BattleSession 和 DTO 之上的轻量 Python 适配器。
+//!
+//! 会话独占运行时，raw 只在构造时读取；DTO 经 JSON 转为新的 Python dict/list，
+//! 不暴露 Rust 借用。领域错误由 map_cli_error 转换，JSON/Python 对象转换也可能失败；
+//! next_frame 已推进后发生转换错误不会回滚运行时，因此不要据此假定该帧可重试。
 use crate::cli_api::map_cli_error;
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
@@ -20,13 +24,18 @@ pub(crate) fn dto_to_python<T: serde::Serialize + ?Sized>(py: Python<'_>, dto: &
 }
 
 #[pyclass(name = "BattleSession")]
-/// Python 可迭代战斗对象，序列化 core 规范 DTO 为 dict/list。
+/// 可迭代的同步战斗会话，返回 core 规范 DTO 的 dict/list 副本。
+///
+/// Python 管理对象释放，无需显式 free；迭代耗尽与失败不同，Runtime 失败会抛出
+/// 带 code 的异常并保留 sticky failure，此后停止推进并丢弃会话。
 pub struct PyBattleSession {
     inner: BattleSession,
 }
 
 #[pymethods]
 impl PyBattleSession {
+    /// 解析空行分队的 raw；max_rounds 为正数回合预算，None 使用 core 默认值。
+    /// include_icons 会把图标 data URL 加入快照，eval_rq 仅在创建时确定。
     #[new]
     #[pyo3(signature = (raw, eval_rq=None, include_icons=false, max_rounds=None))]
     fn new(raw: &str, eval_rq: Option<f64>, include_icons: bool, max_rounds: Option<usize>) -> PyResult<Self> {
@@ -34,8 +43,11 @@ impl PyBattleSession {
             inner: BattleSession::new(raw, options(eval_rq, include_icons, max_rounds)).map_err(map_cli_error)?,
         })
     }
+    /// 返回创建时快照的新副本；修改 Python 结果不会修改会话。
     fn initial_states(&self, py: Python<'_>) -> PyResult<Py<PyAny>> { dto_to_python(py, self.inner.initial_states()) }
+    /// 返回当前回合边界的快照副本，不推进运行时。
     fn current_states(&self, py: Python<'_>) -> PyResult<Py<PyAny>> { dto_to_python(py, self.inner.current_states()) }
+    /// 推进到下一可见帧；正常终止返回 None，Runtime 失败抛异常而不是 StopIteration。
     fn next_frame(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         self.inner
             .next_frame()
@@ -43,11 +55,13 @@ impl PyBattleSession {
             .map(|frame| dto_to_python(py, &frame))
             .transpose()
     }
+    /// 正常结束或截断后返回结果副本；运行中/失败时为 None，重复读取不消费结果。
     fn result(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         self.inner.result().map(|result| dto_to_python(py, &result)).transpose()
     }
     fn status(&self, py: Python<'_>) -> PyResult<Py<PyAny>> { dto_to_python(py, &self.inner.status()) }
     fn stop_reason(&self, py: Python<'_>) -> PyResult<Py<PyAny>> { dto_to_python(py, &self.inner.stop_reason()) }
+    /// 只表示正常结束或截断；Runtime 失败时仍为 false，应同时检查 is_failed。
     fn is_done(&self) -> bool { self.inner.is_done() }
     fn is_failed(&self) -> bool { self.inner.is_failed() }
     fn is_finished(&self) -> bool { self.inner.is_finished() }

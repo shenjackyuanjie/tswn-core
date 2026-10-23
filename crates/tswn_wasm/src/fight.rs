@@ -1,4 +1,8 @@
-//! 从规范 BattleSession 投影出的高级兼容 API。
+//! 从规范 BattleSession 投影出的旧页面兼容 API。
+//!
+//! 保留旧 PlayerState/UpdateView/空终止帧形状，规则和预算仍由 core 会话决定。
+//! 所有推进同步执行，JS 显式 free 释放会话；返回的 DTO 为独立副本。
+//! 需要区分截断原因或检查 sticky failure 时使用规范 BattleSession。
 use crate::convert::{ts_in, ts_out, ts_out_vec};
 use crate::error::{WasmResult, cli_api_error};
 use crate::model::{
@@ -131,6 +135,7 @@ fn frame_from_core(frame: BattleReplayFrame) -> RoundFrame {
 }
 
 #[wasm_bindgen]
+/// 持有规范会话的兼容包装；capture_replay 仅控制批量收集是否保存帧，不阻止计算。
 pub struct FightSession {
     session: BattleSession,
     players: Vec<PlayerMeta>,
@@ -166,7 +171,8 @@ impl FightSession {
         })
     }
 
-    /// `limit` 限制本次收集批次，但不改变规范会话预算。
+    /// 从当前状态同步收集至多 limit 个规范帧，不改变会话总回合预算，也不重新开局。
+    /// capture_replay=false 时结果 frames 为空，但仍按相同 limit 推进运行时。
     pub fn run_to_end_internal(&mut self, limit: Option<usize>) -> WasmResult<FightReplay> {
         let mut frames = Vec::new();
         for _ in 0..limit.unwrap_or(usize::MAX) {

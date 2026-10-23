@@ -8,7 +8,9 @@
 //! 边界，而该边界无法回传失败，反序列化报错只能 `throw_str`，跳过析构函数并造成
 //! 内存泄漏（见 <https://github.com/madonoharu/tsify/issues/65>）。
 //! 现在统一由导出函数经 `tsify::Ts<T>` 在函数体内完成转换，失败时走普通
-//! `Result`，生成的 TypeScript 声明与之前完全一致。
+//! `Result`。生成的 TypeScript 声明描述普通数据对象，不代表持有需 free 的会话句柄。
+//! 可选输入字段缺失时使用解析器默认值；规范 Battle DTO 的手写类型另见 battle_types.d.ts，
+//! 不应把兼容 FightReplay 字段与规范回放混用。
 
 use serde::{Deserialize, Serialize};
 use tsify::Tsify;
@@ -17,6 +19,7 @@ use tswn_core::runtime::RuntimeMinionKind;
 use tswn_core::runtime::update::UpdateType;
 
 #[derive(Debug, Clone, Default, Deserialize, Tsify)]
+/// 旧页面兼容对局选项；capture_replay 只控制完整回放是否保存帧，默认保存。
 pub struct FightOptions {
     #[tsify(optional)]
     pub eval_rq: Option<f64>,
@@ -35,6 +38,7 @@ impl FightOptions {
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, Tsify)]
+/// 分批/同步胜率选项；eval_rq 默认胜率口径，thread 缺失或为 0/1 均使用当前线程。
 pub struct WinRateOptions {
     #[tsify(optional)]
     pub eval_rq: Option<f64>,
@@ -53,7 +57,8 @@ impl WinRateOptions {
     }
 }
 
-/// 跨绑定、可供 UI 使用的战斗回放 API 选项。
+/// 规范战斗会话与完整回放共用选项；缺失字段使用 core 默认值。
+/// max_rounds 为正数回合预算，不是可见帧数；include_icons 会在快照中附图标 data URL。
 #[derive(Debug, Clone, Deserialize, Tsify)]
 pub struct BattleOptions {
     #[tsify(optional)]

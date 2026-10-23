@@ -1,3 +1,9 @@
+//! 低层 Runner 的兼容回放投影与 Python dict/list 构造。
+//!
+//! 快照、事件和 Python 容器各自持有数据，不向 Python 暴露运行时借用；这些 DTO
+//! 保留旧 timeline 字段，与规范 BattleSession DTO 不同。构造容器的 PyResult
+//! 直接传播 Python 错误；推进方法不回滚已执行的回合，也不捕获 Rust panic。
+
 use std::collections::HashMap;
 
 use pyo3::{
@@ -17,6 +23,7 @@ use tswn_core::{
 };
 
 #[derive(Clone)]
+/// 兼容 timeline 的自有玩家快照；标识仅在所属对局内有意义，队伍索引可能缺失。
 pub struct PlayerSnapshot {
     pub id: PlrId,
     pub team_index: Option<usize>,
@@ -67,6 +74,7 @@ impl ReplayState for PlayerSnapshot {
 }
 
 #[derive(Clone)]
+/// 兼容回放事件的自有投影；caster/target/param 等缺失值保持 Option，不以零代替。
 pub struct EventDto {
     pub update_type: &'static str,
     pub tone: &'static str,
@@ -96,6 +104,7 @@ pub fn winner_names(runner: &Runner) -> Vec<String> {
         .collect()
 }
 
+/// 复制当前全部实体状态，结果含显示顺序与输入队伍索引，不借用 runner。
 pub fn snapshot_players(runner: &Runner) -> Vec<PlayerSnapshot> {
     runner
         .player_snapshots()
@@ -288,6 +297,8 @@ pub fn update_to_dto(update: &RunUpdate, names: &HashMap<PlrId, String>) -> Even
 
 fn is_visible_event(event: &EventDto) -> bool { !event.is_next_line && !event.message_rendered.trim().is_empty() }
 
+/// 按事件顺序返回毫秒等待列表；缩放仅影响输出，不修改输入事件。
+/// first_visible_immediate 控制首个可见事件是否立即展示，换行事件不等同于可见消息。
 pub fn compute_event_delays(
     events: &[EventDto],
     scale_by_player_count: bool,
@@ -352,6 +363,7 @@ fn set_optional_u32(dict: &pyo3::Bound<'_, PyDict>, key: &str, value: Option<u32
     }
 }
 
+/// 将单个快照复制为当前 Python 生命周期内的新 dict；缺失的可选字段写为 None。
 pub fn snapshot_to_pydict<'py>(py: pyo3::Python<'py>, snapshot: &PlayerSnapshot) -> PyResult<pyo3::Bound<'py, PyDict>> {
     let dict = PyDict::new(py);
     dict.set_item("id", snapshot.id)?;
@@ -389,6 +401,7 @@ pub fn snapshot_to_pydict<'py>(py: pyo3::Python<'py>, snapshot: &PlayerSnapshot)
     Ok(dict)
 }
 
+/// 按输入顺序建立新的 Python 快照列表；失败传播 Python 容器构造错误。
 pub fn snapshots_to_pylist<'py>(py: pyo3::Python<'py>, snapshots: &[PlayerSnapshot]) -> PyResult<pyo3::Bound<'py, PyList>> {
     let list = PyList::empty(py);
     for snapshot in snapshots {
@@ -397,6 +410,7 @@ pub fn snapshots_to_pylist<'py>(py: pyo3::Python<'py>, snapshots: &[PlayerSnapsh
     Ok(list)
 }
 
+/// 复制事件为兼容字典，包含模板与展开消息；结果不借用 EventDto。
 pub fn event_to_pydict<'py>(py: pyo3::Python<'py>, event: &EventDto) -> PyResult<pyo3::Bound<'py, PyDict>> {
     let dict = PyDict::new(py);
     dict.set_item("type", event.update_type)?;
@@ -483,6 +497,11 @@ pub fn updates_to_event_dtos(updates: &RunUpdates, names: &HashMap<PlrId, String
     updates.updates.iter().map(|update| update_to_dto(update, names)).collect()
 }
 
+/// 从 runner 当前状态推进并收集兼容 timeline，原地消耗该对局，不重新开局。
+///
+/// limit 是可见事件上限；frames 以整回合生成，扁平 events 可能在该回合中截断。
+/// 即使未达 limit，也会在无进展或绑定层回合预算耗尽时停止；结果没有规范会话的
+/// sticky failure 协议。快照随事件累积，长对局优先使用规范 BattleSession。
 pub fn build_replay(py: pyo3::Python<'_>, runner: &mut Runner, limit: Option<usize>) -> PyResult<pyo3::Py<pyo3::PyAny>> {
     let max_events = limit.unwrap_or(usize::MAX);
     let initial_states = snapshot_players(runner);

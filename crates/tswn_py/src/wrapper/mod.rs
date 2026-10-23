@@ -2,6 +2,8 @@
 //!
 //! 本模块把 `tswn_core` 的核心类型包成 `pyclass`：`Runner` 用于逐场对局，
 //! `PreparedRunner` 用于复用解析结果跑批量胜率，子模块则分别封装 RC4、回放和错误类型。
+//! 返回的更新、列表和 RC4 是副本，不是运行时的可变视图。低层 Runner 主要保留
+//! 机制诊断接口，规范流式结果和 Runtime 失败处理优先使用顶层 BattleSession。
 
 use pyo3::{Py, PyAny, PyResult, Python, pyclass, pymethods};
 use tswn_core::{
@@ -13,7 +15,10 @@ pub mod error;
 pub mod rc4;
 pub mod replay;
 
-/// PreparedRunner 的 Python 封装
+/// 持有可复用阵容模板及固定评估口径的 Python 对象。
+///
+/// 每场 runner 独立创建运行时，模板不会随对局推进；无需手动释放。换评估口径需
+/// 重新 prepare，win_rate 的可选 eval_rq 仅用于一致性校验。
 #[pyclass]
 #[pyo3(name = "PreparedRunner")]
 pub struct PyPreparedRunner {
@@ -48,7 +53,10 @@ impl From<CorePreparedRunner> for PyPreparedRunner {
     }
 }
 
-/// Runner 的 Python 封装
+/// 独占可变对局状态的低层 Python 对象，构造失败抛出 RunnerError。
+///
+/// 推进方法原地修改对象；属性列表、快照及 RC4 getter 都返回独立副本。
+/// `run_to_completion` 的 false 无法区分无进展和回合截断，需要原因时改用 BattleSession。
 #[pyclass]
 #[pyo3(name = "Runner")]
 pub struct PyRunner {
@@ -107,10 +115,10 @@ impl PyRunner {
         })
     }
 
-    /// 进行一个主回合（直到出现可见更新），并返回更新内容
+    /// 原地推进一个主回合，返回独立拥有的 RunUpdates；保留结果不要求保留 runner。
     pub fn main_round(&mut self) -> PyRunUpdates { self.inner.main_round().into() }
 
-    /// 运行到结束，返回是否有赢家
+    /// 同步推进至胜者、无进展或绑定回合上限；false 不代表对局一定失败，也不会给出终止原因。
     pub fn run_to_completion(&mut self) -> bool { self.inner.run_binding_to_completion() }
 
     /// 返回原始输入顺序对应的队伍 roster（不受内部排序影响）
@@ -129,7 +137,7 @@ impl PyRunner {
         self.inner.input_groups.iter().position(|group| group.contains(&entity))
     }
 
-    /// 获取当前的 rc4
+    /// 返回当前 RC4 状态的克隆；修改该对象不会改变 runner 后续随机数序列。
     #[getter]
     pub fn get_rc4(&self) -> rc4::PyRC4 { self.inner.runtime.rng.clone().into() }
 
@@ -148,7 +156,10 @@ impl PyRunner {
         Ok(replay::snapshots_to_pylist(py, &snapshots)?.into_any().unbind())
     }
 
-    /// 构建用于直播/回放的高层 timeline。
+    /// 从当前状态继续推进并收集兼容 timeline，不会从初始状态重新开局。
+    ///
+    /// limit 限制可见事件数量，不是回合数；回合边界推进可能使 frames 包含整个回合，
+    /// 而扁平 events 仅含到上限为止的事件。返回大量独立快照，内存随收集量增长。
     #[pyo3(signature = (limit=None))]
     pub fn build_replay(&mut self, py: Python<'_>, limit: Option<usize>) -> PyResult<Py<PyAny>> {
         replay::build_replay(py, &mut self.inner, limit)
@@ -167,7 +178,10 @@ impl PyRunner {
     pub fn all_plr_len(&self) -> usize { self.inner.runtime.entities.len() }
 }
 
-/// RunUpdates 的 Python 封装
+/// 独立持有一回合更新的 Python 集合，可在原 runner 推进或销毁后继续读取。
+///
+/// updates getter 克隆每条更新；clear/reset 只清空本集合，不修改已经取出的更新对象。
+/// no_capture 集合可记录发生过更新但不保存事件，len 与 had_updates 的含义因此不同。
 #[pyclass]
 #[pyo3(name = "RunUpdates")]
 #[derive(Default)]
@@ -218,9 +232,10 @@ impl From<PyRunUpdates> for RunUpdates {
     fn from(value: PyRunUpdates) -> Self { value.inner }
 }
 
-/// RunUpdate 的 Python 封装
+/// 独立持有单条消息事件的 Python 对象，不借用 runner 或所属 RunUpdates。
 ///
-/// 你可以从这里获取到每一轮的更新内容
+/// message 是占位符模板，msg 为展开文本；参数和目标可能缺失，读取时应分别检查
+/// Option 与目标列表，而不是把零值直接解释为有效玩家。
 #[pyclass]
 #[pyo3(name = "RunUpdate")]
 pub struct PyRunUpdate {
