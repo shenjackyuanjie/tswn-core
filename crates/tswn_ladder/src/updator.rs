@@ -148,7 +148,16 @@ impl Updator {
     }
 
     pub(super) async fn process_all_players(&mut self, group: &str) -> Result<()> {
+        // 分阶段耗时：用来判断"匹配"到底值不值得优化（线上实测对战占绝大部分）。
+        let mut stage = std::time::Instant::now();
+        let mut read_ms = 0.0_f64;
+        let mut handicap_ms = 0.0_f64;
+        let mut match_ms = 0.0_f64;
+        let mut battle_ms = 0.0_f64;
+        let mut write_ms = 0.0_f64;
+
         let mut players = self.load_players(group).await?;
+        read_ms += stage.elapsed().as_secs_f64() * 1000.0;
         if players.len() < 2 {
             eprintln!("[group:{group}] 活跃玩家不足2人，跳过");
             return Ok(());
@@ -183,7 +192,11 @@ impl Updator {
             player.original_score = player.score;
         }
 
+        stage = std::time::Instant::now();
         let mut handicap_map = self.load_handicap_data(&players, group).await?;
+        handicap_ms += stage.elapsed().as_secs_f64() * 1000.0;
+
+        stage = std::time::Instant::now();
         let first_matches = self.generate_base_matches(&mut players, &handicap_map);
         let base_matches = self.generate_second_matches(&mut players, &handicap_map, &first_matches);
         // 补位/退火保持关闭：实测只会把「handicap 诱导偏置」这个二阶量优化掉，
@@ -192,6 +205,7 @@ impl Updator {
         let supplement_matches: Vec<MatchPair> = Vec::new();
         let matches = base_matches.iter().copied().chain(supplement_matches.iter().copied()).collect::<Vec<_>>();
 
+        match_ms += stage.elapsed().as_secs_f64() * 1000.0;
         let match_stats = self.analyze_match_distribution(&matches, &players, base_matches.len(), &handicap_map);
         eprintln!(
             "[group:{group}] 对局={} (base={}, extra={}) | 场次范围={}-{} | 均值={:.1} | loss={:.2}",
@@ -204,9 +218,11 @@ impl Updator {
             match_stats.final_squared_loss
         );
 
+        stage = std::time::Instant::now();
         let update_results = self
             .execute_matches_with_calibrated_elo(&mut players, &matches, &mut handicap_map, group)
             .await?;
+        battle_ms += stage.elapsed().as_secs_f64() * 1000.0;
 
         if update_results.skip_persist {
             eprintln!(
@@ -224,11 +240,16 @@ impl Updator {
             }
         }
 
+        stage = std::time::Instant::now();
         let (handicap_written, handicap_deleted) = self
             .persist_results(&mut players, &mut handicap_map, &update_results.changed_handicaps, group)
             .await?;
         self.update_ranks_and_logs(&mut players, update_results.history_records, group).await?;
+        write_ms += stage.elapsed().as_secs_f64() * 1000.0;
 
+        eprintln!(
+            "[perf:{group}] 读玩家={read_ms:.1}ms 读克制={handicap_ms:.1}ms 匹配={match_ms:.1}ms 对战={battle_ms:.1}ms 回写={write_ms:.1}ms"
+        );
         eprintln!(
             "[group:{group}] 完成 | avgDelta={:.1} | quality={:.1}% | success={} failed={} | handicapAvgCount={:.1} | handicapAvgValue={:.1} | handicap写入={} 删除={}",
             update_results.avg_delta,

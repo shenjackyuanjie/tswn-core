@@ -290,6 +290,23 @@ pub(crate) fn rename_boost_until(previous_hash: u64, current_hash: u64, boost_ro
     Some(round_index.saturating_add(boost_rounds))
 }
 
+/// 资格门的分数窗口：`logistic_expected(x) ∈ [0.45, 0.55]` 等价于 `|x| ≤ 这个值`。
+pub(crate) fn gate_score_limit() -> f64 { ELO_SCALE_FACTOR * (0.55_f64 / 0.45).log10() }
+
+/// 这对玩家是否「不管 handicap 取多少都过不了资格门」。
+///
+/// 资格门判定的是 `|分数差 + 克制调整| ≤ gate_score_limit()`，而克制调整的绝对值有上界
+/// `max_adjustment`（由本轮的 handicap 最大值算出）。所以分数差超过
+/// `gate_score_limit() + max_adjustment` 时必然被拒——**它的判定结果与不做这次判定完全一致**，
+/// 只是省掉了一次查表和一次 logistic。
+///
+/// 注意：只有「必然被拒」的探测才可以跳过。实测线上能跳过的只占全部探测的 **2.9%**
+///（因为 `max_adjustment` 要按最坏情况取，约 1.1 万分），换算成时间约 0.17 ms/轮；
+/// 一轮真正的耗时在「对战」（282 ms / 88%），匹配只占 5.9 ms / 1.8%。
+pub(crate) fn probe_cannot_pass(score_gap_abs: f64, max_adjustment: f64) -> bool {
+    score_gap_abs > gate_score_limit() + max_adjustment
+}
+
 #[cfg(test)]
 mod tests {
     use super::battle::{format_seed_timestamp, generate_unique_seed, settle_round};
@@ -435,6 +452,32 @@ mod tests {
         assert!((forward[2] - (10_000.0 - 80.0 * (1.0 - logistic_expected(2_000.0)))).abs() < 1e-9);
         // 未参赛的人不动
         assert!((settle_round(&scores, &[], &[], &k)[0] - 12_000.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn gate_limit_matches_the_probability_window() {
+        let limit = gate_score_limit();
+        assert!((logistic_expected(limit) - 0.55).abs() < 1e-4);
+        assert!((logistic_expected(-limit) - 0.45).abs() < 1e-4);
+    }
+
+    #[test]
+    fn pruned_probe_is_always_outside_the_gate() {
+        // 线上实测的克制调整上界：(max|h| 86.68 + 扰动 40) * 88.3
+        let max_adjustment = (86.68 + 40.0) * HANDICAP_SCALE;
+        let limit = gate_score_limit();
+        let gap = limit + max_adjustment + 1.0;
+        assert!(probe_cannot_pass(gap, max_adjustment));
+        // 再有利的克制调整也救不回来：两个方向、极端与零调整都被门拒
+        for adj in [-max_adjustment, 0.0, max_adjustment] {
+            for sign in [-1.0_f64, 1.0] {
+                let p = logistic_expected(sign * gap + adj);
+                assert!(!(0.45..=0.55).contains(&p), "p={p} adj={adj} sign={sign}");
+            }
+        }
+        // 刚好落在边界内的探测绝不剪掉（否则会改变候选集）
+        assert!(!probe_cannot_pass(limit + max_adjustment - 1.0, max_adjustment));
+        assert!(!probe_cannot_pass(0.0, 0.0));
     }
 
     #[test]
