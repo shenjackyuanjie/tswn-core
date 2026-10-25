@@ -4848,7 +4848,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_openbox"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "clap",
  "eframe",
@@ -4865,7 +4865,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_openbox_backend"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "serde",
  "serde_json",

@@ -1,13 +1,48 @@
 # 更新日志
 
-## [Unreleased] - 0.5.1
+## [0.5.2] - 2026-10-21
 
 ### 新增
 
+- 新工具页 `base`：填入一个原始名字后点运行，右侧日志按社区 base 工具的格式输出
+  128 字节 roll 派生数据（HP 区间、七围原始三元组与 16 个技能槽）。这一页没有“更多设置”，
+  默认纯文本视图；名字非法时给出与 `openbox-cli base` 相同的提示。
 - `openbox-cli base`：输出单个原始名字的 128 字节 roll、HP 区间、七围原始三元组与 16 个技能槽；
-  与社区 base 工具一致，只接受原始名字（不支持 `+diy` / `+ol` / 武器）。
+  与社区 base 工具一致，只接受原始名字（不支持 `+diy` / `+ol` / 武器）。渲染逻辑放在
+  `tswn_openbox_backend::backend::run_base`，GUI 的 `base` 页与 CLI 共用同一入口，输出逐字节一致。
 - 仓库自带的 `setting/settings.toml` 改用 `targets/newTarget*.toml` 与
   `teammates/teammate_*.toml` 的带权预设（队友 `head = 4`），GUI 与 `openbox-cli` 共用。
+
+### 界面调整
+
+- 结果列表不再显示“完成”：表格第二列与卡片标题右侧换成「复制名字」/「复制」按钮，点了只把名字写进剪贴板；
+  还在计算或已停止的组仍显示“预览”“已停止 · 结果不完整”这类状态文字，状态图例里的“完成”一并去掉。
+- 卡片与表格里的文字（名字、分数、明细）都可以框选复制；名字格子同时保留点击选中该行的行为，两者互不冲突。
+- 表格下方分隔条的标题从只有名字改成「名字 分数」，并同样可以框选复制。
+- 工具页顺序变为 `to-diy` / `namer-pf` / `cqd/cqp` / `pair` / `base` / `DS4`；各页日志、结果与视图偏好仍然互相独立。
+  界面偏好的按页列表改为变长保存：旧版本存的 5 项照旧读出，老的第 5 项仍归 `DS4`，
+  `base` 页按默认补齐，不会因为多一页就把整份偏好判为损坏。
+- 点击“运行”后立即请求下一帧，`base` 这类瞬间完成的任务不会再停在“运行中”等下一次鼠标事件。
+
+### 验证
+
+- 结果列表的新行为由回归测试覆盖：完成的表格行与卡片不再出现“完成”且「复制」按钮把名字写进剪贴板、
+  未完成的行保留“计算中 · 预览”与“已停止 · 结果不完整”、在名字上拖动框选后复制事件拿到选中的文字、
+  点名字仍然选中该行、分隔条标题为「名字 分数」。
+- `base` 由参考样例覆盖：`cargo test -p tswn_openbox_backend base` 断言完整多行文本逐字节一致，
+  并覆盖“一次只支持一个名字”的拒绝路径；`openbox-cli base` 只是同一入口的命令层别名。
+- 界面偏好的升级兼容由 `storing_five_pages_still_restores_every_page_after_base_was_added` 覆盖：
+  读入旧版 5 项列表后，老的第 5 项仍归 `DS4`，`base` 页用默认纯文本与默认排版。
+- 截图校验新增 `--capture-base`，用 base 参考样例生成 `base.png` 供人工核对版面。
+- 本版本验证命令：`cargo test --workspace -- --test-threads=1`、`cargo test -p tswn_openbox --features ui_capture`（46 通过）、
+  `cargo test -p tswn_openbox_backend`（53 通过；`scores_observed_legacy_matches_metrics_thresholds_and_skill_board`
+  会在仓库内建临时目录，受限沙箱下建不出来，需在正常权限下跑）、`cargo +nightly fmt --check`、
+  `cargo clippy -p tswn_openbox -p tswn_openbox_backend --all-targets --features ui_capture --no-deps -- -D warnings`。
+
+## [0.5.1] - 2026-10-03
+
+### 新增
+
 - 表格高度可自行调整：拖动表格与选中行明细之间的分隔条即可改变高度，拖动后按工具页保存；「排版设置」可输入具体像素值或切回“自动”（按可用高度的 55% 分配），非法值回退自动。
 - 卡片与表格里的「复制全部」改为复制当前选中项：表格里是选中行、卡片里是当前卡片，每张展开卡片的右下角也提供同样的按钮；内容是该结果的标题与明细，不再等同于整页日志。「复制日志」仍复制文本流水。
 
@@ -29,8 +64,6 @@
 
 ### 验证
 
-- `openbox-cli base` 由参考样例覆盖：
-  `cargo test -p tswn_openbox --no-default-features --features mimalloc_alloc --bin openbox-cli base`（2 通过）。
 - 新增回归覆盖：勾选“跟随最新”当帧跳到最新一行与到底自动恢复跟随、表格分隔条拖动改高、表格高度自动/固定/非法值回退与按页保存、
   固定表格高度后分隔条与明细仍紧贴表格且明细区随表格调小而变高（可视明细行数增加）、
   卡片与表格行高等于日志行高、差额高亮使用等宽字体、高分高亮同时标色名字与分数、展开卡片的「复制全部」只复制该卡片内容（含剪贴板命令断言）、
@@ -40,7 +73,7 @@
   `cargo test -p tswn_openbox_backend`（52 通过）、`cargo +nightly fmt --check`、
   `cargo clippy -p tswn_openbox -p tswn_openbox_backend --all-targets --features ui_capture --no-deps -- -D warnings`。
 
-## [Unreleased] - 0.5.0
+## [0.5.0] - 2026-10-01
 
 > 修复了 astra 写的 sb UI 的问题
 
