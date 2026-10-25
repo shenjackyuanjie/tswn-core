@@ -35,6 +35,14 @@ impl Updator {
             eprintln!("组别 {group}: 过滤 {} 个无效匹配对", matches.len() - valid_matches.len());
         }
 
+        // 本轮开始时的分数与 K：所有对局的期望都按这份快照计算，结算统一放在循环之后。
+        // 旧实现每打完一场就改 `players[].score`，同一轮里后打的场次看到的是已经被前几场
+        // 改过的分数——同一批对局换个顺序会算出不同的分数。
+        let start_scores = players.iter().map(|p| p.score).collect::<Vec<i32>>();
+        let k_factors = players.iter().map(|p| self.k_factor(p.id)).collect::<Vec<f64>>();
+        let mut executed_pairs = Vec::with_capacity(valid_matches.len());
+        let mut outcomes = Vec::with_capacity(valid_matches.len());
+
         for (match_index, pair) in valid_matches.iter().enumerate() {
             let i = pair.0;
             let j = pair.1;
@@ -42,7 +50,7 @@ impl Updator {
             let key = PairKey::new(players[i].id, players[j].id);
             let handicap = handicap_map.get(&key).map(|data| data.basic_value).unwrap_or(0.0);
 
-            let score_diff_with_handicap = (players[i].score as f64 - players[j].score as f64)
+            let score_diff_with_handicap = start_scores[i] as f64 - start_scores[j] as f64
                 + if players[i].id < players[j].id {
                     handicap * HANDICAP_SCALE
                 } else {
@@ -50,7 +58,7 @@ impl Updator {
                 };
             let expected_with_handicap = logistic_expected(score_diff_with_handicap);
 
-            let score_diff_base = players[i].score as f64 - players[j].score as f64;
+            let score_diff_base = start_scores[i] as f64 - start_scores[j] as f64;
             let expected_base = logistic_expected(score_diff_base);
 
             if (0.45..=0.55).contains(&expected_with_handicap) {
@@ -76,23 +84,18 @@ impl Updator {
                 }
             };
             executed_matches += 1;
+            executed_pairs.push((i, j));
+            outcomes.push(result == 1);
 
             let actual = if result == 1 { 1.0 } else { 0.0 };
-            let delta = BASE_K_FACTOR * (actual - expected_base);
-            let p1_new_score = self.probabilistic_round(players[i].score as f64 + delta);
-            let p2_new_score = self.probabilistic_round(players[j].score as f64 - delta);
-            let actual_delta = p1_new_score - players[i].score;
+            // 每人用自己的 K：新玩家用满 K 快速就位，打了几千场的老玩家用收缩后的 K，
+            // 稳态误差随之下降，名次不再每分钟大幅互穿。
+            total_delta += (k_factors[i] * (actual - expected_base)).abs();
 
-            players[i].score = p1_new_score;
-            players[j].score = p2_new_score;
-
-            if actual > 0.0 {
-                players[i].score += 1;
-            } else {
-                players[j].score += 1;
-            }
-
-            total_delta += (actual_delta as f64).abs();
+            let played = self.member_state.entry(players[i].id).or_default();
+            played.matches += 1.0;
+            let played = self.member_state.entry(players[j].id).or_default();
+            played.matches += 1.0;
 
             if let Some(data) = handicap_map.get_mut(&key) {
                 let delta_h = K_HANDICAP * (actual - expected_with_handicap) * handicap_direction;
@@ -111,6 +114,8 @@ impl Updator {
                         disturbed_value: initial_handicap,
                         basic_value: initial_handicap,
                         count: 1.0,
+                        persisted_value: 0.0,
+                        persisted_count: 0.0,
                     },
                 );
 
@@ -222,6 +227,13 @@ impl Updator {
             });
         }
 
+        // 统一结算：本轮所有对局都按轮初分数算期望，累加后再一次性落到 players 上。
+        // 这样同一批对局换个顺序得到的分数完全一致。
+        let settled = settle_round(&start_scores, &executed_pairs, &outcomes, &k_factors);
+        for (idx, target) in settled.iter().enumerate() {
+            players[idx].score = self.probabilistic_round(*target);
+        }
+
         let avg_match_count = if handicap_count > 0 {
             total_match_count / handicap_count as f64
         } else {
@@ -315,6 +327,39 @@ impl Updator {
             );
         }
     }
+}
+
+/// 一轮的分数结算（纯函数，便于回归测试）。
+///
+/// `scores` 必须是**轮初**分数：每场对局的期望胜率都按它计算，因此结算结果与对局顺序
+/// 无关。这正是旧实现的 bug——它每打完一场就改 `players[].score`，同一轮里后打的场次
+/// 看到的是已经被前几场改过的分数，同一批对局换个顺序会算出不同的分数，而且给后打的
+/// 场次掺进了一个与对手无关的偏置。
+///
+/// `outcomes[k] == true` 表示 `matches[k]` 的左侧（`i`）获胜；`k_factors` 是每人本轮
+/// 使用的 K。返回值是每人轮末的**未取整**目标分（已含胜场 +1），由调用方做概率取整。
+pub(super) fn settle_round(scores: &[i32], matches: &[(usize, usize)], outcomes: &[bool], k_factors: &[f64]) -> Vec<f64> {
+    let mut targets = scores.iter().map(|score| *score as f64).collect::<Vec<f64>>();
+    for (idx, &(i, j)) in matches.iter().enumerate() {
+        let Some(winner_left) = outcomes.get(idx).copied() else {
+            continue;
+        };
+        if i >= targets.len() || j >= targets.len() || i == j {
+            continue;
+        }
+
+        let actual = if winner_left { 1.0 } else { 0.0 };
+        let expected = logistic_expected(scores[i] as f64 - scores[j] as f64);
+        targets[i] += k_factors[i] * (actual - expected);
+        targets[j] -= k_factors[j] * (actual - expected);
+        // 胜场 +1：整除性上等价于取整后再 +1，放在这里让「一轮的总增量」只有一个来源。
+        if winner_left {
+            targets[i] += 1.0;
+        } else {
+            targets[j] += 1.0;
+        }
+    }
+    targets
 }
 
 pub(super) fn generate_unique_seed(rng: &mut fastrand::Rng) -> String {

@@ -18,8 +18,12 @@ impl Updator {
         let mut order = (0..n).collect::<Vec<_>>();
         self.shuffle(&mut order);
 
+        // 匹配期间分数不变，先拷一份给「必然被门拒」的预筛用
+        let scores = players.iter().map(|p| p.score).collect::<Vec<i32>>();
+        let max_adjustment = handicap_adjustment_bound(handicap_map);
+
         for i in order {
-            let candidates = self.build_candidate_list(i, n, &matched_pairs, |a, b| {
+            let candidates = self.build_candidate_list(i, n, &matched_pairs, &scores, max_adjustment, |a, b| {
                 let win_prob = expected_win_prob_with_handicap(a, b, players, handicap_map, true);
                 (0.45..=0.55).contains(&win_prob)
                     && players[a].base_matches < MAX_ACTIVE_MATCHES
@@ -64,8 +68,11 @@ impl Updator {
         let mut order = (0..n).collect::<Vec<_>>();
         self.shuffle(&mut order);
 
+        let scores = players.iter().map(|p| p.score).collect::<Vec<i32>>();
+        let max_adjustment = handicap_adjustment_bound(handicap_map);
+
         for i in order {
-            let candidates = self.build_candidate_list(i, n, &matched_pairs, |a, b| {
+            let candidates = self.build_candidate_list(i, n, &matched_pairs, &scores, max_adjustment, |a, b| {
                 let win_prob = expected_win_prob_with_handicap(a, b, players, handicap_map, true);
                 (0.40..=0.60).contains(&win_prob)
                     && players[a].second_matches < SECOND_ACTIVE_MATCHES
@@ -105,6 +112,8 @@ impl Updator {
         i: usize,
         n: usize,
         matched_pairs: &HashSet<(usize, usize)>,
+        scores: &[i32],
+        max_adjustment: f64,
         is_eligible_match: F,
     ) -> Vec<usize>
     where
@@ -114,9 +123,16 @@ impl Updator {
         let mut candidate_set = HashSet::new();
         let search_radius = if n < 30 { 25.min(n.saturating_sub(1)) } else { 40 };
 
+        // 先按分数差把「不管 handicap 怎么取都过不了门」的探测筛掉。
+        // 这一步只跳过必然被拒的探测，候选集与随机数消耗都不变，所以行为完全等价。
+        let gap_blocked = |a: usize, b: usize| -> bool {
+            let gap = (scores[a] as f64 - scores[b] as f64).abs();
+            probe_cannot_pass(gap, max_adjustment)
+        };
+
         for offset in 1..=search_radius {
             let j1 = (i + offset) % n;
-            if i != j1 {
+            if i != j1 && !gap_blocked(i, j1) {
                 let pair_key = ordered_usize_pair(i, j1);
                 if !matched_pairs.contains(&pair_key) && !candidate_set.contains(&j1) && is_eligible_match(i, j1) {
                     local_candidates.push(j1);
@@ -125,7 +141,7 @@ impl Updator {
             }
 
             let j2 = (i + n - (offset % n)) % n;
-            if i != j2 {
+            if i != j2 && !gap_blocked(i, j2) {
                 let pair_key = ordered_usize_pair(i, j2);
                 if !matched_pairs.contains(&pair_key) && !candidate_set.contains(&j2) && is_eligible_match(i, j2) {
                     local_candidates.push(j2);
@@ -234,6 +250,14 @@ impl Updator {
         }
         deltas
     }
+}
+
+/// 本轮 handicap 对「分数差」的最大可能调整量（分数尺度）。
+///
+/// 资格门比较的是 `分数差 + 克制调整`，而克制调整用的是 `disturbed_value`
+///（已含 ±40 的探索扰动），所以取本轮 map 里的最大绝对值就是安全上界。
+pub(super) fn handicap_adjustment_bound(handicap_map: &HashMap<PairKey, HandicapData>) -> f64 {
+    handicap_map.values().map(|d| d.disturbed_value.abs()).fold(0.0_f64, f64::max) * HANDICAP_SCALE
 }
 
 pub(super) fn ordered_usize_pair(a: usize, b: usize) -> (usize, usize) { if a < b { (a, b) } else { (b, a) } }
