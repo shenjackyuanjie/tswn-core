@@ -33,6 +33,9 @@ struct CaptureArgs {
     /// 使用 DIY 组合样例校验属性、技能详情及旧版纯文本输出。
     #[arg(long, conflicts_with = "capture_ds4")]
     capture_diy: bool,
+    /// 使用 base 样例校验新页面的输入与纯文本输出。
+    #[arg(long, conflicts_with_all = ["capture_ds4", "capture_diy"])]
+    capture_base: bool,
     /// 指定非纯文本截图的对齐方式，便于实际审图。
     #[arg(long, value_parser = ["left", "center", "right"], default_value = "left")]
     capture_align: String,
@@ -45,8 +48,16 @@ pub(crate) fn run_if_requested() -> Option<eframe::Result<()>> {
         "right" => ColumnAlign::Right,
         _ => ColumnAlign::Left,
     };
-    args.capture_dir
-        .map(|directory| run_capture(directory, args.capture_light, args.capture_ds4, args.capture_diy, align))
+    args.capture_dir.map(|directory| {
+        run_capture(
+            directory,
+            args.capture_light,
+            args.capture_ds4,
+            args.capture_diy,
+            args.capture_base,
+            align,
+        )
+    })
 }
 
 struct CaptureApp {
@@ -60,6 +71,7 @@ struct CaptureApp {
     started: Instant,
     failure: Arc<Mutex<Option<String>>>,
     ds4: bool,
+    base: bool,
 }
 
 impl CaptureApp {
@@ -69,9 +81,22 @@ impl CaptureApp {
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
 
+    /// 本次驱动要生成几张截图：base 页只有一张，DS4 有三张，其余四种状态。
+    fn stage_count(&self) -> usize {
+        if self.ds4 {
+            3
+        } else if self.base {
+            1
+        } else {
+            4
+        }
+    }
+
     fn save_screenshot(&self, image: &egui::ColorImage) -> Result<(), String> {
         let name = if self.ds4 {
             ["ds4", "ds4-settings", "ds4-help"][self.stage]
+        } else if self.base {
+            "base"
         } else {
             ["cards", "table", "text", "stopped"][self.stage]
         };
@@ -92,7 +117,7 @@ impl eframe::App for CaptureApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.frame += 1;
         let ctx = ui.ctx().clone();
-        if self.stage >= if self.ds4 { 3 } else { 4 } {
+        if self.stage >= self.stage_count() {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             return;
         }
@@ -114,7 +139,8 @@ impl eframe::App for CaptureApp {
             if self.ds4 {
                 self.app.more_settings_open = self.stage == 1;
                 self.app.active_help = (self.stage == 2).then_some(super::help::HelpTopic::Ds4Battle);
-            } else {
+            } else if !self.base {
+                // base 只有一页，下一帧会因 stage 到达上限而退出，不必切视图。
                 let page = self.app.tool as usize;
                 match self.stage {
                     1 => self.app.views[page].mode = ViewMode::Table,
@@ -141,6 +167,7 @@ impl eframe::App for CaptureApp {
             && self.app.logs[page].len() > 3
             && (self.stage != 3 || !self.app.running)
             && (!self.ds4 || !self.app.running)
+            && (!self.base || !self.app.running)
         {
             self.pending = true;
             let screenshot = self.screenshot.clone();
@@ -154,7 +181,7 @@ impl eframe::App for CaptureApp {
     }
 }
 
-fn run_capture(directory: PathBuf, light: bool, ds4: bool, diy: bool, align: ColumnAlign) -> eframe::Result<()> {
+fn run_capture(directory: PathBuf, light: bool, ds4: bool, diy: bool, base: bool, align: ColumnAlign) -> eframe::Result<()> {
     std::fs::create_dir_all(&directory).map_err(|err| eframe::Error::AppCreation(Box::new(err)))?;
     if ds4 {
         let root = directory.join("workspace");
@@ -220,6 +247,11 @@ fn run_capture(directory: PathBuf, light: bool, ds4: bool, diy: bool, align: Col
                 app.views[app.tool as usize].follow = false;
                 app.to_diy.names = TextSource::inline("1@team+2@team\nmario\nluigi");
                 app.start_to_diy();
+            } else if base {
+                app.tool = Tool::Base;
+                // 用参考样例：它同时带「末尾主动」与「末尾座位加成」，能核对两条附注的缩进。
+                app.base.name = "霸绩往官脸瞒烤@Hell".to_string();
+                app.start_base();
             } else {
                 app.start_pair();
             }
@@ -234,6 +266,7 @@ fn run_capture(directory: PathBuf, light: bool, ds4: bool, diy: bool, align: Col
                 started: Instant::now(),
                 failure: app_failure,
                 ds4,
+                base,
             }))
         }),
     )?;

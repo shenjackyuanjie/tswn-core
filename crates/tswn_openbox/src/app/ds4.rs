@@ -117,7 +117,7 @@ impl OpenboxApp {
     }
 
     pub(crate) fn ds4_ui(&mut self, ui: &mut egui::Ui) {
-        tool_header(ui, "DS4", "批量评分、增量配对与实战筛选", &mut self.more_settings_open);
+        tool_header(ui, "DS4", "批量评分、增量配对与实战筛选", Some(&mut self.more_settings_open));
         let palette = Palette::of(ui);
         let requested_help = Cell::new(None);
         ui.add_enabled_ui(!self.running, |ui| {

@@ -26,12 +26,14 @@ pub(crate) const TABLE_AUTO_RATIO: f32 = 0.55;
 /// 表格下方选中行明细至少保留的高度。
 pub(crate) const TABLE_DETAIL_MIN: f32 = 120.0;
 
-/// 与 [`Tool::ALL`] 顺序一致的默认视图：导出与配队看卡片，评分与胜率看表格，DS4 看纯文本。
-pub(crate) const DEFAULT_VIEW_MODES: [ViewMode; 5] = [
+/// 与 [`Tool::ALL`] 顺序一致的默认视图：导出与配队看卡片，评分与胜率看表格，
+/// 只有纯文本结果的 base 与 DS4 看纯文本。
+pub(crate) const DEFAULT_VIEW_MODES: [ViewMode; 6] = [
     ViewMode::Cards,
     ViewMode::Table,
     ViewMode::Table,
     ViewMode::Cards,
+    ViewMode::Text,
     ViewMode::Text,
 ];
 

@@ -12,6 +12,7 @@ const HELP_TOOLTIP_WIDTH: f32 = 380.0;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HelpTopic {
     DiyExport,
+    BaseOutput,
     LiveResults,
     Accuracy,
     NamerAccuracy,
@@ -42,6 +43,7 @@ impl HelpTopic {
     pub(crate) fn title(self) -> &'static str {
         match self {
             Self::DiyExport => "导出格式与详情",
+            Self::BaseOutput => "base 原始数据",
             Self::LiveResults => "实时结果与视图",
             Self::Accuracy => "精确度与场数",
             Self::NamerAccuracy => "namer-pf 精确度",
@@ -81,6 +83,14 @@ impl HelpTopic {
                 "每行输入一个名字或组合，组内成员用 + 分隔。默认导出 +ol；“旧 +diy”和“召唤物diy”是另外两种格式，不能同时开启。\n\n\
                  屏幕详情包括属性、技能、八围与嘲讽。带括号的 + / - 数值表示组队后相对单独构建的变化，并非额外加成选项。\n\n\
                  写入文件时只保存导出行，不包含属性说明。可以先不写文件查看详情，确认后再导出。"
+            }
+            Self::BaseOutput => {
+                "这一页输出单个原始名字的 128 字节 roll 派生数据，与社区 base 工具、openbox-cli base 的文本完全一致。\n\n\
+                 只接受一个原始名字：空输入、多行输入、+diy / +ol / 武器后缀以及非普通名字都会被拒绝。\n\n\
+                 HP 区间是 10 个 HP 原始字节排序后，第 4-7 个与第 5-8 个分别求和再加 154；下一行括号里是未排序的原始字节。\n\n\
+                 七围按「值 / 值 (原始三元组)」显示：三元组排序后取中间值与最大值各加 36，括号里保持原始顺序。\n\n\
+                 16 个技能槽按行动顺序排列（名字与 @队伍 一起参与排序），格式是「技能名: 等级 / 结果 (原始四字节)」。等级高于 10 才计入，空技能表示该槽没有技能。\n\n\
+                 「↑末尾主动」标在最后一个主动技能下一行，表示它的等级按规则翻倍；槽位 14、15 的末尾座位加成另起一行显示参与计算的座位字节。"
             }
             Self::LiveResults => {
                 "纯文本沿用旧版格式：DIY 导出行后接原始信息块，评分显示“名字 指标:分数”，胜率和配队显示“分数 名字”及缩进明细。完整结果块完成后追加，不混入预览前缀；卡片适合展开一组结果；表格适合横向比较，点击名字查看详情。视图选择重启后仍会恢复。\n\n\

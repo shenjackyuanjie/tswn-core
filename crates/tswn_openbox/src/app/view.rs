@@ -30,7 +30,7 @@ const NAMER_PF_ACTION_WIDTH: f32 = 112.0;
 impl OpenboxApp {
     pub(crate) fn show_diy_ui(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
-        tool_header(ui, "to-diy", "名字转 DIY / 召唤物 DIY", &mut self.more_settings_open);
+        tool_header(ui, "to-diy", "名字转 DIY / 召唤物 DIY", Some(&mut self.more_settings_open));
         section_with_help(ui, "基础选项", HelpTopic::DiyExport, &requested_help, |ui| {
             to_diy_basic_controls(ui, self);
         });
@@ -49,7 +49,7 @@ impl OpenboxApp {
 
     pub(crate) fn namer_pf_ui(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
-        tool_header(ui, "namer-pf", "批量评分并筛选名字", &mut self.more_settings_open);
+        tool_header(ui, "namer-pf", "批量评分并筛选名字", Some(&mut self.more_settings_open));
         section(ui, "精确度", |ui| {
             main_accuracy_controls(
                 ui,
@@ -74,7 +74,7 @@ impl OpenboxApp {
 
     pub(crate) fn batch_rate_ui(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
-        tool_header(ui, "cqd/cqp", "计算选手对靶子的平均胜率", &mut self.more_settings_open);
+        tool_header(ui, "cqd/cqp", "计算选手对靶子的平均胜率", Some(&mut self.more_settings_open));
         section(ui, "常用设置", |ui| {
             main_accuracy_controls(
                 ui,
@@ -111,7 +111,7 @@ impl OpenboxApp {
 
     pub(crate) fn pair_ui(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
-        tool_header(ui, "pair", "计算选手与队友组合表现", &mut self.more_settings_open);
+        tool_header(ui, "pair", "计算选手与队友组合表现", Some(&mut self.more_settings_open));
         section(ui, "常用设置", |ui| {
             main_accuracy_controls(
                 ui,
@@ -143,6 +143,40 @@ impl OpenboxApp {
         }
     }
 
+    pub(crate) fn base_ui(&mut self, ui: &mut egui::Ui) {
+        let requested_help = Cell::new(None);
+        // base 只有一个名字输入，没有可调的设置项，因此不给“更多设置”入口。
+        tool_header(ui, "base", "查看单个原始名字的 roll 与技能槽", None);
+        section_with_help(ui, "名字", HelpTopic::BaseOutput, &requested_help, |ui| {
+            hint(ui, "只接受一个原始名字；+diy / +ol / 武器后缀会被拒绝。");
+            let mut clear = false;
+            ui.horizontal(|ui| {
+                ui.label("名字");
+                let width = (ui.available_width() - 56.0).max(160.0);
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.base.name)
+                        .font(egui::TextStyle::Monospace)
+                        .desired_width(width)
+                        .hint_text("名字@队伍"),
+                );
+                clear = ui.button("清空").clicked();
+            });
+            if clear {
+                self.base.name.clear();
+            }
+        });
+        section(ui, "输出", |ui| {
+            hint(ui, "结果按社区 base 工具的格式写进右侧日志：");
+            hint(ui, "· HP 区间 + 参与计算的 10 个原始字节；");
+            hint(ui, "· 七围的「值 / 值 (原始三元组)」；");
+            hint(ui, "· 16 个技能槽，按行动顺序排列。");
+            hint(ui, "「↑末尾主动」与「↑末尾座位加成」标在对应技能行下一行。");
+        });
+        if requested_help.get().is_some() {
+            self.active_help = requested_help.get();
+        }
+    }
+
     pub(crate) fn more_settings_window(&mut self, ctx: &egui::Context) {
         if !self.more_settings_open {
             return;
@@ -167,6 +201,10 @@ impl OpenboxApp {
                             Tool::NamerPf => self.namer_pf_more_settings(ui),
                             Tool::BatchRate => self.batch_rate_more_settings(ui),
                             Tool::Pair => self.pair_more_settings(ui),
+                            // base 没有可调项；窗口只可能是从别的页留着没关。
+                            Tool::Base => {
+                                hint(ui, "base 页没有可调设置。");
+                            }
                             Tool::Ds4 => self.ds4_more_settings(ui),
                         });
                     });
@@ -361,6 +399,9 @@ impl OpenboxApp {
                     });
                 } else if self.logs[page].is_empty() {
                     ui.label(egui::RichText::new("运行结果会显示在这里").weak());
+                } else if self.tool == Tool::Base {
+                    // base 没有结构化结果，卡片与表格本来就是空的，不提示“切换视图”。
+                    ui.label(egui::RichText::new("结果直接写进日志；换一个名字重新运行即可。").weak());
                 } else {
                     ui.label(egui::RichText::new("结果已生成，可切换视图或复制日志").weak());
                 }
@@ -499,17 +540,19 @@ impl OpenboxApp {
 
 fn compact_log_text_height(line_count: usize) -> f32 { (line_count.clamp(4, 20) as f32 * 17.0 + 12.0).min(360.0) }
 
-pub(super) fn tool_header(ui: &mut egui::Ui, title: &str, subtitle: &str, more_settings_open: &mut bool) {
+pub(super) fn tool_header(ui: &mut egui::Ui, title: &str, subtitle: &str, more_settings_open: Option<&mut bool>) {
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
             ui.heading(egui::RichText::new(title).color(Palette::of(ui).tool(title)));
             ui.label(egui::RichText::new(subtitle).weak());
         });
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("更多设置").clicked() {
-                *more_settings_open = true;
-            }
-        });
+        if let Some(open) = more_settings_open {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("更多设置").clicked() {
+                    *open = true;
+                }
+            });
+        }
     });
     ui.add_space(4.0);
 }

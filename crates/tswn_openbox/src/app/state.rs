@@ -24,11 +24,12 @@ pub enum Tool {
     NamerPf,
     BatchRate,
     Pair,
+    Base,
     Ds4,
 }
 
 impl Tool {
-    pub const ALL: [Self; 5] = [Self::ToDiy, Self::NamerPf, Self::BatchRate, Self::Pair, Self::Ds4];
+    pub const ALL: [Self; 6] = [Self::ToDiy, Self::NamerPf, Self::BatchRate, Self::Pair, Self::Base, Self::Ds4];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -36,6 +37,7 @@ impl Tool {
             Self::NamerPf => "namer-pf",
             Self::BatchRate => "cqd/cqp",
             Self::Pair => "pair",
+            Self::Base => "base",
             Self::Ds4 => "DS4",
         }
     }
@@ -255,6 +257,19 @@ impl Default for PairState {
 
 fn default_namer_pf_highlight_delta(metric: NamerPfMetric) -> u64 { if metric == NamerPfMetric::Sum { 300 } else { 100 } }
 
+/// base 页只需一个名字：输出是固定格式的多行文本，走右侧日志，没有结构化结果。
+pub struct BaseState {
+    pub name: String,
+}
+
+impl Default for BaseState {
+    fn default() -> Self {
+        Self {
+            name: "mario@team".to_string(),
+        }
+    }
+}
+
 pub struct OpenboxApp {
     pub theme_preference: egui::ThemePreference,
     pub tool: Tool,
@@ -262,8 +277,8 @@ pub struct OpenboxApp {
     pub about_open: bool,
     pub(crate) active_help: Option<HelpTopic>,
     /// 各工具页独立的日志与结果，索引与 [`Tool::ALL`] 一致；渲染时只看当前页。
-    pub(crate) logs: [LogBuffer; 5],
-    pub(crate) views: [super::results::ResultsView; 5],
+    pub(crate) logs: [LogBuffer; 6],
+    pub(crate) views: [super::results::ResultsView; 6],
     /// 当前任务所属的工具页；轮询到的事件始终写入这一页，切页不会串输出。
     pub(crate) task_tool: Tool,
     pub status: String,
@@ -282,6 +297,7 @@ pub struct OpenboxApp {
     pub namer_pf: NamerPfState,
     pub batch_rate: BatchRateState,
     pub pair: PairState,
+    pub base: BaseState,
     pub ds4: super::ds4::Ds4State,
 }
 
@@ -312,6 +328,7 @@ impl Default for OpenboxApp {
             namer_pf: NamerPfState::default(),
             batch_rate: BatchRateState::default(),
             pair: PairState::default(),
+            base: BaseState::default(),
             ds4: Default::default(),
         }
     }
