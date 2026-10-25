@@ -207,8 +207,8 @@ fn horizontal_table_scroll_keeps_header_and_data_columns_together() {
                 })
                 .unwrap_or_else(|| panic!("{label} 应可见"))
         };
-        // 用状态列做标记：滚动前后它都在可视区内（首列与分数列会分别被裁掉或尚未进入视口）。
-        (position("状态"), position("完成"))
+        // 用“复制名字”列做标记：滚动前后它都在可视区内（首列与分数列会分别被裁掉或尚未进入视口）。
+        (position("复制名字"), position("复制"))
     };
     let mut positions = vec![frame(&mut view, 0.0, Vec::new())];
     let (header_x, header_y) = positions[0].0;
@@ -433,7 +433,8 @@ fn copy_text_uses_the_record_content_instead_of_the_log() {
 
     assert_eq!(
         view.copy_record_text(0).as_deref(),
-        Some("#1 1@team   完成\n1@team+ol:{}\n\n=== 原始信息 ===\n1@team")
+        Some("#1 1@team\n1@team+ol:{}\n\n=== 原始信息 ===\n1@team"),
+        "完成的组不再把“完成”写进标题"
     );
     view.selected = Some(1);
     let text = view.copy_selected_text().expect("选中行存在");

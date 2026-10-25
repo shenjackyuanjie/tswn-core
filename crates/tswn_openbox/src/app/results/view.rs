@@ -15,9 +15,13 @@ use tswn_openbox::backend::live::{EntryKind, ResultKind};
 const CELL_GAP: f32 = 4.0;
 /// 结果区底部留给“复制全部”按钮的高度；由调用方从可用高度中扣除。
 pub(crate) const RESULT_FOOTER_HEIGHT: f32 = 34.0;
-/// 表格与选中行之间的分隔条高度，用来拖动调整表格高度。
+/// 表格与选中行之间的分隔条高度，用来拖动调整表格高度；按行高留出可选中复制的标题。
 const TABLE_DIVIDER_HEIGHT: f32 = 8.0;
-const COLUMN_LABELS: [&str; 7] = ["名字 / 输入序号", "状态", "pp", "pd", "qp", "qd", "sum"];
+/// 卡片标题右侧「复制名字」按钮占用的宽度。
+const COPY_NAME_WIDTH: f32 = 88.0;
+/// 卡片标题右侧显示未完成状态时占用的宽度，够放“已停止 · 结果不完整”。
+const CARD_STATE_WIDTH: f32 = 168.0;
+const COLUMN_LABELS: [&str; 7] = ["名字 / 输入序号", "复制名字", "pp", "pd", "qp", "qd", "sum"];
 
 /// 表格与卡片的文字行度量：与纯文本日志完全一致（等宽字体 + 同样的行距）。
 fn row_height(ui: &egui::Ui) -> f32 { ui.text_style_height(&egui::TextStyle::Monospace) }
@@ -64,9 +68,9 @@ impl ResultsView {
         if self.mode != ViewMode::Text {
             let palette = Palette::of(ui);
             ui.horizontal_wrapped(|ui| {
+                // “完成”不再显示在行里（那一格换成「复制名字」），图例也跟着去掉。
                 for (color, label, hint) in [
                     (palette.info, "预览", "明细已完成，整组仍在计算；#序号对应原输入位置。"),
-                    (palette.success, "完成", "该输入组已全部完成，显示最终结果。"),
                     (palette.warning, "未完成", "任务已停止，未算完的组不能作为最终结果。"),
                     (palette.emphasis, "高亮", "达到高亮阈值，或属性相对单独构建发生变化。"),
                 ] {
@@ -257,7 +261,7 @@ impl ResultsView {
                                                 .on_hover_text("复制这张卡片的全部内容：标题与明细，不包含日志的其它结果。")
                                                 .clicked()
                                             {
-                                                let text = record.copy_text(group, self.terminal.as_deref());
+                                                let text = record.copy_text(group);
                                                 ui.ctx().copy_text(text);
                                             }
                                         });
@@ -268,8 +272,8 @@ impl ResultsView {
                                 let record = &self.records[&group];
                                 ui.push_id((group, "header"), |ui| {
                                     let palette = Palette::of(ui);
-                                    let state = record.state_text(self.terminal.as_deref());
-                                    let state_color = palette.status(if record.finish.is_some() {
+                                    let finished = record.finish.is_some();
+                                    let state_color = palette.status(if finished {
                                         "完成"
                                     } else {
                                         self.terminal.as_deref().unwrap_or("运行中")
@@ -295,14 +299,33 @@ impl ResultsView {
                                             {
                                                 select = Some(group);
                                             }
-                                            cell(
-                                                ui,
-                                                self.column_widths[1],
-                                                egui::RichText::new(&state).color(state_color).monospace(),
-                                                self.column_alignments[1],
-                                                false,
-                                                Some(fill),
-                                            );
+                                            // 完成的组不再显示“完成”，这一格换成复制名字的按钮；
+                                            // 还在计算或已停止的组仍把状态写在这里。
+                                            if finished {
+                                                if cell_button(
+                                                    ui,
+                                                    self.column_widths[1],
+                                                    "复制",
+                                                    self.column_alignments[1],
+                                                    Some(fill),
+                                                )
+                                                .on_hover_text("复制这个名字，便于再次粘贴到输入框。")
+                                                .clicked()
+                                                {
+                                                    ui.ctx().copy_text(record.label.clone());
+                                                }
+                                            } else {
+                                                cell(
+                                                    ui,
+                                                    self.column_widths[1],
+                                                    egui::RichText::new(record.state_text(self.terminal.as_deref()))
+                                                        .color(state_color)
+                                                        .monospace(),
+                                                    self.column_alignments[1],
+                                                    false,
+                                                    Some(fill),
+                                                );
+                                            }
                                             if scores {
                                                 for index in 0..5 {
                                                     let entry = record.entries.get(&index);
@@ -333,21 +356,43 @@ impl ResultsView {
                                         });
                                     } else {
                                         let arrow = if self.expanded.contains(&group) { "▼" } else { "▶" };
-                                        let mut text = egui::RichText::new(format!(
-                                            "{arrow} {}",
-                                            record.title_line(group, self.terminal.as_deref())
-                                        ))
-                                        .monospace();
+                                        let mut text =
+                                            egui::RichText::new(format!("{arrow} {}", record.title_text(group))).monospace();
                                         if record.finish.as_ref().is_some_and(|finish| finish.highlight) {
                                             text = text.color(palette.emphasis);
                                         }
-                                        if cell(ui, width, text, self.card_align, true, Some(state_color.gamma_multiply(0.1)))
-                                            .on_hover_text("点击展开或收起明细。序号按原输入标记，多个线程的结果可能交错到达。")
-                                            .clicked()
-                                        {
-                                            toggle = Some(group);
-                                            select = Some(group);
-                                        }
+                                        ui.horizontal(|ui| {
+                                            // 右侧固定留出位置：完成时是「复制名字」按钮，未完成时是状态文字。
+                                            let fill = state_color.gamma_multiply(0.1);
+                                            let slot = if finished { COPY_NAME_WIDTH } else { CARD_STATE_WIDTH };
+                                            let title_width = (width - slot - CELL_GAP).max(60.0);
+                                            let response = cell(ui, title_width, text, self.card_align, true, Some(fill))
+                                                .on_hover_text(
+                                                    "点击展开或收起明细。序号按原输入标记，多个线程的结果可能交错到达。",
+                                                );
+                                            if response.clicked() {
+                                                toggle = Some(group);
+                                                select = Some(group);
+                                            }
+                                            if finished {
+                                                if cell_button(ui, COPY_NAME_WIDTH, "复制名字", ColumnAlign::Right, Some(fill))
+                                                    .on_hover_text("复制这个名字，不包含明细与日志里的其它结果。")
+                                                    .clicked()
+                                                {
+                                                    ui.ctx().copy_text(record.label.clone());
+                                                }
+                                            } else {
+                                                cell(
+                                                    ui,
+                                                    CARD_STATE_WIDTH,
+                                                    egui::RichText::new(record.state_text(self.terminal.as_deref()))
+                                                        .color(state_color),
+                                                    ColumnAlign::Right,
+                                                    false,
+                                                    Some(fill),
+                                                );
+                                            }
+                                        });
                                     }
                                 });
                             }
@@ -375,8 +420,8 @@ impl ResultsView {
         }
         if let Some(group) = self.selected {
             // 表格与明细之间用可拖动的分隔条调整表格高度；拖动后由自动模式切到固定高度。
-            let label = self.records.get(&group).map(|record| record.label.clone()).unwrap_or_default();
-            let divider = table_divider(ui, &label);
+            let title = self.records.get(&group).map(|record| record.divider_text()).unwrap_or_default();
+            let divider = table_divider(ui, &title);
             if divider.dragged() {
                 let current = if self.table_height > TABLE_HEIGHT_AUTO {
                     self.table_height
@@ -388,7 +433,8 @@ impl ResultsView {
             let Some(record) = self.records.get_mut(&group) else { return };
             record.refresh_detail_order();
             if record.top.is_some() && record.finish.is_none() {
-                ui.weak("当前 Top，全部队友完成后确定最终排名");
+                // 提示文字也允许框选：结果区里不该有选不中的文字。
+                ui.add(egui::Label::new(egui::RichText::new("当前 Top，全部队友完成后确定最终排名").weak()).selectable(true));
             }
             // 明细区占满表格下方的全部剩余高度：表格调小时明细随之变高。
             let details_height = ui.available_height().max(80.0);
@@ -451,28 +497,40 @@ fn resize_column(ui: &mut egui::Ui, index: usize, rect: egui::Rect, width: &mut 
         .vline(rect.right(), rect.y_range(), ui.visuals().widgets.noninteractive.bg_stroke);
 }
 
-/// 表格与选中行之间的分隔条：拖动调整表格高度，左侧标出当前选中行。
-fn table_divider(ui: &mut egui::Ui, label: &str) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), TABLE_DIVIDER_HEIGHT), egui::Sense::drag());
+/// 表格与选中行之间的分隔条：拖动调整表格高度，左侧标出当前选中行的名字与分数。
+fn table_divider(ui: &mut egui::Ui, text: &str) -> egui::Response {
+    let height = row_height(ui).max(TABLE_DIVIDER_HEIGHT);
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), egui::Sense::drag());
     let palette = Palette::of(ui);
     let color = if response.hovered() || response.dragged() {
         palette.info
     } else {
         ui.visuals().widgets.noninteractive.bg_stroke.color
     };
-    let font = egui::TextStyle::Monospace.resolve(ui.style());
-    let galley = ui.painter().layout_no_wrap(label.to_owned(), font, ui.visuals().weak_text_color());
-    let text_pos = egui::pos2(rect.left() + 4.0, rect.center().y - galley.size().y * 0.5);
-    let line_start = text_pos.x + galley.size().x + 6.0;
+    // 标题用可选中复制的 Label 绘制，右侧剩下的横线区域仍然负责拖动调高。
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
+    child.set_clip_rect(ui.clip_rect().intersect(rect));
+    let label = child.add(egui::Label::new(egui::RichText::new(text).monospace().weak()).truncate().selectable(true));
+    let line_start = label.rect.right() + 6.0;
     ui.painter()
         .hline(line_start..=rect.right(), rect.center().y, egui::Stroke::new(1.0, color));
-    ui.painter().galley(text_pos, galley, ui.visuals().weak_text_color());
-    response
-        .on_hover_cursor(egui::CursorIcon::ResizeVertical)
-        .on_hover_text("拖动调整表格高度；选中行的明细显示在下方。")
+    let response = if label.contains_pointer() {
+        // 指针在标题文字上时留给文字选择，不抢成拖动调高。
+        response
+    } else {
+        response.on_hover_cursor(egui::CursorIcon::ResizeVertical)
+    };
+    response.on_hover_text("拖动调整表格高度；选中行的明细显示在下方。")
 }
 
 /// 固定尺寸且不换行，避免长导出行或多行字段破坏虚拟列表行高。
+///
+/// 文字始终可选中复制：可点击的格子把外层点击与文字标签的响应合并后返回，
+/// 因此“点名字选中该行”和“拖选文字”两件事可以同时成立。
 fn cell(
     ui: &mut egui::Ui,
     width: f32,
@@ -490,19 +548,34 @@ fn cell(
     if let Some(fill) = fill {
         ui.painter().rect_filled(rect, 2.0, fill);
     }
-    let label = egui::Label::new(text.into()).truncate().halign(align.egui()).selectable(!clickable);
     let mut child = ui.new_child(
         egui::UiBuilder::new()
             .max_rect(rect.shrink2(egui::vec2(4.0, 0.0)))
             .layout(egui::Layout::top_down(align.egui()).with_main_align(egui::Align::Center)),
     );
     child.set_clip_rect(ui.clip_rect().intersect(rect));
-    child.add(label);
+    let label = child.add(egui::Label::new(text.into()).truncate().halign(align.egui()).selectable(true));
+    let response = response.union(label);
     if clickable {
         response.on_hover_cursor(egui::CursorIcon::PointingHand)
     } else {
         response
     }
+}
+
+/// 格子里的按钮：占据与 [`cell`] 相同的尺寸，用来替代原来那列“完成”状态文字。
+fn cell_button(ui: &mut egui::Ui, width: f32, text: &str, align: ColumnAlign, fill: Option<egui::Color32>) -> egui::Response {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, row_height(ui)), egui::Sense::hover());
+    if let Some(fill) = fill {
+        ui.painter().rect_filled(rect, 2.0, fill);
+    }
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(rect.shrink2(egui::vec2(4.0, 0.0)))
+            .layout(egui::Layout::top_down(align.egui()).with_main_align(egui::Align::Center)),
+    );
+    child.set_clip_rect(ui.clip_rect().intersect(rect));
+    child.add(egui::Button::new(egui::RichText::new(text).monospace()).small())
 }
 
 fn summary_text(record: &Record, palette: Palette) -> egui::RichText {
