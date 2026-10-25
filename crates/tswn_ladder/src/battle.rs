@@ -46,7 +46,7 @@ impl Updator {
             let key = PairKey::new(players[i].id, players[j].id);
             let handicap = handicap_map.get(&key).map(|data| data.basic_value).unwrap_or(0.0);
 
-            let score_diff_with_handicap = (start_scores[i] - start_scores[j]) as f64
+            let score_diff_with_handicap = start_scores[i] as f64 - start_scores[j] as f64
                 + if players[i].id < players[j].id {
                     handicap * HANDICAP_SCALE
                 } else {
@@ -54,7 +54,7 @@ impl Updator {
                 };
             let expected_with_handicap = logistic_expected(score_diff_with_handicap);
 
-            let score_diff_base = (start_scores[i] - start_scores[j]) as f64;
+            let score_diff_base = start_scores[i] as f64 - start_scores[j] as f64;
             let expected_base = logistic_expected(score_diff_base);
 
             if (0.45..=0.55).contains(&expected_with_handicap) {
@@ -345,7 +345,7 @@ pub(super) fn settle_round(scores: &[i32], matches: &[(usize, usize)], outcomes:
         }
 
         let actual = if winner_left { 1.0 } else { 0.0 };
-        let expected = logistic_expected((scores[i] - scores[j]) as f64);
+        let expected = logistic_expected(scores[i] as f64 - scores[j] as f64);
         targets[i] += k_factors[i] * (actual - expected);
         targets[j] -= k_factors[j] * (actual - expected);
         // 胜场 +1：整除性上等价于取整后再 +1，放在这里让「一轮的总增量」只有一个来源。

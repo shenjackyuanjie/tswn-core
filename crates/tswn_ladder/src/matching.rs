@@ -272,7 +272,7 @@ pub(super) fn expected_win_prob_with_handicap(
         .get(&key)
         .map(|data| if disturbed { data.disturbed_value } else { data.basic_value })
         .unwrap_or(0.0);
-    let score_diff = (p1.score - p2.score) as f64
+    let score_diff = p1.score as f64 - p2.score as f64
         + if p1.id < p2.id {
             handicap * HANDICAP_SCALE
         } else {
@@ -290,7 +290,7 @@ pub(super) fn calculate_expected_delta(
     let p1 = &players[i];
     let p2 = &players[j];
     let expected_with_handicap = expected_win_prob_with_handicap(i, j, players, handicap_map, true);
-    let expected_base = logistic_expected((p1.score - p2.score) as f64);
+    let expected_base = logistic_expected(p1.score as f64 - p2.score as f64);
 
     BASE_K_FACTOR * ((1.0 - expected_base) * expected_with_handicap - expected_base * (1.0 - expected_with_handicap))
 }
