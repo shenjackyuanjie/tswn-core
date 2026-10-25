@@ -44,19 +44,20 @@ fn failed_encode_clears_only_target_slot_and_allows_reuse() {
     let encoder = encoder();
     let standalone = encoder.encode(&valid).unwrap();
     let padding = EncodedBatch::new(encoder.profile(), 1);
-    for case in 0..4 {
+    for case in 0..5 {
         let mut invalid = valid.clone();
         match case {
             0 => invalid.schema_version += 1,
             1 => invalid.entities[0].runtime.at_boost_bits = f64::NAN.to_bits(),
             2 => invalid.entities[0].template.kind = crate::runtime::extension::PlayerKindId(9999),
-            _ => {
+            3 => {
                 let entry = crate::runtime::model_state::ModelImmunity {
                     status: "fire".to_owned(),
                     threshold: 0,
                 };
                 invalid.entities[0].template.identity.immunity = vec![entry.clone(), entry];
             }
+            _ => invalid.entities[0].slots = vec![counter_slot(1); encoder.profile().q_max + 1],
         }
         let mut batch = EncodedBatch::new(encoder.profile(), 3);
         // 所有 dtype、所有张量都写入哨兵，确保清理错误不会被本来就是 padding 的邻居掩盖。
@@ -77,7 +78,8 @@ fn failed_encode_clears_only_target_slot_and_allows_reuse() {
             0 => assert!(matches!(error, EncodeError::SchemaMismatch { .. })),
             1 => assert!(matches!(error, EncodeError::NonFiniteValue { .. })),
             2 => assert!(matches!(error, EncodeError::UnknownCategory { .. })),
-            _ => assert!(matches!(error, EncodeError::DuplicateCategory { .. })),
+            3 => assert!(matches!(error, EncodeError::DuplicateCategory { .. })),
+            _ => assert!(matches!(error, EncodeError::CapacityExceeded { ref path, .. } if path == "slots")),
         }
         for (spec, previous) in TENSOR_SPECS.iter().zip(&before) {
             let empty = tensor_bytes(&padding, spec.name);

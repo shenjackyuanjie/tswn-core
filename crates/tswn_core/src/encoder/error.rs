@@ -1,7 +1,8 @@
 //! encoder 错误类型。
 //!
-//! 所有错误都带**字段路径**（第 3 节的完整字段路径或容量维度名），便于离线导出时定位到行与字段；
-//! 容量与引用错误还带原始值，不允许把错误行静默删除或截断后继续。
+//! 状态与 manifest 错误携带字段路径，容量和引用错误还记录实际值，便于定位拒绝原因。
+//! 批槽位越界与未知张量分别携带下标或名称；独立词表自校验尚不知道所属分类域，路径可为空。
+//! 编码器返回错误而不静默删行或截断；调用方可以记录失败样本并继续处理其他批槽位。
 
 use std::fmt::{self, Display, Formatter};
 
@@ -16,7 +17,7 @@ pub enum EncodeError {
     CapacityExceeded { path: String, actual: usize, limit: usize },
     /// 缺少该字段的归一化常数；不允许用 0/1 或相邻字段顶替。
     MissingCalibration { path: String },
-    /// 数值通道出现 NaN/Inf。
+    /// 输入是 NaN/Inf，或有限 f64 舍入到 f32 后溢出。
     NonFiniteValue { path: String },
     /// 压缩状态标志的高 3 个保留位被置 1；不得静默清除。
     ReservedFlagBitSet { path: String },

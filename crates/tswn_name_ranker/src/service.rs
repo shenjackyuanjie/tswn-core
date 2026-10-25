@@ -1,3 +1,9 @@
+//! 单号导入、ABCP 合法边、固定采样胜率和归档拟合的应用编排。
+//!
+//! 启动可能刷新已有号的文字类型；导入靶子会清空对应评分/排名缓存。queue 将任务移交
+//! 独立线程，同一进程状态为 running 时拒绝再次排队，返回成功只表示任务已启动。
+//! 胜率补算按批保存，后续失败不撤销已有缓存；当前没有取消、线程 panic 恢复或跨进程任务锁。
+
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -77,7 +83,10 @@ impl Service {
         self.db.set_names_expanded(&names, expanded)
     }
 
-    /// 仅测量与一个名称相连的缺失合法边。这便于探查手动扩展的候选项，无需为每个待处理名称安排完整重算。
+    /// 同步补测指定原号相连的缺失合法边，返回本次保存的配对数，不重新拟合排名。
+    ///
+    /// 名称须已入库且已有靶子；命中当前靶子签名和固定采样数的缓存会跳过。
+    /// 所有缺失边算完后统一保存；此入口不检查 queue 的 running 状态，也不提供取消。
     pub fn measure_one(&self, raw: &str) -> anyhow::Result<usize> {
         let names = self.db.names_for_run(false)?;
         let target = names

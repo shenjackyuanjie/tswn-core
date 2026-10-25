@@ -7,9 +7,13 @@
 2. 用固定训练输入跑一遍，产出 `.profraw`；
 3. `llvm-profdata merge` 后用 `-Cprofile-use` 重新构建。
 
-训练输入默认使用 `docs/perf/fixed_cases_30`（覆盖 1v1 / 2v2 / ffa / 3v3v3）
+CLI 训练输入默认使用 `docs/perf/fixed_cases_30`（覆盖 1v1 / 2v2 / ffa / 3v3v3）
 加一份评分输入，全部单线程执行：LLVM 的 IR 插桩计数器不是原子的，多线程训练
 会丢计数。
+
+Openbox 的训练靶子仍指向迁移前的资源目录，当前不能直接用于完整发布；
+普通发布使用 `build_all.py --release`。现行约束见 `docs/perf/guides/performance.md`。
+PGO 收益取决于提交、训练集和机器，需用相同构建口径进行同机交替比较。
 
 用法示例：
 
@@ -198,7 +202,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--kind",
         choices=("cli", "openbox"),
         default="cli",
-        help="训练负载类型：cli 用 bench auto 跑固定 case，openbox 用 openbox_mem_probe 跑 CQP（默认 cli）",
+        help="训练负载类型：cli 用 bench auto 跑固定 case；openbox 用 CQP 探针，但训练资源路径待适配（默认 cli）",
     )
     parser.add_argument(
         "--features",

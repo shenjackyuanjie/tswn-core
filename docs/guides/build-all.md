@@ -14,7 +14,7 @@
 | `py` | 收集现有产物，不构建 wheel | 当前 `tswn_py` 版本的 wheel / sdist、包文件和 examples |
 | `wasm` | 调用 `build_wasm.py` 构建浏览器包 | JS glue、WASM、静态页面 examples |
 
-需要 Rust/Cargo、`uv` 和 Python **3.12 或更高版本**。Windows 的 MSVC 构建还需要 Visual Studio 2022 Build Tools 的 C++ 工作负载与 Windows SDK，建议在 Developer PowerShell 中运行，环境准备见 [Windows C/C++ 指南](c-api-cpp-windows.md)。Openbox GUI 还需要平台的图形库与链接依赖，见 [Openbox README](../../crates/tswn_openbox/README.md)。
+需要 Rust/Cargo、`uv` 和 Python **3.12 或更高版本**。当前全功能 workspace 的依赖声明要求 Rust 至少 **1.95**（包括 GUI 和 `sysinfo`）；本轮实际使用 1.99，最低版本仍需独立构建验收。Windows 的 MSVC 构建还需要 Visual Studio 2022 Build Tools 的 C++ 工作负载与 Windows SDK，建议在 Developer PowerShell 中运行，环境准备见 [Windows C/C++ 指南](c-api-cpp-windows.md)。Openbox GUI 还需要平台的图形库与链接依赖，见 [Openbox README](../../crates/tswn_openbox/README.md)。
 
 WASM 需要安装 `wasm32-unknown-unknown` target，并让 `wasm-bindgen-cli` 的版本与 `Cargo.lock` 中的 `wasm-bindgen` **完全一致**；脚本会检查版本。安装与独立构建见 [WASM README](../../crates/tswn_wasm/README.md)。
 
@@ -104,6 +104,16 @@ cargo build -p tswn_openbox --release --features no_debug,mimalloc_alloc
 CLI 的独立 PGO 流程可使用 `python scripts/pgo_build.py --kind cli`，要求匹配 rustc 的 LLVM 大版本，且训练需在本机单线程运行。性能结论需重新按同机 A/B 测量，历史收益不作为当前保证。
 
 Openbox 资源已迁到 `crates/tswn_openbox_backend/assets/`，但 `pgo_build.py` 的 Openbox 训练靶子仍指向旧的 `crates/tswn_openbox/assets/targets/`。因此在脚本适配前，全量打包推荐普通 `--release`；`build_all.py --pgo` 会同时启用 CLI 和 Openbox 的 PGO，不作为当前完整打包的推荐命令。约束见 [性能准则](../perf/guides/performance.md#pgo-构建)。
+
+### 本机 sccache / C++ 编译器误判排查
+
+本轮重新编译时，在本机 `sccache` 与 C/C++ 编译器检测的组合下，观察到 mimalloc 的 MSVC 编译器被误判为 GNU，出现把 `/WX-` 当成文件名等报错。`cc` 会使用 Cargo 传入的 `RUSTC_WRAPPER`，即使没有显式配置 `CC/CXX` 也可能经过 wrapper；现有证据只确认本机环境组合问题，不判定为新版 `cc` 的普遍回归。遇到相同症状时，在单次命令中关闭 wrapper，保留默认 allocator、依赖和全局配置：
+
+```powershell
+cargo --config 'build.rustc-wrapper=""' check -p tswn_core --lib --locked
+```
+
+该命令已在本轮维护环境验证通过；没有配置此 wrapper 的环境无需添加。若检查成功而完整 release 构建仍失败，沿用同一 `--config` 覆盖重跑目标构建并保存编译器诊断，不把这次检查等同于完整发布验收。
 
 ### 可选 OHOS CLI
 

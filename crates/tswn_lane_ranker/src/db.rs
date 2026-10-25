@@ -1,3 +1,9 @@
+//! SQLite 同步存储门面，共享连接与应用级任务状态。
+//!
+//! 所有 Db 克隆共用一个 Mutex 保护的连接，初始化时开启外键并补齐兼容列。
+//! 单方法中显式创建的事务只覆盖该批写入，不覆盖后续计算、状态或其他方法。
+//! path 供外部 Python 与独立连接读取，因此实际校准需要文件数据库而非 :memory:。
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 

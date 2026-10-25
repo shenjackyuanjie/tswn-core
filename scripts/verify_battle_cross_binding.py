@@ -1,4 +1,10 @@
-"""Compare actual native Rust CLI, Python extension, C DLL and WASM JSON payloads."""
+"""逐字段比较真实 Rust CLI、Python、C 与 WASM 的战斗 JSON。
+
+复用 target/debug 的 CLI/C 库、target/py_cli_api_verify/import 的 Python 扩展，
+以及 dump_battle_wasm.mjs 读取的 Node 包；本脚本不构建产物，也不提供 --help。
+对四份冻结输入分别比较一轮预算与完整预算下的 initial、frames、result，
+只读语料；当前 C 库定位支持 Windows DLL 与 Linux SO，macOS 需另行适配。
+"""
 import ctypes as C
 import json
 import os

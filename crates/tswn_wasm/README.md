@@ -17,7 +17,7 @@
 | `core_version()`                                          | tswn_core 版本                                                      |
 | `default_eval_rq()`                                       | 普通对局默认 eval_rq                                                |
 | `win_rate_eval_rq()`                                      | 胜率语义默认 eval_rq                                                |
-| `name_to_png_base64(name)`                                | 名称 → PNG Base64                                                   |
+| `name_to_png_base64(name)`                                | 名称 → PNG data URL（含 `data:image/png;base64,` 前缀）                                                   |
 | `name_to_png_bytes(name)`                                 | 名称 → PNG 字节                                                     |
 | `name_to_icon_rgba(name)`                                 | 名称 → 16×16 RGBA                                                   |
 | `fight(raw_input, options?)`                              | 一次性跑完整局，返回 `FightReplay`                                  |
@@ -156,14 +156,16 @@ show 页面右下角控制栏还支持 `C/P/F/T/I/R/S/D` 字母快捷键；字�
 
 所有可能失败的函数返回 `WasmResult<T>`（即 `Result<T, JsValue>`），错误对象结构为 `{ code: string, message: string }`。
 
-错误码：
+正式 BattleSession 与 CLI 对齐 helper 使用 core 的六个稳定错误码：
 
 - `INVALID_INPUT` — 输入为空或格式错误
-- `INVALID_OPTIONS` — options 解析失败
+- `INVALID_ARGUMENT` — 参数无效，或 options 无法解析（不再返回旧 `INVALID_OPTIONS`）
 - `RUNNER_INIT_FAILED` — Runner 初始化失败
-- `WIN_RATE_INVALID_GROUPS` — 胜率统计要求至少两个非空分组
-- `INTERNAL_ERROR` — 内部异常
+- `RUNTIME_FAILED` — Runtime 推进失败；会话保留首次错误
+- `INTERNAL_ERROR` — 内部转换或序列化异常
 - `UNSUPPORTED_OPTION` — 当前 wasm target 不支持所传选项（例如 `WinRateSession.thread > 1`）
+
+兼容胜率入口还保留 `WIN_RATE_INVALID_GROUPS`，表示至少需要两个非空分组。错误对象和失败后查询约定见 [公共 API](../../docs/reference/public-api.md#错误与其他高层-api)。
 
 `battle_replay(raw_input, { eval_rq?, include_icons?, max_rounds? })` 是推荐的一次性回放入口，返回初始/最终状态、逐回合 updates、`rows/clips/parts` 与赢家信息。`FightSession` / `WinRateSession` 保留为 Advanced API；WASM 目标下 WinRateSession 仅支持自动或单线程。
 

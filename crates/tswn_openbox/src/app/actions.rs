@@ -336,6 +336,20 @@ impl OpenboxApp {
             backend::run_pair_observed(input, |event| feed.progress(event), Some(&|update| feed.result(update)));
         });
     }
+
+    pub fn start_base(&mut self) {
+        if self.base.name.trim().is_empty() {
+            self.fail_before_start("base 需要一个名字。".to_string());
+            return;
+        }
+        // 其余校验（多行、+diy / +ol / 武器后缀、非普通名字）由后端给出与 CLI 一致的提示。
+        let raw = self.base.name.clone();
+        self.begin_task();
+        self.spawn_worker(move |feed| {
+            // base 是同步渲染，没有进度事件，算完直接把文本当作完成消息交给日志。
+            feed.progress(ProgressEvent::Done(backend::run_base(&raw)));
+        });
+    }
 }
 
 impl OpenboxApp {

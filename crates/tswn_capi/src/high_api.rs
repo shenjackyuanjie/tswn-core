@@ -1,3 +1,11 @@
+//! 对齐 core CLI 的同步高层 C 接口：校验输入，再返回 JSON 或 DIY 文本。
+//!
+//! 返回 `TSWN_OK` 时输出才可读取；失败不保证改写输出，建议调用前设为 `{NULL, 0}`。
+//! 所有输出均不保证 NUL 结尾，必须按 `len` 读取并交由本库释放。每次状态型调用
+//! 清除当前线程的旧错误，并将领域错误或可捕获的 panic 写入 last_error；内存耗尽、
+//! 失效指针及 `panic=abort` 不属于可恢复错误。数组及字符串在调用后不再借用。
+//! 胜率和评分的 `n` 表示试验次数，`thread=0/1/n` 表示自动/单线程/指定线程。
+
 use std::ffi::c_char;
 
 use serde::Serialize;
@@ -216,7 +224,13 @@ pub unsafe extern "C" fn tswn_win_rate_summary_json(
     unsafe { tswn_win_rate_summary_json_with_eval_rq(raw_text_utf8, n, thread, crate::tswn_win_rate_eval_rq(), out_json) }
 }
 
+/// 按显式评估口径计算第一组的胜率摘要 JSON，包含 wins/total、百分比和纳秒耗时。
+///
 /// # Safety
+///
+/// `raw_text_utf8` 是 NUL 结尾的队伍文本；非空 `out_json` 必须对齐且可写。
+/// 所有输入仅在调用期间借用，输出不得与输入重叠或覆盖未释放的库资源。
+/// 成功结果归调用方所有，需用 `tswn_str_free` 释放；错误处理遵循本模块约定。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_win_rate_summary_json_with_eval_rq(
     raw_text_utf8: *const c_char,
@@ -232,7 +246,13 @@ pub unsafe extern "C" fn tswn_win_rate_summary_json_with_eval_rq(
     })
 }
 
+/// 将两个多行队伍文本组合为对局，使用默认胜率口径返回摘要 JSON。
+///
 /// # Safety
+///
+/// 两个队伍指针均指向 NUL 结尾字符串；非空 `out_json` 必须对齐且可写。
+/// 所有输入仅在调用期间借用，输出不得与输入重叠或覆盖未释放的库资源。
+/// 成功结果归调用方所有，需用 `tswn_str_free` 释放；错误处理遵循本模块约定。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_team_win_rate_summary_json(
     team1_utf8: *const c_char,
@@ -246,7 +266,13 @@ pub unsafe extern "C" fn tswn_team_win_rate_summary_json(
     }
 }
 
+/// 按显式 `eval_rq` 比较两个队伍；`n` 为试验次数，`thread=0/1/n` 表示自动/单线程/指定线程。
+///
 /// # Safety
+///
+/// 两个队伍指针均指向 NUL 结尾字符串；非空 `out_json` 必须对齐且可写。
+/// 所有输入仅在调用期间借用，输出不得与输入重叠或覆盖未释放的库资源。
+/// 成功结果归调用方所有，需用 `tswn_str_free` 释放；错误处理遵循本模块约定。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_team_win_rate_summary_json_with_eval_rq(
     team1_utf8: *const c_char,
@@ -264,7 +290,13 @@ pub unsafe extern "C" fn tswn_team_win_rate_summary_json_with_eval_rq(
     })
 }
 
+/// 依次比较 target 与 against 中每个队伍，按输入顺序返回带 opponent 的 JSON 数组。
+///
 /// # Safety
+///
+/// `target_utf8` 指向 NUL 结尾字符串；`against_utf8` 包含 `against_len` 个有效字符串指针，长度为零时可为空；非空 `out_json` 对齐且可写。
+/// 所有输入仅在调用期间借用，输出不得与输入重叠或覆盖未释放的库资源。
+/// 成功结果归调用方所有，需用 `tswn_str_free` 释放；错误处理遵循本模块约定。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_group_win_rate_summary_json(
     target_utf8: *const c_char,
@@ -287,7 +319,13 @@ pub unsafe extern "C" fn tswn_group_win_rate_summary_json(
     }
 }
 
+/// 按显式评估口径批量比较 target 与 against；数组结果与对手输入一一对应。
+///
 /// # Safety
+///
+/// `target_utf8` 指向 NUL 结尾字符串；`against_utf8` 包含 `against_len` 个有效字符串指针，长度为零时可为空；非空 `out_json` 对齐且可写。
+/// 所有输入仅在调用期间借用，输出不得与输入重叠或覆盖未释放的库资源。
+/// 成功结果归调用方所有，需用 `tswn_str_free` 释放；错误处理遵循本模块约定。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_group_win_rate_summary_json_with_eval_rq(
     target_utf8: *const c_char,
@@ -307,7 +345,13 @@ pub unsafe extern "C" fn tswn_group_win_rate_summary_json_with_eval_rq(
     })
 }
 
+/// 使用默认胜率口径执行单项评分；`mode_utf8` 指定评分模式而非任意命令行。
+///
 /// # Safety
+///
+/// `raw_text_utf8` 和 `mode_utf8` 均指向 NUL 结尾字符串；非空 `out_json` 对齐且可写。
+/// 所有输入仅在调用期间借用，输出不得与输入重叠或覆盖未释放的库资源。
+/// 成功结果归调用方所有，需用 `tswn_str_free` 释放；错误处理遵循本模块约定。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_score_json(
     raw_text_utf8: *const c_char,
@@ -319,7 +363,13 @@ pub unsafe extern "C" fn tswn_score_json(
     unsafe { tswn_score_json_with_eval_rq(raw_text_utf8, n, mode_utf8, thread, crate::tswn_win_rate_eval_rq(), out_json) }
 }
 
+/// 使用显式评估口径执行单项评分，返回分数、胜场、总场及失败统计的 JSON。
+///
 /// # Safety
+///
+/// `raw_text_utf8` 和 `mode_utf8` 均指向 NUL 结尾字符串；非空 `out_json` 对齐且可写。
+/// 所有输入仅在调用期间借用，输出不得与输入重叠或覆盖未释放的库资源。
+/// 成功结果归调用方所有，需用 `tswn_str_free` 释放；错误处理遵循本模块约定。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_score_json_with_eval_rq(
     raw_text_utf8: *const c_char,
@@ -337,7 +387,13 @@ pub unsafe extern "C" fn tswn_score_json_with_eval_rq(
     })
 }
 
+/// 对输入组执行多模式评分；空 modes 使用默认模式，`keep_rq != 0` 选择普通构建口径。
+///
 /// # Safety
+///
+/// `raw_text_utf8` 为 NUL 结尾文本；modes 数组具有 `modes_len` 个有效字符串指针，零长可为空；非空 `out_json` 对齐且可写。
+/// 所有输入仅在调用期间借用，输出不得与输入重叠或覆盖未释放的库资源。
+/// 成功结果归调用方所有，需用 `tswn_str_free` 释放；错误处理遵循本模块约定。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_namer_pf_json(
     raw_text_utf8: *const c_char,
@@ -358,7 +414,13 @@ pub unsafe extern "C" fn tswn_namer_pf_json(
     })
 }
 
+/// 批量比较候选组与目标组，返回每个候选的平均胜率和累计统计。
+///
 /// # Safety
+///
+/// 输入数组分别有对应长度个 NUL 结尾字符串指针；零长数组可为空。`player_labels_utf8=NULL` 表示自动标签，否则标签须与候选组对应；非空 `out_json` 对齐且可写。
+/// 所有输入仅在调用期间借用，输出不得与输入重叠或覆盖未释放的库资源。
+/// 成功结果归调用方所有，需用 `tswn_str_free` 释放；错误处理遵循本模块约定。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_batch_rate_json(
     target_groups_utf8: *const *const c_char,
@@ -390,7 +452,13 @@ pub unsafe extern "C" fn tswn_batch_rate_json(
     })
 }
 
+/// 按目标权重汇总批量胜率；`target_factors` 与目标组一一对应，而非逐玩家权重。
+///
 /// # Safety
+///
+/// 各字符串数组有对应长度个有效 C 字符串指针；权重指针可读取 `target_factors_len` 个对齐的 double，零长可为空。标签可为空以自动生成；非空 `out_json` 对齐且可写。
+/// 所有输入仅在调用期间借用，输出不得与输入重叠或覆盖未释放的库资源。
+/// 成功结果归调用方所有，需用 `tswn_str_free` 释放；错误处理遵循本模块约定。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_batch_rate_factored_json(
     target_groups_utf8: *const *const c_char,
@@ -426,7 +494,13 @@ pub unsafe extern "C" fn tswn_batch_rate_factored_json(
     })
 }
 
+/// 为每个玩家评估搭档组合；`head` 决定参与最终汇总的头部搭档数量。
+///
 /// # Safety
+///
+/// 目标、玩家和搭档数组各含对应长度个有效 C 字符串指针；零长数组可为空；非空 `out_json` 对齐且可写。
+/// 所有输入仅在调用期间借用，输出不得与输入重叠或覆盖未释放的库资源。
+/// 成功结果归调用方所有，需用 `tswn_str_free` 释放；错误处理遵循本模块约定。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_pair_rate_json(
     target_groups_utf8: *const *const c_char,
@@ -452,7 +526,13 @@ pub unsafe extern "C" fn tswn_pair_rate_json(
     })
 }
 
+/// 带目标权重的搭档评分；返回头部搭档、最终得分及有效/跳过对局统计。
+///
 /// # Safety
+///
+/// 各字符串数组有对应长度个有效 C 字符串指针；权重指针可读取 `target_factors_len` 个对齐的 double，零长可为空；非空 `out_json` 对齐且可写。
+/// 所有输入仅在调用期间借用，输出不得与输入重叠或覆盖未释放的库资源。
+/// 成功结果归调用方所有，需用 `tswn_str_free` 释放；错误处理遵循本模块约定。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_pair_rate_factored_json(
     target_groups_utf8: *const *const c_char,
@@ -490,7 +570,13 @@ pub unsafe extern "C" fn tswn_pair_rate_factored_json(
     })
 }
 
+/// 将单个名字转换为 DIY 文本；`old != 0` 选择旧版格式，`minions != 0` 包含随从。
+///
 /// # Safety
+///
+/// `name_utf8` 为 NUL 结尾字符串；非空 `out_result` 对齐且可写。结果为纯文本而非 JSON，同样使用 `tswn_str_free` 释放。
+/// 所有输入仅在调用期间借用，输出不得与输入重叠或覆盖未释放的库资源。
+/// 成功结果归调用方所有，需用 `tswn_str_free` 释放；错误处理遵循本模块约定。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_to_diy(
     name_utf8: *const c_char,
@@ -505,7 +591,13 @@ pub unsafe extern "C" fn tswn_to_diy(
     })
 }
 
+/// 按输入顺序批量转换 DIY，返回字符串数组 JSON；任一转换失败则整次调用失败。
+///
 /// # Safety
+///
+/// `names_utf8` 含 `names_len` 个有效 C 字符串指针，零长可为空；非空 `out_json` 对齐且可写。
+/// 所有输入仅在调用期间借用，输出不得与输入重叠或覆盖未释放的库资源。
+/// 成功结果归调用方所有，需用 `tswn_str_free` 释放；错误处理遵循本模块约定。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_to_diy_batch_json(
     names_utf8: *const *const c_char,
@@ -521,7 +613,13 @@ pub unsafe extern "C" fn tswn_to_diy_batch_json(
     })
 }
 
+/// 解析名字的图标构成信息并返回 JSON；结果包含形状与颜色索引，不含 PNG 数据。
+///
 /// # Safety
+///
+/// `name_utf8` 为 NUL 结尾字符串；非空 `out_json` 对齐且可写。
+/// 所有输入仅在调用期间借用，输出不得与输入重叠或覆盖未释放的库资源。
+/// 成功结果归调用方所有，需用 `tswn_str_free` 释放；错误处理遵循本模块约定。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_icon_info_json(name_utf8: *const c_char, out_json: *mut tswn_str_t) -> tswn_status_t {
     ffi_boundary(|| {
@@ -531,7 +629,13 @@ pub unsafe extern "C" fn tswn_icon_info_json(name_utf8: *const c_char, out_json:
     })
 }
 
+/// 解析分组文本为 JSON 字符串数组；`double_plus != 0` 启用双加号分组语法。
+///
 /// # Safety
+///
+/// `content_utf8` 为 NUL 结尾字符串；非空 `out_json` 对齐且可写。
+/// 所有输入仅在调用期间借用，输出不得与输入重叠或覆盖未释放的库资源。
+/// 成功结果归调用方所有，需用 `tswn_str_free` 释放；错误处理遵循本模块约定。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_parse_group_lines_json(
     content_utf8: *const c_char,
@@ -545,7 +649,13 @@ pub unsafe extern "C" fn tswn_parse_group_lines_json(
     })
 }
 
+/// 以默认 custom Runtime 生成诊断轨迹 JSON；`max_rounds` 是正数回合上限，不是回放帧数。
+///
 /// # Safety
+///
+/// `raw_text_utf8` 为 NUL 结尾队伍文本；非空 `out_json` 对齐且可写。完整轨迹保存在内存中，大小随回合数增长。
+/// 所有输入仅在调用期间借用，输出不得与输入重叠或覆盖未释放的库资源。
+/// 成功结果归调用方所有，需用 `tswn_str_free` 释放；错误处理遵循本模块约定。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_default_custom_runtime_normalized_run_json(
     raw_text_utf8: *const c_char,

@@ -55,8 +55,13 @@ pub use pipeline::run_full as run;
 pub use pipeline::{FullRunReport, PairReport, SingleReport, Stage1Report};
 pub use pipeline::{RunStage, run_with_progress};
 
-/// DS4 新工作目录使用的 JSON 配置模板。
+/// DS4 新工作目录使用的内嵌 JSON 配置模板，可复制到配置文件或交给 Config::from_json。
+///
+/// 此常量只提供文本，不创建目录或检查模板所启用阶段的模型、靶子等外部资源。
 pub const DEFAULT_CONFIG_JSON: &str = include_str!("../config.example.json");
 
-/// 执行统一 CLI 入口；嵌入其他 Rust 应用时优先使用 [`run`]。
+/// 执行不含程序名的 CLI 参数序列，向 stdout/stderr 输出状态或帮助。
+///
+/// 空参数会在当前目录执行文件工作流，而非仅显示帮助；用法、配置、I/O 或模型失败
+/// 通过 Result 返回，不直接退出宿主进程。嵌入应用需要结构化统计时优先使用 [`run`]。
 pub fn run_cli(args: impl IntoIterator<Item = String>) -> Ds4Result<()> { cli::execute(args) }

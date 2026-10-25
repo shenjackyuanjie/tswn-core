@@ -1,4 +1,7 @@
 //! 验证实际编码文件、监督标签和源行关联，不检查源码写法。
+//!
+//! 合成校准仅用于导出协议测试，逐槽比较 core 产生的张量字节，并检查锁、损坏检测、
+//! 无覆盖发布及失败现场。临时数据由 TempDir 管理，不将这些尺度作为训练契约发布。
 use super::*;
 use crate::{BattleRow, DatasetConfig, input, manifest, random};
 use clap::Parser;

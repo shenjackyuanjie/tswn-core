@@ -1,4 +1,8 @@
-//! Runtime corpus 的冻结 legacy 基线。
+//! Runtime corpus 的冻结 legacy 基线读取与严格比较。
+//!
+//! 输入和 JSON 在编译时嵌入；按换行规范化后的 SHA-256 与 eval_rq 查找 case，
+//! 用当前 Runtime 重放并比较胜者、轮数、积分、最终 RC4 和逐轮摘要。
+//! 本模块只断言，不生成或覆写基线；未知输入、清单不符、运行超限或任一差异都会 panic。
 
 use std::collections::HashSet;
 
@@ -18,6 +22,9 @@ pub const CANONICAL_DIGEST_FORMAT: &str =
 const STRESS_GOLDEN_JSON: &str = include_str!("../cases/runtime_stress/golden.json");
 
 #[derive(Debug, Clone, Copy)]
+/// 一份内嵌输入及其评估参数，所有文本借用静态资源。
+///
+/// unescape_x02 只把字面量反斜杠 x02 转成控制字节，不执行其他转义；eval_rq 也是基线身份的一部分。
 pub struct StressCaseSpec {
     pub file_name: &'static str,
     pub input: &'static str,
@@ -26,6 +33,9 @@ pub struct StressCaseSpec {
 }
 
 impl StressCaseSpec {
+    /// 返回调用方拥有的实际战斗文本，必要时仅展开历史样例中的 x02 标记。
+    ///
+    /// 不在此处统一换行；输入哈希另行将 CRLF/CR 规范为 LF，战斗仍使用实际文本。
     pub fn effective_input(self) -> String {
         if self.unescape_x02 {
             self.input.replace("\\x02", "\x02")
@@ -291,10 +301,17 @@ fn find_spec_by_input(raw: &str, eval_rq: f64) -> StressCaseSpec {
         .unwrap_or_else(|| panic!("stress input {input_sha256} with eval_rq={eval_rq} is not frozen"))
 }
 
+/// 用默认 eval_rq 比较已冻结输入，case_name 只用于失败诊断，不作为查找键。
+///
+/// 输入哈希或运行结果未匹配时 panic；此入口不会把当前输出保存成新的期望值。
 pub fn assert_runtime_matches_frozen_golden(raw: &str, case_name: &str) {
     assert_runtime_matches_frozen_golden_with_eval_rq(raw, case_name, tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ);
 }
 
+/// 按输入哈希与明确的 eval_rq 查找基线并运行严格比较，忽略跨平台换行差异。
+///
+/// 只有在登记的输入/评估参数上可用；未知输入、无唯一胜者、RC4 不可用或逐轮差异
+/// 都会 panic。case_name 仅标识断言上下文，不改变嵌入资源和比较口径。
 pub fn assert_runtime_matches_frozen_golden_with_eval_rq(raw: &str, case_name: &str, eval_rq: f64) {
     let goldens = parse_frozen_goldens();
     assert_inventory(&goldens);

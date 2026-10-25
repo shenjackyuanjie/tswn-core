@@ -1,3 +1,8 @@
+//! 生成器、Parquet 往返、续跑、损坏检测与统计只读性的行为回归。
+//!
+//! 每个测试在独立 TempDir 生成小数据集，不修改仓库基线。Python/PyArrow 消费端检查
+//! 仅在本机具备相应解释器/模块时执行，其余 Rust 数据和引用断言始终执行。
+
 use super::*;
 use std::fs;
 use tempfile::TempDir;
@@ -148,7 +153,7 @@ fn wide_state_rows_share_row_groups_instead_of_one_per_append() {
     let root = TempDir::new().unwrap();
     let file = root.path().join("samples.parquet");
     let mut writer = storage::TableWriter::<SampleRow>::create(&file).unwrap();
-    // 生成器每局调用一次 append；修复前列数估算会让每次 append 都新开一个行组。
+    // 连续小批 append 应共享行组，避免宽列缓冲估算把每个小批都切成独立行组。
     for _ in 0..16 {
         writer.append(std::slice::from_ref(&row)).unwrap();
     }
@@ -158,7 +163,7 @@ fn wide_state_rows_share_row_groups_instead_of_one_per_append() {
     assert_eq!(
         builder.metadata().num_row_groups(),
         1,
-        "每局一个行组会把压缩比与回读开销放大两个数量级"
+        "连续的小批写入应共用尚未达到行数上限的行组"
     );
 }
 

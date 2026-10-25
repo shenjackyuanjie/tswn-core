@@ -92,4 +92,4 @@
 - 修复完成后，把该 input 接入长期 Runtime strict-diff 回归；不得只删除本目录中的记录。
 - 只有 oracle、Runtime 输出、RNG/帧序列全部一致，才可把状态改为“已闭环”。
 - `golden.json` 冻结删除旧对象模型前的 37 项 legacy 基线；每例记录有效输入 SHA-256、`eval_rq`、胜者队伍、回合数、总分、最终 RC4 和逐回合 canonical digest。87 项 JS exact trace 继续内嵌在共享 suite 中，JSON 同时固定两部分的数量为 87 + 37。
-- 仅当 oracle 语义有意变更时，才可运行 `cargo run -p tswn_test --release --bin freeze_runtime_golden` 重建基线；重建后必须审查 JSON diff，并用 Runtime-only release corpus 验证 124/124。
+- 当前语料用于只读比较；历史 `freeze_runtime_golden` 二进制已删除，不能再使用旧重建命令。本轮维护不重生成输入或 golden。确需改变 oracle 语义时，先单独审查再生工具、输入来源与新预期，再审查基线差异并运行 `python scripts/check_runtime_release.py --corpus`；实际测试范围由当前 corpus 目标决定。

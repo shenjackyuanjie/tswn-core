@@ -1,4 +1,8 @@
 //! DS4 工作目录、配置编辑与后台流程入口。
+//!
+//! UI 保存可编辑的自有 JSON 文档；load 同步读取配置或使用内置默认值，保留未知
+//! 扩展字段。save 在运行前校验并写回选定目录，已有配置尚未加载时拒绝覆盖。
+//! 工作流输入随后交给后台任务，UI 通过增量事件观察进度，不把可变文档借给 worker。
 
 use std::cell::Cell;
 use std::fs;
@@ -113,7 +117,7 @@ impl OpenboxApp {
     }
 
     pub(crate) fn ds4_ui(&mut self, ui: &mut egui::Ui) {
-        tool_header(ui, "DS4", "批量评分、增量配对与实战筛选", &mut self.more_settings_open);
+        tool_header(ui, "DS4", "批量评分、增量配对与实战筛选", Some(&mut self.more_settings_open));
         let palette = Palette::of(ui);
         let requested_help = Cell::new(None);
         ui.add_enabled_ui(!self.running, |ui| {

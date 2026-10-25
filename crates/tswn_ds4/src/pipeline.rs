@@ -2,6 +2,8 @@
 //!
 //! [`run_full`] / [`run_with_progress`] 按配置处理输入、单人评分、增量配对、
 //! 三人预测、ABCP5、实战筛选与历史归档，返回本轮各阶段统计。
+//! 工作目录中的 tmp 在输入阶段重建；历史与结果按阶段分别发布或追加，没有全流程回滚。
+//! 同一目录必须由宿主串行使用；改变模型、队伍或门槛时，既有缓存不会自动重新评分。
 
 #![allow(dead_code)]
 
@@ -24,13 +26,17 @@ use crate::three::{self, ThreeMode};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 /// 输入合并与去重结果，供判断本轮新增工作量。
+///
+/// merged_files 统计实际拼接的输入文件，不代表有效名称数；dedup 的计数口径随去重开关而变。
 pub struct Stage1Report {
     pub merged_files: usize,
     pub dedup: DedupStats,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-/// 五类单人结果的记录计数。
+/// 五类基础单人模型本轮写入的记录数，名称通过基础分或潜力分任一门槛即计入。
+///
+/// 同一名称可同时通过多个模型，因此字段之和不等于去重人数，也不包含 SP1 结果。
 pub struct SingleReport {
     pub bc: usize,
     pub fz: usize,
@@ -40,7 +46,9 @@ pub struct SingleReport {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-/// FC、WC、RH 三类二人结果的记录计数。
+/// FC、WC、RH 各自增量遍历中新追加的通过记录数，未启用模式为 0。
+///
+/// 计数包含新×新、新×旧等批次之和，不代表历史文件总行数或跨模式去重后的组合数。
 pub struct PairReport {
     pub fc: usize,
     pub wc: usize,
@@ -48,7 +56,10 @@ pub struct PairReport {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-/// 一次完整文件工作流的统计；历史与明细保存到工作目录。
+/// 一次成功文件工作流的统计；历史与明细保存在工作目录，不在报告中复制。
+///
+/// sp1 顺序为 QP/QD/PP/PD/CQD，three 顺序为 FFC/WFC/FWC/WWC/RWC/RRH/PRH/WRH；
+/// 禁用或旧格式未覆盖的阶段计为 0。失败返回错误而非部分报告，但已写入文件可能仍存在。
 pub struct FullRunReport {
     pub stage1: Stage1Report,
     pub single: SingleReport,
@@ -58,7 +69,9 @@ pub struct FullRunReport {
     pub abcp: usize,
 }
 
-/// 当前执行阶段；阶段顺序用于界面显示，不代表各阶段耗时相同。
+/// 进度回调的阶段标记；在进入阶段前通知，Complete 只在成功收尾后通知。
+///
+/// 旧配置或空输入可跳过部分阶段；completed/TOTAL 只用于展示阶段序号，不表示等比例耗时。
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum RunStage {
     Input,
@@ -90,9 +103,16 @@ impl RunStage {
     pub const TOTAL: usize = Self::Complete as usize;
 }
 
+/// 同步执行配置对应的文件工作流，等价于忽略进度的 run_with_progress。
+///
+/// 不重新读取配置；root 为相对路径时按调用瞬间的当前目录解析。文件、模型或后端失败
+/// 返回错误，不撤销此前的阶段输出；同一 root 的并发互斥由宿主负责。
 pub fn run_full(root: &Path, config: &Config) -> Ds4Result<FullRunReport> { run_with_progress(root, config, |_| {}) }
 
-/// 同步执行流程并报告阶段；回调应快速返回，避免阻塞计算。
+/// 同步执行流程，在当前线程进入各阶段前调用 progress，成功返回完整统计。
+///
+/// 回调应快速返回；这里没有取消协议，也不捕获回调 panic。输入阶段会重建 tmp，
+/// 后续失败保留已经发布/追加的结果；函数不加目录锁，宿主应串行使用同一工作目录。
 pub fn run_with_progress(root: &Path, config: &Config, mut progress: impl FnMut(RunStage)) -> Ds4Result<FullRunReport> {
     let absolute = if root.is_absolute() {
         root.to_path_buf()

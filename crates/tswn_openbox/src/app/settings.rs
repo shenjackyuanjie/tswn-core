@@ -1,4 +1,8 @@
-//! 仅保存界面偏好；计算状态、日志和输入内容不写入应用存储。
+//! 仅持久化界面偏好，计算状态、日志和输入内容不写入应用存储。
+//!
+//! 恢复时先构造应用默认状态，再按工具页应用有效布局；缺失或损坏设置回退默认值，
+//! 数值逐字段校验，不因单列损坏丢弃其他偏好。默认应用构造仍会触发预设加载及
+//! 缺失资源写出，这与 eframe 的偏好存储不是同一份文件或同一生命周期。
 
 use serde::{Deserialize, Serialize};
 
@@ -54,19 +58,32 @@ impl ViewLayout {
     }
 }
 
+/// 旧版本的按页列表是 `[to-diy, namer-pf, cqd/cqp, pair, DS4]`，没有 base 页。
+/// 读到比当前少一项的列表时，在 base 的位置补一项默认值，
+/// 否则 DS4 的视图与排版会被挪到新加的这一页上。
+fn insert_base_page<T: Clone>(items: &[T], default: T) -> Vec<T> {
+    let mut out = items.to_vec();
+    if out.len() + 1 == Tool::ALL.len() {
+        out.insert(Tool::Base as usize, default);
+    }
+    out
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(default)]
 struct UiSettings {
     theme: egui::ThemePreference,
     tool: Tool,
-    result_modes: [ViewMode; 5],
+    /// 与 [`Tool::ALL`] 等长的视图选择；长度取 `Vec` 是为了旧版本存的 5 项仍能读，
+    /// 少的那一页按默认值补齐，不会因为多一个工具页就把整份偏好判为损坏。
+    result_modes: Vec<ViewMode>,
     follow: bool,
     /// 0.5.0 之前的单一布局；仍写入当前页，便于旧版本读取。
     column_widths: [f32; 7],
     column_alignments: [ColumnAlign; 7],
     card_align: ColumnAlign,
     /// 按工具页保存的排版；缺失时用上面的单值铺满所有页。
-    view_layouts: Option<[ViewLayout; 5]>,
+    view_layouts: Option<Vec<ViewLayout>>,
 }
 
 impl Default for UiSettings {
@@ -75,7 +92,7 @@ impl Default for UiSettings {
         Self {
             theme: egui::ThemePreference::System,
             tool: Tool::ToDiy,
-            result_modes: super::results::DEFAULT_VIEW_MODES,
+            result_modes: super::results::DEFAULT_VIEW_MODES.to_vec(),
             follow: true,
             column_widths: layout.column_widths,
             column_alignments: layout.column_alignments,
@@ -97,10 +114,16 @@ impl OpenboxApp {
                 card_align: settings.card_align,
                 ..ViewLayout::default()
             };
+            let result_modes = insert_base_page(&settings.result_modes, super::results::DEFAULT_VIEW_MODES[Tool::Base as usize]);
+            let view_layouts = settings.view_layouts.as_ref().map(|all| insert_base_page(all, ViewLayout::default()));
             for (index, view) in app.views.iter_mut().enumerate() {
-                view.mode = settings.result_modes[index];
+                view.mode = result_modes.get(index).copied().unwrap_or(super::results::DEFAULT_VIEW_MODES[index]);
                 view.follow = settings.follow;
-                let layout = settings.view_layouts.as_ref().map_or_else(|| fallback.clone(), |all| all[index].clone());
+                let layout = view_layouts
+                    .as_ref()
+                    .and_then(|all| all.get(index))
+                    .cloned()
+                    .unwrap_or_else(|| fallback.clone());
                 layout.apply(view);
             }
         }
@@ -108,11 +131,11 @@ impl OpenboxApp {
     }
 
     pub(super) fn save_ui_settings(&self, storage: &mut dyn eframe::Storage) {
-        let mut result_modes = super::results::DEFAULT_VIEW_MODES;
-        let mut view_layouts = std::array::from_fn(|_| ViewLayout::default());
-        for (index, view) in self.views.iter().enumerate() {
-            result_modes[index] = view.mode;
-            view_layouts[index] = ViewLayout::of(view);
+        let mut result_modes = Vec::with_capacity(self.views.len());
+        let mut view_layouts = Vec::with_capacity(self.views.len());
+        for view in &self.views {
+            result_modes.push(view.mode);
+            view_layouts.push(ViewLayout::of(view));
         }
         let current = &view_layouts[self.tool as usize];
         let settings = UiSettings {
@@ -236,7 +259,7 @@ mod tests {
 
     #[test]
     fn broken_table_height_falls_back_to_auto_without_touching_other_layout() {
-        let mut layouts = std::array::from_fn(|_| ViewLayout::default());
+        let mut layouts = vec![ViewLayout::default(); Tool::ALL.len()];
         layouts[Tool::Pair as usize].column_widths[0] = 260.0;
         layouts[Tool::Pair as usize].table_height = 5.0;
         let settings = UiSettings {
@@ -249,5 +272,48 @@ mod tests {
         let pair = &restored.views[Tool::Pair as usize];
         assert_eq!(pair.table_height, super::super::results::TABLE_HEIGHT_AUTO);
         assert_eq!(pair.column_widths[0], 260.0, "非法高度不应影响同一页的列宽");
+    }
+
+    #[test]
+    fn storing_five_pages_still_restores_every_page_after_base_was_added() {
+        // 0.5.1 及更早存的是 5 项（第 5 项是 DS4）：新增 base 页后仍要能读出主题与既有页面，
+        // 老的第 5 项继续归 DS4，base 按默认补齐。
+        let mut layouts = vec![ViewLayout::default(); 5];
+        layouts[Tool::ToDiy as usize].column_widths[0] = 300.0;
+        layouts[4].card_align = ColumnAlign::Right;
+        let settings = UiSettings {
+            theme: egui::ThemePreference::Light,
+            tool: Tool::Pair,
+            result_modes: vec![
+                ViewMode::Cards,
+                ViewMode::Table,
+                ViewMode::Table,
+                ViewMode::Text,
+                ViewMode::Table,
+            ],
+            column_widths: [300.0, 132.0, 82.0, 82.0, 82.0, 82.0, 100.0],
+            view_layouts: Some(layouts),
+            ..Default::default()
+        };
+        let mut storage = MemoryStorage::default();
+        eframe::set_value(&mut storage, UI_SETTINGS_KEY, &settings);
+        let restored = OpenboxApp::from_storage(Some(&storage));
+        assert_eq!(restored.theme_preference, egui::ThemePreference::Light);
+        assert_eq!(restored.tool, Tool::Pair);
+        assert_eq!(restored.views[Tool::ToDiy as usize].mode, ViewMode::Cards);
+        assert_eq!(restored.views[Tool::Pair as usize].mode, ViewMode::Text);
+        assert_eq!(restored.views[Tool::ToDiy as usize].column_widths[0], 300.0);
+        assert_eq!(
+            restored.views[Tool::Ds4 as usize].mode,
+            ViewMode::Table,
+            "老的第 5 项仍属于 DS4"
+        );
+        assert_eq!(restored.views[Tool::Ds4 as usize].card_align, ColumnAlign::Right);
+        // 新增的 base 页按默认纯文本、默认排版显示，不继承 DS4 的设置。
+        assert_eq!(restored.views[Tool::Base as usize].mode, ViewMode::Text);
+        assert_eq!(
+            restored.views[Tool::Base as usize].column_widths,
+            ResultsView::default().column_widths
+        );
     }
 }

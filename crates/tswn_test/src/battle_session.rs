@@ -1,4 +1,8 @@
 //! 使用冻结 Runtime 输入的跨模块规范会话/回放契约。
+//!
+//! 对相同输入分别执行逐帧 BattleSession 和完整 battle_replay，比较初态、每帧及终止结果，
+//! 并要求样例实际覆盖召唤物、苏生/守护/魅惑和无可见消息的轮次。
+//! 这里验证两条 API 路径的一致性，不替代 golden 比较，也不向 cases 写入数据。
 use crate::golden::STRESS_CASES;
 use std::collections::HashSet;
 use tswn_core::cli_api::battle::{BattleOptions, BattleSession, battle_replay};

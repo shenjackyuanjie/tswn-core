@@ -1,4 +1,8 @@
 //! 组合、胜率、封禁与归档存储。
+//!
+//! 插入组合时在一个事务中保存规范键、成员顺序和原始队伍；重复键复用既有 ID。
+//! 胜率批次同时写 a→b 与 100-rate 的 b→a，自身查询固定为 50；读取不按采样数或
+//! 引擎版本过滤。屏蔽会解除自动封存，但不会删除组合和已有胜率。
 
 use super::*;
 
@@ -273,10 +277,10 @@ impl Db {
         Ok(archived)
     }
 
-    /// 用当前全量复核结果替换某条赛道的自动封存集合。
+    /// 用全量复核结果在一个事务内替换指定赛道的封存集合，返回实际写入行数。
     ///
-    /// 旧实现只会向 `archived_groups` 增加记录；而默认运行又会跳过这些记录，
-    /// 因此门槛或对局数据变化后，已经封存的组合永远没有机会自动恢复。
+    /// 未出现在 candidates 的旧封存项会恢复参与后续计算；不存在的 ID 跳过，
+    /// 其他赛道的 ID 返回错误并回滚整个替换。仅适用于已完成全量复核的调用方。
     pub fn replace_lane_archived_groups(&self, lane_size: usize, candidates: &[(GroupId, String, f64)]) -> anyhow::Result<usize> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;

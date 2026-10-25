@@ -12,7 +12,8 @@
 //! seed 时间戳固定 Asia/Shanghai，PostgreSQL 关闭连接后尝试重连，其余错误由
 //! 更新编排记录并处理。ELO、handicap、配额与衰减在 core 结果之上表达天梯策略。
 //!
-//! 以 binary 和数据库协议接入；单元测试覆盖纯逻辑，真实数据库测试验证回写。
+//! 以 binary 和数据库协议接入；单元测试覆盖纯逻辑，不启动 PostgreSQL。
+//! 实际回写与断线恢复需要另用独立测试数据库验证，启动生产配置会直接产生数据库副作用。
 //! 运行环境与配置见
 //! [ladder README](https://github.com/shenjackyuanjie/tswn-core/tree/main/crates/tswn_ladder)。
 

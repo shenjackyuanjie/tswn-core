@@ -1,3 +1,10 @@
+//! 调试构建中的行动与可见帧诊断记录；`no_debug` feature 下不提供此模块。
+//!
+//! [`RuntimeTrace`] 按记录顺序累积行动和归一化消息，用于比较执行边界，
+//! 不负责推进对局。启用记录会持有向量内容，长对局调用方需自行控制生命周期。
+//! [`RngCheckpoint`] 只有游标和探针计数，不包含 S-box，不能单独恢复随机流；
+//! 计数也不覆盖未跟踪的字节混入步骤，完整复现仍需原输入与 seed。
+
 use crate::rc4::RC4;
 use crate::runtime::{EntityIdx, NormalizedUpdateFrame, RuntimeFrame};
 

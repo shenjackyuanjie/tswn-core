@@ -1,6 +1,8 @@
 use super::*;
 
-/// 护盾
+/// 护盾相关长回放，连同分身、铁壁和多次蓄力的事件顺序一起核对。
+///
+/// 只规范化样式与召唤物数字后缀，保留伤害文本；总分固定为 6584，并要求预算内结束。
 pub fn large_44<E: crate::EngineAdapter>() {
     const CASE: &str = r####"虚蚓嬉申杆@Shabby_fish
 曾搪激归汗@Hell

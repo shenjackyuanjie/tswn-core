@@ -36,6 +36,8 @@ pub enum ReplayTextPartKind {
     Data,
 }
 
+/// 一段拥有自身文本的展示内容；玩家片段可附带 HP 变化或死亡效果。
+/// `player_id` 用于 UI 关联，普通文本与数值片段不要求对应玩家。
 #[derive(Debug, Clone)]
 pub struct ReplayTextPart {
     pub kind: ReplayTextPartKind,
@@ -48,6 +50,8 @@ pub struct ReplayTextPart {
     pub emoji: Option<String>,
 }
 
+/// 一次播放片段，包含毫秒延时和该片段前后的 sidebar 状态副本。
+/// HP 等中间值用于展示插值，不是可恢复战斗的机制检查点。
 #[derive(Debug, Clone)]
 pub struct ReplayClip<S> {
     pub delay: i32,
@@ -73,6 +77,11 @@ pub struct ReplayViewFrame<S> {
     pub total_delay: i32,
 }
 
+/// 展示投影所需的最小玩家快照接口。
+///
+/// 同一帧中的 `id` 应唯一；`with_hp_alive` 与 `with_shield` 返回保留身份及其他字段的新值，
+/// 不应通过内部可变性改写原快照。默认实现不保存护盾；需要显示护盾的适配器应同时实现
+/// `shield` 和 `with_shield`，否则片段间的护盾协调不会生效。
 pub trait ReplayState: Clone {
     fn id(&self) -> PlrId;
     fn hp(&self) -> i32;
@@ -83,12 +92,20 @@ pub trait ReplayState: Clone {
     fn with_hp_alive(&self, hp: i32, alive: bool) -> Self;
 }
 
+/// 对一条已执行更新的临时借用，语气由调用方提供。
+///
+/// `message_rendered` 用于可见性与快速群攻识别；结构化文本片段仍从 `update.message`
+/// 的占位符构建，因此这两种文本应来自同一更新。结果帧不保留此借用。
 pub struct ReplayEventView<'a> {
     pub update: &'a RunUpdate,
     pub tone: ReplayTone,
     pub message_rendered: &'a str,
 }
 
+/// 将更新中的玩家与数据占位符替换为可读文本，返回新字符串。
+///
+/// 缺失玩家名回退为十进制 ID；数据依次选择 `param`、目标列表或 `score`。
+/// 保留技能等其他方括号标记，不对输出执行 HTML 转义，界面层仍需按文本渲染。
 pub fn render_update_message(update: &RunUpdate, names: &HashMap<PlrId, String>) -> String {
     let mut message = update.message.to_string();
     message = message.replace("[0]", &render_name(update.caster, names));
@@ -112,6 +129,10 @@ pub fn render_update_message(update: &RunUpdate, names: &HashMap<PlrId, String>)
 
 fn render_name(id: PlrId, names: &HashMap<PlrId, String>) -> String { names.get(&id).cloned().unwrap_or_else(|| id.to_string()) }
 
+/// 根据伤害或恢复语气提取有符号 HP 变化，其他语气返回 `None`。
+///
+/// 百分比伤害消息使用实际 `score`，不把 `param` 中的百分比当伤害值；
+/// 非百分比消息优先使用 `param`，并将绝对变化量限制在 `i32::MAX` 内。
 pub fn hp_delta_for_tone(tone: ReplayTone, update: &RunUpdate) -> Option<i32> {
     let value = hp_delta_value(update).min(i32::MAX as u32) as i32;
     match tone {
@@ -140,6 +161,14 @@ pub fn replay_tone_color(tone: ReplayTone) -> &'static str {
     }
 }
 
+/// 由已执行事件和帧边界快照构造可独立持有的展示帧，不运行战斗或消耗 RNG。
+///
+/// 按事件源顺序分行，跳过空文本，并用消息推导 HP、死亡及复活的中间展示值；
+/// 护盾缺少独立事件时在玩家首次可见处同步到帧末值。sidebar 先按 `frame_states`
+/// 的顺序排列，仍只出现在旧快照中的玩家再按 ID 排列。
+///
+/// `finished=true` 会追加胜者行；`total_delay` 是所有片段毫秒延时之和。输出拥有文本和
+/// 克隆的状态，内存随事件数与快照规模增长；它不是机制级状态回滚或恢复的输入。
 pub fn build_replay_view_frame<S: ReplayState>(
     events: &[ReplayEventView<'_>],
     previous_states: &[S],

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+#[cfg(feature = "png_render")]
 use crate::namerena::icon_render::render_icon_b64_from_name;
 use crate::replay_view::{
     ReplayClip, ReplayEventView, ReplayRow, ReplayTextPart, ReplayTextPartKind, ReplayTone, build_replay_view_frame,
@@ -11,7 +12,21 @@ use crate::runtime::{PlrId, RuntimeMinionKind, RuntimePlayerSnapshot, RuntimeRun
 use super::dto::*;
 use crate::cli_api::CliApiResult;
 
-/// 有状态、增量式用户 API。所有回合限制和终止决策均在此处处理。
+#[cfg(not(feature = "png_render"))]
+fn render_icon_b64_from_name(_name: &str) -> String {
+    // 仅守卫内部契约；公开构造先返回 UnsupportedOption，不返回空图或占位图。
+    unreachable!("无 PNG 构建不能调用内部图标渲染，公开入口应先拒绝 include_icons")
+}
+
+/// 拥有一场对局、边界快照和图标缓存的增量式展示会话。
+///
+/// 通过 [`Self::next_frame`] 同步推进，查询初始/当前快照不会消费随机流。
+/// 一个可见帧可能跨过若干无消息回合，回合上限仍按实际推进次数计算。
+/// 胜者、上限截断与长期无可见进展产生正常结果；Runtime 校验错误保存为粘性失败，
+/// 由错误通道返回，不伪装成截断结果。
+///
+/// 初始快照保留至会话释放，当前快照随推进替换。启用图标时按完整身份键缓存 PNG data URL；
+/// 不同实体可共用图标，但不以展示名合并身份。缓存随本会话释放，不跨对局共享。
 #[derive(Debug)]
 pub struct BattleSession {
     driver: super::driver::BattleDriver,
@@ -23,7 +38,16 @@ pub struct BattleSession {
 
 impl BattleSession {
     /// 解析并初始化对局，不推进回合；空输入、零上限或非有限 eval_rq 返回错误。
+    ///
+    /// 未启用 `png_render` 时，请求 `include_icons=true` 返回 `UnsupportedOption`，
+    /// 不生成空图或占位图；默认的无图标对局不依赖 PNG 能力。
     pub fn new(raw: &str, options: BattleOptions) -> CliApiResult<Self> {
+        #[cfg(not(feature = "png_render"))]
+        if options.include_icons {
+            return Err(crate::cli_api::CliApiError::UnsupportedOption(
+                "战斗图标需要启用 png_render feature".to_owned(),
+            ));
+        }
         let driver = super::driver::BattleDriver::from_raw(raw, options)?;
         let mut icon_cache = HashMap::new();
         let initial_states = states_from_runner(&driver.runner, options.include_icons, &mut icon_cache);
@@ -73,7 +97,12 @@ impl BattleSession {
     /// 已产出的可见帧数，不等于 Runtime 回合数。
     pub fn frames_emitted(&self) -> usize { self.driver.frames_emitted }
 
-    /// 推进经过空的 Runtime 回合，直至出现可见帧或终止结果。
+    /// 同步推进至下一个可见帧、正常终止或 Runtime 错误。
+    ///
+    /// 空回合会继续推进并更新当前快照，但不占可见帧编号；没有消息的胜利也会产生终止帧。
+    /// 同一回合先判胜，再判回合上限，最后判长期无可见进展。正常终止后的调用返回
+    /// `Ok(None)`；粘性失败后的调用返回第一次错误且不继续推进。
+    /// 无可见帧的截断也可能返回 `Ok(None)`，用 [`Self::result`] 取得终止原因与最终快照。
     pub fn next_frame(&mut self) -> CliApiResult<Option<BattleReplayFrame>> {
         if let Some(error) = &self.driver.failure {
             return Err(error.clone());
@@ -102,7 +131,10 @@ impl BattleSession {
         }
     }
 
-    /// 正常终止后构造结果；重复查询不推进对局，运行中或 sticky failure 时为 `None`。
+    /// 正常终止后返回拥有最终快照的结果；运行中或粘性失败时为 `None`。
+    ///
+    /// 重复查询不推进战斗，但每次都会复制最终快照及其字符串。需要多次使用结果时
+    /// 可保存首次返回值。截断结果不附胜者 ID 或获胜输入组，避免将未结束对局当成胜利。
     pub fn result(&self) -> Option<BattleResult> {
         Some(BattleResult {
             status: self.status(),
@@ -137,12 +169,14 @@ pub(super) fn states_from_runner(
         .map(|snapshot| {
             let mut state = state_from_snapshot(snapshot, false);
             if include_icons {
-                state.icon_png_base64 = Some(
-                    icon_cache
-                        .entry(state.icon_key.clone())
-                        .or_insert_with(|| render_icon_b64_from_name(&state.icon_key))
-                        .clone(),
-                );
+                state.icon_png_base64 = Some(match icon_cache.get(&state.icon_key) {
+                    Some(icon) => icon.clone(),
+                    None => {
+                        let icon = render_icon_b64_from_name(&state.icon_key);
+                        icon_cache.insert(state.icon_key.clone(), icon.clone());
+                        icon
+                    }
+                });
             }
             state
         })
@@ -151,6 +185,7 @@ pub(super) fn states_from_runner(
 
 fn state_from_snapshot(snapshot: RuntimePlayerSnapshot, include_icons: bool) -> BattlePlayerState {
     let icon_key = snapshot.id_key_name.clone();
+    let icon_png_base64 = include_icons.then(|| render_icon_b64_from_name(&icon_key));
     BattlePlayerState {
         id: snapshot.id,
         team_index: snapshot.team_index,
@@ -159,13 +194,13 @@ fn state_from_snapshot(snapshot: RuntimePlayerSnapshot, include_icons: bool) -> 
         source_id: snapshot.root_owner_id,
         id_name: snapshot.id_name,
         id_key_name: snapshot.id_key_name,
-        icon_key: icon_key.clone(),
+        icon_key,
         display_name: snapshot.display_name,
         display_index: snapshot.display_index,
         base_name: snapshot.base_name,
         player_type: snapshot.player_type.to_owned(),
         minion_kind: snapshot.minion_kind.map(RuntimeMinionKind::as_str),
-        icon_png_base64: include_icons.then(|| render_icon_b64_from_name(&icon_key)),
+        icon_png_base64,
         hp: snapshot.hp,
         max_hp: snapshot.max_hp,
         shield: snapshot.shield,
@@ -596,6 +631,7 @@ seed:7@!"#;
         assert!(limited.is_finished());
     }
 
+    #[cfg(feature = "png_render")]
     #[test]
     fn icons_are_cached_per_key_and_disabled_by_default() {
         let mut plain = session(3);
@@ -619,6 +655,110 @@ seed:7@!"#;
         for (key, value) in initial_cache {
             assert_eq!(icons.icon_cache.get(&key), Some(&value));
         }
+    }
+
+    #[cfg(feature = "png_render")]
+    #[test]
+    fn icon_projection_preserves_full_keys_cache_values_and_rng() {
+        let runner = RuntimeRunner::new_from_namerena_raw("同名@红队\n\n同名@蓝队\nseed:cache@!".to_owned()).unwrap();
+        let snapshots = runner.player_snapshots();
+        assert_eq!(snapshots[0].id_name, snapshots[1].id_name);
+        assert_ne!(snapshots[0].id_key_name, snapshots[1].id_key_name);
+        let before = runner.model_state().unwrap();
+        let rng_before = runner.runtime().rng.clone();
+        let cached_key = snapshots[0].id_key_name.clone();
+        let missing_key = snapshots[1].id_key_name.clone();
+        let mut cache = HashMap::from([(cached_key.clone(), "预填图标".to_owned())]);
+        let original_cache = cache.clone();
+
+        let plain = states_from_runner(&runner, false, &mut cache);
+        assert!(plain.iter().all(|state| state.icon_png_base64.is_none()));
+        assert_eq!(cache, original_cache);
+
+        let with_icons = states_from_runner(&runner, true, &mut cache);
+        assert_eq!(cache.len(), 2);
+        assert_eq!(with_icons[0].icon_key, cached_key);
+        assert_eq!(with_icons[0].icon_png_base64.as_deref(), Some("预填图标"));
+        assert_eq!(with_icons[1].icon_key, missing_key);
+        assert_eq!(cache[&missing_key], render_icon_b64_from_name(&missing_key));
+        for ((state, plain), snapshot) in with_icons.iter().zip(&plain).zip(&snapshots) {
+            assert_eq!(state.id, snapshot.id);
+            assert_eq!(state.id_key_name, snapshot.id_key_name);
+            assert_eq!(state.icon_png_base64.as_ref(), cache.get(&state.icon_key));
+            let mut without_icon = state.clone();
+            without_icon.icon_png_base64 = None;
+            assert_eq!(&without_icon, plain);
+        }
+        assert_eq!(state_from_snapshot(snapshots[1].clone(), true), with_icons[1],);
+        let filled_cache = cache.clone();
+        assert_eq!(states_from_runner(&runner, true, &mut cache), with_icons);
+        assert_eq!(cache, filled_cache);
+        assert_eq!(runner.model_state().unwrap(), before);
+        let rng_after = &runner.runtime().rng;
+        assert_eq!((rng_after.i, rng_after.j), (rng_before.i, rng_before.j));
+        assert_eq!(rng_after.main_val, rng_before.main_val);
+        #[cfg(not(feature = "no_debug"))]
+        assert_eq!(rng_after.byte_count, rng_before.byte_count);
+    }
+
+    #[cfg(not(feature = "png_render"))]
+    #[test]
+    fn missing_png_feature_rejects_icon_requests() {
+        let options = BattleOptions {
+            include_icons: true,
+            ..BattleOptions::default()
+        };
+        let raw = "left@red\n\nright@blue";
+        for error in [
+            BattleSession::new(raw, options).unwrap_err(),
+            super::super::battle_replay(raw, options).unwrap_err(),
+        ] {
+            assert_eq!(error.code().as_str(), "UNSUPPORTED_OPTION");
+            assert!(error.to_string().contains("png_render"));
+        }
+    }
+
+    #[cfg(not(feature = "png_render"))]
+    #[test]
+    fn missing_png_feature_keeps_plain_and_model_sessions_usable() {
+        let raw = "left@red\n\nright@blue";
+        let options = BattleOptions {
+            max_rounds: 2,
+            ..BattleOptions::default()
+        };
+        let mut plain = BattleSession::new(raw, options).unwrap();
+        let mut model = super::super::BattleModelSession::new(
+            raw,
+            BattleOptions {
+                include_icons: true,
+                ..options
+            },
+        )
+        .unwrap();
+        assert!(!plain.initial_states().is_empty());
+        assert!(plain.initial_states().iter().all(|state| state.icon_png_base64.is_none()));
+        assert_eq!(plain.model_state().unwrap(), model.model_state().unwrap());
+        loop {
+            let display = plain.next_frame().unwrap();
+            let boundary = model.next_frame().unwrap();
+            assert_eq!(display.is_some(), boundary.is_some());
+            if let (Some(display), Some(boundary)) = (&display, boundary) {
+                assert_eq!(
+                    (display.frame_index, display.round_index),
+                    (boundary.frame_index, boundary.round_index),
+                );
+                assert!(display.states.iter().all(|state| state.icon_png_base64.is_none()));
+            }
+            assert_eq!(plain.model_state().unwrap(), model.model_state().unwrap());
+            if display.is_none() {
+                break;
+            }
+        }
+        let result = plain.result().unwrap();
+        let model_result = model.result().unwrap();
+        assert_eq!(result.stop_reason, model_result.stop_reason);
+        assert_eq!(result.rounds_advanced, model_result.rounds_advanced);
+        assert!(result.final_states.iter().all(|state| state.icon_png_base64.is_none()));
     }
 
     #[test]

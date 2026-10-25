@@ -10,7 +10,7 @@
 | --- | --- | --- | --- |
 | Rust 应用 | core 公开 API | Rust 所有权 | 原生结构体与 Result |
 | 命令行/管道 | tswn-cli | 一次进程 | 文本、JSONL、文件 |
-| 浏览器/JS | tswn_wasm | init 后创建对象，finally free | JS DTO 与 Error |
+| 浏览器/JS | tswn_wasm | init 后创建对象，finally free | JS DTO 与 `{ code, message }` 错误对象 |
 | Python | tswn_py | Python 对象与异常 | dict/list、pyclass |
 | C/C++ | tswn_capi | opaque 句柄与成对 free | 状态码、JSON、字节缓冲 |
 | 本地面板/脚本化工具 | Openbox GUI / CLI | 后台任务与事件 | 增量视图、stdout、结果文件 |
@@ -89,7 +89,7 @@ for frame in session:
 result = session.result()
 ```
 
-BattleSession 是可迭代对象，frame 与 result 经规范 DTO 转成 dict/list。`tswn_py.cli_api` 还提供评分、胜率、格式转换等高层 helper；Runner/PreparedRunner pyclass 支持高级机制和重复阵容计算。
+BattleSession 是可迭代对象，frame 与 result 经规范 DTO 转成 dict/list。评分、胜率、格式转换等高层 helper 直接注册在 `tswn_py` 顶层（例如 `tswn_py.score`）；`cli_api` 是 Rust 内部模块，不是可导入的 Python 子模块。Runner/PreparedRunner pyclass 支持高级机制和重复阵容计算。
 
 Python 异常携带对应 code，Runtime failure 由 `is_failed` 查询。Python 包的 `.pyi` 提供宿主签名，Cargo doc 提供 Rust 适配结构；安装和示例见 [Python README](../../crates/tswn_py/README.md)。
 

@@ -1,6 +1,8 @@
 //! 去重操作。
 //!
-//! `remove_duplicates` 读取已排序的评分文件并去除重复名条目，返回 [`DedupStats`] 统计信息。
+//! [`remove_duplicates`] 按完整原始行去重，并排除旧文件中已有的行，不解析分数或名字。
+//! CR/LF 作为分隔符，空行跳过；剩余行按在新文件中首次出现的逆序写为 CRLF。
+//! 输入缺失视为空集，读取或输出提交失败则返回错误；全部唯一新行暂存在内存中。
 
 use std::collections::HashSet;
 use std::fs;
@@ -11,6 +13,9 @@ use crate::error::Ds4Result;
 use crate::output::AtomicFileWriter;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+/// 去重阶段的行数：新输入唯一行、被历史命中的唯一行，以及最终保留行。
+///
+/// 历史文件中的重复命中只计一次；未启用去重的流程会用原始行数填充 new_unique/remaining。
 pub struct DedupStats {
     pub new_unique: usize,
     pub old_hits: usize,

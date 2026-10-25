@@ -77,6 +77,7 @@ impl eframe::App for OpenboxApp {
                                     Tool::NamerPf => self.namer_pf_ui(ui),
                                     Tool::BatchRate => self.batch_rate_ui(ui),
                                     Tool::Pair => self.pair_ui(ui),
+                                    Tool::Base => self.base_ui(ui),
                                     Tool::Ds4 => self.ds4_ui(ui),
                                 });
                             ui.separator();
@@ -151,8 +152,12 @@ fn run_footer_ui(ui: &mut egui::Ui, app: &mut OpenboxApp) {
                 Tool::NamerPf => app.start_namer_pf(),
                 Tool::BatchRate => app.start_batch_rate(),
                 Tool::Pair => app.start_pair(),
+                Tool::Base => app.start_base(),
                 Tool::Ds4 => app.start_ds4(),
             }
+            // 任务刚启动就主动要一帧：否则要等下一次输入事件才会去排空收件箱，
+            // base 这类瞬间完成的任务会一直停在“运行中”。
+            ui.ctx().request_repaint();
         }
     }
 }
@@ -206,7 +211,7 @@ fn status_pill(ui: &mut egui::Ui, app: &OpenboxApp) {
 fn show_about_window(ctx: &egui::Context, open: &mut bool) {
     let mut is_open = *open;
     egui::Window::new("关于")
-        .id(egui::Id::new("openbox_about"))
+        .id(egui::Id::unique("openbox_about"))
         .open(&mut is_open)
         .collapsible(false)
         .resizable(false)

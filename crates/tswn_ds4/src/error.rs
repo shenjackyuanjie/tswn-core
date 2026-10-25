@@ -1,6 +1,8 @@
 //! 错误类型定义。
 //!
-//! 定义 [`Ds4Error`] 枚举（覆盖 IO/JSON/配置/解析等错误来源）及 [`Ds4Result<T>`] 类型别名。
+//! [`Ds4Error`] 区分原始 I/O 错误、解析错误文本、CLI 用法错误和缺失配置的路径列表。
+//! JSON 与外部程序失败也会转换为 Parse 文本，不存在单独的 JSON 或子进程错误分支。
+//! [`Ds4Result`] 由同步库接口返回，宿主决定如何显示错误及处理已经产生的部分输出。
 
 use std::error::Error;
 use std::fmt::{Display, Formatter};

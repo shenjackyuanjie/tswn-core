@@ -1,4 +1,8 @@
 //! 对局候选、配额、分布统计与预期分差。
+//!
+//! 先围绕当前分数排序位置搜索，再混入全局随机候选；两阶段共用无序配对键，避免重复对局。
+//! 生成候选时就累计玩家的计划场次，失败对局不会退回这些配额。handicap 按玩家 ID
+//! 的升序方向保存，查询相反方向时取负；分差先转为浮点数，覆盖完整 i32 分数范围。
 
 use super::*;
 
@@ -248,7 +252,7 @@ pub(super) fn expected_win_prob_with_handicap(
         .get(&key)
         .map(|data| if disturbed { data.disturbed_value } else { data.basic_value })
         .unwrap_or(0.0);
-    let score_diff = (p1.score - p2.score) as f64
+    let score_diff = (p1.score as f64 - p2.score as f64)
         + if p1.id < p2.id {
             handicap * HANDICAP_SCALE
         } else {
@@ -266,7 +270,7 @@ pub(super) fn calculate_expected_delta(
     let p1 = &players[i];
     let p2 = &players[j];
     let expected_with_handicap = expected_win_prob_with_handicap(i, j, players, handicap_map, true);
-    let expected_base = logistic_expected((p1.score - p2.score) as f64);
+    let expected_base = logistic_expected(p1.score as f64 - p2.score as f64);
 
     BASE_K_FACTOR * ((1.0 - expected_base) * expected_with_handicap - expected_base * (1.0 - expected_with_handicap))
 }
@@ -274,3 +278,45 @@ pub(super) fn calculate_expected_delta(
 pub(super) fn calculate_total_squared_loss(deltas: &[f64]) -> f64 { deltas.iter().map(|delta| delta * delta).sum() }
 
 pub(super) fn logistic_expected(score_diff: f64) -> f64 { 1.0 / (1.0 + 10_f64.powf(-score_diff / ELO_SCALE_FACTOR)) }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn player(id: i32, score: i32) -> PlayerRow {
+        PlayerRow {
+            id,
+            name: format!("player-{id}"),
+            loaded_score: score as f64,
+            score,
+            original_score: score,
+            initial_rank: id,
+            rank: id,
+            total_matches: 0,
+            base_matches: 0,
+            second_matches: 0,
+            supplement_matches: 0,
+        }
+    }
+
+    #[test]
+    fn extreme_scores_preserve_expected_probability_direction() {
+        let players = [player(1, i32::MAX), player(2, i32::MIN)];
+        let handicaps = HashMap::new();
+        assert_eq!(expected_win_prob_with_handicap(0, 1, &players, &handicaps, false), 1.0);
+        assert_eq!(expected_win_prob_with_handicap(1, 0, &players, &handicaps, false), 0.0);
+        assert_eq!(calculate_expected_delta(0, 1, &players, &handicaps), 0.0);
+        assert_eq!(calculate_expected_delta(1, 0, &players, &handicaps), 0.0);
+    }
+
+    #[test]
+    fn ordinary_scores_keep_existing_expected_probability() {
+        let players = [player(1, 1200), player(2, 1000)];
+        let handicaps = HashMap::new();
+        let forward = expected_win_prob_with_handicap(0, 1, &players, &handicaps, true);
+        let reverse = expected_win_prob_with_handicap(1, 0, &players, &handicaps, true);
+        assert_eq!(forward, logistic_expected(200.0));
+        assert!((forward + reverse - 1.0).abs() < f64::EPSILON);
+        assert_eq!(calculate_expected_delta(0, 1, &players, &handicaps), 0.0);
+    }
+}

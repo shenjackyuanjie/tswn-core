@@ -9,6 +9,21 @@
 //! 完整状态包括 256 字节排列和 i/j 游标；[`RC4::peek_next_u8`] 用于保持当前位置的观察。
 //! 本模块服务游戏兼容，安全相关的新功能选择适合安全用途的随机/密码学库。
 //!
+//! # 消费与边界约定
+//!
+//! - 概率判定 `c*`、单字节范围 `r*` 和 `r3x3` 每次消费一个字节；
+//!   `rFFFF` 消费两个，`rFFFFFF` 消费三个。`c94` 等名字是近似比例，不是精确百分数。
+//! - [`RC4::next_i32`] 的零上界不消费字节；正上界至少消费两个字节，
+//!   即使上界为 1、返回值必定为 0，也会推进随机流。
+//! - [`RC4::pick`] 的空列表与单元素列表不消费字节；排除选择方法还要求
+//!   有效下标或连续的排除区间，不能用它们代替任意集合过滤。
+//! - 字符串混入方法按 UTF-8 字节消费，和名字常见度评估的 UTF-16 码元不同；
+//!   它们只更新随机状态，不返回变换后的字符串。
+//!
+//! [`RC4::update`] 保留 i/j 游标，[`RC4::round`] 重置游标；二者不能互换。
+//! `Clone` 复制完整排列与游标，适合分叉确定性流。调试 `byte_count` 只在探针启用时
+//! 统计 [`RC4::next_u8`] 调用，不包含直接混入字符串/字节的未跟踪步骤。
+//!
 //! ```
 //! use tswn_core::rc4::RC4;
 //! let mut first = RC4::new(b"demo", 1);
@@ -17,7 +32,7 @@
 //! assert_eq!(first.next_u8(), RC4::new(b"demo", 1).next_u8());
 //! ```
 
-/// 用于初始化类似下面那个 VAL_init 的大号数组的宏
+/// 生成按字节值升序排列的初始 S-box；展开结果固定包含 0 到 255 各一次。
 macro_rules! val {
     () => {
         [
@@ -35,7 +50,7 @@ macro_rules! val {
         ]
     };
 }
-/// 我是不是应该用宏来写这个玩意
+/// 尚未进行密钥调度的恒等排列，供新状态和 KSA 检查点初始化。
 const VAL_INIT: [u8; 256] = val!();
 
 /// 状态数组长度。
@@ -185,15 +200,18 @@ fn apply_key_scheduling_interleaved_variable_keys<const N: usize>(states: &mut [
     }
 }
 
-/// RC4 类
-/// 名竞的核心~
+/// 名字构建与战斗共享的确定性随机状态，包含 S-box 与 PRGA 游标。
+///
+/// `Default` 仅给出恒等排列；一般以 [`Self::new`] 的密钥调度结果开始。
+/// 字段公开用于兼容与诊断，逐字节消费时游标按低八位推进；
+/// 修改排列会改变后续全部输出，复制流应同时复制排列与游标。
 #[allow(unused)]
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct RC4 {
     pub i: u32,
     pub j: u32,
-    /// [u8; 256]
+    /// 当前 S-box；标准构造与调度保持它是 0 到 255 的排列。
     pub main_val: [u8; 256],
     #[cfg(not(feature = "no_debug"))]
     pub byte_count: u64,
@@ -249,13 +267,21 @@ impl RC4 {
     pub fn get_val(&self, index: u8) -> u8 { self.main_val[index as usize] }
 
     #[inline]
+    /// 不做边界检查地读取 S-box，不推进随机状态。
+    ///
     /// # Safety
-    /// u8! u8懂不懂! safe!
+    ///
+    /// `index` 为 u8，天然小于固定的 256 字节数组长度，没有额外的下标前置条件。
     pub unsafe fn get_val_unchecked(&self, index: u8) -> u8 { unsafe { *self.main_val.get_unchecked(index as usize) } }
 
     #[inline]
     pub fn set_val(&mut self, index: u8, value: u8) { self.main_val[index as usize] = value; }
 
+    /// 从恒等排列开始执行 `round` 轮密钥调度，并将 i/j 设为 0。
+    ///
+    /// `round == 0` 不读取密钥，返回未调度状态；正轮数要求密钥非空，否则 panic。
+    /// 密钥按传入字节原样使用，不在此处转换字符编码或混入额外随机材料。
+    ///
     /// ```dart
     /// RC4(List<int> key, [int round = 1]) {
     ///   val = new List<int>(256);
@@ -321,7 +347,10 @@ impl RC4 {
         })
     }
 
-    /// update 一下
+    /// 在当前 S-box 上继续执行指定轮数的密钥调度，保留 i/j 和调试计数。
+    ///
+    /// `round == 0` 不改变状态；正轮数要求密钥非空，否则 panic。
+    /// 需要重置 PRGA 游标时使用 [`Self::round`]，而不是此方法。
     pub fn update(&mut self, keys: &[u8], round: usize) {
         for _ in 0..round {
             apply_key_scheduling(&mut self.main_val, keys);
@@ -379,7 +408,9 @@ impl RC4 {
         }
     }
 
-    /// 异或字节
+    /// 依次以随机流异或并原地覆盖输入，每个字节推进一次 PRGA。
+    ///
+    /// 不将变换结果反馈给 j；空切片不改变状态，也不分配输出缓冲。
     /// ```dart
     /// void xorBytes(List<int> bytes) {
     ///    int t, len = bytes.length;
@@ -400,7 +431,10 @@ impl RC4 {
         }
     }
 
-    /// 根据 js 的逻辑修改的 xor bytes
+    /// 原地异或字节，并把每个变换后的字节累加到 j，对齐游戏的反馈混入规则。
+    ///
+    /// 每个输入字节推进一次 PRGA；与 [`Self::encrypt_bytes`] 使用相同状态变换，
+    /// 不能用没有反馈的 [`Self::xor_bytes`] 替换。空切片不改变状态。
     #[inline]
     pub fn js_xor_bytes(&mut self, bytes: &mut [u8]) {
         for byte in bytes.iter_mut() {
@@ -409,6 +443,9 @@ impl RC4 {
         }
     }
 
+    /// 按 UTF-8 字节推进 PRGA，再将 j 设为输入字节与随机字节的异或结果。
+    ///
+    /// 输入字符串保持不变，不分配或返回变换文本；这不是 [`Self::xor_bytes`] 的字符串包装。
     #[inline]
     pub fn xor_str(&mut self, bytes: &str) {
         for byte in bytes.as_bytes() {
@@ -416,7 +453,10 @@ impl RC4 {
         }
     }
 
-    /// 根据 js 的逻辑修改的 xor bytes
+    /// 按 UTF-8 字节应用游戏反馈混入规则，只修改随机状态。
+    ///
+    /// 状态变化等价于将字符串复制为字节缓冲后调用 [`Self::js_xor_bytes`]，
+    /// 但不创建缓冲，也不保留变换后的字节；空字符串不改变状态。
     #[inline]
     pub fn js_xor_str(&mut self, bytes: &str) {
         for byte in bytes.as_bytes() {
@@ -425,7 +465,10 @@ impl RC4 {
         }
     }
 
-    /// 加密字节
+    /// 原地执行游戏兼容的反馈异或，每个密文字节再累加到 j。
+    ///
+    /// 解码需从相同初始状态调用 [`Self::decrypt_bytes`]；此处用于兼容游戏算法，
+    /// 不提供认证或现代加密安全保证。每个输入字节推进一次 PRGA。
     /// ```dart
     /// 自定义加密流程
     /// void encryptBytes(List<int> bytes) {
@@ -449,7 +492,10 @@ impl RC4 {
         }
     }
 
-    /// 只是加密, 不改变原来的字节
+    /// 以 UTF-8 字节执行反馈异或的状态推进，不修改输入也不返回密文。
+    ///
+    /// 状态变化等价于复制字节后调用 [`Self::encrypt_bytes`]；用于初始化时混入身份，
+    /// 无需为仅关心随机状态的调用创建临时字节缓冲。
     pub fn encrypt_bytes_no_change(&mut self, bytes: &str) {
         for byte in bytes.as_bytes() {
             let encrypted = *byte ^ self.next_u8_untracked();
@@ -457,7 +503,9 @@ impl RC4 {
         }
     }
 
-    /// 解密字节
+    /// 原地解码反馈异或字节，并将覆盖前的密文字节累加到 j。
+    ///
+    /// 调用前状态应与编码前一致；每个输入字节推进一次 PRGA，空切片不改变状态。
     /// ```dart
     /// 自定义解密流程
     /// void decryptBytes(List<int> bytes) {
@@ -483,7 +531,9 @@ impl RC4 {
         }
     }
 
-    /// 生成 u8 随机数
+    /// 推进一次 PRGA 并返回一个 0 到 255 的字节。
+    ///
+    /// 开启调试探针时额外记录计数和调用位置；`no_debug` 不改变随机输出。
     /// ```dart
     /// int nextByte() {
     ///  i = (i + 1) & 255; // 255
@@ -519,15 +569,32 @@ impl RC4 {
         val
     }
 
-    /// 我就看一眼 next_u8 的结果, 不改变状态
+    /// 返回下一次 [`Self::next_u8`] 将产生的字节，不改变排列、游标或调试计数。
+    ///
+    /// 输出下标可能与本步交换的 i/j 重合，因此观察值也必须反映交换后的排列。
+    /// 连续观察返回相同结果，只有真正消费随机字节才会推进状态。
     #[inline]
     pub fn peek_next_u8(&self) -> u8 {
-        let i = (self.i + 1) & 255;
-        let j = (self.j + self.main_val[i as usize] as u32) & 255;
-        self.main_val[(self.main_val[i as usize] as u32 + self.main_val[j as usize] as u32) as usize & 255]
+        let i = (self.i as u8).wrapping_add(1);
+        let si = self.main_val[i as usize];
+        let j = (self.j as u8).wrapping_add(si);
+        let sj = self.main_val[j as usize];
+        let output = si.wrapping_add(sj);
+        if output == i {
+            sj
+        } else if output == j {
+            si
+        } else {
+            self.main_val[output as usize]
+        }
     }
 
-    /// 生成 i32 随机数
+    /// 按游戏的逐字节拼接和取模规则生成 `[0, max)` 的整数。
+    ///
+    /// 兼容使用范围为 `0..=0x0080_0000`：零上界直接返回 0，不消费字节；
+    /// 正上界先取一个字节，再按上界的有效字节数追加字节，至少共消费两个。
+    /// 负上界的算术右移不会终止，过大上界可能使 i32 拼接变为负数，
+    /// 因而此入口不是覆盖完整 i32 范围的通用采样器。
     /// ```javascript
     /// ax(a) {
     ///     // nextInt
@@ -565,7 +632,10 @@ impl RC4 {
         v
     }
 
-    /// 重新执行一轮或多轮密钥调度。
+    /// 对当前排列执行密钥调度，然后将 i/j 游标都重置为 0。
+    ///
+    /// `None` 表示一轮；`Some(0)` 不调度排列，但仍重置游标。正轮数要求
+    /// 密钥非空，否则 panic；调试计数不重置。需要保留游标时使用 [`Self::update`]。
     ///
     /// ```dart
     /// void round(List<int> key, [int round = 1]) {
@@ -592,7 +662,10 @@ impl RC4 {
         self.j = 0;
     }
 
-    /// 打乱列表
+    /// 按游戏的两轮索引置换原地打乱列表，不要求元素实现 Clone。
+    ///
+    /// 空列表和单元素列表不推进随机流；其他情况按固定顺序调用 `2 * len` 次
+    /// [`Self::next_i32`]，使用 O(len) 的临时索引空间。列表长度应落在该采样方法的范围内。
     /// ```dart
     /// List<T> sortList<T>(List<T> list) {
     ///   if (list.length <= 1) {
@@ -647,9 +720,10 @@ impl RC4 {
         }
     }
 
-    /// 从列表里选一个
+    /// 返回选中元素的下标，不访问或移动元素本身。
     ///
-    /// # note: 实际上不会选, 只会返回一个 index
+    /// 空列表返回 `None`，单元素列表返回 `Some(0)`，两者都不消费随机字节；
+    /// 更长列表调用 [`Self::next_i32`]，长度须处于其兼容范围内。
     /// ```dart
     /// T pick<T>(List<T> list) {
     ///   if (list != null) {
@@ -671,12 +745,12 @@ impl RC4 {
         }
     }
 
-    /// 从列表里选一个
-    /// 但是跳过指定的 index
+    /// 返回避开指定位置的元素下标，不移动元素。
     ///
-    /// 虽然但是, 我也没懂这玩意到底是在干啥
-    ///
-    /// # note: 实际上不会选, 只会返回一个 index
+    /// 多元素列表要求 `skip_after_index < list.len()`，不在此处校验；
+    /// 先从少一个位置的范围采样，再将落在排除位置之后的下标加一。
+    /// 空列表返回 `None`；单元素列表在排除 0 时返回 `None`，否则返回 `Some(0)`，
+    /// 这两种长度都不消费字节。双元素列表仍会调用上界为 1 的采样并推进随机流。
     ///
     /// ```dart
     ///  T pickSkip<T>(List<T> list, T obj) {
@@ -718,14 +792,12 @@ impl RC4 {
         }
     }
 
-    /// 从列表里选一个
-    /// 但是跳过指定一些 index
+    /// 从列表中排除一个连续区间后返回选中下标。
     ///
-    /// # 输入:
-    /// - list: 原始列表
-    /// - skips: 要跳过的 index
-    ///
-    /// # note: 实际上不会选, 只会返回一个 index
+    /// `skips` 必须描述有效、升序、连续的下标区间；实现仅使用首项与长度，
+    /// 不读取后续下标，也不验证连续性，不能传入任意离散集合。
+    /// 空 `skips` 委托 [`Self::pick`]；排除长度不少于列表长度时返回 `None` 且不消费字节，
+    /// 否则按剩余长度采样，再将跨过排除区间的下标整体后移。
     ///
     /// ```dart
     /// T pickSkipRange<T>(List<T> list, List<T> skips) {
@@ -800,15 +872,13 @@ impl RC4 {
 
     // 两个颜色拼接
 
-    /// 生成一个 RGB 颜色
-    /// (或者用于生成一个 略大一些的随机数)
+    /// 顺序消费三个字节，高字节在前，拼接为 24 位 RGB 值或无符号整数。
     #[inline]
     #[cfg_attr(not(feature = "no_debug"), track_caller)]
     #[allow(non_snake_case)]
     pub fn rFFFFFF(&mut self) -> u32 { ((self.next_u8() as u32) << 16) | ((self.next_u8() as u32) << 8) | self.next_u8() as u32 }
 
-    /// 生成一个 RGB 颜色
-    /// (或者用于生成一个 大一些的随机数)
+    /// 顺序消费两个字节，高字节在前，拼接为 0 到 65535 的无符号整数。
     #[inline]
     #[cfg_attr(not(feature = "no_debug"), track_caller)]
     #[allow(non_snake_case)]
@@ -866,7 +936,10 @@ impl RC4 {
     #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn r3(&mut self) -> u32 { self.next_u8() as u32 & 3 }
 
-    /// 用于 `req mp` 判定。
+    /// 用于 `req mp` 判定的非均匀 1 到 9 随机值。
+    ///
+    /// 只消费一个字节，将高低半字节分别加一后相乘，再右移五位并加一；
+    /// 不能用均匀的范围采样替代，否则结果分布与后续随机流都会变化。
     /// ```dart
     /// int get r3x3 {
     ///   int b = nextByte();

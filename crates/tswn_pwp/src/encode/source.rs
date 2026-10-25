@@ -1,4 +1,8 @@
 //! 固定源数据身份，先投影扫描标签计数；此阶段不反序列化机制状态。
+//!
+//! SourceDataset 拥有生成器锁文件的共享锁，存活期间阻止合作生成器续写。
+//! manifest 与完成回执组成数据集身份，分片文件哈希和标签行数在编码前核对。
+//! 这不是完整 state 语义检查，逐行编码和独立 validate 仍负责相应约束。
 use anyhow::{Context, Result, ensure};
 use parquet::arrow::{ProjectionMask, arrow_reader::ParquetRecordBatchReaderBuilder};
 use serde::Deserialize;

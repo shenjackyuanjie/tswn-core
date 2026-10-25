@@ -1,9 +1,8 @@
 //! 低精度批量任务的“外层并行”调度器。
 //!
-//! 当单局场数较小（1%/10% 这类低精度档位）时，内层 win-rate 的并行收益会被
-//! 反复 `thread::spawn` 的开销吃掉。这时改成“外层 item 并行、内层单线程”往往更快：
-//! 每个 worker 拿一个完整 item（namer-pf 的一组名字 / cqd-cqp 的一个选手）单线程跑完，
-//! 多个 item 之间并行。
+//! 通过“外层 item 并行、内层单线程”复用一组 worker，避免每个 item 都启动内层线程组。
+//! item 可是一组待评分名字或一名待评选手；worker 动态领取完整 item，
+//! 场数与 item 数共同决定是否采用该模式，具体耗时仍取决于任务分布与运行环境。
 //!
 //! 本模块只负责通用调度，不掺杂任何业务格式：
 //! - [`low_accuracy_outer_workers`] 决定该不该走外层并行、用几个 worker；
@@ -11,7 +10,7 @@
 //!   回调 `emit`，从而让上层输出顺序与串行版本保持一致。
 //!
 //! 之所以放到 `tswn_core` 而不是各 bin 内部，是因为 CLI 与 openbox GUI 都需要这套调度，
-//! 否则同一份 work-stealing + 有序回传逻辑会被复制好几份。
+//! 以共享动态领取任务与有序回传的实现。
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
@@ -19,10 +18,11 @@ use std::time::Duration;
 
 use crate::win_rate::resolve_win_rate_workers;
 
-/// 低精度外层并行的场数上限：单局场数 ≤ 此值时才考虑走外层并行。
+/// 低精度调度分界：场数不超过此值时，item 不足以填满线程预算也允许外层并行。
+/// 超过此值仅在 item 足够填满线程预算时选择外层并行。
 pub const LOW_ACCURACY_OUTER_PARALLEL_LIMIT: usize = 1000;
 
-/// 进度回调最迟每个间隔被调用线程排空，worker 不为每个 tick 等待 channel。
+/// 等待结果期间的进度轮询间隔；回调执行时间不在此上界内，worker 不逐 tick 等待 channel。
 const PROGRESS_POLL_INTERVAL: Duration = Duration::from_millis(40);
 
 /// 计算外层并行应使用的 worker 数。
@@ -53,12 +53,16 @@ struct OuterEvent<R> {
 /// - `compute(index, item, tick)`：在 worker 线程上计算单个 item，内部应保持单线程。
 ///   `tick` 是一个细粒度进度回调，`compute` 可按需调用任意次（例如每完成一个 matchup 调一次），
 ///   这些调用会被汇集到主线程的 `on_tick`。
-/// - `on_tick()`：在主线程被调用，用于推进总体进度（每次对应一次 `tick`）。
-/// - `emit(result)`：在主线程**按 item 原始顺序**被调用；返回 `Err` 会触发取消并短路后续 emit。
+/// - `on_tick()`：在调用线程被调用，用于推进总体进度（每次对应一次 `tick`）。
+/// - `emit(result)`：在调用线程**按 item 原始顺序**被调用；返回 `Err` 会触发取消并短路后续 emit。
 ///
 /// 取消语义：传入的 `cancel` 被 worker 在每个 item 前检查；`emit` 返回 `Err` 时也会置位
-/// `cancel`，让仍在运行的 worker 尽快收敛。返回值是已完成（产出 `Done`）的 item 数，
-/// 或第一个 `emit` 错误。
+/// `cancel`，使 worker 在下次检查时停止领取任务；正在执行的 `compute` 仍会运行结束，函数等待 worker 退出后
+/// 返回已完成计算的 item 数或第一个 `emit` 错误。需要 item 内取消时，计算闭包应自行检查共享标志。
+///
+/// `workers=0` 按单 worker 处理；单 worker 与 WASM 路径直接在调用线程执行。输入仅借用，
+/// 结果所有权交给 `emit`；乱序完成的结果暂存等待前项，最坏会保留与 item 数同阶的结果。
+/// 闭包 panic 会传播，接收器先于线程 join 析构，避免 worker 阻塞在有界发送上。
 pub fn run_outer_parallel_ordered<I, R>(
     items: &[I],
     workers: usize,

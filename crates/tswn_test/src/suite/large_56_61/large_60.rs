@@ -1,6 +1,8 @@
 use super::*;
 
-/// 蓄力潜行不应该被识破
+/// 蓄力与潜行交互的多成员回放回归，核对识破消息与实际攻击/击倒的先后关系。
+///
+/// 保留现有完整日志和总分 5043，不能把这份具体路径解释成所有蓄力都不会识破的通则。
 pub fn large_60<E: crate::EngineAdapter>() {
     const CASE: &str = r#"Appassionata #PxCllhk@Unbound
 AlterGate SDBEOVSGr@candle

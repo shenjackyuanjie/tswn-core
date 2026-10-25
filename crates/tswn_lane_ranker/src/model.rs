@@ -1,3 +1,9 @@
+//! 组合排名的存储行、计算中间态和 HTTP 数据协议。
+//!
+//! 原始队伍、合并队伍和展示用组合顺序分别保存，不能以展示名替代数据库 group_id。
+//! Raw 与 Correct 分数并列保留；历史聚类/约束诊断字段用于旧 API 兼容，当前算法
+//! 未产生的字段可以为空。请求中的旧 inner_workers 字段由服务接受但忽略。
+
 use serde::{Deserialize, Serialize};
 
 pub type GroupId = i64;
@@ -95,7 +101,7 @@ pub struct LaneResultRow {
     pub marginal_value: Option<f64>,
     /// 约束选择后的合法榜内名次；未入合法榜则为空。
     pub constrained_rank: Option<usize>,
-    /// selected / candidate / below_threshold / blocked / calibration_skipped。
+    /// 选择/校准状态文本；当前闭式校准可写 calibrated、below_threshold 或 blocked，旧状态保留兼容。
     pub selection_status: String,
     /// 用 tswn_lane_ranker/src/skill_eq.rs 内置 Rust 等效熟练度算法计算出的原始文字/技能类型。
     /// 该字段保留旧口径：每个成员取等效熟练度 >= 25 的技能拼接，不能和胜率分布类型混用。
@@ -377,7 +383,7 @@ pub struct TargetGenerationRequest {
 pub struct CorrectTargetTraceWeight {
     pub reference_scope: String,
     pub group_id: GroupId,
-    /// 仅用于审计展示的归一化公共权重，所有行之和为 1。
+    /// 仅用于审计展示的归一化公共权重，每个 reference_scope 内的行之和为 1。
     pub reference_weight: f64,
     /// 可直接导出的普通靶权重，等于 50 * common_coefficient。
     pub nominal_weight: f64,
@@ -418,10 +424,10 @@ pub struct TargetGenerationRow {
     pub fitted_tail_weight: Option<f64>,
     /// 保持完整大靶总质量的内部血缘权重；导出权重由它按 n/M 缩放。
     pub lineage_weight: Option<f64>,
-    /// locked_top3_proportional_mass_profile_seed_then_flatten
+    /// 当前为固定 C-Score Top30 参与替换/删除及共同吸收的压缩阶段标识，不作为算法开关。
     pub phase: String,
     pub trace_component: String,
-    /// 当前为 all_correct_candidates。
+    /// 标识从浏览器 Top50 开始、固定 Top30 删除锁定项的追溯范围，具体版本由生成器写入。
     pub trace_scope: String,
     pub trace_source: String,
     pub reference_weight: Option<f64>,

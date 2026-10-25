@@ -1,4 +1,8 @@
 //! DS4 的 QP/QD/PP/PD/CQD 单人评分与技能筛选。
+//!
+//! 与基础五模型共用名称字节展开，但使用独立的技能等效熟练度和 shadow 权重。
+//! 逐批并行求值后仍按输入顺序发布；任何名称或 I/O 错误都会返回失败。
+//! QP/QD/PP 还可依据 36×3 的 score_now 表输出技能筛选行；主输出与技能输出分别提交。
 
 use std::fs;
 use std::io::{BufRead, BufReader, Write};

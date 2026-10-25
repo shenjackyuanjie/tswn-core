@@ -1,4 +1,9 @@
-//! 与高层 `tswn-cli` 命令对齐、面向 Python 的辅助函数。
+//! 与高层 `tswn-cli` 命令对齐、面向 Python 的同步辅助函数。
+//!
+//! 函数注册在 Python 扩展顶层；返回对象持有自己的数据，不借用输入字符串或 core
+//! 运行时。胜率单位为百分比，耗时单位为纳秒；线程参数 0/1/n 表示自动/单线程/
+//! 指定线程。业务错误转换为携带稳定 code 的异常，Python 对象构造错误直接传播；
+//! 不在本层捕获 Rust panic 或回滚已经完成的计算。
 
 use pyo3::{
     Py, PyAny, PyResult, Python,
@@ -40,9 +45,10 @@ impl PyCliRuntimeError {
     fn code(&self) -> &'static str { core_cli_api::CliApiErrorCode::RuntimeFailed.as_str() }
 }
 
-#[pyclass(skip_from_py_object)]
+#[pyclass]
 #[pyo3(name = "WinRateResult")]
 #[derive(Clone)]
+/// 一组试验的独立结果：wins/total 为计数，win_rate 为百分比，耗时为纳秒。
 pub struct PyWinRateResult {
     wins: usize,
     total: usize,
@@ -88,9 +94,10 @@ impl PyWinRateResult {
     }
 }
 
-#[pyclass(skip_from_py_object)]
+#[pyclass]
 #[pyo3(name = "ScoreResult")]
 #[derive(Clone)]
+/// 单项评分结果；errors 汇总失败或耗尽保护预算的试验，不等同于输入解析错误。
 pub struct PyScoreResult {
     score: f64,
     wins: usize,
@@ -141,9 +148,10 @@ impl PyScoreResult {
     }
 }
 
-#[pyclass(skip_from_py_object)]
+#[pyclass]
 #[pyo3(name = "NamerPfResult")]
 #[derive(Clone)]
+/// 单个名字组的多模式评分；modes 与 scores 同序，total_score 为各项总和。
 pub struct PyNamerPfResult {
     group: Vec<String>,
     modes: Vec<String>,
@@ -194,9 +202,10 @@ impl PyNamerPfResult {
     }
 }
 
-#[pyclass(skip_from_py_object)]
+#[pyclass]
 #[pyo3(name = "BatchRateResult")]
 #[derive(Clone)]
+/// 候选组对靶子的汇总；平均胜率与累计 wins/total 胜率分别保留，不应混用。
 pub struct PyBatchRateResult {
     label: String,
     avg_win_rate: f64,
@@ -262,9 +271,10 @@ impl PyBatchRateResult {
     }
 }
 
-#[pyclass(skip_from_py_object)]
+#[pyclass]
 #[pyo3(name = "PairRateResult")]
 #[derive(Clone)]
+/// 单个玩家的搭档评分与头部组合副本；读取或修改取出的列表不影响其他结果。
 pub struct PyPairRateResult {
     label: String,
     final_score: f64,
@@ -345,9 +355,10 @@ impl PyPairRateResult {
     }
 }
 
-#[pyclass(skip_from_py_object)]
+#[pyclass]
 #[pyo3(name = "IconInfo")]
 #[derive(Clone)]
+/// 名字图标的结构描述；包含颜色与形状索引，不持有 PNG 像素缓冲。
 pub struct PyIconInfo {
     border_style: usize,
     shapes: Vec<usize>,
@@ -488,6 +499,10 @@ fn normalized_update_frame_to_pydict<'py>(py: Python<'py>, frame: JsonRuntimeUpd
 }
 
 #[pyfunction(signature = (raw, eval_rq=None, include_icons=false, max_rounds=None))]
+/// 同步收集规范回放为 dict/list；max_rounds 是正数回合上限，None 使用 core 默认值。
+///
+/// 返回 initial_states、frames、final_states 与终止原因；截断仍是正常返回，
+/// Runtime 失败抛异常。整场及快照全部保存在内存中，大对局优先使用 BattleSession。
 pub fn battle_replay(
     py: Python<'_>,
     raw: String,
@@ -501,6 +516,7 @@ pub fn battle_replay(
 }
 
 #[pyfunction(signature = (raw, n, eval_rq=None, thread=0))]
+/// 解析空行分队的 raw，返回第一组的计数、百分比及耗时；eval_rq=None 使用胜率口径。
 pub fn win_rate_summary(raw: String, n: usize, eval_rq: Option<f64>, thread: u32) -> PyResult<PyWinRateResult> {
     core_cli_api::win_rate_summary(&raw, n, eval_rq, thread)
         .map(Into::into)
@@ -508,6 +524,7 @@ pub fn win_rate_summary(raw: String, n: usize, eval_rq: Option<f64>, thread: u32
 }
 
 #[pyfunction(signature = (team1, team2, n, eval_rq=None, thread=0))]
+/// 比较两个多行队伍文本，返回与 win_rate_summary 相同形状的独立结果。
 pub fn team_win_rate_summary(
     team1: String,
     team2: String,
@@ -521,6 +538,7 @@ pub fn team_win_rate_summary(
 }
 
 #[pyfunction(signature = (target, against, n, eval_rq=None, thread=0))]
+/// 按 against 输入顺序返回 `(对手文本, 结果)` 列表；任一失败抛异常，不返回部分列表。
 pub fn group_win_rate_summary(
     target: String,
     against: Vec<String>,
@@ -534,11 +552,13 @@ pub fn group_win_rate_summary(
 }
 
 #[pyfunction(signature = (raw, n, mode="normal", eval_rq=None, thread=0))]
+/// 按 mode 执行单项评分，返回分数、胜场/总场、失败统计和纳秒耗时。
 pub fn score(raw: String, n: usize, mode: &str, eval_rq: Option<f64>, thread: u32) -> PyResult<PyScoreResult> {
     core_cli_api::score(&raw, n, mode, eval_rq, thread).map(Into::into).map_err(map_cli_error)
 }
 
 #[pyfunction(signature = (raw, n, modes=None, keep_rq=false, thread=0))]
+/// 按行解析名字组合，执行 modes 评分；None 使用默认模式，keep_rq 选择普通构建口径。
 pub fn namer_pf(raw: String, n: usize, modes: Option<Vec<String>>, keep_rq: bool, thread: u32) -> PyResult<Vec<PyNamerPfResult>> {
     core_cli_api::namer_pf(&raw, n, modes, keep_rq, thread)
         .map(|results| results.into_iter().map(Into::into).collect())
@@ -546,6 +566,7 @@ pub fn namer_pf(raw: String, n: usize, modes: Option<Vec<String>>, keep_rq: bool
 }
 
 #[pyfunction(signature = (target_groups, player_groups, n, player_labels=None, keep_rq=false, thread=0))]
+/// 批量比较 player_groups 与 target_groups；标签省略时自动生成，否则与候选组一一对应。
 pub fn batch_rate(
     target_groups: Vec<String>,
     player_groups: Vec<String>,
@@ -560,6 +581,7 @@ pub fn batch_rate(
 }
 
 #[pyfunction(signature = (target_groups, target_factors, player_groups, n, player_labels=None, keep_rq=false, thread=0))]
+/// 带靶子权重的批量胜率；target_factors 与目标组等长，每项必须有限且为正。
 pub fn batch_rate_factored(
     target_groups: Vec<String>,
     target_factors: Vec<f64>,
@@ -583,6 +605,7 @@ pub fn batch_rate_factored(
 }
 
 #[pyfunction(signature = (target_groups, players, teammates, head, n, keep_rq=false, thread=0))]
+/// 评估 players 与 teammates 的组合；head 控制用于最终汇总的头部搭档数量。
 pub fn pair_rate(
     target_groups: Vec<String>,
     players: Vec<String>,
@@ -598,6 +621,7 @@ pub fn pair_rate(
 }
 
 #[pyfunction(signature = (target_groups, target_factors, players, teammates, head, n, keep_rq=false, thread=0))]
+/// 以 target_factors 加权靶子胜率后评估搭档；权重须与靶子等长且有限为正。
 pub fn pair_rate_factored(
     target_groups: Vec<String>,
     target_factors: Vec<f64>,
@@ -614,24 +638,30 @@ pub fn pair_rate_factored(
 }
 
 #[pyfunction(signature = (name, old=false, minions=false))]
+/// 返回单名 DIY 文本；old 切换旧格式，minions 附带随从，非法组合抛出带 code 异常。
 pub fn to_diy(name: String, old: bool, minions: bool) -> PyResult<String> {
     core_cli_api::to_diy(&name, old, minions).map_err(map_cli_error)
 }
 
 #[pyfunction(signature = (names, old=false, minions=false))]
+/// 按输入顺序返回独立 DIY 字符串列表；任一转换失败则整次调用抛异常。
 pub fn to_diy_batch(names: Vec<String>, old: bool, minions: bool) -> PyResult<Vec<String>> {
     core_cli_api::to_diy_batch(&names, old, minions).map_err(map_cli_error)
 }
 
 #[pyfunction]
+/// 返回图标形状与颜色索引对象，不执行战斗，也不返回 PNG 字节。
 pub fn icon_info(name: String) -> PyIconInfo { core_cli_api::icon_info(&name).into() }
 
 #[pyfunction(signature = (content, double_plus=false))]
+/// 将每个非空行解析为一个多行队伍文本；double_plus 控制使用 ++ 还是 + 分隔。
 pub fn parse_group_lines(content: String, double_plus: bool) -> Vec<String> {
     core_cli_api::parse_group_lines(&content, double_plus)
 }
 
 #[pyfunction(signature = (raw, max_rounds))]
+/// 执行默认 custom Runtime 并返回规范诊断轨迹 dict；max_rounds 必须为正数。
+/// 全部回合及状态保存在内存中，适合诊断而非无限流式播放。
 pub fn default_custom_runtime_normalized_run(py: Python<'_>, raw: String, max_rounds: usize) -> PyResult<Py<PyAny>> {
     let run = core_cli_api::default_custom_runtime_normalized_run(&raw, max_rounds).map_err(map_cli_error)?;
     Ok(normalized_run_to_pydict(py, run.into())?.into_any().unbind())

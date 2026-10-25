@@ -56,7 +56,16 @@ pub struct RuntimeCompletionSummary {
     pub guard_exhausted: bool,
 }
 
-/// 可反复按不同 seed 构造 Runtime 对局的模板。
+/// 固化阵容、名字评估参数和导入配置，可反复按不同 seed 创建独立对局。
+///
+/// 准备阶段完成名字构建、handler 校验与场前基线封存；`new_with_seed` 克隆原型，
+/// 批量调用则让每个 worker 持有一个 `new_reusable_runner` 并逐局复位。
+/// 模板本身不随战斗改变，不记录之前局的胜者、召唤物或随机流位置。
+/// 准备输入须至少含一个非 seed 玩家；空阵容没有可用的初始化密钥，不属于此入口的支持域。
+///
+/// seed 是完整文本材料，常用形式为 `seed:值@!`。初始化将它与玩家身份键排序去重，
+/// 用回车连接后派生随机流；空 seed 仍由阵容决定随机流，重复材料或材料排列不改变密钥。
+/// 对局内随机方法和实体遍历顺序仍参与确定性契约，不能仅凭相同 seed 跨规则版本复现。
 #[derive(Debug, Clone)]
 pub struct PreparedRuntimeRunner {
     prototype: RuntimeRunner,
@@ -558,7 +567,11 @@ impl RuntimeRunner {
         self.run_to_completion_prevalidated(max_rounds)
     }
 
-    /// 跳过 immutable handler readiness 扫描并跑到完成，供已在构造/复位时验证的批量 runner 使用。
+    /// 跳过 handler 就绪扫描并跑到完成，供已在构造或复位时验证的批量 runner 使用。
+    ///
+    /// 调用方需保持 handler 绑定有效，并通过机制入口同步维护实体与存活视图；
+    /// 此路径直接按存活视图判胜，不重新扫描实体表。`max_rounds == 0` 只检查现有胜者，
+    /// 无胜者时报告保护上限耗尽；本方法不生成展示帧，也不保留逐回合 outcome。
     pub fn run_to_completion_prevalidated(&mut self, max_rounds: usize) -> RuntimeCompletionSummary {
         let mut rounds = 0usize;
         let mut winner_team = self.runtime.world.sync_winner_from_alive_views();
@@ -640,15 +653,27 @@ impl PreparedRuntimeRunner {
         })
     }
 
+    /// 创建独立拥有可变状态的对局；返回值不借用 `self` 或 seed 文本。
+    ///
+    /// 创建不会推进战斗。seed 只改变初始化随机流、行动顺序、运行时队伍编号与初始移动点，
+    /// 阵容身份及名字评估口径沿用准备模板；输入组索引仍用于关联原始队伍。
     pub fn new_with_seed(&self, seed: &[String]) -> Result<RuntimeRunner, CustomRuntimeImportError> {
         let mut runner = self.new_reusable_runner();
         self.reset_with_seed(&mut runner, seed)?;
         Ok(runner)
     }
 
-    /// 为单个批量 worker 创建可反复复位的 runner 缓冲区。
+    /// 为单个批量 worker 克隆场前原型，独占后续战斗与复位所用的缓冲。
+    ///
+    /// 返回值已带空 seed 的初始状态；需要特定 seed 时，在推进前调用
+    /// [`Self::reset_with_seed`]。不要让多个 worker 共享同一个可变 runner。
     pub fn new_reusable_runner(&self) -> RuntimeRunner { self.prototype.clone() }
 
+    /// 从同一准备模板恢复下一局，保留可复用容器容量并应用本场 seed。
+    ///
+    /// 清除上一局生成的实体、状态、效果、胜者、调度和回合计数，恢复技能与槽基线。
+    /// `runner` 应来自此模板；注册表、handler 与模板配置不在此入口重装，调用方
+    /// 不应替换它们。失败不保证保留旧对局，调用方可从模板重新创建 runner。
     pub fn reset_with_seed(&self, runner: &mut RuntimeRunner, seed: &[String]) -> Result<(), CustomRuntimeImportError> {
         self.reset_mutable_battle_state(runner);
         let (mut seed_state, needs_refill) = match runner.prepared_seed.take() {

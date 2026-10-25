@@ -1,8 +1,15 @@
 //! PostgreSQL 玩家读取、结果持久化和排名日志。
+//!
+//! 一个 Client 由更新器持有，连接驱动在 Tokio 后台任务中运行；重连替换 Client，
+//! 不重试已经执行的 SQL。分数、handicap、排名和历史按批次分别写入，没有跨步骤事务；
+//! 后续失败可能留下部分更新。排名文件追加在数据库更新之后，也不与数据库原子提交。
 
 use super::*;
 
-/// 建立 PostgreSQL 连接并派生驱动 future，供启动和断线重连复用。
+/// 建立不使用 TLS 的 PostgreSQL 连接，返回由调用方持有的 Client。
+///
+/// 连接 future 交给独立 Tokio 任务驱动；建立失败通过 Result 返回，建立后的驱动错误
+/// 写入 stderr。返回的 Client 不包含自动重试，断线检测和重连由更新器负责。
 pub(super) async fn connect_postgres(database_url: &str) -> Result<Client> {
     let (client, connection) = tokio_postgres::connect(database_url, NoTls).await.context("connect PostgreSQL")?;
 
@@ -17,7 +24,9 @@ pub(super) async fn connect_postgres(database_url: &str) -> Result<Client> {
 }
 
 impl Updator {
-    /// 每轮/每组开始前确认连接可用；连接已关闭时重连一次。
+    /// 每轮/每组开始前检查 Client 的关闭状态，已关闭则尝试重连一次。
+    ///
+    /// 这不是往返数据库的健康检查；连接建立失败原样返回，调用方决定跳过当前轮或当前组。
     pub(super) async fn ensure_postgres_connected(&mut self) -> Result<()> {
         if !self.client.is_closed() {
             return Ok(());
@@ -26,7 +35,9 @@ impl Updator {
         eprintln!("[db] PostgreSQL连接已关闭，正在重连");
         self.reconnect_postgres().await
     }
-    /// 仅在错误确实源于连接关闭时重连，避免对普通 SQL 错误做无谓重试。
+    /// 错误链指示连接关闭或 Client 已关闭时重连，普通 SQL 错误不触发重连。
+    ///
+    /// 重连失败仅记录日志，不覆盖原始业务错误，也不重放此前的部分更新。
     pub(super) async fn reconnect_after_postgres_error(&mut self, err: &anyhow::Error) {
         if !is_closed_postgres_error(err) && !self.client.is_closed() {
             return;
@@ -385,7 +396,9 @@ pub(super) fn numeric_to_f64(row: &tokio_postgres::Row, idx: usize) -> f64 {
     0.0
 }
 
-/// 识别错误链里的连接关闭原因及仅保留文本的关闭错误。
+/// 检查完整错误链中的 PostgreSQL 关闭标记，并兼容仅保留 `connection closed` 文本的错误。
+///
+/// 文本判断用于已经丢失具体错误类型的包装层；调用方仍须处理重连失败和非连接类错误。
 fn is_closed_postgres_error(err: &anyhow::Error) -> bool {
     err.chain().any(|cause| {
         cause

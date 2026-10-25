@@ -6,6 +6,8 @@
 //!
 //! 本轮只覆盖第 5 节"逐字段标量"里已冻结的第一批字段；分类、引用、bit、精确注册序与
 //! 未进白名单的槽值不参与统计。缺字段时 encoder 必须返回 `MissingCalibration`，不允许默认 1。
+//! 输入须先完成 validate，采集期间不加目录锁；有限数值全部驻留内存以求分位数。
+//! 默认只选有标签 train 行，可显式切换诊断口径；可选输出报告不会改写源分片。
 
 use crate::{DatasetConfig, SampleRow, storage};
 use anyhow::{Context, Result};
@@ -37,7 +39,9 @@ pub struct CalibrateArgs {
     pub print_fields: bool,
 }
 
-/// 单字段的分布与拟合常数。
+/// 单字段所有有限观测的有符号分位数、绝对值分位数和拟合尺度。
+///
+/// s_f/c_f 分别从绝对值中位数/p99 取且下限为 1；count 是字段出现次数，不是选中样本数。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CalibrationField {
     pub count: usize,
@@ -51,7 +55,10 @@ pub struct CalibrationField {
     pub c_f: f64,
 }
 
-/// 校准结果；`fields` 的键是第 5 节的完整字段路径。
+/// 校准结果及其来源身份；fields 以冻结的完整字段路径作为键。
+///
+/// 未出现或仅含非有限值的字段不输出，交由编码器检查缺失。selected_rows_digest
+/// 只摘要分片号和片内行号，须结合输入/可执行文件摘要解读，不是样本内容的独立哈希。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CalibrationReport {
     pub schema: String,

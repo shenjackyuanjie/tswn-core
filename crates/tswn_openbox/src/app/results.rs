@@ -1,4 +1,8 @@
-//! 三种视图共用的结果模型；只格式化变化项，布局限于当前可见行。
+//! 三种视图共用的结果模型，按组和明细索引接收自有增量数据。
+//!
+//! 显示名允许重复，索引才是主键；完成前的数值是预览，finish/终态决定完整或停止
+//! 状态。模型负责缓存、排序与较早记录裁剪，子模块只绘制可见行；所有更新和渲染
+//! 在 UI 线程进行，不把模型引用交给后台计算。复制结果只覆盖当前保留的记录。
 
 pub(crate) use view::{RESULT_FOOTER_HEIGHT, scrolled_to_end};
 
@@ -22,12 +26,14 @@ pub(crate) const TABLE_AUTO_RATIO: f32 = 0.55;
 /// 表格下方选中行明细至少保留的高度。
 pub(crate) const TABLE_DETAIL_MIN: f32 = 120.0;
 
-/// 与 [`Tool::ALL`] 顺序一致的默认视图：导出与配队看卡片，评分与胜率看表格，DS4 看纯文本。
-pub(crate) const DEFAULT_VIEW_MODES: [ViewMode; 5] = [
+/// 与 [`Tool::ALL`] 顺序一致的默认视图：导出与配队看卡片，评分与胜率看表格，
+/// 只有纯文本结果的 base 与 DS4 看纯文本。
+pub(crate) const DEFAULT_VIEW_MODES: [ViewMode; 6] = [
     ViewMode::Cards,
     ViewMode::Table,
     ViewMode::Table,
     ViewMode::Cards,
+    ViewMode::Text,
     ViewMode::Text,
 ];
 
@@ -113,8 +119,11 @@ impl Record {
         }
     }
 
-    /// 结果块的标题行：序号、名字、摘要与状态；卡片显示与复制文本共用。
-    fn title_line(&self, group: usize, terminal: Option<&str>) -> String {
+    /// 结果块的标题行：序号、名字与摘要；卡片显示与复制文本共用。
+    ///
+    /// 完成的组不再在标题里写“完成”，那一格改由「复制名字」按钮承担，未完成的状态
+    /// 由调用方按 [`Record::state_text`] 单独放在标题右侧。
+    fn title_text(&self, group: usize) -> String {
         let summary = if self.summary.is_empty() {
             String::new()
         } else {
@@ -125,12 +134,21 @@ impl Record {
         } else {
             ""
         };
-        format!("#{} {}{summary}   {}{top}", group + 1, self.label, self.state_text(terminal))
+        format!("#{} {}{summary}{top}", group + 1, self.label)
+    }
+
+    /// 表格下方分隔条上的标题：选中行的名字与分数；还没有分数时只写名字。
+    fn divider_text(&self) -> String {
+        if self.summary.is_empty() {
+            self.label.clone()
+        } else {
+            format!("{} {}", self.label, self.summary)
+        }
     }
 
     /// 结果块的可复制文本：标题行加全部明细行，与卡片和选中行显示的内容一致。
-    fn copy_text(&self, group: usize, terminal: Option<&str>) -> String {
-        let mut text = self.title_line(group, terminal);
+    fn copy_text(&self, group: usize) -> String {
+        let mut text = self.title_text(group);
         for line in &self.details {
             text.push('\n');
             text.push_str(&line.text);
@@ -338,10 +356,9 @@ impl ResultsView {
 
     /// 指定结果块的可复制文本：标题行加明细行；明细顺序在此处刷新。
     pub(crate) fn copy_record_text(&mut self, group: usize) -> Option<String> {
-        let terminal = self.terminal.as_deref();
         let record = self.records.get_mut(&group)?;
         record.refresh_detail_order();
-        Some(record.copy_text(group, terminal))
+        Some(record.copy_text(group))
     }
 
     pub fn finish(&mut self, status: &str) { self.terminal = Some(status.to_owned()); }

@@ -1,3 +1,9 @@
+//! 单号、加权靶子、评分缓存与结果的 SQLite 持久化。
+//!
+//! Db 克隆共享一个受 Mutex 保护的同步连接，打开时启用 WAL 并初始化表。
+//! 靶子整体替换与结果整体替换各自使用事务；跨方法的读取、计算和回写不是同一快照。
+//! pair_scores 按无序 ID、靶子签名和采样次数匹配缓存，不自动检测 core 或算法版本变化。
+
 use crate::abcp_calibration::Candidate;
 use crate::model::{NameRow, ResultDetailRow, ResultPartnerRow, ResultRow, TargetRow};
 

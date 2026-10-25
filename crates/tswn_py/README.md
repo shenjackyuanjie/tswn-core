@@ -11,7 +11,7 @@ pip install tswn_py
 或从本地 wheel 安装：
 
 ```bash
-pip install crates/tswn_py/dist/tswn_py-*.whl
+python -m pip install crates/tswn_py/dist/<匹配当前解释器和平台的-wheel-文件名>.whl
 ```
 
 ## 构建（线上口径）
@@ -32,8 +32,8 @@ import tswn_py
 # 版本查询
 print(tswn_py.wrapper_version_str(), tswn_py.core_version_str())
 
-# 图标渲染
-b64 = tswn_py.name_to_png_base64("某个玩家名")
+# 图标渲染：返回带 data:image/png;base64, 前缀的 data URL，可直接用作图片地址。
+icon_url = tswn_py.name_to_png_base64("某个玩家名")
 
 # 正式增量对局接口
 raw_input = "alpha\n\nbeta"
@@ -64,7 +64,7 @@ Runtime error 后会话进入 sticky failure（poisoned）：`is_failed() = true
 | ----------------------------------------------------- | ------------------------------ |
 | `core_version_str()`                                  | tswn_core 版本                 |
 | `wrapper_version_str()`                               | tswn_py 版本                   |
-| `name_to_png_base64(name)`                            | 名称 → PNG Base64              |
+| `name_to_png_base64(name)`                            | 名称 → PNG data URL（带 Base64 前缀）              |
 | `name_to_png_bytes(name)`                             | 名称 → PNG 字节                |
 | `name_to_icon_rgba(name)`                             | 名称 → 16×16 RGBA              |
 | `win_rate(raw, n, eval_rq, thread)`                   | 胜率统计                       |
@@ -73,7 +73,7 @@ Runtime error 后会话进入 sticky failure（poisoned）：`is_failed() = true
 | `win_rate_summary(raw, n, eval_rq, thread)`           | 胜率统计，返回胜场/总场次/耗时 |
 | `team_win_rate_summary(team1, team2, n, ...)`         | 对齐 `bench win-rate` 的两队胜率 |
 | `group_win_rate_summary(target, against, n, ...)`     | 对齐 `bench group-win-rate` 的多对手胜率 |
-| `score(raw, n, mode, eval_rq, thread)`                | 对齐 score benchmark 的普通/`!` 评分 |
+| `score(raw, n, mode, eval_rq, thread)`                | 对齐 `bench auto` 单组输入的普通/`!` 评分 |
 | `namer_pf(raw, n, modes, keep_rq, thread)`            | 对齐 `namer-pf` 的 pp/pd/qp/qd 评分 |
 | `batch_rate(target_groups, player_groups, n, ...)`    | 对齐 `bench batch-rate` 的批量平均胜率 |
 | `pair_rate(target_groups, players, teammates, ...)`   | 对齐 `bench pair` 的配队评分 |
@@ -158,6 +158,8 @@ timeline = tswn_py.compute_show_timeline(updates, player_count=len(states))
 （`[]` 高亮文字色号）、`tone`、关联玩家 id、侧栏状态快照和胜利片段标记；文本、玩家、数值、血条前后值、死亡特效标记和 emoji 占位字段都在 `parts[]` 内。调用方可以直接渲染这些结构化字段，
 无需再根据事件文本模拟扣血、召唤、复活或状态变化。事件快照仍使用每个 tick 前后的真实引擎状态
 （`state_granularity == "tick"`）。
+
+`Runner.build_replay(limit=None)` 从 runner 的当前位置推进，不重新开局。`limit` 按可见事件数计量，不是帧数；`frames` 总是收录完整回合，所以同一末回合的帧内容可能比已截断的扁平 `events` 多。无论是否显式传入 limit，仍受 20,000 主回合与无进展保护；规范的停止原因与粘性错误查询应使用 `BattleSession` / `battle_replay`。
 
 玩家快照中的 `display_index` 用于展示同名分身序号：本体为 `0`，后续分身为 `1`、`2`……。
 replay view 中的玩家文本会使用该序号，而唯一对象编号仍保留在 `id` 字段中。

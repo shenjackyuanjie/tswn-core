@@ -158,7 +158,7 @@ pub(super) struct BenchOptions {
     #[arg(short = 'n', long = "count", value_name = "N")]
     count: Option<usize>,
 
-    /// 指定 benchmark 线程数；默认自动（约系统线程 × 1.5）。
+    /// 指定 benchmark 线程数；省略时由共享调度器自动选择。
     #[arg(short = 't', long = "thread", value_parser = parse_thread_count, value_name = "N")]
     thread: Option<usize>,
 

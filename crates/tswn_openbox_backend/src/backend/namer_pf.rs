@@ -1,4 +1,7 @@
 //! 批量评分任务：增量指标、技能榜与有序输出。
+//!
+//! 输入每行一个名字组，仅计算启用指标所需的评分；技能榜可能要求补算全部四项。
+//! 每个指标可有独立文件和阈值，创建/读取/计算失败通过 Done 报告，已写结果不回滚。
 
 use super::format::{format_rate, should_highlight};
 use super::live::{EntryKind, ResultEntry, ResultFinish, ResultKind, ResultObserver, ResultUpdate};
@@ -12,9 +15,14 @@ use std::io::Write as _;
 use std::sync::atomic::Ordering;
 use tswn_core::bench_sched::{low_accuracy_outer_workers, run_outer_parallel_ordered};
 
+/// 同步计算所选评分项与技能榜，借 send 传回日志、进度和终态；函数本身不返回 Result。
+/// 输入按值移交，取消通过 input.cancel 请求；回调失败或 panic 不在此入口捕获。
 pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) { run_namer_pf_observed(input, send, None); }
 
-/// GUI 可选增量观察接口；None 保留原来的输出契约。
+/// 在原任务事件之外发布结构化增量；observer=None 保留传统文本输出。
+///
+/// 观察者仅在本次同步调用期间借用，可能在计算 worker 并发执行；应把自有更新
+/// 转交收件箱，不直接访问 UI。完成前的明细只是预览，最终状态以 Done 为准。
 pub fn run_namer_pf_observed(input: NamerPfInput, send: impl Fn(ProgressEvent), observer: ResultObserver<'_>) {
     let groups = parse_namer_pf_groups(&input.raw);
     if groups.is_empty() {

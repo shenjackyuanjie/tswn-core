@@ -20,6 +20,9 @@ pub mod golden;
 pub mod suite;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 测试快照中的事件类别，区分普通事件、排版换行和胜利通知。
+///
+/// NextLine 只影响日志分组，不计入战斗总分；golden 摘要则保留类别本身以发现排版语义变化。
 pub enum SnapshotKind {
     Event,
     NextLine,
@@ -27,6 +30,9 @@ pub enum SnapshotKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// 一次可比较的渲染事件：完整消息、施法者名称、积分和类别。
+///
+/// 字符串由适配器持有，不借用 runner；名称用于日志/积分断言，不是跨局稳定实体 ID。
 pub struct EventSnapshot {
     pub message: String,
     pub caster_name: String,
@@ -34,21 +40,36 @@ pub struct EventSnapshot {
     pub kind: SnapshotKind,
 }
 
+/// 共享黑盒回放用例所需的最小引擎接口，Runner 的所有权交给测试函数持有。
+///
+/// main_round 推进一个引擎轮次，允许无可见消息；调用方用独立轮数上限防止无限运行。
+/// 普通用例只需要消息/分数/胜者，冻结 stress 比较另外要求胜者队伍和 RC4 游标可用。
+/// 构造失败以文本错误返回，推进阶段的机制错误如何呈现由适配器决定。
 pub trait EngineAdapter {
     type Runner;
 
+    /// 消费完整对战文本并构建独立 runner，输入解释失败返回便于断言的错误文本。
     fn new_from_raw(raw: String) -> Result<Self::Runner, String>;
+    /// 可变推进一轮并移出本轮快照；空向量不表示已经产生胜者，调用方仍须查询 have_winner。
     fn main_round(runner: &mut Self::Runner) -> Vec<EventSnapshot>;
     fn have_winner(runner: &Self::Runner) -> bool;
     fn winner_names(runner: &Self::Runner) -> Vec<String>;
 
+    /// 返回引擎胜者的队伍编号；默认不支持，需比较 stress golden 的适配器必须覆盖。
     fn winner_team_index(_runner: &Self::Runner) -> Option<usize> { None }
 
+    /// 读取当前 RC4 的 i/j 游标，不消费随机数；不支持时返回 None。
     fn rc4_state(_runner: &Self::Runner) -> Option<(usize, usize)> { None }
 }
 
+/// 当前 Runtime 的无状态适配器类型，实际 runner 在 trait 实现中创建并由测试持有。
+///
+/// 使用默认自定义机制导入配置和输入名解析，不复用其他测试的 RNG 或全局战斗状态。
 pub struct RuntimeEngine;
 
+/// 在调用位置生成指定 EngineAdapter 的共享回放测试，不读取或更新磁盘基线。
+///
+/// 生成的模块名固定，同一作用域应只展开一次；stress corpus 的额外入口另行注册。
 #[macro_export]
 macro_rules! test_engine_suite {
     ($engine:ty) => {

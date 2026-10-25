@@ -1,4 +1,8 @@
-//! CLI 侧的主 Runtime 正式入口。
+//! CLI 侧的主 Runtime 诊断入口。
+//!
+//! diff 收集消息文本后统一输出，normalized-run 返回完整的诊断 JSON；两者都先运行对局，
+//! 不承担普通 `fight --jsonl` 的逐事件刷新契约。输入构建、执行与序列化错误转换成中文上下文，
+//! 由命令入口写入 stderr 并以非零状态退出。
 
 use super::trace::collect_runtime_diff_lines;
 use tswn_core::cli_api::{self as core_cli_api, CliApiError, JsonRuntimeNormalizedRun};

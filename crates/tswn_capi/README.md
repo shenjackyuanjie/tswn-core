@@ -19,7 +19,7 @@
 - `RunUpdates` 基本读取
 - `win_rate` / `group_win_rate` / `prepared_win_rate`
 - `tswn-cli` 对齐的高层 helper（`*_json` / `tswn_to_diy`）
-- icon RGBA / PNG / Base64
+- 图标 RGBA 字节、PNG 文件字节和 PNG data URL（`tswn_name_to_png_base64` 返回带 `data:image/png;base64,` 前缀的地址，不是裸 Base64）
 
 推荐使用 [跨语言高层 API 约定](../../docs/reference/public-api.md) 中的 JSON helper；`Runner` 句柄和基础 `win_rate` 仍保留为 Advanced API。
 
@@ -94,5 +94,7 @@ V1 prefix 永久兼容，旧 caller -> 新 library 继续可用：未提供的�
 - 标准化轨迹：`tswn_default_custom_runtime_normalized_run_json(...)`
 
 这些接口返回的 `tswn_str_t` 都需要由调用方使用 `tswn_str_free()` 释放。
+
+图标接口 `tswn_name_to_png_base64` 同样遵守线程局部错误约定：名称指针为 NULL 时返回 `INVALID_ARGUMENT`，非法 UTF-8 返回 `INVALID_INPUT`；成功调用清除该线程的旧错误。返回的 data URL 仍由 `tswn_str_free()` 释放，ABI 与成功输出格式不变。
 
 高层调用失败后，除 status 外还可通过 `tswn_last_error_code()` 与 `tswn_last_error_message()` 获取稳定错误码和可读说明。

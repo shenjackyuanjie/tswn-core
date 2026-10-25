@@ -1,3 +1,9 @@
+//! 用编译期 ABCP 参数和名称特征，为候选配对筛选各方向的模型 Top10。
+//!
+//! 两份 include_str 资源必须在构建前提供；embedded 校验主要向量长度并解析特征行，
+//! 不重新训练模型，也不完整验证树索引和环结构。缺名称特征时仅使用 affine 分支；
+//! 模型分数经 logit 后叠加搭档系数的对数，调用方应提供有限正系数和可信校准资源。
+
 use std::collections::{HashMap, HashSet};
 
 use anyhow::Context;

@@ -1,3 +1,9 @@
+//! 已存 Raw 结果的 Correct 校准，以及独立的严格 Python 验证入口。
+//!
+//! 正常校准使用 Rust 固定槽位替换闭式公式；相同阈值/score_mode 且已有有限结果时
+//! 可复用追溯。严格验证另行运行 Python，不以 Rust 近似指标代替其数值过程。
+//! 缺失对局会补算并保存；结果与追溯分别提交，追溯保存失败会尽力清除旧记录。
+
 mod correct;
 mod python;
 mod rates;

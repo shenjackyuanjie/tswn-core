@@ -1,3 +1,9 @@
+//! 可复现数据集生成、独占目录锁与逐分片提交。
+//!
+//! 先固定输入/配置/可执行文件摘要，再以独立 battle_id 派生 seed；每局跑两遍并比较边界与结果。
+//! worker 只处理未提交分片，临时目录回读验证后重命名发布；续跑必须与 manifest 完全一致。
+//! 失败触发共享停止标记并等待所有作用域线程，已完成分片保留，当前失败现场尽力记录。
+
 use crate::{
     BattleRow, DatasetConfig, GenerateArgs, SampleRow, input, random, sampling,
     storage::{self, ShardReceipt, TableWriter},
@@ -134,7 +140,7 @@ pub fn generate(args: &GenerateArgs) -> Result<()> {
         bail!("生成停止；已完成分片保留。复现信息见临时分片 active-battle.json。\n{message}");
     }
     // 分片在 worker 内已经回读校验过一次；本次运行覆盖全部分片时直接汇总，
-    // 不再让 `validate_dataset` 把全部 Parquet 重解一遍（8 分片规模约省 1.1 s）。
+    // 不再让 `validate_dataset` 把全部 Parquet 重解一遍。
     // 续跑时已有分片没有本轮摘要，仍走完整校验。
     let summary = if pending.len() == shard_count {
         let fresh = results.into_iter().filter_map(Result::ok).flatten().collect();
@@ -158,9 +164,9 @@ pub(crate) fn range(config: &DatasetConfig, index: usize, total: usize) -> (usiz
 
 /// 样本行转 Parquet 的批量大小。
 ///
-/// 每个 `SampleRow.state` 约有 450 个叶子列，逐局（8 行）调用一次 `serde_arrow`
-/// 时，schema 遍历和列缓冲的固定开销要摊在 8 行上。攒到 256 行再转一次
-/// `RecordBatch`，同样的数据量下写入阶段的开销明显下降。
+/// 先累计多个对局的 state，再统一转换 RecordBatch，用批次摊分 schema/列缓冲的固定工作。
+/// 此值是触发阈值而非硬上限：整局样本一次加入，实际批次可超过它；未满尾批也会写出。
+/// 它只控制写入缓冲，不改变战斗 seed、抽样选择、行序或最终样本数。
 const APPEND_BATCH_ROWS: usize = 256;
 
 fn write_shard(out: &Path, config: &DatasetConfig, index: usize, total: usize, stop: &AtomicBool) -> Result<Summary> {
@@ -223,10 +229,9 @@ fn write_shard(out: &Path, config: &DatasetConfig, index: usize, total: usize, s
 
 /// 分片在飞对局记录：只在失败或 panic 时落盘，避免每局一次卷级刷盘。
 ///
-/// 旧实现每局都写一次 `active-battle.json` 并 `sync_all`，1000 局就是 1000 次
-/// `FlushFileBuffers`；多 worker 并行时这些刷盘互相排队，实测同一批对局在 4 分片
-/// 并行下的墙钟比 4 个独立进程慢 70%，CPU 时间也多 24%。失败复现信息只在真正
-/// 出错时才有用，因此改为在内存里记住当前对局，`Drop` 时再写。
+/// 借用整份配置，在内存保存当前 battle_id、case_index 和 seed；普通错误或 unwind
+/// 离开作用域时由 Drop 尽力写入，写失败只记日志。正常对局循环结束后 defuse，
+/// 后续收尾 I/O 错误不再归因于最后一局；进程强杀、abort 或掉电不会执行此 Drop。
 struct ActiveBattle<'a> {
     path: PathBuf,
     config: &'a DatasetConfig,

@@ -39,6 +39,92 @@ fn unchecked_prga_matches_safe_reference() {
 }
 
 #[test]
+fn peek_matches_next_byte_without_changing_state() {
+    let mut rng = RC4::new(b"peek-regression", 2);
+    for step in 0..4096 {
+        let before = rng.clone();
+        let mut expected = before.clone();
+        let next = expected.next_u8();
+        assert_eq!(rng.peek_next_u8(), next, "step={step}");
+        assert_eq!(rng.peek_next_u8(), next, "重复观察：step={step}");
+        assert_eq!((rng.i, rng.j), (before.i, before.j));
+        assert_eq!(rng.main_val, before.main_val);
+        #[cfg(not(feature = "no_debug"))]
+        assert_eq!(rng.byte_count, before.byte_count);
+        assert_eq!(rng.next_u8(), next);
+    }
+}
+
+#[test]
+fn peek_handles_output_collisions_and_wrapped_cursors() {
+    for (case, i, j, swap_zero_one) in [
+        ("输出下标与 i 相撞", 0, 255, false),
+        ("输出下标与 j 相撞", 0, 2, true),
+        ("i 与 j 相同", 0, 0, false),
+        ("输出下标不相撞", 0, 3, false),
+        ("游标只使用低八位", u32::MAX, u32::MAX, false),
+    ] {
+        let mut rng = RC4::default();
+        rng.i = i;
+        rng.j = j;
+        if swap_zero_one {
+            rng.main_val.swap(0, 1);
+        }
+        let before = rng.clone();
+        let mut expected = before.clone();
+        let next = reference_next_u8(&mut expected.main_val, &mut expected.i, &mut expected.j);
+        assert_eq!(rng.peek_next_u8(), next, "{case}");
+        assert_eq!(rng.peek_next_u8(), next, "重复观察：{case}");
+        assert_eq!((rng.i, rng.j), (before.i, before.j), "{case}");
+        assert_eq!(rng.main_val, before.main_val, "{case}");
+        #[cfg(not(feature = "no_debug"))]
+        assert_eq!(rng.byte_count, before.byte_count, "{case}");
+        assert_eq!(rng.next_u8(), next, "{case}");
+    }
+}
+
+#[test]
+fn bounded_integer_sampling_preserves_compatibility_byte_counts() {
+    for (max, consumed) in [(0, 0), (1, 2), (255, 2), (256, 3), (65535, 3), (65536, 4), (0x0080_0000, 4)] {
+        let mut actual = RC4::new(b"integer-boundaries", 1);
+        let mut expected = actual.clone();
+        for _ in 0..consumed {
+            reference_next_u8(&mut expected.main_val, &mut expected.i, &mut expected.j);
+        }
+        let value = actual.next_i32(max);
+        if max == 0 {
+            assert_eq!(value, 0);
+        } else {
+            assert!((0..max).contains(&value), "max={max}, value={value}");
+        }
+        assert_eq!((actual.i, actual.j), (expected.i, expected.j), "max={max}");
+        assert_eq!(actual.main_val, expected.main_val, "max={max}");
+    }
+}
+
+#[test]
+fn degenerate_selection_does_not_consume_random_bytes() {
+    let mut actual = RC4::new(b"selection-boundaries", 1);
+    let before = actual.clone();
+    assert_eq!(actual.pick::<u8>(&[]), None);
+    assert_eq!(actual.pick(&[7]), Some(0));
+    assert_eq!(actual.pick_skip::<u8>(&[], 0), None);
+    assert_eq!(actual.pick_skip(&[7], 0), None);
+    assert_eq!(actual.pick_skip(&[7], 1), Some(0));
+    assert_eq!(actual.pick_skip_range(&[7], &[0]), None);
+    assert_eq!(actual.pick_skip_range(&[7], &[]), Some(0));
+    assert_eq!(actual.pick_skip_range(&[7, 8], &[0, 1]), None);
+    assert_eq!((actual.i, actual.j), (before.i, before.j));
+    assert_eq!(actual.main_val, before.main_val);
+
+    let mut expected = before;
+    expected.next_i32(1);
+    assert_eq!(actual.pick_skip(&[7, 8], 0), Some(1));
+    assert_eq!((actual.i, actual.j), (expected.i, expected.j));
+    assert_eq!(actual.main_val, expected.main_val);
+}
+
+#[test]
 fn optimized_key_scheduling_matches_safe_reference() {
     for key_len in [1usize, 2, 3, 7, 16, 31, 255, 256] {
         let keys: Vec<u8> = (0..key_len).map(|index| (index as u8).wrapping_mul(181).wrapping_add(160)).collect();

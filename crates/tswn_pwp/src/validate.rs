@@ -1,3 +1,9 @@
+//! 已提交数据集的字节、对局身份、抽样边界与机制引用校验。
+//!
+//! 先检查 manifest、目录范围和分片回执，再逐批读取 Parquet，对照每局 seed/切分/标签
+//! 以及模型 state 的引用约束。独立分片并行检查，错误按分片编号顺序汇总返回。
+//! 校验不重跑战斗，也不取得生成器目录锁；调用方须保证输入已完成且读取期间不被修改。
+
 use crate::{
     BattleRow, DatasetConfig, SampleRow, input, random,
     storage::{self, ShardReceipt},
@@ -47,8 +53,7 @@ pub fn validate_dataset(out: &Path) -> Result<Summary> {
     let shard_count = total.div_ceil(config.battles_per_shard);
     check_layout(out, shard_count)?;
     let mut summary = Summary::default();
-    // 逐分片校验彼此独立，且每一步都要重新解 Parquet 的宽嵌套状态；串行回读在
-    // 8 分片规模下要 3.2 s，占 `generate` 总墙钟的一半以上，因此按分片并行。
+    // 分片之间没有引用，分别检查后按编号归并，避免错误报告随 worker 完成顺序变化。
     let workers = std::thread::available_parallelism().map_or(1, usize::from).min(shard_count.max(1));
     let next = std::sync::atomic::AtomicUsize::new(0);
     let results = std::sync::Mutex::new(Vec::<(usize, Result<Summary>)>::with_capacity(shard_count));

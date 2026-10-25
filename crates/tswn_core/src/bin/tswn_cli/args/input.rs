@@ -75,10 +75,14 @@ pub(super) fn parse_percent_0_100(raw: &str) -> Result<f64, String> {
     }
 }
 
-/// 解析非负浮点数。
+/// 解析有限的非负浮点阈值。
+///
+/// 接受零与负零；拒绝 NaN、无穷和解析时溢出的数值，避免后续大小比较静默失效。
 pub(super) fn parse_non_negative_f64(raw: &str) -> Result<f64, String> {
     let value = raw.parse::<f64>().map_err(|_| "阈值必须是非负数字".to_string())?;
-    if value < 0.0 {
+    if !value.is_finite() {
+        Err("阈值必须是有限非负数字".to_string())
+    } else if value < 0.0 {
         Err("阈值必须不小于 0".to_string())
     } else {
         Ok(value)
@@ -149,7 +153,8 @@ pub(super) fn parse_plus_separated_groups(content: &str, double_plus: bool) -> V
 /// 例如 `pp::pp.txt` 表示无屏幕阈值但写入 `pp.txt`。
 ///
 /// FILE 段按“最后一段是可解析数字才算 MIN_FILE”的规则回切，因此 Windows 的
-/// `C:\dir\out.txt` 这类带盘符冒号的路径不会被切碎。
+/// `C:\dir\out.txt` 这类带盘符冒号的路径不会被切碎。阈值必须有限且非负；
+/// 除开头盘符的冒号外，FILE 中的其他冒号一律拒绝，UNC 路径不受影响。
 pub(super) fn parse_metric_spec(raw: &str) -> Result<NamerPfMetricSpec, String> {
     let mut segments = raw.split(':');
     let name = segments.next().unwrap_or_default().trim();
@@ -200,7 +205,11 @@ fn path_has_illegal_colon(path: &Path) -> bool {
     let raw = path.to_string_lossy();
     let mut chars = raw.chars();
     let is_drive = matches!((chars.next(), chars.next()), (Some(letter), Some(':')) if letter.is_ascii_alphabetic());
-    !is_drive && raw.contains(':')
+    if is_drive {
+        chars.as_str().contains(':')
+    } else {
+        raw.contains(':')
+    }
 }
 
 /// 解析带权靶子 TOML。每个 `[[targets]]` 项包含正数 `factor` 和非空 `players` 数组。
@@ -271,7 +280,7 @@ pub(super) fn parse_win_rate_teams(content: &str, double_plus: bool) -> Result<(
 /// 与 `parse_plus_separated_groups` 相同，但会额外保留每行原始文本作为展示标签。
 ///
 /// `double_plus=true` 时，组内分隔符改成 `++`，用来避免把玩家名字里的 `+diy[...]`
-/// 或 `+ol:...` 误切开。这里刻意只在 player-list 上启用，因为靶子列表不需要兼容这类格式。
+/// 或 `+ol:...` 误切开。返回的 groups 与 labels 等长，展示标签保留去除首尾空白后的整行文本。
 pub(super) fn parse_player_groups_with_labels(content: &str, double_plus: bool) -> (Vec<String>, Vec<String>) {
     let mut groups = Vec::new();
     let mut labels = Vec::new();
@@ -396,6 +405,31 @@ mod tests {
         assert_eq!(spec.min_screen, Some(8000.0));
         assert_eq!(spec.output_file, Some(PathBuf::from(r"C:\scores\pd.txt")));
         assert_eq!(spec.min_file, Some(7000.0));
+    }
+
+    #[test]
+    fn non_negative_thresholds_reject_non_finite_values() {
+        for raw in ["NaN", "inf", "+inf", "-inf", "1e999"] {
+            assert!(parse_non_negative_f64(raw).is_err(), "应拒绝非有限阈值: {raw}");
+            assert!(parse_metric_spec(&format!("pp:{raw}")).is_err());
+            assert!(parse_metric_spec(&format!("pp::out.txt:{raw}")).is_err());
+        }
+        for raw in ["0", "-0", "0.5", "1e100"] {
+            assert!(parse_non_negative_f64(raw).is_ok(), "应接受有限非负阈值: {raw}");
+        }
+    }
+
+    #[test]
+    fn metric_spec_rejects_extra_colons_after_drive_prefix() {
+        for raw in [
+            r"pp::C:\scores\out.txt:stream",
+            r"pp::C:\scores\out.txt:stream:1",
+            "pp::out.txt:stream",
+        ] {
+            assert!(parse_metric_spec(raw).is_err(), "应拒绝路径中的额外冒号: {raw}");
+        }
+        assert!(parse_metric_spec(r"pp::C:\scores\out.txt").is_ok());
+        assert!(parse_metric_spec(r"pp::C:\scores\out.txt:1").is_ok());
     }
 
     #[test]

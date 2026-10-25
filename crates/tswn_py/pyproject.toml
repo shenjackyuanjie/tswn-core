@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel", "setuptools-rust>=1.8"]
+requires = ["setuptools>=84.2.1", "wheel>=0.48.0", "setuptools-rust>=1.13.0"]
 build-backend = "setuptools.build_meta"
 
 [project]

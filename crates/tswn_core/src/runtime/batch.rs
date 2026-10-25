@@ -3,6 +3,18 @@
 //! 胜率路径复用 [`PreparedRuntimeRunner`]，每局只重建 seed 相关状态；评分路径的
 //! profile 名字每轮都会变化，因此复用 registry 配置并按轮构造 roster。两条路径都
 //! 使用不保留逐回合帧的 completion runner，避免 benchmark 热路径积累回放向量。
+//!
+//! # 轮次、分片与统计
+//!
+//! 胜率轮次从 0 开始：第 0 轮不附加 seed，后续轮次使用
+//! `seed:{PROFILE_START + round}@!`。区间入口按原始 `[start, end)` 编号执行，
+//! 不会在每个分片重新从 0 编号；并行调度只影响完成顺序，不改变每轮输入。
+//! 评分则以轮次推进数字 profile 名字，并使用空的额外 seed；不要混用这两种编号规则。
+//!
+//! 每局最多推进 100,000 回合。`total` 计入成功初始化的对局，达到保护上限的局
+//! 仍计入 `total` 并累加 `guard_exhausted`；`wins` 按第一输入组与最终胜者 roster
+//! 是否相交判定。评分的逐轮初始化失败累加 `errors`，不计入 `total`；
+//! 固定阵容胜率的初始化错误直接返回 `Err`。普通入口不逐局计时，`timing` 保持零值。
 
 use std::fmt::Write as _;
 use std::sync::Arc;
@@ -19,6 +31,10 @@ use super::{
 const BATCH_PARALLEL_THRESHOLD: usize = 100;
 const BATCH_MAX_ROUNDS: usize = 100_000;
 
+/// 一批对局的累计统计；比例以 `total` 为分母，不包含初始化失败的轮次。
+///
+/// 空统计的胜率和万分制评分为 0；比例计算将分母至少按 1 处理。保护上限耗尽不属于初始化错误，
+/// 可用 `guard_exhausted` 单独识别；合并统计时各计数与计时相加。
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RuntimeBatchSummary {
     pub wins: usize,
@@ -67,6 +83,10 @@ impl From<CustomRuntimeImportError> for RuntimeBatchError {
     fn from(error: CustomRuntimeImportError) -> Self { Self::Import(error) }
 }
 
+/// 预构建固定阵容并执行 `0..n` 轮胜率，统计第一输入组是否获胜。
+///
+/// `n == 0` 仍校验和构建阵容，但不推进对局；`thread` 的 worker 预算由
+/// 胜率调度策略解析，小批量直接串行执行。构建或复位失败通过错误通道返回。
 pub fn runtime_groups_win_rate(
     groups: &[Vec<String>],
     n: usize,
@@ -78,8 +98,8 @@ pub fn runtime_groups_win_rate(
 
 /// 与 [`runtime_groups_win_rate`] 相同，但额外统计每场的 init / fight 耗时。
 ///
-/// 逐场计时在 Windows 上是四次 QPC，单场只有几微秒的批量路径会因此多付 2%~3%；
-/// 因此只有真正要读 [`RuntimeBatchSummary::timing`] 的调用方才应该走 `_timed` 版本。
+/// 计时覆盖每场初始化和战斗完成路径，不包含预构建阵容、线程创建或结果合并。
+/// 多 worker 的时间直接求和，不等于整批的墙钟耗时；不需要计时的调用方使用普通入口。
 pub fn runtime_groups_win_rate_timed(
     groups: &[Vec<String>],
     n: usize,
@@ -100,6 +120,10 @@ fn runtime_groups_win_rate_with_timing<const TIMED: bool>(
     prepared_runtime_win_rate_with_timing::<TIMED>(&prepared, n, thread)
 }
 
+/// 对已有准备模板执行 `0..n` 轮胜率，各 worker 独占一个可复位的 runner。
+///
+/// 阵容、注册表和 `eval_rq` 来自 `prepared`；只有每轮 seed 和可变战斗状态重建。
+/// `n == 0` 返回空统计。轮次 seed、保护上限和计数口径见本模块说明。
 pub fn prepared_runtime_win_rate(
     prepared: &PreparedRuntimeRunner,
     n: usize,
@@ -148,7 +172,10 @@ fn prepared_runtime_win_rate_with_timing<const TIMED: bool>(
     Ok(merged)
 }
 
-/// 对已经准备好的 Runtime 对局执行指定轮次区间。
+/// 串行执行准备模板的原始轮次区间 `[start, end)`，适合外部任务分片。
+///
+/// 使用与完整胜率入口相同的轮次 seed；`start >= end` 返回空统计。
+/// 相邻不重叠区间的计数可以合并，重叠区间会重复计数。
 pub fn prepared_runtime_win_rate_range(
     prepared: &PreparedRuntimeRunner,
     start: usize,
@@ -166,6 +193,11 @@ pub fn prepared_runtime_win_rate_range_timed(
     run_prepared_range::<true>(prepared, start, end).map_err(Into::into)
 }
 
+/// 按数字 profile 轮次执行目标组的万分制评分，`modifier` 参与 profile 阵营构建。
+///
+/// 单目标、重复二人组与普通多目标沿用各自的 profile 数量及组队布局；
+/// 不把每个目标都独立重建成一场对局。初始配置错误返回 `Err`，逐轮构建失败
+/// 记录在 `errors` 中；有效评分使用成功初始化的 `total` 作为分母。
 pub fn runtime_score(
     target_group: &[String],
     modifier: &str,
@@ -242,7 +274,10 @@ fn runtime_score_with_timing<const TIMED: bool>(
     Ok(merged)
 }
 
-/// 使用与完整评分相同的轮次编号执行一个评分区间。
+/// 串行执行原始评分轮次区间 `[start, end)`，数字 profile 不因分片而重新编号。
+///
+/// `start >= end` 仍执行初始配置与阵容校验，但返回空统计；其他错误与计数口径
+/// 与 [`runtime_score`] 一致。外部分片时应合并计数后再计算评分，不直接平均各分片比例。
 pub fn runtime_score_range(
     target_group: &[String],
     modifier: &str,

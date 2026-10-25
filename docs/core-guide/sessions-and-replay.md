@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 | 安全预算/无进展截断 | truncated | true | false | 截断结果 |
 | Runtime 失败 | running | false | true | None |
 
-正常终止后的 `next_frame` 返回 None；失败后的推进返回首次保存的错误。错误分类和说明由 `CliApiError` 提供，绑定再转换为 Python 异常、JS Error 或 C 状态码。
+正常终止后的 `next_frame` 返回 None；失败后的推进返回首次保存的错误。错误分类和说明由 `CliApiError` 提供，绑定再转换为 Python 异常、含 `code/message` 的 JS 错误对象或 C 状态码。
 
 推荐消费方式是：推进遇到错误就结束本次会话并展示失败说明；正常读到 None 后取 result，按 stop_reason 显示胜利或截断。
 

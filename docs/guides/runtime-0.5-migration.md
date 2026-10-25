@@ -58,7 +58,7 @@ cargo run -p tswn_core --bin tswn-cli -- runtime normalized-run -f input.txt --m
 | `runner.storage`、`Storage`、`WorldState`、`Player` getter | `runner.snapshot_players()`、`alives*()`、`all_plrs()`、`input_groups` |
 | parity helper | 运行仓库冻结 corpus |
 
-`run_to_completion()` 与未显式传入 limit 的 `build_replay()` 使用 20,000 主回合保护上限。
+`run_to_completion()` 与 `Runner.build_replay(limit=None)` 都受 20,000 主回合保护。后者的显式 `limit` 另按可见事件数计量，不能当作帧数或替换主回合预算；完整回合 frame 与截断的扁平 events 可能覆盖不同长度。普通对局优先使用规范 `BattleSession` / `battle_replay`。
 
 ## C
 

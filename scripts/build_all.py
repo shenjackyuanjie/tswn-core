@@ -225,7 +225,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument(
         "--pgo",
         action="store_true",
-        help="用 scripts/pgo_build.py 以 PGO 口径构建 CLI（仅本机 release，非训练输入实测约 -25%%）",
+        help="对未跳过的 CLI/Openbox 启用本机 release PGO；Openbox 训练资源路径待适配，当前完整发布使用普通 --release，收益需同机复测",
     )
     p.add_argument(
         "--pgo-train-runs",

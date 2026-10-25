@@ -31,13 +31,19 @@
 //!
 //! 将对象调用放在创建与 `free()` 之间。异常与正常终止分开：错误含稳定 code，Runtime 失败
 //! 后会话保持失败标记而不产生正常 result；调用方应停止推进并在 finally 释放。
+//! 返回的普通 JS 对象、数组和像素缓冲为独立数据，不需要随会话一并释放；
+//! 复制会话变量只复制同一包装对象的引用，free 后不能通过任何别名再次调用。
+//! 业务错误通常以 `{code, message}` 普通对象抛出，并非 `Error` 实例；错误对象
+//! 序列化异常时退化为 code 字符串。panic hook 仅向控制台报告，不捕获 panic
+//! 或将其转换成业务错误，发生 WASM trap 后不应继续推进该对象。
 //! 原生 Cargo doc 展示 Rust 适配实现，实际 JS 返回形状以生成的 `.d.ts` 和规范 DTO 为准。
 //!
 //! # 转换、线程与构建
 //!
 //! `tsify::Ts<T>` 经内部转换函数显式检查输入/输出；规范 Battle DTO 使用
 //! JSON-compatible 的 serde-wasm-bindgen 序列化，按相应类型校验转换。
-//! WASM 胜率使用单 worker；分批 step 协作式执行，宿主可安排事件循环或 Web Worker。
+//! WinRateSession / win_rate_sync 在当前线程同步计算，仅接受 thread=0/1；
+//! 不会自行创建 Web Worker。分批 step 之间需由宿主让出事件循环，或把整个计算放进 Worker。
 //! 绑定版本与核心版本分别由 [`version`] / [`core_version`] 返回。
 //! 打包、网页运行、Node/Bun 验证和资源路径见
 //! [WASM 使用说明](https://github.com/shenjackyuanjie/tswn-core/tree/main/crates/tswn_wasm)。
@@ -67,6 +73,7 @@ pub use win_rate::WinRateSession;
 
 static PANIC_HOOK: Once = Once::new();
 
+/// 仅安装一次控制台 panic hook；用于诊断，不提供 catch 或业务错误转换。
 pub fn install_panic_hook() { PANIC_HOOK.call_once(console_error_panic_hook::set_once); }
 
 #[wasm_bindgen(start)]
@@ -85,24 +92,29 @@ pub fn default_eval_rq() -> f64 { tswn_core::namerena::eval_name::DEFAULT_EVAL_R
 pub fn win_rate_eval_rq() -> f64 { tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ }
 
 #[wasm_bindgen]
+/// 返回带 `data:image/png;base64,` 前缀的图标文本，可直接作为图片 URL。
 pub fn name_to_png_base64(name: String) -> String {
     install_panic_hook();
     tswn_core::namerena::icon_render::render_icon_b64_from_name(&name)
 }
 
 #[wasm_bindgen]
+/// 返回独立的 PNG 文件字节，JS 侧为字节数组；不含 Base64/data URL 前缀。
 pub fn name_to_png_bytes(name: String) -> Vec<u8> {
     install_panic_hook();
     tswn_core::namerena::icon_render::render_icon_png_from_name(&name)
 }
 
 #[wasm_bindgen]
+/// 返回按行排列的 16×16 RGBA 像素，共 1024 字节，可用于 ImageData。
 pub fn name_to_icon_rgba(name: String) -> Vec<u8> {
     install_panic_hook();
     tswn_core::namerena::icon_render::render_icon_vec_from_name(&name)
 }
 
 #[wasm_bindgen]
+/// 同步收集旧页面格式回放；options.capture_replay=false 时仍推进，但不保存 frames。
+/// 需要明确截断原因与规范 DTO 时使用 battle_replay 或 BattleSession。
 pub fn fight(raw_input: String, options: Option<Ts<FightOptions>>) -> WasmResult<Ts<FightReplay>> {
     install_panic_hook();
     let options = ts_in(options)?;
@@ -110,6 +122,7 @@ pub fn fight(raw_input: String, options: Option<Ts<FightOptions>>) -> WasmResult
 }
 
 #[wasm_bindgen]
+/// 同步运行旧页面兼容对局并返回最终摘要；整个调用完成前不让出事件循环。
 pub fn fight_summary(raw_input: String, options: Option<Ts<FightOptions>>) -> WasmResult<Ts<FightSummary>> {
     install_panic_hook();
     let options = ts_in(options)?;
@@ -117,6 +130,8 @@ pub fn fight_summary(raw_input: String, options: Option<Ts<FightOptions>>) -> Wa
 }
 
 #[wasm_bindgen]
+/// 同步执行全部试验，返回第一组的百分比胜率；输入按空行分队。
+/// total_rounds=0 返回已完成的零试验结果；thread 只接受 0/1，大批任务优先分步执行。
 pub fn win_rate_sync(
     raw_input: String,
     total_rounds: usize,
@@ -128,6 +143,8 @@ pub fn win_rate_sync(
 }
 
 #[wasm_bindgen]
+/// 按 against 顺序同步比较 target 与每个对手，每项文本表示一个多行队伍。
+/// 任一对局失败则整次调用抛错，不返回已完成的数组前缀。
 pub fn group_win_rate(
     target: String,
     against: Vec<String>,
@@ -148,6 +165,7 @@ pub fn group_win_rate(
 }
 
 #[wasm_bindgen]
+/// 以 core CLI 口径计算第一组的计数、百分比胜率与纳秒耗时；省略 eval_rq 使用胜率默认值。
 pub fn win_rate_summary(
     raw_input: String,
     total_rounds: usize,
@@ -162,6 +180,7 @@ pub fn win_rate_summary(
 }
 
 #[wasm_bindgen]
+/// 比较两个多行队伍并返回 CLI 胜率摘要；所有计算同步完成后才返回。
 pub fn team_win_rate_summary(
     team1: String,
     team2: String,
@@ -192,6 +211,7 @@ pub fn group_win_rate_summary(
 }
 
 #[wasm_bindgen]
+/// 以 mode 指定单项评分，省略时用 normal；返回分数、胜场/总场、失败统计和耗时。
 pub fn score(
     raw_input: String,
     total_rounds: usize,
@@ -208,6 +228,7 @@ pub fn score(
 }
 
 #[wasm_bindgen]
+/// 按行解析名字组合并计算选定模式；keep_rq 为真使用普通构建口径。
 pub fn namer_pf(
     raw_input: String,
     total_rounds: usize,
@@ -246,6 +267,7 @@ pub fn batch_rate(
 }
 
 #[wasm_bindgen]
+/// 以正且有限的 target_factors 加权目标组；权重数组必须与目标组等长。
 pub fn batch_rate_factored(
     target_groups: Vec<String>,
     target_factors: Vec<f64>,
@@ -296,6 +318,7 @@ pub fn pair_rate(
 }
 
 #[wasm_bindgen]
+/// 对带靶子权重的搭档组合评分；head 控制最终汇总的头部搭档数量。
 pub fn pair_rate_factored(
     target_groups: Vec<String>,
     target_factors: Vec<f64>,
@@ -335,7 +358,10 @@ fn default_custom_runtime_normalized_run_impl(raw_input: String, max_rounds: usi
         .map_err(error::cli_api_error)
 }
 
-/// 运行完整战斗，并返回共用、可供 UI 使用的回放 JSON 形状。
+/// 同步收集规范回放为普通 JS 对象，并不是 JSON 字符串。
+///
+/// max_rounds 为正数回合预算；正常截断仍返回结果，Runtime 失败抛出带 code 的值。
+/// 完整帧和快照保存在内存中，长对局可用 BattleSession 按需取帧。
 #[wasm_bindgen(unchecked_return_type = "BattleReplay")]
 pub fn battle_replay(raw_input: String, options: Option<Ts<BattleReplayOptions>>) -> WasmResult<JsValue> {
     install_panic_hook();
@@ -345,18 +371,21 @@ pub fn battle_replay(raw_input: String, options: Option<Ts<BattleReplayOptions>>
 }
 
 #[wasm_bindgen]
+/// 将单名转换为 DIY 文本；old/minions 省略时为 false，冲突选项由 core 校验。
 pub fn to_diy(name: String, old: Option<bool>, minions: Option<bool>) -> WasmResult<String> {
     install_panic_hook();
     tswn_core::cli_api::to_diy(&name, old.unwrap_or(false), minions.unwrap_or(false)).map_err(error::cli_api_error)
 }
 
 #[wasm_bindgen]
+/// 按输入顺序返回 DIY 文本数组；任一名字失败则抛错，不返回部分结果。
 pub fn to_diy_batch(names: Vec<String>, old: Option<bool>, minions: Option<bool>) -> WasmResult<Vec<String>> {
     install_panic_hook();
     tswn_core::cli_api::to_diy_batch(&names, old.unwrap_or(false), minions.unwrap_or(false)).map_err(error::cli_api_error)
 }
 
 #[wasm_bindgen]
+/// 返回图标形状和颜色索引的普通 JS 对象，不含 PNG 像素数据。
 pub fn icon_info(name: String) -> WasmResult<Ts<CliIconInfo>> {
     install_panic_hook();
     let info = tswn_core::cli_api::icon_info(&name).into();
@@ -364,6 +393,7 @@ pub fn icon_info(name: String) -> WasmResult<Ts<CliIconInfo>> {
 }
 
 #[wasm_bindgen]
+/// 逐行解析名字组为多行队伍文本数组；double_plus 为真使用 ++，否则使用 +。
 pub fn parse_group_lines(content: String, double_plus: Option<bool>) -> Vec<String> {
     install_panic_hook();
     tswn_core::cli_api::parse_group_lines(&content, double_plus.unwrap_or(false))

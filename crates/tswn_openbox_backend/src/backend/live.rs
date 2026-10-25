@@ -1,4 +1,9 @@
 //! GUI 的结构化增量结果与有界收件箱；计算线程不等待界面排空通道。
+//!
+//! 每次任务创建新的 LiveFeed，clone 共享同一个短临界区互斥队列；这不是无锁通道。
+//! 数据按估算的事件字节数限制为 8 MiB，超限丢弃旧事件，超大单条直接丢弃；
+//! 估算不包含所有容器容量和分配器开销，因此不是进程内存硬上限。进度与终态
+//! 在队列外各保留最新值，消费者应按 dropped 提示展示不完整，并以输出文件为准。
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -22,7 +27,8 @@ pub enum EntryKind {
     SkillBoard,
 }
 
-/// 索引是输入中的位置，不以可能重复的显示名字作为主键。
+/// 一条自有结果明细，index 是输入位置，不以可能重复的显示名字作为主键。
+/// value 为 None 时使用文本展示；跨线程移交整个对象即可，不需要保留生产者。
 #[derive(Debug, Clone)]
 pub struct ResultEntry {
     pub index: usize,
@@ -54,6 +60,8 @@ pub struct ResultFinish {
 }
 
 #[derive(Debug, Clone)]
+/// 同一输入组的一批增量明细；group 为组索引，entries 由各自 index 标识。
+/// finish 缺失表示仍在计算，不能把当前预览当成完整排名；legacy_log 可保留旧文本。
 pub struct ResultUpdate {
     pub group: usize,
     pub label: String,
@@ -98,6 +106,8 @@ impl ResultUpdate {
     }
 }
 
+/// 仅在任务调用期间借用的同步观察者，可从计算 worker 并发调用，故要求 Sync。
+/// 回调接收自有更新，应尽快转发到 UI 收件箱；本层不会替观察者捕获 panic。
 pub type ResultObserver<'a> = Option<&'a (dyn Fn(ResultUpdate) + Sync)>;
 
 #[derive(Debug)]
@@ -116,6 +126,8 @@ impl LiveEvent {
 }
 
 #[derive(Default)]
+/// take 一次移出的独立批次；拥有事件队列、最新进度/终态与本批丢弃数。
+/// take 后 feed 重新累积新数据，消费者可在不持锁的情况下格式化和绘制本批。
 pub struct LiveBatch {
     pub events: VecDeque<LiveEvent>,
     pub progress: Option<(usize, usize)>,
@@ -124,7 +136,10 @@ pub struct LiveBatch {
     bytes: usize,
 }
 
-/// 每个任务独享一个收件箱，旧任务无法污染新任务；终态永不被容量裁剪。
+/// 一个任务的共享收件箱；默认构造新队列，clone 只共享该队列，不应复用于下一个任务。
+///
+/// 容量裁剪只影响普通事件，最新终态不被裁剪；持锁期间若发生 panic 导致锁中毒，
+/// 后续操作会 panic，调用方不应把它当成可以恢复的业务错误。
 #[derive(Clone, Default)]
 pub struct LiveFeed(Arc<Mutex<LiveBatch>>);
 
@@ -159,7 +174,8 @@ impl LiveFeed {
         pending.events.push_back(event);
     }
 
-    /// O(1) 移出队列，格式化和渲染始终在锁外进行。
+    /// 用空批次替换并移出全部待处理数据；不逐条克隆，返回后格式化/渲染在锁外进行。
+    /// 终态和丢弃计数也被移出，不会在下一次 take 重复返回。
     pub fn take(&self) -> LiveBatch { std::mem::take(&mut *self.0.lock().unwrap()) }
 }
 

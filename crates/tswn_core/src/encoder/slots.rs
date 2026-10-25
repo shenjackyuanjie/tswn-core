@@ -5,9 +5,9 @@
 //! 本模块把白名单冻结成数据表：encoder 只接受该表内的槽，未登记、未知 `export_name` 或
 //! 存储类型不符一律返回 [`EncodeError::UnknownSlotSemantics`]，不猜测、不按存储类型冒充。
 //!
-//! 张量写入（`slot_index`/`slot_value`/`slot_template` 与 X 记录）属于 handoff 分块计划的
-//! 后续块；本模块先落地**校验部分**（槽 ID、值分支、实体引用），闭合规格第 16 节第 7 条
-//! 指出的“`validate` 未覆盖槽内 U64 实体引用”缺口。
+//! 本模块只判定槽 ID、唯一值分支和存储类型，不解析 U64 中的实体引用。
+//! [`FeatureEncoder`](super::encode::FeatureEncoder) 在状态校验阶段检查引用归属，
+//! 再由编码写入层分别生成 `slot_*` 张量与 `extra_*` 精确旁路。
 
 use crate::encoder::error::EncodeError;
 use crate::runtime::model_state::ModelSlot;
@@ -153,7 +153,9 @@ pub struct ResolvedSlot {
 
 /// 解析一个槽：查白名单、核对值分支唯一性、核对存储类型。
 ///
-/// `prefix` 是错误路径前缀（如 `entities[3].slots[5]`）。
+/// `prefix` 是错误路径前缀（如 `entities[3].slots[5]`）；成功结果只描述类型与语义，
+/// 不持有输入的借用。全空或多值分支返回 [`EncodeError::InvalidSlotValue`]，
+/// 未知槽和存储类型不符返回 [`EncodeError::UnknownSlotSemantics`]；实体引用有效性由编码器另行校验。
 pub fn resolve_slot(scope: SlotScope, slot: &ModelSlot, prefix: &str) -> Result<ResolvedSlot, EncodeError> {
     let path = format!("{prefix}.slot_id");
     let entry = scope

@@ -61,6 +61,8 @@ fn default_registry() -> &'static ExtensionRegistry {
 /// FeatureEncoder：字段映射、局内引用、presence 与容量预检的唯一实现。
 ///
 /// 纯 Rust 机制编码，可在 `wasm32-unknown-unknown` 上编译，供数据导出器及后续绑定复用。
+/// 编码器持有已校验的 manifest、容量档位和冻结词表；编码只借用输入状态，
+/// 不推进战斗或消耗 RNG。重复批量编码时应复用 [`EncodedBatch`]，避免逐样本分配全部张量。
 #[derive(Debug, Clone)]
 pub struct FeatureEncoder {
     manifest: EncoderManifest,
@@ -125,15 +127,22 @@ impl FeatureEncoder {
 
     pub fn profile(&self) -> &ProfileSpec { &self.profile }
 
-    /// B=1 便捷入口。
+    /// 分配一份单样本批缓冲并编码，成功后由调用方拥有全部张量。
+    ///
+    /// 输入必须是当前 schema 下尚未决出的状态，且引用、载荷和容量均符合 manifest。
+    /// 任何校验或写入错误直接返回，不交付半成品；连续编码多个样本宜改用 [`Self::encode_into`]。
     pub fn encode(&self, state: &BattleModelState) -> Result<EncodedBatch, EncodeError> {
         let mut batch = EncodedBatch::new(&self.profile, 1);
         self.encode_into(state, 0, &mut batch)?;
         Ok(batch)
     }
 
-    /// 批槽位写入；状态校验或字段写入失败时，目标槽位整体恢复 padding。
-    /// profile 不匹配或 batch_index 越界属于调用错误，不修改任何槽位。
+    /// 将只读状态编码进调用方持有的一个批槽位，相邻槽位保持原内容。
+    ///
+    /// `out` 必须与本编码器的九维容量完全一致，`batch_index` 从零起。通过调用校验后
+    /// 先清除旧内容；状态校验或字段写入失败时，目标槽位整体恢复 padding，可继续复用。
+    /// profile 不匹配或 `batch_index` 越界属于调用错误，不修改任何槽位。
+    /// 本方法复用输出张量，但索引与变长关系的临时容器仍按样本构造。
     pub fn encode_into(&self, state: &BattleModelState, batch_index: usize, out: &mut EncodedBatch) -> Result<(), EncodeError> {
         if out.dims() != &self.profile.dims() {
             return Err(EncodeError::ManifestMismatch {
@@ -143,7 +152,7 @@ impl FeatureEncoder {
         }
         out.clear_slot(batch_index)?;
         let result = (|| -> Result<(), EncodeError> {
-            self.validate_state(state)?;
+            let measured = self.validate_state(state)?;
             let index = self.build_index(state)?;
             self.write_global(state, &index, batch_index, out)?;
             self.write_entity_family(state, &index, batch_index, out)?;
@@ -154,12 +163,11 @@ impl FeatureEncoder {
             self.write_slot_family(state, &index, batch_index, out)?;
             self.write_extra_family(state, &index, batch_index, out)?;
             let extra_rows = out.u8_row_mut("extra_mask", batch_index)?.iter().filter(|value| **value != 0).count();
-            let measured = CapacityMeasure::measure(state).x;
-            if extra_rows > measured {
+            if extra_rows > measured.x {
                 return Err(EncodeError::CapacityExceeded {
                     path: "extra".to_owned(),
                     actual: extra_rows,
-                    limit: measured,
+                    limit: measured.x,
                 });
             }
             Ok(())

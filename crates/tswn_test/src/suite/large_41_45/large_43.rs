@@ -1,6 +1,8 @@
 use super::*;
 
-/// 护盾+蓄力特性
+/// 固定护盾、蓄力与净化交互的回放，检查零伤害和蓄力中止消息出现的先后关系。
+///
+/// 对泛型引擎比较完整规范化日志及总分 1078，不依赖引擎内部状态布局。
 pub fn large_43<E: crate::EngineAdapter>() {
     const CASE: &str = r####"豹山惟助 PFOQXFYL@TigerStar
 

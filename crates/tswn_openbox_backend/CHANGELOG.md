@@ -1,6 +1,19 @@
 # 更新日志
 
-## [Unreleased] - 0.5.1
+## [0.5.2] - 2026-10-21
+
+### 新增
+
+- `run_base`：把原 `openbox-cli base` 的渲染搬进后端，输入单个原始名字，输出 HP 区间、
+  七围「值 / 值 (原始三元组)」与 16 个技能槽的固定文本。GUI 的 `base` 页与 CLI 共用它，
+  两侧输出逐字节一致；非原始名字（多行、`+diy` / `+ol`、武器后缀）返回错误文本由调用方呈现。
+
+### 验证
+
+- `run_base` 由参考样例逐字节断言整段输出，并覆盖“一次只支持一个名字”的拒绝路径；
+  `cargo test -p tswn_openbox_backend`：53 通过（`cargo test -p tswn_openbox_backend base` 2 通过）。
+
+## [0.5.1] - 2026-10-03
 
 ### 修复
 
@@ -14,7 +27,7 @@
   逐项断言选手与队友在队伍里的属性与技能都等于各自单独构建，且标签仍是原始输入行。
 - `cargo test -p tswn_openbox_backend`：52 通过；`cargo +nightly fmt --check` 无输出。
 
-## [Unreleased] - 0.5.0
+## [0.5.0] - 2026-10-01
 
 ### 新增
 

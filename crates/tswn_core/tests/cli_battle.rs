@@ -1,6 +1,8 @@
 //! CLI 进程的流式输出契约：JSONL 事件、stdin、人类可读输出、诊断命令与非法输入。
 //!
-//! 取代原 `scripts/verify_cli_battle.py`；测试直接运行本包构建出的 `tswn-cli` 二进制。
+//! 测试直接运行本包构建出的 `tswn-cli` 二进制，检查真实进程状态与 stdout/stderr 分流。
+//! 战斗样例只读现有 runtime_stress 输入，不生成或覆盖 golden/corpus；流式刷新与写入失败
+//! 的细粒度行为由二进制内的 writer 单测覆盖。参数失败案例不应创建输出文件或推进对局。
 
 use std::{
     io::Write,
@@ -90,6 +92,25 @@ fn invalid_fight_inputs_fail_on_stderr_only() {
         assert!(!output.status.success(), "{args:?} 必须失败");
         assert!(!stderr(&output).is_empty(), "{args:?} 必须在 stderr 报错");
         assert!(stdout(&output).is_empty(), "{args:?} 不得写 stdout");
+    }
+}
+
+#[test]
+fn invalid_metric_thresholds_and_paths_fail_before_output() {
+    for spec in [
+        "pp:NaN",
+        "pp:inf",
+        "pp:1e999",
+        "pp::out.txt:NaN",
+        "pp::out.txt:inf",
+        r"pp::C:\scores\out.txt:stream",
+        r"pp::C:\scores\out.txt:stream:1",
+        r"pp::\\server\share\out.txt:stream",
+    ] {
+        let output = run(&["namer-pf", "-r", "mario", "--metric", spec], None);
+        assert_eq!(output.status.code(), Some(2), "{spec}: {}", stderr(&output));
+        assert!(!stderr(&output).is_empty(), "{spec} 必须在 stderr 报错");
+        assert!(stdout(&output).is_empty(), "{spec} 不得写 stdout");
     }
 }
 

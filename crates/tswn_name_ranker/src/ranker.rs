@@ -1,3 +1,9 @@
+//! 已测配对分矩阵上的自洽搭档拟合，不访问数据库或执行战斗。
+//!
+//! 每个名称从 allowed 行中选择四个搭档，结合搭档系数迭代更新，并将系数几何均值归一为 1。
+//! 最多迭代 500 轮；选择稳定且参数变化足够小时停止，未收敛也返回诊断结果。
+//! 调用方须提供有限且足以得到正搭档强度的分数，零强度或非有限值会破坏对数计算。
+
 #[derive(Debug)]
 pub struct FitResult {
     pub scores: Vec<f64>,
@@ -13,6 +19,10 @@ const PARAMETER_ELASTICITY: f64 = 0.35;
 const PARAMETER_DAMPING: f64 = 0.25;
 const PARAMETER_PROFILE_WEIGHTS: [f64; TOP_PARTNERS] = [0.50, 0.25, 0.15, 0.10];
 
+/// 拟合方阵并返回各行最终贡献分、搭档系数和收敛诊断，行列顺序与输入一致。
+///
+/// 尺寸不匹配、名称数不足四个或任一行合法搭档不足四个时返回错误；allowed 可包含自身。
+/// 每轮同步调用 progress，不捕获回调 panic。分数的有限性与正强度前提由调用方保证。
 pub fn fit_and_rank(scores: &[Vec<f64>], allowed: &[Vec<bool>], mut progress: impl FnMut(usize)) -> anyhow::Result<FitResult> {
     let n = scores.len();
     if n < TOP_PARTNERS {

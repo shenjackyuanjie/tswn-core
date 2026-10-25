@@ -4,7 +4,8 @@
 //! 本模块定义 manifest 结构与两级门禁：
 //!
 //! 1. [`EncoderManifest::validate`]：manifest **自洽性**（版本身份、容量不变量、词表稠密性、
-//!    拟合常数与证据一致），可离线对未发布工件运行。
+//!    拟合常数与统计量自洽），可离线对未发布工件运行；证据字段仅保存来源，
+//!    不在此重新读取输入或核验来源文件的摘要。
 //! 2. `FeatureEncoder::new`：manifest 与**当前实现**的交叉核对（字段表齐全、词表与默认注册表
 //!    一致、变换类型相同、支持域匹配）。任何一端过期都拒绝，不自动采用“最新版本”。
 //!
@@ -281,7 +282,8 @@ impl SupportDomain {
         }
     }
 
-    /// 自校验：两类 kind 不重叠且非空。
+    /// 校验启用列表非空且与不支持列表互不重叠。
+    /// 是否与当前实现逐项一致，由编码器构造时另行检查。
     pub fn validate(&self) -> Result<(), EncodeError> {
         let mismatch = |detail: String| EncodeError::ManifestMismatch {
             path: "support".to_owned(),
@@ -373,8 +375,10 @@ impl EncoderManifest {
         Ok(())
     }
 
-    /// 契约摘要：对“摘录自身置空”的规范化 JSON 取 sha256。
-    /// 规范化依赖 `BTreeMap` 键序与 serde 的稳定字段序，不依赖内存布局或平台浮点文本。
+    /// 对清除 `contract_digest` 后的 JSON 计算 SHA-256，返回 64 位小写十六进制。
+    ///
+    /// 该方法只计算摘要，不修改或校验 manifest，也不核对已填写的 `contract_digest`。
+    /// 序列化顺序由 `BTreeMap` 键序与 serde 字段序决定；训练与消费端应使用同一版本的编码契约。
     pub fn digest(&self) -> String {
         let mut canonical = self.clone();
         canonical.contract_digest = None;
@@ -395,8 +399,11 @@ impl EncoderManifest {
     /// 从 `tswn-pwp calibrate` 的报告组装 manifest。
     ///
     /// - 固定计数尺度的槽（规格第 5 节“机制计数的绝对量”）写入 `FixedCount` 声明，不要求观测；
-    /// - 其余数值槽一律 `Fitted`，常数来自校准报告；报告缺字段时这里就失败，
-    ///   而不是等编码到具体样本才报错（发布门禁前移）。
+    /// - 报告中的其余字段按 `Fitted` 复制，并保存常数的精确 bit 表示与来源证据。
+    ///
+    /// 此处仅拒绝报告 schema 或状态 schema 不兼容，不检查必需字段是否齐全，也不调用
+    /// [`Self::validate`]。使用前须交给 [`FeatureEncoder::new`](super::encode::FeatureEncoder::new)
+    /// 完成自洽性与当前实现的完整门禁；缺字段会在那里返回结构化错误。
     pub fn from_calibration(calibration: &CalibrationReport, profile: &EncoderProfile) -> Result<Self, EncodeError> {
         if calibration.schema != CALIBRATION_SCHEMA || calibration.schema_version != CALIBRATION_SCHEMA_VERSION {
             return Err(EncodeError::SchemaMismatch {

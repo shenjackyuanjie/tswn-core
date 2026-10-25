@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Verify Python APIs aligned with tswn-cli.
+验证与 tswn-cli 对齐的 Python API。
 
-The script builds the local tswn_py extension, imports it from a temporary
-target directory, then checks:
-- summary APIs match the older top-level win-rate APIs;
-- score / namer-pf / batch-rate / pair-rate compose consistently;
-- to_diy roundtrips through Runner while preserving initial player status;
-- icon_info matches the byte/icon helpers at a structural level;
-- selected runtime exports remain aligned with the package type stubs.
+默认构建本地 tswn_py 扩展，从 target 内的独立导入目录加载，不安装 wheel：
+- 比较胜率摘要与基础胜率 API；
+- 校验 score / namer-pf / batch-rate / pair-rate 的组合关系；
+- 通过 BattleSession 比较 to_diy 往返后的初始玩家状态；
+- 核对图标结构与 PNG/RGBA helper；
+- 验证 BattleSession、回放、错误码和类型存根的对应行为。
+--skip-build 仅复用现有导入树；源码或依赖变化后先重新构建。
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ def find_artifact(release: bool) -> Path:
 
 
 def prepare_import_tree(release: bool) -> None:
-    run(["cargo", "build", "-p", "tswn_py"] + (["--release"] if release else []))
+    run(["cargo", "build", "--locked", "-p", "tswn_py"] + (["--release"] if release else []))
 
     if IMPORT_ROOT.exists():
         shutil.rmtree(IMPORT_ROOT)
@@ -404,9 +404,9 @@ def verify_battle_session(tswn_py: Any) -> None:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Verify tswn_py CLI-aligned APIs")
-    parser.add_argument("--release", action="store_true", help="build/import release artifact")
-    parser.add_argument("--skip-build", action="store_true", help="reuse existing target import tree")
+    parser = argparse.ArgumentParser(description="验证 tswn_py 与 CLI 对齐的 helper、会话及回放契约")
+    parser.add_argument("--release", action="store_true", help="构建并导入 release 产物（默认 debug）")
+    parser.add_argument("--skip-build", action="store_true", help="复用现有独立导入目录，不构建；源码或依赖变化后先重新生成")
     return parser.parse_args(argv)
 
 

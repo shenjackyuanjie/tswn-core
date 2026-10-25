@@ -1,5 +1,7 @@
 # 性能报告：post_kill 别名 UB 修复 + no_debug 环境变量泄漏修复
 
+> 历史报告：本文保留 Rust 1.94 与旧 CLI 参数下的测量和缺陷分析，不表示当前入口或本次性能结果。现行构建、回归和复测命令见 [性能准则](../guides/performance.md)。
+
 ## 测试环境
 
 - OS：Windows 11

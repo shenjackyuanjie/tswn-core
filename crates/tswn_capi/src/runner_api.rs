@@ -1,3 +1,11 @@
+//! 低层 runner、预构建模板及回合更新的 C 句柄适配。
+//!
+//! 所有非空句柄必须来自同一份库，且不能在被借用时释放或并发修改；输入字符串
+//! 与输出缓冲在调用期间有效，所有数组索引均从零开始。返回句柄与字符串分别由
+//! 对应 free 函数释放，标量快照无需释放。状态型调用会清除旧错误并捕获可展开的
+//! panic；直接返回布尔值、长度或消息的兼容接口各有明确约定，不能据此假定
+//! 所有低层入口都提供相同的错误边界。胜率 `thread=0/1/n` 表示自动/单线程/指定线程。
+
 use std::ffi::c_char;
 
 use tswn_core::runtime::PlrId;
@@ -106,7 +114,11 @@ fn copy_ids(ids: &[PlrId], out: *mut u64, cap: usize, name: &str) -> FfiResult<(
     Ok(())
 }
 
+/// 使用模板创建时固定的评估口径，累计 `n` 次第一组获胜统计；不修改模板。
+///
 /// # Safety
+///
+/// 非空 `prepared` 为存活且可共享借用的本库模板；非空 `out_result` 对齐且可写。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_prepared_win_rate(
     prepared: *const tswn_prepared_runner_t,
@@ -129,7 +141,11 @@ pub unsafe extern "C" fn tswn_prepared_win_rate(
     })
 }
 
+/// 计算模板胜率，并按浮点位模式验证 `eval_rq` 与创建时完全一致；不一致返回参数错误。
+///
 /// # Safety
+///
+/// 非空 `prepared` 为存活且可共享借用的本库模板；非空 `out_result` 对齐且可写。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_prepared_win_rate_with_eval_rq(
     prepared: *const tswn_prepared_runner_t,
@@ -159,7 +175,11 @@ pub unsafe extern "C" fn tswn_prepared_win_rate_with_eval_rq(
     })
 }
 
+/// 释放 runner 及其持有的运行时资源；空指针无操作，不影响已返回的独立更新句柄。
+///
 /// # Safety
+///
+/// `ptr` 为空或为本库创建的存活 runner；调用方拥有唯一释放权，调用后不得再使用或重复释放。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_runner_free(ptr: *mut tswn_runner_t) {
     if !ptr.is_null() {
@@ -169,7 +189,11 @@ pub unsafe extern "C" fn tswn_runner_free(ptr: *mut tswn_runner_t) {
     }
 }
 
+/// 释放预构建模板；已从模板创建的 runner 独立持有自身状态。
+///
 /// # Safety
+///
+/// `ptr` 为空或为本库创建的存活模板；必须等待所有借用结束，且只能释放一次。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_prepared_runner_free(ptr: *mut tswn_prepared_runner_t) {
     if !ptr.is_null() {
@@ -179,7 +203,11 @@ pub unsafe extern "C" fn tswn_prepared_runner_free(ptr: *mut tswn_prepared_runne
     }
 }
 
+/// 释放一个回合的更新集合及其消息数据；复制出的字符串和标量快照仍独立有效。
+///
 /// # Safety
+///
+/// `ptr` 为空或为本库创建的存活更新句柄；必须等待所有读取结束，且只能释放一次。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_updates_free(ptr: *mut tswn_updates_t) {
     if !ptr.is_null() {
@@ -189,7 +217,11 @@ pub unsafe extern "C" fn tswn_updates_free(ptr: *mut tswn_updates_t) {
     }
 }
 
+/// 解析队伍与种子文本，使用普通对局默认口径创建可变 runner。
+///
 /// # Safety
+///
+/// 输入是调用期间有效的 NUL 结尾 C 字符串；非空 `out_runner` 对齐且可写。成功句柄需用 `tswn_runner_free` 释放；失败不改写输出。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_runner_new_from_raw(
     raw_text_utf8: *const c_char,
@@ -198,7 +230,11 @@ pub unsafe extern "C" fn tswn_runner_new_from_raw(
     unsafe { tswn_runner_new_from_raw_with_eval_rq(raw_text_utf8, crate::tswn_default_eval_rq(), out_runner) }
 }
 
+/// 解析原始名竞文本并以显式 `eval_rq` 构建 runner；输入仅在本次调用借用。
+///
 /// # Safety
+///
+/// 输入是调用期间有效的 NUL 结尾 C 字符串；非空 `out_runner` 对齐且可写，且不覆盖未释放句柄。成功句柄需用 `tswn_runner_free` 释放；失败不改写输出。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_runner_new_from_raw_with_eval_rq(
     raw_text_utf8: *const c_char,
@@ -220,7 +256,11 @@ pub unsafe extern "C" fn tswn_runner_new_from_raw_with_eval_rq(
     })
 }
 
+/// 使用普通对局默认口径准备阵容模板；原始文本中的种子不存入模板。
+///
 /// # Safety
+///
+/// 输入是 NUL 结尾 C 字符串；非空 `out_prepared` 对齐且可写。成功句柄用 `tswn_prepared_runner_free` 释放；失败不改写输出。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_prepared_runner_new_from_raw(
     raw_text_utf8: *const c_char,
@@ -229,7 +269,11 @@ pub unsafe extern "C" fn tswn_prepared_runner_new_from_raw(
     unsafe { tswn_prepared_runner_new_from_raw_with_eval_rq(raw_text_utf8, crate::tswn_default_eval_rq(), out_prepared) }
 }
 
+/// 以固定 `eval_rq` 准备可复用阵容，种子需在创建每场 runner 时另行提供。
+///
 /// # Safety
+///
+/// 输入是 NUL 结尾 C 字符串；非空 `out_prepared` 对齐且可写，不覆盖未释放句柄。成功句柄用 `tswn_prepared_runner_free` 释放；失败不改写输出。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_prepared_runner_new_from_raw_with_eval_rq(
     raw_text_utf8: *const c_char,
@@ -254,7 +298,11 @@ pub unsafe extern "C" fn tswn_prepared_runner_new_from_raw_with_eval_rq(
     })
 }
 
+/// 从模板创建独立对局；`seed_utf8=NULL` 表示无额外种子，非空字符串作为一条种子。
+///
 /// # Safety
+///
+/// 非空 `prepared` 为存活模板；非空种子为有效 C 字符串。非空 `out_runner` 对齐且可写；成功句柄需单独释放，模板所有权不转移。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_runner_new_from_prepared(
     prepared: *const tswn_prepared_runner_t,
@@ -278,7 +326,11 @@ pub unsafe extern "C" fn tswn_runner_new_from_prepared(
     })
 }
 
+/// 查询是否已有胜者；空 runner 返回 0，且不更新线程错误通道。
+///
 /// # Safety
+///
+/// 非空 `runner` 是存活且可共享借用的本库句柄。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_runner_have_winner(runner: *const tswn_runner_t) -> u8 {
     if runner.is_null() {
@@ -288,7 +340,13 @@ pub unsafe extern "C" fn tswn_runner_have_winner(runner: *const tswn_runner_t) -
     }
 }
 
+/// 同步推进至胜者、无进展或绑定层回合上限；返回 0 不等同于输入错误。
+///
+/// 此低层布尔入口不提供状态码或 sticky failure；需要明确截断原因时使用战斗会话。
+///
 /// # Safety
+///
+/// 非空 `runner` 是存活且独占借用的本库句柄；空指针返回 0。此入口不经过 panic 捕获边界。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_runner_run_to_completion(runner: *mut tswn_runner_t) -> u8 {
     if runner.is_null() {
@@ -298,7 +356,11 @@ pub unsafe extern "C" fn tswn_runner_run_to_completion(runner: *mut tswn_runner_
     }
 }
 
+/// 推进一个主回合，返回独立拥有的更新集合；调用方用 `tswn_updates_free` 释放。
+///
 /// # Safety
+///
+/// 非空 `runner` 存活且被独占借用；非空 `out_updates` 对齐且可写，不覆盖未释放句柄。失败不保证回滚已经推进的状态。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_runner_main_round(
     runner: *mut tswn_runner_t,
@@ -319,7 +381,11 @@ pub unsafe extern "C" fn tswn_runner_main_round(
     })
 }
 
+/// 读取原始输入的队伍数量，不受运行时行动顺序影响；空 runner 返回 0。
+///
 /// # Safety
+///
+/// 非空 `runner` 是存活且可共享借用的本库句柄。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_runner_input_group_count(runner: *const tswn_runner_t) -> usize {
     if runner.is_null() {
@@ -329,7 +395,11 @@ pub unsafe extern "C" fn tswn_runner_input_group_count(runner: *const tswn_runne
     }
 }
 
+/// 读取零基输入队伍的成员数；runner 为空或索引越界时返回 0，不写入错误通道。
+///
 /// # Safety
+///
+/// 非空 `runner` 是存活且可共享借用的本库句柄。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_runner_input_group_len(runner: *const tswn_runner_t, group_index: usize) -> usize {
     if runner.is_null() {
@@ -340,7 +410,11 @@ pub unsafe extern "C" fn tswn_runner_input_group_len(runner: *const tswn_runner_
     }
 }
 
+/// 复制零基输入队伍的 roster；越界队伍按空列表处理，不会产生参数错误。
+///
 /// # Safety
+///
+/// 非空 `runner` 存活且可共享借用；非空 `out_ids` 对齐且可写入 `cap` 个 u64，不与句柄重叠。空列表允许空输出；容量不足时不复制。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_runner_input_group_copy(
     runner: *const tswn_runner_t,
@@ -363,7 +437,11 @@ pub unsafe extern "C" fn tswn_runner_input_group_copy(
     })
 }
 
+/// 查询玩家对应的零基原始输入队伍；不存在或无法表示的标识返回参数错误。
+///
 /// # Safety
+///
+/// 非空 `runner` 存活且可共享借用；非空 `out_group_index` 对齐且可写。标识仅用于所属对局。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_runner_player_input_group_index(
     runner: *const tswn_runner_t,
@@ -396,7 +474,11 @@ pub unsafe extern "C" fn tswn_runner_player_input_group_index(
     })
 }
 
+/// 读取胜者 roster 长度；尚无胜者或 runner 为空时返回 0。
+///
 /// # Safety
+///
+/// 非空 `runner` 是存活且可共享借用的本库句柄。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_runner_winner_len(runner: *const tswn_runner_t) -> usize {
     if runner.is_null() {
@@ -406,7 +488,11 @@ pub unsafe extern "C" fn tswn_runner_winner_len(runner: *const tswn_runner_t) ->
     }
 }
 
+/// 复制当前胜者 roster；未结束时可成功返回空列表。
+///
 /// # Safety
+///
+/// 非空 `runner` 存活且可共享借用；非空 `out_ids` 对齐且可写入 `cap` 个 u64，不与句柄重叠。空列表允许空输出；容量不足时不复制。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_runner_winner_copy(runner: *const tswn_runner_t, out_ids: *mut u64, cap: usize) -> tswn_status_t {
     ffi_boundary(|| {
@@ -418,7 +504,11 @@ pub unsafe extern "C" fn tswn_runner_winner_copy(runner: *const tswn_runner_t, o
     })
 }
 
+/// 读取包括死亡实体在内的当前实体总数；空 runner 返回 0。
+///
 /// # Safety
+///
+/// 非空 `runner` 是存活且可共享借用的本库句柄。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_runner_all_player_count(runner: *const tswn_runner_t) -> usize {
     if runner.is_null() {
@@ -428,7 +518,11 @@ pub unsafe extern "C" fn tswn_runner_all_player_count(runner: *const tswn_runner
     }
 }
 
+/// 复制当前对局全部玩家标识，包括死亡实体；缓冲容量可先用 count 查询。
+///
 /// # Safety
+///
+/// 非空 `runner` 存活且可共享借用；非空 `out_ids` 对齐且可写入 `cap` 个 u64，不与句柄重叠。空列表允许空输出；容量不足时不复制。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_runner_all_player_ids_copy(
     runner: *const tswn_runner_t,
@@ -444,7 +538,11 @@ pub unsafe extern "C" fn tswn_runner_all_player_ids_copy(
     })
 }
 
+/// 复制指定玩家的当前属性；`ptr` 是兼容字段，与 `id` 相同，不是可解引用地址。
+///
 /// # Safety
+///
+/// 非空 `runner` 存活且可共享借用；非空 `out_snapshot` 对齐且可写，不与句柄重叠。找不到玩家返回参数错误，快照本身无需释放。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_runner_player_snapshot(
     runner: *const tswn_runner_t,
@@ -467,7 +565,11 @@ pub unsafe extern "C" fn tswn_runner_player_snapshot(
     })
 }
 
+/// 读取集合中实际保存的更新数；空句柄返回 0，不更新错误通道。
+///
 /// # Safety
+///
+/// 非空 `updates` 是本库创建的存活且可共享借用的更新句柄。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_updates_len(updates: *const tswn_updates_t) -> usize {
     if updates.is_null() {
@@ -477,7 +579,11 @@ pub unsafe extern "C" fn tswn_updates_len(updates: *const tswn_updates_t) -> usi
     }
 }
 
+/// 复制零基更新的轻量快照；`has_param=0` 时忽略 param，targets 需另行复制。
+///
 /// # Safety
+///
+/// 非空 `updates` 存活且可共享借用；非空 `out_update` 对齐且可写。越界返回参数错误，快照不持有需释放的资源。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_updates_get(
     updates: *const tswn_updates_t,
@@ -502,7 +608,11 @@ pub unsafe extern "C" fn tswn_updates_get(
     })
 }
 
+/// 复制零基更新的全部目标标识；所需容量由更新快照的 `target_count` 给出。
+///
 /// # Safety
+///
+/// 非空 `updates` 存活且可共享借用；非空 `out_ids` 对齐且可写入 `cap` 个 u64，不与句柄重叠。空目标允许空输出；越界或容量不足返回参数错误。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_updates_targets_copy(
     updates: *const tswn_updates_t,
@@ -522,7 +632,13 @@ pub unsafe extern "C" fn tswn_updates_targets_copy(
     })
 }
 
+/// 复制原始占位符消息模板，调用方按 len 读取并用 `tswn_str_free` 释放。
+///
+/// 空句柄或越界返回 `{NULL, 0}` 并记录错误；成功不会清除旧错误，此低层入口不捕获 panic。
+///
 /// # Safety
+///
+/// 非空 `updates` 是存活且可共享借用的本库更新句柄。返回值独立于句柄存活期。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_updates_message(updates: *const tswn_updates_t, index: usize) -> tswn_str_t {
     if updates.is_null() {
@@ -539,7 +655,14 @@ pub unsafe extern "C" fn tswn_updates_message(updates: *const tswn_updates_t, in
     }
 }
 
+/// 复制 core 展开占位符后的消息；模板本身可通过 `tswn_updates_message` 获取。
+///
+/// 成功结果用 `tswn_str_free` 释放；空句柄或越界返回 `{NULL, 0}` 并记录错误。
+/// 成功不清除旧错误，此低层入口不捕获 panic。
+///
 /// # Safety
+///
+/// 非空 `updates` 是存活且可共享借用的本库更新句柄。返回字符串不保证 NUL 结尾。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_updates_message_rendered(updates: *const tswn_updates_t, index: usize) -> tswn_str_t {
     if updates.is_null() {
@@ -556,7 +679,11 @@ pub unsafe extern "C" fn tswn_updates_message_rendered(updates: *const tswn_upda
     }
 }
 
+/// 使用胜率默认评估口径，计算原始输入第一组对其余组的 wins/total。
+///
 /// # Safety
+///
+/// 输入指向 NUL 结尾队伍文本；非空 `out_result` 对齐且可写。至少需两个非空队伍。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_win_rate(
     raw_text_utf8: *const c_char,
@@ -567,7 +694,11 @@ pub unsafe extern "C" fn tswn_win_rate(
     unsafe { tswn_win_rate_with_eval_rq(raw_text_utf8, n, thread, crate::tswn_win_rate_eval_rq(), out_result) }
 }
 
+/// 按显式 `eval_rq` 准备阵容并累计 `n` 次试验；输入文本中的固定种子不用于该批任务。
+///
 /// # Safety
+///
+/// 输入指向 NUL 结尾队伍文本；非空 `out_result` 对齐且可写。至少需两个非空队伍。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_win_rate_with_eval_rq(
     raw_text_utf8: *const c_char,
@@ -592,7 +723,11 @@ pub unsafe extern "C" fn tswn_win_rate_with_eval_rq(
     })
 }
 
+/// 使用默认胜率口径，按 against 顺序计算 target 与每个对手的统计。
+///
 /// # Safety
+///
+/// target 为有效 C 字符串；against 有 `against_len` 个有效 C 字符串指针，输出可写同等数量的统计结构。长度为零时数组可为空。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_group_win_rate(
     target_utf8: *const c_char,
@@ -615,7 +750,11 @@ pub unsafe extern "C" fn tswn_group_win_rate(
     }
 }
 
+/// 按显式评估口径逐个比较 target 与 against；中途失败时此前写入的结果不回滚。
+///
 /// # Safety
+///
+/// target 为有效 C 字符串；against 有 `against_len` 个有效 C 字符串指针，输出对齐且可写同等数量的统计结构。数组不得与输入重叠，零长可为空。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_group_win_rate_with_eval_rq(
     target_utf8: *const c_char,

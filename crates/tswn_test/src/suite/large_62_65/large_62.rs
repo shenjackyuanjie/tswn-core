@@ -1,6 +1,8 @@
 use super::*;
 
-/// diff_case 04
+/// 差分样例 04：固定双人阵容和 seed:33554434，覆盖加速、地裂与净化路径。
+///
+/// 逐行比较完整规范化日志并检查轮数预算；此用例不单独冻结总积分。
 pub fn large_62<E: crate::EngineAdapter>() {
     const CASE: &str = r#"Italian_Love #5Agn8kVYl@Shabby_fish
 我会回来的 #yTneTj00J@Shabby_fish

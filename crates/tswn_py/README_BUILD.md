@@ -46,7 +46,7 @@ print(tswn_py.core_version_str())
 
 ### 1) Rust 工具链
 
-需要安装 Rust（包含 `cargo`）。
+需要安装 Rust（包含 `cargo`）。当前 workspace 的全功能依赖要求 Rust 至少 1.95；此要求来自依赖声明，本轮实际工具链为 1.99，未单独完成最低版本构建验收。
 
 ### 2) Python（多版本）
 
@@ -54,10 +54,12 @@ print(tswn_py.core_version_str())
 
 ### 3) 构建工具（PEP 517）
 
+PEP 517 隔离环境按本 crate 的 [pyproject.toml](pyproject.toml) 安装构建依赖：`setuptools>=84.2.1`、`setuptools-rust>=1.13.0`、`wheel>=0.48.0`。`--no-isolation` 使用当前环境，因此也需满足这些下限；它们不改变项目的 Python 3.12 最低要求。
+
 建议准备 `pip` 与 `build`：
 
 ```bash
-python -m pip install -U pip build setuptools setuptools-rust wheel
+python -m pip install -U pip build "setuptools>=84.2.1" "setuptools-rust>=1.13.0" "wheel>=0.48.0"
 ```
 
 > 本项目使用 `pyproject.toml + setuptools-rust` 走 PEP 517 构建（而不是手写 `setup.py` 然后 `python setup.py bdist_wheel` 那套旧流程）。

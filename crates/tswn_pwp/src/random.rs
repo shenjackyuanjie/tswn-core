@@ -1,4 +1,8 @@
 //! 与战斗 RNG 隔离的 SHA-256 计数流；派生规则属于数据格式契约。
+//!
+//! 每个输入片段带小端长度前缀，调用方用不同域标签分离阵容、抽样、seed 和切分。
+//! index 使用拒绝采样避免模偏差，upper=0 会 panic；同样初始参数和调用顺序产生同样输出。
+//! 这里只服务可复现采样，不从系统取熵，也不把派生 seed 当作保密令牌。
 use sha2::{Digest, Sha256};
 
 pub fn digest(parts: &[&[u8]]) -> [u8; 32] {
@@ -43,7 +47,10 @@ impl Random {
         }
     }
 
-    /// 稀疏 Fisher–Yates，只为本局人数分配空间，不复制整个名字池。
+    /// 返回 count 个互不重复的 [0, population) 下标，顺序即抽取顺序。
+    ///
+    /// 稀疏 Fisher–Yates 用映射记录交换，不复制名字池，额外存储随 count 增长。
+    /// count=0 返回空向量；count>population 会 panic，输入人数检查由调用方负责。
     pub fn sample_indices(&mut self, population: usize, count: usize) -> Vec<usize> {
         assert!(count <= population);
         let mut moved = std::collections::BTreeMap::new();

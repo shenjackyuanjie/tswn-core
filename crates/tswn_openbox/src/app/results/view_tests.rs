@@ -175,6 +175,7 @@ fn dragging_the_divider_resizes_the_table_area() {
     view.apply(update, &mut log);
     let ctx = egui::Context::default();
     let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(700.0, 600.0));
+    // 返回（分隔条标题的中心 y, 标题文字）。
     let divider_y = |view: &mut ResultsView, time: f64, events: Vec<egui::Event>| {
         let mut output = ctx.run_ui(
             egui::RawInput {
@@ -186,19 +187,22 @@ fn dragging_the_divider_resizes_the_table_area() {
             |ui| view.ui(ui),
         );
         output.textures_delta.clear();
-        output
+        let text = output
             .shapes
             .iter()
             .find_map(|shape| match &shape.shape {
-                // 分隔条左侧就是当前选中行的名字，位置即分隔条所在行。
-                egui::epaint::Shape::Text(text) if text.galley.job.text == "resize-marker" => Some(text.pos.y),
+                // 分隔条左侧就是当前选中行的名字与分数，位置即分隔条所在行。
+                egui::epaint::Shape::Text(text) if text.galley.job.text.starts_with("resize-marker") => Some(text),
                 _ => None,
             })
-            .unwrap_or_else(|| panic!("分隔条应绘制选中行名字"))
+            .unwrap_or_else(|| panic!("分隔条应绘制选中行名字"));
+        assert_eq!(text.galley.job.text, "resize-marker 70.000", "标题应带上分数");
+        (text.pos.y + text.galley.rect.center().y, text.galley.job.text.clone())
     };
-    let start = divider_y(&mut view, 0.0, Vec::new());
+    let (start, _) = divider_y(&mut view, 0.0, Vec::new());
     assert_eq!(view.table_height, TABLE_HEIGHT_AUTO, "默认是自动高度");
-    let pointer = egui::pos2(120.0, start + TABLE_DIVIDER_HEIGHT * 0.5);
+    // 指针放在标题右侧的横线上：标题文字本身留给选择，横线负责拖动调高。
+    let pointer = egui::pos2(screen.width() - 30.0, start);
     divider_y(
         &mut view,
         0.1,
@@ -214,7 +218,7 @@ fn dragging_the_divider_resizes_the_table_area() {
     );
     let moved = pointer + egui::vec2(0.0, 80.0);
     divider_y(&mut view, 0.2, vec![egui::Event::PointerMoved(moved)]);
-    let after = divider_y(&mut view, 0.3, Vec::new());
+    let (after, _) = divider_y(&mut view, 0.3, Vec::new());
     assert!(
         view.table_height > TABLE_HEIGHT_AUTO,
         "拖动后应保存具体高度：{}",
@@ -411,6 +415,7 @@ fn scrolling_to_the_bottom_restores_follow() {
                 egui::Event::PointerMoved(pointer),
                 egui::Event::MouseWheel {
                     unit: egui::MouseWheelUnit::Point,
+                    source: egui::MouseWheelSource::Unknown,
                     phase: egui::TouchPhase::Move,
                     delta: egui::vec2(0.0, -100_000.0),
                     modifiers: egui::Modifiers::NONE,
@@ -470,8 +475,8 @@ fn shrinking_the_table_keeps_details_attached_and_gives_them_more_room() {
         let mut detail_ys = Vec::new();
         for shape in &output.shapes {
             if let egui::epaint::Shape::Text(text) = &shape.shape {
-                // 分隔条左侧画的就是当前选中行的名字，明细行则形如 `mate0   60.000`。
-                if text.galley.job.text == "row0" {
+                // 分隔条左侧画的就是当前选中行的名字与分数，明细行则形如 `mate0   60.000`。
+                if text.galley.job.text.starts_with("row0") {
                     divider = Some(text.pos.y);
                 } else if text.galley.job.text.starts_with("mate") {
                     detail_ys.push(text.pos.y);
@@ -535,4 +540,363 @@ fn header_separator_drag_changes_width_within_bounds() {
     }
     assert!(width > 220.0);
     assert!((60.0..=640.0).contains(&width));
+}
+
+/// 完成的组不再显示“完成”：表格那一列换成「复制」按钮，点了把名字写进剪贴板。
+#[test]
+fn finished_table_rows_replace_the_state_text_with_a_copy_name_button() {
+    use tswn_openbox::backend::live::{ResultFinish, ResultUpdate};
+
+    let mut view = ResultsView {
+        mode: ViewMode::Table,
+        follow: false,
+        ..Default::default()
+    };
+    let mut log = crate::app::log::LogBuffer::default();
+    for (group, label) in [(0usize, "alpha@team"), (1, "beta@team")] {
+        let mut update = ResultUpdate::new_with_legacy(group, label, ResultKind::Rate, 3);
+        update.finish = Some(ResultFinish {
+            score: Some(70.0 + group as f64),
+            visible: true,
+            highlight: false,
+        });
+        view.apply(update, &mut log);
+    }
+    let ctx = egui::Context::default();
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(700.0, 400.0));
+    let drawn_texts = |output: &egui::FullOutput| {
+        output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::epaint::Shape::Text(text) => Some((text.galley.job.text.clone(), text.pos)),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut output = ctx.run_ui(
+        egui::RawInput {
+            screen_rect: Some(screen),
+            ..Default::default()
+        },
+        |ui| view.ui(ui),
+    );
+    output.textures_delta.clear();
+    let drawn = drawn_texts(&output);
+    assert!(
+        !drawn.iter().any(|(text, _)| text == "完成"),
+        "完成的组不再显示“完成”：{drawn:?}"
+    );
+    // 表头这一列叫“复制名字”，行内按钮用短标签“复制”。
+    assert!(drawn.iter().any(|(text, _)| text == "复制名字"));
+    let copies = drawn.iter().filter(|(text, _)| text == "复制").map(|(_, pos)| *pos).collect::<Vec<_>>();
+    assert_eq!(copies.len(), 2, "每个完成的行都有一个复制按钮：{drawn:?}");
+
+    let pointer = copies[0] + egui::vec2(8.0, 4.0);
+    let mut click = |time: f64, pressed: bool| {
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(screen),
+                time: Some(time),
+                events: vec![
+                    egui::Event::PointerMoved(pointer),
+                    egui::Event::PointerButton {
+                        pos: pointer,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+                ..Default::default()
+            },
+            |ui| view.ui(ui),
+        );
+        output.textures_delta.clear();
+        output
+    };
+    click(0.1, true);
+    let output = click(0.2, false);
+    let copied = output.platform_output.commands.iter().find_map(|command| match command {
+        egui::OutputCommand::CopyText(text) => Some(text.clone()),
+        _ => None,
+    });
+    assert_eq!(copied.as_deref(), Some("alpha@team"), "复制按钮写进剪贴板的是名字本身");
+}
+
+/// 卡片同样不再把“完成”写进标题：完成时右侧换成「复制名字」按钮。
+#[test]
+fn finished_cards_show_a_copy_name_button_instead_of_the_state_text() {
+    use tswn_openbox::backend::live::{ResultFinish, ResultUpdate};
+
+    let mut view = ResultsView::default();
+    let mut log = crate::app::log::LogBuffer::default();
+    let mut update = ResultUpdate::new_with_legacy(0, "card0", ResultKind::Rate, 3);
+    update.finish = Some(ResultFinish {
+        score: Some(80.0),
+        visible: true,
+        highlight: false,
+    });
+    view.apply(update, &mut log);
+    let ctx = egui::Context::default();
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(700.0, 400.0));
+    let drawn_texts = |output: &egui::FullOutput| {
+        output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::epaint::Shape::Text(text) => Some((text.galley.job.text.clone(), text.pos)),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut output = ctx.run_ui(
+        egui::RawInput {
+            screen_rect: Some(screen),
+            ..Default::default()
+        },
+        |ui| view.ui(ui),
+    );
+    output.textures_delta.clear();
+    let drawn = drawn_texts(&output);
+    assert!(
+        drawn.iter().any(|(text, _)| text == "▼ #1 card0   80.000"),
+        "完成状态不再写进标题，标题只有序号、名字与分数：{drawn:?}"
+    );
+    assert!(!drawn.iter().any(|(text, _)| text == "完成"), "卡片不再显示“完成”：{drawn:?}");
+    let Some((_, position)) = drawn.iter().find(|(text, _)| text == "复制名字") else {
+        panic!("完成的卡片应提供「复制名字」按钮：{drawn:?}");
+    };
+    let pointer = *position + egui::vec2(8.0, 4.0);
+    let mut click = |time: f64, pressed: bool| {
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(screen),
+                time: Some(time),
+                events: vec![
+                    egui::Event::PointerMoved(pointer),
+                    egui::Event::PointerButton {
+                        pos: pointer,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+                ..Default::default()
+            },
+            |ui| view.ui(ui),
+        );
+        output.textures_delta.clear();
+        output
+    };
+    click(0.1, true);
+    let output = click(0.2, false);
+    let copied = output.platform_output.commands.iter().find_map(|command| match command {
+        egui::OutputCommand::CopyText(text) => Some(text.clone()),
+        _ => None,
+    });
+    assert_eq!(copied.as_deref(), Some("card0"), "复制的是名字，不含明细");
+}
+
+/// 还在算或已停止的组没有“完成”可言：那些行仍然显示状态文字，不换成复制按钮。
+#[test]
+fn unfinished_rows_keep_the_state_text_instead_of_the_copy_button() {
+    use tswn_openbox::backend::live::ResultUpdate;
+
+    let ctx = egui::Context::default();
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(700.0, 400.0));
+    let drawn_texts = |view: &mut ResultsView| {
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(screen),
+                ..Default::default()
+            },
+            |ui| view.ui(ui),
+        );
+        output.textures_delta.clear();
+        output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::epaint::Shape::Text(text) => Some(text.galley.job.text.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    // 表格第二列与卡片标题右侧都要保留状态文字，而不是提前露出复制按钮。
+    for mode in [ViewMode::Cards, ViewMode::Table] {
+        let mut view = ResultsView {
+            mode,
+            follow: false,
+            ..Default::default()
+        };
+        let mut log = crate::app::log::LogBuffer::default();
+        let mut update = ResultUpdate::new_with_legacy(0, "pending", ResultKind::Rate, 3);
+        update.finish = None;
+        view.apply(update, &mut log);
+        let running = drawn_texts(&mut view);
+        assert!(
+            running.iter().any(|text| text == "计算中 · 预览"),
+            "{mode:?} 里计算中的组仍显示状态：{running:?}"
+        );
+        // 表格里的“复制名字”是列名，行内按钮叫“复制”；卡片右侧的按钮叫“复制名字”。
+        let row_buttons: &[&str] = if mode == ViewMode::Table {
+            &["复制"]
+        } else {
+            &["复制", "复制名字"]
+        };
+        for button in row_buttons {
+            assert!(
+                !running.iter().any(|text| text == button),
+                "{mode:?} 未完成时没有复制名字按钮：{running:?}"
+            );
+        }
+        view.finish("已停止");
+        let stopped = drawn_texts(&mut view);
+        assert!(
+            stopped.iter().any(|text| text == "已停止 · 结果不完整"),
+            "{mode:?} 停止后保留“结果不完整”标记：{stopped:?}"
+        );
+    }
+}
+
+/// 在名字格子上拖动可以选中文字，选中后 Ctrl+C 会把选中的部分写进剪贴板。
+#[test]
+fn dragging_over_a_name_selects_text_that_can_be_copied() {
+    use tswn_openbox::backend::live::{ResultFinish, ResultUpdate};
+
+    let mut view = ResultsView {
+        mode: ViewMode::Table,
+        follow: false,
+        ..Default::default()
+    };
+    let mut log = crate::app::log::LogBuffer::default();
+    let mut update = ResultUpdate::new_with_legacy(0, "alpha", ResultKind::Rate, 3);
+    update.finish = Some(ResultFinish {
+        score: Some(70.0),
+        visible: true,
+        highlight: false,
+    });
+    view.apply(update, &mut log);
+    let ctx = egui::Context::default();
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(700.0, 400.0));
+    let mut run = |time: f64, events: Vec<egui::Event>| {
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(screen),
+                time: Some(time),
+                events,
+                ..Default::default()
+            },
+            |ui| view.ui(ui),
+        );
+        output.textures_delta.clear();
+        output
+    };
+    let output = run(0.0, Vec::new());
+    let text_rect = output
+        .shapes
+        .iter()
+        .find_map(|shape| match &shape.shape {
+            egui::epaint::Shape::Text(text) if text.galley.job.text == "#1 alpha" => {
+                Some(text.galley.rect.translate(text.pos.to_vec2()))
+            }
+            _ => None,
+        })
+        .expect("名字应可见");
+    let y = text_rect.center().y;
+    let start = egui::pos2(text_rect.left() + 1.0, y);
+    let end = egui::pos2(text_rect.right() - 1.0, y);
+    let button = |pos: egui::Pos2, pressed: bool| egui::Event::PointerButton {
+        pos,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: egui::Modifiers::NONE,
+    };
+    run(0.1, vec![egui::Event::PointerMoved(start), button(start, true)]);
+    run(0.2, vec![egui::Event::PointerMoved(end)]);
+    run(0.3, vec![egui::Event::PointerMoved(end), button(end, false)]);
+    let output = run(0.4, vec![egui::Event::Copy]);
+    let copied = output
+        .platform_output
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            egui::OutputCommand::CopyText(text) => Some(text.clone()),
+            _ => None,
+        })
+        .expect("复制快捷键应复制选中的文字");
+    assert!(copied.contains("alpha"), "选中的应是名字格子里的文字，实际复制：{copied:?}");
+}
+
+/// 名字格子的文字可以选中复制，点击它依然能选中该行（下方明细据此刷新）。
+#[test]
+fn clicking_a_name_still_selects_that_row() {
+    use tswn_openbox::backend::live::{ResultFinish, ResultUpdate};
+
+    let mut view = ResultsView {
+        mode: ViewMode::Table,
+        follow: false,
+        ..Default::default()
+    };
+    let mut log = crate::app::log::LogBuffer::default();
+    for (group, label) in [(0usize, "alpha"), (1, "beta")] {
+        let mut update = ResultUpdate::new_with_legacy(group, label, ResultKind::Rate, 3);
+        update.finish = Some(ResultFinish {
+            score: Some(70.0),
+            visible: true,
+            highlight: false,
+        });
+        view.apply(update, &mut log);
+    }
+    assert_eq!(view.selected, Some(0), "首条默认选中");
+    let ctx = egui::Context::default();
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(700.0, 400.0));
+    let mut run = |time: f64, events: Vec<egui::Event>| {
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(screen),
+                time: Some(time),
+                events,
+                ..Default::default()
+            },
+            |ui| view.ui(ui),
+        );
+        output.textures_delta.clear();
+        output
+    };
+    let output = run(0.0, Vec::new());
+    let target = output
+        .shapes
+        .iter()
+        .find_map(|shape| match &shape.shape {
+            egui::epaint::Shape::Text(text) if text.galley.job.text == "#2 beta" => Some(text.pos),
+            _ => None,
+        })
+        .expect("第二行名字应可见");
+    let pointer = target + egui::vec2(20.0, 6.0);
+    run(
+        0.1,
+        vec![
+            egui::Event::PointerMoved(pointer),
+            egui::Event::PointerButton {
+                pos: pointer,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ],
+    );
+    run(
+        0.2,
+        vec![
+            egui::Event::PointerMoved(pointer),
+            egui::Event::PointerButton {
+                pos: pointer,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ],
+    );
+    assert_eq!(view.selected, Some(1), "点击可选中复制的名字仍然能选中该行");
 }

@@ -8,6 +8,9 @@ pub struct BattleOptions {
     /// 有限的名字评估参数，默认普通 fight 口径。
     pub eval_rq: f64,
     /// 是否在快照中附 PNG Base64；默认关闭以减少计算和载荷。
+    ///
+    /// 展示会话需要 `png_render` feature，否则请求 true 返回 `UnsupportedOption`；
+    /// 模型会话不构造图标，始终忽略此选项。
     pub include_icons: bool,
     /// 正整数的 Runtime 推进回合上限，包含空回合；默认 20,000。
     pub max_rounds: usize,

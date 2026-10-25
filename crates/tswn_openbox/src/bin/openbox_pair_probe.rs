@@ -1,6 +1,6 @@
 //! OpenBox `pair` 后端的 headless 基准入口。
 //!
-//! OpenBox 的 `pair` 平时只能在 GUI 里触发：GUI 调 `backend::run_pair`，后者把
+//! GUI 和 openbox-cli 的配队均调用 `backend::run_pair`，后端把
 //! 「选手 × 队友 × 靶子」矩阵交给 `tswn_core` 的共享 CQP/CQD 调度器。要比较两个提交的
 //! pair 路径，需要一个不依赖窗口的入口，本 binary 就是这个入口。
 //!

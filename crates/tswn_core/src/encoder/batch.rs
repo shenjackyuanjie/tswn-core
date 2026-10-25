@@ -652,7 +652,10 @@ struct TensorSlot {
     buffer: TensorBuffer,
 }
 
-/// 一批编码结果；每个张量按 `batch × 每样本元素数` 单独连续存放。
+/// 一批拥有独立存储的编码结果；每个张量按 `batch × 每样本元素数` 单独连续存放。
+///
+/// 分配后所有位置都是 padding。读取和可写行视图都借用本缓冲；可写访问仅检查张量名、
+/// dtype 与批下标，不维护 mask、presence 或引用语义，完整写入宜通过编码器入口完成。
 #[derive(Debug)]
 pub struct EncodedBatch {
     dims: [usize; 9],
@@ -661,7 +664,10 @@ pub struct EncodedBatch {
 }
 
 impl EncodedBatch {
-    /// 按 manifest 声明的容量分配缓冲，并预填 padding 值。
+    /// 按九维容量和批大小为每个张量分配存储，并预填 padding。
+    ///
+    /// `batch=0` 合法，此时没有可写批槽位。此入口不执行 manifest 门禁，也不限制总字节数；
+    /// 调用方应预先校验容量并控制批大小，防止 shape 乘积溢出或分配过大。
     pub fn new<C: CapacityDims>(profile: &C, batch: usize) -> Self {
         let dims = profile.dims();
         let slots = TENSOR_SPECS
@@ -725,7 +731,8 @@ impl EncodedBatch {
             .ok_or_else(|| EncodeError::UnknownTensor { name: name.to_owned() })
     }
 
-    /// 整段只读视图（导出与测试用）。
+    /// 借用 f32 张量的全部批数据，按 batch 主序排列，不复制元素。
+    /// 未知张量或 dtype 不符均返回 [`EncodeError::UnknownTensor`]。
     pub fn f32_all(&self, name: &str) -> Result<&[f32], EncodeError> {
         match &self.slot(name)?.buffer {
             TensorBuffer::F32(values) => Ok(values),
@@ -754,7 +761,10 @@ impl EncodedBatch {
         }
     }
 
-    /// 以小端序返回整段张量字节；导出器不得依赖主机字节序。
+    /// 将整段张量复制成调用方拥有的小端字节数组，长度与 [`Self::tensor_byte_len`] 一致。
+    ///
+    /// 包含全部批槽位和 padding；f32 按原始 IEEE bit 导出，不作文本转换或归一化。
+    /// 每次调用都会新分配，导出器不应依赖主机字节序。
     pub fn tensor_bytes(&self, name: &str) -> Result<Vec<u8>, EncodeError> {
         let mut bytes = Vec::with_capacity(self.tensor_byte_len(name)?);
         match &self.slot(name)?.buffer {

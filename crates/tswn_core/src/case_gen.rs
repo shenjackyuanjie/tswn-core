@@ -8,6 +8,8 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
 
+/// 抽样人数与 raw 队伍布局；自由混战的每名玩家各占一行。
+/// 生成器不检查对局是否可运行，调用方应选择至少两名玩家的模式。
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum CaseMode {
     OneVsOne,
@@ -35,6 +37,10 @@ impl CaseMode {
         }
     }
 
+    /// 将已选玩家按模式拼成 raw 文本，不添加 seed，也不解析名字。
+    ///
+    /// 2v2 使用前四项，3v3v3 使用前九项，多余项被忽略；这两种模式人数不足会 panic。
+    /// 1v1 与自由混战直接连接传入的全部项，调用方负责保证人数及名字中的分隔符有效。
     pub fn build_input(self, players: &[String]) -> String {
         match self {
             Self::OneVsOne | Self::FreeForAll(_) => players.join("\n"),
@@ -57,6 +63,10 @@ pub struct GeneratedCase {
     pub input_hash: u64,
 }
 
+/// 读取 UTF-8 号库，去除开头 BOM、每行首尾空白、空行与 `#` 开头的整行注释。
+///
+/// 完全相同的名字只保留首次出现，输出拥有字符串且保留源顺序；不解析 overlay 或玩家身份。
+/// 路径不是文件、读取失败或文本不是 UTF-8 时返回带上下文的错误。
 pub fn load_library(path: &Path) -> Result<Vec<String>, String> {
     if !path.is_file() {
         return Err(format!("号库文件不存在: {}", path.display()));
@@ -79,6 +89,8 @@ pub fn load_library(path: &Path) -> Result<Vec<String>, String> {
 
 fn strip_utf8_bom(s: &str) -> &str { s.strip_prefix('\u{feff}').unwrap_or(s) }
 
+/// 用给定 seed 原地重排名字，不读取系统随机源；空切片与单元素切片保持不变。
+/// 相同初始顺序和 seed 在本算法下得到相同输出，不保证统计意义上的无偏抽样。
 pub fn deterministic_shuffle(values: &mut [String], seed: u64) {
     if values.len() < 2 {
         return;
@@ -91,6 +103,11 @@ pub fn deterministic_shuffle(values: &mut [String], seed: u64) {
     }
 }
 
+/// 按固定候选步长与起点顺序抽取案例，去重后跳过 `case_offset` 项，至多返回 `max_cases` 项。
+///
+/// `names` 应已按所需语义去重；采样保证索引不重复，不额外合并同名玩家。
+/// 名字数不足时返回空列表，候选空间耗尽时结果可少于上限。生成仅发生在内存，
+/// 不写入 golden/corpus；去重键是 [`stable_hash`]，不是无碰撞的内容标识。
 pub fn generate_cases_for_mode(names: &[String], mode: CaseMode, case_offset: usize, max_cases: usize) -> Vec<GeneratedCase> {
     let total = mode.total_players();
     if names.len() < total {
@@ -155,6 +172,10 @@ fn sample_unique_window(names: &[String], start: usize, total: usize, step: usiz
     (0..total).map(|idx| names[(start + idx * step) % names.len()].clone()).collect()
 }
 
+/// 用固定初始化的 `DefaultHasher` 计算进程间可复现的辅助哈希，不提供密码学保证。
+///
+/// 标准库不承诺算法跨 Rust 版本不变，`Hash` 输入的表示也可能受平台影响；
+/// 仅适合同一工具链与平台下的案例去重和短 ID，不应当作永久协议摘要。
 pub fn stable_hash<T: Hash>(value: &T) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     value.hash(&mut hasher);

@@ -1,4 +1,7 @@
 //! 配队任务：输入准备、队友明细与最终排名。
+//!
+//! 先冻结选手与队友的单成员强度，再交给矩阵窗口执行；未完成选手不发布最终排名。
+//! 增量搭档仅是预览，文件与终态由本模块统一收口，错误或取消不回滚已有输出。
 
 mod matrix;
 
@@ -14,9 +17,14 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 use tswn_core::cli_api;
 
+/// 同步执行配队矩阵与头部排名，借 send 传回日志、进度和 Done(Result)。
+/// 输入按值移交，取消通过 input.cancel 请求；回调失败或 panic 不在此入口捕获。
 pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) { run_pair_observed(input, send, None); }
 
-/// GUI 可选增量观察接口；None 保留原来的输出契约。
+/// 在原任务事件之外发布结构化增量；observer=None 保留传统文本输出。
+///
+/// 观察者仅在本次同步调用期间借用，可能在计算 worker 并发执行；应把自有更新
+/// 转交收件箱，不直接访问 UI。完成前的明细只是预览，最终状态以 Done 为准。
 pub fn run_pair_observed(input: PairInput, send: impl Fn(ProgressEvent), observer: ResultObserver<'_>) {
     let PreparedPairGroups {
         target_groups,

@@ -40,6 +40,8 @@ target/        Cargo 输出和本地差分产物
 
 ## 主要命令
 
+构建前准备 Rust/Cargo、Python 3.12+ 和对应平台工具链。当前全功能 workspace 的依赖要求 Rust 至少 1.95；本轮使用 Rust 1.99，未单独验证 1.95 的完整构建。Python wheel、WASM CLI 版本匹配和 GUI 系统依赖见 [全量构建指南](docs/guides/build-all.md#1-构建范围与前提)。
+
 构建和检查：
 
 ```powershell
@@ -99,9 +101,12 @@ python scripts/check_runtime_release.py --corpus
 - Openbox GUI：`cargo run -p tswn_openbox --bin tswn_openbox`。
 - Openbox 无头 CLI：`cargo run -p tswn_openbox --no-default-features --features mimalloc_alloc --bin openbox-cli -- --help`。
 - `python track.py test`: 主 Runtime corpus 跟踪器的短命令转发入口。
-- `track_test.py`: release corpus 的测试失败集 checkpoint 工具，默认运行完整 124 项。
+- `track_test.py`: release corpus 的测试失败集 checkpoint 工具，默认运行完整 corpus；实际范围由当前测试目标决定。
 
 ## 文档入口
+
+- [全仓库更新日志](CHANGELOG.md)：跨组件更新汇总，各 crate 继续维护自身历史。
+- [2026-10 维护报告](docs/maintenance-2026-10.md)：本轮审查覆盖、实现与统一验收；[文档专项全量清单](docs/reviews/2026-10-maintenance-doc-audit.md) 列出 148 份原 Markdown 和脚本覆盖。
 
 - [项目与 core 原理指南](docs/core-guide/README.md)：面向熟悉 namerena 的读者，图文介绍角色构建、Runtime、hook、状态、语言接口及全项目工具链。
 - [Cargo doc 阅读入口](docs/core-guide/README.md#在本机看-api-文档)：按类型、方法和字段浏览 API，并运行文档示例。
