@@ -1,4 +1,4 @@
-//! 共用业务任务门面：DIY、namer-pf、批量胜率与 pair。
+//! 共用业务任务门面：DIY、namer-pf、批量胜率、pair 与 base。
 //!
 //! 输入通过 [`BatchRateInput`]、[`PairInput`] 等明确结构表达，传统任务入口回传
 //! [`ProgressEvent`]，`run_*_observed` 还提供 [`live`] 的结构化增量结果。
@@ -13,7 +13,11 @@
 //! run_namer_pf/batch_rate/pair 通过 Done(Result) 报终态，DIY 直接返回 Result。
 //! 取消是协作式请求，已完成明细保留，已开始的工作可能继续；文件写入不是事务，
 //! 出错或取消不会恢复旧文件，输出路径不应指向需要保留的输入或配置。
+//!
+//! `base` 是单名字的同步渲染入口 [`run_base`]：它不产生进度事件，GUI 把它放进
+//! 后台线程只为保持界面响应，文本本身与 `openbox-cli base` 完全一致。
 
+mod base;
 mod batch;
 mod format;
 pub mod live;
@@ -28,6 +32,7 @@ mod skill_board;
 mod to_diy;
 mod types;
 
+pub use base::run_base;
 pub use batch::{run_batch_rate, run_batch_rate_observed};
 pub use namer_pf::{run_namer_pf, run_namer_pf_observed};
 pub use pair::{run_pair, run_pair_observed};
