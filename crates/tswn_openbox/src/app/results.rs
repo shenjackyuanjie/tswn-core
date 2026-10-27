@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use serde::{Deserialize, Serialize};
 use tswn_openbox::backend::live::{EntryKind, ResultEntry, ResultFinish, ResultKind, ResultUpdate};
 
+use super::icons::IconCache;
 use super::log::{LogBuffer, LogKind};
 
 const MAX_RESULT_BYTES: usize = 8 * 1024 * 1024;
@@ -80,6 +81,9 @@ struct DisplayEntry {
 /// 卡片与表格里的一行详情；`kind` 决定整体着色，缩进与差额由文本自身决定。
 pub(crate) struct DetailLine {
     pub(crate) text: String,
+    /// 行首的玩家名字，用于渲染徽章；为空表示该行不是按名字索引的明细
+    /// （DIY 导出行、namer-pf 的指标行），只显示文本。
+    pub(crate) label: String,
     pub(crate) kind: EntryKind,
 }
 
@@ -187,6 +191,7 @@ impl Record {
                 .iter()
                 .map(|line| DetailLine {
                     text: line.clone(),
+                    label: String::new(),
                     kind: EntryKind::Plain,
                 })
                 .collect()
@@ -195,8 +200,13 @@ impl Record {
                 .iter()
                 .map(|&index| {
                     let entry = &self.entries[&index];
+                    // 只有按名字索引的明细（配队队友、批量靶子）才带徽章；namer-pf 的标签是指标名。
+                    let label = matches!(self.kind, ResultKind::Rate | ResultKind::Pair)
+                        .then(|| entry.data.label.clone())
+                        .unwrap_or_default();
                     DetailLine {
                         text: detail_line_text(entry),
+                        label,
                         kind: entry.data.kind,
                     }
                 })
@@ -227,6 +237,10 @@ pub(crate) struct ResultsView {
     pub column_widths: [f32; 7],
     pub column_alignments: [ColumnAlign; 7],
     pub card_align: ColumnAlign,
+    /// 名字旁是否渲染玩家徽章；排版设置按工具页保存。
+    pub show_icons: bool,
+    /// 徽章纹理缓存；随视图常驻，清空结果不回收。
+    icons: IconCache,
     /// 表格区域高度；[`TABLE_HEIGHT_AUTO`] 表示按可用高度自动分配。
     pub table_height: f32,
     records: HashMap<usize, Record>,
@@ -262,6 +276,8 @@ impl Default for ResultsView {
                 ColumnAlign::Right,
             ],
             card_align: ColumnAlign::Left,
+            show_icons: true,
+            icons: IconCache::default(),
             table_height: TABLE_HEIGHT_AUTO,
             records: HashMap::new(),
             order: VecDeque::new(),
@@ -291,6 +307,8 @@ impl ResultsView {
             column_widths: self.column_widths,
             column_alignments: self.column_alignments,
             card_align: self.card_align,
+            show_icons: self.show_icons,
+            icons: std::mem::take(&mut self.icons),
             table_height: self.table_height,
             ..Self::default()
         };

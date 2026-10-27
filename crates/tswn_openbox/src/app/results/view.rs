@@ -9,6 +9,7 @@ use super::{
     TABLE_HEIGHT_MIN, ViewMode,
 };
 use crate::app::help::HelpTopic;
+use crate::app::icons::{ICON_SIZE_MAX, ICON_TEXT_GAP, IconCache};
 use crate::app::style::Palette;
 use tswn_openbox::backend::live::{EntryKind, ResultKind};
 
@@ -82,6 +83,11 @@ impl ResultsView {
     }
 
     fn layout_controls(&mut self, ui: &mut egui::Ui, kind: ResultKind) {
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut self.show_icons, "显示徽章").on_hover_text(
+                "按名字渲染玩家徽章，与 `tswn-cli icon` 同一套推导；`a+b` 组合显示各成员的徽章，`name@team` 与同队玩家共享。",
+            );
+        });
         if self.mode == ViewMode::Cards {
             ui.horizontal(|ui| {
                 ui.label("卡片对齐");
@@ -172,6 +178,8 @@ impl ResultsView {
             self.rendered_mode = self.mode;
         }
         let table = self.mode == ViewMode::Table;
+        // 徽章开关是布局偏好；缓存只在真正绘制时按需借用，避免长时间占用 `self`。
+        let show_icons = self.show_icons;
         let kind = self.records[self.order.front().unwrap()].kind;
         let scores = kind == ResultKind::Scores;
         let height = row_height(ui);
@@ -241,7 +249,13 @@ impl ResultsView {
                                     ui.horizontal(|ui| {
                                         ui.add_space(12.0);
                                         let button = copy_button_width(record.kind, index);
-                                        detail_ui(ui, line, (width - 12.0 - button).max(60.0), self.card_align);
+                                        detail_ui(
+                                            ui,
+                                            line,
+                                            (width - 12.0 - button).max(60.0),
+                                            self.card_align,
+                                            show_icons.then_some(&mut self.icons),
+                                        );
                                         if button > 0.0
                                             && ui.small_button("复制").on_hover_text("复制该名字的 DIY 导出行。").clicked()
                                         {
@@ -270,6 +284,12 @@ impl ResultsView {
                             }
                             ResultRow::Header(group) => {
                                 let record = &self.records[&group];
+                                // 徽章按组名渲染；关闭开关时不生成纹理。
+                                let label_icons = if show_icons {
+                                    self.icons.textures_for_label(ui.ctx(), &record.label)
+                                } else {
+                                    Vec::new()
+                                };
                                 ui.push_id((group, "header"), |ui| {
                                     let palette = Palette::of(ui);
                                     let finished = record.finish.is_some();
@@ -294,8 +314,16 @@ impl ResultsView {
                                             if highlight {
                                                 name = name.color(palette.emphasis);
                                             }
-                                            if cell(ui, self.column_widths[0], name, self.column_alignments[0], true, Some(fill))
-                                                .clicked()
+                                            if cell_with_icons(
+                                                ui,
+                                                self.column_widths[0],
+                                                &label_icons,
+                                                name,
+                                                self.column_alignments[0],
+                                                true,
+                                                Some(fill),
+                                            )
+                                            .clicked()
                                             {
                                                 select = Some(group);
                                             }
@@ -366,10 +394,16 @@ impl ResultsView {
                                             let fill = state_color.gamma_multiply(0.1);
                                             let slot = if finished { COPY_NAME_WIDTH } else { CARD_STATE_WIDTH };
                                             let title_width = (width - slot - CELL_GAP).max(60.0);
-                                            let response = cell(ui, title_width, text, self.card_align, true, Some(fill))
-                                                .on_hover_text(
-                                                    "点击展开或收起明细。序号按原输入标记，多个线程的结果可能交错到达。",
-                                                );
+                                            let response = cell_with_icons(
+                                                ui,
+                                                title_width,
+                                                &label_icons,
+                                                text,
+                                                self.card_align,
+                                                true,
+                                                Some(fill),
+                                            )
+                                            .on_hover_text("点击展开或收起明细。序号按原输入标记，多个线程的结果可能交错到达。");
                                             if response.clicked() {
                                                 toggle = Some(group);
                                                 select = Some(group);
@@ -448,7 +482,13 @@ impl ResultsView {
                         let line = &record.details[index];
                         let button = copy_button_width(record.kind, index);
                         ui.horizontal(|ui| {
-                            detail_ui(ui, line, (width - button).max(60.0), self.card_align);
+                            detail_ui(
+                                ui,
+                                line,
+                                (width - button).max(60.0),
+                                self.card_align,
+                                show_icons.then_some(&mut self.icons),
+                            );
                             if button > 0.0 && ui.small_button("复制").on_hover_text("复制该名字的 DIY 导出行。").clicked()
                             {
                                 ui.ctx().copy_text(line.text.clone());
@@ -539,12 +579,29 @@ fn cell(
     clickable: bool,
     fill: Option<egui::Color32>,
 ) -> egui::Response {
+    cell_with_icons(ui, width, &[], text, align, clickable, fill)
+}
+
+/// [`cell`] 的带徽章版本：徽章绘制在文字左侧，文字区随之变窄，行高不变。
+///
+/// 徽章按行高收缩并限制在原生边长内，因此不会撑高虚拟列表行，也不会被裁切；
+/// 没有徽章时与 [`cell`] 完全一致。
+fn cell_with_icons(
+    ui: &mut egui::Ui,
+    width: f32,
+    icons: &[egui::TextureHandle],
+    text: impl Into<egui::WidgetText>,
+    align: ColumnAlign,
+    clickable: bool,
+    fill: Option<egui::Color32>,
+) -> egui::Response {
     let sense = if clickable {
         egui::Sense::click()
     } else {
         egui::Sense::hover()
     };
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, row_height(ui)), sense);
+    let height = row_height(ui);
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), sense);
     if let Some(fill) = fill {
         ui.painter().rect_filled(rect, 2.0, fill);
     }
@@ -554,8 +611,27 @@ fn cell(
             .layout(egui::Layout::top_down(align.egui()).with_main_align(egui::Align::Center)),
     );
     child.set_clip_rect(ui.clip_rect().intersect(rect));
-    let label = child.add(egui::Label::new(text.into()).truncate().halign(align.egui()).selectable(true));
-    let response = response.union(label);
+    let label = egui::Label::new(text.into()).truncate().halign(align.egui()).selectable(true);
+    let response = if icons.is_empty() {
+        response.union(child.add(label))
+    } else {
+        // 徽章与文字同一行：文字可用宽度自动扣除徽章占用，`truncate` 仍按剩余宽度截断。
+        // 整组按列的对齐方式摆放，右对齐的明细不会因为多了徽章就跑到左边。
+        let side = height.min(ICON_SIZE_MAX);
+        let text_response = child
+            .with_layout(
+                egui::Layout::left_to_right(egui::Align::Center).with_main_align(align.egui()),
+                |ui| {
+                    for handle in icons {
+                        ui.add(egui::Image::from_texture((handle.id(), egui::vec2(side, side))));
+                    }
+                    ui.add_space(ICON_TEXT_GAP);
+                    ui.add(label)
+                },
+            )
+            .inner;
+        response.union(text_response)
+    };
     if clickable {
         response.on_hover_cursor(egui::CursorIcon::PointingHand)
     } else {
@@ -591,8 +667,12 @@ fn summary_text(record: &Record, palette: Palette) -> egui::RichText {
 fn copy_button_width(kind: ResultKind, index: usize) -> f32 { if kind == ResultKind::Diy && index == 0 { 56.0 } else { 0.0 } }
 
 /// 详情行沿用纯文本视图的观感：等宽字体、区块标题加粗、缩进行弱化、差额项单独高亮。
-fn detail_ui(ui: &mut egui::Ui, line: &DetailLine, width: f32, align: ColumnAlign) {
+///
+/// 徽章只做行首前缀，名字与数值文本保持原样：徽章是视觉锚点，替代不了可读的名字。
+/// `icons` 为 `None` 表示关闭了徽章，此时不生成任何纹理。
+fn detail_ui(ui: &mut egui::Ui, line: &DetailLine, width: f32, align: ColumnAlign, icons: Option<&mut IconCache>) {
     let palette = Palette::of(ui);
+    let handles = icons.map(|cache| cache.textures_for_label(ui.ctx(), &line.label)).unwrap_or_default();
     let text: egui::WidgetText = if line.kind == EntryKind::SkillBoard || line.text.starts_with("=== ") {
         egui::RichText::new(&line.text).color(palette.info).strong().monospace().into()
     } else if let Some(job) = changed_items_job(ui, &line.text) {
@@ -603,7 +683,7 @@ fn detail_ui(ui: &mut egui::Ui, line: &DetailLine, width: f32, align: ColumnAlig
     } else {
         egui::RichText::new(&line.text).monospace().into()
     };
-    cell(ui, width, text, align, false, None).on_hover_text(&line.text);
+    cell_with_icons(ui, width, &handles, text, align, false, None).on_hover_text(&line.text);
 }
 
 /// 差额项由 `format_delta` 写成 `值(+N)` / `值(-N)`；只给这些项上高亮色，其余保持正文色。

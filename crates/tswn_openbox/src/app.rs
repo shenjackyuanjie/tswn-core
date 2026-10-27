@@ -9,6 +9,7 @@ pub(crate) mod capture;
 mod ds4;
 mod ds4_help;
 mod help;
+mod icons;
 mod log;
 mod results;
 mod settings;

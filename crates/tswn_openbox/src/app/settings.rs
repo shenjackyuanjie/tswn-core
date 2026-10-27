@@ -18,6 +18,8 @@ struct ViewLayout {
     column_widths: [f32; 7],
     column_alignments: [ColumnAlign; 7],
     card_align: ColumnAlign,
+    /// 名字旁是否渲染玩家徽章。
+    show_icons: bool,
     /// 表格区域高度；0 表示按可用高度自动分配，拖动分隔条后保存具体像素值。
     table_height: f32,
 }
@@ -29,6 +31,7 @@ impl Default for ViewLayout {
             column_widths: view.column_widths,
             column_alignments: view.column_alignments,
             card_align: view.card_align,
+            show_icons: view.show_icons,
             table_height: view.table_height,
         }
     }
@@ -40,6 +43,7 @@ impl ViewLayout {
             column_widths: view.column_widths,
             column_alignments: view.column_alignments,
             card_align: view.card_align,
+            show_icons: view.show_icons,
             table_height: view.table_height,
         }
     }
@@ -53,6 +57,7 @@ impl ViewLayout {
         }
         view.column_alignments = self.column_alignments;
         view.card_align = self.card_align;
+        view.show_icons = self.show_icons;
         // 0 表示自动；其它值必须落在拖动允许的范围内，非法时回退自动。
         view.set_table_height((self.table_height >= super::results::TABLE_HEIGHT_MIN).then_some(self.table_height));
     }
