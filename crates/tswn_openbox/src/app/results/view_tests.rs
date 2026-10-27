@@ -507,6 +507,84 @@ fn shrinking_the_table_keeps_details_attached_and_gives_them_more_room() {
     );
 }
 
+/// 徽章按名字上传 16×16 纹理：组名与队友名各一个，且 namer-pf 的指标行不渲染。
+#[test]
+fn badges_are_uploaded_per_name_and_only_for_name_indexed_rows() {
+    use tswn_openbox::backend::live::{ResultEntry, ResultFinish, ResultUpdate};
+
+    let badge_sizes = |kind, label: &str, entries: Vec<ResultEntry>, show_icons: bool| {
+        let mut view = ResultsView {
+            mode: ViewMode::Table,
+            follow: false,
+            show_icons,
+            ..Default::default()
+        };
+        let mut log = crate::app::log::LogBuffer::default();
+        let mut update = ResultUpdate::new_with_legacy(0, label, kind, 3);
+        update.entries = entries;
+        update.finish = Some(ResultFinish {
+            score: Some(60.0),
+            visible: true,
+            highlight: false,
+        });
+        view.apply(update, &mut log);
+        let ctx = egui::Context::default();
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(700.0, 600.0));
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(screen),
+                ..Default::default()
+            },
+            |ui| view.ui(ui),
+        );
+        // 只挑徽章尺寸的纹理：首帧还会上传字体纹理，不能据此判断有没有画徽章。
+        let sizes = output
+            .textures_delta
+            .set
+            .values()
+            .flatten()
+            .map(|delta| (delta.image.width(), delta.image.height()))
+            .filter(|size| *size == (16, 16))
+            .collect::<Vec<_>>();
+        output.textures_delta.clear();
+        sizes
+    };
+
+    // pair：组名一个徽章，队友行一个徽章。
+    assert_eq!(
+        badge_sizes(
+            ResultKind::Pair,
+            "mario",
+            vec![ResultEntry::number(0, "yoshi".into(), 60.0)],
+            true
+        ),
+        [(16, 16), (16, 16)],
+        "组名与队友名各一个 16×16 徽章"
+    );
+    // Scores：组名一个徽章，指标行（pp/pd/…）不是名字，不渲染。
+    assert_eq!(
+        badge_sizes(
+            ResultKind::Scores,
+            "mario+luigi",
+            vec![ResultEntry::number(0, "pp".into(), 60.0)],
+            true
+        ),
+        [(16, 16), (16, 16)],
+        "组合组名按成员拆成两个徽章，指标行不渲染"
+    );
+    // 关掉开关后一个徽章都不上传，文本布局回到纯文本形态。
+    assert!(
+        badge_sizes(
+            ResultKind::Pair,
+            "mario",
+            vec![ResultEntry::number(0, "yoshi".into(), 60.0)],
+            false
+        )
+        .is_empty(),
+        "关闭开关后不应上传徽章纹理"
+    );
+}
+
 #[test]
 fn header_separator_drag_changes_width_within_bounds() {
     let ctx = egui::Context::default();
