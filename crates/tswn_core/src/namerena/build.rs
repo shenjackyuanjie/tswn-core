@@ -289,6 +289,9 @@ impl PlayerBuild {
             .weapon
             .as_deref()
             .or_else(|| spec.overlay.as_ref().and_then(|overlay| overlay.weapon.as_deref()));
+        let weapon = (!has_diy)
+            .then(|| weapon_name.and_then(|name| WeaponBuild::parse(name, &clan_name, &id_key_name)))
+            .flatten();
         Self {
             id,
             name: spec.name.clone(),
@@ -301,7 +304,7 @@ impl PlayerBuild {
             normal_raw_name_base,
             action_order,
             name_factor,
-            weapon: (!has_diy).then(|| weapon_name.and_then(WeaponBuild::parse)).flatten(),
+            weapon,
             overlay: spec.overlay.clone(),
         }
     }
