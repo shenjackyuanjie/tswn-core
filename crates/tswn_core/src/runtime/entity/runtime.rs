@@ -99,6 +99,13 @@ pub struct CounterRuntime {
     pub last_updates_id: Option<u64>,
 }
 
+/// 0.5.5 `SklS11` 的运行时字段：技能等级会被砍手分支改写，耐久从 3 开始递减。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WeaponS11Runtime {
+    pub level: u32,
+    pub durability: i32,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RuntimeCorpseKind {
     #[default]
@@ -141,6 +148,12 @@ pub struct PlayerRuntime {
     pub hide: Option<HideRuntime>,
     pub assassinate: Option<AssassinateRuntime>,
     pub counter: CounterRuntime,
+    /// 玄月奖杯的受击反击登记；与普通反击分开保存。
+    pub counter_xuan_yue: CounterRuntime,
+    /// 剁手刀的运行时技能等级与耐久。
+    pub weapon_s11: Option<WeaponS11Runtime>,
+    /// 死亡笔记当前写下的目标。
+    pub death_note_mark: Option<EntityIdx>,
     pub corpse: RuntimeCorpseKind,
 }
 
@@ -156,6 +169,12 @@ impl PlayerRuntime {
             .map_or((PlayerKindFlags::NONE, PlayerKindPolicies::default()), |kind| {
                 (kind.flags, template.policy_overrides.apply_to(kind.policies))
             });
+        let weapon_s11 = template.skills.skills().iter().copied().enumerate().find_map(|(fixed_lane, skill_id)| {
+            (registry.skill(skill_id)?.export_name == crate::runtime::DEFAULT_CORE_WEAPON_S11_SKILL_EXPORT)
+                .then(|| template.skills.level_at(fixed_lane))
+                .flatten()
+                .map(|level| WeaponS11Runtime { level, durability: 3 })
+        });
         Self {
             hp: template.max_hp,
             alive: true,
@@ -179,7 +198,7 @@ impl PlayerRuntime {
             flags,
             policies,
             move_state: template.move_state,
-            charge: ChargeRuntime::default(),
+            charge: ChargeRuntime::from_permanent(template.permanent_charge),
             accumulate: AccumulateRuntime::default(),
             shield: 0,
             protect_to: None,
@@ -189,6 +208,9 @@ impl PlayerRuntime {
             hide: None,
             assassinate: None,
             counter: CounterRuntime::default(),
+            counter_xuan_yue: CounterRuntime::default(),
+            weapon_s11,
+            death_note_mark: None,
             corpse: RuntimeCorpseKind::None,
         }
     }
@@ -224,7 +246,7 @@ impl PlayerRuntime {
         self.flags = PlayerKindFlags::NONE;
         self.policies = PlayerKindPolicies::default();
         self.move_state = template.move_state;
-        self.charge = ChargeRuntime::default();
+        self.charge = ChargeRuntime::from_permanent(template.permanent_charge);
         self.accumulate = AccumulateRuntime::default();
         self.shield = 0;
         self.protect_to = None;
@@ -234,6 +256,9 @@ impl PlayerRuntime {
         self.hide = None;
         self.assassinate = None;
         self.counter = CounterRuntime::default();
+        self.counter_xuan_yue = CounterRuntime::default();
+        self.weapon_s11 = None;
+        self.death_note_mark = None;
         self.corpse = RuntimeCorpseKind::None;
     }
 
@@ -272,6 +297,9 @@ impl PlayerRuntime {
         self.hide = prepared.hide;
         self.assassinate = prepared.assassinate;
         self.counter.clone_from(&prepared.counter);
+        self.counter_xuan_yue.clone_from(&prepared.counter_xuan_yue);
+        self.weapon_s11 = prepared.weapon_s11;
+        self.death_note_mark = prepared.death_note_mark;
         self.corpse = prepared.corpse;
     }
 
@@ -360,6 +388,19 @@ pub struct ChargeRuntime {
     pub active: bool,
     pub post_action_active: bool,
     pub step: i32,
+    /// 桂月奖杯注入的常驻 `charge` 标记：只参与状态存在性判定，不带攻击倍率且永不过期。
+    pub permanent: bool,
+}
+
+impl ChargeRuntime {
+    pub(crate) fn from_permanent(permanent: bool) -> Self {
+        Self {
+            active: permanent,
+            post_action_active: false,
+            step: 0,
+            permanent,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -506,7 +547,7 @@ impl EntityRecord {
     }
 
     pub fn tick_charge_post_action(&mut self) -> bool {
-        if !self.runtime.charge.post_action_active {
+        if !self.runtime.charge.post_action_active || self.runtime.charge.permanent {
             return false;
         }
 
@@ -522,7 +563,7 @@ impl EntityRecord {
     }
 
     pub fn clear_charge_runtime(&mut self) -> bool {
-        if !self.runtime.charge.active {
+        if !self.runtime.charge.active || self.runtime.charge.permanent {
             return false;
         }
 
@@ -538,7 +579,7 @@ impl EntityRecord {
             return false;
         }
 
-        let charge_active = self.runtime.at_boost_millionths >= 3_000_000;
+        let charge_active = self.runtime.charge.active;
         self.runtime.accumulate.active = true;
         self.runtime.accumulate.set_charge_bonus(if charge_active { 1.0 } else { 0.0 });
         if charge_active {
@@ -606,7 +647,8 @@ impl EntityRecord {
 
     fn refresh_runtime_at_boost(&mut self) {
         let mut at_boost = f64::from_bits(self.template.at_boost_bits);
-        if self.runtime.charge.active {
+        // 攻击倍率来自 SklCharge.ar；桂月的常驻标记没有 ar，只满足存在性判定。
+        if self.runtime.charge.active && !self.runtime.charge.permanent {
             at_boost *= 3.0;
         }
         if self.runtime.accumulate.active {

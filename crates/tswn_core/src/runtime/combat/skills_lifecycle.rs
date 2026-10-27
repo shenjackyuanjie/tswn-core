@@ -221,7 +221,7 @@ impl CombatRuntime {
                 .entities
                 .get(actor)
                 .unwrap_or_else(|| panic!("unknown runtime slow actor: {}", actor.0));
-            (owner.runtime.magic, owner.runtime.at_boost_millionths >= 3_000_000)
+            (owner.runtime.magic, owner.runtime.charge.active)
         };
         let (target_flags, target_name, target_resistance, target_active) = {
             let target_entity = self
@@ -334,11 +334,7 @@ impl CombatRuntime {
             .set(counter_slot, SlotValue::U64(next_minion_index + 1))
             .expect("runtime core minion counter slot must exist");
         shadow_template.name = format!("{root_name}?{next_minion_index}");
-        shadow_template.move_state.speed_points = if self
-            .entities
-            .get(actor)
-            .is_some_and(|entity| entity.runtime.at_boost_millionths >= 3_000_000)
-        {
+        shadow_template.move_state.speed_points = if self.entities.get(actor).is_some_and(|entity| entity.runtime.charge.active) {
             2048
         } else {
             -2048

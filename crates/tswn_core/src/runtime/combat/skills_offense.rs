@@ -114,6 +114,15 @@ impl CombatRuntime {
                 let target = prepared.targets[0];
                 self.drain_plain_possess_skill_into(actor, target, updates);
             }
+            BuiltinActiveSkill::WeaponS11 => {
+                self.drain_plain_weapon_s11_skill_into(actor, updates);
+            }
+            BuiltinActiveSkill::WeaponDeathNote => {
+                self.drain_plain_weapon_death_note_skill_into(actor, updates);
+            }
+            BuiltinActiveSkill::WeaponXuanYue => {
+                unreachable!("runtime weapon xuan-yue skill never enters the action scan");
+            }
         }
     }
 
@@ -607,7 +616,7 @@ impl CombatRuntime {
                 .entities
                 .get(actor)
                 .unwrap_or_else(|| panic!("unknown runtime iron actor: {}", actor.0));
-            (owner.runtime.magic, owner.runtime.at_boost_millionths >= 3_000_000)
+            (owner.runtime.magic, owner.runtime.charge.active)
         };
         let step = 3 + if charge_active { 4 } else { 0 };
         let protect = 110 + magic + if charge_active { 240 + magic * 4 } else { 0 };

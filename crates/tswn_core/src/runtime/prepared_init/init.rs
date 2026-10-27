@@ -426,6 +426,7 @@ impl PreparedBattleInit {
             .with_target_score_stats(status.attr_sum, status.atk_sum, status.attract)
             .with_speed_points(status.move_point)
             .with_skill_loadout(skills)
+            .with_permanent_charge(player.permanent_charge)
     }
 
     /// 生成普通召唤物名字对应的 RC4 状态和 128 项名字底数。

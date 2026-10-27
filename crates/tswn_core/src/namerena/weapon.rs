@@ -51,7 +51,7 @@ const XUAN_YUE_CLANS: [&str; 22] = [
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum WeaponKind {
+pub(crate) enum WeaponKind {
     Generic,
     S11,
     DeathNote,
@@ -82,6 +82,8 @@ pub(crate) struct WeaponBuild {
 }
 
 impl WeaponBuild {
+    pub(crate) fn kind(&self) -> WeaponKind { self.kind }
+
     pub(crate) fn parse(name: &str, clan_name: &str, id_key_name: &str) -> Option<Self> {
         // 0.5.5 中 `+diy...` 直接作为自定义数据，不会创建武器。
         if name.is_empty() || name.starts_with("diy") {

@@ -159,7 +159,7 @@ impl CombatRuntime {
                 .unwrap_or_else(|| panic!("unknown runtime charm actor: {}", actor.0));
             (
                 owner.runtime.magic,
-                owner.runtime.at_boost_millionths >= 3_000_000,
+                owner.runtime.charge.active,
                 self.plain_effective_team(actor),
             )
         };

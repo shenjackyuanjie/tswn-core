@@ -215,12 +215,11 @@ fn plain_curse_on_damage_stacks_charge_bonus_without_reapplying_atk_sum() {
     let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
         vec![
             PlayerTemplate::new(1, "caster", 0, 100, 3),
-            PlayerTemplate::new(2, "charged-target", 1, 100, 3)
-                .with_at_boost_millionths(3_000_000)
-                .with_target_score_stats(0, 7, 1.0),
+            PlayerTemplate::new(2, "charged-target", 1, 100, 3).with_target_score_stats(0, 7, 1.0),
         ],
         registry,
     ));
+    runtime.entities.get_mut(EntityIdx(1)).unwrap().activate_charge_runtime();
     let mut updates = RunUpdates::new();
 
     runtime.apply_curse_on_damage(EntityIdx(0), EntityIdx(1), 1, &mut updates);

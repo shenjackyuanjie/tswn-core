@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use crate::rc4::RC4;
 
-use super::weapon::WeaponBuild;
+use super::weapon::{WeaponBuild, WeaponKind};
 use super::{
     NAME_MAX_LEN, NamerenaInput, PlayerClass, PlayerOverlay, PlayerSpec, PlayerStats, SkillBoost, SkillLoadoutSpec, TEAM_MAX_LEN,
     boss_append_attr, boss_default_skill_levels, boss_display_name, median,
@@ -19,6 +19,8 @@ pub struct PreparedPlayer {
     pub attrs: [u32; 8],
     pub status: PlayerStats,
     pub skills: SkillLoadoutSpec,
+    /// 0.5.5 桂月奖杯注入的常驻 `charge` 标记：存在但不提供攻击倍率、也无法解除。
+    pub permanent_charge: bool,
     pub name_factor: f64,
     pub weapon_attr_bonus: [i32; 8],
     pub name_base: [u8; 128],
@@ -459,10 +461,16 @@ impl PlayerBuild {
             status = status_from_attrs(attrs, self.name_factor, true);
             status.magic_point = 1000;
         }
-        let skills = overlay_skills.map_or_else(
+        let mut skills = overlay_skills.map_or_else(
             || SkillLoadoutSpec::standard(&levels, &boosted, &boosts, &self.action_order),
             |skills| SkillLoadoutSpec::player_overlay(skills),
         );
+        let mut permanent_charge = false;
+        if let Some(weapon) = &self.weapon {
+            let kind = weapon.kind();
+            skills.append_weapon_skills(kind);
+            permanent_charge = kind == WeaponKind::GuiYue;
+        }
         let weapon_attr_bonus = self.weapon.as_ref().map_or([0; 8], |weapon| weapon.attr_bonus);
         PreparedPlayer {
             id: self.id,
@@ -474,6 +482,7 @@ impl PlayerBuild {
             attrs,
             status,
             skills,
+            permanent_charge,
             name_factor: self.name_factor,
             weapon_attr_bonus,
             name_base: self.name_base,

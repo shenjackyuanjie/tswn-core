@@ -262,6 +262,20 @@ pub fn default_custom_runtime_import_config() -> Result<CustomRuntimeImportConfi
         TargetPolicy::None,
         SkillPriority(10),
     )?;
+    // 武器技能沿用产物注册顺序排在常规技能之后，模型技能编号因此保持稳定。
+    for builtin_skill in [
+        BuiltinActiveSkill::WeaponS11,
+        BuiltinActiveSkill::WeaponDeathNote,
+        BuiltinActiveSkill::WeaponXuanYue,
+    ] {
+        builder.register_skill(
+            "core",
+            builtin_skill.local_name(),
+            builtin_skill.export_name(),
+            builtin_skill.target_policy(),
+            SkillPriority(builtin_skill.legacy_key() as i32),
+        )?;
+    }
     builder.reserve_entity_slot("core", "shadow-blueprint", DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT)?;
     builder.reserve_entity_slot("core", "summon-blueprint", DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT)?;
     builder.reserve_entity_slot("core", "zombie-blueprint", DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT)?;
