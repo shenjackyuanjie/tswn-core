@@ -357,6 +357,227 @@ fn weapon_xuan_yue_counter_stays_out_of_action_scan() {
 }
 
 #[test]
+fn weapon_death_note_post_damage_marks_the_attacker_after_dodge() {
+    let (registry, _, death_note, _) = weapon_registry();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "left", 0, 1000, 10).with_skill_loadout(SkillLoadout::from_skill_levels([(death_note, 1)])),
+            PlayerTemplate::new(2, "right", 1, 1000, 10),
+        ],
+        registry,
+    ));
+    let (accuracy, dodge_value) = {
+        let caster = runtime.entities.get(EntityIdx(1)).unwrap();
+        let owner = runtime.entities.get(EntityIdx(0)).unwrap();
+        (
+            caster.runtime.wisdom + caster.runtime.resistance,
+            owner.runtime.wisdom + owner.runtime.magic,
+        )
+    };
+    tune_weapon_rng(&mut runtime, |rng| {
+        PlayerRuntime::dodge(accuracy, dodge_value, rng).then_some(())
+    });
+
+    let mut expected_rng = runtime.rng.clone();
+    let _ = expected_rng.next_u8();
+    let mut updates = RunUpdates::new();
+    runtime.drain_plain_post_damage_skill_chain_into(EntityIdx(0), 10, EntityIdx(1), &mut updates);
+
+    assert_eq!(
+        runtime.entities.get(EntityIdx(0)).unwrap().runtime.death_note_mark,
+        Some(EntityIdx(1))
+    );
+    assert_rng_state_eq(&runtime.rng, &expected_rng);
+}
+
+#[test]
+fn weapon_death_note_post_damage_failed_dodge_keeps_existing_mark() {
+    let (registry, _, death_note, _) = weapon_registry();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "left", 0, 1000, 10).with_skill_loadout(SkillLoadout::from_skill_levels([(death_note, 1)])),
+            PlayerTemplate::new(2, "right", 1, 1000, 10),
+            PlayerTemplate::new(3, "right2", 1, 1000, 10),
+        ],
+        registry,
+    ));
+    runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.death_note_mark = Some(EntityIdx(2));
+    let (accuracy, dodge_value) = {
+        let caster = runtime.entities.get(EntityIdx(1)).unwrap();
+        let owner = runtime.entities.get(EntityIdx(0)).unwrap();
+        (
+            caster.runtime.wisdom + caster.runtime.resistance,
+            owner.runtime.wisdom + owner.runtime.magic,
+        )
+    };
+    tune_weapon_rng(&mut runtime, |rng| {
+        (!PlayerRuntime::dodge(accuracy, dodge_value, rng)).then_some(())
+    });
+
+    let mut expected_rng = runtime.rng.clone();
+    let _ = expected_rng.next_u8();
+    let mut updates = RunUpdates::new();
+    runtime.drain_plain_post_damage_skill_chain_into(EntityIdx(0), 10, EntityIdx(1), &mut updates);
+
+    assert_eq!(
+        runtime.entities.get(EntityIdx(0)).unwrap().runtime.death_note_mark,
+        Some(EntityIdx(2))
+    );
+    assert_rng_state_eq(&runtime.rng, &expected_rng);
+}
+
+#[test]
+fn weapon_death_note_post_damage_ignores_self_damage_without_rng() {
+    let (registry, _, death_note, _) = weapon_registry();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![PlayerTemplate::new(1, "left", 0, 1000, 10).with_skill_loadout(SkillLoadout::from_skill_levels([(death_note, 1)]))],
+        registry,
+    ));
+    let before = runtime.rng.clone();
+    let mut updates = RunUpdates::new();
+    runtime.drain_plain_post_damage_skill_chain_into(EntityIdx(0), 10, EntityIdx(0), &mut updates);
+
+    assert!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.death_note_mark.is_none());
+    assert_rng_state_eq(&runtime.rng, &before);
+}
+
+#[test]
+fn weapon_xuan_yue_post_damage_registers_latest_caster_without_rng() {
+    let (registry, _, _, xuan_yue) = weapon_registry();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "left", 0, 1000, 10).with_skill_loadout(SkillLoadout::from_skill_levels([(xuan_yue, 1)])),
+            PlayerTemplate::new(2, "right", 1, 1000, 10),
+            PlayerTemplate::new(3, "ally", 0, 1000, 10),
+            PlayerTemplate::new(4, "right2", 1, 1000, 10),
+        ],
+        registry,
+    ));
+    let before = runtime.rng.clone();
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_plain_post_damage_skill_chain_into(EntityIdx(0), 10, EntityIdx(1), &mut updates);
+    {
+        let counter = &runtime.entities.get(EntityIdx(0)).unwrap().runtime.counter_xuan_yue;
+        assert!(counter.pending);
+        assert_eq!(counter.last_target, Some(EntityIdx(1)));
+        assert_eq!(counter.last_updates_id, Some(updates.id));
+    }
+    assert_eq!(updates.on_update_end.len(), 1);
+    assert_rng_state_eq(&runtime.rng, &before);
+
+    runtime.drain_plain_post_damage_skill_chain_into(EntityIdx(0), 10, EntityIdx(3), &mut updates);
+    {
+        let counter = &runtime.entities.get(EntityIdx(0)).unwrap().runtime.counter_xuan_yue;
+        assert_eq!(counter.last_target, Some(EntityIdx(3)));
+    }
+    assert_eq!(updates.on_update_end.len(), 1);
+    assert_rng_state_eq(&runtime.rng, &before);
+
+    runtime.drain_plain_post_damage_skill_chain_into(EntityIdx(0), 10, EntityIdx(2), &mut updates);
+    {
+        let counter = &runtime.entities.get(EntityIdx(0)).unwrap().runtime.counter_xuan_yue;
+        assert_eq!(counter.last_target, Some(EntityIdx(3)));
+    }
+    assert_eq!(updates.on_update_end.len(), 1);
+    assert_rng_state_eq(&runtime.rng, &before);
+}
+
+#[test]
+fn weapon_xuan_yue_update_end_attacks_the_recorded_caster() {
+    let (registry, _, _, xuan_yue) = weapon_registry();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "left", 0, 1000, 10)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(xuan_yue, 1)]))
+                .with_magic_point(100),
+            PlayerTemplate::new(2, "right", 1, 1000, 10),
+        ],
+        registry,
+    ));
+    let mut updates = RunUpdates::new();
+    runtime.drain_plain_post_damage_skill_chain_into(EntityIdx(0), 10, EntityIdx(1), &mut updates);
+
+    runtime.drain_plain_update_end_into(&mut updates);
+
+    {
+        let counter = &runtime.entities.get(EntityIdx(0)).unwrap().runtime.counter_xuan_yue;
+        assert!(!counter.pending);
+        assert_eq!(counter.last_updates_id, None);
+        assert_eq!(counter.last_target, None);
+    }
+    assert!(updates.on_update_end.is_empty());
+    let counter_update = updates
+        .updates
+        .iter()
+        .find(|update| update.message == "[0]发起[反击][s_counter]")
+        .expect("xuan yue counter should attack the recorded caster");
+    assert_eq!((counter_update.caster, counter_update.target), (0, 1));
+}
+
+#[test]
+fn weapon_xuan_yue_update_end_skips_frozen_owner_without_mp_rng() {
+    let (registry, _, _, xuan_yue) = weapon_registry();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "left", 0, 1000, 10)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(xuan_yue, 1)]))
+                .with_magic_point(100),
+            PlayerTemplate::new(2, "right", 1, 1000, 10),
+        ],
+        registry,
+    ));
+    runtime
+        .entities
+        .get_mut(EntityIdx(0))
+        .unwrap()
+        .states
+        .add_entry(StateEntry::ice(PLAIN_ICE_STATE_KEY, 2));
+    let mut updates = RunUpdates::new();
+    runtime.drain_plain_post_damage_skill_chain_into(EntityIdx(0), 10, EntityIdx(1), &mut updates);
+
+    let before = runtime.rng.clone();
+    runtime.drain_plain_update_end_into(&mut updates);
+
+    assert_rng_state_eq(&runtime.rng, &before);
+    assert!(!runtime.entities.get(EntityIdx(0)).unwrap().runtime.counter_xuan_yue.pending);
+    assert!(!updates.updates.iter().any(|update| update.message == "[0]发起[反击][s_counter]"));
+}
+
+#[test]
+fn weapon_post_damage_plan_combines_death_note_and_xuan_yue() {
+    let (registry, _, death_note, xuan_yue) = weapon_registry();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "left", 0, 1000, 10)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(death_note, 1), (xuan_yue, 1)])),
+            PlayerTemplate::new(2, "right", 1, 1000, 10),
+        ],
+        registry,
+    ));
+    let (accuracy, dodge_value) = {
+        let caster = runtime.entities.get(EntityIdx(1)).unwrap();
+        let owner = runtime.entities.get(EntityIdx(0)).unwrap();
+        (
+            caster.runtime.wisdom + caster.runtime.resistance,
+            owner.runtime.wisdom + owner.runtime.magic,
+        )
+    };
+    tune_weapon_rng(&mut runtime, |rng| {
+        PlayerRuntime::dodge(accuracy, dodge_value, rng).then_some(())
+    });
+
+    let mut updates = RunUpdates::new();
+    runtime.drain_plain_post_damage_skill_chain_into(EntityIdx(0), 10, EntityIdx(1), &mut updates);
+
+    let owner = runtime.entities.get(EntityIdx(0)).unwrap();
+    assert_eq!(owner.runtime.death_note_mark, Some(EntityIdx(1)));
+    assert!(owner.runtime.counter_xuan_yue.pending);
+    assert_eq!(owner.runtime.counter_xuan_yue.last_target, Some(EntityIdx(1)));
+    assert_eq!(updates.on_update_end.len(), 1);
+}
+
+#[test]
 fn gui_yue_permanent_charge_stays_active_without_attack_boost() {
     let registry = ExtensionRegistryBuilder::default().build();
     let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
