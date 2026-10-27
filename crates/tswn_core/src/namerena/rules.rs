@@ -35,19 +35,20 @@ pub fn boss_display_name(name: &str) -> &str {
     }
 }
 
+/// 与 0.5.5 中各 Boss 的 `gan()` 返回值一一对应。
 pub fn boss_append_attr(name: &str) -> [i32; 8] {
     match name {
         "covid" => [10, 9, 0, 12, 0, 12, 0, 60],
         "lazy" => [0, 88, 10, -20, 0, 50, 0, 120],
         "saitama" => [72, 39, 69, 76, 67, 66, 0, 84],
-        "mario" => [20, 5, 15, 10, 20, 5, 0, 50],
-        "sonic" => [10, 5, 40, 20, 10, 5, 0, 50],
-        "mosquito" => [5, 5, 20, 30, 5, 5, 0, 80],
-        "yuri" => [10, 10, 10, 10, 30, 30, 0, 50],
-        "slime" => [5, 20, 5, 5, 5, 20, 0, 100],
-        "ikaruga" => [15, 15, 10, 10, 15, 15, 0, 50],
-        "conan" => [10, 10, 15, 15, 10, 10, 0, 50],
-        "aokiji" => [30, 30, 10, 10, 30, 30, 0, 50],
+        "mario" => [0, 38, 31, 46, 28, 18, 15, 69],
+        "sonic" => [10, -6, 1000, 0, 10, -15, 6, 0],
+        "mosquito" => [-3, 24, 29, 729, 5, 7, 12, -35],
+        "yuri" => [26, 31, 46, 9, 40, 5, 32, 24],
+        "slime" => [6, 21, 5, 19, 38, 21, 12, 62],
+        "ikaruga" => [48, 28, 21, 45, 10, 19, 16, 150],
+        "conan" => [0, 48, -16, 20, 0, 41, 30, 22],
+        "aokiji" => [40, 30, 40, 10, 35, 4, 40, 96],
         "testsubject" => [0; 8],
         _ => [0; 8],
     }
@@ -69,6 +70,8 @@ pub fn boss_action_prob_count(name: &str) -> usize {
     }
 }
 
+/// 阈值来自 0.5.5 中各 Boss 覆盖的 `gaS()`（240）与 `gaG()`（192），未列出者 84。
+/// `piston` 是毒状态在 0.5.5 中的键名。
 pub fn boss_immune_threshold(name: &str, key: &str) -> i32 {
     match name {
         "saitama" => match key {
@@ -84,6 +87,29 @@ pub fn boss_immune_threshold(name: &str, key: &str) -> i32 {
             "assassinate" | "half" | "curse" | "exchange" => 192,
             _ => 84,
         },
+        "conan" => match key {
+            "charm" => 240,
+            "assassinate" | "berserk" | "half" | "curse" | "exchange" | "slow" | "ice" => 192,
+            _ => 84,
+        },
+        "ikaruga" => match key {
+            "assassinate" | "half" | "exchange" | "piston" | "slow" | "ice" => 192,
+            _ => 84,
+        },
+        "mario" => match key {
+            "assassinate" => 192,
+            _ => 84,
+        },
+        "mosquito" => match key {
+            "assassinate" | "disperse" => 240,
+            "berserk" | "charm" => 192,
+            _ => 84,
+        },
+        "slime" | "sonic" => match key {
+            "piston" => 192,
+            _ => 84,
+        },
+        "yuri" => 84,
         "testsubject" => match key {
             "berserk" => 256,
             _ => 84,
@@ -113,5 +139,49 @@ where
         z
     } else {
         y
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn boss_append_attr_matches_artifact_tables() {
+        assert_eq!(boss_append_attr("mario"), [0, 38, 31, 46, 28, 18, 15, 69]);
+        assert_eq!(boss_append_attr("sonic"), [10, -6, 1000, 0, 10, -15, 6, 0]);
+        assert_eq!(boss_append_attr("mosquito"), [-3, 24, 29, 729, 5, 7, 12, -35]);
+        assert_eq!(boss_append_attr("yuri"), [26, 31, 46, 9, 40, 5, 32, 24]);
+        assert_eq!(boss_append_attr("slime"), [6, 21, 5, 19, 38, 21, 12, 62]);
+        assert_eq!(boss_append_attr("ikaruga"), [48, 28, 21, 45, 10, 19, 16, 150]);
+        assert_eq!(boss_append_attr("conan"), [0, 48, -16, 20, 0, 41, 30, 22]);
+        assert_eq!(boss_append_attr("aokiji"), [40, 30, 40, 10, 35, 4, 40, 96]);
+        assert_eq!(boss_append_attr("lazy"), [0, 88, 10, -20, 0, 50, 0, 120]);
+        assert_eq!(boss_append_attr("covid"), [10, 9, 0, 12, 0, 12, 0, 60]);
+        assert_eq!(boss_append_attr("saitama"), [72, 39, 69, 76, 67, 66, 0, 84]);
+        assert_eq!(boss_append_attr("testsubject"), [0; 8]);
+        assert_eq!(boss_append_attr("unknown"), [0; 8]);
+    }
+
+    #[test]
+    fn boss_immune_threshold_follows_boss_specific_lists() {
+        assert_eq!(boss_immune_threshold("conan", "charm"), 240);
+        assert_eq!(boss_immune_threshold("conan", "ice"), 192);
+        assert_eq!(boss_immune_threshold("conan", "fire"), 84);
+        assert_eq!(boss_immune_threshold("ikaruga", "piston"), 192);
+        assert_eq!(boss_immune_threshold("ikaruga", "charm"), 84);
+        assert_eq!(boss_immune_threshold("mario", "assassinate"), 192);
+        assert_eq!(boss_immune_threshold("mario", "charm"), 84);
+        assert_eq!(boss_immune_threshold("mosquito", "assassinate"), 240);
+        assert_eq!(boss_immune_threshold("mosquito", "disperse"), 240);
+        assert_eq!(boss_immune_threshold("mosquito", "berserk"), 192);
+        assert_eq!(boss_immune_threshold("slime", "piston"), 192);
+        assert_eq!(boss_immune_threshold("sonic", "piston"), 192);
+        assert_eq!(boss_immune_threshold("yuri", "berserk"), 84);
+        assert_eq!(boss_immune_threshold("saitama", "half"), 240);
+        assert_eq!(boss_immune_threshold("covid", "charm"), 192);
+        assert_eq!(boss_immune_threshold("lazy", "curse"), 192);
+        assert_eq!(boss_immune_threshold("aokiji", "charm"), 192);
+        assert_eq!(boss_immune_threshold("unknown", "charm"), 192);
     }
 }
