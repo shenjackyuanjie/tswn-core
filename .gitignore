@@ -31,3 +31,5 @@ assets
 !crates/tswn_openbox/assets/
 !crates/tswn_openbox/assets/**
 tswn_ladder.log
+# Openbox 运行时生成的工作目录：首批启动从内嵌默认资源写出，内容与 crates/tswn_openbox_backend/assets 一致
+crates/tswn_openbox/setting/
