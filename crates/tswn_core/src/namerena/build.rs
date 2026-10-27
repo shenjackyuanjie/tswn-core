@@ -5,7 +5,7 @@ use crate::rc4::RC4;
 use super::weapon::WeaponBuild;
 use super::{
     NAME_MAX_LEN, NamerenaInput, PlayerClass, PlayerOverlay, PlayerSpec, PlayerStats, SkillBoost, SkillLoadoutSpec, TEAM_MAX_LEN,
-    boss_append_attr, boss_display_name, median,
+    boss_append_attr, boss_default_skill_levels, boss_display_name, median,
 };
 
 #[derive(Debug, Clone)]
@@ -366,6 +366,12 @@ impl PlayerBuild {
                 slot_skill_keys[slot] = Some(key);
             }
         }
+        if overlay_skills.is_none() && self.class == PlayerClass::Boss {
+            // 对应 0.5.5 中位于武器 preUpgrade 之后、postUpgrade 之前的 `ac()`。
+            for &(key, level) in boss_default_skill_levels(&self.name) {
+                levels[key] = level;
+            }
+        }
         if let Some(weapon) = &self.weapon {
             weapon.post_upgrade(&mut attrs, &mut levels, &mut boosted);
         }
@@ -392,7 +398,8 @@ impl PlayerBuild {
                 )
             })
         });
-        if overlay_skills.is_none() {
+        // 0.5.5 的 Boss 技能装配只调用 `W()`，不参与末位翻倍与槽位强化。
+        if overlay_skills.is_none() && self.class != PlayerClass::Boss {
             for &key in self.action_order.iter().rev() {
                 let key = key as usize;
                 if key >= 25 || levels[key] == 0 || boosted[key] {
@@ -587,6 +594,28 @@ mod tests {
         assert_eq!(diy.attrs, [36, 3, 33, 40, 31, 30, 0, 84]);
         assert_eq!(diy.skills.entries.iter().find(|entry| entry.key == 0).unwrap().level, 5);
         assert_eq!(diy.skills.entries.iter().find(|entry| entry.key == 15).unwrap().level, 70);
+    }
+
+    #[test]
+    fn boss_build_installs_default_ac_skills() {
+        let input = NamerenaInput::parse("sonic@!\nyuri@!\naokiji@!\nmosquito@!").unwrap();
+        let roster = PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
+        let level = |player: &PreparedPlayer, key: usize| {
+            player.skills.entries.iter().find(|entry| entry.key == key).map_or(0, |entry| entry.level)
+        };
+
+        let sonic = &roster.players[0];
+        assert_eq!(level(sonic, 6), 48);
+        assert_eq!(level(sonic, 7), 48);
+        assert_eq!(level(sonic, 30), 48);
+        assert_eq!(sonic.skills.post_damage_order, vec![30]);
+
+        let yuri = &roster.players[1];
+        assert_eq!(level(yuri, 25), 48);
+        assert_eq!(level(yuri, 27), 48);
+
+        assert_eq!(level(&roster.players[2], 1), 80);
+        assert_eq!(level(&roster.players[3], 4), 100);
     }
 
     #[test]

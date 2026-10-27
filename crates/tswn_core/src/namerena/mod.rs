@@ -56,8 +56,8 @@ pub use input::{
 pub(crate) use input::{raw_namerena_to_id_name_into, trim_js_line_end};
 pub use overlay::{MinionOverlay, PlayerOverlay};
 pub use rules::{
-    BOOST_NAMES, BOSS_NAMES, boost_value, boss_action_prob_count, boss_append_attr, boss_display_name, boss_immune_threshold,
-    median,
+    BOOST_NAMES, BOSS_NAMES, boost_value, boss_action_prob_count, boss_append_attr, boss_default_skill_levels, boss_display_name,
+    boss_immune_threshold, median,
 };
 pub use skill::{
     BuiltinSkillRef, CLASSIFIED_SKILL_SLOT_COUNT, ClassifiedSkillRef, PHANTOM_POSSESS_SKILL_KEY, SUMMON_EXPLODE_SKILL_KEY,

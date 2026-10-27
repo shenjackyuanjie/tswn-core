@@ -54,6 +54,21 @@ pub fn boss_append_attr(name: &str) -> [i32; 8] {
     }
 }
 
+/// 0.5.5 中各 Boss 的 `ac()` 直接写入 `k1` 的默认技能等级（`f`）。
+///
+/// 编号沿用通用技能键；只列出能以通用技能表达的条目，其余专属技能
+/// （如 `SklAokijiIceAge`、`SklConan`）由各自机制处理。这些等级不参与
+/// 名字推导，也不触发暴击式翻倍。
+pub fn boss_default_skill_levels(name: &str) -> &'static [(usize, u32)] {
+    match name {
+        "aokiji" => &[(1, 80)],
+        "mosquito" => &[(4, 100)],
+        "sonic" => &[(6, 48), (7, 48), (30, 48)],
+        "yuri" => &[(25, 48), (27, 48)],
+        _ => &[],
+    }
+}
+
 pub fn boost_value(name: &str) -> u32 {
     match name {
         "云剑狄卡敢" => 25,
@@ -161,6 +176,27 @@ mod tests {
         assert_eq!(boss_append_attr("saitama"), [72, 39, 69, 76, 67, 66, 0, 84]);
         assert_eq!(boss_append_attr("testsubject"), [0; 8]);
         assert_eq!(boss_append_attr("unknown"), [0; 8]);
+    }
+
+    #[test]
+    fn boss_default_skill_levels_match_ac_tables() {
+        assert_eq!(boss_default_skill_levels("aokiji"), &[(1, 80)]);
+        assert_eq!(boss_default_skill_levels("mosquito"), &[(4, 100)]);
+        assert_eq!(boss_default_skill_levels("sonic"), &[(6, 48), (7, 48), (30, 48)]);
+        assert_eq!(boss_default_skill_levels("yuri"), &[(25, 48), (27, 48)]);
+        for name in [
+            "mario",
+            "slime",
+            "ikaruga",
+            "conan",
+            "lazy",
+            "covid",
+            "saitama",
+            "testsubject",
+            "unknown",
+        ] {
+            assert!(boss_default_skill_levels(name).is_empty(), "{name} 不应有通用默认技能");
+        }
     }
 
     #[test]
