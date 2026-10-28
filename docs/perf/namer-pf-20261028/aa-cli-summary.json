@@ -1,0 +1,656 @@
+{
+  "binary_sha256": {
+    "a": "f642bc609fe7da295fc4279a39bd896351d9772d98e88fa0303d1226c5931626",
+    "b": "f642bc609fe7da295fc4279a39bd896351d9772d98e88fa0303d1226c5931626"
+  },
+  "runs_per_metric": 1000,
+  "threads": 1,
+  "keep_rq": false,
+  "excluded_cases": [
+    "profile-clan-normal",
+    "profile-clan-bang"
+  ],
+  "precision": 9,
+  "warmup_round": 0,
+  "measured_rounds": 3,
+  "cases": {
+    "mario": [
+      "mario"
+    ],
+    "unicode": [
+      "琉音芽玲亚 #AIBSXOQHSK@无惨"
+    ],
+    "clone-regression": [
+      "艾泽莉娅 #IAPBVEKLIO@无惨"
+    ],
+    "haste-regression": [
+      "龟钧募犀红@Hell"
+    ],
+    "pool-1-0": [
+      "Don't_Force_It #f4fMecHe1@Shabby_fish"
+    ],
+    "pool-1-8": [
+      "Miss_Similar #ecXMOVC65@Shabby_fish"
+    ],
+    "pool-2-0": [
+      "Don't_Force_It #f4fMecHe1@Shabby_fish",
+      "Missing_You #J8enXTKlr@Shabby_fish"
+    ],
+    "pool-2-8": [
+      "Miss_Similar #ecXMOVC65@Shabby_fish",
+      "City_Zoo #AgeldZAnJ@Shabby_fish"
+    ],
+    "pool-4-0": [
+      "Don't_Force_It #f4fMecHe1@Shabby_fish",
+      "Missing_You #J8enXTKlr@Shabby_fish",
+      "Long_After #KfEiVSLpK@Shabby_fish",
+      "Love_Finds_a_Way #ZWIWTdkSL@Shabby_fish"
+    ],
+    "pool-4-8": [
+      "Miss_Similar #ecXMOVC65@Shabby_fish",
+      "City_Zoo #AgeldZAnJ@Shabby_fish",
+      "Li_Xianglan #JcSvwdfXV@Shabby_fish",
+      "Only_One #eI8X3hQlM@Shabby_fish"
+    ],
+    "pool-8-0": [
+      "Don't_Force_It #f4fMecHe1@Shabby_fish",
+      "Missing_You #J8enXTKlr@Shabby_fish",
+      "Long_After #KfEiVSLpK@Shabby_fish",
+      "Love_Finds_a_Way #ZWIWTdkSL@Shabby_fish",
+      "Queen_G #LGDj0Xr29@Shabby_fish",
+      "Rightfully_Wrong #yBZdE7mHf@Shabby_fish",
+      "Grey_Wolf #2qokwyxpT@Shabby_fish",
+      "Full_Stop #PQrwMB8Ua@Shabby_fish"
+    ],
+    "pool-8-8": [
+      "Miss_Similar #ecXMOVC65@Shabby_fish",
+      "City_Zoo #AgeldZAnJ@Shabby_fish",
+      "Li_Xianglan #JcSvwdfXV@Shabby_fish",
+      "Only_One #eI8X3hQlM@Shabby_fish",
+      "11 #CxersT6Za@Shabby_fish",
+      "11 #lnLpWX4mg@Shabby_fish",
+      "Only_One #riX0IMeB2@Shabby_fish",
+      "Best_of_You #ijksFdaqA@Shabby_fish"
+    ]
+  },
+  "measurement": "完整 CLI 进程墙钟，包括启动、解析、准备、战斗和输出；无逐场计时",
+  "output_sha256": {
+    "pp/mario": "5d5b0c6534648eef549079abb45663795490a0481d2559788705c1776758aa9a",
+    "pp/unicode": "796e9552c078348fe4c3264075665966f2d406f76df0db5f3a941e461a888331",
+    "pp/clone-regression": "8afa7bcf1feb6ffb72ea3ae61f4d22bba4c74f4fa4ccd237fe08c603bd0e1cf4",
+    "pp/haste-regression": "27a64616c95440550b40603619dec9172ab7bc6b833ef25dd3e3ff946ee69225",
+    "pp/pool-1-0": "2d5817d4af7b482a03291cbc9dc3161024d1a1084d90aa0986b96e551a743116",
+    "pp/pool-1-8": "c8d2b632d24323f488c5f22b814802efe7a87ace6f7b1f9778af3db58d0895a2",
+    "pp/pool-2-0": "fa84bdb23c201709efcce3371d9d9546dc91c8301fb891a2aa14ef578f7026cf",
+    "pp/pool-2-8": "b2894caf8ae2160a75678745b54595fbf0b8ac752abb7d277e4d12beb14d68a1",
+    "pp/pool-4-0": "a5193ec444af37328f690ab3198d9bedff2c9b583434358cb0f73bb214ca29e3",
+    "pp/pool-4-8": "1ef8aea3d1e7dac94bc874ad8d0ce384c7792bf4f1d066ec0a12767f273a9385",
+    "pp/pool-8-0": "88fa904c01049c3b4d3c1135598ebb5eddca01233f85c3bea7da41785ec12f15",
+    "pp/pool-8-8": "893469eaead71b6c6dddf357cdc7138fe046be9a1e229fe2af06c29fe99c1b02",
+    "pd/mario": "51917d1101a04ca29989ac3ad77e80136fce1f81cdf645672a4d3efdda02b387",
+    "pd/unicode": "0dff19dff01603d0e3a632ca34221102c573d8a2b69dc717ad19fc50e4fe02c4",
+    "pd/clone-regression": "c1eab11d439feb9594916887c5fa0391df5c73f3783750585b9093e4e5b0805a",
+    "pd/haste-regression": "bc5352c16e86a847cf25e406b9f3cf08fcaf566e38534e8341f1bfb1237f2396",
+    "pd/pool-1-0": "7b1e425fe2152fb066067a6604264515daa5f08cae7b02bec23a4711da5ef041",
+    "pd/pool-1-8": "ee45ccb85c0eaa9bf1e3ec3f79f608605337b69f8bf3fdf848d0aba126a981af",
+    "pd/pool-2-0": "f7ae654d4ef128fd91da82c18657d6c6d0316b05e94a1308ea251c9d38c876d5",
+    "pd/pool-2-8": "f59e8ac02bb74d9cb73b2bd7cbd564fa8de8ea9450cb0a8d035996638aee0428",
+    "pd/pool-4-0": "a95999d380d8307c86edc447b096ae6d391c174bb2e1220d1c416b4485108a10",
+    "pd/pool-4-8": "b1ab1dd0027c8b645b937526c4906b92a777e2c358a7fd3069bde9c3f35461ce",
+    "pd/pool-8-0": "c5ad88d2c4b5f0e70b21a9bc13bb9319c7373ace723f11c758d4db5b6e86efdf",
+    "pd/pool-8-8": "63c8bc30be726458b89faf01af02e5ca733281d46dfb4e14aee68f0866adf0b9",
+    "qp/mario": "4d31a6c7945f04bb18cf0c8e3160e92ae8ebfdfd9ee046b6c9f96a29cb4e734b",
+    "qp/unicode": "8254a48b63d8ec34b9bd1749be6b777b20f94d1a7ee7fa6768944904a64e0e49",
+    "qp/clone-regression": "518f1d3eafdf0dc0b7425450a6d41335d1ad33f6fb14f53130b7c7e60c5c0a7a",
+    "qp/haste-regression": "6a3a63d5be1ff95943aa7d6c3aacbfefefe206a67e552c7e4a3337a78131ec49",
+    "qp/pool-1-0": "87ca57caefc950fff5655bf980357ca5485ba7e8f304969c3fa95548f6cc6e9d",
+    "qp/pool-1-8": "9380796173194eaccb3837fddcc5b22cdb12df76ef147553c10c522d1fc66ce6",
+    "qp/pool-2-0": "cd88f8c0795861870b6674265ac2c5f5dc440cb9d4f01526ae01dde4b3f408ba",
+    "qp/pool-2-8": "2192d5ed79b6acbd29c9e6de8bbe62fcf13004cb75704212e4f4fbe9a1e02dda",
+    "qp/pool-4-0": "cc701e5dda1e21c420518f0cceafcc215937550074b9dc28ca04a9018d9c74e7",
+    "qp/pool-4-8": "881ead6538a15bef8046e0f8b25089efbf381d1aa0453243096925cf9790e3a8",
+    "qp/pool-8-0": "9f93b9be687a76a333744e60f7007a0d0561547774941f6d01c706e5c2f1e33c",
+    "qp/pool-8-8": "ef9d2b43edb72de6866d5d810873f1988dafd2d5d8aa888a59a253c1d8d4ece7",
+    "qd/mario": "5efb0717b608142ca6c2d5c249bf385bbbf82324d5946152bbfa10441a2e7407",
+    "qd/unicode": "73a052fd4d3a4916636010585de15fddcb49fe4d0009b12fc2856f2104a9e3b0",
+    "qd/clone-regression": "66f961c3173a1780da9a7557484511148c05c876d5dc68780d127b3532df9927",
+    "qd/haste-regression": "fa4c0dda9aae303d14356af750eec71a425cf0fa25c451632a1db9b3c5903ce7",
+    "qd/pool-1-0": "8e049e9cbe757a3caece4fe180f26289430b17bab6598b1e1e1068e830c5da5c",
+    "qd/pool-1-8": "2a70eed8e1ed61ee13ac87c3146f8801d429b3fda78884c89a62e7b319d48588",
+    "qd/pool-2-0": "5cea60f7a4a819164d3053477f16897111eae690c0ad2bd0646e8ebb9a5daf99",
+    "qd/pool-2-8": "15a82fcb87fbb71b28f66ada678d4698cef777844ed6fb7e4b6b0e5ebc1382b5",
+    "qd/pool-4-0": "8926760d57da976e1f31d31467df3e2d8fdef03216d053840beca145b0f0c1ec",
+    "qd/pool-4-8": "4562b688f7dc98c00c455a63083d1dab3586104b0f0404137e30ebebc9b24634",
+    "qd/pool-8-0": "e9cbc25739a6ed5b67ad12f4c61dab24592a7257623f2b36611ece2a2e8bb351",
+    "qd/pool-8-8": "6eccdd3d387c7abf50f148d7c7d7460dcda30c774884ed13202e6e8e08d14acd"
+  },
+  "summary": {
+    "pp": {
+      "throughput_gain_percent": -3.7878257180604114,
+      "mad_percentage_points": 2.6722790740617453,
+      "paired_round_gains_percent": [
+        -1.115546643998666,
+        -8.232382138688287,
+        -3.7878257180604114
+      ]
+    },
+    "pd": {
+      "throughput_gain_percent": 1.5831139039151454,
+      "mad_percentage_points": 1.2484373218408784,
+      "paired_round_gains_percent": [
+        0.334676582074267,
+        3.4758709644448604,
+        1.5831139039151454
+      ]
+    },
+    "qp": {
+      "throughput_gain_percent": 1.0211322409745982,
+      "mad_percentage_points": 0.10772239305960607,
+      "paired_round_gains_percent": [
+        -6.233350475281474,
+        1.1288546340342043,
+        1.0211322409745982
+      ]
+    },
+    "qd": {
+      "throughput_gain_percent": -2.8587469343927863,
+      "mad_percentage_points": 0.023367224771642103,
+      "paired_round_gains_percent": [
+        0.03299444522886219,
+        -2.8587469343927863,
+        -2.8821141591644284
+      ]
+    },
+    "all": {
+      "throughput_gain_percent": -1.3025301165195513,
+      "mad_percentage_points": 0.16648840495755435,
+      "paired_round_gains_percent": [
+        -1.4690185214771057,
+        -1.3025301165195513,
+        -0.9960287679967594
+      ]
+    }
+  },
+  "per_case": {
+    "pp/mario": {
+      "target_names": 1,
+      "throughput_gain_percent": 2.174660425247965,
+      "mad_percentage_points": 2.17404999828148,
+      "paired_round_gains_percent": [
+        4.348710423529445,
+        -7.376601678014827,
+        2.174660425247965
+      ]
+    },
+    "pp/unicode": {
+      "target_names": 1,
+      "throughput_gain_percent": 3.9900041220086946,
+      "mad_percentage_points": 2.447948220631302,
+      "paired_round_gains_percent": [
+        6.4379523426399965,
+        -5.262800826038649,
+        3.9900041220086946
+      ]
+    },
+    "pp/clone-regression": {
+      "target_names": 1,
+      "throughput_gain_percent": -1.0373916049354337,
+      "mad_percentage_points": 1.9431160821707483,
+      "paired_round_gains_percent": [
+        -1.0373916049354337,
+        -9.20602875425599,
+        0.9057244772353146
+      ]
+    },
+    "pp/haste-regression": {
+      "target_names": 1,
+      "throughput_gain_percent": -3.3982644010498886,
+      "mad_percentage_points": 7.918585632972586,
+      "paired_round_gains_percent": [
+        -33.5916100501954,
+        4.520321231922697,
+        -3.3982644010498886
+      ]
+    },
+    "pp/pool-1-0": {
+      "target_names": 1,
+      "throughput_gain_percent": -6.331004110564919,
+      "mad_percentage_points": 3.22667223236136,
+      "paired_round_gains_percent": [
+        -16.116466803667628,
+        -6.331004110564919,
+        -3.104331878203559
+      ]
+    },
+    "pp/pool-1-8": {
+      "target_names": 1,
+      "throughput_gain_percent": 4.9372599307541565,
+      "mad_percentage_points": 4.905453659549862,
+      "paired_round_gains_percent": [
+        -7.974772102525051,
+        4.9372599307541565,
+        9.842713590304019
+      ]
+    },
+    "pp/pool-2-0": {
+      "target_names": 2,
+      "throughput_gain_percent": 0.8183193152119461,
+      "mad_percentage_points": 2.4803796398894296,
+      "paired_round_gains_percent": [
+        0.8183193152119461,
+        3.2986989551013757,
+        -9.601478000564278
+      ]
+    },
+    "pp/pool-2-8": {
+      "target_names": 2,
+      "throughput_gain_percent": 9.841464384129829,
+      "mad_percentage_points": 9.919212187545302,
+      "paired_round_gains_percent": [
+        9.841464384129829,
+        23.209136883375315,
+        -0.07774780341547327
+      ]
+    },
+    "pp/pool-4-0": {
+      "target_names": 4,
+      "throughput_gain_percent": -10.597469010666238,
+      "mad_percentage_points": 9.715142464212922,
+      "paired_round_gains_percent": [
+        -10.597469010666238,
+        -27.340117327005807,
+        -0.8823265464533159
+      ]
+    },
+    "pp/pool-4-8": {
+      "target_names": 4,
+      "throughput_gain_percent": 3.9267954718367415,
+      "mad_percentage_points": 4.639250906822933,
+      "paired_round_gains_percent": [
+        3.9267954718367415,
+        8.566046378659674,
+        -7.347811777984726
+      ]
+    },
+    "pp/pool-8-0": {
+      "target_names": 8,
+      "throughput_gain_percent": -6.2637823565279245,
+      "mad_percentage_points": 6.30158102596139,
+      "paired_round_gains_percent": [
+        10.798949242364287,
+        -12.565363382489315,
+        -6.2637823565279245
+      ]
+    },
+    "pp/pool-8-8": {
+      "target_names": 8,
+      "throughput_gain_percent": -7.4311795759516075,
+      "mad_percentage_points": 9.138601448053407,
+      "paired_round_gains_percent": [
+        5.231178950932325,
+        -16.569781024005014,
+        -7.4311795759516075
+      ]
+    },
+    "pd/mario": {
+      "target_names": 1,
+      "throughput_gain_percent": 8.694689491971497,
+      "mad_percentage_points": 0.3453817565400197,
+      "paired_round_gains_percent": [
+        9.040071248511516,
+        8.694689491971497,
+        -6.68712696662187
+      ]
+    },
+    "pd/unicode": {
+      "target_names": 1,
+      "throughput_gain_percent": -8.716093752532084,
+      "mad_percentage_points": 8.644411082715918,
+      "paired_round_gains_percent": [
+        15.828325245638197,
+        -17.360504835248,
+        -8.716093752532084
+      ]
+    },
+    "pd/clone-regression": {
+      "target_names": 1,
+      "throughput_gain_percent": 1.8170416925362476,
+      "mad_percentage_points": 0.4021545239558222,
+      "paired_round_gains_percent": [
+        6.910263541207051,
+        1.4148871685804254,
+        1.8170416925362476
+      ]
+    },
+    "pd/haste-regression": {
+      "target_names": 1,
+      "throughput_gain_percent": -1.4052962871564212,
+      "mad_percentage_points": 2.267409605267612,
+      "paired_round_gains_percent": [
+        -11.697054815332475,
+        -1.4052962871564212,
+        0.8621133181111906
+      ]
+    },
+    "pd/pool-1-0": {
+      "target_names": 1,
+      "throughput_gain_percent": 4.313305679337254,
+      "mad_percentage_points": 6.25572168887839,
+      "paired_round_gains_percent": [
+        17.75693336693309,
+        4.313305679337254,
+        -1.942416009541137
+      ]
+    },
+    "pd/pool-1-8": {
+      "target_names": 1,
+      "throughput_gain_percent": -3.2724960500459477,
+      "mad_percentage_points": 3.0409469380045073,
+      "paired_round_gains_percent": [
+        -3.2724960500459477,
+        -9.20006247771421,
+        -0.23154911204144035
+      ]
+    },
+    "pd/pool-2-0": {
+      "target_names": 2,
+      "throughput_gain_percent": 5.688984405301545,
+      "mad_percentage_points": 5.994583873814852,
+      "paired_round_gains_percent": [
+        -0.30559946851330677,
+        12.268821859273228,
+        5.688984405301545
+      ]
+    },
+    "pd/pool-2-8": {
+      "target_names": 2,
+      "throughput_gain_percent": 4.9758071882122,
+      "mad_percentage_points": 17.61148747705925,
+      "paired_round_gains_percent": [
+        -18.070420904193018,
+        4.9758071882122,
+        22.58729466527145
+      ]
+    },
+    "pd/pool-4-0": {
+      "target_names": 4,
+      "throughput_gain_percent": 3.8996030192552933,
+      "mad_percentage_points": 4.288744645297049,
+      "paired_round_gains_percent": [
+        3.8996030192552933,
+        16.551246450945367,
+        -0.38914162604175573
+      ]
+    },
+    "pd/pool-4-8": {
+      "target_names": 4,
+      "throughput_gain_percent": -1.953847157964883,
+      "mad_percentage_points": 3.130910858220592,
+      "paired_round_gains_percent": [
+        2.570691432517691,
+        -5.084758016185475,
+        -1.953847157964883
+      ]
+    },
+    "pd/pool-8-0": {
+      "target_names": 8,
+      "throughput_gain_percent": -1.552092421682394,
+      "mad_percentage_points": 0.25369999547444344,
+      "paired_round_gains_percent": [
+        -1.552092421682394,
+        -1.8057924171568374,
+        0.8119944755538011
+      ]
+    },
+    "pd/pool-8-8": {
+      "target_names": 8,
+      "throughput_gain_percent": 2.4432549597843467,
+      "mad_percentage_points": 0.8096772134898567,
+      "paired_round_gains_percent": [
+        2.4432549597843467,
+        8.502855984120483,
+        1.63357774629449
+      ]
+    },
+    "qp/mario": {
+      "target_names": 1,
+      "throughput_gain_percent": 7.120141784451728,
+      "mad_percentage_points": 1.661471214236987,
+      "paired_round_gains_percent": [
+        4.368276677551264,
+        7.120141784451728,
+        8.781612998688715
+      ]
+    },
+    "qp/unicode": {
+      "target_names": 1,
+      "throughput_gain_percent": 2.240854716664198,
+      "mad_percentage_points": 2.5536463118348895,
+      "paired_round_gains_percent": [
+        2.240854716664198,
+        -0.31279159517069166,
+        12.894153763227045
+      ]
+    },
+    "qp/clone-regression": {
+      "target_names": 1,
+      "throughput_gain_percent": 1.6854719299612686,
+      "mad_percentage_points": 7.600468610263777,
+      "paired_round_gains_percent": [
+        -6.214814461256857,
+        9.285940540225045,
+        1.6854719299612686
+      ]
+    },
+    "qp/haste-regression": {
+      "target_names": 1,
+      "throughput_gain_percent": -4.667212815817479,
+      "mad_percentage_points": 1.82733306090409,
+      "paired_round_gains_percent": [
+        -4.667212815817479,
+        -6.494545876721569,
+        34.397823996226265
+      ]
+    },
+    "qp/pool-1-0": {
+      "target_names": 1,
+      "throughput_gain_percent": -1.7205914019801982,
+      "mad_percentage_points": 0.23091778845593103,
+      "paired_round_gains_percent": [
+        -1.9515091904361292,
+        -1.7205914019801982,
+        -0.42756390397312716
+      ]
+    },
+    "qp/pool-1-8": {
+      "target_names": 1,
+      "throughput_gain_percent": -0.17372284314690623,
+      "mad_percentage_points": 0.8962930754922382,
+      "paired_round_gains_percent": [
+        3.03783061550269,
+        -0.17372284314690623,
+        -1.0700159186391445
+      ]
+    },
+    "qp/pool-2-0": {
+      "target_names": 2,
+      "throughput_gain_percent": -2.0345386872812066,
+      "mad_percentage_points": 0.08282207821527221,
+      "paired_round_gains_percent": [
+        -2.0345386872812066,
+        -0.2844207863885728,
+        -2.117360765496479
+      ]
+    },
+    "qp/pool-2-8": {
+      "target_names": 2,
+      "throughput_gain_percent": 1.892899406956139,
+      "mad_percentage_points": 2.8386757536160934,
+      "paired_round_gains_percent": [
+        -10.900646396672798,
+        1.892899406956139,
+        4.731575160572232
+      ]
+    },
+    "qp/pool-4-0": {
+      "target_names": 4,
+      "throughput_gain_percent": -5.214227260562854,
+      "mad_percentage_points": 6.3424886703593035,
+      "paired_round_gains_percent": [
+        -5.214227260562854,
+        1.1282614097964494,
+        -22.11049157534698
+      ]
+    },
+    "qp/pool-4-8": {
+      "target_names": 4,
+      "throughput_gain_percent": 0.4552859378985863,
+      "mad_percentage_points": 3.005764261060273,
+      "paired_round_gains_percent": [
+        -2.5504783231616868,
+        16.99874612966572,
+        0.4552859378985863
+      ]
+    },
+    "qp/pool-8-0": {
+      "target_names": 8,
+      "throughput_gain_percent": -0.48740122764000526,
+      "mad_percentage_points": 0.9784744809451573,
+      "paired_round_gains_percent": [
+        -7.656591734920748,
+        -0.48740122764000526,
+        0.49107325330515206
+      ]
+    },
+    "qp/pool-8-8": {
+      "target_names": 8,
+      "throughput_gain_percent": -3.719588723204925,
+      "mad_percentage_points": 3.2367017440811385,
+      "paired_round_gains_percent": [
+        -15.154400024504566,
+        -3.719588723204925,
+        -0.48288697912378664
+      ]
+    },
+    "qd/mario": {
+      "target_names": 1,
+      "throughput_gain_percent": -0.21029192152570708,
+      "mad_percentage_points": 0.010747153861090375,
+      "paired_round_gains_percent": [
+        -0.21029192152570708,
+        -1.4418108093661508,
+        -0.1995447676646167
+      ]
+    },
+    "qd/unicode": {
+      "target_names": 1,
+      "throughput_gain_percent": 2.4085005067276066,
+      "mad_percentage_points": 1.1771606920323752,
+      "paired_round_gains_percent": [
+        2.4085005067276066,
+        -8.071636974717556,
+        3.585661198759982
+      ]
+    },
+    "qd/clone-regression": {
+      "target_names": 1,
+      "throughput_gain_percent": 0.5835862987081386,
+      "mad_percentage_points": 6.926344328145317,
+      "paired_round_gains_percent": [
+        7.509930626853456,
+        -6.912310430514623,
+        0.5835862987081386
+      ]
+    },
+    "qd/haste-regression": {
+      "target_names": 1,
+      "throughput_gain_percent": 3.5555616846729476,
+      "mad_percentage_points": 0.4488229164732793,
+      "paired_round_gains_percent": [
+        14.413921990901324,
+        3.1067387681996683,
+        3.5555616846729476
+      ]
+    },
+    "qd/pool-1-0": {
+      "target_names": 1,
+      "throughput_gain_percent": -0.589465337536843,
+      "mad_percentage_points": 4.663491979808764,
+      "paired_round_gains_percent": [
+        -15.883753718142568,
+        4.074026642271922,
+        -0.589465337536843
+      ]
+    },
+    "qd/pool-1-8": {
+      "target_names": 1,
+      "throughput_gain_percent": 2.3254512871685673,
+      "mad_percentage_points": 0.14188848951599553,
+      "paired_round_gains_percent": [
+        2.467339776684563,
+        2.3254512871685673,
+        -10.376844022222443
+      ]
+    },
+    "qd/pool-2-0": {
+      "target_names": 2,
+      "throughput_gain_percent": -1.659305856718185,
+      "mad_percentage_points": 1.9801972981781546,
+      "paired_round_gains_percent": [
+        8.582745184627694,
+        -1.659305856718185,
+        -3.6395031548963397
+      ]
+    },
+    "qd/pool-2-8": {
+      "target_names": 2,
+      "throughput_gain_percent": -0.4523012776041835,
+      "mad_percentage_points": 0.05997945263567228,
+      "paired_round_gains_percent": [
+        -0.4523012776041835,
+        -1.4821047510396368,
+        -0.3923218249685112
+      ]
+    },
+    "qd/pool-4-0": {
+      "target_names": 4,
+      "throughput_gain_percent": -0.9281575948068554,
+      "mad_percentage_points": 2.7772903416456995,
+      "paired_round_gains_percent": [
+        -23.248495632332123,
+        -0.9281575948068554,
+        1.849132746838844
+      ]
+    },
+    "qd/pool-4-8": {
+      "target_names": 4,
+      "throughput_gain_percent": 3.476525121593932,
+      "mad_percentage_points": 0.2342574580549428,
+      "paired_round_gains_percent": [
+        0.89360059718262,
+        3.476525121593932,
+        3.7107825796488747
+      ]
+    },
+    "qd/pool-8-0": {
+      "target_names": 8,
+      "throughput_gain_percent": -0.3876705282906845,
+      "mad_percentage_points": 4.903253307919876,
+      "paired_round_gains_percent": [
+        5.36814539584749,
+        -0.3876705282906845,
+        -5.29092383621056
+      ]
+    },
+    "qd/pool-8-8": {
+      "target_names": 8,
+      "throughput_gain_percent": -6.173662087474574,
+      "mad_percentage_points": 3.592340197659217,
+      "paired_round_gains_percent": [
+        5.160609690526674,
+        -9.76600228513379,
+        -6.173662087474574
+      ]
+    }
+  }
+}

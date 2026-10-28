@@ -139,7 +139,14 @@ impl PreparedBattleRoster {
         for rng in &mut scratch.profile_rngs {
             rng.clone_from(profile_team_rng);
         }
-        RC4::update_interleaved(&mut scratch.profile_rngs, &key_refs, 2);
+        // 仅为超过四个 profile 的组启用分块，保留常见小组的原调用路径。
+        if scratch.profile_rngs.len() > 4 {
+            for (states, keys) in scratch.profile_rngs.chunks_mut(4).zip(key_refs.chunks(4)) {
+                RC4::update_interleaved(states, keys, 2);
+            }
+        } else {
+            RC4::update_interleaved(&mut scratch.profile_rngs, &key_refs, 2);
+        }
         scratch.dynamic_profiles.clear();
         for (index, &(team_index, player_index, id)) in scratch.dynamic_inputs.iter().enumerate() {
             let (name, team) = raw_groups[team_index][player_index]

@@ -837,4 +837,125 @@ mod score_profile_tests {
             }
         }
     }
+
+    #[test]
+    fn compact_score_profiles_match_full_multi_name_groups() {
+        let config = default_custom_runtime_import_config().expect("runtime profile should build");
+        let skill_import = BuiltinSkillImportMap::new(&config.registry);
+        for modifier in ["!", "\u{0002}"] {
+            let team_rng = crate::namerena::score_profile_team_rng(modifier);
+            for eval_rq in [4.0, 6.0] {
+                for count in [1usize, 2, 3, 4, 5, 6, 7, 8, 9, 16] {
+                    let targets = (0..count).map(|index| format!("测试选手{index}@测试队")).collect::<Vec<_>>();
+                    let profile_ids = (count..count * 2).collect::<Vec<_>>();
+                    let make_groups = |base: usize| {
+                        vec![
+                            targets.clone(),
+                            (0..count).map(|offset| format!("{}@{modifier}", base + offset)).collect(),
+                        ]
+                    };
+                    let mut scratch = ScoreRoundScratch::default();
+                    // 覆盖相邻 profile 名称跨十进制位数边界时的字典序。
+                    for base in [crate::runtime::PROFILE_START as usize, 99_999_995, 100_000_005] {
+                        let groups = make_groups(base);
+                        // 此处只对比同一布局，跨轮缓存顺序的既有行为另有特征测试。
+                        let cached = PreparedBattleRoster::from_groups_with_eval_rq_and_skill_import(
+                            &groups,
+                            eval_rq,
+                            &config.registry,
+                            &skill_import,
+                        )
+                        .unwrap();
+                        let expected = PreparedBattleRoster::from_groups_with_eval_rq_and_skill_import_selected(
+                            &groups,
+                            eval_rq,
+                            &config.registry,
+                            &skill_import,
+                            &profile_ids,
+                        )
+                        .unwrap();
+                        let actual = PreparedBattleRoster::from_score_groups_with_cached_targets(
+                            &groups,
+                            eval_rq,
+                            &config.registry,
+                            &skill_import,
+                            &profile_ids,
+                            modifier,
+                            &team_rng,
+                            &cached,
+                            &mut [],
+                            &mut [],
+                            &mut scratch,
+                            &mut ScoreRosterBuffers::default(),
+                        )
+                        .unwrap();
+                        for &id in &profile_ids {
+                            assert_eq!(
+                                actual.players[id], expected.players[id],
+                                "modifier={modifier:?}, count={count}, base={base}"
+                            );
+                        }
+                        assert_eq!(actual.player_alive, expected.player_alive);
+                        assert_eq!(actual.input_groups, expected.input_groups);
+                        assert_eq!(actual.base_names_sorted, expected.base_names_sorted);
+                        assert_eq!(actual.id_key_names, expected.id_key_names);
+                        assert_eq!(actual.sorted_by_id_name, expected.sorted_by_id_name);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn score_cached_layout_retains_initial_order_across_decimal_boundary() {
+        let config = default_custom_runtime_import_config().unwrap();
+        let skill_import = BuiltinSkillImportMap::new(&config.registry);
+        let modifier = "!";
+        let make_groups = |base: usize| {
+            vec![
+                vec!["mario".to_owned()],
+                (0..6).map(|offset| format!("{}@!", base + offset)).collect(),
+            ]
+        };
+        let cached = PreparedBattleRoster::from_groups_with_eval_rq_and_skill_import(
+            &make_groups(crate::runtime::PROFILE_START as usize),
+            6.0,
+            &config.registry,
+            &skill_import,
+        )
+        .unwrap();
+        let groups = make_groups(99_999_995);
+        let ids = [1, 2, 3, 4, 5, 6];
+        let actual = PreparedBattleRoster::from_score_groups_with_cached_targets(
+            &groups,
+            6.0,
+            &config.registry,
+            &skill_import,
+            &ids,
+            modifier,
+            &crate::namerena::score_profile_team_rng(modifier),
+            &cached,
+            &mut [],
+            &mut [],
+            &mut ScoreRoundScratch::default(),
+            &mut ScoreRosterBuffers::default(),
+        )
+        .unwrap();
+        let fresh = PreparedBattleRoster::from_groups_with_eval_rq_and_skill_import_selected(
+            &groups,
+            6.0,
+            &config.registry,
+            &skill_import,
+            &ids,
+        )
+        .unwrap();
+        // 特征测试：现有缓存路径保留首轮顺序，并非跨长度时与完整重建完全等价。
+        // 本次仅优化 KSA/无效升级，不顺带更改这项可能影响历史评分的运行语义。
+        assert_eq!(actual.input_groups, cached.input_groups);
+        assert_eq!(actual.input_groups[1], [1, 2, 3, 4, 5, 6]);
+        assert_eq!(fresh.input_groups[1], [6, 1, 2, 3, 4, 5]);
+        for id in ids {
+            assert_eq!(actual.players[id], fresh.players[id]);
+        }
+    }
 }

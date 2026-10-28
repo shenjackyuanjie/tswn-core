@@ -1,0 +1,2660 @@
+[
+  {
+    "mode": "pp",
+    "case": "mario",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 257,
+      "wins": 75,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "unicode",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 257,
+      "wins": 196,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "clone-regression",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 257,
+      "wins": 217,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "haste-regression",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 257,
+      "wins": 205,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-1-0",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 257,
+      "wins": 181,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-1-8",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 257,
+      "wins": 173,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-2-0",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 214,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-2-8",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 224,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-4-0",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 257,
+      "wins": 239,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-4-8",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 257,
+      "wins": 245,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-8-0",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 257,
+      "wins": 252,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-8-8",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 257,
+      "wins": 253,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "profile-clan-bang",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 257,
+      "wins": 189,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "profile-clan-normal",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "status": "baseline-known-summon-panic",
+      "returncode": 101
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "mario",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 54,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "unicode",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 202,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "clone-regression",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 240,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "haste-regression",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 226,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-1-0",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 187,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-1-8",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 167,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-2-0",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 257,
+      "wins": 236,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-2-8",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 257,
+      "wins": 242,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-4-0",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 257,
+      "wins": 242,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-4-8",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 257,
+      "wins": 249,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-8-0",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        16
+      ],
+      "total": 257,
+      "wins": 256,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-8-8",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        16
+      ],
+      "total": 257,
+      "wins": 256,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "profile-clan-bang",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 214,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "profile-clan-normal",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 90,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "mario",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 257,
+      "wins": 54,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "unicode",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 257,
+      "wins": 153,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "clone-regression",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 257,
+      "wins": 146,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "haste-regression",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 257,
+      "wins": 143,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-1-0",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 257,
+      "wins": 155,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-1-8",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 257,
+      "wins": 150,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-2-0",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 143,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-2-8",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 150,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-4-0",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 257,
+      "wins": 153,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-4-8",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 257,
+      "wins": 149,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-8-0",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 257,
+      "wins": 156,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-8-8",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 257,
+      "wins": 191,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "profile-clan-bang",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "status": "baseline-known-summon-panic",
+      "returncode": 101
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "profile-clan-normal",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 257,
+      "wins": 68,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "mario",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 10,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "unicode",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 139,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "clone-regression",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 176,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "haste-regression",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 157,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-1-0",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 140,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-1-8",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 130,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-2-0",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 257,
+      "wins": 124,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-2-8",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 257,
+      "wins": 122,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-4-0",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 257,
+      "wins": 154,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-4-8",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 257,
+      "wins": 151,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-8-0",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        16
+      ],
+      "total": 257,
+      "wins": 174,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-8-8",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        16
+      ],
+      "total": 257,
+      "wins": 194,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "profile-clan-bang",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 113,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "profile-clan-normal",
+    "runs": 257,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 257,
+      "wins": 37,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "mario",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 1001,
+      "wins": 312,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "unicode",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 1001,
+      "wins": 743,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "clone-regression",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 1001,
+      "wins": 840,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "haste-regression",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 1001,
+      "wins": 813,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-1-0",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 1001,
+      "wins": 716,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-1-8",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 1001,
+      "wins": 707,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-2-0",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 858,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-2-8",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 853,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-4-0",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 1001,
+      "wins": 917,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-4-8",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 1001,
+      "wins": 918,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-8-0",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 1001,
+      "wins": 980,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-8-8",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 1001,
+      "wins": 981,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "profile-clan-bang",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 1001,
+      "wins": 732,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "profile-clan-normal",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "status": "baseline-known-summon-panic",
+      "returncode": 101
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "mario",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 215,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "unicode",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 777,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "clone-regression",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 923,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "haste-regression",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 879,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-1-0",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 742,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-1-8",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 671,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-2-0",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 1001,
+      "wins": 906,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-2-8",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 1001,
+      "wins": 919,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-4-0",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 1001,
+      "wins": 961,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-4-8",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 1001,
+      "wins": 959,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-8-0",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        16
+      ],
+      "total": 1001,
+      "wins": 994,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-8-8",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        16
+      ],
+      "total": 1001,
+      "wins": 997,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "profile-clan-bang",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 806,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "profile-clan-normal",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 360,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "mario",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 1001,
+      "wins": 189,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "unicode",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 1001,
+      "wins": 629,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "clone-regression",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 1001,
+      "wins": 598,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "haste-regression",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 1001,
+      "wins": 591,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-1-0",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 1001,
+      "wins": 613,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-1-8",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 1001,
+      "wins": 617,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-2-0",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 558,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-2-8",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 588,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-4-0",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 1001,
+      "wins": 571,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-4-8",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 1001,
+      "wins": 590,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-8-0",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 1001,
+      "wins": 626,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-8-8",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 1001,
+      "wins": 717,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "profile-clan-bang",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "status": "baseline-known-summon-panic",
+      "returncode": 101
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "profile-clan-normal",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 1001,
+      "wins": 269,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "mario",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 47,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "unicode",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 551,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "clone-regression",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 701,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "haste-regression",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 583,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-1-0",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 538,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-1-8",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 523,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-2-0",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 1001,
+      "wins": 519,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-2-8",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 1001,
+      "wins": 522,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-4-0",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 1001,
+      "wins": 584,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-4-8",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 1001,
+      "wins": 602,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-8-0",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        16
+      ],
+      "total": 1001,
+      "wins": 691,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-8-8",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        16
+      ],
+      "total": 1001,
+      "wins": 757,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "profile-clan-bang",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 501,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "profile-clan-normal",
+    "runs": 1001,
+    "threads": 4,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 1001,
+      "wins": 138,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "mario",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 2000,
+      "wins": 636,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "unicode",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 2000,
+      "wins": 1502,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "clone-regression",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 2000,
+      "wins": 1666,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "haste-regression",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 2000,
+      "wins": 1628,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-1-0",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 2000,
+      "wins": 1452,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-1-8",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 2000,
+      "wins": 1423,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-2-0",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 1703,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-2-8",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 1697,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-4-0",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 2000,
+      "wins": 1842,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-4-8",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 2000,
+      "wins": 1816,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-8-0",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 2000,
+      "wins": 1954,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "pool-8-8",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 2000,
+      "wins": 1963,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "profile-clan-bang",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 2000,
+      "wins": 1458,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pp",
+    "case": "profile-clan-normal",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "status": "baseline-known-summon-panic",
+      "returncode": 101
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "mario",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 438,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "unicode",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 1570,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "clone-regression",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 1836,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "haste-regression",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 1755,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-1-0",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 1503,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-1-8",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 1342,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-2-0",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 2000,
+      "wins": 1814,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-2-8",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 2000,
+      "wins": 1846,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-4-0",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 2000,
+      "wins": 1927,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-4-8",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 2000,
+      "wins": 1923,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-8-0",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        16
+      ],
+      "total": 2000,
+      "wins": 1990,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "pool-8-8",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        16
+      ],
+      "total": 2000,
+      "wins": 1990,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "profile-clan-bang",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 1594,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "pd",
+    "case": "profile-clan-normal",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 691,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "mario",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 2000,
+      "wins": 360,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "unicode",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 2000,
+      "wins": 1235,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "clone-regression",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 2000,
+      "wins": 1214,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "haste-regression",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 2000,
+      "wins": 1135,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-1-0",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 2000,
+      "wins": 1233,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-1-8",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 2000,
+      "wins": 1217,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-2-0",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 1125,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-2-8",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 1166,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-4-0",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 2000,
+      "wins": 1149,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-4-8",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 2000,
+      "wins": 1175,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-8-0",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 2000,
+      "wins": 1259,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "pool-8-8",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 2000,
+      "wins": 1418,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "profile-clan-bang",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "status": "baseline-known-summon-panic",
+      "returncode": 101
+    }
+  },
+  {
+    "mode": "qp",
+    "case": "profile-clan-normal",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        1
+      ],
+      "total": 2000,
+      "wins": 500,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "mario",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 102,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "unicode",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 1088,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "clone-regression",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 1393,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "haste-regression",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 1162,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-1-0",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 1053,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-1-8",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 1028,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-2-0",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 2000,
+      "wins": 1029,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-2-8",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        4
+      ],
+      "total": 2000,
+      "wins": 1099,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-4-0",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 2000,
+      "wins": 1129,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-4-8",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        8
+      ],
+      "total": 2000,
+      "wins": 1185,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-8-0",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        16
+      ],
+      "total": 2000,
+      "wins": 1357,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "pool-8-8",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        16
+      ],
+      "total": 2000,
+      "wins": 1519,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "profile-clan-bang",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 1021,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  },
+  {
+    "mode": "qd",
+    "case": "profile-clan-normal",
+    "runs": 2000,
+    "threads": 1,
+    "all_signatures_equal": true,
+    "signature": {
+      "group_sizes": [
+        2
+      ],
+      "total": 2000,
+      "wins": 246,
+      "errors": 0,
+      "guard_exhausted": 0
+    }
+  }
+]
