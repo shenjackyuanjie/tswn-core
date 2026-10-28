@@ -19,11 +19,18 @@ def summarize(directory):
     groups = {name: [name] for name in cases}
     groups['overall'] = list(cases)
     groups['ffa'] = [name for name, row in cases.items() if len(row['group_sizes']) > 2 and all(n == 1 for n in row['group_sizes'])]
+    groups['duel'] = [name for name, row in cases.items() if row['group_sizes'] == [1, 1]]
+    groups['team'] = [name for name in cases if name not in groups['ffa'] and name not in groups['duel']]
+    for name, row in cases.items():
+        sizes = row['group_sizes']
+        layout = 'ffa' + str(len(sizes)) if name in groups['ffa'] else 'v'.join(map(str, sizes))
+        groups.setdefault('layout_' + layout, []).append(name)
     for family in ('plain', 'boss', 'generated', 'stress'):
         selected = [name for name in cases if name.startswith(family + '__')]
         if selected:
             groups[family] = selected
-            groups[family + '_ffa'] = [name for name in selected if name in groups['ffa']]
+            for mode in ('ffa', 'duel', 'team'):
+                groups[family + '_' + mode] = [name for name in selected if name in groups[mode]]
     records = json.loads((directory / 'records.json').read_text())
     paired = {}
     for row in records:
