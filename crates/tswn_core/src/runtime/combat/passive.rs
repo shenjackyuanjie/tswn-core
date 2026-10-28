@@ -1,5 +1,12 @@
 use super::*;
 
+/// `on_update_end` 排空时要处理的反击寄存器；玄月奖杯与普通反击分开保存。
+#[derive(Debug, Clone, Copy)]
+enum PlainUpdateEndCounter {
+    Counter,
+    XuanYue,
+}
+
 impl CombatRuntime {
     pub fn clear_plain_hide_before_action(&mut self, actor: EntityIdx) {
         let Some(actor) = self.entities.get_mut(actor) else {
@@ -30,6 +37,8 @@ impl CombatRuntime {
             Counter,
             Assassinate,
             SummonShareDamage,
+            WeaponDeathNote,
+            WeaponXuanYue,
         }
 
         let target_entity = self
@@ -54,16 +63,20 @@ impl CombatRuntime {
                         PlainPostDamageSkill::Assassinate
                     }
                     DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT => PlainPostDamageSkill::SummonShareDamage,
+                    DEFAULT_CORE_WEAPON_DEATH_NOTE_SKILL_EXPORT => PlainPostDamageSkill::WeaponDeathNote,
+                    DEFAULT_CORE_WEAPON_XUAN_YUE_COUNTER_SKILL_EXPORT => PlainPostDamageSkill::WeaponXuanYue,
                     _ => return None,
                 };
                 let level = target_entity.template.skills.level_at(fixed_lane)?;
                 if level == 0 {
                     return None;
                 }
-                let priority = if matches!(skill, PlainPostDamageSkill::Assassinate) {
-                    i32::MAX
-                } else {
-                    0
+                let priority = match skill {
+                    // 死亡笔记包在 PostDamageImpl 里，产物按 Infinity 排到静态钩子之后；
+                    // 影袭是运行期动态注册的 Infinity 钩子，仍排在死亡笔记之后。
+                    PlainPostDamageSkill::WeaponDeathNote => i32::MAX - 1,
+                    PlainPostDamageSkill::Assassinate => i32::MAX,
+                    _ => 0,
                 };
                 Some((skill, level, priority, registration_order))
             })
@@ -99,6 +112,12 @@ impl CombatRuntime {
                 }
                 PlainPostDamageSkill::SummonShareDamage => {
                     self.drain_plain_summon_share_damage_into(target, level, damage, caster, updates);
+                }
+                PlainPostDamageSkill::WeaponDeathNote => {
+                    self.run_plain_weapon_death_note_post_damage_into(target, damage, caster);
+                }
+                PlainPostDamageSkill::WeaponXuanYue => {
+                    self.run_plain_weapon_xuan_yue_post_damage_into(target, caster, updates);
                 }
             }
             #[cfg(not(feature = "no_debug"))]
@@ -179,6 +198,65 @@ impl CombatRuntime {
         }
     }
 
+    /// 0.5.5 `SklDeathNote.aD`：被命中后按闪避判定把攻击者写进死亡笔记。
+    pub fn run_plain_weapon_death_note_post_damage_into(&mut self, owner: EntityIdx, damage: i32, caster: EntityIdx) {
+        if damage <= 0 || caster == owner {
+            return;
+        }
+        let accuracy = {
+            let caster_entity = self
+                .entities
+                .get(caster)
+                .unwrap_or_else(|| panic!("unknown runtime death note caster: {}", caster.0));
+            caster_entity.runtime.wisdom + caster_entity.runtime.resistance
+        };
+        let dodge_value = {
+            let owner_entity = self
+                .entities
+                .get(owner)
+                .unwrap_or_else(|| panic!("unknown runtime death note owner: {}", owner.0));
+            owner_entity.runtime.wisdom + owner_entity.runtime.magic
+        };
+        if PlayerRuntime::dodge(accuracy, dodge_value, &mut self.rng) {
+            self.entities
+                .get_mut(owner)
+                .unwrap_or_else(|| panic!("runtime death note owner disappeared: {}", owner.0))
+                .runtime
+                .death_note_mark = Some(caster);
+        }
+    }
+
+    /// 0.5.5 `SklCounter.hc.aD`：玄月奖杯只登记本批次的攻击者，不掷骰。
+    pub fn run_plain_weapon_xuan_yue_post_damage_into(&mut self, owner: EntityIdx, caster: EntityIdx, updates: &mut RunUpdates) {
+        let owner_ally_team = self.plain_effective_team(owner);
+        let caster_team = self
+            .entities
+            .get(caster)
+            .unwrap_or_else(|| panic!("unknown runtime xuan yue caster: {}", caster.0))
+            .runtime
+            .team;
+        if owner_ally_team == caster_team {
+            return;
+        }
+        let counter = &mut self
+            .entities
+            .get_mut(owner)
+            .unwrap_or_else(|| panic!("runtime xuan yue owner disappeared: {}", owner.0))
+            .runtime
+            .counter_xuan_yue;
+        if counter.last_updates_id == Some(updates.id) {
+            // 同一批次内后来的攻击者会覆盖待执行的反击目标。
+            if counter.pending && counter.last_target != Some(caster) {
+                counter.last_target = Some(caster);
+            }
+            return;
+        }
+        counter.last_updates_id = Some(updates.id);
+        counter.last_target = Some(caster);
+        counter.pending = true;
+        updates.on_update_end.push(owner.0 as usize);
+    }
+
     pub fn drain_plain_update_end_into(&mut self, updates: &mut RunUpdates) {
         let mut guard = 0usize;
         while guard < 64 && !updates.on_update_end.is_empty() {
@@ -194,8 +272,16 @@ impl CombatRuntime {
     }
 
     pub fn run_plain_counter_update_end_into(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
-        let counter_levels = self
-            .entities
+        for _level in self.plain_update_end_counter_levels(owner, DEFAULT_CORE_COUNTER_SKILL_EXPORT) {
+            self.run_plain_update_end_counter_attack_into(owner, PlainUpdateEndCounter::Counter, updates);
+        }
+        for _level in self.plain_update_end_counter_levels(owner, DEFAULT_CORE_WEAPON_XUAN_YUE_COUNTER_SKILL_EXPORT) {
+            self.run_plain_update_end_counter_attack_into(owner, PlainUpdateEndCounter::XuanYue, updates);
+        }
+    }
+
+    fn plain_update_end_counter_levels(&self, owner: EntityIdx, export_name: &str) -> Vec<u32> {
+        self.entities
             .get(owner)
             .map(|entity| {
                 entity
@@ -206,56 +292,64 @@ impl CombatRuntime {
                     .copied()
                     .enumerate()
                     .filter_map(|(fixed_lane, skill_id)| {
-                        (self.registry.skill(skill_id)?.export_name == DEFAULT_CORE_COUNTER_SKILL_EXPORT)
+                        (self.registry.skill(skill_id)?.export_name == export_name)
                             .then(|| entity.template.skills.level_at(fixed_lane))
                             .flatten()
                     })
                     .collect::<Vec<_>>()
             })
-            .unwrap_or_default();
+            .unwrap_or_default()
+    }
 
-        for _level in counter_levels {
-            let target = {
-                let Some(owner_entity) = self.entities.get_mut(owner) else {
-                    return;
-                };
-                let counter = &mut owner_entity.runtime.counter;
-                if !counter.pending || counter.last_updates_id != Some(updates.id) {
-                    continue;
-                }
-                counter.pending = false;
-                counter.last_updates_id = None;
-                counter.last_target.take()
+    fn run_plain_update_end_counter_attack_into(
+        &mut self,
+        owner: EntityIdx,
+        kind: PlainUpdateEndCounter,
+        updates: &mut RunUpdates,
+    ) {
+        let target = {
+            let Some(owner_entity) = self.entities.get_mut(owner) else {
+                return;
             };
-            let Some(target) = target else {
-                continue;
+            let counter = match kind {
+                PlainUpdateEndCounter::Counter => &mut owner_entity.runtime.counter,
+                PlainUpdateEndCounter::XuanYue => &mut owner_entity.runtime.counter_xuan_yue,
             };
-            // legacy 这里只检查反击目标的 alive 标记；冰冻目标仍然可以被反击。
-            if !self.entities.get(target).is_some_and(|entity| entity.runtime.alive) {
-                continue;
+            if !counter.pending || counter.last_updates_id != Some(updates.id) {
+                return;
             }
-            if !self.entities.get(owner).is_some_and(EntityRecord::is_active) {
-                continue;
-            }
-
-            if !self.entity_mp_ready(owner) {
-                continue;
-            }
-            let atp = self
-                .entities
-                .get(owner)
-                .unwrap_or_else(|| panic!("runtime counter owner disappeared: {}", owner.0))
-                .runtime
-                .get_at(false, &mut self.rng);
-            updates.add_newline();
-            updates.add(crate::runtime::update::RunUpdate::new(
-                "[0]发起[反击][s_counter]",
-                owner.0 as usize,
-                target.0 as usize,
-                1,
-            ));
-            self.drain_plain_attack_with_atp_into(owner, target, false, atp, updates);
+            counter.pending = false;
+            counter.last_updates_id = None;
+            counter.last_target.take()
+        };
+        let Some(target) = target else {
+            return;
+        };
+        // legacy 这里只检查反击目标的 alive 标记；冰冻目标仍然可以被反击。
+        if !self.entities.get(target).is_some_and(|entity| entity.runtime.alive) {
+            return;
         }
+        if !self.entities.get(owner).is_some_and(EntityRecord::is_active) {
+            return;
+        }
+
+        if !self.entity_mp_ready(owner) {
+            return;
+        }
+        let atp = self
+            .entities
+            .get(owner)
+            .unwrap_or_else(|| panic!("runtime counter owner disappeared: {}", owner.0))
+            .runtime
+            .get_at(false, &mut self.rng);
+        updates.add_newline();
+        updates.add(crate::runtime::update::RunUpdate::new(
+            "[0]发起[反击][s_counter]",
+            owner.0 as usize,
+            target.0 as usize,
+            1,
+        ));
+        self.drain_plain_attack_with_atp_into(owner, target, false, atp, updates);
     }
 
     pub fn run_plain_upgrade_post_damage_into(

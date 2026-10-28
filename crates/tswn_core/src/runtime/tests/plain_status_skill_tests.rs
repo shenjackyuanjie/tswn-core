@@ -69,7 +69,7 @@ fn plain_berserk_static_dispatch_applies_and_extends_forced_action_state() {
         vec!["[0]使用[狂暴术]", "[1]受到[2]点伤害[s_dmg160]", "[1]进入[狂暴]状态"]
     );
 
-    runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.at_boost_millionths = 3_000_000;
+    runtime.entities.get_mut(EntityIdx(0)).unwrap().activate_charge_runtime();
     let update_count = updates.updates.len();
     runtime.apply_berserk_on_damage(EntityIdx(0), EntityIdx(1), 1, &mut updates);
     assert_eq!(
@@ -573,7 +573,7 @@ fn plain_iron_static_dispatch_gates_active_state_and_uses_charge_formula() {
             .states
             .set_payload(PLAIN_IRON_STATE_KEY, StatePayload::Iron { protect: 0, step: 0 })
     );
-    runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.at_boost_millionths = 3_000_000;
+    runtime.entities.get_mut(EntityIdx(0)).unwrap().activate_charge_runtime();
     runtime.drain_plain_iron_skill_into(EntityIdx(0), &mut updates);
     assert_eq!(
         runtime

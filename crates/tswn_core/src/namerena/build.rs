@@ -2,10 +2,10 @@ use std::cmp::Ordering;
 
 use crate::rc4::RC4;
 
-use super::weapon::WeaponBuild;
+use super::weapon::{WeaponBuild, WeaponKind};
 use super::{
     NAME_MAX_LEN, NamerenaInput, PlayerClass, PlayerOverlay, PlayerSpec, PlayerStats, SkillBoost, SkillLoadoutSpec, TEAM_MAX_LEN,
-    boss_append_attr, boss_display_name, median,
+    boss_append_attr, boss_default_skill_levels, boss_display_name, median,
 };
 
 #[derive(Debug, Clone)]
@@ -19,6 +19,8 @@ pub struct PreparedPlayer {
     pub attrs: [u32; 8],
     pub status: PlayerStats,
     pub skills: SkillLoadoutSpec,
+    /// 0.5.5 桂月奖杯注入的常驻 `charge` 标记：存在但不提供攻击倍率、也无法解除。
+    pub permanent_charge: bool,
     pub name_factor: f64,
     pub weapon_attr_bonus: [i32; 8],
     pub name_base: [u8; 128],
@@ -289,6 +291,9 @@ impl PlayerBuild {
             .weapon
             .as_deref()
             .or_else(|| spec.overlay.as_ref().and_then(|overlay| overlay.weapon.as_deref()));
+        let weapon = (!has_diy)
+            .then(|| weapon_name.and_then(|name| WeaponBuild::parse(name, &clan_name, &id_key_name)))
+            .flatten();
         Self {
             id,
             name: spec.name.clone(),
@@ -301,7 +306,7 @@ impl PlayerBuild {
             normal_raw_name_base,
             action_order,
             name_factor,
-            weapon: (!has_diy).then(|| weapon_name.and_then(WeaponBuild::parse)).flatten(),
+            weapon,
             overlay: spec.overlay.clone(),
         }
     }
@@ -366,6 +371,12 @@ impl PlayerBuild {
                 slot_skill_keys[slot] = Some(key);
             }
         }
+        if overlay_skills.is_none() && self.class == PlayerClass::Boss {
+            // 对应 0.5.5 中位于武器 preUpgrade 之后、postUpgrade 之前的 `ac()`。
+            for &(key, level) in boss_default_skill_levels(&self.name) {
+                levels[key] = level;
+            }
+        }
         if let Some(weapon) = &self.weapon {
             weapon.post_upgrade(&mut attrs, &mut levels, &mut boosted);
         }
@@ -392,7 +403,8 @@ impl PlayerBuild {
                 )
             })
         });
-        if overlay_skills.is_none() {
+        // 0.5.5 的 Boss 技能装配只调用 `W()`，不参与末位翻倍与槽位强化。
+        if overlay_skills.is_none() && self.class != PlayerClass::Boss {
             for &key in self.action_order.iter().rev() {
                 let key = key as usize;
                 if key >= 25 || levels[key] == 0 || boosted[key] {
@@ -449,10 +461,16 @@ impl PlayerBuild {
             status = status_from_attrs(attrs, self.name_factor, true);
             status.magic_point = 1000;
         }
-        let skills = overlay_skills.map_or_else(
+        let mut skills = overlay_skills.map_or_else(
             || SkillLoadoutSpec::standard(&levels, &boosted, &boosts, &self.action_order),
             |skills| SkillLoadoutSpec::player_overlay(skills),
         );
+        let mut permanent_charge = false;
+        if let Some(weapon) = &self.weapon {
+            let kind = weapon.kind();
+            skills.append_weapon_skills(kind);
+            permanent_charge = kind == WeaponKind::GuiYue;
+        }
         let weapon_attr_bonus = self.weapon.as_ref().map_or([0; 8], |weapon| weapon.attr_bonus);
         PreparedPlayer {
             id: self.id,
@@ -464,6 +482,7 @@ impl PlayerBuild {
             attrs,
             status,
             skills,
+            permanent_charge,
             name_factor: self.name_factor,
             weapon_attr_bonus,
             name_base: self.name_base,
@@ -587,6 +606,28 @@ mod tests {
         assert_eq!(diy.attrs, [36, 3, 33, 40, 31, 30, 0, 84]);
         assert_eq!(diy.skills.entries.iter().find(|entry| entry.key == 0).unwrap().level, 5);
         assert_eq!(diy.skills.entries.iter().find(|entry| entry.key == 15).unwrap().level, 70);
+    }
+
+    #[test]
+    fn boss_build_installs_default_ac_skills() {
+        let input = NamerenaInput::parse("sonic@!\nyuri@!\naokiji@!\nmosquito@!").unwrap();
+        let roster = PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
+        let level = |player: &PreparedPlayer, key: usize| {
+            player.skills.entries.iter().find(|entry| entry.key == key).map_or(0, |entry| entry.level)
+        };
+
+        let sonic = &roster.players[0];
+        assert_eq!(level(sonic, 6), 48);
+        assert_eq!(level(sonic, 7), 48);
+        assert_eq!(level(sonic, 30), 48);
+        assert_eq!(sonic.skills.post_damage_order, vec![30]);
+
+        let yuri = &roster.players[1];
+        assert_eq!(level(yuri, 25), 48);
+        assert_eq!(level(yuri, 27), 48);
+
+        assert_eq!(level(&roster.players[2], 1), 80);
+        assert_eq!(level(&roster.players[3], 4), 100);
     }
 
     #[test]

@@ -711,6 +711,10 @@ impl CombatRuntime {
                     BuiltinActiveSkill::Assassinate => self.select_plain_assassinate_targets(actor, smart),
                     BuiltinActiveSkill::Summon => smallvec::smallvec![actor],
                     BuiltinActiveSkill::Possess => self.select_plain_possess_targets(actor, smart),
+                    // 武器技能的 `aa` 恒返回空数组，目标在技能自身结算时再解析。
+                    BuiltinActiveSkill::WeaponS11 | BuiltinActiveSkill::WeaponDeathNote | BuiltinActiveSkill::WeaponXuanYue => {
+                        smallvec::smallvec![]
+                    }
                 };
                 #[cfg(not(feature = "no_debug"))]
                 if self.probe_plain_action_matches(actor) {
@@ -724,8 +728,11 @@ impl CombatRuntime {
                         self.rng.j,
                     );
                 }
-                let allows_empty_targets = builtin_skill == BuiltinActiveSkill::Assassinate
-                    && self.entities.get(actor).is_some_and(|entity| entity.runtime.assassinate.is_some());
+                let allows_empty_targets = matches!(
+                    builtin_skill,
+                    BuiltinActiveSkill::WeaponS11 | BuiltinActiveSkill::WeaponDeathNote
+                ) || (builtin_skill == BuiltinActiveSkill::Assassinate
+                    && self.entities.get(actor).is_some_and(|entity| entity.runtime.assassinate.is_some()));
                 if targets.is_empty() && !allows_empty_targets {
                     continue;
                 }
@@ -875,6 +882,57 @@ impl CombatRuntime {
                     return false;
                 }
             }
+            // 剁手刀：等级为 0 时直接失败且不消耗字节；否则只掷一次 r63。
+            BuiltinActiveSkill::WeaponS11 => {
+                let actor_entity = self
+                    .entities
+                    .get(actor)
+                    .unwrap_or_else(|| panic!("unknown runtime weapon s11 probability actor: {}", actor.0));
+                let Some(s11) = actor_entity.runtime.weapon_s11 else {
+                    return false;
+                };
+                if s11.level == 0 {
+                    return false;
+                }
+                #[cfg(not(feature = "no_debug"))]
+                let before = (self.rng.i, self.rng.j);
+                let roll = self.rng.r63() as i32;
+                let pass = roll + s11.level as i32 > actor_entity.runtime.wisdom;
+                #[cfg(not(feature = "no_debug"))]
+                if probe_action {
+                    eprintln!(
+                        "[action_probe:runtime:prob] actor={} skill={} level={} smart={} roll={} pass={} rc4=({},{}) -> ({},{})",
+                        actor.0,
+                        builtin_skill.export_name(),
+                        s11.level,
+                        smart,
+                        roll,
+                        pass,
+                        before.0,
+                        before.1,
+                        self.rng.i,
+                        self.rng.j,
+                    );
+                }
+                return pass;
+            }
+            // 死亡笔记：只有写下的目标仍在场时才可能行动；智能模式不消耗字节。
+            BuiltinActiveSkill::WeaponDeathNote => {
+                let mark = self
+                    .entities
+                    .get(actor)
+                    .and_then(|entity| entity.runtime.death_note_mark)
+                    .filter(|mark| self.entities.get(*mark).is_some_and(|entity| entity.runtime.hp > 0));
+                let Some(mark) = mark else {
+                    return false;
+                };
+                if smart {
+                    return self.plain_effective_team(mark) != self.plain_effective_team(actor);
+                }
+                return self.rng.c50();
+            }
+            // 玄月奖杯只注册受击回调，从不进入主动扫描。
+            BuiltinActiveSkill::WeaponXuanYue => return false,
             _ => {}
         }
         #[cfg(not(feature = "no_debug"))]

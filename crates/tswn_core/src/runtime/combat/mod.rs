@@ -19,6 +19,7 @@ mod skills_debuff;
 mod skills_lifecycle;
 mod skills_offense;
 mod skills_team;
+mod skills_weapon;
 
 #[derive(Debug, Clone)]
 /// 单回合结果：分别记录行动、可选可见帧与当前胜者。

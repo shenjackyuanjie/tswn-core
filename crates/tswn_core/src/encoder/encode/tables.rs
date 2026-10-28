@@ -286,7 +286,7 @@ impl FeatureEncoder {
         for (template_row, template) in index.template_rows.iter().enumerate() {
             for (ordinal, lane) in template.skills.lanes.iter().enumerate() {
                 let prefix = format!("templates[{template_row}].skills.lanes[{ordinal}]");
-                // 0 是 PAD，43–50 尚未启用；能转换成 i32 不等于合法技能类别。
+                // 0 是 PAD；只有模型技能表内的编号才是合法技能类别。
                 if lane.skill_id == 0 || lane.skill_id as usize > crate::runtime::model_state::MODEL_SKILL_EXPORTS.len() {
                     return Err(EncodeError::UnknownCategory {
                         path: format!("{prefix}.skill_id"),

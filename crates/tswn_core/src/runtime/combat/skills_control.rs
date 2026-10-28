@@ -14,11 +14,7 @@ impl CombatRuntime {
                 .entities
                 .get(actor)
                 .unwrap_or_else(|| panic!("unknown runtime half actor: {}", actor.0));
-            (
-                owner.runtime.wisdom,
-                owner.runtime.magic,
-                owner.runtime.at_boost_millionths >= 3_000_000,
-            )
+            (owner.runtime.wisdom, owner.runtime.magic, owner.runtime.charge.active)
         };
         let (target_hp, target_resistance, target_agility, target_flags, target_name, target_active) = {
             let target_entity = self
@@ -243,10 +239,7 @@ impl CombatRuntime {
             .expect("default runtime profile must register core clone kind");
         let random_factor = (u32::from(self.rng.next_u8()) & 63) + 64;
         let mut decayed_level = ((current_level as f64) * random_factor as f64 / 128.0).ceil() as u32;
-        let charge_active = self
-            .entities
-            .get(actor)
-            .is_some_and(|entity| entity.runtime.at_boost_millionths >= 3_000_000);
+        let charge_active = self.entities.get(actor).is_some_and(|entity| entity.runtime.charge.active);
 
         if !charge_active {
             let owner = self
@@ -563,7 +556,7 @@ impl CombatRuntime {
             .map(|owner| {
                 (
                     owner.runtime.magic,
-                    owner.runtime.at_boost_millionths >= 3_000_000,
+                    owner.runtime.charge.active,
                     owner.runtime.hp,
                     owner.template.max_hp,
                 )

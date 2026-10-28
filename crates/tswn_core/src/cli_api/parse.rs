@@ -137,7 +137,14 @@ fn skills_to_json(skills: &SkillLoadoutSpec, context: SkillExportContext) -> Str
         let Some(entry) = skills.entries.iter().find(|entry| entry.key == *key && entry.level > 0) else {
             continue;
         };
-        if entry.skill == BuiltinSkillRef::SummonShareDamage {
+        // 武器技能来自装备而非名字解析结果，导出名字表时不回写。
+        if matches!(
+            entry.skill,
+            BuiltinSkillRef::SummonShareDamage
+                | BuiltinSkillRef::WeaponS11
+                | BuiltinSkillRef::WeaponDeathNote
+                | BuiltinSkillRef::WeaponXuanYue
+        ) {
             continue;
         }
         let name = skill_export_name(entry, context);
@@ -156,7 +163,10 @@ fn skill_export_name(entry: &SkillEntrySpec, context: SkillExportContext) -> Str
             BuiltinSkillRef::SummonFire => format!("summon:sklfire{}", usize::from(entry.key != 40) + 1),
             BuiltinSkillRef::SummonExplode => "summon:sklexplode".to_owned(),
             BuiltinSkillRef::Possess => "phantom:sklpossess".to_owned(),
-            BuiltinSkillRef::SummonShareDamage => unreachable!(),
+            BuiltinSkillRef::SummonShareDamage
+            | BuiltinSkillRef::WeaponS11
+            | BuiltinSkillRef::WeaponDeathNote
+            | BuiltinSkillRef::WeaponXuanYue => unreachable!(),
         }),
         SkillExportContext::SummonMinion => {
             classified_summon_minion_skill_name_for_export(entry.key).unwrap_or_else(|| match entry.skill {
@@ -164,7 +174,10 @@ fn skill_export_name(entry: &SkillEntrySpec, context: SkillExportContext) -> Str
                 BuiltinSkillRef::SummonFire => format!("sklfire{}", usize::from(entry.key != 0) + 1),
                 BuiltinSkillRef::SummonExplode => "sklexplode".to_owned(),
                 BuiltinSkillRef::Possess => "phantom:sklpossess".to_owned(),
-                BuiltinSkillRef::SummonShareDamage => unreachable!(),
+                BuiltinSkillRef::SummonShareDamage
+                | BuiltinSkillRef::WeaponS11
+                | BuiltinSkillRef::WeaponDeathNote
+                | BuiltinSkillRef::WeaponXuanYue => unreachable!(),
             })
         }
         SkillExportContext::GenericMinion => match entry.skill {
@@ -172,7 +185,10 @@ fn skill_export_name(entry: &SkillEntrySpec, context: SkillExportContext) -> Str
             BuiltinSkillRef::SummonFire => "summon:sklfire1".to_owned(),
             BuiltinSkillRef::SummonExplode => "summon:sklexplode".to_owned(),
             BuiltinSkillRef::Possess => "phantom:sklpossess".to_owned(),
-            BuiltinSkillRef::SummonShareDamage => unreachable!(),
+            BuiltinSkillRef::SummonShareDamage
+            | BuiltinSkillRef::WeaponS11
+            | BuiltinSkillRef::WeaponDeathNote
+            | BuiltinSkillRef::WeaponXuanYue => unreachable!(),
         },
     }
 }

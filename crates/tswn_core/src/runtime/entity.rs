@@ -278,6 +278,8 @@ pub struct PlayerTemplate {
     pub move_state: MoveState,
     pub policy_overrides: PlayerPolicyOverrides,
     pub clone_build: Option<CloneBuildData>,
+    /// 桂月奖杯注入的常驻 `charge` 标记；存在但不提供攻击倍率、也无法解除。
+    pub permanent_charge: bool,
     /// 使魔复活重施时是否沿用死亡对象上的当前技能表。
     pub reuse_skills_on_recast: bool,
     /// 使魔复活重施时是否沿用死亡对象上的持久属性。
@@ -324,6 +326,7 @@ impl PlayerTemplate {
             move_state: MoveState::default(),
             policy_overrides: PlayerPolicyOverrides::default(),
             clone_build: None,
+            permanent_charge: false,
             reuse_skills_on_recast: false,
             reuse_stats_on_recast: false,
             inherit_owner_def_res: false,
@@ -371,6 +374,7 @@ impl PlayerTemplate {
             move_state: MoveState::default(),
             policy_overrides: PlayerPolicyOverrides::default(),
             clone_build: Some(clone_build),
+            permanent_charge: false,
             reuse_skills_on_recast: false,
             reuse_stats_on_recast: false,
             inherit_owner_def_res: false,
@@ -472,6 +476,11 @@ impl PlayerTemplate {
 
     pub fn with_skill_loadout(mut self, skills: SkillLoadout) -> Self {
         self.skills = skills;
+        self
+    }
+
+    pub fn with_permanent_charge(mut self, permanent_charge: bool) -> Self {
+        self.permanent_charge = permanent_charge;
         self
     }
 

@@ -34,7 +34,7 @@ fn snapshot_is_read_only_and_excludes_identity_and_allocator_counters() {
 #[test]
 fn skills_use_stable_one_based_registry_ids() {
     let registry = default_custom_runtime_import_config().unwrap().registry;
-    assert_eq!(registry.skills().len(), 42);
+    assert_eq!(registry.skills().len(), 45);
     assert_eq!(
         registry.skills().iter().map(|skill| skill.export_name.as_str()).collect::<Vec<_>>(),
         MODEL_SKILL_EXPORTS
@@ -44,7 +44,7 @@ fn skills_use_stable_one_based_registry_ids() {
     let skills = ModelSkills::from(&loadout);
     assert_eq!(
         skills.lanes.iter().map(|skill| skill.skill_id).collect::<Vec<_>>(),
-        (1..=42).collect::<Vec<_>>()
+        (1..=45).collect::<Vec<_>>()
     );
     assert_eq!(registry.skills()[0].export_name, DEFAULT_CUSTOM_BED2_SUMMON_SKILL_EXPORT);
 }

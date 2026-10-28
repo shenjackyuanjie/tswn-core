@@ -607,10 +607,7 @@ impl CombatRuntime {
         if target_entity.runtime.hp <= 0 || !target_entity.runtime.alive || self.ice_immune(target) {
             return;
         }
-        let charge_active = self
-            .entities
-            .get(caster)
-            .is_some_and(|entity| entity.runtime.at_boost_millionths >= 3_000_000);
+        let charge_active = self.entities.get(caster).is_some_and(|entity| entity.runtime.charge.active);
         let frozen_step = 1024 + if charge_active { 2048 } else { 0 };
         let target_entity = self.entities.get_mut(target).unwrap();
         let first_application = target_entity.states.entry(PLAIN_ICE_STATE_KEY).is_none();

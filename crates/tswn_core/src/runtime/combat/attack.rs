@@ -591,10 +591,7 @@ impl CombatRuntime {
         if self.entities.get(target).is_none_or(|entity| entity.runtime.hp <= 0) || self.status_immune(target, "berserk") {
             return;
         }
-        let charge_active = self
-            .entities
-            .get(caster)
-            .is_some_and(|entity| entity.runtime.at_boost_millionths >= 3_000_000);
+        let charge_active = self.entities.get(caster).is_some_and(|entity| entity.runtime.charge.active);
         let existing_key = self.entities.get(target).and_then(|entity| {
             entity
                 .states
@@ -652,7 +649,7 @@ impl CombatRuntime {
             (
                 target_entity.runtime.hp,
                 target_entity.runtime.flags,
-                target_entity.runtime.at_boost_millionths >= 3_000_000,
+                target_entity.runtime.charge.active,
                 existing,
             )
         };

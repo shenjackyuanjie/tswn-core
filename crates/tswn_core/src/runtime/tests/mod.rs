@@ -39,6 +39,7 @@ mod plain_status_skill_tests;
 mod plain_summon_share_damage_tests;
 mod plain_summon_skill_tests;
 mod plain_terminal_round_tests;
+mod plain_weapon_skill_tests;
 mod plain_zombie_skill_tests;
 mod prepared_init_tests;
 mod runtime_core_tests;
