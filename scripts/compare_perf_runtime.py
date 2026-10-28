@@ -60,9 +60,12 @@ def main():
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--runs', type=int, default=52_000)
     parser.add_argument('--rounds', type=int, default=5)
+    parser.add_argument('--start', type=int, default=None, help='仅供支持 --start 的范围入口使用')
     args = parser.parse_args()
     if not 1 <= args.runs <= 1_000_000 or args.rounds <= 0:
         parser.error('runs must be 1..1000000 and rounds must be positive')
+    if args.start is not None and (args.start < 0 or args.start + args.runs > 2**32):
+        parser.error('start range must fit u32')
     source = args.input.resolve()
     if not source.is_dir():
         parser.error('input must be a directory')
@@ -77,7 +80,7 @@ def main():
     metadata = {
         'status': 'running',
         'started_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        'runs': args.runs, 'measured_rounds': args.rounds, 'warmup_round': 0,
+        'runs': args.runs, 'start': args.start, 'measured_rounds': args.rounds, 'warmup_round': 0,
         'threads': 1, 'mode': 'win-rate', 'timed': False,
         'order_rule': 'sorted cases; a,b if (round+case_index)%2 == 0, otherwise b,a',
         'measurement': 'sum of perf_runtime elapsed_seconds; process wall stored separately',
@@ -104,6 +107,8 @@ def main():
                     stderr_path = log_dir / (case.name + '.stderr.txt')
                     command = [str(binaries[variant]), '-i', str(case), '-n', str(args.runs),
                                '--threads', '1', '--mode', 'win-rate']
+                    if args.start is not None:
+                        command += ['--start', str(args.start)]
                     with stdout_path.open('xb') as stdout, stderr_path.open('xb') as stderr:
                         started = time.perf_counter()
                         result = subprocess.run(command, stdout=stdout, stderr=stderr, check=False)
@@ -112,7 +117,12 @@ def main():
                                {'returncode': result.returncode, 'wall_seconds': wall})
                     if result.returncode != 0:
                         raise RuntimeError(f'Benchmark failed: round={round_index} variant={variant} case={case.name}')
-                    signature, elapsed = parse_result(stdout_path.read_text(encoding='utf-8'), case, args.runs)
+                    output = stdout_path.read_text(encoding='utf-8')
+                    signature, elapsed = parse_result(output, case, args.runs)
+                    if args.start is not None:
+                        row = json.loads(output)
+                        if (row.get('start_inclusive'), row.get('end_exclusive')) != (args.start, args.start + args.runs):
+                            raise RuntimeError('Unexpected benchmark seed range')
                     if case.name not in expected:
                         expected[case.name] = signature
                     elif signature != expected[case.name]:

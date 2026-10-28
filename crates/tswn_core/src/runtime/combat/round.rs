@@ -157,12 +157,7 @@ impl CombatRuntime {
             self.drain_plain_builtin_skill_into(action.actor, prepared, &mut updates);
             legacy_plain_action && !self.has_alive_enemy_or_pending_spawn(action.actor)
         } else {
-            let pre_damage_skill_plan =
-                self.scheduler
-                    .skill_hook_plan(&self.entities, &self.registry, action.actor, ProcMask::PRE_DAMAGE);
-            self.drain_skill_hook_plan_into(&pre_damage_skill_plan, &mut updates);
-            let pre_damage_state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::PRE_DAMAGE);
-            self.drain_state_hook_plan_into(&pre_damage_state_plan, &mut updates);
+            self.drain_action_damage_phase_into(action.actor, ProcMask::PRE_DAMAGE, &mut updates);
             match prepared_plain_action.take() {
                 Some(PreparedPlainAction::BasicAttack { use_magic, .. }) => {
                     self.drain_plain_default_attack_into(action.actor, action.target, use_magic, &mut updates);
@@ -186,12 +181,7 @@ impl CombatRuntime {
                 }
             }
             let terminal_plain_action = legacy_plain_action && !self.has_alive_enemy_or_pending_spawn(action.actor);
-            let post_damage_skill_plan =
-                self.scheduler
-                    .skill_hook_plan(&self.entities, &self.registry, action.actor, ProcMask::POST_DAMAGE);
-            self.drain_skill_hook_plan_into(&post_damage_skill_plan, &mut updates);
-            let post_damage_state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::POST_DAMAGE);
-            self.drain_state_hook_plan_into(&post_damage_state_plan, &mut updates);
+            self.drain_action_damage_phase_into(action.actor, ProcMask::POST_DAMAGE, &mut updates);
             terminal_plain_action
         };
         if !terminal_plain_action {
@@ -234,6 +224,27 @@ impl CombatRuntime {
             );
         }
         Some(self.finish_round_with_capture::<CAPTURE_UPDATES>(Some(action), updates))
+    }
+
+    /// 空钩子不需要构造拥有型快照；缓存失效时仍走完整的注册表扫描。
+    /// 技能执行完再读取状态位图，保留技能新增状态在同一阶段立即生效的顺序。
+    fn drain_action_damage_phase_into(&mut self, owner: EntityIdx, hook: ProcMask, updates: &mut RunUpdates) {
+        let skills = &self.entities.get(owner).expect("runtime damage phase owner missing").template.skills;
+        if !skills.cached_hook_entries(hook).is_some_and(|entries| entries.is_empty()) {
+            let plan = self.scheduler.skill_hook_plan(&self.entities, &self.registry, owner, hook);
+            self.drain_skill_hook_plan_into(&plan, updates);
+        }
+        if self
+            .entities
+            .get(owner)
+            .expect("runtime damage phase owner missing")
+            .states
+            .hook_mask()
+            .intersects(hook)
+        {
+            let plan = self.scheduler.state_hook_plan(&self.entities, owner, hook);
+            self.drain_state_hook_plan_into(&plan, updates);
+        }
     }
 
     fn drain_post_action_chain_into(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
@@ -991,5 +1002,53 @@ impl CombatRuntime {
             );
         }
         roll < level
+    }
+}
+
+#[cfg(test)]
+mod damage_phase_cache_tests {
+    use super::*;
+
+    fn mark(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
+        context.add_update(crate::runtime::update::RunUpdate::new("post damage", 0, 0, entry.skill_id.0));
+    }
+
+    #[test]
+    fn post_damage_phase_rechecks_skills_after_intervening_mutation() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let post = builder
+            .register_skill_with_hooks(
+                "custom",
+                "post",
+                "custom.post",
+                ProcMask::POST_DAMAGE,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .unwrap();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "owner", 0, 100, 3)],
+            builder.build(),
+        ));
+        runtime.set_skill_handler(post, mark);
+        let mut updates = RunUpdates::new();
+        runtime.drain_action_damage_phase_into(EntityIdx(0), ProcMask::PRE_DAMAGE, &mut updates);
+        assert!(updates.updates.is_empty());
+        // 两阶段之间替换技能，必须重新查询，不沿用前一阶段的空缓存。
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().template.skills = SkillLoadout::from_skills([post]);
+        runtime.drain_action_damage_phase_into(EntityIdx(0), ProcMask::POST_DAMAGE, &mut updates);
+        assert_eq!(updates.updates.len(), 1);
+        assert_eq!(updates.updates[0].message, "post damage");
+        assert_eq!(updates.updates[0].score, post.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "runtime damage phase owner missing")]
+    fn damage_phase_rejects_missing_owner_even_when_no_hooks_exist() {
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "owner", 0, 100, 3)],
+            ExtensionRegistryBuilder::default().build(),
+        ));
+        runtime.drain_action_damage_phase_into(EntityIdx(99), ProcMask::PRE_DAMAGE, &mut RunUpdates::new());
     }
 }
