@@ -72,6 +72,11 @@ impl WeaponKind {
     }
 }
 
+/// 0.5.5 `RinickModifier.b6()` 中按 `k2` 位置固定发放 `8` 级的槽位。
+const RINICK_IDENTITY_LEVEL_POSITIONS: [usize; 9] = [0, 2, 15, 18, 27, 28, 32, 37, 38];
+/// `k1` 中第一个非 `ActionSkill` 的键；属性修改器会给它们额外加 16 级。
+const RINICK_FIRST_PASSIVE_SKILL_KEY: usize = 25;
+
 #[derive(Debug, Clone)]
 pub(crate) struct WeaponBuild {
     seed: Vec<u8>,
@@ -79,10 +84,14 @@ pub(crate) struct WeaponBuild {
     skill_index: usize,
     skill_factor: i32,
     kind: WeaponKind,
+    /// 0.5.5 `l.e == "Rinick"`：属性修改器只在角色 id 名恰为 `Rinick` 时走身份分支。
+    identity: bool,
 }
 
 impl WeaponBuild {
     pub(crate) fn kind(&self) -> WeaponKind { self.kind }
+
+    pub(crate) fn is_rinick_identity(&self) -> bool { self.identity }
 
     pub(crate) fn parse(name: &str, clan_name: &str, id_key_name: &str) -> Option<Self> {
         // 0.5.5 中 `+diy...` 直接作为自定义数据，不会创建武器。
@@ -108,8 +117,10 @@ impl WeaponBuild {
                 skill_index: 0,
                 skill_factor: 0,
                 kind,
+                identity: false,
             });
         }
+        let identity = kind == WeaponKind::RinickModifier && id_key_name == "Rinick";
         // BossWeapon 先用去掉末尾 `!` 的武器名初始化，再用角色 id 名重新混淆。
         let base_name = if kind == WeaponKind::BossEx {
             &name[..name.len() - 1]
@@ -167,6 +178,7 @@ impl WeaponBuild {
             skill_index,
             skill_factor: 0,
             kind,
+            identity,
         })
     }
 
@@ -212,7 +224,13 @@ impl WeaponBuild {
         left.abs() + middle.abs() + right.abs()
     }
 
-    pub(crate) fn post_upgrade(&self, attrs: &mut [u32; 8], levels: &mut [u32; 40], boosted: &mut [bool; 40]) {
+    pub(crate) fn post_upgrade(
+        &self,
+        attrs: &mut [u32; 8],
+        levels: &mut [u32; 40],
+        boosted: &mut [bool; 40],
+        action_order: &[u32; 40],
+    ) {
         // 桂月/玄月奖杯与无效武器在 0.5.5 中的 `b3()/bn()` 均为空，不参与属性与技能。
         if matches!(self.kind, WeaponKind::GuiYue | WeaponKind::XuanYue | WeaponKind::NoWeapon) {
             return;
@@ -232,8 +250,12 @@ impl WeaponBuild {
         for index in 0..ATTR_COUNT {
             attrs[index] = (attrs[index] as i32 + attr_bonus[index]) as u32;
         }
+        if self.kind == WeaponKind::RinickModifier {
+            self.rewrite_rinick_levels(levels, action_order);
+            return;
+        }
         // 这些武器覆盖了 `b6()`，不会再把 `bn()` 算出的技能因子加到技能表上。
-        if matches!(self.kind, WeaponKind::S11 | WeaponKind::DeathNote | WeaponKind::RinickModifier) {
+        if matches!(self.kind, WeaponKind::S11 | WeaponKind::DeathNote) {
             return;
         }
         let old = levels[self.skill_index];
@@ -241,6 +263,37 @@ impl WeaponBuild {
             boosted[self.skill_index] = true;
         }
         levels[self.skill_index] = old.saturating_add(self.skill_factor as u32);
+    }
+
+    /// 0.5.5 `RinickModifier.b6()` 对 `k2`（洗牌后的技能表）的等级改写。
+    ///
+    /// 非身份分支把每个技能的 0 级抬到 4、其余翻倍；身份分支先给固定位置
+    /// 发 8 级，再给全部非 `ActionSkill` 技能（被动与 SkillVoid）发 16 级或加 16。
+    /// `b6()` 不设置 `e`（强化标记），因此这里不改 `boosted`。
+    fn rewrite_rinick_levels(&self, levels: &mut [u32; 40], action_order: &[u32; 40]) {
+        if self.identity {
+            for &position in &RINICK_IDENTITY_LEVEL_POSITIONS {
+                let key = action_order[position] as usize;
+                if levels[key] == 0 {
+                    levels[key] = 8;
+                }
+            }
+            for &key in action_order {
+                let key = key as usize;
+                if key >= RINICK_FIRST_PASSIVE_SKILL_KEY {
+                    levels[key] = if levels[key] == 0 {
+                        16
+                    } else {
+                        levels[key].saturating_add(16)
+                    };
+                }
+            }
+        } else {
+            for &key in action_order {
+                let key = key as usize;
+                levels[key] = if levels[key] == 0 { 4 } else { levels[key].saturating_mul(2) };
+            }
+        }
     }
 }
 
@@ -251,6 +304,8 @@ mod tests {
     fn kind_of(name: &str, clan: &str) -> WeaponKind {
         WeaponBuild::parse(name, clan, "alice@team").expect("weapon should build").kind
     }
+
+    fn identity_action_order() -> [u32; 40] { std::array::from_fn(|index| index as u32) }
 
     #[test]
     fn weapon_names_match_the_055_exact_table() {
@@ -333,7 +388,7 @@ mod tests {
             let mut attrs = [11u32; 8];
             let mut levels = [0u32; 40];
             let mut boosted = [false; 40];
-            weapon.post_upgrade(&mut attrs, &mut levels, &mut boosted);
+            weapon.post_upgrade(&mut attrs, &mut levels, &mut boosted, &identity_action_order());
             assert_eq!(attrs, [11u32; 8], "{name}");
             assert_eq!(levels, [0u32; 40], "{name}");
             assert!(boosted.iter().all(|flag| !flag), "{name}");
@@ -351,7 +406,7 @@ mod tests {
         let mut attrs = [10u32; 8];
         let mut levels = [0u32; 40];
         let mut boosted = [false; 40];
-        weapon.post_upgrade(&mut attrs, &mut levels, &mut boosted);
+        weapon.post_upgrade(&mut attrs, &mut levels, &mut boosted, &identity_action_order());
         assert_eq!(attrs, [21, 10, 21, 10, 10, 10, 10, 10]);
         assert_eq!(levels, [0u32; 40]);
         assert!(boosted.iter().all(|flag| !flag));
@@ -368,7 +423,7 @@ mod tests {
         let mut attrs = [10u32; 8];
         let mut levels = [0u32; 40];
         let mut boosted = [false; 40];
-        weapon.post_upgrade(&mut attrs, &mut levels, &mut boosted);
+        weapon.post_upgrade(&mut attrs, &mut levels, &mut boosted, &identity_action_order());
         let expected = std::array::from_fn(|index| (10i32 + weapon.attr_bonus[index]) as u32);
         assert_eq!(attrs, expected);
         assert_eq!(levels, [0u32; 40]);
@@ -381,7 +436,53 @@ mod tests {
         let mut attrs = [80u32, 10, 63, 64, 0, 100, 7, 200];
         let mut levels = [0u32; 40];
         let mut boosted = [false; 40];
-        weapon.post_upgrade(&mut attrs, &mut levels, &mut boosted);
+        weapon.post_upgrade(&mut attrs, &mut levels, &mut boosted, &identity_action_order());
         assert_eq!(attrs, [63, 63, 63, 63, 63, 63, 63, 324]);
+    }
+
+    #[test]
+    fn rinick_identity_flags_only_when_id_key_matches() {
+        let identity = WeaponBuild::parse("属性修改器", "Rinick", "Rinick").unwrap();
+        assert!(identity.is_rinick_identity());
+        let other_id = WeaponBuild::parse("属性修改器", "Rinick", "rinick@Rinick").unwrap();
+        assert_eq!(other_id.kind, WeaponKind::RinickModifier);
+        assert!(!other_id.is_rinick_identity());
+    }
+
+    #[test]
+    fn rinick_identity_levels_follow_fixed_positions_and_passive_bonus() {
+        let weapon = WeaponBuild::parse("属性修改器", "Rinick", "Rinick").unwrap();
+        let mut attrs = [10u32; 8];
+        let mut levels = [0u32; 40];
+        let mut boosted = [false; 40];
+        weapon.post_upgrade(&mut attrs, &mut levels, &mut boosted, &identity_action_order());
+        // 固定位置先发 8 级，随后所有 `k1` 被动键（>=25）再补 16 级。
+        let expected: [u32; 40] = std::array::from_fn(|key| {
+            let flagged = RINICK_IDENTITY_LEVEL_POSITIONS.contains(&key);
+            match (flagged, key >= RINICK_FIRST_PASSIVE_SKILL_KEY) {
+                (true, true) => 24,
+                (true, false) => 8,
+                (false, true) => 16,
+                (false, false) => 0,
+            }
+        });
+        assert_eq!(levels, expected);
+        assert!(boosted.iter().all(|flag| !flag));
+    }
+
+    #[test]
+    fn rinick_non_identity_levels_raise_zero_to_four_and_double_the_rest() {
+        let weapon = WeaponBuild::parse("属性修改器", "Rinick", "alice@team").unwrap();
+        assert!(!weapon.is_rinick_identity());
+        let mut attrs = [10u32; 8];
+        let mut levels = [0u32; 40];
+        levels[3] = 10;
+        levels[30] = 5;
+        let mut boosted = [false; 40];
+        weapon.post_upgrade(&mut attrs, &mut levels, &mut boosted, &identity_action_order());
+        assert_eq!(levels[3], 20);
+        assert_eq!(levels[30], 10);
+        assert!(levels.iter().enumerate().all(|(key, level)| key == 3 || key == 30 || *level == 4));
+        assert!(boosted.iter().all(|flag| !flag));
     }
 }

@@ -27,6 +27,10 @@ pub struct PreparedPlayer {
     pub raw_name_base: [u8; 128],
     pub clone_initially_boosted_mask: Option<u64>,
     pub clone_slot_boosts: [Option<(u8, u8)>; 2],
+    /// 0.5.5 `l.e == "Rinick"`：属性修改器身份分支标记。
+    pub rinick_identity: bool,
+    /// 属性修改器身份复活（`hy`）时重新推导八围所用的构建期属性。
+    pub rinick_revive_attrs: Option<[u32; 8]>,
     pub overlay: Option<PlayerOverlay>,
 }
 
@@ -377,9 +381,14 @@ impl PlayerBuild {
                 levels[key] = level;
             }
         }
+        let mut rinick_revive_attrs = None;
         if let Some(weapon) = &self.weapon {
-            weapon.post_upgrade(&mut attrs, &mut levels, &mut boosted);
+            if weapon.is_rinick_identity() {
+                rinick_revive_attrs = Some(attrs);
+            }
+            weapon.post_upgrade(&mut attrs, &mut levels, &mut boosted, &self.action_order);
         }
+        let rinick_identity = self.weapon.as_ref().is_some_and(|weapon| weapon.is_rinick_identity());
         let clone_initially_boosted_mask = (overlay_skills.is_none()
             && self.weapon.is_none()
             && matches!(self.class, PlayerClass::Test1 | PlayerClass::Test2 | PlayerClass::TestEx))
@@ -403,8 +412,9 @@ impl PlayerBuild {
                 )
             })
         });
-        // 0.5.5 的 Boss 技能装配只调用 `W()`，不参与末位翻倍与槽位强化。
-        if overlay_skills.is_none() && self.class != PlayerClass::Boss {
+        // 0.5.5 的 Boss 技能装配只调用 `W()`，不参与末位翻倍与槽位强化；属性修改器身份分支
+        // 已在 `b6()` 中追加技能并由 `bs()` 的末位翻倍强化 `SklYuriControl`，这里不再重复。
+        if overlay_skills.is_none() && self.class != PlayerClass::Boss && !rinick_identity {
             for &key in self.action_order.iter().rev() {
                 let key = key as usize;
                 if key >= 25 || levels[key] == 0 || boosted[key] {
@@ -416,11 +426,12 @@ impl PlayerBuild {
                 boosts[key] = Some(SkillBoost::LastBoost(base));
                 break;
             }
+        }
+        // 0.5.5 `BoostPassive(k2[14]/k2[15])` 按洗牌后位置生效，与键是否为被动无关。
+        if overlay_skills.is_none() && self.class != PlayerClass::Boss {
             for (slot, left, right) in [(14usize, 60usize, 61usize), (15, 62, 63)] {
-                let Some(key) = slot_skill_keys[slot] else {
-                    continue;
-                };
-                if levels[key] == 0 || boosted[key] {
+                let key = self.action_order[slot] as usize;
+                if key >= 35 || levels[key] == 0 || boosted[key] {
                     continue;
                 }
                 let base = levels[key];
@@ -468,7 +479,7 @@ impl PlayerBuild {
         let mut permanent_charge = false;
         if let Some(weapon) = &self.weapon {
             let kind = weapon.kind();
-            skills.append_weapon_skills(kind);
+            skills.append_weapon_skills(kind, rinick_identity);
             permanent_charge = kind == WeaponKind::GuiYue;
         }
         let weapon_attr_bonus = self.weapon.as_ref().map_or([0; 8], |weapon| weapon.attr_bonus);
@@ -489,6 +500,8 @@ impl PlayerBuild {
             raw_name_base: self.raw_name_base,
             clone_initially_boosted_mask,
             clone_slot_boosts,
+            rinick_identity,
+            rinick_revive_attrs,
             overlay: self.overlay,
         }
     }
@@ -663,5 +676,72 @@ mod tests {
         assert_eq!(roster.players[0].clan_name, "red");
         assert_eq!(roster.players[1].clan_name, "red");
         assert_eq!(roster.players[2].clan_name, "solo");
+    }
+
+    fn skill_entry(player: &PreparedPlayer, key: usize) -> Option<&crate::namerena::SkillEntrySpec> {
+        player.skills.entries.iter().find(|entry| entry.key == key)
+    }
+
+    #[test]
+    fn rinick_identity_weapon_rewrites_skills_and_records_revive_attrs() {
+        let input = NamerenaInput::parse("Rinick@Rinick+属性修改器").unwrap();
+        let roster = PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
+        let rinick = &roster.players[0];
+        assert!(rinick.rinick_identity);
+        let revive_attrs = rinick.rinick_revive_attrs.expect("identity build should record revive attrs");
+        assert_eq!(rinick.attrs[..7], [63; 7]);
+        assert_eq!(rinick.attrs[7], revive_attrs[7].max(324));
+
+        // `b6()` 身份分支给全部被动（键 25..34）发 16 级或补 16 级。
+        for key in 25..35 {
+            let entry = skill_entry(rinick, key).unwrap_or_else(|| panic!("passive lane {key} missing"));
+            assert!(entry.level >= 16, "passive lane {key} level {}", entry.level);
+        }
+        let ice_age = skill_entry(rinick, crate::namerena::WEAPON_RINICK_ICE_AGE_SKILL_KEY).expect("ice age lane");
+        assert_eq!((ice_age.level, ice_age.boosted, ice_age.boost.clone()), (20, false, None));
+        let yuri = skill_entry(rinick, crate::namerena::WEAPON_RINICK_YURI_CONTROL_SKILL_KEY).expect("yuri lane");
+        assert_eq!(yuri.level, 20);
+        assert!(yuri.boosted);
+        assert_eq!(yuri.boost, Some(SkillBoost::LastBoost(10)));
+        let tail = &rinick.skills.active_order[rinick.skills.active_order.len() - 2..];
+        assert_eq!(
+            tail,
+            [
+                crate::namerena::WEAPON_RINICK_ICE_AGE_SKILL_KEY,
+                crate::namerena::WEAPON_RINICK_YURI_CONTROL_SKILL_KEY
+            ]
+        );
+        // 身份分支的末位翻倍已由追加的 `SklYuriControl` 消耗，普通技能不再获得 `LastBoost`。
+        assert!(
+            rinick
+                .skills
+                .entries
+                .iter()
+                .all(|entry| !(entry.key < 25 && matches!(entry.boost, Some(SkillBoost::LastBoost(_)))))
+        );
+    }
+
+    #[test]
+    fn rinick_non_identity_weapon_rewrites_every_lane_without_appending_skills() {
+        let input = NamerenaInput::parse("alice@Rinick+属性修改器").unwrap();
+        let roster = PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
+        let player = &roster.players[0];
+        assert!(!player.rinick_identity);
+        assert!(player.rinick_revive_attrs.is_none());
+        assert_eq!(player.attrs[..7], [63; 7]);
+        for key in 0..35 {
+            let entry = skill_entry(&player, key).unwrap_or_else(|| panic!("lane {key} missing"));
+            assert!(entry.level > 0, "lane {key} should be raised above zero");
+        }
+        assert!(skill_entry(&player, crate::namerena::WEAPON_RINICK_ICE_AGE_SKILL_KEY).is_none());
+        assert!(skill_entry(&player, crate::namerena::WEAPON_RINICK_YURI_CONTROL_SKILL_KEY).is_none());
+        // 非身份分支仍走普通末位翻倍，落在某个主动技能上。
+        assert!(
+            player
+                .skills
+                .entries
+                .iter()
+                .any(|entry| entry.key < 25 && matches!(entry.boost, Some(SkillBoost::LastBoost(_))))
+        );
     }
 }

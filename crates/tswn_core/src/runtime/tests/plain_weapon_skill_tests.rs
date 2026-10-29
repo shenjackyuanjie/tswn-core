@@ -1,5 +1,7 @@
 use super::*;
 
+use crate::runtime::lang::{get_lang, keys};
+
 fn weapon_registry() -> (ExtensionRegistry, SkillId, SkillId, SkillId) {
     let mut builder = ExtensionRegistryBuilder::default();
     let s11 = builder
@@ -599,4 +601,108 @@ fn gui_yue_permanent_charge_stays_active_without_attack_boost() {
     assert_eq!(owner.runtime.accumulate.charge_bonus(), 1.0);
     // 聚气自身的 +0.7 与常驻 charge 的 +1.0 相加；桂月标记不提供 charge 的 ×3。
     assert_eq!(owner.runtime.at_boost_millionths, 2_700_000);
+}
+
+fn rinick_weapon_registry() -> (ExtensionRegistry, SkillId, SkillId) {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let ice_age = builder
+        .register_skill(
+            "core",
+            "weapon-rinick-ice-age",
+            DEFAULT_CORE_WEAPON_RINICK_ICE_AGE_SKILL_EXPORT,
+            TargetPolicy::Enemy,
+            SkillPriority(47),
+        )
+        .expect("rinick ice age weapon skill should register");
+    let yuri_control = builder
+        .register_skill(
+            "core",
+            "weapon-rinick-yuri-control",
+            DEFAULT_CORE_WEAPON_RINICK_YURI_CONTROL_SKILL_EXPORT,
+            TargetPolicy::Enemy,
+            SkillPriority(48),
+        )
+        .expect("rinick yuri control weapon skill should register");
+    builder
+        .register_state(
+            "core",
+            "charm",
+            DEFAULT_CORE_CHARM_STATE_EXPORT,
+            ProcMask::POST_ACTION,
+            SkillPriority(210),
+        )
+        .expect("charm state should register");
+    (builder.build(), ice_age, yuri_control)
+}
+
+fn rinick_weapon_runtime(skill: SkillId) -> CombatRuntime {
+    let (registry, _, _) = rinick_weapon_registry();
+    CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "left", 0, 1000, 10)
+                .with_magic(1_000_000)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(skill, 20)])),
+            PlayerTemplate::new(2, "right", 1, 1000, 10),
+        ],
+        registry,
+    ))
+}
+
+#[test]
+fn rinick_ice_age_scan_uses_quake_target_window_and_drains_magic_damage() {
+    let (_, ice_age, _) = rinick_weapon_registry();
+    let mut runtime = rinick_weapon_runtime(ice_age);
+    tune_weapon_rng(&mut runtime, |rng| (rng.r127() < 20).then_some(()));
+
+    let mut expected_rng = runtime.rng.clone();
+    let _ = expected_rng.r127();
+    let prepared = runtime
+        .scan_plain_action_skill_probabilities(EntityIdx(0), false)
+        .expect("rinick ice age should be selected");
+    assert_eq!(prepared.selected.skill, BuiltinActiveSkill::RinickIceAge);
+
+    let mut reference = rinick_weapon_runtime(ice_age);
+    reference.rng = expected_rng;
+    let expected_targets = reference.select_plain_default_enemy_targets_with_count(EntityIdx(0), false, 5);
+    assert_eq!(prepared.targets, expected_targets);
+    assert_rng_state_eq(&runtime.rng, &reference.rng);
+
+    let mut updates = RunUpdates::new();
+    runtime.drain_plain_builtin_skill_into(EntityIdx(0), prepared, &mut updates);
+    assert!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp < 1000);
+}
+
+#[test]
+fn rinick_yuri_control_scan_selects_enemy_and_charms_through_builtin_drain() {
+    let (_, _, yuri_control) = rinick_weapon_registry();
+    let mut runtime = rinick_weapon_runtime(yuri_control);
+    tune_weapon_rng(&mut runtime, |rng| (rng.r127() < 20).then_some(()));
+
+    let mut expected_rng = runtime.rng.clone();
+    let _ = expected_rng.r127();
+    let prepared = runtime
+        .scan_plain_action_skill_probabilities(EntityIdx(0), false)
+        .expect("rinick yuri control should be selected");
+    assert_eq!(prepared.selected.skill, BuiltinActiveSkill::RinickYuriControl);
+
+    let mut reference = rinick_weapon_runtime(yuri_control);
+    reference.rng = expected_rng;
+    let expected_targets = reference.select_plain_yuri_control_targets(EntityIdx(0), false);
+    assert_eq!(prepared.targets, expected_targets);
+    assert_rng_state_eq(&runtime.rng, &reference.rng);
+
+    let target = prepared.targets[0];
+    let mut updates = RunUpdates::new();
+    runtime.drain_plain_builtin_skill_into(EntityIdx(0), prepared, &mut updates);
+    assert_eq!(
+        runtime
+            .entities
+            .get(target)
+            .unwrap()
+            .states
+            .entry(PLAIN_CHARM_STATE_KEY)
+            .and_then(StateEntry::charm_value),
+        Some((0, Some(0), Some(0), Some(target.0), 3))
+    );
+    assert_eq!(updates.updates[0].message, get_lang(keys::SKL_YURI_CONTROL));
 }

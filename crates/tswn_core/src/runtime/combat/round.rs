@@ -763,6 +763,11 @@ impl CombatRuntime {
                     BuiltinActiveSkill::WeaponS11 | BuiltinActiveSkill::WeaponDeathNote | BuiltinActiveSkill::WeaponXuanYue => {
                         smallvec::smallvec![]
                     }
+                    // 属性修改器追加的 Boss 技能沿用其原型的选目标口径。
+                    BuiltinActiveSkill::RinickIceAge => {
+                        self.select_plain_default_enemy_targets_with_count(actor, smart, if smart { 6 } else { 5 })
+                    }
+                    BuiltinActiveSkill::RinickYuriControl => self.select_plain_yuri_control_targets(actor, smart),
                 };
                 #[cfg(not(feature = "no_debug"))]
                 if self.probe_plain_action_matches(actor) {
