@@ -129,6 +129,10 @@ impl CombatRuntime {
                     }
                     action.amount = 0;
                 }
+                PreparedPlainAction::BossSkill(prepared) => {
+                    action.target = prepared.targets.first().copied().unwrap_or(action.actor);
+                    action.amount = 0;
+                }
             }
             prepared_plain_action = Some(prepared);
         }
@@ -146,15 +150,23 @@ impl CombatRuntime {
             });
         }
         let forced_plain_action = matches!(prepared_plain_action.as_ref(), Some(PreparedPlainAction::ForcedAttack { .. }));
-        let builtin_plain_action = matches!(prepared_plain_action.as_ref(), Some(PreparedPlainAction::BuiltinSkill(_)));
+        let builtin_plain_action = matches!(
+            prepared_plain_action.as_ref(),
+            Some(PreparedPlainAction::BuiltinSkill(_) | PreparedPlainAction::BossSkill(_))
+        );
         let terminal_plain_action = if state_intercepted_action {
             // PRE_ACTION 状态钩子接管本次行动后，legacy 仍会继续执行恢复和完整的行动后链。
             legacy_plain_action && !self.has_alive_enemy_or_pending_spawn(action.actor)
         } else if builtin_plain_action {
-            let Some(PreparedPlainAction::BuiltinSkill(prepared)) = prepared_plain_action.take() else {
-                unreachable!("builtin action marker must retain the prepared action")
-            };
-            self.drain_plain_builtin_skill_into(action.actor, prepared, &mut updates);
+            match prepared_plain_action.take() {
+                Some(PreparedPlainAction::BuiltinSkill(prepared)) => {
+                    self.drain_plain_builtin_skill_into(action.actor, prepared, &mut updates);
+                }
+                Some(PreparedPlainAction::BossSkill(prepared)) => {
+                    self.drain_plain_boss_skill_into(action.actor, prepared, &mut updates);
+                }
+                _ => unreachable!("builtin action marker must retain the prepared action"),
+            }
             legacy_plain_action && !self.has_alive_enemy_or_pending_spawn(action.actor)
         } else {
             let pre_damage_skill_plan =
@@ -175,6 +187,9 @@ impl CombatRuntime {
                 }
                 Some(PreparedPlainAction::BuiltinSkill(_)) => {
                     unreachable!("builtin skill actions are handled before the default action branch")
+                }
+                Some(PreparedPlainAction::BossSkill(_)) => {
+                    unreachable!("boss skill actions are handled before the default action branch")
                 }
                 None => {
                     self.effects.push(QueuedEffect::Damage {
@@ -374,22 +389,16 @@ impl CombatRuntime {
         let rng_before = (self.rng.i, self.rng.j);
         let req_mp_byte = self.rng.next_u8();
         let req_mp = (req_mp_byte & 15) as i32 + 8;
-        let (mp_before, attack, magic, is_boss, boss_action_prob_count) = {
+        let (mp_before, attack, magic, is_boss) = {
             let actor_entity = self
                 .entities
                 .get(actor)
                 .unwrap_or_else(|| panic!("unknown runtime default attack actor: {}", actor.0));
-            let is_boss = actor_entity.runtime.flags.contains(PlayerKindFlags::BOSS);
             (
                 actor_entity.runtime.magic_point,
                 actor_entity.runtime.attack,
                 actor_entity.runtime.magic,
-                is_boss,
-                if is_boss {
-                    crate::namerena::boss_action_prob_count(&actor_entity.template.name)
-                } else {
-                    0
-                },
+                actor_entity.runtime.flags.contains(PlayerKindFlags::BOSS),
             )
         };
         let can_scan_skills = mp_before >= req_mp;
@@ -443,32 +452,37 @@ impl CombatRuntime {
         }
         let prepared_skill = if can_scan_skills {
             let selected = if is_boss {
-                for _ in 0..boss_action_prob_count {
-                    let _ = self.rng.r127();
-                }
-                None
+                self.scan_plain_boss_action_skills(actor, smart).map(PreparedPlainAction::BossSkill)
             } else {
                 self.scan_plain_action_skill_probabilities(actor, smart)
+                    .map(PreparedPlainAction::BuiltinSkill)
             };
             self.entities.get_mut(actor).unwrap().runtime.magic_point -= req_mp;
             selected
         } else {
             None
         };
-        if let Some(prepared) = prepared_skill {
+        if let Some(prepared_action) = prepared_skill {
             #[cfg(not(feature = "no_debug"))]
             if probe_action {
-                eprintln!(
-                    "[action_probe:runtime:selected] actor={} skill={} lane={} targets={:?} rc4=({}, {})",
-                    actor.0,
-                    prepared.selected.skill.export_name(),
-                    prepared.selected.fixed_lane,
-                    prepared.targets,
-                    self.rng.i,
-                    self.rng.j,
-                );
+                match &prepared_action {
+                    PreparedPlainAction::BuiltinSkill(prepared) => eprintln!(
+                        "[action_probe:runtime:selected] actor={} skill={} lane={} targets={:?} rc4=({}, {})",
+                        actor.0,
+                        prepared.selected.skill.export_name(),
+                        prepared.selected.fixed_lane,
+                        prepared.targets,
+                        self.rng.i,
+                        self.rng.j,
+                    ),
+                    PreparedPlainAction::BossSkill(prepared) => eprintln!(
+                        "[action_probe:runtime:selected_boss] actor={} skill={:?} targets={:?} rc4=({}, {})",
+                        actor.0, prepared.selected, prepared.targets, self.rng.i, self.rng.j,
+                    ),
+                    _ => {}
+                }
             }
-            return Some(PreparedPlainAction::BuiltinSkill(prepared));
+            return Some(prepared_action);
         }
 
         if is_boss {

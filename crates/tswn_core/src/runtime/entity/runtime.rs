@@ -154,6 +154,8 @@ pub struct PlayerRuntime {
     pub weapon_s11: Option<WeaponS11Runtime>,
     /// 死亡笔记当前写下的目标。
     pub death_note_mark: Option<EntityIdx>,
+    /// 马里奥 Boss 的复活次数；0.5.5 存在技能实例上，不随离散状态清除。
+    pub mario_reraise_lives: Option<u32>,
     pub corpse: RuntimeCorpseKind,
 }
 
@@ -175,6 +177,7 @@ impl PlayerRuntime {
                 .flatten()
                 .map(|level| WeaponS11Runtime { level, durability: 3 })
         });
+        let mario_reraise_lives = (flags.contains(PlayerKindFlags::BOSS) && template.name == "mario").then_some(3);
         Self {
             hp: template.max_hp,
             alive: true,
@@ -211,6 +214,7 @@ impl PlayerRuntime {
             counter_xuan_yue: CounterRuntime::default(),
             weapon_s11,
             death_note_mark: None,
+            mario_reraise_lives,
             corpse: RuntimeCorpseKind::None,
         }
     }
@@ -259,6 +263,7 @@ impl PlayerRuntime {
         self.counter_xuan_yue = CounterRuntime::default();
         self.weapon_s11 = None;
         self.death_note_mark = None;
+        self.mario_reraise_lives = None;
         self.corpse = RuntimeCorpseKind::None;
     }
 
@@ -300,6 +305,7 @@ impl PlayerRuntime {
         self.counter_xuan_yue.clone_from(&prepared.counter_xuan_yue);
         self.weapon_s11 = prepared.weapon_s11;
         self.death_note_mark = prepared.death_note_mark;
+        self.mario_reraise_lives = prepared.mario_reraise_lives;
         self.corpse = prepared.corpse;
     }
 
@@ -653,6 +659,15 @@ impl EntityRecord {
         }
         if self.runtime.accumulate.active {
             at_boost *= self.runtime.accumulate.acc() + self.runtime.accumulate.charge_bonus();
+        }
+        // 马里奥吃到蘑菇后 SklMarioGet 让攻击力乘 1.5。
+        if self
+            .states
+            .entry(crate::runtime::profile::PLAIN_MARIO_BOSS_STATE_KEY)
+            .and_then(StateEntry::mario_boss_value)
+            .is_some_and(|(grow, _)| grow > 0)
+        {
+            at_boost *= 1.5;
         }
         self.runtime.at_boost_bits = at_boost.to_bits();
         self.runtime.at_boost_millionths = at_boost_to_millionths(at_boost);

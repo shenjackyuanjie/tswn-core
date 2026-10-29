@@ -14,6 +14,7 @@ mod infection;
 mod lifecycle;
 mod passive;
 mod round;
+mod skills_boss;
 mod skills_control;
 mod skills_debuff;
 mod skills_lifecycle;
@@ -44,6 +45,13 @@ pub struct PreparedBuiltinSkillAction {
     pub targets: PreparedTargetList,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+/// Boss `k4` 扫描选中的专属或通用主动技能；`targets` 由技能自身的 `aa` 选出。
+pub struct PreparedBossSkillAction {
+    pub selected: crate::namerena::BossActionSkill,
+    pub targets: PreparedTargetList,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlainAttackOnDamage {
     None,
@@ -70,6 +78,7 @@ pub enum PreparedPlainAction {
         target: Option<EntityIdx>,
     },
     BuiltinSkill(PreparedBuiltinSkillAction),
+    BossSkill(PreparedBossSkillAction),
 }
 
 #[derive(Debug, Clone)]

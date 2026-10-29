@@ -197,7 +197,7 @@ impl FeatureEncoder {
 /// 载荷 kind 与分支匹配校验；Boss 专属 kind 直接拒绝（规格第 8、9 节）。
 fn validate_payload(prefix: &str, payload: &ModelPayload) -> Result<(), EncodeError> {
     let kind = payload.kind.as_str();
-    let branches: [(&str, bool); 15] = [
+    let branches: [(&str, bool); 16] = [
         ("fire_mag_half_steps", payload.fire_mag_half_steps.is_some()),
         ("ice", payload.ice.is_some()),
         ("shield_value", payload.shield_value.is_some()),
@@ -213,6 +213,7 @@ fn validate_payload(prefix: &str, payload: &ModelPayload) -> Result<(), EncodeEr
         ("saitama_boss", payload.saitama_boss.is_some()),
         ("lazy_boss", payload.lazy_boss.is_some()),
         ("lazy_infection", payload.lazy_infection.is_some()),
+        ("mario_boss", payload.mario_boss.is_some()),
     ];
     if kind == "none" {
         if branches.iter().any(|(_, present)| *present) {

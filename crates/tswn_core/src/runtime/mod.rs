@@ -102,7 +102,8 @@ pub use batch::{
     runtime_groups_win_rate_timed, runtime_score, runtime_score_range, runtime_score_range_timed, runtime_score_timed,
 };
 pub use combat::{
-    CombatRuntime, PreparedBuiltinSkillAction, PreparedPlainAction, PreparedTargetList, RoundOutcome, SelectedBuiltinSkill,
+    CombatRuntime, PreparedBossSkillAction, PreparedBuiltinSkillAction, PreparedPlainAction, PreparedTargetList, RoundOutcome,
+    SelectedBuiltinSkill,
 };
 pub use cqp::{
     RuntimeCqpBatchResult, RuntimeCqpMatchup, RuntimeCqpMatchupResult, resolve_cqp_workers, runtime_cqp_matchups,
