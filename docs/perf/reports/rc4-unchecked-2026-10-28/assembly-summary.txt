@@ -1,3 +1,0 @@
-get_safe == get_unchecked: identical instructions (labels normalized); no bounds-check panic
-peek_safe == peek_unchecked: identical instructions (labels normalized); no bounds-check panic
-prga_existing == prga_safe: identical instructions (labels normalized); no bounds-check panic
