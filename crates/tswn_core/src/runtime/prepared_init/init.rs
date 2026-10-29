@@ -306,7 +306,7 @@ impl PreparedBattleInit {
         template.rinick_clone_skills = player
             .rinick_clone_skills
             .as_ref()
-            .map(|clone_skills| skill_import.import_namerena(clone_skills));
+            .map(|clone_skills| Box::new(skill_import.import_namerena(clone_skills)));
 
         let shadow_blueprint = (!lazy_blueprints)
             .then(|| registry.skill_id_by_export_name(BuiltinActiveSkill::Shadow.export_name()))

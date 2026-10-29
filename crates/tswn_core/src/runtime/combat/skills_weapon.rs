@@ -399,7 +399,7 @@ impl CombatRuntime {
             .with_at_boost(f64::from_bits(stats.at_boost_bits).max(0.0))
             .with_target_score_stats(stats.attr_sum, stats.atk_sum, f64::from_bits(stats.attract_bits))
             .with_speed_points(clone_move_points)
-            .with_skill_loadout(clone_skills.clone());
+            .with_skill_loadout((*clone_skills).clone());
             template.clone_build = Some(clone_build);
             updates.add_newline();
             self.effects.push(QueuedEffect::SpawnWithMessage {

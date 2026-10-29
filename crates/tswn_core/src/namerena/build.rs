@@ -31,8 +31,8 @@ pub struct PreparedPlayer {
     pub rinick_identity: bool,
     /// 属性修改器身份复活（`hy`）时重新推导八围所用的构建期属性。
     pub rinick_revive_attrs: Option<[u32; 8]>,
-    /// 属性修改器身份复活后生成的分身所用技能表快照。
-    pub rinick_clone_skills: Option<SkillLoadoutSpec>,
+    /// 属性修改器身份复活后生成的分身所用技能表快照；仅装备者分配，避免普通角色携带冷数据。
+    pub rinick_clone_skills: Option<Box<SkillLoadoutSpec>>,
     pub overlay: Option<PlayerOverlay>,
 }
 
@@ -407,12 +407,12 @@ impl PlayerBuild {
                     &self.action_order,
                     &self.name_base,
                 );
-                rinick_clone_skills = Some(SkillLoadoutSpec::standard(
+                rinick_clone_skills = Some(Box::new(SkillLoadoutSpec::standard(
                     &clone_levels,
                     &clone_boosted,
                     &clone_boosts,
                     &self.action_order,
-                ));
+                )));
             }
             weapon.post_upgrade(&mut attrs, &mut levels, &mut boosted, &self.action_order);
         }

@@ -730,7 +730,7 @@ fn rinick_identity_template(id: PlrId, name: &str, team: usize, raw: [u32; 8]) -
         .with_skill_loadout(SkillLoadout::default());
     template.rinick_revive_attrs = Some(raw);
     template.clone_build = Some(clone_build_with_attrs(raw));
-    template.rinick_clone_skills = Some(SkillLoadout::default());
+    template.rinick_clone_skills = Some(Box::new(SkillLoadout::default()));
     template
 }
 
@@ -924,4 +924,27 @@ fn rinick_reraise_spawns_clones_when_outnumbered() {
             get_lang(keys::SKL_CLONED),
         ]
     );
+}
+
+#[test]
+fn rinick_clone_skill_snapshot_is_independent_between_template_clones() {
+    let (registry, s11, _, _) = weapon_registry();
+    let mut template = rinick_identity_template(1, "rinick", 0, [80, 80, 80, 80, 80, 80, 80, 400]);
+    template.rinick_clone_skills = Some(Box::new(SkillLoadout::from_skill_levels([(s11, 7)])));
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![template.clone(), PlayerTemplate::new(2, "plain", 1, 100, 10)],
+        registry,
+    ));
+    let baseline = runtime.clone();
+    let snapshot = runtime.entities.get_mut(EntityIdx(0)).unwrap().template.rinick_clone_skills.as_mut().unwrap();
+    assert!(snapshot.set_level_at(0, 19));
+    assert_eq!(template.rinick_clone_skills.as_ref().unwrap().level_at(0), Some(7));
+    assert_eq!(
+        baseline.entities.get(EntityIdx(0)).unwrap().template.rinick_clone_skills.as_ref().unwrap().level_at(0),
+        Some(7)
+    );
+    // 无武器对象仍能按普通实体复位血量；不需要构造任何身份分身技能。
+    runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.hp = 1;
+    runtime.entities.get_mut(EntityIdx(1)).unwrap().reset_battle_state_from(baseline.entities.get(EntityIdx(1)).unwrap());
+    assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 100);
 }

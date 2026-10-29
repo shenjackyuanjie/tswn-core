@@ -280,8 +280,8 @@ pub struct PlayerTemplate {
     pub clone_build: Option<CloneBuildData>,
     /// 属性修改器身份死亡时的原始属性 `q[0..8]`，用于 `SklRinickModifierRevive` 复算面板。
     pub rinick_revive_attrs: Option<[u32; 8]>,
-    /// 属性修改器身份复活时生成的分身技能表快照（`b6()` 之前的等级叠加通用强化）。
-    pub rinick_clone_skills: Option<SkillLoadout>,
+    /// 属性修改器身份复活时生成的分身技能表快照；仅装备者分配，普通实体不内嵌冷技能表。
+    pub rinick_clone_skills: Option<Box<SkillLoadout>>,
     /// 桂月奖杯注入的常驻 `charge` 标记；存在但不提供攻击倍率、也无法解除。
     pub permanent_charge: bool,
     /// 使魔复活重施时是否沿用死亡对象上的当前技能表。
