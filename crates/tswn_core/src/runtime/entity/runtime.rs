@@ -224,7 +224,7 @@ impl PlayerRuntime {
             weapon_s11,
             death_note_mark: None,
             mario_reraise_lives,
-            rinick_reraise_lives: template.rinick_revive_attrs.is_some().then_some(2),
+            rinick_reraise_lives: template.rinick.as_ref().is_some_and(|data| data.revive_attrs.is_some()).then_some(2),
             conan_thinking,
             slime_split_generation,
             corpse: RuntimeCorpseKind::None,

@@ -137,7 +137,7 @@ impl CombatRuntime {
         let Some(entity) = self.entities.get_mut(actor) else {
             return;
         };
-        if entity.template.rinick_revive_attrs.is_none() {
+        if entity.template.rinick.as_ref().and_then(|data| data.revive_attrs).is_none() {
             return;
         }
         let mut had = [false; 6];
@@ -224,7 +224,7 @@ impl CombatRuntime {
         if entity.runtime.hp > 0 {
             return false;
         }
-        let Some(raw) = entity.template.rinick_revive_attrs else {
+        let Some(raw) = entity.template.rinick.as_ref().and_then(|data| data.revive_attrs) else {
             return false;
         };
         let remaining = entity.runtime.rinick_reraise_lives.unwrap_or(0).saturating_sub(1);
@@ -340,8 +340,9 @@ impl CombatRuntime {
                 .unwrap_or_else(|| panic!("runtime rinick owner missing clone build data: {}", owner.0));
             let clone_skills = entity
                 .template
-                .rinick_clone_skills
-                .clone()
+                .rinick
+                .as_ref()
+                .and_then(|data| data.clone_skills.clone())
                 .unwrap_or_else(|| panic!("runtime rinick owner missing clone skill snapshot: {}", owner.0));
             (
                 entity.template.name.clone(),
@@ -399,7 +400,7 @@ impl CombatRuntime {
             .with_at_boost(f64::from_bits(stats.at_boost_bits).max(0.0))
             .with_target_score_stats(stats.attr_sum, stats.atk_sum, f64::from_bits(stats.attract_bits))
             .with_speed_points(clone_move_points)
-            .with_skill_loadout((*clone_skills).clone());
+            .with_skill_loadout(clone_skills.clone());
             template.clone_build = Some(clone_build);
             updates.add_newline();
             self.effects.push(QueuedEffect::SpawnWithMessage {

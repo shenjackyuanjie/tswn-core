@@ -302,11 +302,12 @@ impl PreparedBattleInit {
         let mut template = Self::template_from_namerena_player(player, player.id, team, skills.clone());
         template.kind = kind;
         template.clone_build = Some(clone_build);
-        template.rinick_revive_attrs = player.rinick_revive_attrs;
-        template.rinick_clone_skills = player
-            .rinick_clone_skills
-            .as_ref()
-            .map(|clone_skills| Box::new(skill_import.import_namerena(clone_skills)));
+        template.rinick = player.rinick.as_ref().map(|data| {
+            Box::new(crate::runtime::RinickTemplateData {
+                revive_attrs: data.revive_attrs,
+                clone_skills: data.clone_skills.as_ref().map(|skills| skill_import.import_namerena(skills)),
+            })
+        });
 
         let shadow_blueprint = (!lazy_blueprints)
             .then(|| registry.skill_id_by_export_name(BuiltinActiveSkill::Shadow.export_name()))
@@ -741,6 +742,40 @@ mod score_profile_tests {
             let rng = RC4::new(key, 3);
             assert_eq!(score_name_base(&rng.main_val), score_name_base_scalar(&rng.main_val));
         }
+    }
+
+    #[test]
+    fn rinick_cold_payload_import_preserves_independent_snapshots() {
+        let config = default_custom_runtime_import_config().unwrap();
+        let skill_import = BuiltinSkillImportMap::new(&config.registry);
+        let eval_rq = crate::namerena::eval_name::DEFAULT_EVAL_RQ;
+        let input = crate::namerena::NamerenaInput::parse("alice").unwrap();
+        let roster = crate::namerena::PreparedRoster::build(&input, eval_rq).unwrap();
+        let original = &roster.players[0];
+        let raw = [80, 80, 80, 80, 80, 80, 80, 400];
+        let source_skills = original.skills.clone();
+        let expected_skills = skill_import.import_namerena(&source_skills);
+        for (revive_attrs, clone_skills) in [
+            (None, None),
+            (Some(raw), None),
+            (None, Some(source_skills.clone())),
+            (Some(raw), Some(source_skills)),
+        ] {
+            let has_skills = clone_skills.is_some();
+            let mut player = original.clone();
+            player.rinick = Some(Box::new(crate::namerena::PreparedRinickData {
+                revive_attrs,
+                clone_skills,
+            }));
+            // 直接验证导入转换，不依赖尚未接通的特殊武器公开入口。
+            let imported =
+                PreparedBattleInit::prepare_namerena_player(&player, 0, &config.registry, &skill_import, eval_rq, true);
+            let payload = imported.template.rinick.as_ref().unwrap();
+            assert_eq!(payload.revive_attrs, revive_attrs);
+            assert_eq!(payload.clone_skills.as_ref(), has_skills.then_some(&expected_skills));
+        }
+        let imported = PreparedBattleInit::prepare_namerena_player(original, 0, &config.registry, &skill_import, eval_rq, true);
+        assert!(imported.template.rinick.is_none());
     }
 
     #[test]

@@ -728,9 +728,11 @@ fn rinick_identity_template(id: PlrId, name: &str, team: usize, raw: [u32; 8]) -
     let mut template = PlayerTemplate::new(id, name, team, raw[7] as i32, 10)
         .with_display_name(format!("{name}@Rinick"))
         .with_skill_loadout(SkillLoadout::default());
-    template.rinick_revive_attrs = Some(raw);
+    template.rinick = Some(Box::new(crate::runtime::RinickTemplateData {
+        revive_attrs: Some(raw),
+        clone_skills: Some(SkillLoadout::default()),
+    }));
     template.clone_build = Some(clone_build_with_attrs(raw));
-    template.rinick_clone_skills = Some(Box::new(SkillLoadout::default()));
     template
 }
 
@@ -927,10 +929,33 @@ fn rinick_reraise_spawns_clones_when_outnumbered() {
 }
 
 #[test]
+fn rinick_partial_snapshots_preserve_runtime_identity() {
+    let registry = rinick_identity_registry();
+    let raw = [80, 80, 80, 80, 80, 80, 80, 400];
+    for (revive_attrs, clone_skills, expected_lives) in [
+        (None, None, None),
+        (None, Some(SkillLoadout::default()), None),
+        (Some(raw), None, Some(2)),
+        (Some(raw), Some(SkillLoadout::default()), Some(2)),
+    ] {
+        let mut template = PlayerTemplate::new(1, "custom", 0, 400, 10);
+        template.rinick = Some(Box::new(crate::runtime::RinickTemplateData {
+            revive_attrs,
+            clone_skills,
+        }));
+        let runtime = crate::runtime::PlayerRuntime::from_template(&template, &registry, EntityIdx(0), EntityIdx(0));
+        assert_eq!(runtime.rinick_reraise_lives, expected_lives);
+        let mut copy = template.clone();
+        copy.rinick.as_mut().unwrap().revive_attrs = Some([1; 8]);
+        assert_eq!(template.rinick.as_ref().unwrap().revive_attrs, revive_attrs);
+    }
+}
+
+#[test]
 fn rinick_clone_skill_snapshot_is_independent_between_template_clones() {
     let (registry, s11, _, _) = weapon_registry();
     let mut template = rinick_identity_template(1, "rinick", 0, [80, 80, 80, 80, 80, 80, 80, 400]);
-    template.rinick_clone_skills = Some(Box::new(SkillLoadout::from_skill_levels([(s11, 7)])));
+    template.rinick.as_mut().unwrap().clone_skills = Some(SkillLoadout::from_skill_levels([(s11, 7)]));
     let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
         vec![template.clone(), PlayerTemplate::new(2, "plain", 1, 100, 10)],
         registry,
@@ -941,18 +966,27 @@ fn rinick_clone_skill_snapshot_is_independent_between_template_clones() {
         .get_mut(EntityIdx(0))
         .unwrap()
         .template
-        .rinick_clone_skills
+        .rinick
+        .as_mut()
+        .unwrap()
+        .clone_skills
         .as_mut()
         .unwrap();
     assert!(snapshot.set_level_at(0, 19));
-    assert_eq!(template.rinick_clone_skills.as_ref().unwrap().level_at(0), Some(7));
+    assert_eq!(
+        template.rinick.as_ref().unwrap().clone_skills.as_ref().unwrap().level_at(0),
+        Some(7)
+    );
     assert_eq!(
         baseline
             .entities
             .get(EntityIdx(0))
             .unwrap()
             .template
-            .rinick_clone_skills
+            .rinick
+            .as_ref()
+            .unwrap()
+            .clone_skills
             .as_ref()
             .unwrap()
             .level_at(0),
