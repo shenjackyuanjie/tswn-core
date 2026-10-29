@@ -58,3 +58,13 @@ cargo test -p tswn_test --features runtime-corpus --test runtime
 ```
 
 普通矩阵来自 `scripts/generate_hook_perf_matrix.py` 的 plain 家族；留出盐为 `tswn-cold-weapon-heldout-20261029`，取FFA4/8/16及4v4、每种两个roster。仅保留本简报，不提交逐轮表、环境日志或采样目录。此前性能记录仍可在 `9aa6dbc3` / `befd56a7` 历史提交追溯，不能当作当前 main 的实测保证。
+
+## 同日追加：合并剩余 Rinick 快照
+
+在已发布 `43c31234` 上，把构建态/模板的复活属性与分身技能合成一个按需分配的冷载荷；普通角色不再内嵌 `Option<[u32; 8]>`。实测 PreparedPlayer **1080→1048 B**、PlayerTemplate **1280→1240 B**、EntityRecord **2912→2872 B**；PlayerRuntime 仍为360 B。`rinick_reraise_lives` 保留：单独装箱在64位仍占8 B，只会多一次分配；统一武器运行态冷载荷不属本次改动。
+
+公开 Rust API：旧字段 `rinick_revive_attrs` / `rinick_clone_skills` 改经 `rinick: Option<Box<PreparedRinickData/RinickTemplateData>>` 的 `revive_attrs` / `clone_skills` 访问，内部两项仍独立可选，技能不再二次装箱。保留深克隆、自定义部分载荷语义、运行态 serde 形状；未顺带修复上文上游武器缺口。
+
+同 Rust 1.99.1 / release / no_debug、独立 target 和不同二进制 SHA、无PGO，8个新普通布局（FFA4/6/8/12/16、2v2/4v4/3v3v3），每例13000场、1轮预热+5轮交错配对：总吞吐中位 **+1.30%**（耗时变化−1.28%，耗时MAD0.69个百分点）；FFA **+1.19%**，团队 **−1.20%**；单例范围 **−2.01%～+3.82%**。仅3/5轮总体更快，所有统计签名一致；小幅结果不能证明稳定提速，确定收益是上述空间减少。输入用 `generate_hook_perf_matrix.build_cases()`，盐改为 `tswn-rinick-cold-20261029`，取plain家族每布局第一例；比较命令同上。没有重跑前文旧实验，其数字仅保留历史范围。
+
+本次默认核心706、no_debug核心701、CLI91、integration4、corpus124、doctests6通过；nightly格式检查通过。新增回归覆盖部分载荷、导入与深克隆。完整workspace：1026通过、5失败、7 ignored；同5项DS4失败已在基线 `43c31234` 的独立target复现，首个断言左右字节数组逐项一致，未修改golden。最初workspace构建因临时盘满中断，迁移到有空间的工作区后已完整重跑。
