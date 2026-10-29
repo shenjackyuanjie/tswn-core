@@ -45,6 +45,7 @@ impl CombatRuntime {
                     caster,
                     target,
                     atp_bits,
+                    kind,
                     on_damage,
                 } => {
                     self.ensure_effect_entity("reflected attack", "caster", caster);
@@ -54,6 +55,7 @@ impl CombatRuntime {
                         target,
                         true,
                         f64::from_bits(atp_bits),
+                        kind,
                         on_damage,
                         updates,
                     );
@@ -90,6 +92,7 @@ impl CombatRuntime {
                         caster,
                         target,
                         is_magic: true,
+                        kind: DamageKind::Default,
                     };
                     updates.add(RuntimeFrame::replay_update(
                         caster.0 as usize,
@@ -122,6 +125,7 @@ impl CombatRuntime {
                             value: amount,
                             caster,
                             target,
+                            kind: DamageKind::Default,
                         };
                         self.drain_post_defend_hooks_into(target, updates, &mut defend_value);
                         let Some(amount) = defend_value.damage() else {
@@ -148,6 +152,7 @@ impl CombatRuntime {
                         caster,
                         target,
                         is_magic: true,
+                        kind: DamageKind::Default,
                     };
                     updates.add(RuntimeFrame::replay_update(
                         caster.0 as usize,
@@ -184,6 +189,7 @@ impl CombatRuntime {
                             value: amount,
                             caster,
                             target,
+                            kind: DamageKind::Default,
                         };
                         self.drain_post_defend_hooks_into(target, updates, &mut defend_value);
                         let Some(amount) = defend_value.damage() else {
@@ -220,6 +226,7 @@ impl CombatRuntime {
                         value: amount,
                         caster,
                         target,
+                        kind: DamageKind::Default,
                     };
                     self.drain_post_defend_hooks_into(target, updates, &mut defend_value);
                     let Some(amount) = defend_value.damage() else {

@@ -169,7 +169,15 @@ impl CombatRuntime {
                 continue;
             }
             updates.add_newline();
-            self.drain_plain_attack_with_atp_and_on_damage_into(actor, target, true, atp, PlainAttackOnDamage::Ice, updates);
+            self.drain_plain_attack_with_atp_and_on_damage_into(
+                actor,
+                target,
+                true,
+                atp,
+                DamageKind::Ice,
+                PlainAttackOnDamage::Ice,
+                updates,
+            );
         }
     }
 

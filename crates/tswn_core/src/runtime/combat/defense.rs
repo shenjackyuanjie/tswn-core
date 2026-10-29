@@ -1,5 +1,14 @@
 use super::*;
 
+/// 0.5.5 中两个 Boss 专属 POST_DEFEND 吸收技能。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PlainBossDefend {
+    /// 青雉：吸收冰冻伤害，免疫物理伤害。
+    Aokiji,
+    /// 斑鸠：吸收奇数伤害。
+    Ikaruga,
+}
+
 impl CombatRuntime {
     pub fn apply_disperse_hit_into(&mut self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         let Some(target_entity) = self.entities.get_mut(target) else {
@@ -238,6 +247,7 @@ impl CombatRuntime {
                     caster,
                     target: link.owner,
                     is_magic,
+                    kind: defend_value.kind(),
                 };
                 self.drain_pre_defend_hooks_with_on_damage_into(link.owner, updates, &mut redirected_atp, on_damage);
                 let redirected_atp = redirected_atp.atp().expect("runtime protect pre-defend hooks must leave an atp value");
@@ -262,6 +272,7 @@ impl CombatRuntime {
                     value: redirected_damage,
                     caster,
                     target: link.owner,
+                    kind: defend_value.kind(),
                 };
                 self.drain_post_defend_hooks_into(link.owner, updates, &mut redirected_damage_value);
                 let redirected_damage = redirected_damage_value
@@ -306,11 +317,14 @@ impl CombatRuntime {
             Skill(SkillHookPlanEntry),
             State(StateHookPlanEntry),
             RuntimeShield,
+            BossDefend(PlainBossDefend),
         }
 
+        let boss_defend = self.plain_boss_defend(target);
         let mut executed_skill_lanes = smallvec::SmallVec::<[usize; 8]>::new();
         let mut executed_state_keys = smallvec::SmallVec::<[u32; 8]>::new();
         let mut executed_runtime_shield = false;
+        let mut executed_boss_defend = false;
         loop {
             // 状态钩子可能修改自身存储（最常见的是铁甲被击破）。
             // 先记录两类计划代数和护盾存在性；只有执行确实改变计划成员时才重建，
@@ -363,6 +377,17 @@ impl CombatRuntime {
                     DefendHookPlanEntry::RuntimeShield,
                 ));
             }
+            if let Some((priority, boss)) = boss_defend {
+                // 专属防御技能在 `ac()` 中最先注册，且青雉使用默认 ga4=10000、
+                // 斑鸠使用 `$.pk()`=20000；同等优先级下先于状态项执行。
+                entries.push((
+                    priority,
+                    0_u8,
+                    0_usize,
+                    RegistrationOrder(0),
+                    DefendHookPlanEntry::BossDefend(boss),
+                ));
+            }
             entries.sort_by_key(|(priority, kind_order, active_order, registration_order, _)| {
                 (*priority, *kind_order, *active_order, *registration_order)
             });
@@ -385,6 +410,10 @@ impl CombatRuntime {
                     DefendHookPlanEntry::RuntimeShield if !executed_runtime_shield => {
                         executed_runtime_shield = true;
                         self.apply_runtime_shield_post_defend(target, defend_value);
+                    }
+                    DefendHookPlanEntry::BossDefend(boss) if !executed_boss_defend => {
+                        executed_boss_defend = true;
+                        self.apply_plain_boss_defend(target, boss, defend_value, updates);
                     }
                     _ => continue,
                 }
@@ -428,6 +457,74 @@ impl CombatRuntime {
         }
     }
 
+    /// 0.5.5 中青雉/斑鸠把专属防御技能直接写入 `k1`，不在通用技能表里。
+    fn plain_boss_defend(&self, target: EntityIdx) -> Option<(SkillPriority, PlainBossDefend)> {
+        let entity = self.entities.get(target)?;
+        if !entity.runtime.flags.contains(PlayerKindFlags::BOSS) {
+            return None;
+        }
+        match entity.template.name.as_str() {
+            "aokiji" => Some((SkillPriority(10_000), PlainBossDefend::Aokiji)),
+            "ikaruga" => Some((SkillPriority(20_000), PlainBossDefend::Ikaruga)),
+            _ => None,
+        }
+    }
+
+    fn apply_plain_boss_defend(
+        &mut self,
+        target: EntityIdx,
+        boss: PlainBossDefend,
+        defend_value: &mut RuntimeDefendValue,
+        updates: &mut RunUpdates,
+    ) {
+        let Some(damage) = defend_value.damage() else {
+            panic!("runtime boss defend hooks must run after damage conversion");
+        };
+        if damage <= 0 {
+            return;
+        }
+        match boss {
+            PlainBossDefend::Aokiji => match defend_value.kind() {
+                DamageKind::Ice => {
+                    updates.add(crate::runtime::update::RunUpdate::new_lang(
+                        crate::runtime::lang::keys::SKL_AOKIJI_DEFEND,
+                        target.0 as usize,
+                        target.0 as usize,
+                        damage as u32,
+                    ));
+                    defend_value.set_damage(-damage);
+                }
+                DamageKind::Physical => defend_value.set_damage(0),
+                DamageKind::Default => {}
+            },
+            PlainBossDefend::Ikaruga => {
+                if damage & 1 == 1 {
+                    updates.add(crate::runtime::update::RunUpdate::new_lang(
+                        crate::runtime::lang::keys::SKL_IKARUGA_DEFEND,
+                        target.0 as usize,
+                        target.0 as usize,
+                        damage as u32,
+                    ));
+                    defend_value.set_damage(-damage);
+                }
+            }
+        }
+    }
+
+    /// 负数伤害的恢复结算，对应 0.5.5 `aF` 的 `a < 0` 分支。
+    ///
+    /// 消息携带的恢复量是吸收值本身（`HRecover(-a)`），实际回血按最大体力截断。
+    pub fn apply_plain_absorb_heal_into(&mut self, caster: EntityIdx, target: EntityIdx, heal: i32, updates: &mut RunUpdates) {
+        let target_entity = self
+            .entities
+            .get_mut(target)
+            .unwrap_or_else(|| panic!("unknown runtime absorb heal target: {}", target.0));
+        target_entity.runtime.hp = (target_entity.runtime.hp + heal).min(target_entity.template.max_hp);
+        let mut update = crate::runtime::update::RunUpdate::new("[1]回复体力[2]点", caster.0 as usize, target.0 as usize, 0);
+        update.param = Some(heal as u32);
+        updates.add(update);
+    }
+
     pub fn drain_die_hooks_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) {
         let die_skill_plan = self.scheduler.skill_hook_plan(&self.entities, &self.registry, target, ProcMask::DIE);
         self.drain_skill_hook_plan_into(&die_skill_plan, updates);
@@ -466,6 +563,10 @@ impl CombatRuntime {
         amount: i32,
         updates: &mut RunUpdates,
     ) -> bool {
+        if amount < 0 {
+            self.apply_plain_absorb_heal_into(caster, target, amount.saturating_neg(), updates);
+            return false;
+        }
         let target_entity = self
             .entities
             .get_mut(target)
@@ -535,6 +636,10 @@ impl CombatRuntime {
         amount: i32,
         updates: &mut RunUpdates,
     ) -> bool {
+        if amount < 0 {
+            self.apply_plain_absorb_heal_into(caster, target, amount.saturating_neg(), updates);
+            return false;
+        }
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime disperse damage target entity: {}", target.0);
         };

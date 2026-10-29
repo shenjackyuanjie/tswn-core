@@ -1,6 +1,7 @@
 use super::*;
 
 use crate::namerena::BossActionSkill;
+use crate::runtime::combat::PlainAttackOnDamage;
 use crate::runtime::lang::{get_lang, keys};
 
 fn boss_test_registry() -> (PlayerKindId, ExtensionRegistry) {
@@ -533,6 +534,225 @@ fn boss_ice_age_hits_every_selected_target_with_shared_atp() {
             messages_of(&updates)
         );
     }
+}
+
+#[test]
+fn boss_aokiji_defend_absorbs_ice_without_rng() {
+    let mut runtime = boss_runtime("aokiji");
+    runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.hp = 900;
+    let expected_rng = runtime.rng.clone();
+    let mut updates = RunUpdates::new();
+
+    let amount = runtime.drain_plain_attack_after_dodge_into(
+        EntityIdx(1),
+        EntityIdx(0),
+        true,
+        640.0,
+        DamageKind::Ice,
+        None,
+        PlainAttackOnDamage::None,
+        &mut updates,
+    );
+
+    assert_eq!(amount, -10);
+    assert_rng_state_eq(&runtime.rng, &expected_rng);
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 910);
+    assert_eq!(messages_of(&updates), [get_lang(keys::SKL_AOKIJI_DEFEND), "[1]回复体力[2]点"]);
+    assert_eq!(updates.updates[0].caster, 0);
+    assert_eq!(updates.updates[0].score, 10);
+    assert_eq!(updates.updates[0].param, None);
+    assert_eq!(updates.updates[1].caster, 1);
+    assert_eq!(updates.updates[1].target, 0);
+    assert_eq!(updates.updates[1].score, 0);
+    assert_eq!(updates.updates[1].param, Some(10));
+}
+
+#[test]
+fn boss_aokiji_defend_nullifies_physical_and_passes_default() {
+    let mut runtime = boss_runtime("aokiji");
+    runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.hp = 900;
+    let mut updates = RunUpdates::new();
+
+    let amount = runtime.drain_plain_attack_after_dodge_into(
+        EntityIdx(1),
+        EntityIdx(0),
+        false,
+        640.0,
+        DamageKind::Physical,
+        None,
+        PlainAttackOnDamage::None,
+        &mut updates,
+    );
+    assert_eq!(amount, 0);
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 900);
+    assert_eq!(messages_of(&updates), ["[0]受到[2]点伤害[s_dmg0]"]);
+    assert_eq!(updates.updates[0].param, Some(0));
+
+    updates.reset();
+    let amount = runtime.drain_plain_attack_after_dodge_into(
+        EntityIdx(1),
+        EntityIdx(0),
+        false,
+        640.0,
+        DamageKind::Default,
+        None,
+        PlainAttackOnDamage::None,
+        &mut updates,
+    );
+    assert_eq!(amount, 10);
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 890);
+    assert_eq!(messages_of(&updates), ["[1]受到[2]点伤害"]);
+}
+
+#[test]
+fn boss_ikaruga_defend_absorbs_odd_and_passes_even() {
+    let mut runtime = boss_runtime("ikaruga");
+    runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.hp = 900;
+    let mut updates = RunUpdates::new();
+
+    // 10 点偶数伤害直接通过，斑鸠不吸收。
+    let amount = runtime.drain_plain_attack_after_dodge_into(
+        EntityIdx(1),
+        EntityIdx(0),
+        false,
+        640.0,
+        DamageKind::Default,
+        None,
+        PlainAttackOnDamage::None,
+        &mut updates,
+    );
+    assert_eq!(amount, 10);
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 890);
+    assert_eq!(messages_of(&updates), ["[1]受到[2]点伤害"]);
+
+    // 11 点奇数伤害被吸收并回血。
+    updates.reset();
+    let amount = runtime.drain_plain_attack_after_dodge_into(
+        EntityIdx(1),
+        EntityIdx(0),
+        false,
+        704.0,
+        DamageKind::Default,
+        None,
+        PlainAttackOnDamage::None,
+        &mut updates,
+    );
+    assert_eq!(amount, -11);
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 901);
+    assert_eq!(messages_of(&updates), [get_lang(keys::SKL_IKARUGA_DEFEND), "[1]回复体力[2]点"]);
+    assert_eq!(updates.updates[0].score, 11);
+    assert_eq!(updates.updates[1].param, Some(11));
+}
+
+#[test]
+fn boss_aokiji_defend_heal_caps_at_max_hp_but_message_keeps_absorbed_amount() {
+    let mut runtime = boss_runtime("aokiji");
+    let mut updates = RunUpdates::new();
+
+    let amount = runtime.drain_plain_attack_after_dodge_into(
+        EntityIdx(1),
+        EntityIdx(0),
+        true,
+        6_400.0,
+        DamageKind::Ice,
+        None,
+        PlainAttackOnDamage::None,
+        &mut updates,
+    );
+
+    assert_eq!(amount, -100);
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 1000);
+    assert_eq!(updates.updates[1].param, Some(100));
+}
+
+fn mage_aokiji_runtime() -> CombatRuntime {
+    let (boss_kind, registry) = boss_test_registry();
+    CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::with_kind(1, "aokiji", boss_kind, 0, 1000, 3),
+            PlayerTemplate::new(2, "mage", 1, 100, 3).with_magic(640),
+        ],
+        registry,
+    ))
+}
+
+/// 推进 RNG，直到冰冻术的 get_at 与闪避掷骰都不触发闪避（命中下限 7）。
+fn advance_until_ice_skill_not_dodged(runtime: &mut CombatRuntime) {
+    loop {
+        let mut probe = runtime.rng.clone();
+        let _ = runtime.entities.get(EntityIdx(1)).unwrap().runtime.get_at(true, &mut probe);
+        if probe.next_u8() >= 7 {
+            break;
+        }
+        runtime.rng.next_u8();
+    }
+}
+
+#[test]
+fn boss_ice_skill_kind_reaches_aokiji_absorb() {
+    let mut runtime = mage_aokiji_runtime();
+    advance_until_ice_skill_not_dodged(&mut runtime);
+    let mut probe = runtime.rng.clone();
+    let atp = runtime.entities.get(EntityIdx(1)).unwrap().runtime.get_at(true, &mut probe) * 0.699999988079071;
+    let expected_damage = (atp / 64.0).ceil() as u32;
+    assert!(expected_damage > 0);
+
+    let mut updates = RunUpdates::new();
+    runtime.drain_plain_ice_skill_into(EntityIdx(1), EntityIdx(0), &mut updates);
+
+    assert_eq!(
+        messages_of(&updates),
+        ["[0]使用[冰冻术]", get_lang(keys::SKL_AOKIJI_DEFEND), "[1]回复体力[2]点"]
+    );
+    assert_eq!(updates.updates[1].score, expected_damage);
+    assert_eq!(updates.updates[2].param, Some(expected_damage));
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 1000);
+}
+
+fn boss_vs_aokiji_runtime(attacker: &str) -> CombatRuntime {
+    let (boss_kind, registry) = boss_test_registry();
+    CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::with_kind(1, attacker, boss_kind, 0, 1000, 1000),
+            PlayerTemplate::with_kind(2, "aokiji", boss_kind, 1, 1000, 3),
+        ],
+        registry,
+    ))
+}
+
+/// 推进 RNG，直到普攻的 get_at 与闪避掷骰都不触发闪避（命中下限 7）。
+fn advance_until_default_attack_not_dodged(runtime: &mut CombatRuntime) {
+    loop {
+        let mut probe = runtime.rng.clone();
+        let _ = runtime.entities.get(EntityIdx(0)).unwrap().runtime.get_at(false, &mut probe);
+        if probe.next_u8() >= 7 {
+            break;
+        }
+        runtime.rng.next_u8();
+    }
+}
+
+#[test]
+fn boss_skill_attack_physical_kind_feeds_aokiji_absorb() {
+    // 青雉的普攻走 `SklAttack.v` 物理分支，命中同为青雉的目标时被物理吸收清零。
+    let mut runtime = boss_vs_aokiji_runtime("aokiji");
+    advance_until_default_attack_not_dodged(&mut runtime);
+    let mut updates = RunUpdates::new();
+    runtime.drain_plain_default_attack_into(EntityIdx(0), EntityIdx(1), false, &mut updates);
+
+    assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 1000);
+    assert_eq!(messages_of(&updates), ["[0]发起攻击", "[0]受到[2]点伤害[s_dmg0]"]);
+    assert_eq!(updates.updates[1].param, Some(0));
+
+    // 马里奥的普攻来自 `SklSimpleAttack`，使用默认伤害类型，不会被吸收。
+    let mut runtime = boss_vs_aokiji_runtime("mario");
+    advance_until_default_attack_not_dodged(&mut runtime);
+    let mut updates = RunUpdates::new();
+    runtime.drain_plain_default_attack_into(EntityIdx(0), EntityIdx(1), false, &mut updates);
+
+    let hp = runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp;
+    assert!(hp < 1000, "default-kind boss attack should not be absorbed: hp={hp}");
+    assert_eq!(messages_of(&updates)[1], "[1]受到[2]点伤害");
 }
 
 #[test]
