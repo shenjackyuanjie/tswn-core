@@ -526,6 +526,10 @@ impl CombatRuntime {
     }
 
     pub fn drain_die_hooks_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) {
+        // 马里奥的专属复活技能优先级为 10，先于通用死亡链；复活成功后整条死亡链中止。
+        if self.drain_plain_mario_reraise_into(target, updates) {
+            return;
+        }
         let die_skill_plan = self.scheduler.skill_hook_plan(&self.entities, &self.registry, target, ProcMask::DIE);
         self.drain_skill_hook_plan_into(&die_skill_plan, updates);
         if self.entities.get(target).is_some_and(|entity| entity.runtime.hp > 0) {

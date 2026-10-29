@@ -593,6 +593,20 @@ impl StateEntry {
         }
     }
 
+    /// 0.5.5 中 `gT()` 返回负数的减益状态；马里奥复活时会静默清除它们。
+    pub fn is_negative_state(&self) -> bool {
+        matches!(
+            &self.payload,
+            StatePayload::FireMagHalfSteps(_)
+                | StatePayload::Ice { .. }
+                | StatePayload::Curse { .. }
+                | StatePayload::Poison { .. }
+                | StatePayload::Berserk { .. }
+                | StatePayload::Charm { .. }
+                | StatePayload::Slow { .. }
+        )
+    }
+
     pub fn is_positive_state(&self) -> bool {
         match &self.payload {
             StatePayload::ShieldValue(shield) => *shield > 0,

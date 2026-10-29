@@ -463,6 +463,52 @@ impl CombatRuntime {
         entity.runtime.move_state.speed_points += 2000;
     }
 
+    /// 0.5.5 `SklMarioReraise.b1`：死亡时消耗一条命并满血复活。
+    ///
+    /// 复活在体力仍为 0 时静默清除负 metaType 状态（legacy 的解除消息要求
+    /// `fx > 0`，因此这里没有解除文本），随后补满体力并执行
+    /// `SklMarioGet.K` 的成长与火球等级重置。
+    pub fn drain_plain_mario_reraise_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) -> bool {
+        let Some(entity) = self.entities.get_mut(target) else {
+            return false;
+        };
+        if !entity.runtime.flags.contains(PlayerKindFlags::BOSS) || entity.template.name != "mario" {
+            return false;
+        }
+        if entity.runtime.hp > 0 {
+            return false;
+        }
+        let Some(lives) = entity.runtime.mario_reraise_lives else {
+            return false;
+        };
+        let remaining = lives.saturating_sub(1);
+        entity.runtime.mario_reraise_lives = Some(remaining);
+        if remaining == 0 {
+            return false;
+        }
+        let negative_keys: smallvec::SmallVec<[u32; 8]> = entity
+            .states
+            .entries()
+            .iter()
+            .filter(|entry| entry.is_negative_state())
+            .map(|entry| entry.legacy_order_key)
+            .collect();
+        for key in negative_keys {
+            entity.states.clear_legacy_key(key);
+        }
+        entity.runtime.hp = entity.template.max_hp;
+        entity.states.clear_legacy_key(PLAIN_MARIO_BOSS_STATE_KEY);
+        entity.refresh_runtime_stats_from_template();
+
+        let mut revive_update = RunUpdate::new_lang(keys::BOSS_MARIO_REVIVE, target.0 as usize, target.0 as usize, 0);
+        revive_update.delay0 = 3000;
+        updates.add(revive_update);
+        let mut life_update = RunUpdate::new_lang(keys::BOSS_MARIO_LIFE, target.0 as usize, target.0 as usize, 0);
+        life_update.param = Some(remaining);
+        updates.add(life_update);
+        true
+    }
+
     /// 尤里的心灵控制目标：不看 smart，只要目标不在自身当前队伍、没有魅惑。
     pub fn select_plain_yuri_control_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);

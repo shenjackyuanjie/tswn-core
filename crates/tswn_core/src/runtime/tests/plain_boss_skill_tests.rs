@@ -775,3 +775,85 @@ fn boss_ikaruga_attack_uses_defense_conversion_for_every_target() {
         );
     }
 }
+
+#[test]
+fn boss_mario_reraise_consumes_life_and_resets_growth() {
+    let mut runtime = boss_runtime("mario");
+    let mut updates = RunUpdates::new();
+    runtime.drain_plain_mario_get_into(EntityIdx(0), &mut updates);
+    assert_eq!(mario_growth_value(&runtime), Some((1, 0)));
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.at_boost(), 1.5);
+    assert!(
+        runtime
+            .entities
+            .get_mut(EntityIdx(0))
+            .unwrap()
+            .states
+            .add_entry(StateEntry::ice(PLAIN_ICE_STATE_KEY, 3)),
+        "ice state should be inserted"
+    );
+    runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.hp = 0;
+    updates.reset();
+
+    assert!(runtime.drain_plain_mario_reraise_into(EntityIdx(0), &mut updates));
+
+    let entity = runtime.entities.get(EntityIdx(0)).unwrap();
+    assert_eq!(entity.runtime.hp, entity.template.max_hp);
+    assert_eq!(entity.runtime.mario_reraise_lives, Some(2));
+    // 复活会重置采菇成长与 1.5 倍攻击，但保留每次采菇叠加的速度。
+    assert_eq!(entity.runtime.at_boost(), 1.0);
+    assert_eq!(entity.runtime.move_state.speed_points, 2000);
+    assert_eq!(
+        entity.states.entry(PLAIN_MARIO_BOSS_STATE_KEY).and_then(StateEntry::mario_boss_value),
+        None
+    );
+    assert!(entity.states.entry(PLAIN_ICE_STATE_KEY).is_none());
+    assert_eq!(
+        messages_of(&updates),
+        [get_lang(keys::BOSS_MARIO_REVIVE), get_lang(keys::BOSS_MARIO_LIFE)]
+    );
+    assert_eq!(updates.updates[0].delay0, 3000);
+    assert_eq!(updates.updates[1].param, Some(2));
+}
+
+#[test]
+fn boss_mario_lethal_hit_reraise_keeps_entity_alive() {
+    let mut runtime = boss_runtime("mario");
+    runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.hp = 0;
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_plain_lethal_damage_into(EntityIdx(1), EntityIdx(0), &mut updates);
+
+    let entity = runtime.entities.get(EntityIdx(0)).unwrap();
+    assert!(entity.runtime.alive);
+    assert_eq!(entity.runtime.hp, entity.template.max_hp);
+    assert_eq!(entity.runtime.mario_reraise_lives, Some(2));
+    assert_eq!(
+        messages_of(&updates),
+        [
+            "\n",
+            "[1]被击倒了",
+            get_lang(keys::BOSS_MARIO_REVIVE),
+            get_lang(keys::BOSS_MARIO_LIFE)
+        ]
+    );
+}
+
+#[test]
+fn boss_mario_reraise_with_last_life_stays_dead() {
+    let mut runtime = boss_runtime("mario");
+    {
+        let boss = &mut runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime;
+        boss.hp = 0;
+        boss.mario_reraise_lives = Some(1);
+    }
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_plain_lethal_damage_into(EntityIdx(1), EntityIdx(0), &mut updates);
+
+    let entity = runtime.entities.get(EntityIdx(0)).unwrap();
+    assert!(!entity.runtime.alive);
+    assert_eq!(entity.runtime.hp, 0);
+    assert_eq!(entity.runtime.mario_reraise_lives, Some(0));
+    assert_eq!(messages_of(&updates), ["\n", "[1]被击倒了"]);
+}
