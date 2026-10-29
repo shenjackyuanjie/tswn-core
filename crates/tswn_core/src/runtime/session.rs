@@ -439,6 +439,7 @@ mod tests {
                 value: damage,
                 caster: EntityIdx(1),
                 target: EntityIdx(0),
+                kind: DamageKind::Default,
             };
             runner.runtime_mut().apply_runtime_shield_post_defend(EntityIdx(0), &mut value);
             assert_eq!(runner.player_snapshot(0).unwrap().shield, remaining);
@@ -449,6 +450,7 @@ mod tests {
             value: 11,
             caster: EntityIdx(1),
             target: EntityIdx(0),
+            kind: DamageKind::Default,
         };
         runner.runtime_mut().apply_runtime_shield_post_defend(EntityIdx(0), &mut value);
         assert_eq!(runner.player_snapshot(0).unwrap().shield, 0);
@@ -470,6 +472,7 @@ mod tests {
                 value: damage,
                 caster: EntityIdx(1),
                 target: EntityIdx(0),
+                kind: DamageKind::Default,
             };
             runner
                 .runtime_mut()

@@ -557,6 +557,7 @@ pub struct ModelPayload {
     pub saitama_boss: Option<SaitamaBossPayload>,
     pub lazy_boss: Option<LazyBossPayload>,
     pub lazy_infection: Option<LazyInfectionPayload>,
+    pub mario_boss: Option<MarioBossPayload>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -638,6 +639,12 @@ pub struct LazyBossPayload {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LazyInfectionPayload {
     pub boss: EntityIdx,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MarioBossPayload {
+    pub grow: i32,
+    pub fire_level: u32,
 }
 
 impl From<&StatePayload> for ModelPayload {
@@ -764,6 +771,13 @@ impl From<&StatePayload> for ModelPayload {
             StatePayload::LazyInfection { boss } => {
                 result.kind = "lazy_infection".into();
                 result.lazy_infection = Some(LazyInfectionPayload { boss: *boss });
+            }
+            StatePayload::MarioBoss { grow, fire_level } => {
+                result.kind = "mario_boss".into();
+                result.mario_boss = Some(MarioBossPayload {
+                    grow: *grow,
+                    fire_level: *fire_level,
+                });
             }
         }
         result

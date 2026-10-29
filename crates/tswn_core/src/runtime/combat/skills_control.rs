@@ -175,7 +175,15 @@ impl CombatRuntime {
             "[0]使用[冰冻术]",
             1,
         ));
-        self.drain_plain_attack_with_atp_and_on_damage_into(actor, target, true, atp, PlainAttackOnDamage::Ice, updates);
+        self.drain_plain_attack_with_atp_and_on_damage_into(
+            actor,
+            target,
+            true,
+            atp,
+            DamageKind::Ice,
+            PlainAttackOnDamage::Ice,
+            updates,
+        );
     }
 
     pub fn drain_plain_charge_skill_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {

@@ -93,6 +93,7 @@ fn reflect_failed_level_roll_only_consumes_r255() {
         caster: EntityIdx(0),
         target: EntityIdx(1),
         is_magic: true,
+        kind: DamageKind::Default,
     };
 
     runtime.drain_pre_defend_hooks_into(EntityIdx(1), &mut updates, &mut defend_value);
@@ -126,6 +127,7 @@ fn reflected_attack_applies_damage_before_move_penalty_finishes() {
         caster: EntityIdx(0),
         target: EntityIdx(1),
         atp_bits: 50.0_f64.to_bits(),
+        kind: DamageKind::Default,
         on_damage: PlainAttackOnDamage::None,
     });
 

@@ -432,6 +432,8 @@ impl<'a> SkillContext<'a> {
 
     pub fn defend_is_magic(&self) -> Option<bool> { self.defend_value.as_ref().and_then(|value| value.is_magic()) }
 
+    pub fn defend_kind(&self) -> Option<DamageKind> { self.defend_value.as_ref().map(|value| value.kind()) }
+
     pub fn defend_on_damage(&self) -> PlainAttackOnDamage { self.defend_on_damage }
 
     pub fn set_defend_atp(&mut self, atp: f64) {

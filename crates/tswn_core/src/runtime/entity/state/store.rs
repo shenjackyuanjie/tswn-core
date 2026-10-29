@@ -42,11 +42,12 @@ pub enum StatePayloadKind {
     SaitamaBoss,
     LazyBoss,
     LazyInfection,
+    MarioBoss,
 }
 
 impl StatePayloadKind {
     #[inline]
-    pub const fn bit(self) -> u16 { 1 << self as u16 }
+    pub const fn bit(self) -> u32 { 1 << self as u32 }
 
     #[inline]
     const fn of(payload: &StatePayload) -> Self {
@@ -67,15 +68,16 @@ impl StatePayloadKind {
             StatePayload::SaitamaBoss { .. } => Self::SaitamaBoss,
             StatePayload::LazyBoss { .. } => Self::LazyBoss,
             StatePayload::LazyInfection { .. } => Self::LazyInfection,
+            StatePayload::MarioBoss { .. } => Self::MarioBoss,
         }
     }
 }
 
 /// 所有种类都可能存在；用于无法确定新 payload 种类的保守路径。
-const PAYLOAD_KIND_ALL: u16 = u16::MAX;
+const PAYLOAD_KIND_ALL: u32 = u32::MAX;
 
 #[inline]
-const fn payload_kind_bit(payload: &StatePayload) -> u16 { StatePayloadKind::of(payload).bit() }
+const fn payload_kind_bit(payload: &StatePayload) -> u32 { StatePayloadKind::of(payload).bit() }
 
 #[inline]
 fn scheduler_state_flags(payload: &StatePayload) -> u8 {
@@ -98,7 +100,7 @@ pub struct StateStore {
     /// 调度器只关心冻结和速度类状态；无对应位时可跳过完整 entries 扫描。
     scheduler_state_flags: u8,
     /// 当前可能存在的 [`StatePayloadKind`] 位图，允许是真实集合的超集。
-    payload_kinds: u16,
+    payload_kinds: u32,
 }
 
 impl PartialEq for StateStore {
@@ -342,7 +344,8 @@ impl StateStore {
                 | StatePayload::CovidInfection { .. }
                 | StatePayload::SaitamaBoss { .. }
                 | StatePayload::LazyBoss { .. }
-                | StatePayload::LazyInfection { .. } => {
+                | StatePayload::LazyInfection { .. }
+                | StatePayload::MarioBoss { .. } => {
                     entry.payload = StatePayload::FireMagHalfSteps(1);
                 }
                 StatePayload::Poison { .. }
@@ -446,7 +449,7 @@ impl StateStore {
     fn rebuild_cached_metadata(&mut self) {
         let mut hook_mask = ProcMask::default();
         let mut state_flags = 0u8;
-        let mut payload_kinds = 0u16;
+        let mut payload_kinds = 0u32;
         for entry in &self.entries {
             hook_mask |= entry.hook_mask;
             state_flags |= scheduler_state_flags(&entry.payload);

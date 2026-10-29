@@ -69,6 +69,41 @@ pub fn boss_default_skill_levels(name: &str) -> &'static [(usize, u32)] {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 0.5.5 中各 Boss `ac()` 写入 `k1`、随后由通用扫描进入 `k4` 的主动技能。
+///
+/// 通用技能沿用现有内置实现；专属技能（`IceAge`、`IkarugaAttack`、`MarioGet`、
+/// `YuriControl`、`Saitama`）由 Boss 机制分支结算。
+pub enum BossActionSkill {
+    Fire,
+    Ice,
+    Absorb,
+    Rapid,
+    Critical,
+    IceAge,
+    IkarugaAttack,
+    MarioGet,
+    YuriControl,
+    Saitama,
+}
+
+/// 按 0.5.5 中 `k4` 的插入顺序返回 Boss 主动技能及基础等级。
+///
+/// `k4` 只收集 `ActionSkill` 实例，所以防御、反射等被动不会出现在这里；
+/// 马里奥的火球术初始等级为 0，吃到火焰花后由状态载荷改写为 120。
+pub fn boss_action_skills(name: &str) -> &'static [(BossActionSkill, u32)] {
+    match name {
+        "aokiji" => &[(BossActionSkill::IceAge, 70), (BossActionSkill::Ice, 80)],
+        "ikaruga" => &[(BossActionSkill::IkarugaAttack, 48)],
+        "mario" => &[(BossActionSkill::MarioGet, 63), (BossActionSkill::Fire, 0)],
+        "mosquito" => &[(BossActionSkill::Absorb, 100)],
+        "saitama" => &[(BossActionSkill::Saitama, 0)],
+        "sonic" => &[(BossActionSkill::Rapid, 48), (BossActionSkill::Critical, 48)],
+        "yuri" => &[(BossActionSkill::YuriControl, 256)],
+        _ => &[],
+    }
+}
+
 pub fn boost_value(name: &str) -> u32 {
     match name {
         "云剑狄卡敢" => 25,
@@ -77,6 +112,9 @@ pub fn boost_value(name: &str) -> u32 {
         _ => 0,
     }
 }
+
+/// 0.5.5 中 `k3` 使用 `SklAttack` 的 Boss；它们的默认攻击可以走魔法分支。
+pub fn boss_uses_skill_attack(name: &str) -> bool { matches!(name, "aokiji" | "ikaruga") }
 
 pub fn boss_action_prob_count(name: &str) -> usize {
     match name {
@@ -197,6 +235,39 @@ mod tests {
         ] {
             assert!(boss_default_skill_levels(name).is_empty(), "{name} 不应有通用默认技能");
         }
+    }
+
+    #[test]
+    fn boss_action_skills_match_k4_tables() {
+        assert_eq!(
+            boss_action_skills("aokiji"),
+            &[(BossActionSkill::IceAge, 70), (BossActionSkill::Ice, 80)]
+        );
+        assert_eq!(boss_action_skills("ikaruga"), &[(BossActionSkill::IkarugaAttack, 48)]);
+        assert_eq!(
+            boss_action_skills("mario"),
+            &[(BossActionSkill::MarioGet, 63), (BossActionSkill::Fire, 0)]
+        );
+        assert_eq!(boss_action_skills("mosquito"), &[(BossActionSkill::Absorb, 100)]);
+        assert_eq!(boss_action_skills("saitama"), &[(BossActionSkill::Saitama, 0)]);
+        assert_eq!(
+            boss_action_skills("sonic"),
+            &[(BossActionSkill::Rapid, 48), (BossActionSkill::Critical, 48)]
+        );
+        assert_eq!(boss_action_skills("yuri"), &[(BossActionSkill::YuriControl, 256)]);
+        for name in ["conan", "covid", "lazy", "slime", "testsubject", "unknown"] {
+            assert!(boss_action_skills(name).is_empty(), "{name} 的 k4 应为空");
+        }
+    }
+
+    #[test]
+    fn boss_uses_skill_attack_only_for_aokiji_and_ikaruga() {
+        assert!(boss_uses_skill_attack("aokiji"));
+        assert!(boss_uses_skill_attack("ikaruga"));
+        for name in BOSS_NAMES.iter().copied().filter(|name| !matches!(*name, "aokiji" | "ikaruga")) {
+            assert!(!boss_uses_skill_attack(name), "{name} 的 k3 不是 SklAttack");
+        }
+        assert!(!boss_uses_skill_attack("unknown"));
     }
 
     #[test]

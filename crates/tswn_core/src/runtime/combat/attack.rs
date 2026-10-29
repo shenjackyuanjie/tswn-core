@@ -145,7 +145,28 @@ impl CombatRuntime {
                 actor.0, target.0, atp, self.rng.i, self.rng.j,
             );
         }
-        self.drain_plain_attack_with_atp_into(actor, target, use_magic, atp, updates);
+        // 0.5.5 中青雉与斑鸠的默认攻击来自 `SklAttack.v`，物理分支传入 `T.oH()`；
+        // 其他 Boss 与玩家来自 `SklSimpleAttack`/普攻，使用默认伤害类型。
+        let kind = if !use_magic
+            && self.entities.get(actor).is_some_and(|entity| {
+                entity.runtime.flags.contains(PlayerKindFlags::BOSS)
+                    && crate::namerena::boss_uses_skill_attack(&entity.template.name)
+            }) {
+            DamageKind::Physical
+        } else {
+            DamageKind::Default
+        };
+        let covid_source = self.covid_boss_mutation(actor).map(|mutation| (actor, mutation));
+        self.drain_plain_attack_with_atp_covid_kind_and_on_damage_into(
+            actor,
+            target,
+            use_magic,
+            atp,
+            covid_source,
+            kind,
+            PlainAttackOnDamage::None,
+            updates,
+        );
     }
 
     pub fn saitama_boss_state(&self, actor: EntityIdx) -> Option<(i32, i32, usize, usize)> {
@@ -281,12 +302,13 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
     ) -> i32 {
         let covid_source = self.covid_boss_mutation(actor).map(|mutation| (actor, mutation));
-        self.drain_plain_attack_with_atp_covid_and_on_damage_into(
+        self.drain_plain_attack_with_atp_covid_kind_and_on_damage_into(
             actor,
             target,
             use_magic,
             atp,
             covid_source,
+            DamageKind::Default,
             PlainAttackOnDamage::None,
             updates,
         )
@@ -298,11 +320,21 @@ impl CombatRuntime {
         target: EntityIdx,
         use_magic: bool,
         atp: f64,
+        kind: DamageKind,
         on_damage: PlainAttackOnDamage,
         updates: &mut RunUpdates,
     ) -> i32 {
         let covid_source = self.covid_boss_mutation(actor).map(|mutation| (actor, mutation));
-        self.drain_plain_attack_with_atp_covid_and_on_damage_into(actor, target, use_magic, atp, covid_source, on_damage, updates)
+        self.drain_plain_attack_with_atp_covid_kind_and_on_damage_into(
+            actor,
+            target,
+            use_magic,
+            atp,
+            covid_source,
+            kind,
+            on_damage,
+            updates,
+        )
     }
 
     pub fn drain_plain_attack_with_atp_and_covid_into(
@@ -314,12 +346,13 @@ impl CombatRuntime {
         covid_source: Option<(EntityIdx, i32)>,
         updates: &mut RunUpdates,
     ) -> i32 {
-        self.drain_plain_attack_with_atp_covid_and_on_damage_into(
+        self.drain_plain_attack_with_atp_covid_kind_and_on_damage_into(
             actor,
             target,
             use_magic,
             atp,
             covid_source,
+            DamageKind::Default,
             PlainAttackOnDamage::None,
             updates,
         )
@@ -335,6 +368,33 @@ impl CombatRuntime {
         on_damage: PlainAttackOnDamage,
         updates: &mut RunUpdates,
     ) -> i32 {
+        self.drain_plain_attack_with_atp_covid_kind_and_on_damage_into(
+            actor,
+            target,
+            use_magic,
+            atp,
+            covid_source,
+            DamageKind::Default,
+            on_damage,
+            updates,
+        )
+    }
+
+    /// 完整攻击入口，携带 0.5.5 `a3` 的伤害类型标记。
+    ///
+    /// `kind` 只在双方都携带时才有可观察差异：青雉的 POST_DEFEND 吸收依赖
+    /// `T.mE()`（冰冻术/冰河时代）与 `T.oH()`（`SklAttack` 物理分支）。
+    pub(crate) fn drain_plain_attack_with_atp_covid_kind_and_on_damage_into(
+        &mut self,
+        actor: EntityIdx,
+        target: EntityIdx,
+        use_magic: bool,
+        atp: f64,
+        covid_source: Option<(EntityIdx, i32)>,
+        kind: DamageKind,
+        on_damage: PlainAttackOnDamage,
+        updates: &mut RunUpdates,
+    ) -> i32 {
         #[cfg(not(feature = "no_debug"))]
         let debug_attack = self.probe_default_attack_matches(actor);
         let mut defend_value = RuntimeDefendValue::Atp {
@@ -342,6 +402,7 @@ impl CombatRuntime {
             caster: actor,
             target,
             is_magic: use_magic,
+            kind,
         };
         #[cfg(not(feature = "no_debug"))]
         if debug_attack {
@@ -408,7 +469,7 @@ impl CombatRuntime {
             return 0;
         }
 
-        self.drain_plain_attack_after_dodge_into(actor, target, use_magic, atp, covid_source, on_damage, updates)
+        self.drain_plain_attack_after_dodge_into(actor, target, use_magic, atp, kind, covid_source, on_damage, updates)
     }
 
     /// 从防御值换算阶段开始结算攻击。
@@ -424,15 +485,26 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
     ) -> i32 {
         let covid_source = self.covid_boss_mutation(actor).map(|mutation| (actor, mutation));
-        self.drain_plain_attack_after_dodge_into(actor, target, use_magic, atp, covid_source, PlainAttackOnDamage::None, updates)
+        self.drain_plain_attack_after_dodge_into(
+            actor,
+            target,
+            use_magic,
+            atp,
+            DamageKind::Default,
+            covid_source,
+            PlainAttackOnDamage::None,
+            updates,
+        )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn drain_plain_attack_after_dodge_into(
         &mut self,
         actor: EntityIdx,
         target: EntityIdx,
         use_magic: bool,
         atp: f64,
+        kind: DamageKind,
         covid_source: Option<(EntityIdx, i32)>,
         on_damage: PlainAttackOnDamage,
         updates: &mut RunUpdates,
@@ -456,6 +528,7 @@ impl CombatRuntime {
             value: amount,
             caster: actor,
             target,
+            kind,
         };
         #[cfg(not(feature = "no_debug"))]
         if debug_attack {
@@ -519,6 +592,12 @@ impl CombatRuntime {
         on_damage: PlainAttackOnDamage,
         updates: &mut RunUpdates,
     ) -> bool {
+        // 0.5.5 `aF`：负数伤害表示 Boss 防御吸收，只回血并输出恢复消息，
+        // 不触发 covid/lazy 扩散、命中回调或 POST_DAMAGE 链。
+        if amount < 0 {
+            self.apply_plain_absorb_heal_into(caster, target, amount.saturating_neg(), updates);
+            return false;
+        }
         let target_entity = self
             .entities
             .get_mut(target)

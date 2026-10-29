@@ -56,7 +56,14 @@ pub const SUPPORTED_PAYLOAD_KINDS: [&str; 11] = [
 ];
 
 /// 本轮不映射的 Boss 专属/感染载荷 kind。
-pub const UNSUPPORTED_PAYLOAD_KINDS: [&str; 5] = ["covid_boss", "covid_infection", "saitama_boss", "lazy_boss", "lazy_infection"];
+pub const UNSUPPORTED_PAYLOAD_KINDS: [&str; 6] = [
+    "covid_boss",
+    "covid_infection",
+    "saitama_boss",
+    "lazy_boss",
+    "lazy_infection",
+    "mario_boss",
+];
 
 /// manifest 声明的容量档位；名称用 `String` 以便序列化，
 /// 容量关系对应 [`BASELINE_64`](super::capacity::BASELINE_64)（规格第 4 节容量表）。

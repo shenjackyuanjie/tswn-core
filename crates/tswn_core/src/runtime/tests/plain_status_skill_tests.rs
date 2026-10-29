@@ -622,6 +622,7 @@ fn plain_iron_refreshes_runtime_attract_after_shield_break() {
         value: 200,
         caster: EntityIdx(1),
         target: EntityIdx(0),
+        kind: DamageKind::Default,
     };
     let mut updates = RunUpdates::new();
 
@@ -681,6 +682,7 @@ fn post_defend_state_mutation_does_not_repeat_later_state_hook() {
         value: 200,
         caster: EntityIdx(1),
         target: EntityIdx(0),
+        kind: DamageKind::Default,
     };
     let mut updates = RunUpdates::new();
 
@@ -727,6 +729,7 @@ fn runtime_shield_absorbs_damage_before_curse_state() {
         value: 50,
         caster: EntityIdx(1),
         target: EntityIdx(0),
+        kind: DamageKind::Default,
     };
     let mut updates = RunUpdates::new();
 

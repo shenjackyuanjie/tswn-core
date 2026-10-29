@@ -327,7 +327,15 @@ impl CombatRuntime {
             target.0 as usize,
             1,
         ));
-        self.drain_plain_attack_with_atp_and_on_damage_into(actor, target, true, atp, PlainAttackOnDamage::Absorb, updates);
+        self.drain_plain_attack_with_atp_and_on_damage_into(
+            actor,
+            target,
+            true,
+            atp,
+            DamageKind::Default,
+            PlainAttackOnDamage::Absorb,
+            updates,
+        );
     }
 
     pub fn drain_plain_poison_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
@@ -343,7 +351,15 @@ impl CombatRuntime {
             target.0 as usize,
             1,
         ));
-        self.drain_plain_attack_with_atp_and_on_damage_into(actor, target, true, atp, PlainAttackOnDamage::Poison, updates);
+        self.drain_plain_attack_with_atp_and_on_damage_into(
+            actor,
+            target,
+            true,
+            atp,
+            DamageKind::Default,
+            PlainAttackOnDamage::Poison,
+            updates,
+        );
     }
 
     pub fn drain_plain_critical_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
@@ -451,7 +467,15 @@ impl CombatRuntime {
             target.0 as usize,
             1,
         ));
-        self.drain_plain_attack_with_atp_and_on_damage_into(actor, target, true, atp, PlainAttackOnDamage::Berserk, updates);
+        self.drain_plain_attack_with_atp_and_on_damage_into(
+            actor,
+            target,
+            true,
+            atp,
+            DamageKind::Default,
+            PlainAttackOnDamage::Berserk,
+            updates,
+        );
     }
 
     pub fn select_plain_haste_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {

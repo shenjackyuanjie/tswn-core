@@ -90,6 +90,10 @@ pub enum StatePayload {
     LazyInfection {
         boss: EntityIdx,
     },
+    MarioBoss {
+        grow: i32,
+        fire_level: u32,
+    },
 }
 
 impl StateEntry {
@@ -329,6 +333,26 @@ impl StateEntry {
         }
     }
 
+    /// 马里奥成长状态对应 `SklMarioGet` 自身作为正向 meta 登记；没有 hook，
+    /// 只保存蘑菇层数和火球术等级。复活次数不在此载荷内，离散清除后仍要保留。
+    pub fn mario_boss(legacy_order_key: u32, grow: i32, fire_level: u32) -> Self {
+        Self {
+            legacy_order_key,
+            extension_state_id: None,
+            hook_mask: ProcMask::NONE,
+            priority: SkillPriority::default(),
+            registration_order: RegistrationOrder::default(),
+            payload: StatePayload::MarioBoss { grow, fire_level },
+        }
+    }
+
+    pub fn mario_boss_value(&self) -> Option<(i32, u32)> {
+        match &self.payload {
+            StatePayload::MarioBoss { grow, fire_level } => Some((*grow, *fire_level)),
+            _ => None,
+        }
+    }
+
     pub fn fire_mag_value(&self) -> Option<f64> {
         match &self.payload {
             StatePayload::FireMagHalfSteps(half_steps) => Some(f64::from(*half_steps) * 0.5),
@@ -346,7 +370,8 @@ impl StateEntry {
             | StatePayload::CovidInfection { .. }
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
-            | StatePayload::LazyInfection { .. } => None,
+            | StatePayload::LazyInfection { .. }
+            | StatePayload::MarioBoss { .. } => None,
         }
     }
 
@@ -367,7 +392,8 @@ impl StateEntry {
             | StatePayload::CovidInfection { .. }
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
-            | StatePayload::LazyInfection { .. } => None,
+            | StatePayload::LazyInfection { .. }
+            | StatePayload::MarioBoss { .. } => None,
         }
     }
 
@@ -388,7 +414,8 @@ impl StateEntry {
             | StatePayload::CovidInfection { .. }
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
-            | StatePayload::LazyInfection { .. } => None,
+            | StatePayload::LazyInfection { .. }
+            | StatePayload::MarioBoss { .. } => None,
         }
     }
 
@@ -425,7 +452,8 @@ impl StateEntry {
             | StatePayload::CovidInfection { .. }
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
-            | StatePayload::LazyInfection { .. } => None,
+            | StatePayload::LazyInfection { .. }
+            | StatePayload::MarioBoss { .. } => None,
         }
     }
 
@@ -452,7 +480,8 @@ impl StateEntry {
             | StatePayload::CovidInfection { .. }
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
-            | StatePayload::LazyInfection { .. } => None,
+            | StatePayload::LazyInfection { .. }
+            | StatePayload::MarioBoss { .. } => None,
         }
     }
 
@@ -473,7 +502,8 @@ impl StateEntry {
             | StatePayload::CovidInfection { .. }
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
-            | StatePayload::LazyInfection { .. } => None,
+            | StatePayload::LazyInfection { .. }
+            | StatePayload::MarioBoss { .. } => None,
         }
     }
 
@@ -494,7 +524,8 @@ impl StateEntry {
             | StatePayload::CovidInfection { .. }
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
-            | StatePayload::LazyInfection { .. } => None,
+            | StatePayload::LazyInfection { .. }
+            | StatePayload::MarioBoss { .. } => None,
         }
     }
 
@@ -515,7 +546,8 @@ impl StateEntry {
             | StatePayload::CovidInfection { .. }
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
-            | StatePayload::LazyInfection { .. } => None,
+            | StatePayload::LazyInfection { .. }
+            | StatePayload::MarioBoss { .. } => None,
         }
     }
 
@@ -556,8 +588,23 @@ impl StateEntry {
             | StatePayload::CovidInfection { .. }
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
-            | StatePayload::LazyInfection { .. } => None,
+            | StatePayload::LazyInfection { .. }
+            | StatePayload::MarioBoss { .. } => None,
         }
+    }
+
+    /// 0.5.5 中 `gT()` 返回负数的减益状态；马里奥复活时会静默清除它们。
+    pub fn is_negative_state(&self) -> bool {
+        matches!(
+            &self.payload,
+            StatePayload::FireMagHalfSteps(_)
+                | StatePayload::Ice { .. }
+                | StatePayload::Curse { .. }
+                | StatePayload::Poison { .. }
+                | StatePayload::Berserk { .. }
+                | StatePayload::Charm { .. }
+                | StatePayload::Slow { .. }
+        )
     }
 
     pub fn is_positive_state(&self) -> bool {
@@ -565,6 +612,7 @@ impl StateEntry {
             StatePayload::ShieldValue(shield) => *shield > 0,
             StatePayload::Haste { .. } => true,
             StatePayload::Iron { step, .. } => *step > 0,
+            StatePayload::MarioBoss { .. } => true,
             StatePayload::None
             | StatePayload::FireMagHalfSteps(_)
             | StatePayload::Ice { .. }

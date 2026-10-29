@@ -193,6 +193,14 @@ impl CombatRuntime {
             target.0 as usize,
             1,
         ));
-        self.drain_plain_attack_with_atp_and_on_damage_into(actor, target, true, atp, PlainAttackOnDamage::Curse, updates);
+        self.drain_plain_attack_with_atp_and_on_damage_into(
+            actor,
+            target,
+            true,
+            atp,
+            DamageKind::Default,
+            PlainAttackOnDamage::Curse,
+            updates,
+        );
     }
 }
