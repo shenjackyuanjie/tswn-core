@@ -1,48 +1,60 @@
-# 性能分支简报（2026-10-29）
+# 无武器路径成本简报（2026-10-29）
 
-## 本次同步
+## 同步与改动
 
-`perf/ffa-profile-20261027` 从 `befd56a7` 合入 main `701c632e`，不改 main、不重写历史。新增上游内容包括 Boss 主动技能、魔法攻击与柯南推理秒杀、青雉/斑鸠防御吸收、马里奥满血复活和史莱姆分裂；既有武器移植原样保留。
+本分支合入 main `3eea3322`（含 `25865902` 的属性修改器技能改写及身份复活/分身）；保留此前非 PGO 优化，不改 main，不改上游武器规则。
 
-自动合并无文本冲突。继续保留已验证的非 PGO 优化：目标抽样的标量排除范围、RC4 小范围精确取余、空伤害 hook 快路、World 派生索引，以及超过四个动态 profile 时的四路 KSA 分块。没有趁同步调整战斗语义或新增 unsafe。
+**已确认减少常驻空间和无效扫描；尚未证明稳定 E2E 提速，也没有做到绝对零开销。**
 
-## 历史结论（本次未重新计时）
+本轮保留两项结构优化：
+- Rinick 分身的大技能快照按需 `Box`，没有该装备就不分配快照；不再让所有普通角色内嵌整张技能表。
+- 普通反击结算后，仅在玄月确有本批次待发反击时扫描对应技能。保留反击顺序、RNG 与寄存器清理行为。
 
-以下是 **2026-10-28、旧 main `7f6a7b17` 上的结果**。本次新增战斗逻辑改变了工作负载，因此不能直接声称最新 main 仍有相同提速。
+| 64位本机构建的类型大小 | 新 main 合入后 | 冷数据候选 |
+|---|---:|---:|
+| PreparedPlayer | 1216 B | 1080 B |
+| PlayerTemplate | 2144 B | 1280 B |
+| EntityRecord | 3776 B | 2912 B |
 
-| 范围 | 历史结果与限制 |
-|---|---|
-| FFA 核心优化 | 扩展集 FFA41 吞吐中位 +7.87%；独立留出 FFA20 +5.40%。均为7轮同机配对；Boss FFA分层仅 +3.99%，不是所有场景达到5% |
-| namer-pf | 最终只保留大于4个动态 profile 的 KSA 分块。两组8名 qd中位 +5.09%/+7.69%；qp未确认普遍收益，单名 qd/unicode曾 −4.68%，不能宣称四项全面提速 |
-| RC4 unchecked | 调查未证明新增 unsafe 的实际 E2E价值，未保留生产 unsafe候选；不把微基准收益加到上述结果 |
+这不是“全部武器成本为零”：S11 初始化查找、小型运行态字段和部分分支仍保留。两个公开 `rinick_clone_skills` Rust 字段由 `Option<T>` 改为 `Option<Box<T>>`，构造方需相应 `Box::new`；`PlayerRuntime` 字段/序列化不变，不引入 unsafe。
 
-测量使用 Rust 1.99.1、AMD EPYC 9V74、release fat LTO、`no_debug`、默认 mimalloc；无PGO、无额外RUSTFLAGS。重复轮复用同一seed区间，MAD不是置信区间；短案例存在明显双向波动。独立trace与分配计数核验通过，但FFA请求分配字节略增，不能称为内存优化。
+## 实测与限制
 
-历史细节如需追溯，可查看提交 [9aa6dbc3](https://github.com/shenjackyuanjie/tswn-core/commit/9aa6dbc39ff3664007c7feaea11795b0f8d2b1ca)（FFA报告）及 [befd56a7](https://github.com/shenjackyuanjie/tswn-core/commit/befd56a7193464471eb5d0c4b4521687e0372531)（namer-pf/RC4报告）。本次从分支最新状态删除这些冗长报告与生成的CSV/JSON/采样表，只保留本简报；Git历史仍在，不做force-push。保留可复用的benchmark、生成器、差分测试与诊断工具，其他上游文档和历史数据不动。
+Rust 1.99.1、Xeon Platinum 8573C；release/fat LTO、默认 mimalloc、`no_debug`，无 PGO/额外 RUSTFLAGS。每版本独立 target，核验源码及二进制 SHA；串行绑定一个 CPU，预热不计入，顺序交替/轮换，核验输出与统计一致。初次共享 target 误复用产物的运行已排除，不能作为版本差异证据。
 
-## 本次验证
+有效的旧版本对照中，早期武器运行态扩展（`3c540d41 → 7f6a7b17`）没有稳定的全局降速证据；最近两次身份移植（`e94a0f47 → 合入3eea`）在普通16例观察到吞吐中位 −3.79%，但同码 A/A 也出现约2%偏差，不能泛化成固定回退率。
 
-- 核心库 **687项通过**，完整CLI **91项通过**；其中Boss 24、史莱姆分裂4、武器17项均通过。
-- release验收：默认runtime 504、`no_debug` runtime 500、CLI runtime 6、完整corpus 124项通过。
-- workspace：**1007通过、5失败、7 ignored**，不是全绿。5项DS4 golden失败已在未修改的main `701c632e`独立复现；每项首个断言的左右字节数组经CRLF归一化后与合并分支一致，未改golden掩盖失败。
-- nightly格式检查和14项Python性能工具测试通过；独立代码复核未发现自动合并遗漏。
+下表 Runtime 使用 API 墙钟（含初始化/战斗，不含输入读取/JSON输出），namer-pf 使用完整 CLI 墙钟；CPU时间另行标注。
 
-上述调用存在测试重叠，不相加当作唯一用例总数。本次没有重跑性能采样或大规模benchmark，也不把历史百分比冒充最新移植逻辑的实测结果。
+| 组合改动相对最新合并基线 | 吞吐中位变化 | 说明 |
+|---|---:|---|
+| 普通主集16例，5轮 | +1.31% | MAD约4.5个百分点，不能确认稳定收益 |
+| 独立留出8例，3轮 | −17.67% | 不利观察保留，不能直接忽略 |
+| 同8例五方平衡分解，5轮 | +0.20% | 组合CPU约+0.28%、MAD约7.6个百分点；未稳定复现上述回退 |
+| namer-pf 12配置，5轮 | +2.19% | 分项有正有负，不能宣称四项均加速 |
+
+五方分解同时比较基线、仅Box、仅guard、组合及**同码基线副本**；同码副本CPU也出现−4.17%中位假差异，足以说明该机器不足以精确断言小幅提速。仅Box/guard的CPU中位约−1.33%/−4.90%，也不能脱离噪声解释。这里保留的是可验证的空间/工作量减少，不是“5% E2E达标”。
+
+主集16个普通无武器布局（FFA4/6/8/12/16及团队），独立留出8个新roster；每例13000场。namer-pf取1/4/8名、pp/pd/qp/qd共12配置，每例5000次。另有3个Generic武器输入，不能代表全部特殊武器。中位数/MAD不是置信区间，保留不利结果，不宣称所有场景达到5%。PC采样确认主要时间仍在回合推进、目标选择、初始化及hook调度，但有效样本稀疏，不能据此精确归因百分比。
+
+## 验证与上游缺口
+
+- 默认核心703、no_debug核心698、CLI91、corpus124通过；nightly格式检查通过。27个普通/留出/Generic输入的 normalized trace 与基线逐字节一致。
+- workspace：1023通过、5失败、7 ignored；失败为DS4三组golden；精确上游`3eea3322`独立复现同5项，首个断言的字节数组经CRLF归一化后一致，未改golden掩盖问题。不同测试调用有重叠，不合计为唯一用例数。
+- S11、死亡笔记、玄月及Rinick公开输入在基线/候选均因缺handler而 `NotReady`，没有冒充可运行的完整武器E2E覆盖。Rinick字段遗漏也在精确上游与合并版本的公开分步初始化中复现：复活属性/分身快照未复制，生命次数为空；本轮不擅自补武器功能。特殊武器的本轮行为覆盖主要依靠现有/新增单元测试。
 
 ## 复现入口
 
 ```bash
+# 每个源码 worktree 必须有独立 target；先核对 git rev-parse HEAD 与 sha256sum。
+CARGO_TARGET_DIR="/tmp/tswn-$REV" cargo build --locked --release -p tswn_core \
+  --features no_debug --bin tswn-cli --example perf_runtime
+python scripts/compare_perf_runtime.py --a "$BASELINE" --b "$CANDIDATE" \
+  --input "$INPUTS" --runs 13000 --rounds 5 --out "$OUT"
 cargo +nightly fmt --check
-cargo test -p tswn_core
-python scripts/check_runtime_release.py --corpus
-cargo test --workspace --no-fail-fast
-
-# 固定Runtime矩阵；比较时两侧必须同编译器、features和输入。
-cargo build --locked --release -p tswn_core --features no_debug --example perf_runtime
-cargo run --locked --release -p tswn_core --features no_debug --example perf_runtime -- \
-  --input docs/perf/fixed_cases_30 --runs 13000 --threads 1 --mode win-rate
-python scripts/compare_perf_runtime.py --help
-python scripts/benchmark_namer_pf_confirm.py --help
+cargo test --locked -p tswn_core
+cargo test --locked -p tswn_core --features no_debug
+cargo test -p tswn_test --features runtime-corpus --test runtime
 ```
 
-进一步复测时将生成数据写入本地 `target/` 或仓库外，不再默认提交逐轮结果。新旧main比较必须重新建立匹配基线；不能拿本简报的历史百分比作为新移植逻辑的性能保证。
+普通矩阵来自 `scripts/generate_hook_perf_matrix.py` 的 plain 家族；留出盐为 `tswn-cold-weapon-heldout-20261029`，取FFA4/8/16及4v4、每种两个roster。仅保留本简报，不提交逐轮表、环境日志或采样目录。此前性能记录仍可在 `9aa6dbc3` / `befd56a7` 历史提交追溯，不能当作当前 main 的实测保证。
