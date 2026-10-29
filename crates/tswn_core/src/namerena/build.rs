@@ -31,6 +31,8 @@ pub struct PreparedPlayer {
     pub rinick_identity: bool,
     /// 属性修改器身份复活（`hy`）时重新推导八围所用的构建期属性。
     pub rinick_revive_attrs: Option<[u32; 8]>,
+    /// 属性修改器身份复活后生成的分身所用技能表快照。
+    pub rinick_clone_skills: Option<SkillLoadoutSpec>,
     pub overlay: Option<PlayerOverlay>,
 }
 
@@ -381,14 +383,39 @@ impl PlayerBuild {
                 levels[key] = level;
             }
         }
+        let rinick_identity = self.weapon.as_ref().is_some_and(|weapon| weapon.is_rinick_identity());
         let mut rinick_revive_attrs = None;
+        let mut rinick_clone_skills = None;
         if let Some(weapon) = &self.weapon {
-            if weapon.is_rinick_identity() {
+            if rinick_identity {
                 rinick_revive_attrs = Some(attrs);
+                // 分身 `az()` 会重新解析武器并走非身份分支的 `b6()`（0 级抬到 4、其余折半），
+                // 但它的 `E` 列表为空，`bs()` 里所有强化标记都视为未强化；随后才做末位翻倍
+                // 与槽位强化。这里按同一顺序生成快照。
+                let mut clone_levels = levels;
+                for &key in &self.action_order {
+                    let key = key as usize;
+                    clone_levels[key] = if clone_levels[key] == 0 { 4 } else { clone_levels[key] / 2 };
+                }
+                let mut clone_boosted = [false; 40];
+                let mut clone_boosts: [Option<SkillBoost>; 40] = std::array::from_fn(|_| None);
+                apply_plain_last_doubling(&mut clone_levels, &mut clone_boosted, &mut clone_boosts, &self.action_order);
+                apply_plain_slot_boosts(
+                    &mut clone_levels,
+                    &mut clone_boosted,
+                    &mut clone_boosts,
+                    &self.action_order,
+                    &self.name_base,
+                );
+                rinick_clone_skills = Some(SkillLoadoutSpec::standard(
+                    &clone_levels,
+                    &clone_boosted,
+                    &clone_boosts,
+                    &self.action_order,
+                ));
             }
             weapon.post_upgrade(&mut attrs, &mut levels, &mut boosted, &self.action_order);
         }
-        let rinick_identity = self.weapon.as_ref().is_some_and(|weapon| weapon.is_rinick_identity());
         let clone_initially_boosted_mask = (overlay_skills.is_none()
             && self.weapon.is_none()
             && matches!(self.class, PlayerClass::Test1 | PlayerClass::Test2 | PlayerClass::TestEx))
@@ -415,31 +442,11 @@ impl PlayerBuild {
         // 0.5.5 的 Boss 技能装配只调用 `W()`，不参与末位翻倍与槽位强化；属性修改器身份分支
         // 已在 `b6()` 中追加技能并由 `bs()` 的末位翻倍强化 `SklYuriControl`，这里不再重复。
         if overlay_skills.is_none() && self.class != PlayerClass::Boss && !rinick_identity {
-            for &key in self.action_order.iter().rev() {
-                let key = key as usize;
-                if key >= 25 || levels[key] == 0 || boosted[key] {
-                    continue;
-                }
-                let base = levels[key];
-                levels[key] = base.saturating_mul(2);
-                boosted[key] = true;
-                boosts[key] = Some(SkillBoost::LastBoost(base));
-                break;
-            }
+            apply_plain_last_doubling(&mut levels, &mut boosted, &mut boosts, &self.action_order);
         }
         // 0.5.5 `BoostPassive(k2[14]/k2[15])` 按洗牌后位置生效，与键是否为被动无关。
         if overlay_skills.is_none() && self.class != PlayerClass::Boss {
-            for (slot, left, right) in [(14usize, 60usize, 61usize), (15, 62, 63)] {
-                let key = self.action_order[slot] as usize;
-                if key >= 35 || levels[key] == 0 || boosted[key] {
-                    continue;
-                }
-                let base = levels[key];
-                let amount = u32::from(self.name_base[left].min(self.name_base[right])).min(base);
-                levels[key] = base.saturating_add(amount);
-                boosted[key] = true;
-                boosts[key] = Some(SkillBoost::SlotBoost { base, boost: amount });
-            }
+            apply_plain_slot_boosts(&mut levels, &mut boosted, &mut boosts, &self.action_order, &self.name_base);
         }
 
         let scale = |value: i32, factor: i32| (value as f64 * (1.0 - self.name_factor / factor as f64)).round() as i32;
@@ -502,8 +509,50 @@ impl PlayerBuild {
             clone_slot_boosts,
             rinick_identity,
             rinick_revive_attrs,
+            rinick_clone_skills,
             overlay: self.overlay,
         }
+    }
+}
+
+/// 0.5.5 `bs()` 的末位翻倍：`k2` 顺序里最后一个未强化的 `ActionSkill` 等级翻倍。
+fn apply_plain_last_doubling(
+    levels: &mut [u32; 40],
+    boosted: &mut [bool; 40],
+    boosts: &mut [Option<SkillBoost>; 40],
+    action_order: &[u32; 40],
+) {
+    for &key in action_order.iter().rev() {
+        let key = key as usize;
+        if key >= 25 || levels[key] == 0 || boosted[key] {
+            continue;
+        }
+        let base = levels[key];
+        levels[key] = base.saturating_mul(2);
+        boosted[key] = true;
+        boosts[key] = Some(SkillBoost::LastBoost(base));
+        break;
+    }
+}
+
+/// 0.5.5 `bs()` 的 `BoostPassive(k2[14]/k2[15])`：按洗牌后位置追加与名字表相关的小额等级。
+fn apply_plain_slot_boosts(
+    levels: &mut [u32; 40],
+    boosted: &mut [bool; 40],
+    boosts: &mut [Option<SkillBoost>; 40],
+    action_order: &[u32; 40],
+    name_base: &[u8; 128],
+) {
+    for (slot, left, right) in [(14usize, 60usize, 61usize), (15, 62, 63)] {
+        let key = action_order[slot] as usize;
+        if key >= 35 || levels[key] == 0 || boosted[key] {
+            continue;
+        }
+        let base = levels[key];
+        let amount = u32::from(name_base[left].min(name_base[right])).min(base);
+        levels[key] = base.saturating_add(amount);
+        boosted[key] = true;
+        boosts[key] = Some(SkillBoost::SlotBoost { base, boost: amount });
     }
 }
 
@@ -719,6 +768,10 @@ mod tests {
                 .iter()
                 .all(|entry| !(entry.key < 25 && matches!(entry.boost, Some(SkillBoost::LastBoost(_)))))
         );
+        // 分身重跑非身份 `b6()`：未分配的技能键会被抬到 4 级，且不会追加任何武器技能。
+        let clone_skills = rinick.rinick_clone_skills.as_ref().expect("identity build should snapshot clone skills");
+        assert!(clone_skills.entries.iter().all(|entry| entry.key < 44));
+        assert!(clone_skills.entries.iter().any(|entry| entry.level == 4 && !entry.boosted));
     }
 
     #[test]

@@ -302,6 +302,11 @@ impl PreparedBattleInit {
         let mut template = Self::template_from_namerena_player(player, player.id, team, skills.clone());
         template.kind = kind;
         template.clone_build = Some(clone_build);
+        template.rinick_revive_attrs = player.rinick_revive_attrs;
+        template.rinick_clone_skills = player
+            .rinick_clone_skills
+            .as_ref()
+            .map(|clone_skills| skill_import.import_namerena(clone_skills));
 
         let shadow_blueprint = (!lazy_blueprints)
             .then(|| registry.skill_id_by_export_name(BuiltinActiveSkill::Shadow.export_name()))

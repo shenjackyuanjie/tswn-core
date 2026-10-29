@@ -74,6 +74,11 @@ impl CombatRuntime {
         #[cfg(not(feature = "no_debug"))]
         let action_rng_before = RngCheckpoint::from_rc4(&self.rng);
         let smart = self.roll_actor_smart(action.actor);
+        if legacy_plain_action {
+            // 属性修改器身份的 `RinickModifierPreAction` 在行动前静默清除负向状态，
+            // 被清掉的狂暴等状态无法再强制本次行动。
+            self.run_plain_rinick_modifier_pre_action(action.actor, &mut updates);
+        }
         let plain_skill_pre_action = legacy_plain_action
             .then(|| self.run_plain_skill_pre_action_accumulator(action.actor))
             .unwrap_or_default();

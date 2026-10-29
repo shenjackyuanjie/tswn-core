@@ -533,6 +533,10 @@ impl CombatRuntime {
         if self.drain_plain_mario_reraise_into(target, updates) {
             return;
         }
+        // 属性修改器身份身上的隐身型复活技能同样登记在 10，紧跟在马里奥之后。
+        if self.drain_plain_rinick_reraise_into(target, updates) {
+            return;
+        }
         let die_skill_plan = self.scheduler.skill_hook_plan(&self.entities, &self.registry, target, ProcMask::DIE);
         self.drain_skill_hook_plan_into(&die_skill_plan, updates);
         if self.entities.get(target).is_some_and(|entity| entity.runtime.hp > 0) {
