@@ -121,6 +121,10 @@ impl CombatRuntime {
                     action.target = target.unwrap_or(action.actor);
                     action.amount = 0;
                 }
+                PreparedPlainAction::Conan { targets } => {
+                    action.target = targets.first().copied().unwrap_or(action.actor);
+                    action.amount = 0;
+                }
                 PreparedPlainAction::BuiltinSkill(prepared) => {
                     if forced_pre_action_skill {
                         action.target = action.actor;
@@ -184,6 +188,9 @@ impl CombatRuntime {
                 }
                 Some(PreparedPlainAction::Saitama { target }) => {
                     self.drain_plain_saitama_action_into(action.actor, target, &mut updates);
+                }
+                Some(PreparedPlainAction::Conan { targets }) => {
+                    self.drain_plain_conan_action_into(action.actor, targets, &mut updates);
                 }
                 Some(PreparedPlainAction::BuiltinSkill(_)) => {
                     unreachable!("builtin skill actions are handled before the default action branch")
@@ -490,7 +497,34 @@ impl CombatRuntime {
                 let target = self.select_plain_default_attack_target(actor, smart);
                 return Some(PreparedPlainAction::Saitama { target });
             }
+            let boss_name = self
+                .entities
+                .get(actor)
+                .unwrap_or_else(|| panic!("unknown runtime boss fallback actor: {}", actor.0))
+                .template
+                .name
+                .clone();
+            if boss_name == "conan" {
+                let targets = self.select_plain_conan_targets(actor);
+                if targets.is_empty() {
+                    return None;
+                }
+                return Some(PreparedPlainAction::Conan { targets });
+            }
             let target = self.select_plain_default_attack_target(actor, smart)?;
+            // SklAttack 在 smart、魔法高于攻击且扫描技能后蓝量足够时改走魔法攻击。
+            if crate::namerena::boss_uses_skill_attack(&boss_name) && smart && magic > attack {
+                let magic_cost = (magic - attack) >> 2;
+                let mp_after_skill_scan = if can_scan_skills { mp_before - req_mp } else { mp_before };
+                if mp_after_skill_scan >= magic_cost {
+                    self.entities.get_mut(actor).unwrap().runtime.magic_point -= magic_cost;
+                    return Some(PreparedPlainAction::BasicAttack {
+                        target,
+                        use_magic: true,
+                        amount: magic,
+                    });
+                }
+            }
             return Some(PreparedPlainAction::BasicAttack {
                 target,
                 use_magic: false,

@@ -77,6 +77,9 @@ pub enum PreparedPlainAction {
     Saitama {
         target: Option<EntityIdx>,
     },
+    Conan {
+        targets: PreparedTargetList,
+    },
     BuiltinSkill(PreparedBuiltinSkillAction),
     BossSkill(PreparedBossSkillAction),
 }

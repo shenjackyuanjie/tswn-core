@@ -96,6 +96,18 @@ fn advance_until_next_u8_below(runtime: &mut CombatRuntime, max: u8) {
 
 fn messages_of(updates: &RunUpdates) -> Vec<String> { updates.updates.iter().map(|update| update.message.to_string()).collect() }
 
+/// 推进 RNG，直到 Boss `k4` 扫描依次消耗的 r127 都不通过概率。
+fn advance_until_boss_scan_misses(runtime: &mut CombatRuntime, levels: &[u32]) {
+    loop {
+        let mut probe = runtime.rng.clone();
+        probe.next_u8();
+        if levels.iter().all(|&level| probe.r127() >= level) {
+            break;
+        }
+        runtime.rng.next_u8();
+    }
+}
+
 #[test]
 fn boss_scan_saitama_only_burns_one_probe_byte() {
     let mut runtime = boss_runtime("saitama");
@@ -280,6 +292,226 @@ fn boss_yuri_control_charms_with_initial_group_floor_and_stacks_on_recharm() {
             .and_then(StateEntry::charm_value),
         Some((0, Some(0), Some(0), Some(5), 3))
     );
+}
+
+#[test]
+fn boss_skill_attack_uses_magic_only_for_aokiji_and_ikaruga() {
+    for (name, levels) in [("aokiji", &[70u32, 80][..]), ("ikaruga", &[48][..])] {
+        let mut runtime = boss_runtime(name);
+        {
+            let boss = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+            boss.runtime.attack = 100;
+            boss.runtime.magic = 1000;
+            boss.runtime.magic_point = 500;
+        }
+        advance_until_boss_scan_misses(&mut runtime, levels);
+        let mut probe = runtime.rng.clone();
+        let req_mp = (probe.next_u8() & 15) as i32 + 8;
+        let pre_action = runtime.run_plain_skill_pre_action_accumulator(EntityIdx(0));
+        let prepared = runtime
+            .prepare_plain_action(EntityIdx(0), true, pre_action)
+            .expect("boss fallback should produce an action");
+        let PreparedPlainAction::BasicAttack {
+            use_magic,
+            amount,
+            target,
+        } = prepared
+        else {
+            panic!("{name} should fall back to SklAttack: {prepared:?}");
+        };
+        assert!(use_magic, "{name} should use magic when smart and mp allows");
+        assert_eq!(amount, 1000);
+        assert_ne!(target, EntityIdx(0));
+        let magic_cost = (1000 - 100) >> 2;
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().runtime.magic_point,
+            500 - req_mp - magic_cost
+        );
+    }
+}
+
+#[test]
+fn boss_skill_attack_stays_physical_without_smart_or_mp() {
+    for (name, levels) in [("aokiji", &[70u32, 80][..]), ("ikaruga", &[48][..])] {
+        let mut runtime = boss_runtime(name);
+        {
+            let boss = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+            boss.runtime.attack = 100;
+            boss.runtime.magic = 1000;
+            boss.runtime.magic_point = 500;
+        }
+        advance_until_boss_scan_misses(&mut runtime, levels);
+        let mut probe = runtime.rng.clone();
+        let req_mp = (probe.next_u8() & 15) as i32 + 8;
+        let pre_action = runtime.run_plain_skill_pre_action_accumulator(EntityIdx(0));
+        let prepared = runtime
+            .prepare_plain_action(EntityIdx(0), false, pre_action)
+            .expect("boss fallback should produce an action");
+        assert!(
+            matches!(
+                prepared,
+                PreparedPlainAction::BasicAttack {
+                    use_magic: false,
+                    amount: 100,
+                    ..
+                }
+            ),
+            "{name} without smart should stay physical: {prepared:?}"
+        );
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.magic_point, 500 - req_mp);
+
+        let mut runtime = boss_runtime(name);
+        {
+            let boss = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+            boss.runtime.attack = 100;
+            boss.runtime.magic = 1000;
+            boss.runtime.magic_point = (1000 - 100) >> 2;
+        }
+        advance_until_boss_scan_misses(&mut runtime, levels);
+        let pre_action = runtime.run_plain_skill_pre_action_accumulator(EntityIdx(0));
+        let prepared = runtime
+            .prepare_plain_action(EntityIdx(0), true, pre_action)
+            .expect("boss fallback should produce an action");
+        assert!(
+            matches!(
+                prepared,
+                PreparedPlainAction::BasicAttack {
+                    use_magic: false,
+                    amount: 100,
+                    ..
+                }
+            ),
+            "{name} without enough mp should stay physical: {prepared:?}"
+        );
+    }
+}
+
+/// 柯南 Boss 使用固定 4 目标的 smart 选敌，并跳过召唤物。
+fn conan_runtime(heroes: usize, minions: usize) -> CombatRuntime {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let boss_kind = builder
+        .register_player_kind_with_policies(
+            "core",
+            "boss",
+            "core.boss",
+            PlayerKindFlags::BOSS,
+            PlayerKindPolicies::default(),
+        )
+        .expect("boss kind should register");
+    let minion_kind = builder
+        .register_player_kind_with_policies(
+            "core",
+            "minion",
+            "core.minion",
+            PlayerKindFlags::MINION | PlayerKindFlags::COMBAT_MINION,
+            PlayerKindPolicies::default(),
+        )
+        .expect("minion kind should register");
+    let mut templates = vec![PlayerTemplate::with_kind(1, "conan", boss_kind, 0, 1000, 3)];
+    for index in 0..heroes {
+        templates.push(PlayerTemplate::new(2 + index, format!("hero-{index}"), 1, 100, 3));
+    }
+    for index in 0..minions {
+        templates.push(PlayerTemplate::with_kind(2 + heroes + index, "summon", minion_kind, 1, 100, 3));
+    }
+    CombatRuntime::from_template(PreparedCombatTemplate::with_registry(templates, builder.build()))
+}
+
+#[test]
+fn boss_conan_kills_first_multi_target_and_charges_speed_by_group_size() {
+    let mut runtime = conan_runtime(2, 0);
+    let targets = runtime.select_plain_conan_targets(EntityIdx(0));
+    assert_eq!(targets.len(), 2, "conan should sample up to four targets");
+    let first = targets[0];
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_plain_conan_action_into(EntityIdx(0), targets, &mut updates);
+
+    let victim = runtime.entities.get(first).unwrap();
+    assert_eq!(victim.runtime.hp, 0);
+    assert!(!victim.runtime.alive);
+    assert_eq!(
+        messages_of(&updates),
+        [
+            get_lang(keys::SKL_CONAN_KILL).to_owned(),
+            "\n".to_owned(),
+            "[1]被击倒了".to_owned()
+        ]
+    );
+    assert_eq!(updates.updates[0].score, 180);
+    assert_eq!(updates.updates[0].target, first.0 as usize);
+    let conan = runtime.entities.get(EntityIdx(0)).unwrap();
+    assert_eq!(conan.runtime.conan_thinking, Some(1));
+    assert_eq!(conan.runtime.move_state.speed_points, 1000);
+}
+
+#[test]
+fn boss_conan_single_target_thinks_once_before_final_kill() {
+    let mut runtime = conan_runtime(1, 0);
+    let targets = runtime.select_plain_conan_targets(EntityIdx(0));
+    assert_eq!(targets.as_slice(), &[EntityIdx(1)]);
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_plain_conan_action_into(EntityIdx(0), targets, &mut updates);
+
+    assert_eq!(
+        messages_of(&updates),
+        [
+            get_lang(keys::SKL_CONAN_KILL_UNKNOWN).to_owned(),
+            "\n".to_owned(),
+            get_lang(keys::SKL_CONAN_THINKING).to_owned(),
+        ]
+    );
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.conan_thinking, Some(0));
+    assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 100);
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points, 0);
+
+    updates.reset();
+    let targets = runtime.select_plain_conan_targets(EntityIdx(0));
+    runtime.drain_plain_conan_action_into(EntityIdx(0), targets, &mut updates);
+
+    let messages = messages_of(&updates);
+    assert_eq!(messages[0], get_lang(keys::SKL_CONAN_THINKING_FINISH));
+    assert_eq!(messages[1], get_lang(keys::SKL_CONAN_THINKING_FINISH2));
+    assert_eq!(messages[2], get_lang(keys::SKL_CONAN_THINKING_FINISH3));
+    assert_eq!(messages[3], get_lang(keys::SKL_CONAN_KILL_LAST));
+    assert_eq!(messages[4], "\n");
+    assert_eq!(messages[5], "[1]被击倒了");
+    assert_eq!(updates.updates[1].delay1, 2000);
+    assert_eq!(updates.updates[3].score, 180);
+    assert_eq!(updates.updates[3].target, 1);
+    let victim = runtime.entities.get(EntityIdx(1)).unwrap();
+    assert_eq!(victim.runtime.hp, 0);
+    assert!(!victim.runtime.alive);
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.conan_thinking, Some(0));
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points, 0);
+}
+
+#[test]
+fn boss_conan_target_selection_skips_minions() {
+    let mut runtime = conan_runtime(1, 1);
+    for _ in 0..40 {
+        let targets = runtime.select_plain_conan_targets(EntityIdx(0));
+        assert_eq!(
+            targets.as_slice(),
+            &[EntityIdx(1)],
+            "only the hero should be selectable: {targets:?}"
+        );
+        runtime.rng.next_u8();
+    }
+}
+
+#[test]
+fn boss_prepare_routes_conan_to_custom_action() {
+    let mut runtime = conan_runtime(2, 0);
+    let pre_action = runtime.run_plain_skill_pre_action_accumulator(EntityIdx(0));
+    let prepared = runtime
+        .prepare_plain_action(EntityIdx(0), true, pre_action)
+        .expect("conan fallback should produce an action");
+    match prepared {
+        PreparedPlainAction::Conan { targets } => assert_eq!(targets.len(), 2),
+        other => panic!("conan should route to its custom action: {other:?}"),
+    }
 }
 
 #[test]

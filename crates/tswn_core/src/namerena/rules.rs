@@ -113,6 +113,9 @@ pub fn boost_value(name: &str) -> u32 {
     }
 }
 
+/// 0.5.5 中 `k3` 使用 `SklAttack` 的 Boss；它们的默认攻击可以走魔法分支。
+pub fn boss_uses_skill_attack(name: &str) -> bool { matches!(name, "aokiji" | "ikaruga") }
+
 pub fn boss_action_prob_count(name: &str) -> usize {
     match name {
         "covid" | "lazy" | "testsubject" => 0,
@@ -255,6 +258,16 @@ mod tests {
         for name in ["conan", "covid", "lazy", "slime", "testsubject", "unknown"] {
             assert!(boss_action_skills(name).is_empty(), "{name} 的 k4 应为空");
         }
+    }
+
+    #[test]
+    fn boss_uses_skill_attack_only_for_aokiji_and_ikaruga() {
+        assert!(boss_uses_skill_attack("aokiji"));
+        assert!(boss_uses_skill_attack("ikaruga"));
+        for name in BOSS_NAMES.iter().copied().filter(|name| !matches!(*name, "aokiji" | "ikaruga")) {
+            assert!(!boss_uses_skill_attack(name), "{name} 的 k3 不是 SklAttack");
+        }
+        assert!(!boss_uses_skill_attack("unknown"));
     }
 
     #[test]

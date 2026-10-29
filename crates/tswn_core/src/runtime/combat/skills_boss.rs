@@ -207,6 +207,170 @@ impl CombatRuntime {
         }
     }
 
+    /// `SklConan` 的目标选择：`gb8()` 让 smart 路径抽样 4 个目标，并排除召唤物。
+    ///
+    /// 抽到召唤物只计入无效次数，与 0.5.5 的 `as()` 过滤一致；
+    /// 重复或无效次数超过上限时提前返回当前结果。
+    pub fn select_plain_conan_targets(&mut self, actor: EntityIdx) -> PreparedTargetList {
+        let select_count = 4usize;
+        let actor_team = self.plain_effective_team(actor);
+        let all_alive = self.world.flat_alive();
+        if all_alive.is_empty() {
+            return PreparedTargetList::new();
+        }
+        let ally_skip_indices = all_alive
+            .iter()
+            .enumerate()
+            .filter_map(|(index, candidate)| {
+                self.entities
+                    .get(*candidate)
+                    .is_some_and(|entity| entity.runtime.team == actor_team)
+                    .then_some(index)
+            })
+            .collect::<smallvec::SmallVec<[usize; 8]>>();
+        let mut selected = smallvec::SmallVec::<[EntityIdx; 8]>::new();
+        let mut duplicate_count = 0usize;
+        let mut invalid_count = -(select_count as i32);
+        while duplicate_count <= select_count && invalid_count <= select_count as i32 {
+            let picked = if ally_skip_indices.is_empty() {
+                self.rng.pick(all_alive)
+            } else {
+                self.rng.pick_skip_range(all_alive, &ally_skip_indices)
+            };
+            let Some(picked) = picked else {
+                return PreparedTargetList::new();
+            };
+            let target = all_alive[picked];
+            if self.entities.get(target).is_some_and(|entity| entity.runtime.is_minion()) {
+                invalid_count += 1;
+                continue;
+            }
+            if selected.contains(&target) {
+                duplicate_count += 1;
+                continue;
+            }
+            selected.push(target);
+            if selected.len() >= select_count {
+                break;
+            }
+        }
+        if selected.is_empty() {
+            return PreparedTargetList::new();
+        }
+        let mut scored = selected
+            .into_iter()
+            .map(|target| (target, self.score_plain_default_enemy_target(target, true)))
+            .collect::<smallvec::SmallVec<[(EntityIdx, f64); 8]>>();
+        scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored.into_iter().map(|(target, _)| target).collect()
+    }
+
+    fn set_conan_thinking(&mut self, actor: EntityIdx, value: i32) {
+        let entity = self
+            .entities
+            .get_mut(actor)
+            .unwrap_or_else(|| panic!("unknown runtime conan actor: {}", actor.0));
+        assert!(
+            entity.runtime.conan_thinking.is_some(),
+            "runtime conan thinking state disappeared"
+        );
+        entity.runtime.conan_thinking = Some(value);
+    }
+
+    /// `SklConan`：先推理再秒杀，单目标行动会推进推理阶段。
+    ///
+    /// `fx` 初始为 -1。单目标且处于 -1 时先提示发现尸体并转入推理；
+    /// 推理期间每回合只输出消息；归零后把目标的当前血量直接清零并走死亡链。
+    /// 击杀后自身速度按目标队伍剩余人数增加，最多 3000。
+    pub fn drain_plain_conan_action_into(&mut self, actor: EntityIdx, targets: PreparedTargetList, updates: &mut RunUpdates) {
+        let Some(&target) = targets.first() else {
+            return;
+        };
+        let mut thinking = self
+            .entities
+            .get(actor)
+            .and_then(|entity| entity.runtime.conan_thinking)
+            .unwrap_or_else(|| panic!("runtime conan actor lacks thinking state: {}", actor.0));
+        if thinking == -1 && targets.len() == 1 {
+            thinking = 1;
+            self.set_conan_thinking(actor, thinking);
+            updates.add(RunUpdate::new_lang(
+                keys::SKL_CONAN_KILL_UNKNOWN,
+                actor.0 as usize,
+                actor.0 as usize,
+                0,
+            ));
+            updates.add_newline();
+        }
+        if thinking > 0 {
+            self.set_conan_thinking(actor, thinking - 1);
+            updates.add(RunUpdate::new_lang(
+                keys::SKL_CONAN_THINKING,
+                actor.0 as usize,
+                actor.0 as usize,
+                0,
+            ));
+            return;
+        }
+
+        let old_hp = self
+            .entities
+            .get(target)
+            .unwrap_or_else(|| panic!("unknown runtime conan target: {}", target.0))
+            .runtime
+            .hp;
+        self.entities
+            .get_mut(target)
+            .unwrap_or_else(|| panic!("unknown runtime conan target: {}", target.0))
+            .runtime
+            .hp = 0;
+        let kill_score = (old_hp + 80).max(0) as u32;
+        if targets.len() == 1 && thinking == 0 {
+            updates.add(RunUpdate::new_lang(
+                keys::SKL_CONAN_THINKING_FINISH,
+                actor.0 as usize,
+                actor.0 as usize,
+                0,
+            ));
+            let mut only_truth = RunUpdate::new_lang(keys::SKL_CONAN_THINKING_FINISH2, actor.0 as usize, actor.0 as usize, 0);
+            only_truth.delay1 = 2000;
+            updates.add(only_truth);
+            updates.add(RunUpdate::new_lang(
+                keys::SKL_CONAN_THINKING_FINISH3,
+                actor.0 as usize,
+                actor.0 as usize,
+                0,
+            ));
+            updates.add(RunUpdate::new_lang(
+                keys::SKL_CONAN_KILL_LAST,
+                actor.0 as usize,
+                target.0 as usize,
+                kill_score,
+            ));
+        } else {
+            self.set_conan_thinking(actor, 1);
+            updates.add(RunUpdate::new_lang(
+                keys::SKL_CONAN_KILL,
+                actor.0 as usize,
+                target.0 as usize,
+                kill_score,
+            ));
+        }
+        let target_team = self
+            .entities
+            .get(target)
+            .unwrap_or_else(|| panic!("unknown runtime conan target: {}", target.0))
+            .runtime
+            .team;
+        self.drain_plain_lethal_damage_into(actor, target, updates);
+        let group_alive = self.world.team_alive(target_team).map_or(0, |alive| alive.len()) as i32;
+        let entity = self
+            .entities
+            .get_mut(actor)
+            .unwrap_or_else(|| panic!("unknown runtime conan actor: {}", actor.0));
+        entity.runtime.move_state.speed_points = (entity.runtime.move_state.speed_points + group_alive * 1000).min(3000);
+    }
+
     /// `SklMarioGet`：按成长次数依次发放蘑菇、火焰花和奖命蘑菇。
     ///
     /// 成长层数与火球术等级保存在 `MarioBoss` 载荷中；离散状态清除会连同

@@ -156,6 +156,8 @@ pub struct PlayerRuntime {
     pub death_note_mark: Option<EntityIdx>,
     /// 马里奥 Boss 的复活次数；0.5.5 存在技能实例上，不随离散状态清除。
     pub mario_reraise_lives: Option<u32>,
+    /// 柯南 Boss 的推理计数；0.5.5 保存在 `SklConan` 实例上，初始为 -1。
+    pub conan_thinking: Option<i32>,
     pub corpse: RuntimeCorpseKind,
 }
 
@@ -178,6 +180,7 @@ impl PlayerRuntime {
                 .map(|level| WeaponS11Runtime { level, durability: 3 })
         });
         let mario_reraise_lives = (flags.contains(PlayerKindFlags::BOSS) && template.name == "mario").then_some(3);
+        let conan_thinking = (flags.contains(PlayerKindFlags::BOSS) && template.name == "conan").then_some(-1);
         Self {
             hp: template.max_hp,
             alive: true,
@@ -215,6 +218,7 @@ impl PlayerRuntime {
             weapon_s11,
             death_note_mark: None,
             mario_reraise_lives,
+            conan_thinking,
             corpse: RuntimeCorpseKind::None,
         }
     }
@@ -264,6 +268,7 @@ impl PlayerRuntime {
         self.weapon_s11 = None;
         self.death_note_mark = None;
         self.mario_reraise_lives = None;
+        self.conan_thinking = None;
         self.corpse = RuntimeCorpseKind::None;
     }
 
@@ -306,6 +311,7 @@ impl PlayerRuntime {
         self.weapon_s11 = prepared.weapon_s11;
         self.death_note_mark = prepared.death_note_mark;
         self.mario_reraise_lives = prepared.mario_reraise_lives;
+        self.conan_thinking = prepared.conan_thinking;
         self.corpse = prepared.corpse;
     }
 
