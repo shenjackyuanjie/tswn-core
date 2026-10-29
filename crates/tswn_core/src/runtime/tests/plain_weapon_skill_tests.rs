@@ -1,5 +1,7 @@
 use super::*;
 
+use crate::runtime::lang::{get_lang, keys};
+
 fn weapon_registry() -> (ExtensionRegistry, SkillId, SkillId, SkillId) {
     let mut builder = ExtensionRegistryBuilder::default();
     let s11 = builder
@@ -599,4 +601,327 @@ fn gui_yue_permanent_charge_stays_active_without_attack_boost() {
     assert_eq!(owner.runtime.accumulate.charge_bonus(), 1.0);
     // 聚气自身的 +0.7 与常驻 charge 的 +1.0 相加；桂月标记不提供 charge 的 ×3。
     assert_eq!(owner.runtime.at_boost_millionths, 2_700_000);
+}
+
+fn rinick_weapon_registry() -> (ExtensionRegistry, SkillId, SkillId) {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let ice_age = builder
+        .register_skill(
+            "core",
+            "weapon-rinick-ice-age",
+            DEFAULT_CORE_WEAPON_RINICK_ICE_AGE_SKILL_EXPORT,
+            TargetPolicy::Enemy,
+            SkillPriority(47),
+        )
+        .expect("rinick ice age weapon skill should register");
+    let yuri_control = builder
+        .register_skill(
+            "core",
+            "weapon-rinick-yuri-control",
+            DEFAULT_CORE_WEAPON_RINICK_YURI_CONTROL_SKILL_EXPORT,
+            TargetPolicy::Enemy,
+            SkillPriority(48),
+        )
+        .expect("rinick yuri control weapon skill should register");
+    builder
+        .register_state(
+            "core",
+            "charm",
+            DEFAULT_CORE_CHARM_STATE_EXPORT,
+            ProcMask::POST_ACTION,
+            SkillPriority(210),
+        )
+        .expect("charm state should register");
+    (builder.build(), ice_age, yuri_control)
+}
+
+fn rinick_weapon_runtime(skill: SkillId) -> CombatRuntime {
+    let (registry, _, _) = rinick_weapon_registry();
+    CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "left", 0, 1000, 10)
+                .with_magic(1_000_000)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(skill, 20)])),
+            PlayerTemplate::new(2, "right", 1, 1000, 10),
+        ],
+        registry,
+    ))
+}
+
+#[test]
+fn rinick_ice_age_scan_uses_quake_target_window_and_drains_magic_damage() {
+    let (_, ice_age, _) = rinick_weapon_registry();
+    let mut runtime = rinick_weapon_runtime(ice_age);
+    tune_weapon_rng(&mut runtime, |rng| (rng.r127() < 20).then_some(()));
+
+    let mut expected_rng = runtime.rng.clone();
+    let _ = expected_rng.r127();
+    let prepared = runtime
+        .scan_plain_action_skill_probabilities(EntityIdx(0), false)
+        .expect("rinick ice age should be selected");
+    assert_eq!(prepared.selected.skill, BuiltinActiveSkill::RinickIceAge);
+
+    let mut reference = rinick_weapon_runtime(ice_age);
+    reference.rng = expected_rng;
+    let expected_targets = reference.select_plain_default_enemy_targets_with_count(EntityIdx(0), false, 5);
+    assert_eq!(prepared.targets, expected_targets);
+    assert_rng_state_eq(&runtime.rng, &reference.rng);
+
+    let mut updates = RunUpdates::new();
+    runtime.drain_plain_builtin_skill_into(EntityIdx(0), prepared, &mut updates);
+    assert!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp < 1000);
+}
+
+#[test]
+fn rinick_yuri_control_scan_selects_enemy_and_charms_through_builtin_drain() {
+    let (_, _, yuri_control) = rinick_weapon_registry();
+    let mut runtime = rinick_weapon_runtime(yuri_control);
+    tune_weapon_rng(&mut runtime, |rng| (rng.r127() < 20).then_some(()));
+
+    let mut expected_rng = runtime.rng.clone();
+    let _ = expected_rng.r127();
+    let prepared = runtime
+        .scan_plain_action_skill_probabilities(EntityIdx(0), false)
+        .expect("rinick yuri control should be selected");
+    assert_eq!(prepared.selected.skill, BuiltinActiveSkill::RinickYuriControl);
+
+    let mut reference = rinick_weapon_runtime(yuri_control);
+    reference.rng = expected_rng;
+    let expected_targets = reference.select_plain_yuri_control_targets(EntityIdx(0), false);
+    assert_eq!(prepared.targets, expected_targets);
+    assert_rng_state_eq(&runtime.rng, &reference.rng);
+
+    let target = prepared.targets[0];
+    let mut updates = RunUpdates::new();
+    runtime.drain_plain_builtin_skill_into(EntityIdx(0), prepared, &mut updates);
+    assert_eq!(
+        runtime
+            .entities
+            .get(target)
+            .unwrap()
+            .states
+            .entry(PLAIN_CHARM_STATE_KEY)
+            .and_then(StateEntry::charm_value),
+        Some((0, Some(0), Some(0), Some(target.0), 3))
+    );
+    assert_eq!(updates.updates[0].message, get_lang(keys::SKL_YURI_CONTROL));
+}
+
+fn rinick_identity_registry() -> ExtensionRegistry {
+    let mut builder = ExtensionRegistryBuilder::default();
+    builder
+        .register_player_kind_with_policies(
+            "core",
+            "clone",
+            DEFAULT_CORE_CLONE_KIND_EXPORT,
+            PlayerKindFlags::MINION,
+            PlayerKindPolicies::default(),
+        )
+        .expect("clone kind should register");
+    builder
+        .reserve_entity_slot("core", "minion-counter", DEFAULT_CORE_MINION_COUNTER_ENTITY_EXPORT)
+        .expect("minion counter slot should register");
+    builder.build()
+}
+
+fn rinick_identity_template(id: PlrId, name: &str, team: usize, raw: [u32; 8]) -> PlayerTemplate {
+    let mut template = PlayerTemplate::new(id, name, team, raw[7] as i32, 10)
+        .with_display_name(format!("{name}@Rinick"))
+        .with_skill_loadout(SkillLoadout::default());
+    template.rinick_revive_attrs = Some(raw);
+    template.clone_build = Some(clone_build_with_attrs(raw));
+    template.rinick_clone_skills = Some(SkillLoadout::default());
+    template
+}
+
+#[test]
+fn rinick_pre_action_clears_negative_states_and_prefixes_use_message() {
+    let registry = rinick_identity_registry();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            rinick_identity_template(1, "rinick", 0, [80, 80, 80, 80, 80, 80, 80, 400]),
+            PlayerTemplate::new(2, "right", 1, 100, 10),
+        ],
+        registry,
+    ));
+    let actor = EntityIdx(0);
+    {
+        let entity = runtime.entities.get_mut(actor).unwrap();
+        assert!(entity.states.add_entry(StateEntry::berserk(PLAIN_BERSERK_STATE_KEY, 2)));
+        assert!(entity.states.add_entry(StateEntry::ice(PLAIN_ICE_STATE_KEY, 2)));
+        assert!(entity.states.add_entry(StateEntry::fire_mag(PLAIN_FIRE_STATE_KEY, 2)));
+    }
+    let mut updates = RunUpdates::new();
+
+    runtime.run_plain_rinick_modifier_pre_action(actor, &mut updates);
+
+    let entity = runtime.entities.get(actor).unwrap();
+    assert!(entity.states.entry(PLAIN_BERSERK_STATE_KEY).is_none());
+    assert!(entity.states.entry(PLAIN_ICE_STATE_KEY).is_none());
+    assert!(entity.states.entry(PLAIN_FIRE_STATE_KEY).is_none());
+    assert_eq!(
+        updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
+        vec![
+            get_lang(keys::WEAPON_R_MODIFIER_USE),
+            "\n",
+            "[1]从[狂暴]中解除",
+            "\n",
+            "[1]从[冰冻]中解除",
+            "\n",
+        ]
+    );
+    assert_eq!(updates.updates[0].score, 60);
+}
+
+#[test]
+fn rinick_pre_action_clears_fire_silently_without_updates() {
+    let registry = rinick_identity_registry();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![rinick_identity_template(1, "rinick", 0, [80, 80, 80, 80, 80, 80, 80, 400])],
+        registry,
+    ));
+    let actor = EntityIdx(0);
+    assert!(
+        runtime
+            .entities
+            .get_mut(actor)
+            .unwrap()
+            .states
+            .add_entry(StateEntry::fire_mag(PLAIN_FIRE_STATE_KEY, 2))
+    );
+    let mut updates = RunUpdates::new();
+
+    runtime.run_plain_rinick_modifier_pre_action(actor, &mut updates);
+
+    assert!(runtime.entities.get(actor).unwrap().states.entry(PLAIN_FIRE_STATE_KEY).is_none());
+    assert!(updates.updates.is_empty());
+}
+
+#[test]
+fn rinick_reraise_rebuilds_floored_attrs_and_consumes_one_life() {
+    let registry = rinick_identity_registry();
+    let raw = [20, 30, 40, 50, 60, 70, 80, 400];
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            rinick_identity_template(1, "rinick", 0, raw),
+            PlayerTemplate::new(2, "right", 1, 100, 10),
+        ],
+        registry,
+    ));
+    let target = EntityIdx(0);
+    {
+        let entity = runtime.entities.get_mut(target).unwrap();
+        entity.runtime.hp = 0;
+        assert!(entity.states.add_entry(StateEntry::ice(PLAIN_ICE_STATE_KEY, 2)));
+    }
+    let mut updates = RunUpdates::new();
+
+    assert!(runtime.drain_plain_rinick_reraise_into(target, &mut updates));
+
+    let entity = runtime.entities.get(target).unwrap();
+    assert_eq!(entity.runtime.rinick_reraise_lives, Some(1));
+    // 不重跑武器 `cs()`，体力上限保持名字推导值，不再被 324 地板抬高。
+    assert_eq!(entity.template.max_hp, 400);
+    assert_eq!(entity.runtime.hp, 400);
+    // 前七围被 `ar` 抬到 63，面板写成固定值；未触底的属性按名字系数缩放。
+    assert_eq!(entity.template.attack, 63);
+    assert_eq!(entity.template.defense, 63);
+    assert_eq!(entity.template.speed, 223);
+    assert_eq!(entity.template.agility, 63);
+    assert_eq!(entity.template.magic, 63);
+    assert_eq!(entity.template.resistance, 70);
+    assert_eq!(entity.template.wisdom, 80);
+    assert_eq!(entity.template.magic_point, 40);
+    assert_eq!(entity.runtime.magic_point, 40);
+    assert_eq!(entity.runtime.attr_sum, 63 * 5 + 70 + 80);
+    assert_eq!(entity.runtime.atk_sum, (63 - 63 + 63 + 63 - 70) * 2 + 63 + 80);
+    assert_eq!(entity.states.entry(PLAIN_ICE_STATE_KEY), None);
+    // 两人局不存在人数劣势，不会召唤分身。
+    assert_eq!(runtime.entities.len(), 2);
+    assert_eq!(
+        updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
+        vec![get_lang(keys::BOSS_MARIO_REVIVE), get_lang(keys::BOSS_MARIO_LIFE)]
+    );
+    assert_eq!(updates.updates[0].delay0, 3000);
+    assert_eq!(updates.updates[1].param, Some(1));
+}
+
+#[test]
+fn rinick_reraise_with_last_life_stays_dead() {
+    let registry = rinick_identity_registry();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![rinick_identity_template(1, "rinick", 0, [80, 80, 80, 80, 80, 80, 80, 400])],
+        registry,
+    ));
+    let target = EntityIdx(0);
+    {
+        let entity = runtime.entities.get_mut(target).unwrap();
+        entity.runtime.hp = 0;
+        entity.runtime.rinick_reraise_lives = Some(1);
+    }
+    let mut updates = RunUpdates::new();
+
+    assert!(!runtime.drain_plain_rinick_reraise_into(target, &mut updates));
+
+    let entity = runtime.entities.get(target).unwrap();
+    assert_eq!(entity.runtime.rinick_reraise_lives, Some(0));
+    assert_eq!(entity.runtime.hp, 0);
+    assert!(updates.updates.is_empty());
+}
+
+#[test]
+fn rinick_reraise_spawns_clones_when_outnumbered() {
+    let registry = rinick_identity_registry();
+    let raw = [20, 30, 40, 50, 60, 70, 80, 400];
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            rinick_identity_template(1, "rinick", 0, raw),
+            PlayerTemplate::new(2, "enemy-a", 1, 100, 10),
+            PlayerTemplate::new(3, "enemy-b", 1, 100, 10),
+            PlayerTemplate::new(4, "enemy-c", 1, 100, 10),
+            PlayerTemplate::new(5, "enemy-d", 1, 100, 10),
+            PlayerTemplate::new(6, "enemy-e", 1, 100, 10),
+        ],
+        registry,
+    ));
+    let target = EntityIdx(0);
+    runtime.entities.get_mut(target).unwrap().runtime.hp = 0;
+    let mut expected_rng = runtime.rng.clone();
+    let owner_move_points = expected_rng.r255() as i32 * 4 + 1024;
+    let clone_move_points = expected_rng.r255() as i32 * 4 + 1024;
+    let mut updates = RunUpdates::new();
+
+    assert!(runtime.drain_plain_rinick_reraise_into(target, &mut updates));
+
+    assert_rng_state_eq(&runtime.rng, &expected_rng);
+    let owner = runtime.entities.get(target).unwrap();
+    assert_eq!(owner.runtime.move_state.speed_points, owner_move_points);
+    let clone = EntityIdx(6);
+    let clone_entity = runtime.entities.get(clone).expect("outnumbered revival should spawn one clone");
+    assert_eq!(clone_entity.template.name, "rinick?0");
+    assert_eq!(clone_entity.template.display_name, "rinick@Rinick");
+    assert_eq!(
+        clone_entity.runtime.kind,
+        runtime
+            .registry
+            .player_kind_id_by_export_name(DEFAULT_CORE_CLONE_KIND_EXPORT)
+            .expect("core clone kind should exist")
+    );
+    assert_eq!(clone_entity.runtime.team, 0);
+    assert_eq!(clone_entity.runtime.move_state.speed_points, clone_move_points);
+    assert_eq!(clone_entity.runtime.hp, 400);
+    assert_eq!(clone_entity.template.max_hp, 400);
+    assert_eq!(clone_entity.template.wisdom, 80);
+    assert_eq!(clone_entity.template.magic_point, 40);
+    assert_eq!(
+        updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
+        vec![
+            get_lang(keys::BOSS_MARIO_REVIVE),
+            get_lang(keys::BOSS_MARIO_LIFE),
+            "\n",
+            get_lang(keys::WEAPON_R_MODIFIER_USE),
+            "\n",
+            get_lang(keys::SKL_CLONED),
+        ]
+    );
 }

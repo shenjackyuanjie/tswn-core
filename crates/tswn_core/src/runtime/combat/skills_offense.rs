@@ -120,6 +120,13 @@ impl CombatRuntime {
             BuiltinActiveSkill::WeaponDeathNote => {
                 self.drain_plain_weapon_death_note_skill_into(actor, updates);
             }
+            BuiltinActiveSkill::RinickIceAge => {
+                self.drain_plain_boss_ice_age_into(actor, prepared.targets, updates);
+            }
+            BuiltinActiveSkill::RinickYuriControl => {
+                let target = prepared.targets[0];
+                self.drain_plain_yuri_control_into(actor, target, updates);
+            }
             BuiltinActiveSkill::WeaponXuanYue => {
                 unreachable!("runtime weapon xuan-yue skill never enters the action scan");
             }

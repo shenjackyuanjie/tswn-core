@@ -144,6 +144,8 @@ fn skills_to_json(skills: &SkillLoadoutSpec, context: SkillExportContext) -> Str
                 | BuiltinSkillRef::WeaponS11
                 | BuiltinSkillRef::WeaponDeathNote
                 | BuiltinSkillRef::WeaponXuanYue
+                | BuiltinSkillRef::RinickIceAge
+                | BuiltinSkillRef::RinickYuriControl
         ) {
             continue;
         }
@@ -166,7 +168,9 @@ fn skill_export_name(entry: &SkillEntrySpec, context: SkillExportContext) -> Str
             BuiltinSkillRef::SummonShareDamage
             | BuiltinSkillRef::WeaponS11
             | BuiltinSkillRef::WeaponDeathNote
-            | BuiltinSkillRef::WeaponXuanYue => unreachable!(),
+            | BuiltinSkillRef::WeaponXuanYue
+            | BuiltinSkillRef::RinickIceAge
+            | BuiltinSkillRef::RinickYuriControl => unreachable!(),
         }),
         SkillExportContext::SummonMinion => {
             classified_summon_minion_skill_name_for_export(entry.key).unwrap_or_else(|| match entry.skill {
@@ -177,7 +181,9 @@ fn skill_export_name(entry: &SkillEntrySpec, context: SkillExportContext) -> Str
                 BuiltinSkillRef::SummonShareDamage
                 | BuiltinSkillRef::WeaponS11
                 | BuiltinSkillRef::WeaponDeathNote
-                | BuiltinSkillRef::WeaponXuanYue => unreachable!(),
+                | BuiltinSkillRef::WeaponXuanYue
+                | BuiltinSkillRef::RinickIceAge
+                | BuiltinSkillRef::RinickYuriControl => unreachable!(),
             })
         }
         SkillExportContext::GenericMinion => match entry.skill {
@@ -188,7 +194,9 @@ fn skill_export_name(entry: &SkillEntrySpec, context: SkillExportContext) -> Str
             BuiltinSkillRef::SummonShareDamage
             | BuiltinSkillRef::WeaponS11
             | BuiltinSkillRef::WeaponDeathNote
-            | BuiltinSkillRef::WeaponXuanYue => unreachable!(),
+            | BuiltinSkillRef::WeaponXuanYue
+            | BuiltinSkillRef::RinickIceAge
+            | BuiltinSkillRef::RinickYuriControl => unreachable!(),
         },
     }
 }

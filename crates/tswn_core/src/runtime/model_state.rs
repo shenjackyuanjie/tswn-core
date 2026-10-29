@@ -290,9 +290,9 @@ impl BattleModelState {
 
 pub const MODEL_STATE_SCHEMA_VERSION: u32 = 1;
 
-/// 编号空间固定为 1–50；当前 45 个处理器沿用注册顺序，46–50 预留。
+/// 编号空间固定为 1–50；当前 47 个处理器沿用注册顺序，48–50 预留。
 pub const MODEL_SKILL_ID_LIMIT: u32 = 50;
-pub const MODEL_SKILL_EXPORTS: [&str; 45] = [
+pub const MODEL_SKILL_EXPORTS: [&str; 47] = [
     "custom.summon",
     "custom.summon.fire",
     "custom.summon.explode",
@@ -338,6 +338,8 @@ pub const MODEL_SKILL_EXPORTS: [&str; 45] = [
     "core.weapon.s11",
     "core.weapon.death-note",
     "core.weapon.xuan-yue-counter",
+    "core.weapon.rinick-ice-age",
+    "core.weapon.rinick-yuri-control",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -74,6 +74,11 @@ impl CombatRuntime {
         #[cfg(not(feature = "no_debug"))]
         let action_rng_before = RngCheckpoint::from_rc4(&self.rng);
         let smart = self.roll_actor_smart(action.actor);
+        if legacy_plain_action {
+            // 属性修改器身份的 `RinickModifierPreAction` 在行动前静默清除负向状态，
+            // 被清掉的狂暴等状态无法再强制本次行动。
+            self.run_plain_rinick_modifier_pre_action(action.actor, &mut updates);
+        }
         let plain_skill_pre_action = legacy_plain_action
             .then(|| self.run_plain_skill_pre_action_accumulator(action.actor))
             .unwrap_or_default();
@@ -774,6 +779,11 @@ impl CombatRuntime {
                     BuiltinActiveSkill::WeaponS11 | BuiltinActiveSkill::WeaponDeathNote | BuiltinActiveSkill::WeaponXuanYue => {
                         smallvec::smallvec![]
                     }
+                    // 属性修改器追加的 Boss 技能沿用其原型的选目标口径。
+                    BuiltinActiveSkill::RinickIceAge => {
+                        self.select_plain_default_enemy_targets_with_count(actor, smart, if smart { 6 } else { 5 })
+                    }
+                    BuiltinActiveSkill::RinickYuriControl => self.select_plain_yuri_control_targets(actor, smart),
                 };
                 #[cfg(not(feature = "no_debug"))]
                 if self.probe_plain_action_matches(actor) {

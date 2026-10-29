@@ -267,6 +267,8 @@ pub fn default_custom_runtime_import_config() -> Result<CustomRuntimeImportConfi
         BuiltinActiveSkill::WeaponS11,
         BuiltinActiveSkill::WeaponDeathNote,
         BuiltinActiveSkill::WeaponXuanYue,
+        BuiltinActiveSkill::RinickIceAge,
+        BuiltinActiveSkill::RinickYuriControl,
     ] {
         builder.register_skill(
             "core",

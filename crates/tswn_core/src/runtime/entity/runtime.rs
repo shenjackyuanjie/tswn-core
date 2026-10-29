@@ -157,6 +157,8 @@ pub struct PlayerRuntime {
     pub death_note_mark: Option<EntityIdx>,
     /// 马里奥 Boss 的复活次数；0.5.5 存在技能实例上，不随离散状态清除。
     pub mario_reraise_lives: Option<u32>,
+    /// 属性修改器身份的复活次数；0.5.5 存在隐身型 `SklMarioReraise` 子类实例上。
+    pub rinick_reraise_lives: Option<u32>,
     /// 柯南 Boss 的推理计数；0.5.5 保存在 `SklConan` 实例上，初始为 -1。
     pub conan_thinking: Option<i32>,
     /// 史莱姆 Boss 的分裂代数；0 为原始 Boss，1 为第一代子体，2 起不再分裂。
@@ -222,6 +224,7 @@ impl PlayerRuntime {
             weapon_s11,
             death_note_mark: None,
             mario_reraise_lives,
+            rinick_reraise_lives: template.rinick_revive_attrs.is_some().then_some(2),
             conan_thinking,
             slime_split_generation,
             corpse: RuntimeCorpseKind::None,
@@ -273,6 +276,7 @@ impl PlayerRuntime {
         self.weapon_s11 = None;
         self.death_note_mark = None;
         self.mario_reraise_lives = None;
+        self.rinick_reraise_lives = None;
         self.conan_thinking = None;
         self.slime_split_generation = None;
         self.corpse = RuntimeCorpseKind::None;
@@ -317,6 +321,7 @@ impl PlayerRuntime {
         self.weapon_s11 = prepared.weapon_s11;
         self.death_note_mark = prepared.death_note_mark;
         self.mario_reraise_lives = prepared.mario_reraise_lives;
+        self.rinick_reraise_lives = prepared.rinick_reraise_lives;
         self.conan_thinking = prepared.conan_thinking;
         self.slime_split_generation = prepared.slime_split_generation;
         self.corpse = prepared.corpse;

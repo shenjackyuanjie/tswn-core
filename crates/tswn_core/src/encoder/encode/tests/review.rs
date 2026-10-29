@@ -336,7 +336,7 @@ fn out_of_template_lane_references_and_reserved_skills_are_rejected() {
             "case={case}"
         );
     }
-    for skill in [0, 46, 50, 51, u32::MAX] {
+    for skill in [0, 48, 50, 51, u32::MAX] {
         let mut state = review_state();
         state.entities[0].template.skills.lanes[0].skill_id = skill;
         assert!(

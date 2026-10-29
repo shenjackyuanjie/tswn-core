@@ -62,8 +62,9 @@ pub use rules::{
 pub use skill::{
     BuiltinSkillRef, CLASSIFIED_SKILL_SLOT_COUNT, ClassifiedSkillRef, PHANTOM_POSSESS_SKILL_KEY, SUMMON_EXPLODE_SKILL_KEY,
     SUMMON_FIRE1_SKILL_KEY, SUMMON_FIRE2_SKILL_KEY, SUMMON_MINION_NORMAL_SKILL_KEY_BASE, SUMMON_SHARE_DAMAGE_SKILL_KEY,
-    SkillBoost, SkillEntrySpec, SkillLoadoutSpec, classified_player_skill_name_for_export,
-    classified_summon_minion_skill_name_for_export, parse_prefixed_classified_skill_name, phantom_skill_ref_from_name,
-    player_classified_skill_ref_from_name, skill_name_for_export, skill_name_to_id, summon_slot_skill_ref_from_name,
+    SkillBoost, SkillEntrySpec, SkillLoadoutSpec, WEAPON_RINICK_ICE_AGE_SKILL_KEY, WEAPON_RINICK_YURI_CONTROL_SKILL_KEY,
+    classified_player_skill_name_for_export, classified_summon_minion_skill_name_for_export,
+    parse_prefixed_classified_skill_name, phantom_skill_ref_from_name, player_classified_skill_ref_from_name,
+    skill_name_for_export, skill_name_to_id, summon_slot_skill_ref_from_name,
 };
 pub use stats::PlayerStats;
