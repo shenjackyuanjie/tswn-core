@@ -43,6 +43,7 @@ pub mod lang;
 pub mod model_state;
 mod normalized;
 mod plain_assassinate;
+mod plain_slime;
 mod plain_summon;
 mod plain_zombie;
 mod prepared_init;

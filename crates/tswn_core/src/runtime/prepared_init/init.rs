@@ -433,7 +433,7 @@ impl PreparedBattleInit {
     ///
     /// 召唤物不会继承 `!` / `\x02` profile 的特殊变换，因此这里直接复刻
     /// 名字竞技场的普通召唤物路径，并避免临时 Vec。
-    fn plain_minion_name_base(team: &str, name: &str) -> ([u8; 128], RC4) {
+    pub(crate) fn plain_minion_name_base(team: &str, name: &str) -> ([u8; 128], RC4) {
         assert!(name.len() <= NAME_MAX_LEN, "召唤物名字过长");
         let mut name_key = [0u8; NAME_MAX_LEN + 1];
         name_key[1..1 + name.len()].copy_from_slice(name.as_bytes());
@@ -470,7 +470,7 @@ impl PreparedBattleInit {
         attrs
     }
 
-    fn plain_minion_status(attrs: [u32; 8]) -> PlayerStats {
+    pub(crate) fn plain_minion_status(attrs: [u32; 8]) -> PlayerStats {
         let attack = attrs[0] as i32;
         let defense = attrs[1] as i32;
         let speed_attr = attrs[2] as i32;

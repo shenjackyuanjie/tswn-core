@@ -526,6 +526,9 @@ impl CombatRuntime {
     }
 
     pub fn drain_die_hooks_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) {
+        // 史莱姆分裂的死亡钩子优先级为 0，先于马里奥复活（10）和通用死亡链；
+        // 分裂不阻止本体死亡，因此继续走后续死亡流程。
+        self.drain_plain_slime_split_into(target, updates);
         // 马里奥的专属复活技能优先级为 10，先于通用死亡链；复活成功后整条死亡链中止。
         if self.drain_plain_mario_reraise_into(target, updates) {
             return;
