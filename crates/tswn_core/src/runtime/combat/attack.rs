@@ -640,7 +640,7 @@ impl CombatRuntime {
         if damage <= 0 {
             return;
         }
-        let (target_hp, target_flags, charge_active, existing) = {
+        let (target_hp, target_flags, existing) = {
             let target_entity = self
                 .entities
                 .get(target)
@@ -649,16 +649,17 @@ impl CombatRuntime {
                 StatePayload::Curse { prob, multiply } => (prob, multiply),
                 _ => panic!("runtime curse state key is occupied by another payload"),
             });
-            (
-                target_entity.runtime.hp,
-                target_entity.runtime.flags,
-                target_entity.runtime.at_boost_millionths >= 3_000_000,
-                existing,
-            )
+            (target_entity.runtime.hp, target_entity.runtime.flags, existing)
         };
         if target_hp <= 0 || target_flags.intersects(PlayerKindFlags::BOSS | PlayerKindFlags::BOOST) {
             return;
         }
+        // 蓄力加成取施法者：和狂暴、冰冻等其它受击效果保持同一口径。
+        // 曾经误读目标的 at_boost，导致"蓄力中施法"拿到普通诅咒，而"诅咒命中蓄力目标"反而变强。
+        let charge_active = self
+            .entities
+            .get(caster)
+            .is_some_and(|entity| entity.runtime.at_boost_millionths >= 3_000_000);
 
         let curse_state = self
             .registry
