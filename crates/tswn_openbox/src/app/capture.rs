@@ -34,8 +34,11 @@ struct CaptureArgs {
     #[arg(long, conflicts_with = "capture_ds4")]
     capture_diy: bool,
     /// 使用 base 样例校验新页面的输入与纯文本输出。
-    #[arg(long, conflicts_with_all = ["capture_ds4", "capture_diy"])]
+    #[arg(long, conflicts_with_all = ["capture_ds4", "capture_diy", "capture_csv"])]
     capture_base: bool,
+    /// 使用名字 CSV 样例生成文本来源高级选项窗口的截图。
+    #[arg(long, conflicts_with_all = ["capture_ds4", "capture_diy", "capture_base"])]
+    capture_csv: bool,
     /// 指定非纯文本截图的对齐方式，便于实际审图。
     #[arg(long, value_parser = ["left", "center", "right"], default_value = "left")]
     capture_align: String,
@@ -55,6 +58,7 @@ pub(crate) fn run_if_requested() -> Option<eframe::Result<()>> {
             args.capture_ds4,
             args.capture_diy,
             args.capture_base,
+            args.capture_csv,
             align,
         )
     })
@@ -72,6 +76,7 @@ struct CaptureApp {
     failure: Arc<Mutex<Option<String>>>,
     ds4: bool,
     base: bool,
+    csv: bool,
 }
 
 impl CaptureApp {
@@ -85,7 +90,7 @@ impl CaptureApp {
     fn stage_count(&self) -> usize {
         if self.ds4 {
             3
-        } else if self.base {
+        } else if self.base || self.csv {
             1
         } else {
             4
@@ -97,6 +102,8 @@ impl CaptureApp {
             ["ds4", "ds4-settings", "ds4-help"][self.stage]
         } else if self.base {
             "base"
+        } else if self.csv {
+            "csv"
         } else {
             ["cards", "table", "text", "stopped"][self.stage]
         };
@@ -139,7 +146,7 @@ impl eframe::App for CaptureApp {
             if self.ds4 {
                 self.app.more_settings_open = self.stage == 1;
                 self.app.active_help = (self.stage == 2).then_some(super::help::HelpTopic::Ds4Battle);
-            } else if !self.base {
+            } else if !self.base && !self.csv {
                 // base 只有一页，下一帧会因 stage 到达上限而退出，不必切视图。
                 let page = self.app.tool as usize;
                 match self.stage {
@@ -164,10 +171,11 @@ impl eframe::App for CaptureApp {
         }
         if !self.pending
             && self.frame >= self.next_frame
-            && self.app.logs[page].len() > 3
+            && (self.csv || self.app.logs[page].len() > 3)
             && (self.stage != 3 || !self.app.running)
             && (!self.ds4 || !self.app.running)
             && (!self.base || !self.app.running)
+            && (!self.csv || !self.app.running)
         {
             self.pending = true;
             let screenshot = self.screenshot.clone();
@@ -181,7 +189,25 @@ impl eframe::App for CaptureApp {
     }
 }
 
-fn run_capture(directory: PathBuf, light: bool, ds4: bool, diy: bool, base: bool, align: ColumnAlign) -> eframe::Result<()> {
+/// CSV 样例与截图场景共用：只用于核对高级选项窗口的表格与行筛选显示。
+const CSV_SAMPLE: &str = "\
+潦,shenjack,298,94,84,95,43,81,70,664,3333,连击-22,乏力,防御-7,守护-9,护盾-2,垂死-5,隐匿-2
+我也不知道我要测多少 —— 乏鹿楠潦@shenjack,
+395272048,4002,5194,5348,8581,我也不知道我要测多少 —— 乏鹿楠
+我也不知道我要测多少 —— 乏鹿楠395272048,
+潦,shenjack,311,88,89,90,56,42,73,67,688,6667,癌症-3,狂暴-2,血祭-8,幻术-38,守护-7,垂死-15
+我也不知道我要测多少 —— 垂耗潦@shenjack,
+";
+
+fn run_capture(
+    directory: PathBuf,
+    light: bool,
+    ds4: bool,
+    diy: bool,
+    base: bool,
+    csv: bool,
+    align: ColumnAlign,
+) -> eframe::Result<()> {
     std::fs::create_dir_all(&directory).map_err(|err| eframe::Error::AppCreation(Box::new(err)))?;
     if ds4 {
         let root = directory.join("workspace");
@@ -247,6 +273,22 @@ fn run_capture(directory: PathBuf, light: bool, ds4: bool, diy: bool, base: bool
                 app.views[app.tool as usize].follow = false;
                 app.to_diy.names = TextSource::inline("1@team+2@team\nmario\nluigi");
                 app.start_to_diy();
+            } else if csv {
+                app.tool = Tool::NamerPf;
+                // 样例模拟 namerena 导出的“两行一组”CSV：数据行与备注行交替出现。
+                let path = directory.join("names-source.csv");
+                std::fs::write(&path, CSV_SAMPLE).map_err(std::io::Error::other)?;
+                app.namer_pf.names = TextSource::from_csv_file(
+                    path,
+                    super::source::CsvOptions {
+                        enabled: true,
+                        column: 0,
+                        start_row: 1,
+                        include_first: true,
+                        include_second: false,
+                    },
+                    true,
+                );
             } else if base {
                 app.tool = Tool::Base;
                 // 用参考样例：它同时带「末尾主动」与「末尾座位加成」，能核对两条附注的缩进。
@@ -267,6 +309,7 @@ fn run_capture(directory: PathBuf, light: bool, ds4: bool, diy: bool, base: bool
                 failure: app_failure,
                 ds4,
                 base,
+                csv,
             }))
         }),
     )?;

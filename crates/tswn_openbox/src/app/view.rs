@@ -352,6 +352,27 @@ impl OpenboxApp {
         }
     }
 
+    /// 渲染当前工具页里所有文本来源的 CSV 高级选项窗口。
+    ///
+    /// 窗口开关保存在各自的 `TextSource` 上；切页后不再绘制，回来时仍保留原来的展开状态，
+    /// 因此这里只按当前页分发，避免同时绘制多个同名窗口。
+    pub(crate) fn source_advanced_windows(&mut self, ctx: &egui::Context) {
+        match self.tool {
+            Tool::ToDiy => self.to_diy.names.advanced_window(ctx, "to_diy_names"),
+            Tool::NamerPf => self.namer_pf.names.advanced_window(ctx, "namer_pf_names"),
+            Tool::BatchRate => {
+                self.batch_rate.targets.advanced_window(ctx, "batch_targets_more");
+                self.batch_rate.players.advanced_window(ctx, "batch_players");
+            }
+            Tool::Pair => {
+                self.pair.targets.advanced_window(ctx, "pair_targets_more");
+                self.pair.players.advanced_window(ctx, "pair_players");
+                self.pair.teammates.advanced_window(ctx, "pair_teammates_more");
+            }
+            Tool::Base | Tool::Ds4 => {}
+        }
+    }
+
     pub(crate) fn log_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         // 每页各自持有日志与结果；任务事件由 `task_tool` 决定写入哪一页。
         let page = self.tool as usize;
