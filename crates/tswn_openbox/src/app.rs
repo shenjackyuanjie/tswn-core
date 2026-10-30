@@ -5,7 +5,7 @@
 
 mod actions;
 #[cfg(feature = "ui_capture")]
-pub(crate) mod capture;
+pub mod capture;
 mod ds4;
 mod ds4_help;
 mod help;
@@ -96,6 +96,7 @@ impl eframe::App for OpenboxApp {
         });
 
         self.more_settings_window(&ctx);
+        self.source_advanced_windows(&ctx);
         help::show_help_window(&ctx, &mut self.active_help);
         show_about_window(&ctx, &mut self.about_open);
     }

@@ -28,7 +28,7 @@ const NAMER_PF_HIGHLIGHT_WIDTH: f32 = 116.0;
 const NAMER_PF_ACTION_WIDTH: f32 = 112.0;
 
 impl OpenboxApp {
-    pub(crate) fn show_diy_ui(&mut self, ui: &mut egui::Ui) {
+    pub fn show_diy_ui(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
         tool_header(ui, "to-diy", "名字转 DIY / 召唤物 DIY", Some(&mut self.more_settings_open));
         section_with_help(ui, "基础选项", HelpTopic::DiyExport, &requested_help, |ui| {
@@ -47,7 +47,7 @@ impl OpenboxApp {
         }
     }
 
-    pub(crate) fn namer_pf_ui(&mut self, ui: &mut egui::Ui) {
+    pub fn namer_pf_ui(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
         tool_header(ui, "namer-pf", "批量评分并筛选名字", Some(&mut self.more_settings_open));
         section(ui, "精确度", |ui| {
@@ -72,7 +72,7 @@ impl OpenboxApp {
         }
     }
 
-    pub(crate) fn batch_rate_ui(&mut self, ui: &mut egui::Ui) {
+    pub fn batch_rate_ui(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
         tool_header(ui, "cqd/cqp", "计算选手对靶子的平均胜率", Some(&mut self.more_settings_open));
         section(ui, "常用设置", |ui| {
@@ -109,7 +109,7 @@ impl OpenboxApp {
         }
     }
 
-    pub(crate) fn pair_ui(&mut self, ui: &mut egui::Ui) {
+    pub fn pair_ui(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
         tool_header(ui, "pair", "计算选手与队友组合表现", Some(&mut self.more_settings_open));
         section(ui, "常用设置", |ui| {
@@ -143,7 +143,7 @@ impl OpenboxApp {
         }
     }
 
-    pub(crate) fn base_ui(&mut self, ui: &mut egui::Ui) {
+    pub fn base_ui(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
         // base 只有一个名字输入，没有可调的设置项，因此不给“更多设置”入口。
         tool_header(ui, "base", "查看单个原始名字的 roll 与技能槽", None);
@@ -177,7 +177,7 @@ impl OpenboxApp {
         }
     }
 
-    pub(crate) fn more_settings_window(&mut self, ctx: &egui::Context) {
+    pub fn more_settings_window(&mut self, ctx: &egui::Context) {
         if !self.more_settings_open {
             return;
         }
@@ -352,7 +352,28 @@ impl OpenboxApp {
         }
     }
 
-    pub(crate) fn log_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    /// 渲染当前工具页里所有文本来源的 CSV 高级选项窗口。
+    ///
+    /// 窗口开关保存在各自的 `TextSource` 上；切页后不再绘制，回来时仍保留原来的展开状态，
+    /// 因此这里只按当前页分发，避免同时绘制多个同名窗口。
+    pub fn source_advanced_windows(&mut self, ctx: &egui::Context) {
+        match self.tool {
+            Tool::ToDiy => self.to_diy.names.advanced_window(ctx, "to_diy_names"),
+            Tool::NamerPf => self.namer_pf.names.advanced_window(ctx, "namer_pf_names"),
+            Tool::BatchRate => {
+                self.batch_rate.targets.advanced_window(ctx, "batch_targets_more");
+                self.batch_rate.players.advanced_window(ctx, "batch_players");
+            }
+            Tool::Pair => {
+                self.pair.targets.advanced_window(ctx, "pair_targets_more");
+                self.pair.players.advanced_window(ctx, "pair_players");
+                self.pair.teammates.advanced_window(ctx, "pair_teammates_more");
+            }
+            Tool::Base | Tool::Ds4 => {}
+        }
+    }
+
+    pub fn log_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         // 每页各自持有日志与结果；任务事件由 `task_tool` 决定写入哪一页。
         let page = self.tool as usize;
         egui::Frame::group(ui.style())
