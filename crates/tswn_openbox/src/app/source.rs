@@ -177,6 +177,7 @@ impl TextSource {
     }
 
     /// 仅供界面截图与测试构造：直接绑定文件并设定 CSV 选项，不经过文件对话框。
+    #[cfg(feature = "ui_capture")]
     pub fn from_csv_file(path: PathBuf, csv: CsvOptions, advanced_open: bool) -> Self {
         let mut source = Self::inline("");
         source.from_file = true;
