@@ -2,9 +2,11 @@
 from typing import Literal, NotRequired, TypedDict
 
 BattleStatus = Literal["running", "finished", "truncated"]
-BattleStopReason = Literal["winner", "max_rounds", "no_progress"]
+BattleStopReason = Literal["winner", "max_rounds", "no_progress", "paused"]
 
 class BattleReplay(TypedDict):
+    # 受控单位逼停回放时是等待指令的实体 id；非暂停时不出现。
+    paused_actor: NotRequired[int | None]
     status: BattleStatus
     stop_reason: BattleStopReason
     rounds_advanced: int

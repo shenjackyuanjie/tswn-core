@@ -38,6 +38,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 | --- | --- | --- |
 | `eval_rq` | `DEFAULT_EVAL_RQ` | 普通对局评分参数，必须有限 |
 | `include_icons` | `false` | 是否在状态中带 PNG Base64；关闭时字段为 null |
+| `include_skills` | `false` | 是否在状态中带技能熟练度；关闭时该键省略 |
+| `controlled_team` | `null` | 由外部驱动的队伍编号；设定后该队伍的本体/分身缺指令时暂停。需要 LegacyStep 调度方式，否则返回 `UNSUPPORTED_OPTION` |
 | `max_rounds` | `20_000` | Runtime `main_round()` 的调用次数上限，必须大于零 |
 
 `next_frame()` 自动吸收空 round，返回下一可见 frame，或在正常终止后返回 `None` / `null`。空 round 也消耗 `max_rounds`。`frame_index` 与 `round_index` 都从 0 开始：前者连续编号可见帧，后者记录真实推进轮次，允许跳号。空 updates 的获胜轮仍生成包含 winner row 的末帧。
@@ -47,6 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 | `running` | null | false | false | result 尚不存在 |
 | `finished` | `winner` | true | false | 由 Runtime 给出 |
 | `truncated` | `max_rounds` / `no_progress` | false | true | 空数组 |
+| `running` | `paused` | false | false | 仅回放：受控单位在等外部指令 |
 
 优先级为 Runtime 错误、winner、max_rounds、no_progress。连续无可见进展的轮次达到 `max(1, 当前实体数) * 16` 时停止；该策略只在 core 实现。终止后重复 `next_frame()` 总是返回空；运行中 `result()` 为 null，终止后返回稳定的 `BattleResult`。Runtime 错误以异常/错误码返回，不伪装为截断结果。
 
@@ -60,7 +63,24 @@ Runtime error 后会话进入 sticky failure（poisoned）：`is_failed() = true
 - `BattleReplayFrame`：`frame_index`、`round_index`、`finished`、`winner_ids`、`updates`、`rows`、`states`、`total_delay`。
 - `rows[].clips[].parts[]`：文本、玩家、高亮、数值、HP before/after 和 death effect，展示语义由 core 提供。消费者不应再从消息模板或伤害值推断展示效果。
 - `BattleResult`：`status`、`stop_reason`、`finished`、`truncated`、`rounds_advanced`、`frames_emitted`、`winner_ids`、`winner_team_indices`、`final_states`。
-- `BattleReplay`：保留 `initial_states`、`frames`、全部 result 字段和固定为 `round` 的 `state_granularity`。`collect(BattleSession)` 与 `battle_replay` 的帧和结果相同。Rust 的 `BattleReplayOptions` 是已弃用兼容别名。
+- `BattleReplay`：保留 `initial_states`、`frames`、全部 result 字段和固定为 `round` 的 `state_granularity`。`collect(BattleSession)` 与 `battle_replay` 的帧和结果相同。受控单位逼停回放时另带 `paused_actor`（实体 id），其余情况该键不出现。Rust 的 `BattleReplayOptions` 是已弃用兼容别名。
+
+## 外部行动脚本
+
+`battle_replay_with_actions(raw, options, actions)`（WASM 同名，`actions` 为 `[actor, skill, magic_cost]` 扁平三元组数组）用调用方给出的指令替代自动技能选择：
+
+- `actor` 是 `BattlePlayerState.id`；指令可以为任意实体排队，不必属于 `controlled_team`。
+- `skill` 在 core 是 `BuiltinActiveSkill`，WASM 用 overlay 公开编号 `0..24`，`255` 表示普通攻击。
+- `magic_cost` 为抽牌时掷好的消耗（`8..=23`）；WASM 传 `0` 表示由引擎现场掷。
+- 引擎自身的强制动作（潜行→背刺第二段、狂暴）优先，这期间排好的指令留到该单位的下一次行动。
+- 指令无法执行（未装备该技能、MP 不足、选不出目标）会返回 `INVALID_ARGUMENT`，不会静默改成普攻。
+
+脚本用尽后，`controlled_team` 里的本体与分身（不含幻影/使魔/丧尸）逼停回放，返回 `paused_actor` 与 `stop_reason: "paused"`；`status` 仍是 `running`、`result()` 仍为 `null`。暂停边界已经结束该回合，恢复方式是带上新指令重新调用 `battle_replay_with_actions`（而不是继续推进同一会话）。空脚本且未设 `controlled_team` 时，结果与 `battle_replay` 完全一致。
+
+```text
+actions = []                         → paused_actor = 0（等玩家出牌）
+actions = [0, 21, 0]                 → 玩家 0 用潜行；之后再次暂停
+```
 
 护盾字段中，`shield` 是当前剩余吸收量，合计普通蓄盾与 `ShieldValue`，死亡时为 0；铁壁由独立状态表达。`max_shield` 是当前护盾技能熟练度，供展示条计算比例，实际盾值可以超过它。它和 `max_hp` 都随当前模板更新，能反映吞噬等机制的变化。身份字段 `owner_id` 表示直接主人，`source_id` 表示根来源。
 

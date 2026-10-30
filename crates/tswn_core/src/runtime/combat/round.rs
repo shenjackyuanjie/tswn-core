@@ -353,6 +353,33 @@ impl CombatRuntime {
         smart: bool,
         pre_action: PlainSkillPreActionOutcome,
     ) -> Option<PreparedPlainAction> {
+        // 外部脚本：引擎自身没有强制动作时，优先执行调用方排好的这一手。
+        // 潜行→背刺这类引擎强制动作必须先走完，指令留到该单位的下一次行动。
+        let engine_forced = pre_action.forced_skill.is_some();
+        let mut script_consumed = false;
+        if !engine_forced && let Some(planned) = self.control.take_for(actor.0 as PlrId) {
+            if !pre_action.clear_forced_action && self.has_plain_berserk_state(actor) {
+                // 狂暴期间由引擎接管：这一手只用来推进节奏，真正动作仍按 tswn 规则。
+                script_consumed = true;
+            } else {
+                match self.prepare_planned_action(actor, planned, smart) {
+                    Ok(prepared) => return Some(prepared),
+                    Err(error) => {
+                        self.control.set_error(error);
+                        return None;
+                    }
+                }
+            }
+        }
+        // 受控单位没有排好的指令就停下来等玩家，绝不代替玩家行动。
+        if !engine_forced
+            && !script_consumed
+            && let Some(team) = self.control.controlled_team()
+            && self.is_controlled_actor(actor, team)
+        {
+            self.control.set_awaiting(actor.0 as PlrId);
+            return None;
+        }
         if let Some(forced_skill) = pre_action.forced_skill {
             return Some(PreparedPlainAction::BuiltinSkill(forced_skill));
         }
@@ -508,6 +535,149 @@ impl CombatRuntime {
                 use_magic: false,
                 amount: attack,
             })
+        }
+    }
+
+    /// 玩家操控的单位：受控队伍里的本体（默认 kind）与分身。
+    ///
+    /// 幻影 / 使魔 / 丧尸属于召唤物，仍由引擎自动行动。
+    fn is_controlled_actor(&self, actor: EntityIdx, team: usize) -> bool {
+        let Some(entity) = self.entities.get(actor) else {
+            return false;
+        };
+        if entity.template.team != team {
+            return false;
+        }
+        match self.registry.player_kind(entity.runtime.kind) {
+            None => true,
+            Some(spec) => spec.export_name == DEFAULT_CORE_CLONE_KIND_EXPORT,
+        }
+    }
+
+    /// 执行一条脚本指令：技能必须已装备、MP 足够且选得出目标，否则整条指令失败。
+    fn prepare_planned_action(
+        &mut self,
+        actor: EntityIdx,
+        planned: PlannedAction,
+        smart: bool,
+    ) -> Result<PreparedPlainAction, PlannedActionError> {
+        let actor_id = actor.0 as PlrId;
+        match planned.skill {
+            PlannedSkill::BasicAttack => {
+                let target = self
+                    .select_plain_default_attack_target(actor, false)
+                    .ok_or(PlannedActionError::NoValidTarget {
+                        actor: actor_id,
+                        skill: planned.skill,
+                    })?;
+                let amount = self
+                    .entities
+                    .get(actor)
+                    .unwrap_or_else(|| panic!("unknown planned action actor: {}", actor.0))
+                    .runtime
+                    .attack;
+                Ok(PreparedPlainAction::BasicAttack {
+                    target,
+                    use_magic: false,
+                    amount,
+                })
+            }
+            PlannedSkill::Builtin(skill) => {
+                let fixed_lane = self
+                    .planned_skill_lane(actor, skill)
+                    .ok_or(PlannedActionError::SkillNotEquipped { actor: actor_id, skill })?;
+                // 玩家抽到这张牌时已经掷过消耗；没有就按 tswn 现场掷。
+                let required = match planned.magic_cost {
+                    Some(cost) => i32::from(cost),
+                    None => {
+                        let req_mp_byte = self.rng.next_u8();
+                        i32::from(req_mp_byte & 15) + 8
+                    }
+                };
+                let available = self
+                    .entities
+                    .get(actor)
+                    .unwrap_or_else(|| panic!("unknown planned action actor: {}", actor.0))
+                    .runtime
+                    .magic_point;
+                if available < required {
+                    return Err(PlannedActionError::InsufficientMagicPoint {
+                        actor: actor_id,
+                        required,
+                        available,
+                    });
+                }
+                // 目标口径与自动选择一致；smart 口径选不出目标时退到宽松口径，
+                // 避免玩家点名的技能因为 AI 过滤而变成失败。
+                let mut targets = self.select_planned_targets(actor, skill, smart);
+                if targets.is_empty() {
+                    targets = self.select_planned_targets(actor, skill, false);
+                }
+                let allows_empty_targets = skill == BuiltinActiveSkill::Assassinate
+                    && self.entities.get(actor).is_some_and(|entity| entity.runtime.assassinate.is_some());
+                if targets.is_empty() && !allows_empty_targets {
+                    return Err(PlannedActionError::NoValidTarget {
+                        actor: actor_id,
+                        skill: planned.skill,
+                    });
+                }
+                if let Some(entity) = self.entities.get_mut(actor) {
+                    entity.runtime.magic_point -= required;
+                }
+                Ok(PreparedPlainAction::BuiltinSkill(PreparedBuiltinSkillAction {
+                    selected: SelectedBuiltinSkill { skill, fixed_lane },
+                    targets,
+                }))
+            }
+        }
+    }
+
+    /// 找到装备了这个内置主动技能、且等级大于 0 的固定槽位。
+    fn planned_skill_lane(&self, actor: EntityIdx, skill: BuiltinActiveSkill) -> Option<usize> {
+        let entity = self.entities.get(actor)?;
+        let loadout = &entity.template.skills;
+        loadout
+            .skills()
+            .iter()
+            .enumerate()
+            .find(|(lane, skill_id)| {
+                self.builtin_active_skill(**skill_id) == Some(skill) && loadout.level_at(*lane).unwrap_or(0) > 0
+            })
+            .map(|(lane, _)| lane)
+    }
+
+    /// 按技能沿用的目标口径选择目标，与自动施放共用同一批 `select_plain_*` 实现。
+    fn select_planned_targets(&mut self, actor: EntityIdx, skill: BuiltinActiveSkill, smart: bool) -> PreparedTargetList {
+        match skill {
+            BuiltinActiveSkill::Fire
+            | BuiltinActiveSkill::Thunder
+            | BuiltinActiveSkill::Absorb
+            | BuiltinActiveSkill::Poison
+            | BuiltinActiveSkill::Critical
+            | BuiltinActiveSkill::SummonExplode => self.select_plain_default_enemy_targets(actor, smart),
+            BuiltinActiveSkill::Berserk => self.select_plain_berserk_targets(actor, smart),
+            BuiltinActiveSkill::Quake => {
+                self.select_plain_default_enemy_targets_with_count(actor, smart, if smart { 6 } else { 5 })
+            }
+            BuiltinActiveSkill::Ice => self.select_plain_ice_targets(actor, smart),
+            BuiltinActiveSkill::Rapid => self.select_plain_rapid_targets(actor, smart),
+            BuiltinActiveSkill::Half => self.select_plain_half_targets(actor, smart),
+            BuiltinActiveSkill::Charm => self.select_plain_charm_targets(actor, smart),
+            BuiltinActiveSkill::Curse => self.select_plain_curse_targets(actor, smart),
+            BuiltinActiveSkill::Haste => self.select_plain_haste_targets(actor, smart),
+            BuiltinActiveSkill::Heal => self.select_plain_heal_targets(actor, smart),
+            BuiltinActiveSkill::Slow => self.select_plain_slow_targets(actor, smart),
+            BuiltinActiveSkill::Exchange => self.select_plain_exchange_targets(actor, smart),
+            BuiltinActiveSkill::Revive => self.select_plain_revive_targets(actor, smart),
+            BuiltinActiveSkill::Disperse => self.select_plain_disperse_targets(actor, smart),
+            BuiltinActiveSkill::Assassinate => self.select_plain_assassinate_targets(actor, smart),
+            BuiltinActiveSkill::Possess => self.select_plain_possess_targets(actor, smart),
+            BuiltinActiveSkill::Iron
+            | BuiltinActiveSkill::Charge
+            | BuiltinActiveSkill::Accumulate
+            | BuiltinActiveSkill::Summon
+            | BuiltinActiveSkill::Clone
+            | BuiltinActiveSkill::Shadow => smallvec::smallvec![actor],
         }
     }
 

@@ -37,6 +37,7 @@ impl CombatRuntime {
             slots,
             registry,
             rng: RC4::default(),
+            control: BattleControl::default(),
             #[cfg(not(feature = "no_debug"))]
             trace: None,
             round: 0,

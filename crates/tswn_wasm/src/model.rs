@@ -70,6 +70,9 @@ pub struct BattleOptions {
     pub max_rounds: Option<usize>,
     #[tsify(optional)]
     pub include_skills: Option<bool>,
+    /// 由外部驱动的队伍编号；设定后该队伍的本体/分身缺指令时暂停。
+    #[tsify(optional)]
+    pub controlled_team: Option<usize>,
 }
 
 impl Default for BattleOptions {
@@ -79,6 +82,7 @@ impl Default for BattleOptions {
             include_icons: None,
             max_rounds: None,
             include_skills: None,
+            controlled_team: None,
         }
     }
 }
@@ -94,6 +98,7 @@ impl BattleOptions {
             options.max_rounds = max_rounds;
         }
         options.include_skills = self.include_skills.unwrap_or(false);
+        options.controlled_team = self.controlled_team;
         options
     }
 }

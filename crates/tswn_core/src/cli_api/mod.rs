@@ -17,6 +17,7 @@ pub mod battle;
 mod bench;
 mod parse;
 
+pub use crate::runtime::{PlannedAction, PlannedActionError, PlannedSkill};
 #[allow(deprecated)]
 pub use battle::{BattleOptions, BattleReplay, BattleReplayOptions, BattleResult, BattleSession, BattleStatus, BattleStopReason};
 
@@ -706,6 +707,13 @@ pub fn default_custom_runtime_normalized_run(raw: &str, max_rounds: usize) -> Cl
 
 /// 运行一场战斗，并返回供每种语言绑定共用、可直接供 UI 使用的完整回放。
 pub fn battle_replay(raw: &str, options: BattleOptions) -> CliApiResult<BattleReplay> { battle::battle_replay(raw, options) }
+
+/// 用外部行动脚本运行一场战斗；脚本为空且未设受控队伍时与 [`battle_replay`] 等价。
+///
+/// 受控单位缺指令时回放在该边界截断，`BattleReplay::paused_actor` 指出等待者。
+pub fn battle_replay_with_actions(raw: &str, options: BattleOptions, actions: &[PlannedAction]) -> CliApiResult<BattleReplay> {
+    battle::battle_replay_with_actions(raw, options, actions)
+}
 
 pub(super) fn invalid_input(message: impl Into<String>) -> CliApiError { CliApiError::InvalidInput(message.into()) }
 

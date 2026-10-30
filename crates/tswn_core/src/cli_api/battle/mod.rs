@@ -21,6 +21,10 @@
 //! 失败会保存第一次错误，后续推进返回相同错误。调用方处理错误后释放会话。
 //! 正常终止后的推进则幂等地返回 `None`。
 //!
+//! `controlled_team` 不为空时，该队伍的本体/分身缺少脚本指令会逼停回放：
+//! `paused_actor` 给出等待者，`next_frame` 返回 `None`，但这不是终局（`result` 仍为空）。
+//! 暂停边界已结束该回合，恢复方式是带上新指令重新创建会话，而不是继续推进同一会话。
+//!
 //! 同一回合的终止优先级是胜者、`max_rounds`、无可见进展；无进展判据为连续
 //! 无可见更新的回合数达到 `max(当前实体数, 1) * 16`，不是对 HP 或机制状态完全不变的检测。
 //! 查询机制状态不消费随机流；`BattleOptions::include_icons` 仅影响展示快照，
@@ -32,7 +36,7 @@ mod replay;
 mod session;
 
 pub use dto::*;
-pub use replay::battle_replay;
+pub use replay::{battle_replay, battle_replay_with_actions};
 
 pub use session::BattleSession;
 

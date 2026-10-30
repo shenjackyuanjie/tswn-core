@@ -7,7 +7,7 @@ use crate::replay_view::{
     hp_delta_for_tone, is_percent_hp_damage_update, render_update_message,
 };
 use crate::runtime::update::{RunUpdates, UpdateType};
-use crate::runtime::{PlrId, RuntimeMinionKind, RuntimePlayerSnapshot, RuntimeRunner};
+use crate::runtime::{PlannedAction, PlrId, RuntimeMinionKind, RuntimePlayerSnapshot, RuntimeRunner};
 
 use super::dto::*;
 use crate::cli_api::CliApiResult;
@@ -34,6 +34,8 @@ pub struct BattleSession {
     initial_states: Vec<BattlePlayerState>,
     current_states: Vec<BattlePlayerState>,
     icon_cache: HashMap<String, String>,
+    /// 受控单位逼停回放时的等待者；非暂停边界为 `None`。
+    paused: Option<PlrId>,
 }
 
 impl BattleSession {
@@ -41,6 +43,9 @@ impl BattleSession {
     ///
     /// 未启用 `png_render` 时，请求 `include_icons=true` 返回 `UnsupportedOption`，
     /// 不生成空图或占位图；默认的无图标对局不依赖 PNG 能力。
+    ///
+    /// `options.controlled_team` 只影响推进方式：该队伍的本体与分身缺指令时会暂停，
+    /// 需要 LegacyStep 调度方式，否则返回 `UnsupportedOption`。
     pub fn new(raw: &str, options: BattleOptions) -> CliApiResult<Self> {
         #[cfg(not(feature = "png_render"))]
         if options.include_icons {
@@ -48,7 +53,22 @@ impl BattleSession {
                 "战斗图标需要启用 png_render feature".to_owned(),
             ));
         }
-        let driver = super::driver::BattleDriver::from_raw(raw, options)?;
+        let mut driver = super::driver::BattleDriver::from_raw(raw, options)?;
+        if let Some(team) = options.controlled_team {
+            let runtime = driver.runner.runtime_mut();
+            if !runtime.scheduler.uses_legacy_step_scheduler() {
+                return Err(crate::cli_api::CliApiError::UnsupportedOption(
+                    "controlled_team requires the LegacyStep action scheduler".to_owned(),
+                ));
+            }
+            // 队伍编号写错时不能静默不暂停：先确认这场里确实有这个队伍。
+            if !runtime.entities.iter().any(|(_, entity)| entity.runtime.team == team) {
+                return Err(crate::cli_api::CliApiError::InvalidArgument(format!(
+                    "controlled_team {team} matches no entity in this battle"
+                )));
+            }
+            runtime.set_controlled_team(Some(team));
+        }
         let mut icon_cache = HashMap::new();
         let initial_states = states_from_runner(&driver.runner, options.include_icons, options.include_skills, &mut icon_cache);
         Ok(Self {
@@ -57,8 +77,41 @@ impl BattleSession {
             current_states: initial_states.clone(),
             initial_states,
             icon_cache,
+            paused: None,
         })
     }
+
+    /// 创建会话并预置外部指令；指令按入队顺序消费，用尽后受控单位才会暂停。
+    ///
+    /// 指令里的 `actor` 必须是本场已存在的实体 ID，否则返回 `InvalidArgument`。
+    /// 脚本可以为任意实体排队（包括敌方），不必属于 `controlled_team`。
+    pub fn new_with_actions(raw: &str, options: BattleOptions, actions: &[PlannedAction]) -> CliApiResult<Self> {
+        let mut session = Self::new(raw, options)?;
+        session.queue_actions(actions)?;
+        Ok(session)
+    }
+
+    /// 追加外部指令；已推进的会话同样可用，指令在下一次轮到该实体时生效。
+    pub fn queue_actions(&mut self, actions: &[PlannedAction]) -> CliApiResult<()> {
+        let entity_count = self.driver.runner.runtime().entities.len();
+        for action in actions {
+            if action.actor >= entity_count {
+                return Err(crate::cli_api::CliApiError::InvalidArgument(format!(
+                    "planned action actor {} does not exist",
+                    action.actor
+                )));
+            }
+        }
+        self.driver.runner.runtime_mut().queue_planned_actions(actions.iter().copied());
+        Ok(())
+    }
+
+    /// 受控单位逼停回放时返回等待指令的实体 ID；非暂停边界为 `None`。
+    ///
+    /// 暂停不是终局：[`Self::result`] 仍为 `None`，`status` 仍为 running。暂停边界已经
+    /// 结束该回合，本次会话不再继续推进；调用方应把新指令并入脚本后重新创建会话
+    /// （例如再调一次 `battle_replay_with_actions`），而不是继续 `next_frame`。
+    pub fn paused_actor(&self) -> Option<PlrId> { self.paused }
 
     /// 仅用于测试：破坏 skill handlers，让下一次推进经过真实 Runtime validation 失败。
     #[cfg(any(test, feature = "battle-test-support"))]
@@ -81,6 +134,8 @@ impl BattleSession {
         match self.driver.stop_reason {
             None => BattleStatus::Running,
             Some(BattleStopReason::Winner) => BattleStatus::Finished,
+            // Paused 只出现在回放的截断原因上，会话本身仍在运行。
+            Some(BattleStopReason::Paused) => BattleStatus::Running,
             Some(_) => BattleStatus::Truncated,
         }
     }
@@ -97,17 +152,18 @@ impl BattleSession {
     /// 已产出的可见帧数，不等于 Runtime 回合数。
     pub fn frames_emitted(&self) -> usize { self.driver.frames_emitted }
 
-    /// 同步推进至下一个可见帧、正常终止或 Runtime 错误。
+    /// 同步推进至下一个可见帧、正常终止、受控单位暂停或 Runtime 错误。
     ///
     /// 空回合会继续推进并更新当前快照，但不占可见帧编号；没有消息的胜利也会产生终止帧。
     /// 同一回合先判胜，再判回合上限，最后判长期无可见进展。正常终止后的调用返回
     /// `Ok(None)`；粘性失败后的调用返回第一次错误且不继续推进。
     /// 无可见帧的截断也可能返回 `Ok(None)`，用 [`Self::result`] 取得终止原因与最终快照。
+    /// 受控单位暂停时返回该边界已有的帧（可能为 `None`），再用 [`Self::paused_actor`] 查询。
     pub fn next_frame(&mut self) -> CliApiResult<Option<BattleReplayFrame>> {
         if let Some(error) = &self.driver.failure {
             return Err(error.clone());
         }
-        if self.is_done() {
+        if self.is_done() || self.paused.is_some() {
             return Ok(None);
         }
         loop {
@@ -130,7 +186,16 @@ impl BattleSession {
                 frame
             });
             self.current_states = states;
-            if frame.is_some() || self.is_done() {
+            // 脚本指令执行失败属于调用方输入错误；保留为粘性失败，不伪装成截断结果。
+            if let Some(error) = self.driver.runner.runtime_mut().take_planned_action_error() {
+                let error = crate::cli_api::CliApiError::InvalidArgument(error.to_string());
+                self.driver.failure = Some(error.clone());
+                return Err(error);
+            }
+            if let Some(actor) = self.driver.runner.runtime_mut().take_awaiting_actor() {
+                self.paused = Some(actor);
+            }
+            if frame.is_some() || self.is_done() || self.paused.is_some() {
                 return Ok(frame);
             }
         }

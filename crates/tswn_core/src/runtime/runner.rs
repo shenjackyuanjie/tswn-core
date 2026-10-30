@@ -855,6 +855,8 @@ impl PreparedRuntimeRunner {
         runner.runtime.effects.clear();
         runner.runtime.scratch.clear();
         runner.runtime.slots.reset_battle_state_from(&self.prototype.runtime.slots);
+        // 外部脚本与受控队伍属于单场设置，下一场必须从零开始，避免暂停或残留指令跨局泄漏。
+        runner.runtime.control.reset();
         #[cfg(not(feature = "no_debug"))]
         runner.runtime.trace.clone_from(&self.prototype.runtime.trace);
         runner.runtime.round = 0;

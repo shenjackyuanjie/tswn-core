@@ -18,6 +18,11 @@ pub struct BattleOptions {
     ///
     /// 开启后每个 [`BattlePlayerState`] 都带当前熟练度，等同于每帧多一份技能表。
     pub include_skills: bool,
+    /// 由外部驱动的队伍编号；`None` 表示完全自动执行。
+    ///
+    /// 设定后，该队伍的本体与分身在没有排好的指令时会逼停回放并给出 [`BattleReplay::paused_actor`]，
+    /// 召唤物仍按 tswn 规则自动行动。只有 LegacyStep 调度方式支持这种暂停。
+    pub controlled_team: Option<usize>,
 }
 
 impl Default for BattleOptions {
@@ -27,6 +32,7 @@ impl Default for BattleOptions {
             include_icons: false,
             max_rounds: BINDING_COMPLETION_MAX_ROUNDS,
             include_skills: false,
+            controlled_team: None,
         }
     }
 }
@@ -34,6 +40,9 @@ impl Default for BattleOptions {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 /// 完整收集同一 [`super::BattleSession`] 的规范回放。
 pub struct BattleReplay {
+    /// 受控单位把回放逼停时，这里是等待指令的实体 ID；否则为 `None` 且不序列化。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paused_actor: Option<PlrId>,
     pub status: BattleStatus,
     pub stop_reason: BattleStopReason,
     pub rounds_advanced: usize,
@@ -231,11 +240,15 @@ pub enum BattleStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[derive(serde::Deserialize)]
-/// 正常终止原因；Winner 表示胜利，MaxRounds 和 NoProgress 表示安全截断。
+/// 回放截断与正常终止原因；`Paused` 只出现在回放里，不是会话的终局。
+///
+/// Winner 表示胜利，MaxRounds 和 NoProgress 表示安全截断；Paused 表示受控单位
+/// 在等指令，此时 `BattleReplay.status` 仍是 running、`finished`/`truncated` 都是 false。
 pub enum BattleStopReason {
     Winner,
     MaxRounds,
     NoProgress,
+    Paused,
 }
 #[derive(Debug, Clone, PartialEq, Serialize)]
 /// 正常 terminal 结果，包含胜利或截断信息；调用失败通过错误通道处理。

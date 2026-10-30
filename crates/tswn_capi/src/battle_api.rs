@@ -67,6 +67,8 @@ pub enum tswn_battle_stop_reason_t {
     TSWN_BATTLE_STOP_WINNER = 1,
     TSWN_BATTLE_STOP_MAX_ROUNDS = 2,
     TSWN_BATTLE_STOP_NO_PROGRESS = 3,
+    /// 仅回放截断原因：受控单位在等外部指令，不是终局。
+    TSWN_BATTLE_STOP_PAUSED = 4,
 }
 
 #[allow(
@@ -299,6 +301,7 @@ pub unsafe extern "C" fn tswn_battle_session_stop_reason(
                 Some(BattleStopReason::Winner) => tswn_battle_stop_reason_t::TSWN_BATTLE_STOP_WINNER,
                 Some(BattleStopReason::MaxRounds) => tswn_battle_stop_reason_t::TSWN_BATTLE_STOP_MAX_ROUNDS,
                 Some(BattleStopReason::NoProgress) => tswn_battle_stop_reason_t::TSWN_BATTLE_STOP_NO_PROGRESS,
+                Some(BattleStopReason::Paused) => tswn_battle_stop_reason_t::TSWN_BATTLE_STOP_PAUSED,
             })
         };
         Ok(())

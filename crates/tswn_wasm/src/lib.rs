@@ -58,6 +58,7 @@ mod win_rate;
 
 use std::sync::Once;
 use tsify::Ts;
+use tswn_core::cli_api::{PlannedAction, PlannedSkill};
 
 pub use battle::BattleSession;
 use convert::{ts_in, ts_out, ts_out_vec};
@@ -70,6 +71,40 @@ use model::{
 };
 use wasm_bindgen::prelude::*;
 pub use win_rate::WinRateSession;
+
+/// overlay 的公开技能编号（0..24）→ 引擎内置主动技能。
+///
+/// 25..34 是防御/触发类技能，不参与主动出招；255 表示普通攻击。
+const PUBLIC_SKILLS: [tswn_core::runtime::BuiltinActiveSkill; 25] = [
+    tswn_core::runtime::BuiltinActiveSkill::Fire,
+    tswn_core::runtime::BuiltinActiveSkill::Ice,
+    tswn_core::runtime::BuiltinActiveSkill::Thunder,
+    tswn_core::runtime::BuiltinActiveSkill::Quake,
+    tswn_core::runtime::BuiltinActiveSkill::Absorb,
+    tswn_core::runtime::BuiltinActiveSkill::Poison,
+    tswn_core::runtime::BuiltinActiveSkill::Rapid,
+    tswn_core::runtime::BuiltinActiveSkill::Critical,
+    tswn_core::runtime::BuiltinActiveSkill::Half,
+    tswn_core::runtime::BuiltinActiveSkill::Exchange,
+    tswn_core::runtime::BuiltinActiveSkill::Berserk,
+    tswn_core::runtime::BuiltinActiveSkill::Charm,
+    tswn_core::runtime::BuiltinActiveSkill::Haste,
+    tswn_core::runtime::BuiltinActiveSkill::Slow,
+    tswn_core::runtime::BuiltinActiveSkill::Curse,
+    tswn_core::runtime::BuiltinActiveSkill::Heal,
+    tswn_core::runtime::BuiltinActiveSkill::Revive,
+    tswn_core::runtime::BuiltinActiveSkill::Disperse,
+    tswn_core::runtime::BuiltinActiveSkill::Iron,
+    tswn_core::runtime::BuiltinActiveSkill::Charge,
+    tswn_core::runtime::BuiltinActiveSkill::Accumulate,
+    tswn_core::runtime::BuiltinActiveSkill::Assassinate,
+    tswn_core::runtime::BuiltinActiveSkill::Summon,
+    tswn_core::runtime::BuiltinActiveSkill::Clone,
+    tswn_core::runtime::BuiltinActiveSkill::Shadow,
+];
+
+/// 公开编号里“普通攻击”的取值。
+const PUBLIC_BASIC_ATTACK: u32 = 255;
 
 static PANIC_HOOK: Once = Once::new();
 
@@ -370,6 +405,64 @@ pub fn battle_replay(raw_input: String, options: Option<Ts<BattleReplayOptions>>
     battle::dto_to_js(&replay)
 }
 
+/// 用外部行动脚本收集回放；`actions` 是 `[actor, skill, magic_cost]` 三元组。
+///
+/// skill 用 overlay 的公开编号 0..24，255 表示普通攻击；magic_cost 传 0 表示由引擎
+/// 现场掷，否则应当是抽牌时掷好的消耗（8..=23）。受控单位缺指令时返回 `paused_actor`，
+/// 此时 `stop_reason` 为 `"paused"`，但 `status` 仍是 `"running"`、`finished` 为 false；
+/// 追加指令后重新调用即可。脚本为空时与 [`battle_replay`] 等价。
+#[wasm_bindgen(unchecked_return_type = "BattleReplay")]
+pub fn battle_replay_with_actions(
+    raw_input: String,
+    actions: Vec<u32>,
+    options: Option<Ts<BattleReplayOptions>>,
+) -> WasmResult<JsValue> {
+    install_panic_hook();
+    let options = ts_in(options)?;
+    let planned = planned_actions(&actions)?;
+    let replay =
+        tswn_core::cli_api::battle_replay_with_actions(&raw_input, options.to_core(), &planned).map_err(error::cli_api_error)?;
+    battle::dto_to_js(&replay)
+}
+
+/// 把 overlay 公开编号翻译成 core 的主动技能；`255` 是普通攻击，其余超出 0..24 返回 `None`。
+fn planned_skill(id: u32) -> Option<PlannedSkill> {
+    match id {
+        PUBLIC_BASIC_ATTACK => Some(PlannedSkill::BasicAttack),
+        id => PUBLIC_SKILLS.get(id as usize).copied().map(PlannedSkill::Builtin),
+    }
+}
+
+fn planned_actions(actions: &[u32]) -> WasmResult<Vec<PlannedAction>> {
+    if !actions.len().is_multiple_of(3) {
+        return Err(error::invalid_argument(
+            "planned actions must be [actor, skill, magic_cost] triples",
+        ));
+    }
+    actions
+        .chunks_exact(3)
+        .map(|triple| {
+            let [actor, skill, cost] = [triple[0], triple[1], triple[2]];
+            let skill =
+                planned_skill(skill).ok_or_else(|| error::invalid_argument(format!("unknown public skill id {skill}")))?;
+            let magic_cost = match cost {
+                0 => None,
+                8..=23 => Some(cost as u8),
+                cost => {
+                    return Err(error::invalid_argument(format!(
+                        "magic cost must be 0 or within 8..=23, got {cost}"
+                    )));
+                }
+            };
+            Ok(PlannedAction {
+                actor: actor as usize,
+                skill,
+                magic_cost,
+            })
+        })
+        .collect()
+}
+
 #[wasm_bindgen]
 /// 将单名转换为 DIY 文本；old/minions 省略时为 false，冲突选项由 core 校验。
 pub fn to_diy(name: String, old: Option<bool>, minions: Option<bool>) -> WasmResult<String> {
@@ -472,6 +565,21 @@ mod tests {
         assert_eq!(frame.delay0, 0);
         assert_eq!(frame.delay1, 0);
         assert_eq!(frame.update_type, UpdateTypeView::NextLine);
+    }
+
+    #[test]
+    fn public_skill_ids_cover_the_overlay_table() {
+        use tswn_core::runtime::BuiltinActiveSkill;
+
+        assert_eq!(planned_skill(0), Some(PlannedSkill::Builtin(BuiltinActiveSkill::Fire)));
+        assert_eq!(planned_skill(3), Some(PlannedSkill::Builtin(BuiltinActiveSkill::Quake)));
+        assert_eq!(planned_skill(21), Some(PlannedSkill::Builtin(BuiltinActiveSkill::Assassinate)));
+        assert_eq!(planned_skill(24), Some(PlannedSkill::Builtin(BuiltinActiveSkill::Shadow)));
+        assert_eq!(planned_skill(255), Some(PlannedSkill::BasicAttack));
+        // 25..34 是防御/触发类技能，不参与主动出招。
+        for unsupported in [25, 34, 35, 256, u32::MAX] {
+            assert_eq!(planned_skill(unsupported), None, "id {unsupported} 不应映射到主动技能");
+        }
     }
 
     #[test]

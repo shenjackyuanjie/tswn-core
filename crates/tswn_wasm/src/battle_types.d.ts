@@ -1,6 +1,6 @@
 // 规范 core DTO 形状。没有单独的 Rust 绑定 schema。
 export type BattleStatus = "running" | "finished" | "truncated";
-export type BattleStopReason = "winner" | "max_rounds" | "no_progress";
+export type BattleStopReason = "winner" | "max_rounds" | "no_progress" | "paused";
 export type BattleMinionKind = "clone" | "summon" | "shadow" | "zombie";
 export type BattleUpdateType = "win" | "none" | "next_line";
 export type BattleTone = "normal" | "damage" | "recover" | "knockout" | "status_exit";
@@ -8,6 +8,8 @@ export type BattleReplayTextPartKind = "text" | "highlight" | "player" | "data";
 export type BattleReplayOptions = BattleOptions;
 
 export interface BattleReplay {
+    /** 受控单位逼停回放时是等待指令的实体 id；非暂停时不出现。 */
+    paused_actor?: number | null;
     status: BattleStatus;
     stop_reason: BattleStopReason;
     rounds_advanced: number;

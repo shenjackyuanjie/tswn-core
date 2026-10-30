@@ -173,6 +173,16 @@ show 页面右下角控制栏还支持 `C/P/F/T/I/R/S/D` 字母快捷键；字�
 
 `BattlePlayerState.skills` 只在选项 `include_skills: true` 时出现，元素为 `{ export_name, level }`：`export_name` 与 overlay 导出的键一致，0 级技能不出现，同名技能只保留一项并取最高等级，分身等派生单位给衰减后的值。关闭时该键被省略。
 
+### 外部行动脚本
+
+`battle_replay_with_actions(raw_input, actions, { controlled_team?, ... })` 让前端指定每个单位这一次用哪个技能，`actions` 是 `[actor, skill, magic_cost]` 扁平三元组数组：
+
+- `actor` 是 `BattlePlayerState.id`，可以为任意实体排队；
+- `skill` 用 overlay 编号 `0..24`，`255` 表示普通攻击；
+- `magic_cost` 传 `0` 表示由引擎现场掷，否则应是抽牌时掷好的消耗（`8..=23`）。
+
+受控队伍（`controlled_team`）的本体与分身用尽脚本后会逼停回放：返回对象带 `paused_actor`，`stop_reason` 为 `"paused"`，但 `status` 仍是 `"running"`、`finished` 为 false；追加一条指令再次调用即可。指令不可执行（技能未装备、MP 不足、无目标）抛出 `INVALID_ARGUMENT`，不会静默改成普攻。脚本为空时与 `battle_replay` 等价。
+
 ### 实时状态标签
 
 `shield` 是当前实际吸收护盾；`max_shield` 是当前护盾技能熟练度，吞噬等技能变更后随快照更新，用作盾条展示上限而不是战斗规则的硬上限。规范 `BattlePlayerState` 与兼容 `PlayerState` 的初始、帧、片段前后和最终快照均包含这两个字段。
