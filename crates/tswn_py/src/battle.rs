@@ -14,6 +14,7 @@ pub(crate) fn options(eval_rq: Option<f64>, include_icons: bool, max_rounds: Opt
         eval_rq: eval_rq.unwrap_or(defaults.eval_rq),
         include_icons,
         max_rounds: max_rounds.unwrap_or(defaults.max_rounds),
+        ..defaults
     }
 }
 

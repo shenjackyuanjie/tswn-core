@@ -689,6 +689,7 @@ pub unsafe extern "C" fn tswn_battle_replay_json(
                 eval_rq,
                 include_icons: include_icons != 0,
                 max_rounds,
+                ..core_cli_api::BattleOptions::default()
             },
         )
         .map_err(cli_api_error)?;

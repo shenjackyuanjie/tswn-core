@@ -1,5 +1,5 @@
 """Canonical BattleSession DTOs, shared with Rust, WASM and C."""
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 BattleStatus = Literal["running", "finished", "truncated"]
 BattleStopReason = Literal["winner", "max_rounds", "no_progress"]
@@ -55,6 +55,13 @@ class BattlePlayerState(TypedDict):
     alive: bool
     active: bool
     status_labels: list[str]
+    # 仅在 BattleOptions.include_skills 开启时出现；未开启时该键被省略。
+    skills: NotRequired[list[SkillSnapshot]]
+
+class SkillSnapshot(TypedDict):
+    # 技能导出名，例如 sklfire；同名技能合并为最高等级。
+    export_name: str
+    level: int
 
 class BattleReplayFrame(TypedDict):
     frame_index: int

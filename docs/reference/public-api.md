@@ -56,13 +56,15 @@ Runtime error 后会话进入 sticky failure（poisoned）：`is_failed() = true
 
 字段统一 snake_case；Python 返回精确 TypedDict 对应的 dict，WASM 返回 plain JS object / array / null，C 返回 UTF-8 JSON。定义见 [Rust DTO](../../crates/tswn_core/src/cli_api/battle/dto.rs)、[Python TypedDict](../../crates/tswn_py/tswn_py/_types_battle.pyi)、[TypeScript DTO](../../crates/tswn_wasm/src/battle_types.d.ts)。
 
-- `BattlePlayerState`：完整身份、归属、队伍、图标 key、属性、HP/MP/体力和状态标签；动态 clone/summon/shadow/zombie 也使用相同 schema。
+- `BattlePlayerState`：完整身份、归属、队伍、图标 key、属性、HP/MP/体力和状态标签；动态 clone/summon/shadow/zombie 也使用相同 schema。开启 `include_skills` 时另带技能熟练度 `skills`（见下）。
 - `BattleReplayFrame`：`frame_index`、`round_index`、`finished`、`winner_ids`、`updates`、`rows`、`states`、`total_delay`。
 - `rows[].clips[].parts[]`：文本、玩家、高亮、数值、HP before/after 和 death effect，展示语义由 core 提供。消费者不应再从消息模板或伤害值推断展示效果。
 - `BattleResult`：`status`、`stop_reason`、`finished`、`truncated`、`rounds_advanced`、`frames_emitted`、`winner_ids`、`winner_team_indices`、`final_states`。
 - `BattleReplay`：保留 `initial_states`、`frames`、全部 result 字段和固定为 `round` 的 `state_granularity`。`collect(BattleSession)` 与 `battle_replay` 的帧和结果相同。Rust 的 `BattleReplayOptions` 是已弃用兼容别名。
 
 护盾字段中，`shield` 是当前剩余吸收量，合计普通蓄盾与 `ShieldValue`，死亡时为 0；铁壁由独立状态表达。`max_shield` 是当前护盾技能熟练度，供展示条计算比例，实际盾值可以超过它。它和 `max_hp` 都随当前模板更新，能反映吞噬等机制的变化。身份字段 `owner_id` 表示直接主人，`source_id` 表示根来源。
+
+技能熟练度默认不导出：`BattleOptions.include_skills`（WASM 选项同名）为 true 时，每个 `BattlePlayerState` 附带 `skills: Array<{ export_name, level }>`。`export_name` 与 overlay 导出的技能键一致，0 级技能不出现；同名技能只保留一项并取最高等级，分身等派生单位给的是衰减后的值。关闭时该键被省略，既有载荷和 DTO 形状不变。
 
 调用方应保持 canonical snapshots 不变。昵称、图标 CSS 类、播放计划、检查点都是显示层数据。Python/WASM 的快照脱离会话持有的 Rust 内存，修改返回对象不会修改 Runtime。
 

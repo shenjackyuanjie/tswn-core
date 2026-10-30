@@ -50,7 +50,7 @@ impl BattleSession {
         }
         let driver = super::driver::BattleDriver::from_raw(raw, options)?;
         let mut icon_cache = HashMap::new();
-        let initial_states = states_from_runner(&driver.runner, options.include_icons, &mut icon_cache);
+        let initial_states = states_from_runner(&driver.runner, options.include_icons, options.include_skills, &mut icon_cache);
         Ok(Self {
             driver,
             options,
@@ -117,7 +117,12 @@ impl BattleSession {
             let round_index = step.round_index;
             let updates = step.updates;
             let visible = step.frame_index.is_some();
-            let states = states_from_runner(&self.driver.runner, self.options.include_icons, &mut self.icon_cache);
+            let states = states_from_runner(
+                &self.driver.runner,
+                self.options.include_icons,
+                self.options.include_skills,
+                &mut self.icon_cache,
+            );
             let frame = visible.then(|| {
                 let mut frame = build_frame(&updates, &self.current_states, &states, &self.driver.runner);
                 frame.frame_index = step.frame_index.unwrap();
@@ -161,6 +166,7 @@ impl BattleSession {
 pub(super) fn states_from_runner(
     runner: &RuntimeRunner,
     include_icons: bool,
+    include_skills: bool,
     icon_cache: &mut HashMap<String, String>,
 ) -> Vec<BattlePlayerState> {
     runner
@@ -168,6 +174,9 @@ pub(super) fn states_from_runner(
         .into_iter()
         .map(|snapshot| {
             let mut state = state_from_snapshot(snapshot, false);
+            if include_skills {
+                state.skills = skill_snapshots(runner, state.id);
+            }
             if include_icons {
                 state.icon_png_base64 = Some(match icon_cache.get(&state.icon_key) {
                     Some(icon) => icon.clone(),
@@ -181,6 +190,35 @@ pub(super) fn states_from_runner(
             state
         })
         .collect()
+}
+
+/// 读取指定实体的技能熟练度投影。
+///
+/// 按固定槽位顺序遍历，跳过 0 级与注册表里查不到的技能；同名技能只保留一项并取最高等级。
+fn skill_snapshots(runner: &RuntimeRunner, id: PlrId) -> Vec<SkillSnapshot> {
+    let runtime = runner.runtime();
+    let Some(entity) = runtime.entities.get(crate::runtime::entity::EntityIdx(id as u32)) else {
+        return Vec::new();
+    };
+    let loadout = &entity.template.skills;
+    let mut skills: Vec<SkillSnapshot> = Vec::new();
+    for (lane, skill_id) in loadout.skills().iter().enumerate() {
+        let level = loadout.level_at(lane).unwrap_or(0);
+        if level == 0 {
+            continue;
+        }
+        let Some(spec) = runtime.registry.skill(*skill_id) else {
+            continue;
+        };
+        match skills.iter_mut().find(|skill| skill.export_name == spec.export_name) {
+            Some(existing) => existing.level = existing.level.max(level),
+            None => skills.push(SkillSnapshot {
+                export_name: spec.export_name.clone(),
+                level,
+            }),
+        }
+    }
+    skills
 }
 
 fn state_from_snapshot(snapshot: RuntimePlayerSnapshot, include_icons: bool) -> BattlePlayerState {
@@ -223,6 +261,8 @@ fn state_from_snapshot(snapshot: RuntimePlayerSnapshot, include_icons: bool) -> 
         alive: snapshot.alive,
         active: snapshot.active,
         status_labels: snapshot.status_labels,
+        // 纯快照不含技能表；开启 include_skills 时由 states_from_runner 填充。
+        skills: Vec::new(),
     }
 }
 
@@ -418,9 +458,9 @@ mod tests {
         let max_shield = session.initial_states()[1].max_shield;
         assert_eq!(initial_json[1]["max_shield"], max_shield);
         session.driver.runner.runtime_mut().entities.get_mut(EntityIdx(1)).unwrap().runtime.shield = 40;
-        let previous = states_from_runner(&session.driver.runner, false, &mut session.icon_cache);
+        let previous = states_from_runner(&session.driver.runner, false, false, &mut session.icon_cache);
         session.driver.runner.runtime_mut().entities.get_mut(EntityIdx(1)).unwrap().runtime.shield = 25;
-        let states = states_from_runner(&session.driver.runner, false, &mut session.icon_cache);
+        let states = states_from_runner(&session.driver.runner, false, false, &mut session.icon_cache);
         let mut updates = RunUpdates::new();
         updates.add(crate::RunUpdate::new("[0]发起攻击", 0, 1, 0));
         updates.add(crate::RunUpdate::new("[1]受到[2]点伤害", 0, 1, 0));
@@ -464,14 +504,14 @@ mod tests {
         target.runtime.resistance = 0;
         target.runtime.agility = 0;
         target.template.skills = Default::default();
-        let previous = states_from_runner(&session.driver.runner, false, &mut session.icon_cache);
+        let previous = states_from_runner(&session.driver.runner, false, false, &mut session.icon_cache);
         let mut updates = RunUpdates::new();
         session
             .driver
             .runner
             .runtime_mut()
             .drain_plain_half_skill_into(EntityIdx(0), EntityIdx(1), &mut updates);
-        let states = states_from_runner(&session.driver.runner, false, &mut session.icon_cache);
+        let states = states_from_runner(&session.driver.runner, false, false, &mut session.icon_cache);
         let frame = build_frame(&updates, &previous, &states, &session.driver.runner);
         assert_eq!(frame.updates[0].message_template, "[0]使用[瘟疫]");
         assert_eq!(frame.updates[1].message_template, "[1]体力减少[2]%");
@@ -545,6 +585,39 @@ seed:7@!"#;
         }
         assert!(saw_shield);
         assert!(saw_consumption);
+    }
+
+    #[test]
+    fn skills_are_only_exported_when_requested() {
+        let raw = r#"left@red+ol:{"skills":{"shield":80}}
+
+right@blue+ol:{"skills":{}}
+seed:7@!"#;
+
+        // 默认关闭：技能表为空，序列化时连键都不出现，既有载荷不变。
+        let plain = BattleSession::new(raw, BattleOptions::default()).unwrap();
+        assert!(plain.initial_states().iter().all(|state| state.skills.is_empty()));
+        let json = serde_json::to_value(plain.initial_states()).unwrap();
+        assert!(json[0].get("skills").is_none(), "默认不应序列化 skills: {json}");
+
+        let options = BattleOptions {
+            include_skills: true,
+            ..BattleOptions::default()
+        };
+        let mut session = BattleSession::new(raw, options).unwrap();
+        let left = &session.initial_states()[0];
+        assert_eq!(left.display_name, "left");
+        assert_eq!(left.skills.len(), 1, "overlay 只声明 shield 一项熟练度：{:?}", left.skills);
+        assert_eq!(left.skills[0].level, 80);
+        assert!(!left.skills[0].export_name.is_empty());
+
+        // 帧内快照同样带熟练度，且不影响战斗结果。
+        let mut saw_skills = false;
+        while let Some(frame) = session.next_frame().unwrap() {
+            saw_skills |= frame.states.iter().any(|state| !state.skills.is_empty());
+        }
+        assert!(saw_skills);
+        assert!(session.result().unwrap().finished);
     }
 
     #[test]
@@ -671,11 +744,11 @@ seed:7@!"#;
         let mut cache = HashMap::from([(cached_key.clone(), "预填图标".to_owned())]);
         let original_cache = cache.clone();
 
-        let plain = states_from_runner(&runner, false, &mut cache);
+        let plain = states_from_runner(&runner, false, false, &mut cache);
         assert!(plain.iter().all(|state| state.icon_png_base64.is_none()));
         assert_eq!(cache, original_cache);
 
-        let with_icons = states_from_runner(&runner, true, &mut cache);
+        let with_icons = states_from_runner(&runner, true, false, &mut cache);
         assert_eq!(cache.len(), 2);
         assert_eq!(with_icons[0].icon_key, cached_key);
         assert_eq!(with_icons[0].icon_png_base64.as_deref(), Some("预填图标"));
@@ -691,7 +764,7 @@ seed:7@!"#;
         }
         assert_eq!(state_from_snapshot(snapshots[1].clone(), true), with_icons[1],);
         let filled_cache = cache.clone();
-        assert_eq!(states_from_runner(&runner, true, &mut cache), with_icons);
+        assert_eq!(states_from_runner(&runner, true, false, &mut cache), with_icons);
         assert_eq!(cache, filled_cache);
         assert_eq!(runner.model_state().unwrap(), before);
         let rng_after = &runner.runtime().rng;

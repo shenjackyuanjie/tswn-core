@@ -14,6 +14,10 @@ pub struct BattleOptions {
     pub include_icons: bool,
     /// 正整数的 Runtime 推进回合上限，包含空回合；默认 20,000。
     pub max_rounds: usize,
+    /// 是否在快照中附技能熟练度；默认关闭以保持既有载荷与 DTO 形状不变。
+    ///
+    /// 开启后每个 [`BattlePlayerState`] 都带当前熟练度，等同于每帧多一份技能表。
+    pub include_skills: bool,
 }
 
 impl Default for BattleOptions {
@@ -22,6 +26,7 @@ impl Default for BattleOptions {
             eval_rq: crate::namerena::eval_name::DEFAULT_EVAL_RQ,
             include_icons: false,
             max_rounds: BINDING_COMPLETION_MAX_ROUNDS,
+            include_skills: false,
         }
     }
 }
@@ -99,6 +104,21 @@ pub struct BattlePlayerState {
     pub active: bool,
     /// 人类可读的状态描述；完整载荷可从机制状态查阅。
     pub status_labels: Vec<String>,
+    /// 当前技能熟练度；仅在 [`BattleOptions::include_skills`] 时填充。
+    ///
+    /// 同名技能只出现一次并取最高等级；分身等派生单位给的是衰减后的值。
+    /// 未开启时为空，序列化时省略该键，既有消费者看到的载荷不变。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub skills: Vec<SkillSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// 单个技能的熟练度投影。
+pub struct SkillSnapshot {
+    /// 技能导出名，例如 `sklfire`、`summon:sklfire1`；与 overlay 导出的键一致。
+    pub export_name: String,
+    /// 当前熟练度等级；0 级技能不出现。
+    pub level: u32,
 }
 
 impl ReplayState for BattlePlayerState {

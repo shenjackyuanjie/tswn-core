@@ -167,7 +167,11 @@ show 页面右下角控制栏还支持 `C/P/F/T/I/R/S/D` 字母快捷键；字�
 
 兼容胜率入口还保留 `WIN_RATE_INVALID_GROUPS`，表示至少需要两个非空分组。错误对象和失败后查询约定见 [公共 API](../../docs/reference/public-api.md#错误与其他高层-api)。
 
-`battle_replay(raw_input, { eval_rq?, include_icons?, max_rounds? })` 是推荐的一次性回放入口，返回初始/最终状态、逐回合 updates、`rows/clips/parts` 与赢家信息。`FightSession` / `WinRateSession` 保留为 Advanced API；WASM 目标下 WinRateSession 仅支持自动或单线程。
+`battle_replay(raw_input, { eval_rq?, include_icons?, include_skills?, max_rounds? })` 是推荐的一次性回放入口，返回初始/最终状态、逐回合 updates、`rows/clips/parts` 与赢家信息。`include_skills` 开启时每个快照附带 `skills`（技能导出名 + 熟练度），默认关闭以保持载荷不变。`FightSession` / `WinRateSession` 保留为 Advanced API；WASM 目标下 WinRateSession 仅支持自动或单线程。
+
+### 技能熟练度
+
+`BattlePlayerState.skills` 只在选项 `include_skills: true` 时出现，元素为 `{ export_name, level }`：`export_name` 与 overlay 导出的键一致，0 级技能不出现，同名技能只保留一项并取最高等级，分身等派生单位给衰减后的值。关闭时该键被省略。
 
 ### 实时状态标签
 

@@ -58,7 +58,8 @@ impl WinRateOptions {
 }
 
 /// 规范战斗会话与完整回放共用选项；缺失字段使用 core 默认值。
-/// max_rounds 为正数回合预算，不是可见帧数；include_icons 会在快照中附图标 data URL。
+/// max_rounds 为正数回合预算，不是可见帧数；include_icons 会在快照中附图标 data URL，
+/// include_skills 会在快照中附技能熟练度。
 #[derive(Debug, Clone, Deserialize, Tsify)]
 pub struct BattleOptions {
     #[tsify(optional)]
@@ -67,6 +68,8 @@ pub struct BattleOptions {
     pub include_icons: Option<bool>,
     #[tsify(optional)]
     pub max_rounds: Option<usize>,
+    #[tsify(optional)]
+    pub include_skills: Option<bool>,
 }
 
 impl Default for BattleOptions {
@@ -75,6 +78,7 @@ impl Default for BattleOptions {
             eval_rq: None,
             include_icons: None,
             max_rounds: None,
+            include_skills: None,
         }
     }
 }
@@ -89,6 +93,7 @@ impl BattleOptions {
         if let Some(max_rounds) = self.max_rounds {
             options.max_rounds = max_rounds;
         }
+        options.include_skills = self.include_skills.unwrap_or(false);
         options
     }
 }

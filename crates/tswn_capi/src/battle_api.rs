@@ -389,6 +389,7 @@ mod tests {
             eval_rq: 0.5,
             max_rounds: 1,
             include_icons: true,
+            ..BattleOptions::default()
         };
         let old = SimulatedOldBattleOptionsV1 {
             struct_size: size_of::<SimulatedOldBattleOptionsV1>() as u32,
