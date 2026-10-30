@@ -5,7 +5,7 @@
 ### 内部整理
 
 - 单字与配对流程共用五套模型系数，删除重复的配对系数副本；五套单侧模型和六套 SP1 系数按模型分文件，原始数值、顺序和 f64 位表示保持不变。
-- `cargo test -p tswn_ds4` 全部通过。2026-10-13 的 `ds4_preview` C++ 对拍在首轮报告 `out/WC.txt`、`file/WC_old.txt` 两处差异；同输入的改动前后 Rust 文本记录一致，属于既有 C++ 对齐问题，不声称全流程对拍通过，也不改写 golden。
+- `cargo test -p tswn_ds4` 全部通过。2026-10-13 的 `ds4_preview` C++ 对拍在首轮报告 `out/WC.txt`、`file/WC_old.txt` 两处差异；同输入的改动前后 Rust 文本记录一致，差异属于既有 C++ 对齐问题；全流程对拍尚未通过，golden 基线保持原样。
 
 ## [0.2.1] - 2026-09-30
 
@@ -21,14 +21,14 @@
 - Openbox 新增 DS4 页面，直接调用 Rust API；提供彩色分区、配置 tooltip 与可固定流程帮助；新增 `run_with_progress` 阶段回调，共用后端提取为 `tswn_openbox_backend`。
 - 提取公开 Rust API，统一 CLI 复用 library，为 tswn 体系中的宿主集成提供配置、执行与报告接口。
 - 公开 `Config::from_json`、`run`、`run_with_progress`、`RunStage` 与 `FullRunReport`；错误通过
-  `Ds4Error` 返回而不退出宿主。阶段回调在执行线程同步调用，目前不支持全流程取消，同一工作目录不能并发运行。
+  `Ds4Error` 返回给宿主，库内不退出进程。阶段回调在执行线程同步调用；全流程取消尚未支持，同一工作目录不支持并发运行。
 - 队伍名按前缀接收并截断尾缀；新增二人和三人流程 ABCP5 历史缓存，重复运行保留历史预测结果。
 - 新增默认关闭的 Openbox 三轮实战筛选及独立 `openbox-cqp` 命令，直接调用
-  `tswn_openbox_backend` 和工作目录内的带权预设，无需 Openbox GUI 或外部 CLI 程序。
+  `tswn_openbox_backend` 和工作目录内的带权预设，运行时只依赖这两者。
 - 实战筛选按 100／1000／10000 局推进，阈值依次为 `three.pair_abcp_sieve / 100 + 1`、
   `+2`、`+2`（整数除法）；末轮追加到 `file/real_two.txt`，成功归档后清空 ABCP5 中间输入／结果，失败保留现场。
 - ABCP5 调用支持降线程重试与失败诊断；新增增量、失败保留、Rust API 与 Openbox library 回归测试。
-- ABCP5 目录支持 `TSWN_DS4_ABCP_DIR` 覆盖；外部程序、模型和运行库不随 crate 分发，
+- ABCP5 目录支持 `TSWN_DS4_ABCP_DIR` 覆盖；外部程序、模型和运行库由使用方自行提供，
   线程重试依次降为请求值的一半、四分之一和 1，并保留 `*.failure.txt` 诊断。
 
 ## [0.1.0] - 2026-09-30

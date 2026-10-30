@@ -7,7 +7,7 @@
 ### 变更
 
 - 跟进 `tswn_core 0.7.0`，同步核心调度与实现更新；C 导出签名、JSON 契约及 ABI 4 保持不变。
-- 本轮 core 的 CLI 迁移与实验性 encoder 不新增 C 导出，调用方无需调整现有 C 接口。
+- core 的 CLI 迁移与实验性 encoder 没有新增 C 导出，调用方的现有 C 接口保持不变。
 
 ## [0.6.2] - 2026-09-08
 
@@ -18,7 +18,7 @@
 
 ### 修复
 
-- 永久冻结 BattleOptions V1 prefix，按非对齐前缀读取已知字段并忽略未知未来尾部，明确禁止复用 V1 tail padding；旧 options 初始化函数只写 V1，避免未来扩展向旧 caller 的小缓冲区越界。现有布局和 ABI 4 不变。
+- 永久冻结 BattleOptions V1 prefix：按非对齐前缀读取已知字段，未知未来尾部忽略，V1 tail padding 不再复用；旧 options 初始化函数只写 V1，未来扩展不会向旧 caller 的小缓冲区越界。现有布局和 ABI 4 不变。
 - 同步 core 的批量判胜修复：队伍被清空后重新复活时，`tswn_batch_rate_json()`、`tswn_pair_rate_json()` 及带权变体不再沿用粘性存活组计数误判胜者。
 - 同步公共 replay view 的苏生 HP 与亡灵转化文本修复；BattleSession result JSON 和 `tswn_battle_replay_json()` 返回一致的玩家 part 与血量推演。
 
@@ -89,7 +89,7 @@
 ### ⚠️ Breaking Changes
 
 - **`tswn_player_snapshot_t.mp` 字段重命名为 `magic_point`**：C API 结构体字段名变更，调用方需要重新编译并更新源码中的字段访问。
-- **ABI 版本号未变**（仍为 `2`）：本次只涉及字段名变更，布局/偏移未变，但源码级别仍需更新。
+- **ABI 版本号未变**（仍为 `2`）：字段名变更不涉及布局与偏移，源码级别需要更新字段访问处。
 
 ### 变更
 
@@ -101,7 +101,7 @@
 ### 重构
 
 - `tswn_capi` 内部不再维护独立的 prepared 胜率多线程实现，改为直接复用 `tswn_core::win_rate` 的统一逻辑。
-- 胜率相关 C-API 的外部签名与 ABI 保持不变，本次版本步进主要用于同步内部实现重构。
+- 胜率相关 C-API 的外部签名与 ABI 保持不变，版本步进跟随内部实现重构。
 
 ## [0.2.0] - 2026-04-07
 
@@ -130,27 +130,26 @@
 
 ### 新增
 
-- 新增输入队伍查询辅助接口：可根据 `player_id` 直接查询其对应的原始输入 `group_index`，便于调用方按输入队伍归属判断胜者属于哪一组，而不必再自行扫描 `input_groups` roster 构造映射。
+- 新增输入队伍查询辅助接口：可根据 `player_id` 直接查询其对应的原始输入 `group_index`，便于调用方按输入队伍归属判断胜者属于哪一组，省去自行扫描 `input_groups` roster 构造映射。
 - 新增基于 `PreparedRunner` 的高层胜率接口：
   - `tswn_prepared_win_rate(...)`
   - `tswn_prepared_win_rate_with_eval_rq(...)`
-    便于调用方在已经持有 prepared 模板时，直接复用同一份预处理结果批量统计第一组对其余组的胜率，而不必每次重新从 raw 输入计算。
-- Windows 构建现在同时产出 `tswn_capi.lib`（`staticlib`），便于 C / C++ 调用方在需要时将 `tswn_capi` 静态链接进最终可执行文件，而不只依赖 `tswn_capi.dll` / `tswn_capi.dll.lib` 的动态链接形式。
-- 补充了 `PreparedRunner` 的 seed 使用说明：`tswn_runner_new_from_prepared(...)` 的 seed 参数应传入与 raw 文本一致的完整 `seed:...` 行，而不是只传裸 seed 值。
+    便于调用方在已经持有 prepared 模板时，直接复用同一份预处理结果批量统计第一组对其余组的胜率，省去每次从 raw 输入重新计算。
+- Windows 构建同时产出 `tswn_capi.lib`（`staticlib`），C / C++ 调用方可以把 `tswn_capi` 静态链接进最终可执行文件；动态链接形式 `tswn_capi.dll` / `tswn_capi.dll.lib` 仍然保留。
+- 补充了 `PreparedRunner` 的 seed 使用说明：`tswn_runner_new_from_prepared(...)` 的 seed 参数传入与 raw 文本一致的完整 `seed:...` 行，裸 seed 值不适用。
 - 补充了 Windows C++ 编译与链接说明文档，覆盖 `clang++` 动态/静态链接、`g++` 动态链接兼容性、以及运行时 DLL 查找方式等常见问题。
 - 新增 `examples/prepared_win_rate.c`，演示如何在 C 层先构造 `PreparedRunner`，再基于它重复构造 runner 并统计胜率。
 
 ### 说明
 
-- 该接口返回的是原始输入顺序对应的队伍索引语义，可与 `tswn_runner_input_group_count` / `tswn_runner_input_group_copy` 保持一致理解。
-- 对 `PreparedRunner` 而言：
-  - 不传 seed 时，应传 `NULL`
-  - 传 seed 时，应传完整字符串，例如 `seed:33554431@!`
-  - 不建议只传 `33554431@!` 这类裸 seed 值，否则可能与 raw 路径结果不一致
-- `tswn_prepared_win_rate(...)` / `tswn_prepared_win_rate_with_eval_rq(...)` 的定位是“高性能复用版胜率接口”：
-  - 适合调用方已经持有 `PreparedRunner` 的场景
-  - 内部会复用 prepared 模板，按当前胜率语义批量构造 runner 并统计第一组胜率
-- 对 Windows `staticlib` 而言，实际链接时可能还需要补充系统库；当前已验证的一种情况是 `clang++` 静态链接 `tswn_capi.lib` 时需要显式补 `ntdll.lib`。
+- 该接口返回原始输入顺序对应的队伍索引，语义与 `tswn_runner_input_group_count` / `tswn_runner_input_group_copy` 一致。
+- 对 `PreparedRunner`：
+  - 不传 seed 时传 `NULL`
+  - 传 seed 时传完整字符串，例如 `seed:33554431@!`
+  - 只传 `33554431@!` 这类裸 seed 值可能与 raw 路径结果不一致
+- `tswn_prepared_win_rate(...)` / `tswn_prepared_win_rate_with_eval_rq(...)` 是高性能复用版胜率接口，面向已持有 `PreparedRunner` 的调用方：
+  - 内部复用 prepared 模板，按当前胜率语义批量构造 runner 并统计第一组胜率
+- Windows `staticlib` 链接时可能需要补充系统库；已验证 `clang++` 静态链接 `tswn_capi.lib` 时需要显式补 `ntdll.lib`。
 
 ## [0.1.0] - 2026-04-06
 

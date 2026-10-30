@@ -26,7 +26,7 @@
 - 自适应 K：`K_i = BASE_K_FACTOR / (1 + 累计场次_i / 200)`，下限 12。一分钟一轮、每人
   每轮约 9 场的前提下，固定 K=80 的稳态估计误差超过真实实力差，是排名每分钟大幅互穿的
   主因。累计场次保存在 `LADDER_STATE_DIR` 下的小文本快照里（默认 `ladder_matchcount.txt`），
-  每 10 轮和收到退出信号时原子写回；快照丢失只影响后续两小时的收敛速度，不影响数据。
+  每 10 轮和收到退出信号时原子写回；快照丢失只影响后续两小时的收敛速度，数据本身不受影响。
 - 统一衰减：赛季衰减从 `score * DROPRATE` 改成每人扣掉 `(1 - DROPRATE) * 组内平均分`。
   按比例扣会持续压缩分差（高分端扣得多），既放大了名次抖动，又把「分数尺度」和 K 绑在
   一起；改成扣同一个量后均值仍稳定在 ~11000，分差不再受影响。
@@ -40,7 +40,7 @@
   `(number, player1_id, player2_id)` 精确删除没有信号的行。
 - 新增每 30 轮一次的维护：删除「对局双方已不活跃」的 handicap 行。
 - 新增每 10 轮一次的自维护 `VACUUM (ANALYZE) handicap`：线上实测共享集群的 autovacuum
-  会整小时不启动，不能指望它回收死元组；表只有几 MB，毫秒级代价，且不阻塞读写。
+  会整小时不启动，死元组需要主动回收；表只有几 MB，毫秒级代价，且不阻塞读写。
 - 分数与名次合并成一条 `UPDATE member ... FROM UNNEST(...)`，并跳过没有变化的行
   （旧实现先写分数再写名次，同一批行写两次）。
 
@@ -52,9 +52,9 @@
   缺口要 20 小时（配对模拟实测 50% 需 552 轮、90% 需 1181 轮）。恢复满 K 后 50%/90%
   回补分别缩到 47/62 轮，与旧版持平且不影响其他玩家的波动。
 - 玩家状态快照扩展为 `id 累计场次 名称哈希 K恢复截止轮`，仍兼容旧的 `id 累计场次` 格式
-  （缺的字段按 0 处理，不会被误判成换号）。
+  （缺的字段按 0 处理，不会误判换号）。
 - 环境变量 `LADDER_STATE_DIR`、`LADDER_K_SHRINK_MATCHES`、`LADDER_K_FLOOR`、
-  `LADDER_HANDICAP_PERSIST_QUANTUM`，线上调参不必重新编译。
+  `LADDER_HANDICAP_PERSIST_QUANTUM`，线上调参免去重新编译。
 - `sql/handicap_maintenance.sql`：handicap 表空间回收（`VACUUM FULL`）、去掉三个无用索引、
   设置 `fillfactor = 70`。
 - 每组日志追加 `handicap写入=<n> 删除=<n>`，便于观察写入量。
@@ -73,7 +73,7 @@
 ### 构建
 
 - 线上构建统一 `--release --features "no_debug,mimalloc_alloc"`；部署使用
-  `target/release/tswn_ladder`，不要用 debug / release-fast 产物。
+  `target/release/tswn_ladder`，debug / release-fast 产物不用于线上。
 
 ### 修复（部署特化）
 
@@ -83,8 +83,8 @@
 
 ### 内部整理
 
-- 将环境配置、更新编排、匹配、战斗及数据库存储从单一入口文件拆分；共用类型和常量保留在入口，不改数据库语句、随机调用顺序与评分公式。
-- 2026-10-13 的 `cargo test -p tswn_ladder` 三项回归通过；使用正常 mimalloc 配置，未连接或修改真实数据库。
+- 将环境配置、更新编排、匹配、战斗及数据库存储从单一入口文件拆分；共用类型和常量保留在入口，数据库语句、随机调用顺序与评分公式保持原状。
+- 2026-10-13 的 `cargo test -p tswn_ladder` 三项回归通过；测试使用正常 mimalloc 配置，未连接真实数据库，也未修改其中数据。
 
 ### 依赖更新
 
@@ -92,8 +92,7 @@
 
 ### 验证
 
-- `cargo check -p tswn_ladder --all-targets` 通过（本机以临时关闭 mimalloc 的配置绕过
-  `libmimalloc-sys` 的 `D8050` 环境故障）。
+- `cargo check -p tswn_ladder --all-targets` 通过；本机 `libmimalloc-sys` 报 `D8050` 环境故障，该次检查在临时关闭 mimalloc 的配置下执行。
 
 ## [0.1.0] - 2026-09-30
 
@@ -112,4 +111,4 @@
 
 ### 说明
 
-- 该 crate 作为内部运维工具加入 workspace，本轮首次封板为 `0.1.0`，不进入默认聚合包。
+- 该 crate 作为内部运维工具加入 workspace，首次封板为 `0.1.0`，不进入默认聚合包。

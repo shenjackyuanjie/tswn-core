@@ -16,4 +16,4 @@
 
 ### 说明
 
-- 该 crate 仅供 workspace 内部测试使用，版本为 `0.0.0` 且不发布；普通测试无需额外 feature，Runtime corpus 通过 `--features runtime-corpus` 启用。
+- 该 crate 仅供 workspace 内部测试使用，版本固定 `0.0.0` 且不对外发布；普通测试不需要额外 feature，Runtime corpus 通过 `--features runtime-corpus` 启用。

@@ -4,9 +4,9 @@
 
 ### 内部整理
 
-- 按职责拆分 SQLite 存储、Raw/Golden 排名、Correct/Python 校准与服务任务模块；不改变 SQL、评分公式、求解器脚本或 HTTP 调用契约。
+- 按职责拆分 SQLite 存储、Raw/Golden 排名、Correct/Python 校准与服务任务模块；SQL、评分公式、求解器脚本与 HTTP 调用契约保持原状。
 - 默认阈值和替换槽位策略留在 README，删除只比较固定返回值的两项测试，保留七项实际行为回归。
-- 2026-10-13 使用正常 SQLite/mimalloc 配置执行 `cargo test -p tswn_lane_ranker` 通过；下方 D8050 记录保留当时的环境状态。
+- 2026-10-13 使用正常 SQLite/mimalloc 配置执行 `cargo test -p tswn_lane_ranker`，全部通过；下方 D8050 记录当时的环境状态。
 
 ### 依赖更新
 
@@ -15,8 +15,7 @@
 
 ### 验证
 
-- 本机 MSVC 工具链无法编译 `libsqlite3-sys`（`D8050`，既有环境故障），本轮未能执行
-  `cargo check -p tswn_lane_ranker`；改动仅涉及版本约束与路由语法字符串。
+- 本机 MSVC 工具链无法编译 `libsqlite3-sys`（`D8050`，既有环境故障），`cargo check -p tswn_lane_ranker` 未能在本机执行；改动只涉及版本约束与路由语法字符串。
 
 ## [0.1.0] - 2026-09-30
 
@@ -51,4 +50,4 @@
 
 ### 说明
 
-- 该 crate 作为内部 Web 工具加入 workspace，本轮首次封板为 `0.1.0`，不进入默认聚合包。
+- 该 crate 作为内部 Web 工具加入 workspace，首次封板为 `0.1.0`，不进入默认聚合包。

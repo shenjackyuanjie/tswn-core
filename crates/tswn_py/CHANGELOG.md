@@ -14,8 +14,7 @@
 
 ### 验证
 
-- `cargo check -p tswn_py --all-targets` 通过（本机以临时关闭 mimalloc 的配置绕过
-  `libmimalloc-sys` 的 `D8050` 环境故障）。
+- `cargo check -p tswn_py --all-targets` 通过；本机 `libmimalloc-sys` 报 `D8050` 环境故障，该次检查在临时关闭 mimalloc 的配置下执行。
 
 ## [0.5.4] - 2026-09-30
 
@@ -33,7 +32,7 @@
 
 - 新增 `batch_rate_factored()` 与 `pair_rate_factored()`，支持按与靶子组等长的正数权重数组进行加权计算。
 - 新增 `BattleSession` PyClass、迭代器和完整 TypedDict；`battle_replay()` 精确返回 `BattleReplay`，异常暴露统一错误码。
-- `BattleSession.is_failed()` 可查询粘性 Runtime failure；失败时没有 result/stop_reason，`is_done` 仍为 false。
+- `BattleSession.is_failed()` 可查询粘性 Runtime failure；失败时 `result` 与 `stop_reason` 缺失，`is_done` 仍为 `false`。
 
 ### 修复
 
@@ -48,13 +47,14 @@
 
 ### 修复
 
-- 同步 core 的 Merge 状态刷新修复；`namer_pf()` / `score()` 在吞噬仅
-  合并技能的战斗中不再沿用旧的 Haste 生效倍率，Python API 形状不变。
+- 同步 core 的 Merge 状态刷新修复：`namer_pf()` / `score()` 在吞噬仅
+  合并技能的战斗中不再沿用旧的 Haste 生效倍率。
 - 同步铁壁打破时立即注销状态，以及尾部空 `@` 按无队名解析的兼容修复。
 - 同步 `@team:metadata` 按 Bun 解析为无队名的修复，并修复目标与 score profile
-  同 clan 时的 core panic；Python API 形状不变。
-- 同步嵌套自定义幻影的延迟蓝图修复；`namer_pf()` / `score()` 遇到带 `Clone`、
-  `Shadow` 的幻影不再触发 core panic，Python API 形状不变。
+  同 clan 时的 core panic。
+- 同步嵌套自定义幻影的延迟蓝图修复：`namer_pf()` / `score()` 遇到带 `Clone`、
+  `Shadow` 的幻影不再触发 core panic。
+- 以上同步修复的 Python API 形状保持不变。
 
 ## [0.5.1] - 2026-07-30
 
@@ -170,7 +170,7 @@
 ### 新增
 
 - `Runner` 新增：
-  - `player_input_group_index(player_id)`：根据玩家 `id` 直接查询其对应的原始输入 `group_index`，便于调用方按输入队伍归属判断胜者属于哪一组，而不必再自行扫描 `input_groups` roster 构造映射。
+  - `player_input_group_index(player_id)`：根据玩家 `id` 直接查询其对应的原始输入 `group_index`，便于调用方按输入队伍归属判断胜者属于哪一组，省去自行扫描 `input_groups` roster 构造映射。
 
 ### 变更
 
