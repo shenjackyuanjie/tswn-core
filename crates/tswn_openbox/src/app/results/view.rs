@@ -120,6 +120,13 @@ impl ResultsView {
             {
                 self.set_table_height(None);
             }
+            if ui
+                .button("填满")
+                .on_hover_text("把表格拉到可用高度上限，明细区保留最小高度；也可以拖动分隔条或双击它恢复自动。")
+                .clicked()
+            {
+                self.set_table_height(Some(TABLE_HEIGHT_MAX));
+            }
             if changed {
                 self.set_table_height(Some(height));
             }
@@ -164,7 +171,7 @@ impl ResultsView {
         }
         if self.dirty || self.rendered_mode != self.mode {
             self.rows.clear();
-            for &group in &self.order {
+            for &group in &self.sorted_groups() {
                 self.rows.push(ResultRow::Header(group));
                 if self.mode == ViewMode::Cards && self.expanded.contains(&group) {
                     let record = self.records.get_mut(&group).unwrap();
@@ -178,6 +185,9 @@ impl ResultsView {
             self.rendered_mode = self.mode;
         }
         let table = self.mode == ViewMode::Table;
+        let sort = self.sort;
+        // 表头点击在横向滚动闭包里记录，出了闭包再改排序，避免与列宽拖动共用可变借用。
+        let mut sort_click = None;
         // 徽章开关是布局偏好；缓存只在真正绘制时按需借用，避免长时间占用 `self`。
         let show_icons = self.show_icons;
         let kind = self.records[self.order.front().unwrap()].kind;
@@ -217,14 +227,33 @@ impl ResultsView {
                 if table {
                     ui.horizontal(|ui| {
                         for index in 0..column_count(kind) {
+                            let arrow = match sort {
+                                Some(state) if state.column == index => {
+                                    if state.descending {
+                                        " ▼"
+                                    } else {
+                                        " ▲"
+                                    }
+                                }
+                                _ => "",
+                            };
+                            let label = format!("{}{}", column_label(index, kind == ResultKind::Scores), arrow);
                             let response = cell(
                                 ui,
                                 self.column_widths[index],
-                                egui::RichText::new(column_label(index, kind == ResultKind::Scores)).strong().monospace(),
+                                egui::RichText::new(label).strong().monospace(),
                                 self.column_alignments[index],
-                                false,
+                                index != 1,
                                 None,
-                            );
+                            )
+                            .on_hover_text(if index == 1 {
+                                "状态 / 复制列，不参与排序。"
+                            } else {
+                                "点击切换排序：升序 → 降序 → 输入顺序。"
+                            });
+                            if response.clicked() {
+                                sort_click = Some(index);
+                            }
                             resize_column(ui, index, response.rect, &mut self.column_widths[index]);
                         }
                     });
@@ -449,6 +478,9 @@ impl ResultsView {
         if let Some(group) = select {
             self.selected = Some(group);
         }
+        if let Some(column) = sort_click {
+            self.cycle_sort(column);
+        }
         if !table {
             return;
         }
@@ -456,7 +488,10 @@ impl ResultsView {
             // 表格与明细之间用可拖动的分隔条调整表格高度；拖动后由自动模式切到固定高度。
             let title = self.records.get(&group).map(|record| record.divider_text()).unwrap_or_default();
             let divider = table_divider(ui, &title);
-            if divider.dragged() {
+            if divider.double_clicked() {
+                // 双击分隔条回到自动比例，省得为了复位再去翻排版设置。
+                self.set_table_height(None);
+            } else if divider.dragged() {
                 let current = if self.table_height > TABLE_HEIGHT_AUTO {
                     self.table_height
                 } else {
@@ -564,7 +599,7 @@ fn table_divider(ui: &mut egui::Ui, text: &str) -> egui::Response {
     } else {
         response.on_hover_cursor(egui::CursorIcon::ResizeVertical)
     };
-    response.on_hover_text("拖动调整表格高度；选中行的明细显示在下方。")
+    response.on_hover_text("拖动调整表格高度，双击恢复自动；选中行的明细显示在下方。")
 }
 
 /// 固定尺寸且不换行，避免长导出行或多行字段破坏虚拟列表行高。

@@ -21,11 +21,11 @@ const MAX_RESULT_BYTES: usize = 8 * 1024 * 1024;
 /// 表格高度的自动模式：按可用高度的 [`TABLE_AUTO_RATIO`] 分配，拖动分隔条后写入具体像素值。
 pub const TABLE_HEIGHT_AUTO: f32 = 0.0;
 pub const TABLE_HEIGHT_MIN: f32 = 80.0;
-pub const TABLE_HEIGHT_MAX: f32 = 2000.0;
+pub const TABLE_HEIGHT_MAX: f32 = 10_000.0;
 /// 自动模式下表格占结果区高度的比例；与拖动前的默认版面一致。
 pub const TABLE_AUTO_RATIO: f32 = 0.55;
-/// 表格下方选中行明细至少保留的高度。
-pub const TABLE_DETAIL_MIN: f32 = 120.0;
+/// 表格下方选中行明细至少保留的高度；表格因此最多占到可用高度减去这段空间。
+pub const TABLE_DETAIL_MIN: f32 = 80.0;
 
 /// 与 [`Tool::ALL`] 顺序一致的默认视图：导出与配队看卡片，评分与胜率看表格，
 /// 只有纯文本结果的 base 与 DS4 看纯文本。
@@ -231,6 +231,14 @@ impl Record {
     }
 }
 
+/// 表格当前按哪一列排序；`None` 表示按输入顺序。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SortState {
+    /// 表格列下标：0 是名字，2 起是各分数列。
+    pub column: usize,
+    pub descending: bool,
+}
+
 pub struct ResultsView {
     pub mode: ViewMode,
     pub follow: bool,
@@ -243,6 +251,8 @@ pub struct ResultsView {
     icons: IconCache,
     /// 表格区域高度；[`TABLE_HEIGHT_AUTO`] 表示按可用高度自动分配。
     pub table_height: f32,
+    /// 表头点击后的排序状态；切换视图或清空结果时回到输入顺序。
+    pub sort: Option<SortState>,
     records: HashMap<usize, Record>,
     order: VecDeque<usize>,
     expanded: HashSet<usize>,
@@ -279,6 +289,7 @@ impl Default for ResultsView {
             show_icons: true,
             icons: IconCache::default(),
             table_height: TABLE_HEIGHT_AUTO,
+            sort: None,
             records: HashMap::new(),
             order: VecDeque::new(),
             expanded: HashSet::new(),
@@ -353,6 +364,67 @@ impl ResultsView {
         } else {
             (available * TABLE_AUTO_RATIO).clamp(TABLE_HEIGHT_MIN, limit)
         }
+    }
+
+    /// 点击表头时循环切换排序：输入顺序 → 升序 → 降序 → 输入顺序。
+    ///
+    /// 第 1 列是状态与复制按钮，没有可比较的值，点击不产生排序。
+    pub fn cycle_sort(&mut self, column: usize) {
+        if column == 1 {
+            return;
+        }
+        self.sort = match self.sort {
+            Some(state) if state.column == column => {
+                if state.descending {
+                    None
+                } else {
+                    Some(SortState {
+                        column,
+                        descending: true,
+                    })
+                }
+            }
+            _ => Some(SortState {
+                column,
+                descending: false,
+            }),
+        };
+        self.dirty = true;
+    }
+
+    /// 当前要渲染的组顺序：默认按输入顺序，排序生效时按列值比较，同值保持输入顺序。
+    fn sorted_groups(&self) -> Vec<usize> {
+        let mut groups: Vec<usize> = self.order.iter().copied().collect();
+        let Some(sort) = self.sort else {
+            return groups;
+        };
+        groups.sort_by(|a, b| {
+            let order = self.compare_by_column(*a, *b, sort.column);
+            if sort.descending { order.reverse() } else { order }
+        });
+        groups
+    }
+
+    fn compare_by_column(&self, a: usize, b: usize, column: usize) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+        let (Some(left), Some(right)) = (self.records.get(&a), self.records.get(&b)) else {
+            return Ordering::Equal;
+        };
+        if column == 0 {
+            return left.label.cmp(&right.label);
+        }
+        if column < 2 {
+            return Ordering::Equal;
+        }
+        let left_value = left.entries.get(&(column - 2)).and_then(|entry| entry.data.value);
+        let right_value = right.entries.get(&(column - 2)).and_then(|entry| entry.data.value);
+        match (left_value, right_value) {
+            (Some(left), Some(right)) => left.total_cmp(&right),
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => Ordering::Equal,
+        }
+        .then(a.cmp(&b))
     }
 
     /// 记录拖动后的表格高度；`None` 恢复自动分配。
