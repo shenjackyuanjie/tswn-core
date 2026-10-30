@@ -61,7 +61,7 @@ impl OpenboxApp {
         });
         section_with_help(ui, "评分项", HelpTopic::NamerMetrics, &requested_help, |ui| {
             namer_pf_metric_controls_clean(ui, self, false);
-            hint(ui, "sum 为四项总分；各项可独立筛选，详细阈值见更多设置。");
+            hint(ui, "sum 为四项总分；各项可独立筛选，全都不勾＝不过滤；详细阈值见更多设置。");
         });
         section_with_help(ui, "名字", HelpTopic::NamerNames, &requested_help, |ui| {
             hint(ui, "每行一组，成员用 + 分隔；评分完成后逐项显示。");
