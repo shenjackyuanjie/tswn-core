@@ -8,7 +8,7 @@
 
 ### 验证
 
-- `node --test crates/tswn_wasm/tests/show-*.test.mjs` 43 项通过、`scripts/verify_web_playback.mjs` 8 组通过（图标改动不影响按键行为）。
+- `node --test crates/tswn_wasm/tests/show-*.test.mjs` 43 项通过、`scripts/verify_web_playback.mjs` 8 组通过；按键行为不变。
 - 真实浏览器截图核对控制栏：编辑按钮为循环箭头，从头开始按钮为三向左三角，其余按钮图标不变。
 
 ## [0.5.11] - 2026-10-17
@@ -33,7 +33,7 @@
 
 ### 兼容性
 
-- 只调整 WASM 展示层的排序与分组：`team_index`、`input_team_index` 字段、core 战斗规则、胜负判定与 Python／C 绑定契约都不变。
+- 改动集中在 WASM 展示层的排序与分组：`team_index`、`input_team_index` 字段、core 战斗规则、胜负判定与 Python／C 绑定契约保持原样。
 
 ### 验证
 
@@ -55,7 +55,7 @@
 
 ### 兼容性
 
-- 显示口径只在 WASM 展示层调整：`max_shield` / `shield` 字段、core 战斗规则、Python 与 C 绑定契约都不变。
+- 显示口径只在 WASM 展示层调整：`max_shield` / `shield` 字段、core 战斗规则、Python 与 C 绑定契约保持原样。
 
 ### 验证
 
@@ -89,7 +89,7 @@
 
 - 深色模式为像素图标增加浅色衬底，保留原图颜色与深色轮廓；提高名字框、死亡名字和状态标签的对比度。
 - 右侧对战区的盾条与 HP 条同为 4px，并紧接 HP 底轨右侧；预留行高与横向宽度，避免压到文字或后续角色。仍按每 4 点 1px 展示新增/消耗区段。
-- 护盾超过熟练度时条形截在展示上限内，真实盾值与数值提示保留，不改变护盾吸收、生成或破盾规则；旧数据缺少上限时退回前后盾值。
+- 护盾超过熟练度时条形截在展示上限内，真实盾值与数值提示照常显示；护盾吸收、生成与破盾规则不变，旧数据缺少上限时退回前后盾值。
 - show 页面脚本缓存版本更新为 `20261013c`。
 - show 样式按基础主题、角色、回放和面板拆分，通过原 `show.css` 按原始层叠顺序加载。
 - 将页面的播放控制、主题与悬浮高亮、详情渲染、共享类型说明从入口分离；各手写源文件不超过 1000 行，沿用同一会话状态和播放计划。
@@ -101,7 +101,7 @@
 - 浅色模式的新增护盾区段改为深青色，与底轨及已有护盾区段的对比度均不低于 3:1。
 - 角色详情复用侧栏的实时状态标签，修复只有侧栏显示护盾、详情「状态」遗漏护盾的问题。
 - 修复瘟疫成功后的百分比伤害句缺少右侧 HP 条的问题；条形变化使用实际扣血量，而非文本显示的百分比。
-- 护盾生成、消耗与破盾显示回合净变化，死亡投影为零；铁壁单次减伤阈值继续作为独立状态标签，战斗规则保持不变。
+- 护盾生成、消耗与破盾显示回合净变化，死亡投影为零；铁壁单次减伤阈值仍作为独立状态标签，战斗规则不变。
 
 ### 依赖更新
 
@@ -112,10 +112,10 @@
 - `cargo check -p tswn_wasm --target wasm32-unknown-unknown` 通过。
 - 增加护盾生成、吸收、死亡、快照序列化、瘟疫百分比 HP 变化以及页面标签增量更新的回归测试。
 - `cargo test -p tswn_wasm`、网页模块测试与播放契约验证通过；真实浏览器覆盖盾条常驻、详情护盾标签、护盾消耗、瘟疫及明暗主题和移动布局。
-- 本次封板重新通过 WASM Rust 11 项、Node/Bun 各 37 项、真实 Node WASM 契约 8 项及 DOM 验证；WASM 分发构建和实际 `version()` 均为 `0.5.7`。
+- WASM Rust 11 项、Node/Bun 各 37 项、真实 Node WASM 契约 8 项及 DOM 验证全部通过；WASM 分发构建和实际 `version()` 均为 `0.5.7`。
 - core 行为测试通过真实吞噬 effect 验证护盾熟练度上限变化，初始/帧/片段前后/最终状态序列化及兼容 API 投影均保留该字段，不重生成 golden/corpus。
-- 工作区测试（含 124 项 runtime corpus）通过；本机默认临时目录拒绝写入，验证时仅将 `TEMP/TMP` 指向 `target` 下的测试目录，未修改业务代码或系统设置。Clippy 执行成功，既有告警未批量修正。
-- 隔离 Edge 验证盾条紧接 HP 条右侧、同高对齐、按熟练度定长及移动布局，并在真实页面步进后检查详情状态；官方 Dark Reader `4.9.133` npm API 验证 lock、真实 Dynamic 注入提醒与清理。此项不代表读取或操纵用户的扩展全局设置，截图见 [示例说明](examples/README.md#外观验收截图)。
+- 工作区测试（含 124 项 runtime corpus）通过；本机默认临时目录拒绝写入，验证时把 `TEMP/TMP` 指向 `target` 下的测试目录，未改动业务代码或系统设置。Clippy 执行成功，既有告警未批量修正。
+- 隔离 Edge 验证盾条紧接 HP 条右侧、同高对齐、按熟练度定长及移动布局，并在真实页面步进后检查详情状态；官方 Dark Reader `4.9.133` npm API 验证 lock、真实 Dynamic 注入提醒与清理，验证只调用该 npm API，未读取或操纵用户扩展的全局设置。截图见 [示例说明](examples/README.md#外观验收截图)。
 
 ## [0.5.6] - 2026-09-30
 
@@ -208,12 +208,13 @@
 - `WinRateSession.thread > 1` 现在返回 `UNSUPPORTED_OPTION`，不再静默降级。
 
 - 同步 core 的 Merge 状态刷新修复；吞噬只合并技能时也会按旧版时机
-  提交 Haste 倍率，WASM 导出与 JSON shape 不变。
+  提交 Haste 倍率。
 - 同步铁壁打破时立即注销状态，以及尾部空 `@` 按无队名解析的兼容修复。
 - 同步 `@team:metadata` 按 Bun 解析为无队名的修复，并修复目标与 score profile
-  同 clan 时的 core panic；WASM 导出与 JSON shape 不变。
+  同 clan 时的 core panic。
 - 同步嵌套自定义幻影的延迟蓝图修复；`namer_pf()` / `score()` 遇到带 `Clone`、
-  `Shadow` 的幻影不再触发 core panic，WASM 导出与 JSON shape 不变。
+  `Shadow` 的幻影不再触发 core panic。
+- 以上同步的 WASM 导出与 JSON shape 均不变。
 
 ## [0.5.1] - 2026-07-30
 
@@ -232,8 +233,8 @@
 ### 变更
 
 - `FightSession` 的构造、逐帧推进、状态快照和胜者查询全部切换到主 Runtime；`WinRateSession` 移除最后一处旧 Runner 解析依赖。
-- `FightSession` / `WinRateSession`、`ReplayClip` 与 `ReplayTextPart` 的 JS/JSON shape 保持不变，clip 仍只通过 `parts[]` 表达文本、血条和死亡特效；无显式回放 guard 时上限为 20,000 主回合。
-- 包版本进入 `0.5.0`；本轮不新增执行器选择项，也不恢复任何 clip 顶层渲染字段。
+- `FightSession` / `WinRateSession`、`ReplayClip` 与 `ReplayTextPart` 的 JS/JSON shape 不变，clip 仍只通过 `parts[]` 表达文本、血条和死亡特效；无显式回放 guard 时上限为 20,000 主回合。
+- 包版本进入 `0.5.0`；未新增执行器选择项，clip 顶层渲染字段也未恢复。
 
 ## [0.4.0] - 2026-07-14
 
@@ -245,7 +246,7 @@
 
 ### 变更
 
-- `win_rate_sync`、`group_win_rate` 与 `WinRateSession` 内部改用 Runtime prepared 批量执行；原有 JS 类名、进度和结果结构保持不变。
+- `win_rate_sync`、`group_win_rate` 与 `WinRateSession` 内部改用 Runtime prepared 批量执行；原有 JS 类名、进度和结果结构不变。
 - 完整回放示例从 `show.html` 重命名为 `examples/index.html`，并移除 `FightSession` / legacy runtime URL fallback；页面只调用 runtime normalized run，分享链接会清理历史 `engine` / `runtime` 参数。
 - 同步 `main` 在 `d266cfe` 之后的 replay part 语义与页面配色，覆盖生命之轮、机制死亡、死亡特效、百分比伤害 HP 条和最新调色板。
 - 精简 `ReplayClip` 导出字段，移除 `text_template`、`player_id`、`data`、`show_hp`、`hp_before`、`hp_after`、`death_effect` 与 `emoji`；这些渲染语义统一由 `parts[]` 中的 `ReplayTextPart` 表达，clip 只保留 delay、颜色/语义、关联 id、侧栏快照和胜利标记。
@@ -647,7 +648,7 @@
 - 战斗日志在 wasm 层额外做显示名渲染（`message_rendered`），同时保留原始模板（`message_template`），不再直接暴露 `RunUpdate::msg()` 的数字 `PlrId` 替换结果。
 - wasm32 目标下不测量耗时（`WinRateTiming` 中各 nanos 字段为 0），非 wasm 目标正常记录。
 
-### 状态标签系统（本次追加）
+### 状态标签系统
 
 - `PlayerState` 新增 `status_labels: Vec<String>` 字段，序列化时为空则跳过，前端可直接用于渲染玩家状态标签
 - 在 `collect_states()` 中为每个玩家收集实时状态标签：
@@ -657,7 +658,7 @@
 - 新增 `push_status_label()` 去重辅助函数，避免同一标签被多次添加
 - 新增 `has_active_skill()` 泛型辅助函数，通过 `skill_storage()` 遍历玩家技能，按 `debug_skill_type_name()` 后缀匹配及自定义条件筛选
 
-### 逐段渲染系统（本次追加）
+### 逐段渲染系统
 
 - `show-render.js` 新增 `buildFrameRows()` 函数，将一帧拆分为多个渲染 chunk（`battleRows`/`frameBody`/`row`/`delay`），支持 normal/fast 模式按 chunk delay 逐段推进播放
 - `show.js` 播放逻辑从逐帧渲染改为逐段渲染：
