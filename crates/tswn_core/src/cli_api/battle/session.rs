@@ -34,6 +34,7 @@ pub struct BattleSession {
     initial_states: Vec<BattlePlayerState>,
     current_states: Vec<BattlePlayerState>,
     icon_cache: HashMap<String, String>,
+    paused: Option<u32>,
 }
 
 impl BattleSession {
@@ -57,6 +58,7 @@ impl BattleSession {
             current_states: initial_states.clone(),
             initial_states,
             icon_cache,
+            paused: None,
         })
     }
 
@@ -107,7 +109,7 @@ impl BattleSession {
         if let Some(error) = &self.driver.failure {
             return Err(error.clone());
         }
-        if self.is_done() {
+        if self.is_done() || self.paused.is_some() {
             return Ok(None);
         }
         loop {
@@ -125,11 +127,17 @@ impl BattleSession {
                 frame
             });
             self.current_states = states;
-            if frame.is_some() || self.is_done() {
+            if let Some(actor) = crate::runtime::forced_action::take_pause() {
+                self.paused = Some(actor);
+            }
+            if frame.is_some() || self.is_done() || self.paused.is_some() {
                 return Ok(frame);
             }
         }
     }
+
+    /// 受控单位把战斗逼停时，返回等待玩家指令的实体 id。
+    pub fn paused_actor(&self) -> Option<u32> { self.paused }
 
     /// 正常终止后返回拥有最终快照的结果；运行中或粘性失败时为 `None`。
     ///
@@ -168,6 +176,27 @@ pub(super) fn states_from_runner(
         .into_iter()
         .map(|snapshot| {
             let mut state = state_from_snapshot(snapshot, false);
+            state.skills = runner
+                .runtime()
+                .entities
+                .get(crate::runtime::entity::EntityIdx(state.id as u32))
+                .map(|entity| {
+                    let loadout = &entity.template.skills;
+                    loadout
+                        .skills()
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(lane, id)| {
+                            let level = loadout.level_at(lane).unwrap_or(0);
+                            if level == 0 {
+                                return None;
+                            }
+                            let name = runner.runtime().registry.skill(*id)?.export_name.clone();
+                            Some((name, level))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
             if include_icons {
                 state.icon_png_base64 = Some(match icon_cache.get(&state.icon_key) {
                     Some(icon) => icon.clone(),
@@ -187,6 +216,7 @@ fn state_from_snapshot(snapshot: RuntimePlayerSnapshot, include_icons: bool) -> 
     let icon_key = snapshot.id_key_name.clone();
     let icon_png_base64 = include_icons.then(|| render_icon_b64_from_name(&icon_key));
     BattlePlayerState {
+        skills: Vec::new(),
         id: snapshot.id,
         team_index: snapshot.team_index,
         input_team_index: snapshot.input_team_index,
@@ -689,7 +719,11 @@ seed:7@!"#;
             without_icon.icon_png_base64 = None;
             assert_eq!(&without_icon, plain);
         }
-        assert_eq!(state_from_snapshot(snapshots[1].clone(), true), with_icons[1],);
+        // 纯快照没有技能槽位；图标投影比较只覆盖快照本身负责的字段。
+        assert!(!with_icons[1].skills.is_empty());
+        let mut projected_snapshot = with_icons[1].clone();
+        projected_snapshot.skills.clear();
+        assert_eq!(state_from_snapshot(snapshots[1].clone(), true), projected_snapshot);
         let filled_cache = cache.clone();
         assert_eq!(states_from_runner(&runner, true, &mut cache), with_icons);
         assert_eq!(cache, filled_cache);

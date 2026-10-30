@@ -1,4 +1,4 @@
-use crate::replay_view::ReplayState;
+﻿use crate::replay_view::ReplayState;
 use crate::runtime::{BINDING_COMPLETION_MAX_ROUNDS, PlrId};
 use serde::Serialize;
 
@@ -14,6 +14,10 @@ pub struct BattleOptions {
     pub include_icons: bool,
     /// 正整数的 Runtime 推进回合上限，包含空回合；默认 20,000。
     pub max_rounds: usize,
+    /// 玩家受控队伍：该队伍的本体与分身必须等前端下指令，否则战斗暂停。
+    pub controlled_team: Option<usize>,
+    /// 开局体力倍率（如 1.25 表示以 125% 体力开场）；只作用于受控队伍。
+    pub start_hp_pct: Option<f64>,
 }
 
 impl Default for BattleOptions {
@@ -22,6 +26,8 @@ impl Default for BattleOptions {
             eval_rq: crate::namerena::eval_name::DEFAULT_EVAL_RQ,
             include_icons: false,
             max_rounds: BINDING_COMPLETION_MAX_ROUNDS,
+            controlled_team: None,
+            start_hp_pct: None,
         }
     }
 }
@@ -29,6 +35,8 @@ impl Default for BattleOptions {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 /// 完整收集同一 [`super::BattleSession`] 的规范回放。
 pub struct BattleReplay {
+    /// 玩家受控单位把战斗逼停时，这里是等待指令的实体 id。
+    pub paused_actor: Option<usize>,
     pub status: BattleStatus,
     pub stop_reason: BattleStopReason,
     pub rounds_advanced: usize,
@@ -99,6 +107,8 @@ pub struct BattlePlayerState {
     pub active: bool,
     /// 人类可读的状态描述；完整载荷可从机制状态查阅。
     pub status_labels: Vec<String>,
+    /// 当前技能熟练度（导出名, 等级）；分身等派生单位是衰减后的值。
+    pub skills: Vec<(String, u32)>,
 }
 
 impl ReplayState for BattlePlayerState {
@@ -115,6 +125,7 @@ impl ReplayState for BattlePlayerState {
     fn with_shield(&self, shield: i32) -> Self {
         Self {
             shield: if self.alive { shield.max(0) } else { 0 },
+            skills: self.skills.clone(),
             ..self.clone()
         }
     }
@@ -216,6 +227,7 @@ pub enum BattleStopReason {
     Winner,
     MaxRounds,
     NoProgress,
+    Paused,
 }
 #[derive(Debug, Clone, PartialEq, Serialize)]
 /// 正常 terminal 结果，包含胜利或截断信息；调用失败通过错误通道处理。

@@ -1,4 +1,4 @@
-//! WASM 层数据模型定义。
+﻿//! WASM 层数据模型定义。
 //!
 //! 定义从 Rust 向 JavaScript 暴露的所有数据结构，包括战斗选项、玩家元数据、
 //! 每帧状态快照、战斗回放、胜率结果等，均通过 `tsify` 生成对应的 TypeScript 类型声明。
@@ -67,6 +67,12 @@ pub struct BattleOptions {
     pub include_icons: Option<bool>,
     #[tsify(optional)]
     pub max_rounds: Option<usize>,
+    /// 玩家受控队伍编号；传了就会在轮到该队伍本体/分身时暂停等指令。
+    #[tsify(optional)]
+    pub controlled_team: Option<usize>,
+    /// 开局体力倍率（只作用于受控队伍），1.25 = 125%
+    #[tsify(optional)]
+    pub start_hp_pct: Option<f64>,
 }
 
 impl Default for BattleOptions {
@@ -75,6 +81,8 @@ impl Default for BattleOptions {
             eval_rq: None,
             include_icons: None,
             max_rounds: None,
+            controlled_team: None,
+            start_hp_pct: None,
         }
     }
 }
@@ -89,6 +97,8 @@ impl BattleOptions {
         if let Some(max_rounds) = self.max_rounds {
             options.max_rounds = max_rounds;
         }
+        options.controlled_team = self.controlled_team;
+        options.start_hp_pct = self.start_hp_pct;
         options
     }
 }

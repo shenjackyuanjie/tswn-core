@@ -1,4 +1,4 @@
-//! 战斗机制层：构建模板经过导入后，由这里的唯一执行链推进。
+﻿//! 战斗机制层：构建模板经过导入后，由这里的唯一执行链推进。
 //!
 //! # 数据与执行
 //!
@@ -38,6 +38,7 @@ mod cqp;
 pub mod effect;
 pub mod entity;
 pub mod extension;
+pub mod forced_action;
 mod handlers;
 pub mod lang;
 pub mod model_state;

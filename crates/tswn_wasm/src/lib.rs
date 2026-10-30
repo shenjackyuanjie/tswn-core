@@ -1,4 +1,4 @@
-//! JavaScript / WebAssembly 接入层与浏览器示例的计算接口。
+﻿//! JavaScript / WebAssembly 接入层与浏览器示例的计算接口。
 //!
 //! 游戏规则来自 core；本 crate 负责 wasm-bindgen 边界、对象生命周期、DTO 转换及
 //! TypeScript 声明。页面主题、播放游标和 DOM 渲染位于 `examples/` 展示层。
@@ -369,6 +369,46 @@ pub fn battle_replay(raw_input: String, options: Option<Ts<BattleReplayOptions>>
     let replay = tswn_core::cli_api::battle_replay(&raw_input, options.to_core()).map_err(error::cli_api_error)?;
     battle::dto_to_js(&replay)
 }
+
+/// 与 battle_replay 相同的回放，但允许卡牌前端为某个实体按顺序强制技能。
+///
+/// forced_skills 是技能 id 队列：每次轮到 actor_id 行动时消费一个；
+/// 队列耗尽后恢复 Runtime 原本的概率选择。
+#[wasm_bindgen(unchecked_return_type = "BattleReplay")]
+pub fn battle_replay_forced(
+    raw_input: String,
+    actions: Vec<u32>,
+    options: Option<Ts<BattleReplayOptions>>,
+) -> WasmResult<JsValue> {
+    install_panic_hook();
+    let options = ts_in(options)?;
+    // 三元组：actor, skill, mp（0 表示这一手没有指定消耗，由引擎现场掷）
+    let pairs = actions
+        .chunks_exact(3)
+        .map(|chunk| {
+            let cost = chunk[2] & 0xff;
+            (chunk[0], chunk[1], (cost > 0).then_some(cost))
+        })
+        .collect::<Vec<_>>();
+    let potions = actions
+        .chunks_exact(3)
+        .filter_map(|chunk| {
+            let code = chunk[2] >> 8;
+            (code > 0).then_some((chunk[0], code))
+        })
+        .collect::<Vec<_>>();
+    tswn_core::runtime::forced_action::set_potions(potions);
+    tswn_core::runtime::forced_action::set(pairs);
+    let result = tswn_core::cli_api::battle_replay(&raw_input, options.to_core());
+    tswn_core::runtime::forced_action::clear();
+    battle::dto_to_js(&result.map_err(error::cli_api_error)?)
+}
+
+#[wasm_bindgen]
+pub fn forced_hits() -> u32 { tswn_core::runtime::forced_action::hits() }
+
+#[wasm_bindgen]
+pub fn forced_taken() -> u32 { tswn_core::runtime::forced_action::taken() }
 
 #[wasm_bindgen]
 /// 将单名转换为 DIY 文本；old/minions 省略时为 false，冲突选项由 core 校验。

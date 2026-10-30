@@ -652,6 +652,9 @@ impl EntityArena {
         Self { entities }
     }
 
+    /// 遍历所有存活槽位（可变），用于开局体力倍率等一次性调整
+    pub fn iter_all_mut(&mut self) -> impl Iterator<Item = &mut EntityRecord> { self.entities.iter_mut().flatten() }
+
     pub fn len(&self) -> usize { self.entities.len() }
 
     pub fn is_empty(&self) -> bool { self.entities.is_empty() }

@@ -19,6 +19,8 @@ exclude = ["crates/tswn_name_ranker"]
 [profile.release]
 lto = "fat"
 codegen-units = 1
+opt-level = "z"
+strip = "symbols"
 
 [profile.release-fast]
 inherits = "release"

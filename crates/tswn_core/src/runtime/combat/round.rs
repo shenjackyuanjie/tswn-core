@@ -74,6 +74,14 @@ impl CombatRuntime {
         #[cfg(not(feature = "no_debug"))]
         let action_rng_before = RngCheckpoint::from_rc4(&self.rng);
         let smart = self.roll_actor_smart(action.actor);
+        // 潜行 pending 的 pre-action 槽位可能在技能表重建（升级/合并/状态刷新）时被丢掉，
+        // tswn 自己在施放时会 ensure 一次，这里在每次行动前补回来，
+        // 之后完全交给引擎的 pre_action 规则判断要不要背刺、会不会被识破。
+        if let Some(pending) = self.entities.get(action.actor).and_then(|entity| entity.runtime.assassinate) {
+            if let Some(entity) = self.entities.get_mut(action.actor) {
+                entity.template.skills.ensure_pre_action_lane(pending.fixed_lane);
+            }
+        }
         let plain_skill_pre_action = legacy_plain_action
             .then(|| self.run_plain_skill_pre_action_accumulator(action.actor))
             .unwrap_or_default();
@@ -347,12 +355,94 @@ impl CombatRuntime {
             .unwrap_or(false)
     }
 
+    /// 玩家操控的单位：受控队伍里的本体（默认 kind）与分身。
+    /// 幻影 / 使魔 / 丧尸属于召唤物，仍由引擎自动行动。
+    fn is_controlled_actor(&self, actor: EntityIdx, team: usize) -> bool {
+        let Some(entity) = self.entities.get(actor) else {
+            return false;
+        };
+        if entity.template.team != team {
+            return false;
+        }
+        match self.registry.player_kind(entity.runtime.kind) {
+            None => true,
+            Some(spec) => spec.export_name == crate::runtime::profile::DEFAULT_CORE_CLONE_KIND_EXPORT,
+        }
+    }
+
     pub fn prepare_plain_action(
         &mut self,
         actor: EntityIdx,
         smart: bool,
         pre_action: PlainSkillPreActionOutcome,
     ) -> Option<PreparedPlainAction> {
+        crate::runtime::forced_action::hit();
+        // 上一手的药水只持续一回合，这里先还原
+        self.revert_active_potion();
+        // 狂暴（含被附体）期间由引擎接管：不接收玩家指令、也不停下来要牌。
+        let berserk_forced = !pre_action.clear_forced_action && self.has_plain_berserk_state(actor);
+        let mut berserk_submitted = false;
+        // 卡牌玩法注入：轮到指定实体时优先执行玩家排好的行动。
+        // 但引擎自己有强制动作时（潜行→背刺的第二步）必须先让引擎走完，
+        // 否则玩家能在这段窗口里插别的技能，背刺就永远放不出来。
+        if pre_action.forced_skill.is_none() {
+            if let Some((forced_skill, forced_mp)) = crate::runtime::forced_action::take(actor.0 as u32) {
+                if let Some(code) = crate::runtime::forced_action::take_potion(actor.0 as u32) {
+                    self.apply_potion(actor, code);
+                }
+                if berserk_forced {
+                    // 狂暴：玩家这一手只用来推进节奏，真正动作由引擎接管
+                    berserk_submitted = true;
+                } else {
+                    // 玩家抽到这张牌时已经掷过消耗；没有就按 tswn 现场掷。
+                    let req_mp = match forced_mp {
+                        Some(cost) => cost as i32,
+                        None => {
+                            let req_mp_byte = self.rng.next_u8();
+                            (req_mp_byte & 15) as i32 + 8
+                        }
+                    };
+                    let (mp, attack) = {
+                        let entity = self
+                            .entities
+                            .get(actor)
+                            .unwrap_or_else(|| panic!("unknown forced action actor: {}", actor.0));
+                        (entity.runtime.magic_point, entity.runtime.attack)
+                    };
+                    // 玩家点名要用这个技能：目标选择按「不挑目标」的宽松口径，
+                    // 避免因为 AI 的 smart 过滤（例如瘟疫只挑 160~400 血的目标）而放不出来。
+                    let prepared = if mp >= req_mp {
+                        self.prepare_forced_builtin_skill(actor, forced_skill, smart)
+                    } else {
+                        None
+                    };
+                    if let Some(prepared) = prepared {
+                        if let Some(entity) = self.entities.get_mut(actor) {
+                            entity.runtime.magic_point -= req_mp;
+                        }
+                        return Some(PreparedPlainAction::BuiltinSkill(prepared));
+                    }
+                    let target = self.select_plain_default_attack_target(actor, smart)?;
+                    return Some(PreparedPlainAction::BasicAttack {
+                        target,
+                        use_magic: false,
+                        amount: attack,
+                    });
+                }
+            }
+        }
+
+        // 受控单位：只有在引擎没有强制动作、且不是「狂暴已收到玩家这一手」时才暂停。
+        if pre_action.forced_skill.is_none() && !berserk_submitted {
+            if let Some(team) = crate::runtime::forced_action::controlled_team() {
+                // 玩家操控的单位（本体 + 分身）：没有排好的指令就停在这里，绝不代替玩家行动。
+                // 召唤物（幻影 / 使魔 / 丧尸）不在此列，仍按 tswn 的规则自动行动。
+                if self.is_controlled_actor(actor, team) {
+                    crate::runtime::forced_action::set_pause(actor.0 as u32);
+                    return None;
+                }
+            }
+        }
         if let Some(forced_skill) = pre_action.forced_skill {
             return Some(PreparedPlainAction::BuiltinSkill(forced_skill));
         }
@@ -511,6 +601,55 @@ impl CombatRuntime {
         }
     }
 
+    /// 喝药：加强当前角色一项属性一回合（不占行动）+ 少量回血
+    fn apply_potion(&mut self, actor: EntityIdx, code: u32) {
+        // code = 属性下标 + 1（0 表示没喝药）
+        let field = ((code & 0xF) as usize).saturating_sub(1);
+        let Some(entity) = self.entities.get_mut(actor) else { return };
+        if field == 9 {
+            // 9 = 能量药水：回复 40 点 MP（上限 100）
+            entity.runtime.magic_point = (entity.runtime.magic_point + 40).min(100);
+            return;
+        }
+        if field >= 8 {
+            // 8 = 体力药水：回复 25% 最大体力
+            let heal = (entity.template.max_hp / 4).max(10);
+            entity.runtime.hp = (entity.runtime.hp + heal).min(entity.template.max_hp);
+            return;
+        }
+        let slot = match field {
+            0 => &mut entity.runtime.attack,
+            1 => &mut entity.runtime.defense,
+            2 => &mut entity.runtime.speed,
+            3 => &mut entity.runtime.agility,
+            4 => &mut entity.runtime.magic,
+            5 => &mut entity.runtime.resistance,
+            _ => &mut entity.runtime.wisdom,
+        };
+        let delta = (*slot / 4).max(8);
+        *slot += delta;
+        crate::runtime::forced_action::set_active_potion(Some((actor.0, field as u8, delta)));
+    }
+
+    /// 还原上一回合的药水加成
+    fn revert_active_potion(&mut self) {
+        let Some((actor_id, field, delta)) = crate::runtime::forced_action::take_active_potion() else {
+            return;
+        };
+        let entity = self.entities.get_mut(EntityIdx(actor_id));
+        let Some(entity) = entity else { return };
+        match field {
+            0 => entity.runtime.attack -= delta,
+            1 => entity.runtime.defense -= delta,
+            2 => entity.runtime.speed -= delta,
+            3 => entity.runtime.agility -= delta,
+            4 => entity.runtime.magic -= delta,
+            5 => entity.runtime.resistance -= delta,
+            6 => entity.runtime.wisdom -= delta,
+            _ => {}
+        }
+    }
+
     pub fn has_plain_berserk_state(&self, actor: EntityIdx) -> bool {
         self.entities.get(actor).is_some_and(|entity| {
             entity
@@ -622,6 +761,92 @@ impl CombatRuntime {
             .states
             .clear_legacy_key(state_key);
         debug_assert!(removed, "runtime berserk state disappeared before state clear");
+    }
+
+    /// 按技能 id 构造一次主动技能行动（卡牌玩法强制出招）。
+    ///
+    /// 只校验该技能在当前 loadout 中的等级是否大于 0，并用与自动选择相同的
+    /// 目标选择函数；队列为空时 Runtime 行为与上游完全一致。
+    pub fn prepare_forced_builtin_skill(
+        &mut self,
+        actor: EntityIdx,
+        skill_id: u32,
+        smart: bool,
+    ) -> Option<PreparedBuiltinSkillAction> {
+        let builtin_skill = public_builtin_skill(skill_id)?;
+        let fixed_lane = {
+            let entity = self.entities.get(actor)?;
+            let loadout = &entity.template.skills;
+            let mut found = None;
+            for (lane, id) in loadout.skills().iter().enumerate() {
+                if self.builtin_active_skill(*id) == Some(builtin_skill) {
+                    found = Some(lane);
+                    break;
+                }
+            }
+            let lane = found?;
+            if loadout.level_at(lane).unwrap_or(0) == 0 {
+                return None;
+            }
+            lane
+        };
+        // 目标与命中都交给 tswn：优先用引擎这一回合掷出的 smart 口径；
+        // 只有当这个口径一个目标都选不出来时才退到宽松口径，避免玩家点名的技能变成普攻。
+        let mut targets = self.select_forced_skill_targets(actor, builtin_skill, smart);
+        if targets.is_empty() {
+            targets = self.select_forced_skill_targets(actor, builtin_skill, false);
+        }
+        let allows_empty_targets = builtin_skill == BuiltinActiveSkill::Assassinate
+            && self.entities.get(actor).is_some_and(|entity| entity.runtime.assassinate.is_some());
+        if targets.is_empty() && !allows_empty_targets {
+            return None;
+        }
+        Some(PreparedBuiltinSkillAction {
+            selected: SelectedBuiltinSkill {
+                skill: builtin_skill,
+                fixed_lane,
+            },
+            targets,
+        })
+    }
+
+    fn select_forced_skill_targets(
+        &mut self,
+        actor: EntityIdx,
+        builtin_skill: BuiltinActiveSkill,
+        smart: bool,
+    ) -> PreparedTargetList {
+        match builtin_skill {
+            BuiltinActiveSkill::Fire
+            | BuiltinActiveSkill::Thunder
+            | BuiltinActiveSkill::Absorb
+            | BuiltinActiveSkill::Poison
+            | BuiltinActiveSkill::Critical
+            | BuiltinActiveSkill::SummonExplode => self.select_plain_default_enemy_targets(actor, smart),
+            BuiltinActiveSkill::Berserk => self.select_plain_berserk_targets(actor, smart),
+            BuiltinActiveSkill::Quake => {
+                self.select_plain_default_enemy_targets_with_count(actor, smart, if smart { 6 } else { 5 })
+            }
+            BuiltinActiveSkill::Ice => self.select_plain_ice_targets(actor, smart),
+            BuiltinActiveSkill::Rapid => self.select_plain_rapid_targets(actor, smart),
+            BuiltinActiveSkill::Half => self.select_plain_half_targets(actor, smart),
+            BuiltinActiveSkill::Shadow => smallvec::smallvec![actor],
+            BuiltinActiveSkill::Charm => self.select_plain_charm_targets(actor, smart),
+            BuiltinActiveSkill::Curse => self.select_plain_curse_targets(actor, smart),
+            BuiltinActiveSkill::Haste => self.select_plain_haste_targets(actor, smart),
+            BuiltinActiveSkill::Heal => self.select_plain_heal_targets(actor, smart),
+            BuiltinActiveSkill::Slow => self.select_plain_slow_targets(actor, smart),
+            BuiltinActiveSkill::Exchange => self.select_plain_exchange_targets(actor, smart),
+            BuiltinActiveSkill::Revive => self.select_plain_revive_targets(actor, smart),
+            BuiltinActiveSkill::Disperse => self.select_plain_disperse_targets(actor, smart),
+            BuiltinActiveSkill::Iron => smallvec::smallvec![actor],
+            BuiltinActiveSkill::Clone => smallvec::smallvec![actor],
+            BuiltinActiveSkill::Charge => smallvec::smallvec![actor],
+            BuiltinActiveSkill::Accumulate => smallvec::smallvec![actor],
+            BuiltinActiveSkill::Assassinate => self.select_plain_assassinate_targets(actor, smart),
+            BuiltinActiveSkill::Summon => smallvec::smallvec![actor],
+            BuiltinActiveSkill::Possess => self.select_plain_possess_targets(actor, smart),
+        }
     }
 
     pub fn scan_plain_action_skill_probabilities(&mut self, actor: EntityIdx, smart: bool) -> Option<PreparedBuiltinSkillAction> {
@@ -934,4 +1159,37 @@ impl CombatRuntime {
         }
         roll < level
     }
+}
+
+/// 卡牌前端使用的公开技能编号（overlay 里的 0..34）→ 引擎内置主动技能。
+/// 25..34 是防御/触发类技能，不参与「主动出招」，返回 None。
+fn public_builtin_skill(id: u32) -> Option<BuiltinActiveSkill> {
+    Some(match id {
+        0 => BuiltinActiveSkill::Fire,
+        1 => BuiltinActiveSkill::Ice,
+        2 => BuiltinActiveSkill::Thunder,
+        3 => BuiltinActiveSkill::Quake,
+        4 => BuiltinActiveSkill::Absorb,
+        5 => BuiltinActiveSkill::Poison,
+        6 => BuiltinActiveSkill::Rapid,
+        7 => BuiltinActiveSkill::Critical,
+        8 => BuiltinActiveSkill::Half,
+        9 => BuiltinActiveSkill::Exchange,
+        10 => BuiltinActiveSkill::Berserk,
+        11 => BuiltinActiveSkill::Charm,
+        12 => BuiltinActiveSkill::Haste,
+        13 => BuiltinActiveSkill::Slow,
+        14 => BuiltinActiveSkill::Curse,
+        15 => BuiltinActiveSkill::Heal,
+        16 => BuiltinActiveSkill::Revive,
+        17 => BuiltinActiveSkill::Disperse,
+        18 => BuiltinActiveSkill::Iron,
+        19 => BuiltinActiveSkill::Charge,
+        20 => BuiltinActiveSkill::Accumulate,
+        21 => BuiltinActiveSkill::Assassinate,
+        22 => BuiltinActiveSkill::Summon,
+        23 => BuiltinActiveSkill::Clone,
+        24 => BuiltinActiveSkill::Shadow,
+        _ => return None,
+    })
 }

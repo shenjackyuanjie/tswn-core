@@ -1,4 +1,4 @@
-use super::{BattleOptions, BattleStopReason};
+﻿use super::{BattleOptions, BattleStopReason};
 use crate::cli_api::{CliApiError, CliApiResult, invalid_input};
 use crate::runtime::model_state::{BattleModelState, ModelStateError};
 use crate::runtime::{RunUpdates, RuntimeRunner};
@@ -33,8 +33,24 @@ impl BattleDriver {
             return Err(CliApiError::InvalidArgument("battle eval_rq must be finite".into()));
         }
         let (groups, seed) = RuntimeRunner::split_namerena_into_groups(raw.to_owned());
-        let runner = RuntimeRunner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, options.eval_rq)
+        let mut runner = RuntimeRunner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, options.eval_rq)
             .map_err(|e| CliApiError::RunnerInit(e.to_string()))?;
+        if let Some(pct) = options.start_hp_pct {
+            if pct > 1.0 {
+                let team = options.controlled_team;
+                let runtime = runner.runtime_mut();
+                for entity in runtime.entities.iter_all_mut() {
+                    let is_ours = match team {
+                        Some(t) => entity.runtime.team == t,
+                        None => true,
+                    };
+                    if is_ours && entity.runtime.alive {
+                        let target = (entity.template.max_hp as f64 * pct).round() as i32;
+                        entity.runtime.hp = entity.runtime.hp.max(target);
+                    }
+                }
+            }
+        }
         Self::new(runner, options.max_rounds)
     }
 

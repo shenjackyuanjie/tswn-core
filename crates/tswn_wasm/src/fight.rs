@@ -291,6 +291,8 @@ mod tests {
             alive: true,
             active: true,
             status_labels: Vec::new(),
+            // 图标/归属投影样例不提供技能，显式保留空技能快照。
+            skills: Vec::new(),
         };
         let original = state.clone();
         let legacy = state_from_core(&state);
