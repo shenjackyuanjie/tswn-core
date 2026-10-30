@@ -13,14 +13,14 @@
 
 ### 验证边界
 
-- 2026-10-29 基线与性能分支复测均有 5 项 DS4 golden 失败，golden 基线未改写，详见[无武器路径成本简报](../../docs/perf/reports/performance-branch-2026-10-29.md)；只更新文档，未重新运行测试。
+- 2026-10-29 基线与性能分支复测均有 5 项 DS4 golden 失败，golden 基线未改写，详见[无武器路径成本简报](../../docs/perf/reports/performance-branch-2026-10-29.md)。
 
 ## [0.2.1] - 2026-09-30
 
 ### 变更
 
 - 跟进 `tswn_openbox_backend 0.4.6` 与 `tswn_core 0.7.0`；Rust API、阶段回调、配置格式
-  和输出文件保持不变，ABCP5 外部资源与全流程取消的边界沿用 `0.2.0`。
+  和输出文件保持不变，ABCP5 外部资源与全流程取消的边界与 `0.2.0` 一致。
 
 ## [0.2.0] - 2026-09-30
 
@@ -29,7 +29,7 @@
 - Openbox 新增 DS4 页面，直接调用 Rust API；提供彩色分区、配置 tooltip 与可固定流程帮助；新增 `run_with_progress` 阶段回调，共用后端提取为 `tswn_openbox_backend`。
 - 提取公开 Rust API，统一 CLI 复用 library，为 tswn 体系中的宿主集成提供配置、执行与报告接口。
 - 公开 `Config::from_json`、`run`、`run_with_progress`、`RunStage` 与 `FullRunReport`；错误通过
-  `Ds4Error` 返回给宿主，库内不退出进程。阶段回调在执行线程同步调用；全流程取消尚未支持，同一工作目录不支持并发运行。
+  `Ds4Error` 返回给宿主，库内不退出进程。阶段回调在执行线程同步调用；全流程取消尚未支持，同一工作目录只支持串行运行。
 - 队伍名按前缀接收并截断尾缀；新增二人和三人流程 ABCP5 历史缓存，重复运行保留历史预测结果。
 - 新增默认关闭的 Openbox 三轮实战筛选及独立 `openbox-cqp` 命令，直接调用
   `tswn_openbox_backend` 和工作目录内的带权预设，运行时只依赖这两者。

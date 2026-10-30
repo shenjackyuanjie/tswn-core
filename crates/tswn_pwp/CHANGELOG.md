@@ -35,8 +35,8 @@
 
 ### 验证
 
-- 早期本机 MSVC 的 `zstd-sys` 构建曾报 `D8050`，临时关闭 zstd 的检查不覆盖压缩用例；后续已通过任务内 TEMP/TMP 在正常 ZSTD 配置下复跑 PWP 测试，未修改系统配置。
-- `cargo check -p tswn_pwp --all-targets` 在临时关闭 `zstd` 特性的配置下通过；压缩相关的 5 个用例在该配置下缺少 zstd，以 `Disabled feature at compile time: zstd` 失败，留待 MSVC 正常的环境复跑。
+- 本机 MSVC 的 `zstd-sys` 构建曾报 `D8050`（既有环境故障）；已通过任务内 TEMP/TMP 在正常 ZSTD 配置下复跑 PWP 测试，系统配置未改动。
+- `cargo check -p tswn_pwp --all-targets` 在临时关闭 `zstd` 特性的配置下通过；压缩相关的 5 个用例在该配置下以 `Disabled feature at compile time: zstd` 失败，需在 MSVC 正常的环境复跑。
 
 ## [0.0.1] - 2026-09-30
 

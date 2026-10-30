@@ -9,7 +9,7 @@
 
 ### 数据契约
 
-- 规范 `BattlePlayerState` 类型存根补齐 `shield` 并新增 `max_shield`，与 core 会话/回放的实际状态字段一致；护盾熟练度展示上限不截断实际盾值，不改变战斗规则。
+- 规范 `BattlePlayerState` 类型存根补齐 `shield` 并新增 `max_shield`，与 core 会话/回放的实际状态字段一致；护盾熟练度只作展示上限，实际盾值完整显示，战斗规则不变。
 - 完善流式会话、完整回放、错误码与返回对象所有权说明。
 
 ### 构建
@@ -20,7 +20,7 @@
 
 ### 历史验证说明
 
-- `cargo check -p tswn_py --all-targets` 在临时关闭 mimalloc 的配置下通过；本机 `libmimalloc-sys` 报 `D8050` 环境故障。该配置只用于那次检查，不是默认构建配置；后续维护验证见[工作区更新日志](../../CHANGELOG.md)。
+- `cargo check -p tswn_py --all-targets` 在临时关闭 mimalloc 的配置下通过（本机 `libmimalloc-sys` 报 `D8050` 环境故障）；默认构建仍启用 mimalloc，后续维护验证见[工作区更新日志](../../CHANGELOG.md)。
 
 ## [0.5.4] - 2026-09-30
 

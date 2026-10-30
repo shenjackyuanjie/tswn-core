@@ -58,7 +58,7 @@
 
 ### 验证
 
-以下是各次改动当时的检查记录；当前分支的完整测试总数与全部武器端到端覆盖以最新一轮为准。
+以下检查记录对应各项改动完成时；当前分支的完整测试总数与全部武器端到端覆盖以最新一轮为准。
 
 - `cargo test -p tswn_core --no-default-features --features png_render`：`tswn_core` lib 602 项、
   `tswn-cli` 89 项通过；`cargo +nightly fmt --check` 无输出。
@@ -158,7 +158,7 @@
 ### 新增
 
 - 公开 `CloneBuildData` 构造参数、`CloneStatAdjustments` 与 `ScoreCloneSkillBoostPlan` 及其字段，
-  供机制状态导出读取；只放宽可见性，不改变分身构造、技能强化或战斗行为。
+  供机制状态导出读取；本次仅放宽可见性，分身构造、技能强化与战斗行为不变。
 
 ### 性能与诊断
 
@@ -298,7 +298,7 @@
 - 批量无 replay 路径不再为铁壁判定保留整份最后 `RunUpdate`，只记录普通防御事件的施法者、目标和紧凑布尔标记；完整帧路径仍从 replay 读取同一语义，后续非防御事件会显式覆盖标记。fixed30/no_debug/13000 单线程三组交替 A/B 的 overall 中位从 `27.707` 降至 `27.050 us/battle`，fight 从 `24.896` 降至 `24.253 us/battle`，分别缩短 2.37% 与 2.58%，结果聚合保持 `150858`。mario 26 万场三组交替 A/B 的整体中位从 `8.296` 降至 `8.257 s`，fight 从 `5.404` 降至 `5.359 s`，分别缩短 0.47% 与 0.84%，胜场保持 `83916/260000`。`cargo test -p tswn_core` 全量通过：核心库 596 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过；`no_debug` 核心库 589 通过、2 忽略；release Runtime corpus 124/124 通过；固定 SBY 12000-case 的 TS/Rust 执行失败、空输出与 diff 均为 0。
 - Runtime 的内置主动技能扫描在缓存命中时固定只读缓存与等级切片指针；失败概率分支只推进 RC4，不再为平均约十个候选逐项重复查询实体槽、Option 与切片边界，成功进入目标选择后立即返回且不再读取指针。fixed30/no_debug/13000 单线程三组交替 A/B 的 overall 中位从 `28.970` 降至 `28.499 us/battle`，缩短 1.63%；core 1v1/2v2、1v1、2v2、stress_multi 全部同向，结果聚合保持 `150858`。mario 13 万场三组交替 A/B 的整体中位从 `4.290` 降至 `4.216 s`，缩短 1.73%，胜场保持 `41930/130000`。`cargo test -p tswn_core` 全量通过：核心库 596 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过；`no_debug` 核心库 589 通过、2 忽略；release Runtime corpus 124/124 通过；固定 SBY 12000-case 的 TS/Rust 执行失败与 diff 均为 0。
 - score 准备对象的 Shadow、Summon、Zombie 三类可选蓝图改为使用最终实体槽本来就需要的 `Box<PlayerTemplate>`；常见延迟蓝图路径不再因三个空 `Option<PlayerTemplate>` 固定携带三份大模板，`PreparedPlayerInit` 从 `4920` 字节降至 `1272` 字节，缩小 74.15%，有蓝图时则直接把同一个 Box 移交实体槽，不增加净分配。mario 13 万场单线程五组交替 A/B 的整体与初始化配对中位分别缩短 0.95% 和 2.44%，fight 基本持平；fixed30/no_debug/13000 单线程三组交替 A/B 的 overall 与 init 配对中位分别缩短 0.62% 和 0.91%，五个分组均未回退，2v2 缩短 1.24%，结果聚合保持 `150858`。`cargo test -p tswn_core` 全量通过：核心库 596 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过；`no_debug` 核心库 589 通过、2 忽略，release Runtime corpus 124/124 通过。
-- Runtime 将是否保留 replay 帧改为编译期常量，批量胜率/评分独立生成无捕获回合与收尾路径，消除每回合反复判断交互模式、构造 frame 和选择赢家扫描方式的分支。fixed30/no_debug/13000 单线程三轮中位 overall 从 `30.989` 降至 `30.655 us/battle`，fight 从 `27.910` 降至 `27.533 us/battle`，分别缩短 1.08% 与 1.35%；core 1v1/2v2、1v1、2v2、stress_multi 分别缩短 1.84%、2.90%、1.17%、0.59%，结果聚合保持 `150858`。mario 13 万场 score 三轮未观察到超出噪音的稳定变化。`cargo test -p tswn_core` 全量通过：核心库 596 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过；release Runtime corpus 124/124 通过。
+- Runtime 将是否保留 replay 帧改为编译期常量，批量胜率/评分独立生成无捕获回合与收尾路径，消除每回合反复判断交互模式、构造 frame 和选择赢家扫描方式的分支。fixed30/no_debug/13000 单线程三轮中位 overall 从 `30.989` 降至 `30.655 us/battle`，fight 从 `27.910` 降至 `27.533 us/battle`，分别缩短 1.08% 与 1.35%；core 1v1/2v2、1v1、2v2、stress_multi 分别缩短 1.84%、2.90%、1.17%、0.59%，结果聚合保持 `150858`。mario 13 万场 score 三轮的变化在噪音范围内。`cargo test -p tswn_core` 全量通过：核心库 596 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过；release Runtime corpus 124/124 通过。
 
 ### 验证
 
@@ -335,12 +335,12 @@
 
 ### 验证
 
-- 在正确性修复提交 `1ed1258` 上完成 Runtime-only 单次完整 benchmark，并用独立 target 额外构建系统分配器版本；未运行 legacy Runtime、Node.js 或 Bun 性能测试。默认 mimalloc fixed30 单线程/自动线程 overall 为 `31.307/3.895 us/battle`，stress_multi 为 `65.044 us/battle`，win-rate 为 `0.107 s`；score mario、CQP 单人、双人为 `0.519/0.765/1.044 s`；CQP 单人 1%/10%/100% 为 `0.137/1.040/10.404 s`，CQD 双人为 `0.511/4.602/44.255 s`。mimalloc 在全部正式指标上比系统分配器快 8.55%～25.41%，系统分配器则明显降低 OpenBox 结束 RSS。完整数据见 `docs/perf/reports/runtime-0.4.2-1ed1258-allocator-snapshot.md`。
+- 在正确性修复提交 `1ed1258` 上完成 Runtime-only 单次完整 benchmark，并用独立 target 额外构建系统分配器版本；legacy Runtime、Node.js 与 Bun 性能测试未纳入本轮验证。默认 mimalloc fixed30 单线程/自动线程 overall 为 `31.307/3.895 us/battle`，stress_multi 为 `65.044 us/battle`，win-rate 为 `0.107 s`；score mario、CQP 单人、双人为 `0.519/0.765/1.044 s`；CQP 单人 1%/10%/100% 为 `0.137/1.040/10.404 s`，CQD 双人为 `0.511/4.602/44.255 s`。mimalloc 在全部正式指标上比系统分配器快 8.55%～25.41%，系统分配器则明显降低 OpenBox 结束 RSS。完整数据见 `docs/perf/reports/runtime-0.4.2-1ed1258-allocator-snapshot.md`。
 - 四方 CQD 矩阵复测发现的 4 个单 seed 胜负分叉和 1 个行动保护上限异常现已全部闭环。逐 seed 对比排除了复用 runner 污染；5 个原始输入均已归档到 `tswn_test/cases/runtime_stress` 并接入长期 strict-diff 回归。保护异常与瘟疫分摊后的活动使魔致死链缺口同源，修复后无需提高行动保护上限。
 - 对四个胜负分叉坐标各扩展扫描 1000 个 seed，并对原保护异常坐标扫描 10000 个 seed，共 14000 个 seed，异常数为 0。加入 benchmark 发现的 mario score 回归后，完整 release Runtime corpus 124/124 通过；`cargo test -p tswn_core` 为核心库 596 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过；release `no_debug` Runtime 库测试 429 通过、2 忽略，release CLI Runtime 测试 12 通过。
 - 新增 `track_cqp_case` 辅助诊断工具，可按 CQP/CQD 的真实 seed 调度扫描指定 matchup，并在胜负或保护上限异常时同时对比 legacy、复用 Runtime runner 与全新 Runtime runner，输出首个 strict/non-score 分叉及 JSON 报告；该工具仅在 `aux_bins` feature 下构建，不进入正式运行路径。
 - 新增 `track_cqp_perf`，以相同外层 worker 数在同一批 `player × target` matchup 上交替测量 legacy Runtime/runtime，输出逐 matchup 对账和机器可读 JSON；`track_perf_cases` 同步增加 `--engine legacy|main`，并新增 Node.js/Bun 官方 `md5.js` 稳态基准脚本，统一覆盖 fixed30、win-rate、score 与 CQP/CQD 动态矩阵。
-- `d813e5f` 完成单次全套阶段快照：fixed30 单线程/自动线程 overall 为 `32.105/4.644 us/battle`，stress_multi 为 `66.340 us/battle`，win-rate 13000 场为 `0.117 s`、`7077` 胜；score mario、CQP 单人、双人分别达到同轮 legacy 的 `1.734x/1.814x/2.018x` 吞吐且逐组 0 差异；CQP/CQD 六档较旧 runtime 再快 25.78%～29.38%。该快照不重置既定半时硬线，完整数据见 `docs/perf/reports/runtime-0.4.2-d813e5f-snapshot.md`。
+- `d813e5f` 完成单次全套阶段快照：fixed30 单线程/自动线程 overall 为 `32.105/4.644 us/battle`，stress_multi 为 `66.340 us/battle`，win-rate 13000 场为 `0.117 s`、`7077` 胜；score mario、CQP 单人、双人分别达到同轮 legacy 的 `1.734x/1.814x/2.018x` 吞吐且逐组 0 差异；CQP/CQD 六档较旧 runtime 再快 25.78%～29.38%。该快照沿用既定半时硬线，完整数据见 `docs/perf/reports/runtime-0.4.2-d813e5f-snapshot.md`。
 
 ## [0.4.1] - 2026-07-14
 
@@ -417,7 +417,7 @@
 - score 单线程裸计时：mario 13000 场 runtime/legacy wall 为 `2.325/0.819 s`；CQP 单人 20 组 × 1000 场为 `3.608/1.287 s`；双人 32 组 × 1000 场为 `5.613/2.166 s`。三类输入各 5 轮逐组结果差异均为 0；runtime 性能距离 legacy 硬目标还需分别压缩 64.77%、64.33%、61.41%。
 - win-rate 13000 场单线程 runtime wall/init/fight 中位数为 `0.184/0.040/0.142 s`，相对同口径 legacy wall `0.2177835 s` 快 15.51%；完整新基线见 `docs/perf/reports/runtime-0.4.0-baseline.md`。
 - `cargo test -p tswn_core --bin tswn-cli --release`（61 通过）
-- 历史 noalias 门禁当时完成 core/no_debug/CLI 与 118 项 corpus；当前 rustc 已移除对应参数，现行门禁统一使用 `python scripts/check_runtime_release.py --corpus`。
+- 历史 noalias 门禁在 core/no_debug/CLI 与 118 项 corpus 上完成；当前 rustc 已移除对应参数，现行门禁统一使用 `python scripts/check_runtime_release.py --corpus`。
 - `python track_test.py --engine main -q`
 - `cargo test -p tswn_core replay_view`
 - `cargo test -p tswn_core summon_minion_charge -- --nocapture`

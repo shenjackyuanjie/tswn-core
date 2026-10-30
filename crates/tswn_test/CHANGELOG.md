@@ -16,7 +16,7 @@
 
 ### 文档
 
-- 补充 frozen golden/corpus、跨引擎 adapter 与会话回放的输入输出和失败诊断契约；整理历史用例说明，未重生成基线或改变预期行为。
+- 补充 frozen golden/corpus、跨引擎 adapter 与会话回放的输入输出和失败诊断契约；历史用例说明已整理，golden 基线与预期行为保持原样。
 
 ### 说明
 

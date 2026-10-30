@@ -8,19 +8,19 @@
 - 从文件读取新增可选 CSV 支持：选好文件后打开「高级选项」启用「按 CSV 解析」，即可指定取第几列、
   从第 N 行开始，并用「包含第一行 / 包含第二行」在每两行一组时选择保留哪一行
   （例如导出文件里数据行与备注行交替出现时只取其一）。窗口内用表格预览原始行，点列头或单元格即可选列，
-  下方显示提取结果的前 10 行。选择 `.csv` 文件时自动启用（扩展名不区分大小写），其他文件默认关闭，
-  两者都能在高级选项里切换；关闭时仍按整行读取。手写解析支持单行内的引号字段与 `""` 转义，
-  不支持字段内换行，没有第三方 CSV 依赖。
+  下方显示提取结果的前 10 行；选择 `.csv` 文件时自动启用（扩展名不区分大小写），其他文件默认关闭，
+  两者都能在高级选项里切换，关闭时仍按整行读取。手写解析支持单行内的引号字段与 `""` 转义，
+  不支持字段内换行，也没有第三方 CSV 依赖。
 
 ### 界面调整
 
 - namer-pf 的评分项可以一个都不勾：全都不选时按不过滤处理，pp / pd / qp / qd / sum 全部输出到屏幕、
   阈值按不限处理，不再提示「请至少选择一个屏幕输出或输出文件」；勾选任一项、启用技能榜或选中输出文件时
-  行为不变；仅调整 GUI 参数回退，后端接口和结算规则不变。
+  维持原行为。改动只涉及 GUI 参数回退，后端接口和结算规则保持原状。
 
 ### 内部整理
 
-- GUI 私有 `app` 模块及其子模块内的 `pub(crate)` 统一为 `pub`；外层模块仍私有，不增加 crate 对外 API，也不改变运行行为。
+- GUI 私有 `app` 模块及其子模块内的 `pub(crate)` 统一为 `pub`；外层模块仍私有，crate 对外 API 与运行行为保持原状。
 
 ### 验证
 
@@ -31,8 +31,8 @@
   `file_mode_reads_whole_lines_until_csv_is_enabled` 断言 CSV 关闭时仍按整行读取、启用后按列取并去掉 BOM；
   `namer_pf_unfiltered_only_when_nothing_is_selected` 断言只有五项与技能榜都不选才回退为不过滤。
 - 截图校验新增 `--capture-csv`，生成 `csv.png` 供人工核对高级选项窗口的列选择、行筛选与结果预览。
-- 上游 `0cbfc020` / `3f462297` 的既有验证记录：`cargo test -p tswn_openbox --features ui_capture`（56 通过）、`cargo +nightly fmt --check`、
-  `cargo clippy -p tswn_openbox --all-targets --features ui_capture --no-deps -- -D warnings`。合入最新 main 后复跑测试（GUI 56 项、CLI 20 项）与 nightly 格式检查；Clippy 与截图验收沿用原记录。
+- 复跑结果：`cargo test -p tswn_openbox --features ui_capture`（56 通过）、CLI 20 项通过、`cargo +nightly fmt --check` 无输出。
+  `cargo clippy -p tswn_openbox --all-targets --features ui_capture --no-deps -- -D warnings` 与截图验收未在本轮复跑，结果沿用上游 `0cbfc020` / `3f462297` 的记录。
 
 ## [0.5.2] - 2026-10-21
 
@@ -199,7 +199,7 @@
 ### 说明
 
 - DS4 在后台线程同步执行，通过阶段回调更新进度；全流程取消接口尚未提供，同一工作目录
-  不能并发运行。ABCP5 程序、模型与运行库由用户提供，不随 Openbox 分发。
+  只支持串行运行。ABCP5 程序、模型与运行库由用户提供，不随 Openbox 分发。
 - 独立后端拆分后的变更另见 `../tswn_openbox_backend/CHANGELOG.md`。
 
 ## [0.4.5] - 2026-09-29
