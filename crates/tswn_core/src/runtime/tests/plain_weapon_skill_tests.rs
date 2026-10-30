@@ -728,9 +728,11 @@ fn rinick_identity_template(id: PlrId, name: &str, team: usize, raw: [u32; 8]) -
     let mut template = PlayerTemplate::new(id, name, team, raw[7] as i32, 10)
         .with_display_name(format!("{name}@Rinick"))
         .with_skill_loadout(SkillLoadout::default());
-    template.rinick_revive_attrs = Some(raw);
+    template.rinick = Some(Box::new(crate::runtime::RinickTemplateData {
+        revive_attrs: Some(raw),
+        clone_skills: Some(SkillLoadout::default()),
+    }));
     template.clone_build = Some(clone_build_with_attrs(raw));
-    template.rinick_clone_skills = Some(SkillLoadout::default());
     template
 }
 
@@ -924,4 +926,145 @@ fn rinick_reraise_spawns_clones_when_outnumbered() {
             get_lang(keys::SKL_CLONED),
         ]
     );
+}
+
+#[test]
+fn rinick_partial_snapshots_preserve_runtime_identity() {
+    let registry = rinick_identity_registry();
+    let raw = [80, 80, 80, 80, 80, 80, 80, 400];
+    for (revive_attrs, clone_skills, expected_lives) in [
+        (None, None, None),
+        (None, Some(SkillLoadout::default()), None),
+        (Some(raw), None, Some(2)),
+        (Some(raw), Some(SkillLoadout::default()), Some(2)),
+    ] {
+        let mut template = PlayerTemplate::new(1, "custom", 0, 400, 10);
+        template.rinick = Some(Box::new(crate::runtime::RinickTemplateData {
+            revive_attrs,
+            clone_skills,
+        }));
+        let runtime = crate::runtime::PlayerRuntime::from_template(&template, &registry, EntityIdx(0), EntityIdx(0));
+        assert_eq!(runtime.rinick_reraise_lives, expected_lives);
+        let mut copy = template.clone();
+        copy.rinick.as_mut().unwrap().revive_attrs = Some([1; 8]);
+        assert_eq!(template.rinick.as_ref().unwrap().revive_attrs, revive_attrs);
+    }
+}
+
+#[test]
+fn rinick_clone_skill_snapshot_is_independent_between_template_clones() {
+    let (registry, s11, _, _) = weapon_registry();
+    let mut template = rinick_identity_template(1, "rinick", 0, [80, 80, 80, 80, 80, 80, 80, 400]);
+    template.rinick.as_mut().unwrap().clone_skills = Some(SkillLoadout::from_skill_levels([(s11, 7)]));
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![template.clone(), PlayerTemplate::new(2, "plain", 1, 100, 10)],
+        registry,
+    ));
+    let baseline = runtime.clone();
+    let snapshot = runtime
+        .entities
+        .get_mut(EntityIdx(0))
+        .unwrap()
+        .template
+        .rinick
+        .as_mut()
+        .unwrap()
+        .clone_skills
+        .as_mut()
+        .unwrap();
+    assert!(snapshot.set_level_at(0, 19));
+    assert_eq!(
+        template.rinick.as_ref().unwrap().clone_skills.as_ref().unwrap().level_at(0),
+        Some(7)
+    );
+    assert_eq!(
+        baseline
+            .entities
+            .get(EntityIdx(0))
+            .unwrap()
+            .template
+            .rinick
+            .as_ref()
+            .unwrap()
+            .clone_skills
+            .as_ref()
+            .unwrap()
+            .level_at(0),
+        Some(7)
+    );
+    // 无武器对象仍能按普通实体复位血量；不需要构造任何身份分身技能。
+    runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.hp = 1;
+    runtime
+        .entities
+        .get_mut(EntityIdx(1))
+        .unwrap()
+        .reset_battle_state_from(baseline.entities.get(EntityIdx(1)).unwrap());
+    assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 100);
+}
+
+#[test]
+fn weapon_xuan_yue_waits_for_its_registered_update_batch() {
+    let (registry, _, _, xuan_yue) = weapon_registry();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "left", 0, 1000, 10)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(xuan_yue, 1)]))
+                .with_magic_point(100),
+            PlayerTemplate::new(2, "right", 1, 1000, 10),
+        ],
+        registry,
+    ));
+    let mut registered = RunUpdates::new();
+    runtime.drain_plain_post_damage_skill_chain_into(EntityIdx(0), 10, EntityIdx(1), &mut registered);
+    let before = runtime.rng.clone();
+    let mut unrelated = RunUpdates::new();
+    runtime.run_plain_counter_update_end_into(EntityIdx(0), &mut unrelated);
+    assert_rng_state_eq(&runtime.rng, &before);
+    assert!(unrelated.updates.is_empty());
+    assert!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.counter_xuan_yue.pending);
+
+    runtime.run_plain_counter_update_end_into(EntityIdx(0), &mut registered);
+    assert!(!runtime.entities.get(EntityIdx(0)).unwrap().runtime.counter_xuan_yue.pending);
+    assert!(registered.updates.iter().any(|update| update.message == "[0]发起[反击][s_counter]"));
+    let before = runtime.rng.clone();
+    let update_count = registered.updates.len();
+    runtime.run_plain_counter_update_end_into(EntityIdx(0), &mut registered);
+    assert_rng_state_eq(&runtime.rng, &before);
+    assert_eq!(registered.updates.len(), update_count);
+}
+
+#[test]
+fn ordinary_counter_finishes_before_xuan_yue_counter() {
+    let config = default_custom_runtime_import_config().unwrap();
+    let counter = config.registry.skill_id_by_export_name(DEFAULT_CORE_COUNTER_SKILL_EXPORT).unwrap();
+    let xuan_yue = config
+        .registry
+        .skill_id_by_export_name(DEFAULT_CORE_WEAPON_XUAN_YUE_COUNTER_SKILL_EXPORT)
+        .unwrap();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "owner", 0, 1000, 10)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(counter, 1), (xuan_yue, 1)]))
+                .with_magic_point(1000),
+            PlayerTemplate::new(2, "ordinary-target", 1, 1000, 10),
+            PlayerTemplate::new(3, "weapon-target", 1, 1000, 10),
+        ],
+        config.registry,
+    ));
+    let mut updates = RunUpdates::new();
+    let owner = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+    owner.runtime.counter.pending = true;
+    owner.runtime.counter.last_target = Some(EntityIdx(1));
+    owner.runtime.counter.last_updates_id = Some(updates.id);
+    owner.runtime.counter_xuan_yue.pending = true;
+    owner.runtime.counter_xuan_yue.last_target = Some(EntityIdx(2));
+    owner.runtime.counter_xuan_yue.last_updates_id = Some(updates.id);
+    runtime.run_plain_counter_update_end_into(EntityIdx(0), &mut updates);
+    let targets: Vec<_> = updates
+        .updates
+        .iter()
+        .filter(|update| update.message == "[0]发起[反击][s_counter]")
+        .map(|update| update.target)
+        .collect();
+    assert_eq!(targets, vec![1, 2]);
 }

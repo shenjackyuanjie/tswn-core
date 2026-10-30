@@ -1,5 +1,7 @@
 # 性能追踪与历史比较
 
+专项记录：[性能分支简报与主线同步（2026-10-29）](reports/performance-branch-2026-10-29.md)。历史优化数字不代表合入新战斗逻辑后重新测得的收益。
+
 本文用于长期记录 `tswn_core` 在 `tswn-cli bench win-rate` 路径上的性能结果，方便横向比较：
 
 - Bun / JS 历史参考

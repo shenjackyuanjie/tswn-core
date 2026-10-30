@@ -8,6 +8,16 @@ use super::{
     boss_append_attr, boss_default_skill_levels, boss_display_name, median,
 };
 
+/// 属性修改器身份的冷数据；普通构建结果不分配此载荷。
+/// 两个快照独立可选，保留自定义构建只提供其中一项的语义。
+#[derive(Debug, Clone, Default)]
+pub struct PreparedRinickData {
+    /// 复活时重建八围的原始属性 `q[0..8]`。
+    pub revive_attrs: Option<[u32; 8]>,
+    /// 复活后生成分身所用的独立技能表快照。
+    pub clone_skills: Option<SkillLoadoutSpec>,
+}
+
 #[derive(Debug, Clone)]
 pub struct PreparedPlayer {
     pub id: usize,
@@ -29,10 +39,8 @@ pub struct PreparedPlayer {
     pub clone_slot_boosts: [Option<(u8, u8)>; 2],
     /// 0.5.5 `l.e == "Rinick"`：属性修改器身份分支标记。
     pub rinick_identity: bool,
-    /// 属性修改器身份复活（`hy`）时重新推导八围所用的构建期属性。
-    pub rinick_revive_attrs: Option<[u32; 8]>,
-    /// 属性修改器身份复活后生成的分身所用技能表快照。
-    pub rinick_clone_skills: Option<SkillLoadoutSpec>,
+    /// 属性修改器身份的复活属性与分身技能快照；仅需要时分配。
+    pub rinick: Option<Box<PreparedRinickData>>,
     pub overlay: Option<PlayerOverlay>,
 }
 
@@ -508,8 +516,12 @@ impl PlayerBuild {
             clone_initially_boosted_mask,
             clone_slot_boosts,
             rinick_identity,
-            rinick_revive_attrs,
-            rinick_clone_skills,
+            rinick: (rinick_revive_attrs.is_some() || rinick_clone_skills.is_some()).then(|| {
+                Box::new(PreparedRinickData {
+                    revive_attrs: rinick_revive_attrs,
+                    clone_skills: rinick_clone_skills,
+                })
+            }),
             overlay: self.overlay,
         }
     }
@@ -737,7 +749,11 @@ mod tests {
         let roster = PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
         let rinick = &roster.players[0];
         assert!(rinick.rinick_identity);
-        let revive_attrs = rinick.rinick_revive_attrs.expect("identity build should record revive attrs");
+        let revive_attrs = rinick
+            .rinick
+            .as_ref()
+            .and_then(|data| data.revive_attrs)
+            .expect("identity build should record revive attrs");
         assert_eq!(rinick.attrs[..7], [63; 7]);
         assert_eq!(rinick.attrs[7], revive_attrs[7].max(324));
 
@@ -769,9 +785,26 @@ mod tests {
                 .all(|entry| !(entry.key < 25 && matches!(entry.boost, Some(SkillBoost::LastBoost(_)))))
         );
         // 分身重跑非身份 `b6()`：未分配的技能键会被抬到 4 级，且不会追加任何武器技能。
-        let clone_skills = rinick.rinick_clone_skills.as_ref().expect("identity build should snapshot clone skills");
+        let clone_skills = rinick
+            .rinick
+            .as_ref()
+            .and_then(|data| data.clone_skills.as_ref())
+            .expect("identity build should snapshot clone skills");
         assert!(clone_skills.entries.iter().all(|entry| entry.key < 44));
         assert!(clone_skills.entries.iter().any(|entry| entry.level == 4 && !entry.boosted));
+    }
+
+    #[test]
+    fn rinick_prepared_snapshot_clone_keeps_original_attrs() {
+        let input = NamerenaInput::parse("Rinick@Rinick+属性修改器").unwrap();
+        let roster = PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
+        let original = &roster.players[0];
+        let original_attrs = original.rinick.as_ref().unwrap().revive_attrs;
+        let mut copied = original.clone();
+        copied.rinick.as_mut().unwrap().revive_attrs = Some([1; 8]);
+        copied.rinick.as_mut().unwrap().clone_skills = None;
+        assert_eq!(original.rinick.as_ref().unwrap().revive_attrs, original_attrs);
+        assert!(original.rinick.as_ref().unwrap().clone_skills.is_some());
     }
 
     #[test]
@@ -780,7 +813,7 @@ mod tests {
         let roster = PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
         let player = &roster.players[0];
         assert!(!player.rinick_identity);
-        assert!(player.rinick_revive_attrs.is_none());
+        assert!(player.rinick.as_ref().and_then(|data| data.revive_attrs).is_none());
         assert_eq!(player.attrs[..7], [63; 7]);
         for key in 0..35 {
             let entry = skill_entry(&player, key).unwrap_or_else(|| panic!("lane {key} missing"));

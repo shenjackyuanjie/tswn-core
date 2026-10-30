@@ -31,16 +31,12 @@ impl CombatRuntime {
                     .is_some_and(|record| record.runtime.team == actor_team)
                     .then_some(index)
             })
-            .collect::<smallvec::SmallVec<[usize; 8]>>();
+            .collect::<crate::rc4::PickSkipRange>();
         let select_count = if smart { 3 } else { 2 };
         let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
         let mut duplicate_count = 0usize;
         while duplicate_count <= select_count {
-            let picked = if enemy_skip_indices.is_empty() {
-                self.rng.pick(all_alive)
-            } else {
-                self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
-            }?;
+            let picked = self.rng.pick_skip_span(all_alive, enemy_skip_indices)?;
             let target = all_alive[picked];
             if selected.contains(&target) {
                 duplicate_count += 1;

@@ -217,6 +217,52 @@ pub struct RC4 {
     pub byte_count: u64,
 }
 
+/// 排除抽样只读取首下标与数量，不修正非连续名单的 legacy 语义。
+#[derive(Clone, Copy, Default)]
+pub(crate) struct PickSkipRange {
+    first: usize,
+    len: usize,
+}
+
+impl PickSkipRange {
+    pub(crate) fn push(&mut self, index: usize) {
+        if self.len == 0 {
+            self.first = index;
+        }
+        self.len += 1;
+    }
+}
+
+impl FromIterator<usize> for PickSkipRange {
+    fn from_iter<T: IntoIterator<Item = usize>>(indices: T) -> Self {
+        let mut indices = indices.into_iter();
+        match indices.next() {
+            Some(first) => Self {
+                first,
+                len: 1 + indices.count(),
+            },
+            None => Self::default(),
+        }
+    }
+}
+
+// 16 位被除数乘以向上取整的 32 位倒数，可精确求出 1..255 除数的商。
+const SMALL_RANGE_RECIPROCALS: [u64; 256] = {
+    let mut table = [0; 256];
+    let mut divisor = 1usize;
+    while divisor < table.len() {
+        table[divisor] = ((1u64 << 32) + divisor as u64 - 1) / divisor as u64;
+        divisor += 1;
+    }
+    table
+};
+
+#[inline]
+fn small_range_remainder(value: u32, divisor: u8) -> i32 {
+    let quotient = ((u64::from(value) * SMALL_RANGE_RECIPROCALS[usize::from(divisor)]) >> 32) as u32;
+    (value - quotient * u32::from(divisor)) as i32
+}
+
 /// RC4 第一轮 KSA 的可复用前缀检查点。
 ///
 /// 如果连续密钥共享开头若干字节，可以从检查点继续剩余交换，避免重复执行
@@ -616,6 +662,11 @@ impl RC4 {
         if max == 0 {
             return 0;
         }
+        if (1..=255).contains(&max) {
+            // 上界为 1 仍消费两个字节，保持后续战斗随机流不变。
+            let value = (u32::from(self.next_u8()) << 8) | u32::from(self.next_u8());
+            return small_range_remainder(value, max as u8);
+        }
         let mut round = max;
         let mut v = self.next_u8() as i32;
         loop {
@@ -821,11 +872,23 @@ impl RC4 {
     /// ```
     #[inline]
     pub fn pick_skip_range<T>(&mut self, list: &[T], skips: &[usize]) -> Option<usize> {
-        if skips.is_empty() {
+        self.pick_skip_span(
+            list,
+            PickSkipRange {
+                first: skips.first().copied().unwrap_or(0),
+                len: skips.len(),
+            },
+        )
+    }
+
+    /// 标量排除区间保持旧 API 的首项、数量与随机流消费规则。
+    #[inline]
+    pub(crate) fn pick_skip_span<T>(&mut self, list: &[T], skips: PickSkipRange) -> Option<usize> {
+        if skips.len == 0 {
             return self.pick(list);
         }
-        let first = skips[0];
-        let skip_len = skips.len();
+        let first = skips.first;
+        let skip_len = skips.len;
         if list.len() > skip_len {
             let n = self.next_i32((list.len() - skip_len) as i32) as usize;
             if n >= first { Some(n + skip_len) } else { Some(n) }

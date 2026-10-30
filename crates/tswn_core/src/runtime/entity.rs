@@ -250,6 +250,15 @@ impl CloneBuildData {
     }
 }
 
+/// 属性修改器身份的冷快照；复活属性和分身技能允许独立提供。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RinickTemplateData {
+    /// 复活时重建八围的原始属性 `q[0..8]`。
+    pub revive_attrs: Option<[u32; 8]>,
+    /// 复活后生成分身所用的独立技能表快照。
+    pub clone_skills: Option<SkillLoadout>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerTemplate {
     pub id: PlrId,
@@ -278,10 +287,8 @@ pub struct PlayerTemplate {
     pub move_state: MoveState,
     pub policy_overrides: PlayerPolicyOverrides,
     pub clone_build: Option<CloneBuildData>,
-    /// 属性修改器身份死亡时的原始属性 `q[0..8]`，用于 `SklRinickModifierRevive` 复算面板。
-    pub rinick_revive_attrs: Option<[u32; 8]>,
-    /// 属性修改器身份复活时生成的分身技能表快照（`b6()` 之前的等级叠加通用强化）。
-    pub rinick_clone_skills: Option<SkillLoadout>,
+    /// 属性修改器身份的复活属性与分身技能快照；普通实体只携带空指针。
+    pub rinick: Option<Box<RinickTemplateData>>,
     /// 桂月奖杯注入的常驻 `charge` 标记；存在但不提供攻击倍率、也无法解除。
     pub permanent_charge: bool,
     /// 使魔复活重施时是否沿用死亡对象上的当前技能表。
@@ -330,8 +337,7 @@ impl PlayerTemplate {
             move_state: MoveState::default(),
             policy_overrides: PlayerPolicyOverrides::default(),
             clone_build: None,
-            rinick_revive_attrs: None,
-            rinick_clone_skills: None,
+            rinick: None,
             permanent_charge: false,
             reuse_skills_on_recast: false,
             reuse_stats_on_recast: false,
@@ -380,8 +386,7 @@ impl PlayerTemplate {
             move_state: MoveState::default(),
             policy_overrides: PlayerPolicyOverrides::default(),
             clone_build: Some(clone_build),
-            rinick_revive_attrs: None,
-            rinick_clone_skills: None,
+            rinick: None,
             permanent_charge: false,
             reuse_skills_on_recast: false,
             reuse_stats_on_recast: false,

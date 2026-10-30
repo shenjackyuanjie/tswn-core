@@ -28,11 +28,15 @@
 - `encode` 与 `calibrate` 的摘要文本改用 `random::hex` 编码，不再依赖 `sha2` 摘要类型的
   `LowerHex` 实现；小写十六进制输出与旧版一致，Parquet 与 manifest 契约保持不变。
 
+### 文档与维护
+
+- 补充生成/校准/编码的抽样身份、资源释放、失败现场与冻结数据边界；模型训练和线上推理仍不在本 crate 内。
+- 跟随工作区将 `clap` 更新到 `4.6.7`，保持命令与数据契约。
+
 ### 验证
 
-- 使用正常 ZSTD 配置复跑 PWP 测试；通过任务内 TEMP/TMP 避开本机 MSVC 临时目录问题，压缩保持开启，系统配置未改动。
-
-- 本机 MSVC 工具链编译 `zstd-sys` 持续报 `D8050`（既有环境故障），`cargo check -p tswn_pwp --all-targets` 在临时关闭 `zstd` 特性的配置下执行并通过；压缩相关的 5 个用例在该配置下缺少 zstd，以 `Disabled feature at compile time: zstd` 失败，留待 MSVC 正常的环境复跑。
+- 早期本机 MSVC 的 `zstd-sys` 构建曾报 `D8050`，临时关闭 zstd 的检查不覆盖压缩用例；后续已通过任务内 TEMP/TMP 在正常 ZSTD 配置下复跑 PWP 测试，未修改系统配置。
+- `cargo check -p tswn_pwp --all-targets` 在临时关闭 `zstd` 特性的配置下通过；压缩相关的 5 个用例在该配置下缺少 zstd，以 `Disabled feature at compile time: zstd` 失败，留待 MSVC 正常的环境复跑。
 
 ## [0.0.1] - 2026-09-30
 

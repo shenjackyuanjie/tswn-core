@@ -9,6 +9,25 @@
 - 公共 replay view 在角色首次实际出现在消息文字时推进该回合的护盾净值，后续片段沿用更新值，避免重复展示；`ReplayState` 的盾值方法提供兼容默认实现。
 - 上述公开输出结构体增加字段，外部 Rust 结构体字面量构造需补充 `shield` 与 `max_shield`；文本片段协议与战斗机制保持原样。
 
+### Boss 与武器移植（主线已实现，仍有接入边界）
+
+- 对齐 0.5.5 的 Boss 属性、免疫表与默认技能装配；补充专属主动技能扫描、魔法攻击、柯南推理、青雉/斑鸠防御吸收、马里奥满血复活及史莱姆分裂。
+- 对齐特殊武器身份/阵营判定与 Boss 武器重键；加入剁手刀运行态、死亡笔记受击标记、玄月受击反击，以及属性修改器技能改写、身份复活与分身的内部实现和回归。
+- 模型技能导出表从42项扩展到47项，追加S11、死亡笔记、玄月反击及两项Rinick技能；原编号不重排，编号空间上限仍为50、state schema版本仍为1。
+- 目前只有部分特殊武器能从公开入口完整运行：S11、死亡笔记、玄月、Rinick 的 handler 未接通，会返回 `NotReady`；Rinick 的场前模板复制也有遗漏。已知范围见[无武器路径简报](../../docs/perf/reports/performance-branch-2026-10-29.md#验证与上游缺口)。
+
+### 性能与 API（当前性能分支，尚未合入 main）
+
+- 世界存活阵营/roster 数量使用派生缓存；跳过空伤害阶段 hook 计划，选敌排除信息改用标量区间，RC4 小范围取余保留原随机流消费规则。
+- 多画像评分构建仅在超过四个 profile 时按四个一组执行交错 KSA；补充多名字、跨十进制边界及重复轮次回归，不改变 `namer-pf` 输出契约。
+- Rinick 复活属性与分身技能合并为按需分配的冷载荷；公开 Rust 字段 `rinick_revive_attrs` / `rinick_clone_skills` 改经 `PreparedPlayer::rinick` / `PlayerTemplate::rinick` 访问，载荷内两项仍独立可选、克隆互不共享。`PlayerRuntime` 序列化形状不变。
+- 无本批待发玄月反击时不扫描武器技能。以上是代码与空间优化，不依赖 PGO；实测范围、负向结果和复现入口见[性能简报](../../docs/perf/reports/performance-branch-2026-10-29.md)。
+
+### 内部整理
+
+- 按职责拆分编码器字段映射、索引、校验、张量族写入和状态存储；保持公共入口、编码布局及既有回归。
+- FeatureEncoder 复用验证阶段容量计量；快照图标键与图标缓存命中路径减少重复复制。
+
 ### 依赖更新
 
 - `sha2` 升级到 `0.11`。该版本的摘要类型不再实现 `LowerHex`，`EncoderManifest::digest()` 改为
@@ -16,6 +35,10 @@
 - wasm 目标的 `js-sys` 升级到 `0.3.106`，与 `tswn_wasm` 的 `wasm-bindgen 0.2.129` 配套。
 
 ### 修复
+
+- CLI 非负阈值拒绝 NaN、无穷和溢出；文件参数拒绝 Windows 盘符之后的额外冒号，保留合法盘符与 UNC 路径。
+- 调试标志并发首次初始化等待写入完成；RC4 `peek_next_u8` 按交换后排列预览且不推进随机状态，修正输出槽与交换槽重合的情形。
+- 关闭 `png_render` 时仍可编译并使用战斗/模型会话；展示会话请求图标时返回 `UNSUPPORTED_OPTION`，不生成占位图。
 
 - 百分比体力损失消息（如瘟疫的 `[1]体力减少[2]%`）正确归类为 `Damage`，恢复结构化回放中的 HP 条；血量变化继续采用 `score` 的实际伤害，文本百分比 `param` 仅用于显示。
 
@@ -34,6 +57,8 @@
   文件后复现通过，确认与 `-Z7` 直接相关。
 
 ### 验证
+
+以下是各次改动当时的检查记录；当前分支的完整测试总数与全部武器端到端覆盖以最新一轮为准。
 
 - `cargo test -p tswn_core --no-default-features --features png_render`：`tswn_core` lib 602 项、
   `tswn-cli` 89 项通过；`cargo +nightly fmt --check` 无输出。
@@ -345,7 +370,7 @@
 - 新增 Runtime CQP/CQD matchup 矩阵执行器，CLI `bench batch-rate` / `cqp` 的自动线程路径改为按 `player × target` 动态派发给持久 worker；短任务自动使用 1.5 倍逻辑核，中长任务使用 2 倍逻辑核，显式 `-t` 与 `-s` 语义保持不变。
 - 固定 roster 的 `PreparedRuntimeRunner` 复位路径改为只恢复战斗热字段，并复用 seed、输入分组和 world view 小向量容量；每轮改变 profile 身份的 score 路径继续完整复位，避免错误复用冷身份数据。
 - 新增 `track_score_perf` 单线程裸计时/对账工具，按输入组分别运行 Runtime 与 legacy score，报告整批 wall、init、fight、吞吐及首个结果差异；计时排除编译、进程启动、输入读取和报告序列化，可固定 mario、CQP 单人及双人输入作为长期回归口径。
-- 原生 `tswn_core` 默认启用已有 `mimalloc_alloc` feature；WASM 依赖显式关闭默认 feature 并保留 `png_render`，不把原生 allocator 带入浏览器构建。
+- 原生 `tswn_core` 默认启用已有 `mimalloc_alloc` feature；WASM 依赖显式关闭默认 feature 并保留 `png_render`，浏览器构建不带原生 allocator。
 - `tswn-cli fight`（含 `--out-raw`）、`tswn-cli diff` 与 `tswn-cli raw`（含 `!test!` 评分/胜率）默认改用 Runtime；需要旧实现对账时可显式传入 `--runtime legacy`。普通日志、raw 聚合日志、赢家输入索引、玩家状态摘要及 benchmark 汇总输出保持与 legacy 逐行一致。
 - 独立 `bench` 的自动分流、score、win-rate、group-win-rate、分段 buckets 与 `namer-pf` 默认改用 Runtime；core `cli_api` 及 C、Python、WASM 高层评分/胜率包装同步切换，无 runtime 参数的正式入口不再隐式构造 legacy Runner。
 - Runtime 批量层新增 prepared win-rate 与 score 的区间执行 API，供 CLI 分段输出和 WASM `WinRateSession` 在多次 step 之间保持全局 round/profile seed 调度。

@@ -275,8 +275,15 @@ impl CombatRuntime {
         for _level in self.plain_update_end_counter_levels(owner, DEFAULT_CORE_COUNTER_SKILL_EXPORT) {
             self.run_plain_update_end_counter_attack_into(owner, PlainUpdateEndCounter::Counter, updates);
         }
-        for _level in self.plain_update_end_counter_levels(owner, DEFAULT_CORE_WEAPON_XUAN_YUE_COUNTER_SKILL_EXPORT) {
-            self.run_plain_update_end_counter_attack_into(owner, PlainUpdateEndCounter::XuanYue, updates);
+        // 普通反击可能间接登记玄月，因此在它结算后重新读取；没有本批次待发反击时无需扫技能表。
+        let xuan_yue_pending = self.entities.get(owner).is_some_and(|entity| {
+            let counter = &entity.runtime.counter_xuan_yue;
+            counter.pending && counter.last_updates_id == Some(updates.id)
+        });
+        if xuan_yue_pending {
+            for _level in self.plain_update_end_counter_levels(owner, DEFAULT_CORE_WEAPON_XUAN_YUE_COUNTER_SKILL_EXPORT) {
+                self.run_plain_update_end_counter_attack_into(owner, PlainUpdateEndCounter::XuanYue, updates);
+            }
         }
     }
 

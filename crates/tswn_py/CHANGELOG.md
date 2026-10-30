@@ -4,7 +4,13 @@
 
 ### 依赖更新
 
-- `pyo3` 升级到 `0.29`；Python API、类型存根与返回结构保持不变。
+- `pyo3` 升级到 `0.30.1`，适配默认转换策略；既有 Python 调用签名保持不变。
+- 隔离构建要求更新为 `setuptools>=84.2.1`、`wheel>=0.48.0`、`setuptools-rust>=1.13.0`。
+
+### 数据契约
+
+- 规范 `BattlePlayerState` 类型存根补齐 `shield` 并新增 `max_shield`，与 core 会话/回放的实际状态字段一致；护盾熟练度展示上限不截断实际盾值，不改变战斗规则。
+- 完善流式会话、完整回放、错误码与返回对象所有权说明。
 
 ### 构建
 
@@ -12,9 +18,9 @@
   `--release --features "no_debug,mimalloc_alloc"`，统一线上编译口径。
   `Cargo.toml` 的 `tswn_core` 依赖仍固定启用这两个 feature。
 
-### 验证
+### 历史验证说明
 
-- `cargo check -p tswn_py --all-targets` 通过；本机 `libmimalloc-sys` 报 `D8050` 环境故障，该次检查在临时关闭 mimalloc 的配置下执行。
+- `cargo check -p tswn_py --all-targets` 在临时关闭 mimalloc 的配置下通过；本机 `libmimalloc-sys` 报 `D8050` 环境故障。该配置只用于那次检查，不是默认构建配置；后续维护验证见[工作区更新日志](../../CHANGELOG.md)。
 
 ## [0.5.4] - 2026-09-30
 

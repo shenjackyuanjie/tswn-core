@@ -35,7 +35,7 @@ impl CombatRuntime {
         let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive();
         let mut candidates = smallvec::SmallVec::<[EntityIdx; 8]>::new();
-        let mut enemy_skip_indices = smallvec::SmallVec::<[usize; 8]>::new();
+        let mut enemy_skip_indices = crate::rc4::PickSkipRange::default();
         for (idx, target) in all_alive.iter().copied().enumerate() {
             if self.entities.get(target).is_some_and(|entity| entity.runtime.team == actor_team) {
                 enemy_skip_indices.push(idx);
@@ -51,11 +51,7 @@ impl CombatRuntime {
         let mut dup = 0usize;
         let mut invalid = -(select_count as i32);
         while dup <= select_count && invalid <= select_count as i32 {
-            let picked = if enemy_skip_indices.is_empty() {
-                self.rng.pick(all_alive)
-            } else {
-                self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
-            };
+            let picked = self.rng.pick_skip_span(all_alive, enemy_skip_indices);
             let Some(picked) = picked else {
                 return PreparedTargetList::new();
             };
@@ -555,17 +551,13 @@ impl CombatRuntime {
                     .is_some_and(|entity| entity.runtime.team == actor_team)
                     .then_some(index)
             })
-            .collect::<smallvec::SmallVec<[usize; 8]>>();
+            .collect::<crate::rc4::PickSkipRange>();
         let select_count = if smart { 3 } else { 2 };
         let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
         let mut dup = 0usize;
         let mut invalid = -(select_count as i32);
         while dup <= select_count && invalid <= select_count as i32 {
-            let picked = if enemy_skip_indices.is_empty() {
-                self.rng.pick(all_alive)
-            } else {
-                self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
-            };
+            let picked = self.rng.pick_skip_span(all_alive, enemy_skip_indices);
             let Some(picked) = picked else {
                 return PreparedTargetList::new();
             };

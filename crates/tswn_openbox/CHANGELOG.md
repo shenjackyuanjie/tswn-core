@@ -8,14 +8,19 @@
 - 从文件读取新增可选 CSV 支持：选好文件后打开「高级选项」启用「按 CSV 解析」，即可指定取第几列、
   从第 N 行开始，并用「包含第一行 / 包含第二行」在每两行一组时选择保留哪一行
   （例如导出文件里数据行与备注行交替出现时只取其一）。窗口内用表格预览原始行，点列头或单元格即可选列，
-  下方显示提取结果的前 10 行。CSV 默认关闭，未启用时按整行读取，与旧版本行为一致；
-  解析使用仓库自带的手写实现，没有第三方 CSV 依赖。
+  下方显示提取结果的前 10 行。选择 `.csv` 文件时自动启用（扩展名不区分大小写），其他文件默认关闭，
+  两者都能在高级选项里切换；关闭时仍按整行读取。手写解析支持单行内的引号字段与 `""` 转义，
+  不支持字段内换行，没有第三方 CSV 依赖。
 
 ### 界面调整
 
 - namer-pf 的评分项可以一个都不勾：全都不选时按不过滤处理，pp / pd / qp / qd / sum 全部输出到屏幕、
   阈值按不限处理，不再提示「请至少选择一个屏幕输出或输出文件」；勾选任一项、启用技能榜或选中输出文件时
-  行为不变。
+  行为不变；仅调整 GUI 参数回退，后端接口和结算规则不变。
+
+### 内部整理
+
+- GUI 私有 `app` 模块及其子模块内的 `pub(crate)` 统一为 `pub`；外层模块仍私有，不增加 crate 对外 API，也不改变运行行为。
 
 ### 验证
 
@@ -26,8 +31,8 @@
   `file_mode_reads_whole_lines_until_csv_is_enabled` 断言 CSV 关闭时仍按整行读取、启用后按列取并去掉 BOM；
   `namer_pf_unfiltered_only_when_nothing_is_selected` 断言只有五项与技能榜都不选才回退为不过滤。
 - 截图校验新增 `--capture-csv`，生成 `csv.png` 供人工核对高级选项窗口的列选择、行筛选与结果预览。
-- 本版本验证命令：`cargo test -p tswn_openbox --features ui_capture`（56 通过）、`cargo +nightly fmt --check`、
-  `cargo clippy -p tswn_openbox --all-targets --features ui_capture --no-deps -- -D warnings`。
+- 上游 `0cbfc020` / `3f462297` 的既有验证记录：`cargo test -p tswn_openbox --features ui_capture`（56 通过）、`cargo +nightly fmt --check`、
+  `cargo clippy -p tswn_openbox --all-targets --features ui_capture --no-deps -- -D warnings`。合入最新 main 后复跑测试（GUI 56 项、CLI 20 项）与 nightly 格式检查；Clippy 与截图验收沿用原记录。
 
 ## [0.5.2] - 2026-10-21
 
@@ -52,6 +57,10 @@
   界面偏好的按页列表改为变长保存：旧版本存的 5 项照旧读出，老的第 5 项仍归 `DS4`，
   `base` 页按默认补齐，多出一页仍能正常载入。
 - 点击“运行”后立即请求下一帧，`base` 这类瞬间完成的任务不会再停在“运行中”等下一次鼠标事件。
+
+### 依赖与维护
+
+- 升级 `egui` / `eframe` 至 `0.37.0`，适配截图回调、滚动状态与输入事件；同步 `rfd 0.17.2`、`toml 1.1.8`，保留原有 GUI 与 `ui_capture` feature 边界。
 
 ### 验证
 
