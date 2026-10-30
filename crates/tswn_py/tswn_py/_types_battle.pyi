@@ -59,6 +59,8 @@ class BattlePlayerState(TypedDict):
     status_labels: list[str]
     # 仅在 BattleOptions.include_skills 开启时出现；未开启时该键被省略。
     skills: NotRequired[list[SkillSnapshot]]
+    # 主动技能及其行动扫描顺序；仅在 include_skills 开启时出现。
+    active_skills: NotRequired[list[SkillSnapshot]]
 
 class SkillSnapshot(TypedDict):
     # 技能导出名，例如 sklfire；同名技能合并为最高等级。

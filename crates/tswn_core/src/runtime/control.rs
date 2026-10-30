@@ -16,8 +16,10 @@ use std::fmt;
 pub enum PlannedSkill {
     /// 使用已装备的内置主动技能；未装备或等级为 0 时整条指令失败。
     Builtin(BuiltinActiveSkill),
-    /// 明确要求普通攻击。
+    /// 明确要求普通物理攻击。
     BasicAttack,
+    /// 明确要求普通魔法攻击。
+    MagicAttack,
 }
 
 /// 一条外部行动指令。
@@ -60,6 +62,7 @@ impl fmt::Display for PlannedActionError {
                 let name = match skill {
                     PlannedSkill::Builtin(skill) => skill.export_name(),
                     PlannedSkill::BasicAttack => "basic attack",
+                    PlannedSkill::MagicAttack => "magic attack",
                 };
                 write!(f, "actor {actor} has no valid target for {name}")
             }
@@ -72,7 +75,7 @@ impl std::error::Error for PlannedActionError {}
 /// 一场战斗的外部控制状态：受控队伍、指令队列、暂停标记与首条执行错误。
 #[derive(Debug, Clone, Default)]
 pub struct BattleControl {
-    controlled_team: Option<usize>,
+    controlled_teams: Vec<usize>,
     queue: Vec<PlannedAction>,
     awaiting: Option<PlrId>,
     error: Option<PlannedActionError>,
@@ -81,13 +84,31 @@ pub struct BattleControl {
 impl BattleControl {
     /// 设定“由玩家操控”的队伍编号；`None` 表示完全回到自动执行。
     ///
-    /// 只有该队伍的本体（默认 kind）与分身会暂停；幻影、使魔、丧尸等召唤物仍自动行动。
+    /// 只有受控队伍的本体（默认 kind）与分身会暂停；幻影、使魔、丧尸等召唤物仍自动行动。
     pub fn set_controlled_team(&mut self, team: Option<usize>) {
-        self.controlled_team = team;
+        self.controlled_teams.clear();
+        if let Some(team) = team {
+            self.controlled_teams.push(team);
+        }
         self.awaiting = None;
     }
 
-    pub fn controlled_team(&self) -> Option<usize> { self.controlled_team }
+    /// 设定多支由玩家操控的队伍；空列表表示完全回到自动执行。
+    pub fn set_controlled_teams(&mut self, teams: impl IntoIterator<Item = usize>) {
+        self.controlled_teams.clear();
+        for team in teams {
+            if !self.controlled_teams.contains(&team) {
+                self.controlled_teams.push(team);
+            }
+        }
+        self.awaiting = None;
+    }
+
+    pub fn controlled_team(&self) -> Option<usize> { self.controlled_teams.first().copied() }
+
+    pub fn controlled_teams(&self) -> &[usize] { &self.controlled_teams }
+
+    pub fn is_controlled_team(&self, team: usize) -> bool { self.controlled_teams.contains(&team) }
 
     /// 追加一条指令；同一实体的多条指令按入队顺序消费。
     pub fn queue(&mut self, action: PlannedAction) { self.queue.push(action); }
@@ -125,6 +146,9 @@ impl BattleControl {
 impl CombatRuntime {
     /// 设定受控队伍；只有该队伍的本体与分身会暂停等指令。
     pub fn set_controlled_team(&mut self, team: Option<usize>) { self.control.set_controlled_team(team); }
+
+    /// 设定多支受控队伍；只有这些队伍的本体与分身会暂停等指令。
+    pub fn set_controlled_teams(&mut self, teams: impl IntoIterator<Item = usize>) { self.control.set_controlled_teams(teams); }
 
     /// 排队一条外部指令，可与 [`Self::set_controlled_team`] 配合逐次驱动对局。
     pub fn queue_planned_action(&mut self, action: PlannedAction) { self.control.queue(action); }

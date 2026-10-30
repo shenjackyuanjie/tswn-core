@@ -362,7 +362,7 @@ impl CombatRuntime {
                 // 狂暴期间由引擎接管：这一手只用来推进节奏，真正动作仍按 tswn 规则。
                 script_consumed = true;
             } else {
-                match self.prepare_planned_action(actor, planned, smart) {
+                match self.prepare_planned_action(actor, planned, false) {
                     Ok(prepared) => return Some(prepared),
                     Err(error) => {
                         self.control.set_error(error);
@@ -372,11 +372,7 @@ impl CombatRuntime {
             }
         }
         // 受控单位没有排好的指令就停下来等玩家，绝不代替玩家行动。
-        if !engine_forced
-            && !script_consumed
-            && let Some(team) = self.control.controlled_team()
-            && self.is_controlled_actor(actor, team)
-        {
+        if !engine_forced && !script_consumed && self.is_controlled_actor(actor) {
             self.control.set_awaiting(actor.0 as PlrId);
             return None;
         }
@@ -541,11 +537,11 @@ impl CombatRuntime {
     /// 玩家操控的单位：受控队伍里的本体（默认 kind）与分身。
     ///
     /// 幻影 / 使魔 / 丧尸属于召唤物，仍由引擎自动行动。
-    fn is_controlled_actor(&self, actor: EntityIdx, team: usize) -> bool {
+    fn is_controlled_actor(&self, actor: EntityIdx) -> bool {
         let Some(entity) = self.entities.get(actor) else {
             return false;
         };
-        if entity.template.team != team {
+        if !self.control.is_controlled_team(entity.template.team) {
             return false;
         }
         match self.registry.player_kind(entity.runtime.kind) {
@@ -579,6 +575,25 @@ impl CombatRuntime {
                 Ok(PreparedPlainAction::BasicAttack {
                     target,
                     use_magic: false,
+                    amount,
+                })
+            }
+            PlannedSkill::MagicAttack => {
+                let target = self
+                    .select_plain_default_attack_target(actor, false)
+                    .ok_or(PlannedActionError::NoValidTarget {
+                        actor: actor_id,
+                        skill: planned.skill,
+                    })?;
+                let amount = self
+                    .entities
+                    .get(actor)
+                    .unwrap_or_else(|| panic!("unknown planned action actor: {}", actor.0))
+                    .runtime
+                    .magic;
+                Ok(PreparedPlainAction::BasicAttack {
+                    target,
+                    use_magic: true,
                     amount,
                 })
             }
@@ -679,6 +694,41 @@ impl CombatRuntime {
             | BuiltinActiveSkill::Clone
             | BuiltinActiveSkill::Shadow => smallvec::smallvec![actor],
         }
+    }
+
+    /// 预览一条指令会选出的目标；只临时推进 RNG，返回前恢复原状态。
+    ///
+    /// 目标选择是唯一依赖随机数的步骤，预览不会改变实体、技能表或 MP。
+    pub fn preview_planned_targets(
+        &mut self,
+        actor: EntityIdx,
+        skill: PlannedSkill,
+        smart: bool,
+    ) -> Result<Vec<PlrId>, PlannedActionError> {
+        let actor_id = actor.0 as PlrId;
+        let rng = self.rng.clone();
+        let result = match skill {
+            PlannedSkill::BasicAttack | PlannedSkill::MagicAttack => self
+                .select_plain_default_attack_target(actor, false)
+                .map(|target| vec![target.0 as PlrId])
+                .ok_or(PlannedActionError::NoValidTarget { actor: actor_id, skill }),
+            PlannedSkill::Builtin(builtin) => {
+                if self.planned_skill_lane(actor, builtin).is_none() {
+                    Err(PlannedActionError::SkillNotEquipped {
+                        actor: actor_id,
+                        skill: builtin,
+                    })
+                } else {
+                    let mut targets = self.select_planned_targets(actor, builtin, smart);
+                    if targets.is_empty() {
+                        targets = self.select_planned_targets(actor, builtin, false);
+                    }
+                    Ok(targets.iter().map(|target| target.0 as PlrId).collect())
+                }
+            }
+        };
+        self.rng = rng;
+        result
     }
 
     pub fn has_plain_berserk_state(&self, actor: EntityIdx) -> bool {

@@ -93,8 +93,8 @@ mod tests {
                     max_rounds,
                     ..BattleOptions::default()
                 };
-                let mut replay = BattleSession::new(raw, options).unwrap();
-                let mut headless = BattleModelSession::new(raw, options).unwrap();
+                let mut replay = BattleSession::new(raw, options.clone()).unwrap();
+                let mut headless = BattleModelSession::new(raw, options.clone()).unwrap();
                 let mut untouched = BattleModelSession::new(raw, options).unwrap();
                 assert_eq!(replay.model_state().unwrap(), headless.model_state().unwrap());
                 loop {

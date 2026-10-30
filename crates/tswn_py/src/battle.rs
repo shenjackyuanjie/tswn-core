@@ -7,15 +7,46 @@ use crate::cli_api::map_cli_error;
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
 use tswn_core::cli_api::{BattleOptions, BattleSession};
+use tswn_core::runtime::{BuiltinActiveSkill, PlannedAction, PlannedSkill};
 
-pub(crate) fn options(eval_rq: Option<f64>, include_icons: bool, max_rounds: Option<usize>) -> BattleOptions {
+pub(crate) fn options(
+    eval_rq: Option<f64>,
+    include_icons: bool,
+    include_skills: bool,
+    controlled_teams: Option<Vec<usize>>,
+    max_rounds: Option<usize>,
+) -> BattleOptions {
     let defaults = BattleOptions::default();
     BattleOptions {
         eval_rq: eval_rq.unwrap_or(defaults.eval_rq),
         include_icons,
+        include_skills,
+        controlled_teams: controlled_teams.unwrap_or_default(),
         max_rounds: max_rounds.unwrap_or(defaults.max_rounds),
         ..defaults
     }
+}
+
+/// 把 Python 侧的技能名转换成 core 的行动技能。
+///
+/// 接受 `basic` / `magic` 以及内置主动技能的导出名（`core.skill.fire`）。
+pub(crate) fn parse_planned_skill(value: &str) -> PyResult<PlannedSkill> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "basic" | "basic_attack" | "attack" => Ok(PlannedSkill::BasicAttack),
+        "magic" | "magic_attack" => Ok(PlannedSkill::MagicAttack),
+        name => BuiltinActiveSkill::from_export_name(name)
+            .or_else(|| BuiltinActiveSkill::ALL.iter().copied().find(|skill| skill.local_name() == name))
+            .map(PlannedSkill::Builtin)
+            .ok_or_else(|| pyo3::exceptions::PyValueError::new_err(format!("unknown skill: {value}"))),
+    }
+}
+
+pub(crate) fn parse_planned_action(actor: usize, skill: &str, magic_cost: Option<u8>) -> PyResult<PlannedAction> {
+    Ok(PlannedAction {
+        actor,
+        skill: parse_planned_skill(skill)?,
+        magic_cost,
+    })
 }
 
 pub(crate) fn dto_to_python<T: serde::Serialize + ?Sized>(py: Python<'_>, dto: &T) -> PyResult<Py<PyAny>> {
@@ -37,12 +68,54 @@ pub struct PyBattleSession {
 impl PyBattleSession {
     /// 解析空行分队的 raw；max_rounds 为正数回合预算，None 使用 core 默认值。
     /// include_icons 会把图标 data URL 加入快照，eval_rq 仅在创建时确定。
+    /// include_skills 会附带技能熟练度与主动技能行动顺序。
+    /// controlled_teams 中的队伍会在缺指令时暂停；actions 为 `(actor, skill, magic_cost)`。
     #[new]
-    #[pyo3(signature = (raw, eval_rq=None, include_icons=false, max_rounds=None))]
-    fn new(raw: &str, eval_rq: Option<f64>, include_icons: bool, max_rounds: Option<usize>) -> PyResult<Self> {
-        Ok(Self {
-            inner: BattleSession::new(raw, options(eval_rq, include_icons, max_rounds)).map_err(map_cli_error)?,
-        })
+    #[pyo3(signature = (
+        raw,
+        eval_rq=None,
+        include_icons=false,
+        include_skills=false,
+        controlled_teams=None,
+        actions=None,
+        max_rounds=None
+    ))]
+    fn new(
+        raw: &str,
+        eval_rq: Option<f64>,
+        include_icons: bool,
+        include_skills: bool,
+        controlled_teams: Option<Vec<usize>>,
+        actions: Option<Vec<(usize, String, Option<u8>)>>,
+        max_rounds: Option<usize>,
+    ) -> PyResult<Self> {
+        let options = options(eval_rq, include_icons, include_skills, controlled_teams, max_rounds);
+        let planned = actions
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(actor, skill, magic_cost)| parse_planned_action(actor, &skill, magic_cost))
+            .collect::<PyResult<Vec<_>>>()?;
+        let inner = if planned.is_empty() {
+            BattleSession::new(raw, options).map_err(map_cli_error)?
+        } else {
+            BattleSession::new_with_actions(raw, options, &planned).map_err(map_cli_error)?
+        };
+        Ok(Self { inner })
+    }
+    /// 追加外部指令；下一次轮到对应实体时生效。
+    fn queue_actions(&mut self, actions: Vec<(usize, String, Option<u8>)>) -> PyResult<()> {
+        let planned = actions
+            .into_iter()
+            .map(|(actor, skill, magic_cost)| parse_planned_action(actor, &skill, magic_cost))
+            .collect::<PyResult<Vec<_>>>()?;
+        self.inner.queue_actions(&planned).map_err(map_cli_error)
+    }
+    /// 受控单位暂停时等待指令的实体 ID；非暂停边界为 None。
+    fn paused_actor(&self) -> Option<usize> { self.inner.paused_actor() }
+    /// 预览指定实体使用某个技能会选中的目标 ID；不推进随机数。
+    fn preview_targets(&mut self, actor: usize, skill: &str) -> PyResult<Vec<usize>> {
+        let skill = parse_planned_skill(skill)?;
+        self.inner.preview_targets(actor, skill).map_err(map_cli_error)
     }
     /// 返回创建时快照的新副本；修改 Python 结果不会修改会话。
     fn initial_states(&self, py: Python<'_>) -> PyResult<Py<PyAny>> { dto_to_python(py, self.inner.initial_states()) }

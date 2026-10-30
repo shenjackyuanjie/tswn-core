@@ -179,4 +179,79 @@ right@blue+ol:{"skills":{}}"#;
         assert_eq!(error.code(), crate::cli_api::CliApiErrorCode::InvalidArgument);
         assert!(error.to_string().contains("controlled_team 9"), "{error}");
     }
+
+    #[test]
+    fn multiple_controlled_teams_pause_for_each_team() {
+        let raw = "a@red+ol:{\"skills\":{\"fire\":64}}\n\nb@blue+ol:{\"skills\":{\"ice\":64}}\n\nc@green+ol:{\"skills\":{\"thunder\":64}}";
+        let options = BattleOptions {
+            include_skills: true,
+            controlled_teams: vec![0, 1, 2],
+            max_rounds: 200,
+            ..BattleOptions::default()
+        };
+        let paused = battle_replay(raw, options.clone()).unwrap();
+        let actor = paused.paused_actor.expect("三支受控队伍应当停在第一个行动者");
+        assert_eq!(paused.stop_reason, BattleStopReason::Paused);
+
+        let replay = battle_replay_with_actions(
+            raw,
+            options,
+            &[PlannedAction {
+                actor,
+                skill: PlannedSkill::BasicAttack,
+                magic_cost: None,
+            }],
+        )
+        .unwrap();
+        let next = replay.paused_actor.expect("下一位受控角色应当继续暂停");
+        assert_ne!(next, actor, "一次行动后应轮到另一支队伍");
+        assert_eq!(replay.stop_reason, BattleStopReason::Paused);
+    }
+
+    #[test]
+    fn magic_attack_is_a_planned_action() {
+        let raw = "left@red+ol:{\"skills\":{}}\n\nright@blue+ol:{\"skills\":{}}";
+        let paused = battle_replay_with_actions(raw, controlled_options(), &[]).unwrap();
+        let actor = paused.paused_actor.expect("受控单位应当逼停回放");
+        let replay = battle_replay_with_actions(
+            raw,
+            controlled_options(),
+            &[PlannedAction {
+                actor,
+                skill: PlannedSkill::MagicAttack,
+                magic_cost: None,
+            }],
+        )
+        .unwrap();
+        assert!(
+            replay
+                .frames
+                .iter()
+                .flat_map(|frame| &frame.updates)
+                .any(|update| update.caster_id == Some(actor)),
+            "魔攻没有出现在回放里"
+        );
+    }
+
+    #[test]
+    fn preview_targets_does_not_change_state_and_active_skills_keep_order() {
+        let raw = "left@red+ol:{\"skills\":{\"ice\":64,\"fire\":64,\"heal\":64}}\n\nright@blue+ol:{\"skills\":{}}";
+        let options = BattleOptions {
+            include_skills: true,
+            controlled_team: Some(0),
+            max_rounds: 200,
+            ..BattleOptions::default()
+        };
+        let mut session = BattleSession::new(raw, options).unwrap();
+        while session.next_frame().unwrap().is_some() {}
+        let actor = session.paused_actor().expect("受控单位应当暂停");
+        let before = session.current_states().to_vec();
+        let state = before.iter().find(|state| state.id == actor).unwrap();
+        let active: Vec<_> = state.active_skills.iter().map(|skill| skill.export_name.as_str()).collect();
+        assert_eq!(active, vec!["core.skill.ice", "core.skill.fire", "core.skill.heal"]);
+
+        let targets = session.preview_targets(actor, PlannedSkill::BasicAttack).unwrap();
+        assert!(!targets.is_empty());
+        assert_eq!(session.current_states(), before.as_slice());
+    }
 }

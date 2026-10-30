@@ -7,7 +7,7 @@ use crate::replay_view::{
     hp_delta_for_tone, is_percent_hp_damage_update, render_update_message,
 };
 use crate::runtime::update::{RunUpdates, UpdateType};
-use crate::runtime::{PlannedAction, PlrId, RuntimeMinionKind, RuntimePlayerSnapshot, RuntimeRunner};
+use crate::runtime::{EntityIdx, PlannedAction, PlannedSkill, PlrId, RuntimeMinionKind, RuntimePlayerSnapshot, RuntimeRunner};
 
 use super::dto::*;
 use crate::cli_api::CliApiResult;
@@ -53,8 +53,14 @@ impl BattleSession {
                 "战斗图标需要启用 png_render feature".to_owned(),
             ));
         }
-        let mut driver = super::driver::BattleDriver::from_raw(raw, options)?;
-        if let Some(team) = options.controlled_team {
+        let mut driver = super::driver::BattleDriver::from_raw(raw, options.clone())?;
+        let mut controlled_teams = options.controlled_teams.clone();
+        if let Some(team) = options.controlled_team
+            && !controlled_teams.contains(&team)
+        {
+            controlled_teams.push(team);
+        }
+        if !controlled_teams.is_empty() {
             let runtime = driver.runner.runtime_mut();
             if !runtime.scheduler.uses_legacy_step_scheduler() {
                 return Err(crate::cli_api::CliApiError::UnsupportedOption(
@@ -62,12 +68,14 @@ impl BattleSession {
                 ));
             }
             // 队伍编号写错时不能静默不暂停：先确认这场里确实有这个队伍。
-            if !runtime.entities.iter().any(|(_, entity)| entity.runtime.team == team) {
-                return Err(crate::cli_api::CliApiError::InvalidArgument(format!(
-                    "controlled_team {team} matches no entity in this battle"
-                )));
+            for team in &controlled_teams {
+                if !runtime.entities.iter().any(|(_, entity)| entity.runtime.team == *team) {
+                    return Err(crate::cli_api::CliApiError::InvalidArgument(format!(
+                        "controlled_team {team} matches no entity in this battle"
+                    )));
+                }
             }
-            runtime.set_controlled_team(Some(team));
+            runtime.set_controlled_teams(controlled_teams.iter().copied());
         }
         let mut icon_cache = HashMap::new();
         let initial_states = states_from_runner(&driver.runner, options.include_icons, options.include_skills, &mut icon_cache);
@@ -112,6 +120,17 @@ impl BattleSession {
     /// 结束该回合，本次会话不再继续推进；调用方应把新指令并入脚本后重新创建会话
     /// （例如再调一次 `battle_replay_with_actions`），而不是继续 `next_frame`。
     pub fn paused_actor(&self) -> Option<PlrId> { self.paused }
+
+    /// 预览某个实体使用指定技能会选中的目标；不消耗会话随机数、不改动状态。
+    ///
+    /// 仅用于 UI 提示；真正执行仍走外部行动脚本，执行时会重新按同一口径选择目标。
+    pub fn preview_targets(&mut self, actor: PlrId, skill: PlannedSkill) -> CliApiResult<Vec<PlrId>> {
+        self.driver
+            .runner
+            .runtime_mut()
+            .preview_planned_targets(EntityIdx(actor as u32), skill, false)
+            .map_err(|error| crate::cli_api::CliApiError::InvalidArgument(error.to_string()))
+    }
 
     /// 仅用于测试：破坏 skill handlers，让下一次推进经过真实 Runtime validation 失败。
     #[cfg(any(test, feature = "battle-test-support"))]
@@ -241,6 +260,7 @@ pub(super) fn states_from_runner(
             let mut state = state_from_snapshot(snapshot, false);
             if include_skills {
                 state.skills = skill_snapshots(runner, state.id);
+                state.active_skills = active_skill_snapshots(runner, state.id);
             }
             if include_icons {
                 state.icon_png_base64 = Some(match icon_cache.get(&state.icon_key) {
@@ -282,6 +302,39 @@ fn skill_snapshots(runner: &RuntimeRunner, id: PlrId) -> Vec<SkillSnapshot> {
                 level,
             }),
         }
+    }
+    skills
+}
+
+/// 按运行时主动行动顺序导出技能熟练度。
+///
+/// 与 [`skill_snapshots`] 不同，这里保留行动扫描顺序，并在同一槽位重复时逐项保留，
+/// 供前端计算“按顺序逐个判定”时每个技能实际被选中的概率。
+fn active_skill_snapshots(runner: &RuntimeRunner, id: PlrId) -> Vec<SkillSnapshot> {
+    let runtime = runner.runtime();
+    let Some(entity) = runtime.entities.get(crate::runtime::entity::EntityIdx(id as u32)) else {
+        return Vec::new();
+    };
+    let loadout = &entity.template.skills;
+    let mut skills = Vec::new();
+    for lane in loadout.active_order() {
+        let level = loadout.level_at(*lane).unwrap_or(0);
+        if level == 0 {
+            continue;
+        }
+        let Some(skill_id) = loadout.skills().get(*lane).copied() else {
+            continue;
+        };
+        if runtime.builtin_active_skill(skill_id).is_none() {
+            continue;
+        }
+        let Some(spec) = runtime.registry.skill(skill_id) else {
+            continue;
+        };
+        skills.push(SkillSnapshot {
+            export_name: spec.export_name.clone(),
+            level,
+        });
     }
     skills
 }
@@ -328,6 +381,7 @@ fn state_from_snapshot(snapshot: RuntimePlayerSnapshot, include_icons: bool) -> 
         status_labels: snapshot.status_labels,
         // 纯快照不含技能表；开启 include_skills 时由 states_from_runner 填充。
         skills: Vec::new(),
+        active_skills: Vec::new(),
     }
 }
 

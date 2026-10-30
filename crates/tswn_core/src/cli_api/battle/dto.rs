@@ -3,7 +3,7 @@ use crate::runtime::{BINDING_COMPLETION_MAX_ROUNDS, PlrId};
 use serde::Serialize;
 
 /// 面向用户的完整战斗回放选项。
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BattleOptions {
     /// 有限的名字评估参数，默认普通 fight 口径。
     pub eval_rq: f64,
@@ -23,6 +23,10 @@ pub struct BattleOptions {
     /// 设定后，该队伍的本体与分身在没有排好的指令时会逼停回放并给出 [`BattleReplay::paused_actor`]，
     /// 召唤物仍按 tswn 规则自动行动。只有 LegacyStep 调度方式支持这种暂停。
     pub controlled_team: Option<usize>,
+    /// 由外部驱动的多支队伍；与 [`Self::controlled_team`] 合并去重。
+    ///
+    /// 列表中所有队伍的本体与分身都会在没有排好的指令时逼停回放。
+    pub controlled_teams: Vec<usize>,
 }
 
 impl Default for BattleOptions {
@@ -33,6 +37,7 @@ impl Default for BattleOptions {
             max_rounds: BINDING_COMPLETION_MAX_ROUNDS,
             include_skills: false,
             controlled_team: None,
+            controlled_teams: Vec::new(),
         }
     }
 }
@@ -119,6 +124,11 @@ pub struct BattlePlayerState {
     /// 未开启时为空，序列化时省略该键，既有消费者看到的载荷不变。
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub skills: Vec<SkillSnapshot>,
+    /// 当前主动技能及其行动顺序；仅在 [`BattleOptions::include_skills`] 时填充。
+    ///
+    /// 顺序与运行时行动扫描一致，前端据此计算“按顺序判定时每个技能实际被选中的概率”。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub active_skills: Vec<SkillSnapshot>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
