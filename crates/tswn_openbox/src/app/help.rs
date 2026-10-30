@@ -10,7 +10,7 @@ const HELP_ICON_SIZE: f32 = 18.0;
 const HELP_TOOLTIP_WIDTH: f32 = 380.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HelpTopic {
+pub enum HelpTopic {
     DiyExport,
     BaseOutput,
     LiveResults,
@@ -40,7 +40,7 @@ pub(crate) enum HelpTopic {
 }
 
 impl HelpTopic {
-    pub(crate) fn title(self) -> &'static str {
+    pub fn title(self) -> &'static str {
         match self {
             Self::DiyExport => "导出格式与详情",
             Self::BaseOutput => "base 原始数据",
@@ -71,7 +71,7 @@ impl HelpTopic {
         }
     }
 
-    pub(crate) fn body(self) -> &'static str {
+    pub fn body(self) -> &'static str {
         match self {
             Self::Ds4Workflow => super::ds4_help::WORKFLOW,
             Self::Ds4Thresholds => super::ds4_help::THRESHOLDS,
@@ -183,7 +183,7 @@ impl HelpTopic {
     }
 }
 
-pub(crate) fn help_icon(ui: &mut egui::Ui, topic: HelpTopic, requested: &Cell<Option<HelpTopic>>) {
+pub fn help_icon(ui: &mut egui::Ui, topic: HelpTopic, requested: &Cell<Option<HelpTopic>>) {
     let (rect, response) = ui.allocate_exact_size(egui::vec2(HELP_ICON_SIZE, HELP_ICON_SIZE), egui::Sense::click());
     let color = if response.hovered() {
         ui.visuals().strong_text_color()
@@ -213,7 +213,7 @@ pub(crate) fn help_icon(ui: &mut egui::Ui, topic: HelpTopic, requested: &Cell<Op
     }
 }
 
-pub(crate) fn show_help_window(ctx: &egui::Context, active: &mut Option<HelpTopic>) {
+pub fn show_help_window(ctx: &egui::Context, active: &mut Option<HelpTopic>) {
     let Some(topic) = *active else {
         return;
     };

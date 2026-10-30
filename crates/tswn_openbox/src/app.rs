@@ -5,7 +5,7 @@
 
 mod actions;
 #[cfg(feature = "ui_capture")]
-pub(crate) mod capture;
+pub mod capture;
 mod ds4;
 mod ds4_help;
 mod help;

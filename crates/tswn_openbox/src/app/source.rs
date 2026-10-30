@@ -177,7 +177,7 @@ impl TextSource {
     }
 
     /// 仅供界面截图与测试构造：直接绑定文件并设定 CSV 选项，不经过文件对话框。
-    pub(crate) fn from_csv_file(path: PathBuf, csv: CsvOptions, advanced_open: bool) -> Self {
+    pub fn from_csv_file(path: PathBuf, csv: CsvOptions, advanced_open: bool) -> Self {
         let mut source = Self::inline("");
         source.from_file = true;
         source.csv = csv;
@@ -394,7 +394,7 @@ impl TextSource {
 ///
 /// 空行与空单元格会被跳过；列越界或所有行都被排除时返回错误而不是空输入，
 /// 让调用方在启动任务前就能看到原因。
-pub(crate) fn csv_extract(content: &str, options: &CsvOptions) -> Result<String, String> {
+pub fn csv_extract(content: &str, options: &CsvOptions) -> Result<String, String> {
     let rows = csv_rows(content);
     if rows.is_empty() {
         return Ok(String::new());

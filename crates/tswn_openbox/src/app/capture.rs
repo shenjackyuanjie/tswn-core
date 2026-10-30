@@ -44,7 +44,7 @@ struct CaptureArgs {
     capture_align: String,
 }
 
-pub(crate) fn run_if_requested() -> Option<eframe::Result<()>> {
+pub fn run_if_requested() -> Option<eframe::Result<()>> {
     let args = CaptureArgs::parse();
     let align = match args.capture_align.as_str() {
         "center" => ColumnAlign::Center,

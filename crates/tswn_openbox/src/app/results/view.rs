@@ -15,7 +15,7 @@ use tswn_openbox::backend::live::{EntryKind, ResultKind};
 
 const CELL_GAP: f32 = 4.0;
 /// 结果区底部留给“复制全部”按钮的高度；由调用方从可用高度中扣除。
-pub(crate) const RESULT_FOOTER_HEIGHT: f32 = 34.0;
+pub const RESULT_FOOTER_HEIGHT: f32 = 34.0;
 /// 表格与选中行之间的分隔条高度，用来拖动调整表格高度；按行高留出可选中复制的标题。
 const TABLE_DIVIDER_HEIGHT: f32 = 8.0;
 /// 卡片标题右侧「复制名字」按钮占用的宽度。
@@ -28,7 +28,7 @@ const COLUMN_LABELS: [&str; 7] = ["名字 / 输入序号", "复制名字", "pp",
 fn row_height(ui: &egui::Ui) -> f32 { ui.text_style_height(&egui::TextStyle::Monospace) }
 
 /// 内容可滚动且已经滑到底部；用来在滑到底时自动恢复“跟随最新”。
-pub(crate) fn scrolled_to_end(content: egui::Vec2, viewport: egui::Rect, offset: egui::Vec2) -> bool {
+pub fn scrolled_to_end(content: egui::Vec2, viewport: egui::Rect, offset: egui::Vec2) -> bool {
     let scrollable = content.y > viewport.height() + 1.0;
     scrollable && offset.y >= content.y - viewport.height() - 2.0
 }
