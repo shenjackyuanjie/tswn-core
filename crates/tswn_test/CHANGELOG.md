@@ -14,6 +14,10 @@
 - 将大型 fight fixture 拆分为独立文件和多片测试模块；压力输入按来源、模式和首个差异归档，修复后持续保留并接入回归。
 - 统一 golden 输入换行与 `\x02` 控制字符还原规则，确保跨平台加载和摘要校验稳定。
 
+### 文档
+
+- 补充 frozen golden/corpus、跨引擎 adapter 与会话回放的输入输出和失败诊断契约；整理历史用例说明，未重生成基线或改变预期行为。
+
 ### 说明
 
 - 该 crate 仅供 workspace 内部测试使用，版本为 `0.0.0` 且不发布；普通测试无需额外 feature，Runtime corpus 通过 `--features runtime-corpus` 启用。

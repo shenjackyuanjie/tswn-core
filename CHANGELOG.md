@@ -2,6 +2,32 @@
 
 本文件记录跨 crate 的维护与兼容性变更；各 crate 的版本发布历史仍以对应 CHANGELOG 为准。
 
+## 未发布 · 2026-10-30 日志补全
+
+- 按各模块 manifest、提交历史与当前实现补全未发布条目；不递增版本、不补造发布日期。旧版本中的测试数量和性能结论仅代表当时验证。
+- 主线新增 Boss/武器的分阶段兼容移植、Openbox 评分项全不选时不过滤，以及此前维护中的绑定错误边界、依赖和数据工具修复；具体入口与限制见下列模块日志。
+- 当前 `perf/ffa-profile-20261027` 还包含未合入 main 的核心热路径、名字评分准备和 Rinick 冷快照优化；仅在核心日志的分支专节记录，不当作已发布主线功能。性能范围与已知失败见[简报](docs/perf/reports/performance-branch-2026-10-29.md)，不承诺所有对局固定提速。
+- 分支诊断工具还包括可选 PGO 构建脚本与独立 `allocation-probe`（`publish = false`）；它们不是默认构建策略或独立发布模块。本次不新增逐轮测量数据。
+
+### 模块日志索引
+
+版本列为当前 manifest，`Unreleased` 标题中的拟议下一版本不表示已经发布。
+
+| 模块 | 当前版本 | 日志 |
+| --- | --- | --- |
+| `tswn_core` | 0.7.0 | [更新日志](crates/tswn_core/CHANGELOG.md) |
+| `tswn_capi` | 0.6.3 | [更新日志](crates/tswn_capi/CHANGELOG.md) |
+| `tswn_py` | 0.5.4 | [更新日志](crates/tswn_py/CHANGELOG.md) |
+| `tswn_wasm` | 0.5.12 | [更新日志](crates/tswn_wasm/CHANGELOG.md) |
+| `tswn_openbox` | 0.5.2 | [更新日志](crates/tswn_openbox/CHANGELOG.md) |
+| `tswn_openbox_backend` | 0.5.2 | [更新日志](crates/tswn_openbox_backend/CHANGELOG.md) |
+| `tswn_lane_ranker` | 0.1.0 | [更新日志](crates/tswn_lane_ranker/CHANGELOG.md) |
+| `tswn_name_ranker` | 0.1.0 | [更新日志](crates/tswn_name_ranker/CHANGELOG.md) |
+| `tswn_ladder` | 0.2.0 | [更新日志](crates/tswn_ladder/CHANGELOG.md) |
+| `tswn_ds4` | 0.2.1 | [更新日志](crates/tswn_ds4/CHANGELOG.md) |
+| `tswn_pwp` | 0.0.1 | [更新日志](crates/tswn_pwp/CHANGELOG.md) |
+| `tswn_test` | 0.0.0 | [更新日志](crates/tswn_test/CHANGELOG.md) |
+
 ## 未发布 · 2026-10-24 性能与正确性复测
 
 - 新增公开 API 微基准与可复现的串行 A/B 驱动；按维护前 `704a1ac9`、维护后 `cfee708d` 的各自锁文件构建，保存二进制和输入哈希，不改变产品运行逻辑。
