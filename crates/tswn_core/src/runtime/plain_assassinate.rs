@@ -34,10 +34,10 @@ impl CombatRuntime {
                 .as_str();
             match export_name {
                 DEFAULT_CORE_HIDE_SKILL_EXPORT => {
+                    // 隐匿的 pre-action 只负责解除隐匿；不再顺手掐掉狂暴强制行动。
+                    // 曾经的 `if has_plain_berserk_state { clear_forced_action = true }` 会让
+                    // 所有带隐匿技能的单位在狂暴期间永远不攻击、step 也永不递减（狂暴永久挂身）。
                     self.clear_plain_hide_before_action(actor);
-                    if self.has_plain_berserk_state(actor) {
-                        outcome.clear_forced_action = true;
-                    }
                     outcome.forced_skill = None;
                 }
                 export_name if export_name == BuiltinActiveSkill::Assassinate.export_name() => {
