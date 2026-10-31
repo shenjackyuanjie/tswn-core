@@ -7,7 +7,7 @@ use crate::cli_api::map_cli_error;
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
 use tswn_core::cli_api::{BattleOptions, BattleSession};
-use tswn_core::runtime::{BuiltinActiveSkill, PlannedAction, PlannedSkill};
+use tswn_core::runtime::{BuiltinActiveSkill, PassiveDecision, PlannedAction, PlannedSkill};
 
 pub(crate) fn options(
     eval_rq: Option<f64>,
@@ -16,6 +16,9 @@ pub(crate) fn options(
     controlled_teams: Option<Vec<usize>>,
     allow_future_actors: bool,
     max_rounds: Option<usize>,
+    passive_decisions: Option<Vec<(usize, String, bool, bool, Option<usize>)>>,
+    passive_decision_mode: bool,
+    controlled_minions: bool,
 ) -> BattleOptions {
     let defaults = BattleOptions::default();
     BattleOptions {
@@ -25,6 +28,19 @@ pub(crate) fn options(
         controlled_teams: controlled_teams.unwrap_or_default(),
         allow_future_actors,
         max_rounds: max_rounds.unwrap_or(defaults.max_rounds),
+        passive_decisions: passive_decisions
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(actor, skill, activate, success, target)| PassiveDecision {
+                actor,
+                skill,
+                activate,
+                success,
+                target,
+            })
+            .collect(),
+        passive_decision_mode,
+        controlled_minions,
         ..defaults
     }
 }
@@ -39,11 +55,17 @@ pub(crate) fn parse_planned_skill(value: &str) -> PyResult<PlannedSkill> {
         name => BuiltinActiveSkill::from_export_name(name)
             .or_else(|| BuiltinActiveSkill::ALL.iter().copied().find(|skill| skill.local_name() == name))
             .map(PlannedSkill::Builtin)
-            .ok_or_else(|| pyo3::exceptions::PyValueError::new_err(format!("unknown skill: {value}"))),
+            .ok_or_else(|| {
+                pyo3::exceptions::PyValueError::new_err(format!("unknown skill: {value}"))
+            }),
     }
 }
 
-pub(crate) fn parse_planned_action(actor: usize, skill: &str, magic_cost: Option<u8>) -> PyResult<PlannedAction> {
+pub(crate) fn parse_planned_action(
+    actor: usize,
+    skill: &str,
+    magic_cost: Option<u8>,
+) -> PyResult<PlannedAction> {
     Ok(PlannedAction {
         actor,
         skill: parse_planned_skill(skill)?,
@@ -81,7 +103,10 @@ impl PyBattleSession {
         controlled_teams=None,
         actions=None,
         max_rounds=None,
-        allow_future_actors=false
+        allow_future_actors=false,
+        passive_decisions=None,
+        passive_decision_mode=false,
+        controlled_minions=false
     ))]
     fn new(
         raw: &str,
@@ -92,6 +117,9 @@ impl PyBattleSession {
         actions: Option<Vec<(usize, String, Option<u8>)>>,
         max_rounds: Option<usize>,
         allow_future_actors: bool,
+        passive_decisions: Option<Vec<(usize, String, bool, bool, Option<usize>)>>,
+        passive_decision_mode: bool,
+        controlled_minions: bool,
     ) -> PyResult<Self> {
         let options = options(
             eval_rq,
@@ -100,6 +128,9 @@ impl PyBattleSession {
             controlled_teams,
             allow_future_actors,
             max_rounds,
+            passive_decisions,
+            passive_decision_mode,
+            controlled_minions,
         );
         let planned = actions
             .unwrap_or_default()
@@ -125,6 +156,21 @@ impl PyBattleSession {
     fn paused_actor(&self) -> Option<usize> { self.inner.paused_actor() }
     /// 预读下一条主动技的 MP 消耗（8~23），不推进随机数。
     fn peek_magic_cost(&self) -> Option<u8> { self.inner.peek_magic_cost() }
+    /// 被动 hook 待确认请求；没有时为 None。
+    fn pending_passive(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let Some(request) = self.inner.pending_passive() else {
+            return Ok(None);
+        };
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("actor", request.actor)?;
+        dict.set_item("target", request.target)?;
+        dict.set_item("skill", request.skill.as_str())?;
+        dict.set_item("level", request.level)?;
+        dict.set_item("candidates", request.candidates.clone())?;
+        dict.set_item("unavoidable", request.unavoidable)?;
+        dict.set_item("intercept", request.intercept)?;
+        Ok(Some(dict.into_any().unbind()))
+    }
     /// 预览指定实体使用某个技能会选中的目标 ID；不推进随机数。
     fn preview_targets(&mut self, actor: usize, skill: &str) -> PyResult<Vec<usize>> {
         let skill = parse_planned_skill(skill)?;

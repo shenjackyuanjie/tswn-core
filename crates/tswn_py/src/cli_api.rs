@@ -498,7 +498,7 @@ fn normalized_update_frame_to_pydict<'py>(py: Python<'py>, frame: JsonRuntimeUpd
     Ok(dict)
 }
 
-#[pyfunction(signature = (raw, eval_rq=None, include_icons=false, max_rounds=None, include_skills=false, controlled_teams=None, allow_future_actors=false))]
+#[pyfunction(signature = (raw, eval_rq=None, include_icons=false, max_rounds=None, include_skills=false, controlled_teams=None, allow_future_actors=false, passive_decisions=None, passive_decision_mode=false, controlled_minions=false))]
 /// 同步收集规范回放为 dict/list；max_rounds 是正数回合上限，None 使用 core 默认值。
 ///
 /// 返回 initial_states、frames、final_states 与终止原因；截断仍是正常返回，
@@ -512,6 +512,9 @@ pub fn battle_replay(
     include_skills: bool,
     controlled_teams: Option<Vec<usize>>,
     allow_future_actors: bool,
+    passive_decisions: Option<Vec<(usize, String, bool, bool, Option<usize>)>>,
+    passive_decision_mode: bool,
+    controlled_minions: bool,
 ) -> PyResult<Py<PyAny>> {
     let options = crate::battle::options(
         eval_rq,
@@ -520,6 +523,9 @@ pub fn battle_replay(
         controlled_teams,
         allow_future_actors,
         max_rounds,
+        passive_decisions,
+        passive_decision_mode,
+        controlled_minions,
     );
     let replay = core_cli_api::battle_replay(&raw, options).map_err(map_cli_error)?;
     crate::battle::dto_to_python(py, &replay)
