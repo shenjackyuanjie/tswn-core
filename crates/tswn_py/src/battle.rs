@@ -14,6 +14,7 @@ pub(crate) fn options(
     include_icons: bool,
     include_skills: bool,
     controlled_teams: Option<Vec<usize>>,
+    allow_future_actors: bool,
     max_rounds: Option<usize>,
 ) -> BattleOptions {
     let defaults = BattleOptions::default();
@@ -22,6 +23,7 @@ pub(crate) fn options(
         include_icons,
         include_skills,
         controlled_teams: controlled_teams.unwrap_or_default(),
+        allow_future_actors,
         max_rounds: max_rounds.unwrap_or(defaults.max_rounds),
         ..defaults
     }
@@ -78,7 +80,8 @@ impl PyBattleSession {
         include_skills=false,
         controlled_teams=None,
         actions=None,
-        max_rounds=None
+        max_rounds=None,
+        allow_future_actors=false
     ))]
     fn new(
         raw: &str,
@@ -88,8 +91,16 @@ impl PyBattleSession {
         controlled_teams: Option<Vec<usize>>,
         actions: Option<Vec<(usize, String, Option<u8>)>>,
         max_rounds: Option<usize>,
+        allow_future_actors: bool,
     ) -> PyResult<Self> {
-        let options = options(eval_rq, include_icons, include_skills, controlled_teams, max_rounds);
+        let options = options(
+            eval_rq,
+            include_icons,
+            include_skills,
+            controlled_teams,
+            allow_future_actors,
+            max_rounds,
+        );
         let planned = actions
             .unwrap_or_default()
             .into_iter()
@@ -112,6 +123,8 @@ impl PyBattleSession {
     }
     /// 受控单位暂停时等待指令的实体 ID；非暂停边界为 None。
     fn paused_actor(&self) -> Option<usize> { self.inner.paused_actor() }
+    /// 预读下一条主动技的 MP 消耗（8~23），不推进随机数。
+    fn peek_magic_cost(&self) -> Option<u8> { self.inner.peek_magic_cost() }
     /// 预览指定实体使用某个技能会选中的目标 ID；不推进随机数。
     fn preview_targets(&mut self, actor: usize, skill: &str) -> PyResult<Vec<usize>> {
         let skill = parse_planned_skill(skill)?;

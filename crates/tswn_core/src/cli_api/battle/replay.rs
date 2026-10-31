@@ -254,4 +254,36 @@ right@blue+ol:{"skills":{}}"#;
         assert!(!targets.is_empty());
         assert_eq!(session.current_states(), before.as_slice());
     }
+
+    #[test]
+    fn allow_future_actors_skips_queue_validation() {
+        let options = BattleOptions {
+            controlled_team: Some(0),
+            allow_future_actors: true,
+            ..BattleOptions::default()
+        };
+        let action = PlannedAction {
+            actor: 99,
+            skill: PlannedSkill::BasicAttack,
+            magic_cost: None,
+        };
+        assert!(
+            battle_replay_with_actions("a\n\nb", options, &[action]).is_ok(),
+            "打开 allow_future_actors 后不应在构造阶段拒绝未来实体"
+        );
+    }
+
+    #[test]
+    fn peek_magic_cost_is_stable_and_in_range() {
+        let options = BattleOptions {
+            controlled_team: Some(0),
+            max_rounds: 200,
+            ..BattleOptions::default()
+        };
+        let mut session = BattleSession::new("a\n\nb", options).unwrap();
+        while session.next_frame().unwrap().is_some() {}
+        let first = session.peek_magic_cost().expect("暂停时应有下一手 MP 消耗");
+        assert!((8..=23).contains(&first));
+        assert_eq!(session.peek_magic_cost(), Some(first), "预读不应推进随机数");
+    }
 }

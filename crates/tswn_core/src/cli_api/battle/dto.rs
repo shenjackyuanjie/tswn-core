@@ -27,6 +27,11 @@ pub struct BattleOptions {
     ///
     /// 列表中所有队伍的本体与分身都会在没有排好的指令时逼停回放。
     pub controlled_teams: Vec<usize>,
+    /// 是否允许脚本引用会话创建时还不存在的实体 ID。
+    ///
+    /// 分身/召唤物会在战斗中途创建，前端按“先有脚本、后出现实体”的方式重放时
+    /// 需要打开这个选项；默认关闭以保留“actor 必须已存在”的旧校验。
+    pub allow_future_actors: bool,
 }
 
 impl Default for BattleOptions {
@@ -38,6 +43,7 @@ impl Default for BattleOptions {
             include_skills: false,
             controlled_team: None,
             controlled_teams: Vec::new(),
+            allow_future_actors: false,
         }
     }
 }

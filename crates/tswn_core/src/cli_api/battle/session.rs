@@ -101,13 +101,15 @@ impl BattleSession {
 
     /// 追加外部指令；已推进的会话同样可用，指令在下一次轮到该实体时生效。
     pub fn queue_actions(&mut self, actions: &[PlannedAction]) -> CliApiResult<()> {
-        let entity_count = self.driver.runner.runtime().entities.len();
-        for action in actions {
-            if action.actor >= entity_count {
-                return Err(crate::cli_api::CliApiError::InvalidArgument(format!(
-                    "planned action actor {} does not exist",
-                    action.actor
-                )));
+        if !self.options.allow_future_actors {
+            let entity_count = self.driver.runner.runtime().entities.len();
+            for action in actions {
+                if action.actor >= entity_count {
+                    return Err(crate::cli_api::CliApiError::InvalidArgument(format!(
+                        "planned action actor {} does not exist",
+                        action.actor
+                    )));
+                }
             }
         }
         self.driver.runner.runtime_mut().queue_planned_actions(actions.iter().copied());
@@ -120,6 +122,14 @@ impl BattleSession {
     /// 结束该回合，本次会话不再继续推进；调用方应把新指令并入脚本后重新创建会话
     /// （例如再调一次 `battle_replay_with_actions`），而不是继续 `next_frame`。
     pub fn paused_actor(&self) -> Option<PlrId> { self.paused }
+
+    /// 预读下一条外部主动技的 MP 消耗，不推进随机数。
+    ///
+    /// 手动对战需要在技能环上展示这一手要多少 MP，同时保证执行与预览使用同一个值。
+    pub fn peek_magic_cost(&self) -> Option<u8> {
+        let mut rng = self.driver.runner.runtime().rng.clone();
+        Some((rng.next_u8() & 15) + 8)
+    }
 
     /// 预览某个实体使用指定技能会选中的目标；不消耗会话随机数、不改动状态。
     ///
