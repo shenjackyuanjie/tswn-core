@@ -1,6 +1,32 @@
 use super::*;
 
 #[test]
+fn plain_attack_pause_carries_evade_damage_batch_metadata() {
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(vec![
+        PlayerTemplate::new(1, "attacker", 0, 100, 3),
+        PlayerTemplate::new(2, "target", 1, 100, 3),
+    ]));
+    runtime.control.set_passive_decision_mode(true);
+    let mut updates = RunUpdates::new();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        runtime.drain_plain_attack_with_atp_into(
+            EntityIdx(0),
+            EntityIdx(1),
+            false,
+            64.0,
+            &mut updates,
+        );
+    }));
+    assert!(result.is_err());
+    let batch = runtime.control.damage_batch().expect("plain attack should create a damage batch");
+    assert_eq!((batch.attacker, batch.target), (0, 1));
+    let request = runtime.control.pending_passive().expect("plain attack should pause for evade choice");
+    assert_eq!(request.actor, 1);
+    assert_eq!(request.batch_id, Some(batch.id));
+    assert_eq!(request.phase, Some(crate::runtime::DamageDecisionPhase::Evade));
+}
+
+#[test]
 fn plain_thunder_static_dispatch_matches_multihit_rng_and_delay() {
     let mut builder = ExtensionRegistryBuilder::default();
     let thunder = builder
