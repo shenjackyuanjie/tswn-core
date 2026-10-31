@@ -31,6 +31,15 @@ fn protect_runtime(target_kind_export: &str) -> CombatRuntime {
 }
 
 #[test]
+fn protect_decision_candidates_exclude_owner_and_combat_minions() {
+    let runtime = protect_runtime(DEFAULT_CORE_SUMMON_KIND_EXPORT);
+    assert!(runtime.protect_target_candidates(EntityIdx(0)).is_empty());
+
+    let runtime = protect_runtime(DEFAULT_CORE_CLONE_KIND_EXPORT);
+    assert_eq!(runtime.protect_target_candidates(EntityIdx(0)), vec![EntityIdx(1)]);
+}
+
+#[test]
 fn plain_protect_can_target_clone_and_preserves_legacy_rng_consumption() {
     let mut runtime = protect_runtime(DEFAULT_CORE_CLONE_KIND_EXPORT);
     let candidates = runtime.world.team_alive(0).unwrap().to_vec();

@@ -59,6 +59,8 @@ impl CombatRuntime {
                 candidates: Vec::new(),
                 unavoidable: false,
                 intercept: false,
+                batch_id: None,
+                phase: None,
             };
             self.control.set_pending_passive(request);
             std::panic::panic_any(PassivePause);

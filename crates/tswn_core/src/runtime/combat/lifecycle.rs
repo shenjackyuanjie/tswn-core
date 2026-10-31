@@ -290,6 +290,13 @@ impl CombatRuntime {
                         .get(owner)
                         .and_then(|entity| entity.template.skills.level_at(entry.fixed_lane))
                         .unwrap_or(0);
+                    let phase = match export_name.as_str() {
+                        "core.skill.reflect" => Some(crate::runtime::DamageDecisionPhase::Reflect),
+                        "core.skill.defend" => Some(crate::runtime::DamageDecisionPhase::Defend),
+                        "core.skill.protect" => Some(crate::runtime::DamageDecisionPhase::Protect),
+                        _ => None,
+                    };
+                    let batch_id = self.control.damage_batch().map(|batch| batch.id);
                     let request = PassiveRequest {
                         actor: owner.0 as PlrId,
                         target: None,
@@ -298,7 +305,14 @@ impl CombatRuntime {
                         candidates,
                         unavoidable: false,
                         intercept: false,
+                        batch_id,
+                        phase,
                     };
+                    if batch_id.is_some() {
+                        if let Some(phase) = phase {
+                            self.control.record_damage_phase(phase);
+                        }
+                    }
                     self.control.set_pending_passive(request.clone());
                     std::panic::panic_any(PassivePause);
                 };

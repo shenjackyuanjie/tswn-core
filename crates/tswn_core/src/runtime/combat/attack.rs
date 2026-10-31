@@ -339,6 +339,7 @@ impl CombatRuntime {
         on_damage: PlainAttackOnDamage,
         updates: &mut RunUpdates,
     ) -> i32 {
+        self.control.begin_damage_batch(actor.0 as PlrId, target.0 as PlrId);
         #[cfg(not(feature = "no_debug"))]
         let debug_attack = self.probe_default_attack_matches(actor);
         let mut defend_value = RuntimeDefendValue::Atp {

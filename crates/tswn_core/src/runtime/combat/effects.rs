@@ -222,7 +222,10 @@ impl CombatRuntime {
                                 candidates: Vec::new(),
                                 unavoidable: true,
                                 intercept: false,
+                                batch_id: self.control.damage_batch().map(|batch| batch.id),
+                                phase: Some(crate::runtime::DamageDecisionPhase::Evade),
                             };
+                            self.control.record_damage_phase(crate::runtime::DamageDecisionPhase::Evade);
                             self.control.set_pending_passive(request);
                             std::panic::panic_any(PassivePause);
                         };

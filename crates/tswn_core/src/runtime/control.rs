@@ -26,6 +26,46 @@ pub enum PlannedSkill {
 #[derive(Debug, Clone, Copy)]
 pub struct PassivePause;
 
+/// 一次伤害解析的显式决策边界。询问与结算顺序由该类型集中声明，
+/// 具体 hook 可以跨多次回放消费同一个 batch 的决定。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DamageDecisionPhase {
+    Evade,
+    Reflect,
+    Protect,
+    Defend,
+}
+
+impl DamageDecisionPhase {
+    pub const ASK_ORDER: [Self; 4] = [Self::Evade, Self::Reflect, Self::Protect, Self::Defend];
+    pub const RESOLVE_ORDER: [Self; 4] = [Self::Reflect, Self::Protect, Self::Evade, Self::Defend];
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DamageDecisionBatch {
+    pub id: u64,
+    pub attacker: PlrId,
+    pub target: PlrId,
+    pub requested: Vec<DamageDecisionPhase>,
+}
+
+impl DamageDecisionBatch {
+    pub fn new(id: u64, attacker: PlrId, target: PlrId) -> Self {
+        Self {
+            id,
+            attacker,
+            target,
+            requested: Vec::new(),
+        }
+    }
+
+    pub fn record(&mut self, phase: DamageDecisionPhase) {
+        if !self.requested.contains(&phase) {
+            self.requested.push(phase);
+        }
+    }
+}
+
 /// 一条被动触发决策：服务器已经完成成功率判定，只把结果交给回放。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PassiveDecision {
@@ -55,6 +95,10 @@ pub struct PassiveRequest {
     pub unavoidable: bool,
     /// 守护请求是否为“即将受伤时是否进行守护”，而不是选择守护目标。
     pub intercept: bool,
+    /// 所属伤害批次；非伤害被动为 None。
+    pub batch_id: Option<u64>,
+    /// 该请求在伤害批次中的阶段。
+    pub phase: Option<DamageDecisionPhase>,
 }
 
 /// 一条外部行动指令。
@@ -119,6 +163,8 @@ pub struct BattleControl {
     pending_passive: Option<PassiveRequest>,
     passive_decision_mode: bool,
     controlled_minions: bool,
+    damage_batch: Option<DamageDecisionBatch>,
+    next_damage_batch_id: u64,
 }
 
 impl BattleControl {
@@ -203,6 +249,32 @@ impl BattleControl {
 
     pub fn pending_passive(&self) -> Option<&PassiveRequest> { self.pending_passive.as_ref() }
 
+    pub fn begin_damage_batch(&mut self, attacker: PlrId, target: PlrId) -> u64 {
+        self.next_damage_batch_id = self.next_damage_batch_id.saturating_add(1);
+        let id = self.next_damage_batch_id;
+        self.damage_batch = Some(DamageDecisionBatch::new(id, attacker, target));
+        id
+    }
+
+    pub fn ensure_damage_batch(&mut self, attacker: PlrId, target: PlrId) -> u64 {
+        if self
+            .damage_batch
+            .as_ref()
+            .is_some_and(|batch| batch.attacker == attacker && batch.target == target)
+        {
+            return self.damage_batch.as_ref().unwrap().id;
+        }
+        self.begin_damage_batch(attacker, target)
+    }
+
+    pub fn damage_batch(&self) -> Option<&DamageDecisionBatch> { self.damage_batch.as_ref() }
+
+    pub fn record_damage_phase(&mut self, phase: DamageDecisionPhase) -> Option<u64> {
+        let batch = self.damage_batch.as_mut()?;
+        batch.record(phase);
+        Some(batch.id)
+    }
+
     /// 记录一条指令的执行失败；会话层据此返回 `INVALID_ARGUMENT`。
     pub fn set_error(&mut self, error: PlannedActionError) { self.error = Some(error); }
 
@@ -240,6 +312,35 @@ impl CombatRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn damage_decision_batch_declares_boundary_and_orders() {
+        assert_eq!(
+            DamageDecisionPhase::ASK_ORDER,
+            [
+                DamageDecisionPhase::Evade,
+                DamageDecisionPhase::Reflect,
+                DamageDecisionPhase::Protect,
+                DamageDecisionPhase::Defend,
+            ]
+        );
+        assert_eq!(
+            DamageDecisionPhase::RESOLVE_ORDER,
+            [
+                DamageDecisionPhase::Reflect,
+                DamageDecisionPhase::Protect,
+                DamageDecisionPhase::Evade,
+                DamageDecisionPhase::Defend,
+            ]
+        );
+        let mut control = BattleControl::default();
+        let id = control.begin_damage_batch(7, 9);
+        assert_eq!(id, 1);
+        assert_eq!(control.ensure_damage_batch(7, 9), id);
+        assert_eq!(control.record_damage_phase(DamageDecisionPhase::Evade), Some(id));
+        assert_eq!(control.damage_batch().unwrap().requested, vec![DamageDecisionPhase::Evade]);
+        assert_eq!(control.begin_damage_batch(7, 9), 2);
+    }
 
     #[test]
     fn queue_consumes_per_actor_in_order_and_reset_clears_everything() {

@@ -169,6 +169,14 @@ impl PyBattleSession {
         dict.set_item("candidates", request.candidates.clone())?;
         dict.set_item("unavoidable", request.unavoidable)?;
         dict.set_item("intercept", request.intercept)?;
+        dict.set_item("batch_id", request.batch_id)?;
+        let phase = request.phase.map(|phase| match phase {
+            tswn_core::runtime::DamageDecisionPhase::Evade => "evade",
+            tswn_core::runtime::DamageDecisionPhase::Reflect => "reflect",
+            tswn_core::runtime::DamageDecisionPhase::Protect => "protect",
+            tswn_core::runtime::DamageDecisionPhase::Defend => "defend",
+        });
+        dict.set_item("phase", phase)?;
         Ok(Some(dict.into_any().unbind()))
     }
     /// 预览指定实体使用某个技能会选中的目标 ID；不推进随机数。
