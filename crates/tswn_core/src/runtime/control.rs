@@ -22,6 +22,41 @@ pub enum PlannedSkill {
     MagicAttack,
 }
 
+/// 被动 hook 暂停时使用的 panic 标记；避免把内部借用状态暴露给调用方。
+#[derive(Debug, Clone, Copy)]
+pub struct PassivePause;
+
+/// 一条被动触发决策：服务器已经完成成功率判定，只把结果交给回放。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PassiveDecision {
+    /// 被动所属实体。
+    pub actor: PlrId,
+    /// 被动技能导出名，例如 `core.skill.reraise`。
+    pub skill: String,
+    /// 玩家是否选择发动。
+    pub activate: bool,
+    /// 服务器按累计成功率判定的结果；`activate=false` 时忽略。
+    pub success: bool,
+    /// 守护目标；其他被动为 `None`。
+    pub target: Option<PlrId>,
+}
+
+/// 引擎在被动 hook 处缺少决策时返回的待确认信息。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PassiveRequest {
+    pub actor: PlrId,
+    /// 该触发指向的角色：回避是回避者，守护拦截是被守护者。
+    pub target: Option<PlrId>,
+    pub skill: String,
+    pub level: u32,
+    /// 守护候选：存活、非召唤物、不含自己。
+    pub candidates: Vec<PlrId>,
+    /// 回避请求是否属于强命技能（即使回避成功也无效）。
+    pub unavoidable: bool,
+    /// 守护请求是否为“即将受伤时是否进行守护”，而不是选择守护目标。
+    pub intercept: bool,
+}
+
 /// 一条外部行动指令。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlannedAction {
@@ -79,6 +114,11 @@ pub struct BattleControl {
     queue: Vec<PlannedAction>,
     awaiting: Option<PlrId>,
     error: Option<PlannedActionError>,
+    passive_decisions: Vec<PassiveDecision>,
+    passive_cursor: usize,
+    pending_passive: Option<PassiveRequest>,
+    passive_decision_mode: bool,
+    controlled_minions: bool,
 }
 
 impl BattleControl {
@@ -136,6 +176,32 @@ impl BattleControl {
 
     /// 取走暂停标记；会话层每个边界只读一次，避免残留到下一场战斗。
     pub fn take_awaiting(&mut self) -> Option<PlrId> { self.awaiting.take() }
+
+    /// 设置本次回放可消费的被动决策脚本，按触发顺序消费。
+    pub fn set_passive_decisions(&mut self, decisions: impl IntoIterator<Item = PassiveDecision>) {
+        self.passive_decisions = decisions.into_iter().collect();
+        self.passive_cursor = 0;
+    }
+
+    pub fn set_passive_decision_mode(&mut self, enabled: bool) { self.passive_decision_mode = enabled; }
+
+    pub fn passive_decision_mode(&self) -> bool { self.passive_decision_mode }
+
+    pub fn set_controlled_minions(&mut self, enabled: bool) { self.controlled_minions = enabled; }
+
+    pub fn controlled_minions(&self) -> bool { self.controlled_minions }
+
+    pub fn next_passive_decision(&mut self) -> Option<PassiveDecision> {
+        let decision = self.passive_decisions.get(self.passive_cursor).cloned()?;
+        self.passive_cursor += 1;
+        Some(decision)
+    }
+
+    pub fn set_pending_passive(&mut self, request: PassiveRequest) { self.pending_passive = Some(request); }
+
+    pub fn take_pending_passive(&mut self) -> Option<PassiveRequest> { self.pending_passive.take() }
+
+    pub fn pending_passive(&self) -> Option<&PassiveRequest> { self.pending_passive.as_ref() }
 
     /// 记录一条指令的执行失败；会话层据此返回 `INVALID_ARGUMENT`。
     pub fn set_error(&mut self, error: PlannedActionError) { self.error = Some(error); }

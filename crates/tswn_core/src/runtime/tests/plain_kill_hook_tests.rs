@@ -311,3 +311,21 @@ fn flush_effects_passes_killed_target_to_kill_skill_hooks() {
     assert_eq!(frame.updates.updates[1].target, 2);
     assert_eq!(frame.updates.updates[1].score, 2);
 }
+
+#[test]
+fn kill_passives_pause_for_owner_decision() {
+    let mut runtime = zombie_merge_kill_runtime(64, 64);
+    runtime.control.set_passive_decision_mode(true);
+    let plan = runtime
+        .scheduler
+        .skill_hook_plan(&runtime.entities, &runtime.registry, EntityIdx(0), ProcMask::KILL);
+    let mut updates = RunUpdates::new();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        runtime.drain_plain_kill_skill_plan_into(&plan, EntityIdx(1), &mut updates);
+    }));
+    assert!(result.is_err());
+    let request = runtime.control.pending_passive().expect("kill hook should request a passive decision");
+    assert_eq!(request.actor, 0);
+    assert_eq!(request.target, Some(1));
+    assert_eq!(request.skill, DEFAULT_CORE_MERGE_SKILL_EXPORT);
+}

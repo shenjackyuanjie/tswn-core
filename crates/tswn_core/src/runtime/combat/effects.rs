@@ -212,6 +212,21 @@ impl CombatRuntime {
                         "[0]使用[净化]",
                         20,
                     ));
+                    if self.control.passive_decision_mode() {
+                        let Some(_decision) = self.control.next_passive_decision() else {
+                            let request = PassiveRequest {
+                                actor: target.0 as PlrId,
+                                target: Some(target.0 as PlrId),
+                                skill: "evade".to_owned(),
+                                level: 0,
+                                candidates: Vec::new(),
+                                unavoidable: true,
+                                intercept: false,
+                            };
+                            self.control.set_pending_passive(request);
+                            std::panic::panic_any(PassivePause);
+                        };
+                    }
                     // legacy 的 `DisperseSkill::act_with_level` 会刻意调用 `Player::defned`，
                     // 而不是 `Player::attacked`。因此驱散完全跳过 PRE_DEFEND 和闪避，
                     // 但仍会在结算伤害前执行 POST_DEFEND。

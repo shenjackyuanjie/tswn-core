@@ -3,7 +3,7 @@ use super::*;
 pub fn run_defend_post_defend_skill(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let damage = context.defend_damage().expect("runtime defend skill must run during POST_DEFEND");
     let level = context.skill_level(entry);
-    if context.rng_r255() >= level {
+    if !context.force_passive() && context.rng_r255() >= level {
         return;
     }
     if !context.owner_mp_ready().expect("runtime defend skill owner must exist") {
@@ -21,9 +21,10 @@ pub fn run_reflect_pre_defend_skill(context: &mut SkillContext<'_>, entry: &Skil
     }
 
     let level = context.skill_level(entry);
-    if context.rng_r255() >= level
-        || !context.rng_c50()
-        || !context.owner_mp_ready().expect("runtime reflect skill owner must exist")
+    if !context.force_passive()
+        && (context.rng_r255() >= level
+            || !context.rng_c50()
+            || !context.owner_mp_ready().expect("runtime reflect skill owner must exist"))
     {
         return;
     }
@@ -56,8 +57,9 @@ pub fn run_shield_pre_action_skill(context: &mut SkillContext<'_>, entry: &Skill
 
 pub fn run_protect_post_action_skill(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let level = context.skill_level(entry);
+    let forced_target = context.selected_target();
     context
-        .refresh_owner_protect_target(level)
+        .refresh_owner_protect_target(level, forced_target)
         .expect("runtime protect post-action context must access allies");
 }
 
@@ -66,7 +68,7 @@ pub fn run_plain_passive_noop_skill(_: &mut SkillContext<'_>, _: &SkillHookPlanE
 pub fn run_merge_kill_skill(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let level = context.skill_level(entry);
     let roll = context.rng_r63();
-    if roll >= level {
+    if !context.force_passive() && roll >= level {
         return;
     }
     let Some(target) = context.selected_target() else {
@@ -80,7 +82,7 @@ pub fn run_merge_kill_skill(context: &mut SkillContext<'_>, entry: &SkillHookPla
 
 pub fn run_reraise_die_skill(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let level = context.skill_level(entry);
-    if context.rng_r127() >= level {
+    if !context.force_passive() && context.rng_r127() >= level {
         return;
     }
     let hp = context.rng_r16() as i32;

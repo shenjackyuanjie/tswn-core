@@ -243,7 +243,7 @@ impl CombatRuntime {
         } else {
             false
         };
-        if immune || (target_active && PlayerRuntime::dodge(owner_magic, target_resistance, &mut self.rng)) {
+        if immune || (target_active && self.roll_plain_dodge(target, owner_magic, target_resistance, false)) {
             updates.add(crate::runtime::update::RunUpdate::new(
                 "[0][回避]了攻击",
                 target.0 as usize,
@@ -485,7 +485,7 @@ impl CombatRuntime {
         } else {
             false
         };
-        let dodged = immune || (target_active && PlayerRuntime::dodge(caster_magic, target_resistance, &mut self.rng));
+        let dodged = immune || (target_active && self.roll_plain_dodge(target, caster_magic, target_resistance, false));
         #[cfg(not(feature = "no_debug"))]
         if crate::debug::probe_possess().is_some() {
             eprintln!(

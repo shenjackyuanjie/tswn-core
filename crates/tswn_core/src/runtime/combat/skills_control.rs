@@ -46,7 +46,7 @@ impl CombatRuntime {
         if immune
             || (target_active
                 && !charge_active
-                && PlayerRuntime::dodge(chance, target_resistance + target_agility, &mut self.rng))
+                && self.roll_plain_dodge(target, chance, target_resistance + target_agility, false))
         {
             updates.add(crate::runtime::update::RunUpdate::new(
                 "[0][回避]了攻击",
@@ -619,7 +619,7 @@ impl CombatRuntime {
         if immune
             || (target_active
                 && !charge_active
-                && PlayerRuntime::dodge(owner_magic, target_res + target_def + target_agl, &mut self.rng))
+                && self.roll_plain_dodge(target, owner_magic, target_res + target_def + target_agl, false))
         {
             updates.add(crate::runtime::update::RunUpdate::new(
                 "[0][回避]了攻击",

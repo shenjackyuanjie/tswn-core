@@ -244,7 +244,7 @@ impl CombatRuntime {
                     target_entity.runtime.agility + target_entity.runtime.resistance,
                 )
             };
-            if target_active && PlayerRuntime::dodge(accuracy, target_dodge, &mut self.rng) {
+            if target_active && self.roll_plain_dodge(target, accuracy, target_dodge, false) {
                 updates.add(RuntimeFrame::replay_update(
                     target.0 as usize,
                     actor.0 as usize,

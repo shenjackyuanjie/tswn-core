@@ -5,13 +5,23 @@ impl CombatRuntime {
         for entry in &plan.entries {
             let export_name = self.registry.skill(entry.skill_id).map(|skill| skill.export_name.as_str());
             if export_name == Some(DEFAULT_CORE_ZOMBIE_SKILL_EXPORT) {
-                if self.drain_plain_zombie_kill_skill_into(entry.owner, entry.fixed_lane, killed_target, updates) {
+                let force = match self.consume_kill_passive_decision(entry, DEFAULT_CORE_ZOMBIE_SKILL_EXPORT, killed_target) {
+                    None => false,
+                    Some(false) => continue,
+                    Some(true) => true,
+                };
+                if self.drain_plain_zombie_kill_skill_into(entry.owner, entry.fixed_lane, killed_target, updates, force) {
                     break;
                 }
                 continue;
             }
             if export_name == Some(DEFAULT_CORE_MERGE_SKILL_EXPORT) {
-                if self.drain_plain_merge_kill_skill_into(entry.owner, entry.fixed_lane, killed_target, updates) {
+                let force = match self.consume_kill_passive_decision(entry, DEFAULT_CORE_MERGE_SKILL_EXPORT, killed_target) {
+                    None => false,
+                    Some(false) => continue,
+                    Some(true) => true,
+                };
+                if self.drain_plain_merge_kill_skill_into(entry.owner, entry.fixed_lane, killed_target, updates, force) {
                     break;
                 }
                 continue;
@@ -26,12 +36,43 @@ impl CombatRuntime {
         }
     }
 
+    fn consume_kill_passive_decision(
+        &mut self,
+        entry: &SkillHookPlanEntry,
+        export_name: &str,
+        killed_target: EntityIdx,
+    ) -> Option<bool> {
+        if !self.control.passive_decision_mode() {
+            return None;
+        }
+        let level = self
+            .entities
+            .get(entry.owner)
+            .and_then(|entity| entity.template.skills.level_at(entry.fixed_lane))
+            .unwrap_or(0);
+        let Some(decision) = self.control.next_passive_decision() else {
+            let request = PassiveRequest {
+                actor: entry.owner.0 as PlrId,
+                target: Some(killed_target.0 as PlrId),
+                skill: export_name.to_owned(),
+                level,
+                candidates: Vec::new(),
+                unavoidable: false,
+                intercept: false,
+            };
+            self.control.set_pending_passive(request);
+            std::panic::panic_any(PassivePause);
+        };
+        Some(decision.activate && decision.success)
+    }
+
     pub fn drain_plain_zombie_kill_skill_into(
         &mut self,
         caster: EntityIdx,
         fixed_lane: usize,
         killed_target: EntityIdx,
         updates: &mut RunUpdates,
+        force: bool,
     ) -> bool {
         let target_is_combat_minion = self
             .entities
@@ -48,7 +89,7 @@ impl CombatRuntime {
             .get(caster)
             .and_then(|entity| entity.template.skills.level_at(fixed_lane))
             .unwrap_or_else(|| panic!("runtime zombie level missing for fixed lane {fixed_lane}"));
-        if self.rng.r63() >= level {
+        if !force && self.rng.r63() >= level {
             return false;
         }
 
@@ -100,13 +141,14 @@ impl CombatRuntime {
         fixed_lane: usize,
         killed_target: EntityIdx,
         updates: &mut RunUpdates,
+        force: bool,
     ) -> bool {
         let level = self
             .entities
             .get(caster)
             .and_then(|entity| entity.template.skills.level_at(fixed_lane))
             .unwrap_or_else(|| panic!("runtime merge level missing for fixed lane {fixed_lane}"));
-        if self.rng.r63() >= level {
+        if !force && self.rng.r63() >= level {
             return false;
         }
         self.apply_plain_merge_into(caster, killed_target, updates)

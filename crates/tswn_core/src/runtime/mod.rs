@@ -105,7 +105,9 @@ pub use batch::{
 pub use combat::{
     CombatRuntime, PreparedBuiltinSkillAction, PreparedPlainAction, PreparedTargetList, RoundOutcome, SelectedBuiltinSkill,
 };
-pub use control::{BattleControl, PlannedAction, PlannedActionError, PlannedSkill};
+pub use control::{
+    BattleControl, PassiveDecision, PassivePause, PassiveRequest, PlannedAction, PlannedActionError, PlannedSkill,
+};
 pub use cqp::{
     RuntimeCqpBatchResult, RuntimeCqpMatchup, RuntimeCqpMatchupResult, resolve_cqp_workers, runtime_cqp_matchups,
     runtime_cqp_matchups_observed,

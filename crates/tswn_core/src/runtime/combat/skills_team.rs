@@ -29,6 +29,24 @@ impl CombatRuntime {
             .unwrap_or(actor_entity.runtime.team)
     }
 
+    /// 守护的合法候选：当前有效队伍的存活队友，排除自己与所有战斗召唤物。
+    pub fn protect_target_candidates(&self, owner: EntityIdx) -> Vec<EntityIdx> {
+        let team = self.plain_effective_team(owner);
+        self.world
+            .team_alive(team)
+            .unwrap_or_default()
+            .iter()
+            .copied()
+            .filter(|candidate| {
+                *candidate != owner
+                    && self
+                        .entities
+                        .get(*candidate)
+                        .is_some_and(|entity| entity.runtime.alive && !entity.runtime.is_combat_minion())
+            })
+            .collect()
+    }
+
     pub fn select_plain_charm_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         #[cfg(not(feature = "no_debug"))]
         let before = (self.rng.i, self.rng.j);
@@ -183,7 +201,7 @@ impl CombatRuntime {
         } else {
             false
         };
-        if immune || (target_active && PlayerRuntime::dodge(owner_magic, target_dodge, &mut self.rng)) {
+        if immune || (target_active && self.roll_plain_dodge(target, owner_magic, target_dodge, false)) {
             updates.add(crate::runtime::update::RunUpdate::new(
                 "[0][回避]了攻击",
                 target.0 as usize,

@@ -204,7 +204,39 @@ impl CombatRuntime {
                 .entities
                 .get(link.owner)
                 .is_some_and(|_| self.plain_effective_team(link.owner) == target_team);
-            let trigger_ok = same_group && self.rng.r127() < level;
+            let mut force_guard = false;
+            if same_group && self.control.passive_decision_mode() {
+                let Some(decision) = self.control.next_passive_decision() else {
+                    let request = PassiveRequest {
+                        actor: link.owner.0 as PlrId,
+                        target: Some(target.0 as PlrId),
+                        skill: "core.skill.protect".to_owned(),
+                        level,
+                        candidates: Vec::new(),
+                        unavoidable: false,
+                        intercept: true,
+                    };
+                    self.control.set_pending_passive(request);
+                    std::panic::panic_any(PassivePause);
+                };
+                if !decision.activate || !decision.success {
+                    if let Some(target_entity) = self.entities.get_mut(target) {
+                        target_entity.runtime.protect_from.retain(|item| item.owner != link.owner);
+                        if target_entity.runtime.protect_from.is_empty() {
+                            target_entity.runtime.protect_pre_defend_skill_count = None;
+                            target_entity.states.clear_compressed_legacy_state(CompressedLegacyState::Protect);
+                        }
+                    }
+                    if let Some(protector) = self.entities.get_mut(link.owner)
+                        && protector.runtime.protect_to == Some(target)
+                    {
+                        protector.runtime.protect_to = None;
+                    }
+                    continue;
+                }
+                force_guard = true;
+            }
+            let trigger_ok = same_group && (force_guard || self.rng.r127() < level);
             let protector_ready = trigger_ok && self.entity_mp_ready(link.owner);
 
             #[cfg(not(feature = "no_debug"))]
@@ -573,6 +605,42 @@ impl CombatRuntime {
         ));
     }
 
+    fn plain_dodge_chance(accuracy: i32, dodge_value: i32) -> u8 {
+        let temp = 24 + dodge_value - accuracy;
+        let chance = if temp < 7 {
+            7
+        } else if temp > 64 {
+            temp / 4 + 48
+        } else {
+            temp
+        };
+        chance.clamp(0, 255) as u8
+    }
+
+    pub fn roll_plain_dodge(&mut self, target: EntityIdx, accuracy: i32, dodge_value: i32, unavoidable: bool) -> bool {
+        if self.control.passive_decision_mode() {
+            let chance = Self::plain_dodge_chance(accuracy, dodge_value);
+            let Some(decision) = self.control.next_passive_decision() else {
+                let request = PassiveRequest {
+                    actor: target.0 as PlrId,
+                    target: Some(target.0 as PlrId),
+                    skill: "evade".to_owned(),
+                    level: u32::from(chance),
+                    candidates: Vec::new(),
+                    unavoidable,
+                    intercept: false,
+                };
+                self.control.set_pending_passive(request);
+                std::panic::panic_any(PassivePause);
+            };
+            if unavoidable || !decision.activate || !decision.success {
+                return false;
+            }
+            return true;
+        }
+        PlayerRuntime::dodge(accuracy, dodge_value, &mut self.rng)
+    }
+
     pub fn magic_attack_dodged(&mut self, caster: EntityIdx, target: EntityIdx) -> bool {
         let Some(target_entity) = self.entities.get(target) else {
             panic!("unknown runtime magic attack dodge target entity: {}", target.0);
@@ -583,7 +651,7 @@ impl CombatRuntime {
 
         let accuracy = self.entities.get(caster).unwrap().runtime.magic_accuracy();
         let dodge_value = target_entity.runtime.magic_dodge();
-        PlayerRuntime::dodge(accuracy, dodge_value, &mut self.rng)
+        self.roll_plain_dodge(target, accuracy, dodge_value, false)
     }
 
     pub fn apply_fire_on_damage(&mut self, target: EntityIdx, fire_state_key: u32) {

@@ -1,4 +1,12 @@
 use super::*;
+
+/// 需要玩家确认的被动技能；护盾保持自动，不在此列。
+fn passive_decision_skill(export_name: &str) -> bool {
+    matches!(
+        export_name,
+        "core.skill.defend" | "core.skill.protect" | "core.skill.reflect" | "core.skill.reraise"
+    )
+}
 use smallvec::SmallVec;
 
 const NO_EXTENSION_CAPABILITIES: &[ExtensionCapability] = &[];
@@ -260,6 +268,46 @@ impl CombatRuntime {
         selected_target: Option<EntityIdx>,
     ) {
         for entry in entries {
+            let skill_export = self.registry.skill(entry.skill_id).map(|skill| skill.export_name.clone());
+            let mut force_passive = false;
+            let mut force_target = None;
+            let export_name = skill_export.clone().unwrap_or_default();
+            let candidates = if export_name == "core.skill.protect" {
+                self.protect_target_candidates(owner)
+                    .into_iter()
+                    .map(|entity| entity.0 as PlrId)
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            if self.control.passive_decision_mode()
+                && skill_export.as_deref().is_some_and(passive_decision_skill)
+                && !(export_name == "core.skill.protect" && candidates.is_empty())
+            {
+                let Some(decision) = self.control.next_passive_decision() else {
+                    let level = self
+                        .entities
+                        .get(owner)
+                        .and_then(|entity| entity.template.skills.level_at(entry.fixed_lane))
+                        .unwrap_or(0);
+                    let request = PassiveRequest {
+                        actor: owner.0 as PlrId,
+                        target: None,
+                        skill: export_name,
+                        level,
+                        candidates,
+                        unavoidable: false,
+                        intercept: false,
+                    };
+                    self.control.set_pending_passive(request.clone());
+                    std::panic::panic_any(PassivePause);
+                };
+                if !decision.activate || !decision.success {
+                    continue;
+                }
+                force_passive = true;
+                force_target = decision.target.map(|target| EntityIdx(target as u32));
+            }
             let (handler, capabilities) = if let Some(static_handler) = self.builtin_static_skill_handler(entry.skill_id) {
                 static_handler
             } else {
@@ -288,6 +336,12 @@ impl CombatRuntime {
                         None => context,
                     }
                 };
+                if force_passive {
+                    context = context.with_force_passive(true);
+                }
+                if let Some(target) = force_target {
+                    context = context.with_selected_target(target);
+                }
                 handler(&mut context, entry);
             }
             self.drain_effects_into(updates);

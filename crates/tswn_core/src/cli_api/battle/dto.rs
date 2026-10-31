@@ -1,5 +1,5 @@
 use crate::replay_view::ReplayState;
-use crate::runtime::{BINDING_COMPLETION_MAX_ROUNDS, PlrId};
+use crate::runtime::{BINDING_COMPLETION_MAX_ROUNDS, PassiveDecision, PlrId};
 use serde::Serialize;
 
 /// 面向用户的完整战斗回放选项。
@@ -32,6 +32,12 @@ pub struct BattleOptions {
     /// 分身/召唤物会在战斗中途创建，前端按“先有脚本、后出现实体”的方式重放时
     /// 需要打开这个选项；默认关闭以保留“actor 必须已存在”的旧校验。
     pub allow_future_actors: bool,
+    /// 被动触发决策脚本，按引擎触发顺序消费。
+    pub passive_decisions: Vec<PassiveDecision>,
+    /// 是否在被动 hook 处暂停等待玩家决策；关闭时保持原自动行为。
+    pub passive_decision_mode: bool,
+    /// 是否让召唤物也按玩家指令暂停；预览/日志重建应关闭。
+    pub controlled_minions: bool,
 }
 
 impl Default for BattleOptions {
@@ -44,6 +50,9 @@ impl Default for BattleOptions {
             controlled_team: None,
             controlled_teams: Vec::new(),
             allow_future_actors: false,
+            passive_decisions: Vec::new(),
+            passive_decision_mode: false,
+            controlled_minions: false,
         }
     }
 }

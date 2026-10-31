@@ -22,6 +22,7 @@ pub struct SkillContext<'a> {
     selected_target: Option<EntityIdx>,
     owner: EntityIdx,
     capabilities: &'a [ExtensionCapability],
+    force_passive: bool,
 }
 
 impl<'a> SkillContext<'a> {
@@ -51,6 +52,7 @@ impl<'a> SkillContext<'a> {
             selected_target: None,
             owner: entry.owner,
             capabilities,
+            force_passive: false,
         }
     }
 
@@ -68,6 +70,13 @@ impl<'a> SkillContext<'a> {
         self.selected_target = Some(selected_target);
         self
     }
+
+    pub fn with_force_passive(mut self, force_passive: bool) -> Self {
+        self.force_passive = force_passive;
+        self
+    }
+
+    pub fn force_passive(&self) -> bool { self.force_passive }
 
     pub fn owner_idx(&self) -> EntityIdx { self.owner }
 
@@ -272,7 +281,11 @@ impl<'a> SkillContext<'a> {
         Ok(caster.runtime.active())
     }
 
-    pub fn refresh_owner_protect_target(&mut self, level: u32) -> Result<Option<EntityIdx>, EffectContextError> {
+    pub fn refresh_owner_protect_target(
+        &mut self,
+        level: u32,
+        forced_target: Option<EntityIdx>,
+    ) -> Result<Option<EntityIdx>, EffectContextError> {
         self.require(ExtensionCapability::ReadAllies)?;
         let owner = self.entities.get(self.owner).ok_or(EffectContextError::UnknownEntity(self.owner))?;
         let wisdom = owner.runtime.wisdom.max(0) as u32;
@@ -307,64 +320,68 @@ impl<'a> SkillContext<'a> {
             .collect::<Vec<_>>();
 
         // legacy Protect 会先消耗 smart 判定，再处理有效友军列表为空的情况。
-        let smart = self.rng.r127() < wisdom;
-        let next_target = if candidates.is_empty() {
-            None
+        let next_target = if let Some(forced_target) = forced_target {
+            Some(forced_target)
         } else {
-            let owner_pos = candidates.iter().position(|candidate| *candidate == self.owner);
-            let select_count = if smart { 3 } else { 2 };
-            let mut selected = Vec::with_capacity(select_count);
-            let mut dup = 0usize;
-            let mut invalid = -(select_count as i32);
-            while dup <= select_count && invalid <= select_count as i32 {
-                let picked = if let Some(owner_pos) = owner_pos {
-                    self.rng.pick_skip(&candidates, owner_pos)
-                } else {
-                    self.rng.pick(&candidates)
-                };
-                let Some(picked) = picked else {
-                    break;
-                };
-                let target = candidates[picked];
-                let valid = self.entities.get(target).is_some_and(|entity| !entity.runtime.is_combat_minion());
-                if !valid {
-                    invalid += 1;
-                    continue;
-                }
-                if selected.contains(&target) {
-                    dup += 1;
-                    continue;
-                }
-                selected.push(target);
-                if selected.len() >= select_count {
-                    break;
-                }
-            }
-            let mut scored = selected
-                .into_iter()
-                .map(|target| {
-                    let entity = self
-                        .entities
-                        .get(target)
-                        .unwrap_or_else(|| panic!("runtime protect candidate disappeared: {}", target.0));
-                    let score = if smart {
-                        let hp = entity.runtime.hp;
-                        let rate_hi_hp = if hp < 20 {
-                            30.0
-                        } else if hp > 300 {
-                            300.0
-                        } else {
-                            hp as f64
-                        };
-                        (1.0 / rate_hi_hp) * entity.runtime.atk_sum as f64 / (entity.runtime.protect_from.len() + 1) as f64
+            let smart = self.rng.r127() < wisdom;
+            if candidates.is_empty() {
+                None
+            } else {
+                let owner_pos = candidates.iter().position(|candidate| *candidate == self.owner);
+                let select_count = if smart { 3 } else { 2 };
+                let mut selected = Vec::with_capacity(select_count);
+                let mut dup = 0usize;
+                let mut invalid = -(select_count as i32);
+                while dup <= select_count && invalid <= select_count as i32 {
+                    let picked = if let Some(owner_pos) = owner_pos {
+                        self.rng.pick_skip(&candidates, owner_pos)
                     } else {
-                        self.rng.rFFFF() as f64
+                        self.rng.pick(&candidates)
                     };
-                    (target, score)
-                })
-                .collect::<Vec<_>>();
-            scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
-            scored.first().map(|(target, _)| *target)
+                    let Some(picked) = picked else {
+                        break;
+                    };
+                    let target = candidates[picked];
+                    let valid = self.entities.get(target).is_some_and(|entity| !entity.runtime.is_combat_minion());
+                    if !valid {
+                        invalid += 1;
+                        continue;
+                    }
+                    if selected.contains(&target) {
+                        dup += 1;
+                        continue;
+                    }
+                    selected.push(target);
+                    if selected.len() >= select_count {
+                        break;
+                    }
+                }
+                let mut scored = selected
+                    .into_iter()
+                    .map(|target| {
+                        let entity = self
+                            .entities
+                            .get(target)
+                            .unwrap_or_else(|| panic!("runtime protect candidate disappeared: {}", target.0));
+                        let score = if smart {
+                            let hp = entity.runtime.hp;
+                            let rate_hi_hp = if hp < 20 {
+                                30.0
+                            } else if hp > 300 {
+                                300.0
+                            } else {
+                                hp as f64
+                            };
+                            (1.0 / rate_hi_hp) * entity.runtime.atk_sum as f64 / (entity.runtime.protect_from.len() + 1) as f64
+                        } else {
+                            self.rng.rFFFF() as f64
+                        };
+                        (target, score)
+                    })
+                    .collect::<Vec<_>>();
+                scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
+                scored.first().map(|(target, _)| *target)
+            }
         };
 
         let old_target = self

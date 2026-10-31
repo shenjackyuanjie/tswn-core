@@ -546,7 +546,14 @@ impl CombatRuntime {
         }
         match self.registry.player_kind(entity.runtime.kind) {
             None => true,
-            Some(spec) => spec.export_name == DEFAULT_CORE_CLONE_KIND_EXPORT,
+            Some(spec) => {
+                if entity.runtime.is_combat_minion() && !self.control.controlled_minions() {
+                    false
+                } else {
+                    spec.export_name == DEFAULT_CORE_CLONE_KIND_EXPORT
+                        || entity.runtime.is_combat_minion()
+                }
+            }
         }
     }
 
@@ -728,7 +735,10 @@ impl CombatRuntime {
             PlannedSkill::BasicAttack | PlannedSkill::MagicAttack => self
                 .select_plain_default_attack_target(actor, false)
                 .map(|target| vec![target.0 as PlrId])
-                .ok_or(PlannedActionError::NoValidTarget { actor: actor_id, skill }),
+                .ok_or(PlannedActionError::NoValidTarget {
+                    actor: actor_id,
+                    skill,
+                }),
             PlannedSkill::Builtin(builtin) => {
                 if self.planned_skill_lane(actor, builtin).is_none() {
                     Err(PlannedActionError::SkillNotEquipped {

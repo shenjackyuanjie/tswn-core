@@ -394,7 +394,7 @@ impl CombatRuntime {
                 actor.0, target.0, accuracy, dodge_value, target_active, self.rng.i, self.rng.j,
             );
         }
-        let dodged = target_active && PlayerRuntime::dodge(accuracy, dodge_value, &mut self.rng);
+        let dodged = target_active && self.roll_plain_dodge(target, accuracy, dodge_value, false);
         #[cfg(not(feature = "no_debug"))]
         if debug_attack {
             eprintln!(

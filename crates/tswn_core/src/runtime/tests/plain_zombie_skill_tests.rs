@@ -48,7 +48,7 @@ fn plain_zombie_skips_combat_minions_without_consuming_rng() {
     let expected_rng = runtime.rng.clone();
     let mut updates = RunUpdates::new();
 
-    runtime.drain_plain_zombie_kill_skill_into(EntityIdx(0), 0, EntityIdx(1), &mut updates);
+    runtime.drain_plain_zombie_kill_skill_into(EntityIdx(0), 0, EntityIdx(1), &mut updates, false);
 
     assert_rng_state_eq(&runtime.rng, &expected_rng);
     assert_eq!(runtime.entities.len(), 2);
@@ -74,7 +74,7 @@ fn plain_zombie_probability_failure_consumes_only_r63() {
     let mp_before = runtime.entities.get(EntityIdx(0)).unwrap().runtime.magic_point;
     let mut updates = RunUpdates::new();
 
-    runtime.drain_plain_zombie_kill_skill_into(EntityIdx(0), 0, EntityIdx(1), &mut updates);
+    runtime.drain_plain_zombie_kill_skill_into(EntityIdx(0), 0, EntityIdx(1), &mut updates, false);
 
     assert_rng_state_eq(&runtime.rng, &expected_rng);
     assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.magic_point, mp_before);
@@ -96,7 +96,7 @@ fn plain_zombie_marks_corpse_spawns_after_reserved_id_and_emits_legacy_updates()
     let mp_before = runtime.entities.get(EntityIdx(0)).unwrap().runtime.magic_point;
     let mut updates = RunUpdates::new();
 
-    runtime.drain_plain_zombie_kill_skill_into(EntityIdx(0), 0, EntityIdx(1), &mut updates);
+    runtime.drain_plain_zombie_kill_skill_into(EntityIdx(0), 0, EntityIdx(1), &mut updates, false);
 
     assert_rng_state_eq(&runtime.rng, &expected_rng);
     assert_eq!(
@@ -135,7 +135,7 @@ fn plain_zombie_without_spawnable_owner_still_marks_the_corpse() {
     let mp_before = runtime.entities.get(EntityIdx(0)).unwrap().runtime.magic_point;
     let mut updates = RunUpdates::new();
 
-    runtime.drain_plain_zombie_kill_skill_into(EntityIdx(0), 0, EntityIdx(1), &mut updates);
+    runtime.drain_plain_zombie_kill_skill_into(EntityIdx(0), 0, EntityIdx(1), &mut updates, false);
 
     assert_rng_state_eq(&runtime.rng, &expected_rng);
     assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.magic_point, mp_before);

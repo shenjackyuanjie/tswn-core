@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Once;
 
 #[cfg(feature = "png_render")]
 use crate::namerena::icon_render::render_icon_b64_from_name;
@@ -7,7 +8,7 @@ use crate::replay_view::{
     hp_delta_for_tone, is_percent_hp_damage_update, render_update_message,
 };
 use crate::runtime::update::{RunUpdates, UpdateType};
-use crate::runtime::{EntityIdx, PlannedAction, PlannedSkill, PlrId, RuntimeMinionKind, RuntimePlayerSnapshot, RuntimeRunner};
+use crate::runtime::{EntityIdx, PassivePause, PlannedAction, PlannedSkill, PlrId, RuntimeMinionKind, RuntimePlayerSnapshot, RuntimeRunner};
 
 use super::dto::*;
 use crate::cli_api::CliApiResult;
@@ -36,6 +37,8 @@ pub struct BattleSession {
     icon_cache: HashMap<String, String>,
     /// 受控单位逼停回放时的等待者；非暂停边界为 `None`。
     paused: Option<PlrId>,
+    /// 被动 hook 等待玩家确认时保留的请求；此会话不应继续推进。
+    pending_passive: Option<crate::runtime::PassiveRequest>,
 }
 
 impl BattleSession {
@@ -47,6 +50,16 @@ impl BattleSession {
     /// `options.controlled_team` 只影响推进方式：该队伍的本体与分身缺指令时会暂停，
     /// 需要 LegacyStep 调度方式，否则返回 `UnsupportedOption`。
     pub fn new(raw: &str, options: BattleOptions) -> CliApiResult<Self> {
+        static PASSIVE_PANIC_HOOK: Once = Once::new();
+        PASSIVE_PANIC_HOOK.call_once(|| {
+            let previous = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                if info.payload().downcast_ref::<PassivePause>().is_some() {
+                    return;
+                }
+                previous(info);
+            }));
+        });
         #[cfg(not(feature = "png_render"))]
         if options.include_icons {
             return Err(crate::cli_api::CliApiError::UnsupportedOption(
@@ -78,6 +91,21 @@ impl BattleSession {
             runtime.set_controlled_teams(controlled_teams.iter().copied());
         }
         let mut icon_cache = HashMap::new();
+        driver
+            .runner
+            .runtime_mut()
+            .control
+            .set_passive_decisions(options.passive_decisions.clone());
+        driver
+            .runner
+            .runtime_mut()
+            .control
+            .set_passive_decision_mode(options.passive_decision_mode);
+        driver
+            .runner
+            .runtime_mut()
+            .control
+            .set_controlled_minions(options.controlled_minions);
         let initial_states = states_from_runner(&driver.runner, options.include_icons, options.include_skills, &mut icon_cache);
         Ok(Self {
             driver,
@@ -86,6 +114,7 @@ impl BattleSession {
             initial_states,
             icon_cache,
             paused: None,
+            pending_passive: None,
         })
     }
 
@@ -122,6 +151,9 @@ impl BattleSession {
     /// 结束该回合，本次会话不再继续推进；调用方应把新指令并入脚本后重新创建会话
     /// （例如再调一次 `battle_replay_with_actions`），而不是继续 `next_frame`。
     pub fn paused_actor(&self) -> Option<PlrId> { self.paused }
+
+    /// 被动 hook 等待决策时返回请求；此时会话已不可继续推进。
+    pub fn pending_passive(&self) -> Option<&crate::runtime::PassiveRequest> { self.pending_passive.as_ref() }
 
     /// 预读下一条外部主动技的 MP 消耗，不推进随机数。
     ///
@@ -192,11 +224,29 @@ impl BattleSession {
         if let Some(error) = &self.driver.failure {
             return Err(error.clone());
         }
-        if self.is_done() || self.paused.is_some() {
+        if self.is_done() || self.paused.is_some() || self.pending_passive.is_some() {
             return Ok(None);
         }
         loop {
-            let Some(step) = self.driver.advance_round()? else {
+            let advanced = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.driver.advance_round()
+            }));
+            let step = match advanced {
+                Ok(result) => result?,
+                Err(payload) => {
+                    if payload.downcast_ref::<PassivePause>().is_some() {
+                        self.pending_passive = self
+                            .driver
+                            .runner
+                            .runtime_mut()
+                            .control
+                            .take_pending_passive();
+                        return Ok(None);
+                    }
+                    std::panic::resume_unwind(payload);
+                }
+            };
+            let Some(step) = step else {
                 return Ok(None);
             };
             let round_index = step.round_index;
