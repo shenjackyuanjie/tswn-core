@@ -307,7 +307,7 @@ impl CombatRuntime {
         target: EntityIdx,
         level: u32,
         _damage: i32,
-        _caster: EntityIdx,
+        caster: EntityIdx,
         updates: &mut RunUpdates,
     ) {
         #[cfg(not(feature = "no_debug"))]
@@ -343,18 +343,39 @@ impl CombatRuntime {
             }
             return;
         }
-        #[cfg(not(feature = "no_debug"))]
-        let rng_before = (self.rng.i, self.rng.j);
-        let roll = self.rng.r63();
-        #[cfg(not(feature = "no_debug"))]
-        if probe_hide {
-            eprintln!(
-                "[hide_probe:runtime:roll] target={} team={} level={} alive_allies={} roll={} rc4=({}, {}) -> ({}, {})",
-                target.0, effective_team, level, alive_allies, roll, rng_before.0, rng_before.1, self.rng.i, self.rng.j,
-            );
-        }
-        if roll >= level {
-            return;
+        if self.control.passive_decision_mode() {
+            let Some(decision) = self.control.next_passive_decision() else {
+                let request = PassiveRequest {
+                    actor: target.0 as PlrId,
+                    target: Some(caster.0 as PlrId),
+                    skill: DEFAULT_CORE_HIDE_SKILL_EXPORT.to_owned(),
+                    level,
+                    candidates: Vec::new(),
+                    unavoidable: false,
+                    intercept: false,
+                    batch_id: self.control.damage_batch().map(|batch| batch.id),
+                    phase: None,
+                };
+                self.control.set_pending_passive(request);
+                std::panic::panic_any(PassivePause);
+            };
+            if !decision.activate || !decision.success {
+                return;
+            }
+        } else {
+            #[cfg(not(feature = "no_debug"))]
+            let rng_before = (self.rng.i, self.rng.j);
+            let roll = self.rng.r63();
+            #[cfg(not(feature = "no_debug"))]
+            if probe_hide {
+                eprintln!(
+                    "[hide_probe:runtime:roll] target={} team={} level={} alive_allies={} roll={} rc4=({}, {}) -> ({}, {})",
+                    target.0, effective_team, level, alive_allies, roll, rng_before.0, rng_before.1, self.rng.i, self.rng.j,
+                );
+            }
+            if roll >= level {
+                return;
+            }
         }
 
         let target_entity = self

@@ -620,10 +620,50 @@ impl CombatRuntime {
         chance.clamp(0, 255) as u8
     }
 
+    /// 在确定成为目标时预演并记录回避；真正的回避结算仍由 `roll_plain_dodge` 消费。
+    pub fn prepare_plain_dodge(&mut self, target: EntityIdx, accuracy: i32, dodge_value: i32, unavoidable: bool) {
+        if !self.control.passive_decision_mode() {
+            return;
+        }
+        if self.control.damage_batch().and_then(|batch| batch.evade).is_some() {
+            return;
+        }
+        let Some(batch_id) = self.control.damage_batch().map(|batch| batch.id) else {
+            return;
+        };
+        let chance = Self::plain_dodge_chance(accuracy, dodge_value);
+        let Some(decision) = self.control.next_passive_decision() else {
+            let request = PassiveRequest {
+                actor: target.0 as PlrId,
+                target: Some(target.0 as PlrId),
+                skill: "evade".to_owned(),
+                level: u32::from(chance),
+                candidates: Vec::new(),
+                unavoidable,
+                intercept: false,
+                batch_id: Some(batch_id),
+                phase: Some(crate::runtime::DamageDecisionPhase::Evade),
+            };
+            self.control.record_damage_phase(crate::runtime::DamageDecisionPhase::Evade);
+            self.control.set_pending_passive(request);
+            std::panic::panic_any(PassivePause);
+        };
+        self.control.set_evade_decision(crate::runtime::control::EvadeDecision {
+            activate: decision.activate,
+            success: decision.success,
+            unavoidable,
+        });
+        self.control.record_damage_phase(crate::runtime::DamageDecisionPhase::Evade);
+    }
+
     pub fn roll_plain_dodge(&mut self, target: EntityIdx, accuracy: i32, dodge_value: i32, unavoidable: bool) -> bool {
         if self.control.passive_decision_mode() {
+            if let Some(decision) = self.control.take_evade_decision() {
+                return !decision.unavoidable && decision.activate && decision.success;
+            }
             let chance = Self::plain_dodge_chance(accuracy, dodge_value);
             let Some(decision) = self.control.next_passive_decision() else {
+                let batch_id = self.control.damage_batch().map(|batch| batch.id);
                 let request = PassiveRequest {
                     actor: target.0 as PlrId,
                     target: Some(target.0 as PlrId),
@@ -632,7 +672,7 @@ impl CombatRuntime {
                     candidates: Vec::new(),
                     unavoidable,
                     intercept: false,
-                    batch_id: self.control.damage_batch().map(|batch| batch.id),
+                    batch_id,
                     phase: Some(crate::runtime::DamageDecisionPhase::Evade),
                 };
                 self.control.record_damage_phase(crate::runtime::DamageDecisionPhase::Evade);

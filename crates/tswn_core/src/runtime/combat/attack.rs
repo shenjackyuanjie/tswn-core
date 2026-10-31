@@ -339,7 +339,28 @@ impl CombatRuntime {
         on_damage: PlainAttackOnDamage,
         updates: &mut RunUpdates,
     ) -> i32 {
-        self.control.begin_damage_batch(actor.0 as PlrId, target.0 as PlrId);
+        let batch_id = self.control.begin_damage_batch(actor.0 as PlrId, target.0 as PlrId);
+        let (accuracy, dodge_value, target_active) = {
+            let actor_runtime = &self.entities.get(actor).unwrap().runtime;
+            let target_entity = self.entities.get(target).unwrap();
+            let target_runtime = &target_entity.runtime;
+            (
+                if use_magic {
+                    actor_runtime.magic + actor_runtime.agility
+                } else {
+                    actor_runtime.attack + actor_runtime.agility
+                },
+                if use_magic {
+                    target_runtime.resistance + target_runtime.agility
+                } else {
+                    target_runtime.defense + target_runtime.agility
+                },
+                target_entity.is_active(),
+            )
+        };
+        if target_active {
+            self.prepare_plain_dodge(target, accuracy, dodge_value, false);
+        }
         #[cfg(not(feature = "no_debug"))]
         let debug_attack = self.probe_default_attack_matches(actor);
         let mut defend_value = RuntimeDefendValue::Atp {
@@ -367,27 +388,9 @@ impl CombatRuntime {
             );
         }
         if atp == 0.0 {
+            self.control.finish_damage_batch(batch_id);
             return 0;
         }
-
-        let (accuracy, dodge_value, target_active) = {
-            let actor_runtime = &self.entities.get(actor).unwrap().runtime;
-            let target_entity = self.entities.get(target).unwrap();
-            let target_runtime = &target_entity.runtime;
-            (
-                if use_magic {
-                    actor_runtime.magic + actor_runtime.agility
-                } else {
-                    actor_runtime.attack + actor_runtime.agility
-                },
-                if use_magic {
-                    target_runtime.resistance + target_runtime.agility
-                } else {
-                    target_runtime.defense + target_runtime.agility
-                },
-                target_entity.is_active(),
-            )
-        };
         #[cfg(not(feature = "no_debug"))]
         if debug_attack {
             eprintln!(
@@ -410,10 +413,13 @@ impl CombatRuntime {
                 "[0][回避]了攻击",
                 20,
             ));
+            self.control.finish_damage_batch(batch_id);
             return 0;
         }
 
-        self.drain_plain_attack_after_dodge_into(actor, target, use_magic, atp, covid_source, on_damage, updates)
+        let damage = self.drain_plain_attack_after_dodge_into(actor, target, use_magic, atp, covid_source, on_damage, updates);
+        self.control.finish_damage_batch(batch_id);
+        damage
     }
 
     /// 从防御值换算阶段开始结算攻击。

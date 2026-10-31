@@ -47,6 +47,15 @@ pub struct DamageDecisionBatch {
     pub attacker: PlrId,
     pub target: PlrId,
     pub requested: Vec<DamageDecisionPhase>,
+    /// 回避在成为目标时提前预演的结果；只属于当前批次，不能跨伤害复用。
+    pub evade: Option<EvadeDecision>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EvadeDecision {
+    pub activate: bool,
+    pub success: bool,
+    pub unavoidable: bool,
 }
 
 impl DamageDecisionBatch {
@@ -56,6 +65,7 @@ impl DamageDecisionBatch {
             attacker,
             target,
             requested: Vec::new(),
+            evade: None,
         }
     }
 
@@ -64,6 +74,10 @@ impl DamageDecisionBatch {
             self.requested.push(phase);
         }
     }
+
+    pub fn set_evade(&mut self, decision: EvadeDecision) { self.evade = Some(decision); }
+
+    pub fn take_evade(&mut self) -> Option<EvadeDecision> { self.evade.take() }
 }
 
 /// 一条被动触发决策：服务器已经完成成功率判定，只把结果交给回放。
@@ -163,7 +177,7 @@ pub struct BattleControl {
     pending_passive: Option<PassiveRequest>,
     passive_decision_mode: bool,
     controlled_minions: bool,
-    damage_batch: Option<DamageDecisionBatch>,
+    damage_batches: Vec<DamageDecisionBatch>,
     next_damage_batch_id: u64,
 }
 
@@ -252,28 +266,44 @@ impl BattleControl {
     pub fn begin_damage_batch(&mut self, attacker: PlrId, target: PlrId) -> u64 {
         self.next_damage_batch_id = self.next_damage_batch_id.saturating_add(1);
         let id = self.next_damage_batch_id;
-        self.damage_batch = Some(DamageDecisionBatch::new(id, attacker, target));
+        self.damage_batches.push(DamageDecisionBatch::new(id, attacker, target));
         id
     }
 
     pub fn ensure_damage_batch(&mut self, attacker: PlrId, target: PlrId) -> u64 {
-        if self
-            .damage_batch
-            .as_ref()
-            .is_some_and(|batch| batch.attacker == attacker && batch.target == target)
+        if let Some(batch) = self.damage_batches.last()
+            && batch.attacker == attacker
+            && batch.target == target
         {
-            return self.damage_batch.as_ref().unwrap().id;
+            return batch.id;
         }
         self.begin_damage_batch(attacker, target)
     }
 
-    pub fn damage_batch(&self) -> Option<&DamageDecisionBatch> { self.damage_batch.as_ref() }
+    pub fn damage_batch(&self) -> Option<&DamageDecisionBatch> { self.damage_batches.last() }
+
+    pub fn finish_damage_batch(&mut self, id: u64) -> bool {
+        if self.damage_batches.last().is_some_and(|batch| batch.id == id) {
+            self.damage_batches.pop();
+            true
+        } else {
+            false
+        }
+    }
 
     pub fn record_damage_phase(&mut self, phase: DamageDecisionPhase) -> Option<u64> {
-        let batch = self.damage_batch.as_mut()?;
+        let batch = self.damage_batches.last_mut()?;
         batch.record(phase);
         Some(batch.id)
     }
+
+    pub fn set_evade_decision(&mut self, decision: EvadeDecision) -> Option<u64> {
+        let batch = self.damage_batches.last_mut()?;
+        batch.set_evade(decision);
+        Some(batch.id)
+    }
+
+    pub fn take_evade_decision(&mut self) -> Option<EvadeDecision> { self.damage_batches.last_mut()?.take_evade() }
 
     /// 记录一条指令的执行失败；会话层据此返回 `INVALID_ARGUMENT`。
     pub fn set_error(&mut self, error: PlannedActionError) { self.error = Some(error); }
@@ -339,7 +369,20 @@ mod tests {
         assert_eq!(control.ensure_damage_batch(7, 9), id);
         assert_eq!(control.record_damage_phase(DamageDecisionPhase::Evade), Some(id));
         assert_eq!(control.damage_batch().unwrap().requested, vec![DamageDecisionPhase::Evade]);
+        assert_eq!(control.damage_batch().unwrap().evade, None);
+        control.set_evade_decision(EvadeDecision {
+            activate: true,
+            success: true,
+            unavoidable: false,
+        });
+        assert_eq!(control.damage_batch().unwrap().evade.unwrap().success, true);
+        assert_eq!(control.take_evade_decision().unwrap().activate, true);
         assert_eq!(control.begin_damage_batch(7, 9), 2);
+        assert_eq!(control.damage_batch().unwrap().id, 2);
+        assert!(control.finish_damage_batch(2));
+        assert_eq!(control.damage_batch().unwrap().id, 1);
+        assert!(control.finish_damage_batch(1));
+        assert_eq!(control.damage_batch(), None);
     }
 
     #[test]

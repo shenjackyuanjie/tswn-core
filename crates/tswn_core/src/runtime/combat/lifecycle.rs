@@ -394,6 +394,50 @@ impl CombatRuntime {
         defend_value: &mut RuntimeDefendValue,
         on_damage: PlainAttackOnDamage,
     ) {
+        let export_name = self
+            .registry
+            .skill(entry.skill_id)
+            .map(|skill| skill.export_name.clone())
+            .unwrap_or_default();
+        let phase = match export_name.as_str() {
+            DEFAULT_CORE_REFLECT_SKILL_EXPORT => Some(crate::runtime::DamageDecisionPhase::Reflect),
+            DEFAULT_CORE_DEFEND_SKILL_EXPORT => Some(crate::runtime::DamageDecisionPhase::Defend),
+            _ => None,
+        };
+        let reflect_caster_active = export_name != DEFAULT_CORE_REFLECT_SKILL_EXPORT
+            || self.entities.get(defend_value.caster()).is_some_and(EntityRecord::is_active);
+        let force_passive =
+            if self.control.passive_decision_mode() && passive_decision_skill(&export_name) && reflect_caster_active {
+                let Some(decision) = self.control.next_passive_decision() else {
+                    let level = self
+                        .entities
+                        .get(entry.owner)
+                        .and_then(|entity| entity.template.skills.level_at(entry.fixed_lane))
+                        .unwrap_or(0);
+                    let request = PassiveRequest {
+                        actor: entry.owner.0 as PlrId,
+                        target: Some(defend_value.caster().0 as PlrId),
+                        skill: export_name,
+                        level,
+                        candidates: Vec::new(),
+                        unavoidable: false,
+                        intercept: false,
+                        batch_id: self.control.damage_batch().map(|batch| batch.id),
+                        phase,
+                    };
+                    if let Some(phase) = phase {
+                        self.control.record_damage_phase(phase);
+                    }
+                    self.control.set_pending_passive(request);
+                    std::panic::panic_any(PassivePause);
+                };
+                if !decision.activate || !decision.success {
+                    return;
+                }
+                true
+            } else {
+                false
+            };
         let (handler, capabilities) = if let Some(static_handler) = self.builtin_static_skill_handler(entry.skill_id) {
             static_handler
         } else {
@@ -404,7 +448,7 @@ impl CombatRuntime {
             (handler, capabilities)
         };
         {
-            let mut context = SkillContext::new(
+            let context = SkillContext::new(
                 &mut self.entities,
                 &mut self.world,
                 &self.registry,
@@ -418,6 +462,11 @@ impl CombatRuntime {
             )
             .with_defend_value(defend_value)
             .with_defend_on_damage(on_damage);
+            let mut context = if force_passive {
+                context.with_force_passive(true)
+            } else {
+                context
+            };
             handler(&mut context, &entry);
         }
         self.drain_effects_into(updates);

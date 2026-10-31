@@ -1,5 +1,53 @@
 use super::*;
 
+fn passive_damage_order_runtime() -> CombatRuntime {
+    let config = default_custom_runtime_import_config().expect("default runtime profile should build");
+    let reflect = config
+        .registry
+        .skill_id_by_export_name(DEFAULT_CORE_REFLECT_SKILL_EXPORT)
+        .expect("default profile should register reflect skill");
+    let defend = config
+        .registry
+        .skill_id_by_export_name(DEFAULT_CORE_DEFEND_SKILL_EXPORT)
+        .expect("default profile should register defend skill");
+    let CustomRuntimeImportConfig {
+        registry,
+        skill_handlers,
+        ..
+    } = config;
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "attacker", 0, 100, 3),
+            PlayerTemplate::new(2, "target", 1, 100, 3)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(reflect, 64), (defend, 64)])),
+            PlayerTemplate::new(3, "protector", 1, 100, 3).with_magic_point(1_000),
+        ],
+        registry,
+    ));
+    for binding in skill_handlers {
+        runtime.set_skill_handler_with_capabilities(binding.skill_id, binding.handler, &binding.capabilities);
+    }
+    runtime.control.set_passive_decision_mode(true);
+    let target = runtime.entities.get_mut(EntityIdx(1)).unwrap();
+    target.runtime.protect_pre_defend_skill_count = Some(1);
+    target.runtime.protect_from.push(ProtectLinkRuntime {
+        owner: EntityIdx(2),
+        level: 64,
+    });
+    runtime.entities.get_mut(EntityIdx(2)).unwrap().runtime.protect_to = Some(EntityIdx(1));
+    runtime
+}
+
+fn passive_decision(actor: usize, skill: &str, activate: bool) -> crate::runtime::PassiveDecision {
+    crate::runtime::PassiveDecision {
+        actor,
+        skill: skill.to_owned(),
+        activate,
+        success: false,
+        target: None,
+    }
+}
+
 #[test]
 fn plain_attack_pause_carries_evade_damage_batch_metadata() {
     let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(vec![
@@ -9,13 +57,7 @@ fn plain_attack_pause_carries_evade_damage_batch_metadata() {
     runtime.control.set_passive_decision_mode(true);
     let mut updates = RunUpdates::new();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        runtime.drain_plain_attack_with_atp_into(
-            EntityIdx(0),
-            EntityIdx(1),
-            false,
-            64.0,
-            &mut updates,
-        );
+        runtime.drain_plain_attack_with_atp_into(EntityIdx(0), EntityIdx(1), false, 64.0, &mut updates);
     }));
     assert!(result.is_err());
     let batch = runtime.control.damage_batch().expect("plain attack should create a damage batch");
@@ -24,6 +66,136 @@ fn plain_attack_pause_carries_evade_damage_batch_metadata() {
     assert_eq!(request.actor, 1);
     assert_eq!(request.batch_id, Some(batch.id));
     assert_eq!(request.phase, Some(crate::runtime::DamageDecisionPhase::Evade));
+}
+
+#[test]
+fn plain_attack_asks_evade_before_reflect_and_protect() {
+    let cases = [
+        (vec![], "evade", 1, Some(crate::runtime::DamageDecisionPhase::Evade)),
+        (
+            vec![passive_decision(1, "evade", false)],
+            DEFAULT_CORE_REFLECT_SKILL_EXPORT,
+            1,
+            Some(crate::runtime::DamageDecisionPhase::Reflect),
+        ),
+        (
+            vec![
+                passive_decision(1, "evade", false),
+                passive_decision(1, DEFAULT_CORE_REFLECT_SKILL_EXPORT, false),
+            ],
+            DEFAULT_CORE_PROTECT_SKILL_EXPORT,
+            2,
+            Some(crate::runtime::DamageDecisionPhase::Protect),
+        ),
+        (
+            vec![
+                passive_decision(1, "evade", false),
+                passive_decision(1, DEFAULT_CORE_REFLECT_SKILL_EXPORT, false),
+                passive_decision(2, DEFAULT_CORE_PROTECT_SKILL_EXPORT, false),
+            ],
+            DEFAULT_CORE_DEFEND_SKILL_EXPORT,
+            1,
+            Some(crate::runtime::DamageDecisionPhase::Defend),
+        ),
+    ];
+
+    for (decisions, expected_skill, expected_actor, expected_phase) in cases {
+        let mut runtime = passive_damage_order_runtime();
+        runtime.control.set_passive_decisions(decisions);
+        let mut updates = RunUpdates::new();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            runtime.drain_plain_attack_with_atp_into(EntityIdx(0), EntityIdx(1), false, 64.0, &mut updates);
+        }));
+
+        assert!(result.is_err());
+        let request = runtime.control.pending_passive().expect("attack should pause at the next decision");
+        assert_eq!(request.skill, expected_skill);
+        assert_eq!(request.actor, expected_actor);
+        assert_eq!(request.phase, expected_phase);
+    }
+}
+
+#[test]
+fn precomputed_evade_is_consumed_once_and_discarded_when_covered() {
+    let mut runtime = passive_damage_order_runtime();
+    runtime.control.set_passive_decisions([
+        crate::runtime::PassiveDecision {
+            actor: 1,
+            skill: "evade".to_owned(),
+            activate: true,
+            success: true,
+            target: None,
+        },
+        crate::runtime::PassiveDecision {
+            actor: 1,
+            skill: DEFAULT_CORE_REFLECT_SKILL_EXPORT.to_owned(),
+            activate: false,
+            success: false,
+            target: None,
+        },
+        crate::runtime::PassiveDecision {
+            actor: 2,
+            skill: DEFAULT_CORE_PROTECT_SKILL_EXPORT.to_owned(),
+            activate: true,
+            success: true,
+            target: None,
+        },
+    ]);
+    let target_hp = runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp;
+    let protector_hp = runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp;
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_plain_attack_with_atp_into(EntityIdx(0), EntityIdx(1), false, 64_000.0, &mut updates);
+
+    assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, target_hp);
+    assert!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp < protector_hp);
+    assert!(!updates.updates.iter().any(|update| update.message.as_ref() == "[0][回避]了攻击"));
+    assert_eq!(runtime.control.damage_batch(), None);
+}
+
+#[test]
+fn plain_attack_asks_target_to_hide_after_damage() {
+    let config = default_custom_runtime_import_config().expect("default runtime profile should build");
+    let hide = config
+        .registry
+        .skill_id_by_export_name(DEFAULT_CORE_HIDE_SKILL_EXPORT)
+        .expect("default profile should register hide skill");
+    let CustomRuntimeImportConfig {
+        registry,
+        skill_handlers,
+        ..
+    } = config;
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "attacker", 0, 100, 3),
+            PlayerTemplate::new(2, "target", 1, 100, 3).with_skill_loadout(SkillLoadout::from_skill_levels([(hide, 255)])),
+            PlayerTemplate::new(3, "ally", 1, 100, 3),
+        ],
+        registry,
+    ));
+    for binding in skill_handlers {
+        runtime.set_skill_handler_with_capabilities(binding.skill_id, binding.handler, &binding.capabilities);
+    }
+    runtime.control.set_passive_decision_mode(true);
+    runtime.control.set_passive_decisions([crate::runtime::PassiveDecision {
+        actor: 1,
+        skill: "evade".to_owned(),
+        activate: false,
+        success: false,
+        target: None,
+    }]);
+
+    let mut updates = RunUpdates::new();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        runtime.drain_plain_attack_with_atp_into(EntityIdx(0), EntityIdx(1), false, 64.0, &mut updates);
+    }));
+
+    assert!(result.is_err());
+    let request = runtime.control.pending_passive().expect("damaged target should be asked about hide");
+    assert_eq!(request.skill, DEFAULT_CORE_HIDE_SKILL_EXPORT);
+    assert_eq!(request.actor, 1);
+    assert_eq!(request.target, Some(0));
+    assert_eq!(request.batch_id, runtime.control.damage_batch().map(|batch| batch.id));
 }
 
 #[test]
