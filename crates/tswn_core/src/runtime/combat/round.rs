@@ -585,12 +585,29 @@ impl CombatRuntime {
                         actor: actor_id,
                         skill: planned.skill,
                     })?;
-                let amount = self
+                let entity = self
                     .entities
                     .get(actor)
-                    .unwrap_or_else(|| panic!("unknown planned action actor: {}", actor.0))
-                    .runtime
-                    .magic;
+                    .unwrap_or_else(|| panic!("unknown planned action actor: {}", actor.0));
+                let amount = entity.runtime.magic;
+                // 与自动行动回退分支一致：魔攻消耗 (magic - attack) >> 2，
+                // 差值不足 4 时为 0；MP 不够则整条指令失败。
+                let magic_cost = ((entity.runtime.magic - entity.runtime.attack) >> 2).max(0);
+                let available = entity.runtime.magic_point;
+                if available < magic_cost {
+                    return Err(PlannedActionError::InsufficientMagicPoint {
+                        actor: actor_id,
+                        required: magic_cost,
+                        available,
+                    });
+                }
+                if magic_cost > 0 {
+                    self.entities
+                        .get_mut(actor)
+                        .unwrap_or_else(|| panic!("unknown planned action actor: {}", actor.0))
+                        .runtime
+                        .magic_point -= magic_cost;
+                }
                 Ok(PreparedPlainAction::BasicAttack {
                     target,
                     use_magic: true,
