@@ -78,3 +78,54 @@ fn plain_counter_update_end_can_attack_a_frozen_living_target() {
     assert!(runtime.entities.get(EntityIdx(0)).unwrap().states.is_frozen());
     assert!(updates.updates.iter().any(|update| update.message == "[0]发起[反击][s_counter]"));
 }
+
+#[test]
+fn plain_counter_post_damage_requests_a_target_decision() {
+    let mut runtime = counter_runtime(255);
+    runtime.control.set_passive_decision_mode(true);
+    runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.magic_point = 100;
+    let mut updates = RunUpdates::new();
+
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        runtime.run_plain_counter_post_damage_into(
+            EntityIdx(1),
+            255,
+            10,
+            EntityIdx(0),
+            &mut updates,
+        );
+    }));
+    assert!(panic.is_err());
+    let request = runtime.control.pending_passive().expect("counter should pause for a decision");
+    assert_eq!(request.actor, 1);
+    assert_eq!(request.target, Some(0));
+    assert_eq!(request.skill, DEFAULT_CORE_COUNTER_SKILL_EXPORT);
+    assert!(updates.updates.is_empty());
+    assert!(updates.on_update_end.is_empty());
+}
+
+#[test]
+fn plain_counter_decision_success_queues_the_counter_attack() {
+    let mut runtime = counter_runtime(255);
+    runtime.control.set_passive_decision_mode(true);
+    runtime.control.set_passive_decisions([PassiveDecision {
+        actor: 1,
+        skill: DEFAULT_CORE_COUNTER_SKILL_EXPORT.to_owned(),
+        activate: true,
+        success: true,
+        target: None,
+    }]);
+    runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.magic_point = 100;
+    let mut updates = RunUpdates::new();
+
+    runtime.run_plain_counter_post_damage_into(
+        EntityIdx(1),
+        255,
+        10,
+        EntityIdx(0),
+        &mut updates,
+    );
+
+    assert_eq!(updates.on_update_end.as_slice(), &[1]);
+    assert!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.counter.pending);
+}

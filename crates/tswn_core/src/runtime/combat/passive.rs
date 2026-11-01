@@ -143,9 +143,9 @@ impl CombatRuntime {
             return;
         }
 
-        let counter = &mut self
+        let counter = &self
             .entities
-            .get_mut(target)
+            .get(target)
             .unwrap_or_else(|| panic!("runtime counter owner disappeared: {}", target.0))
             .runtime
             .counter;
@@ -163,11 +163,59 @@ impl CombatRuntime {
         }
         if counter.last_updates_id == Some(updates.id) {
             if counter.pending && Some(caster) != counter.last_target && self.rng.r127() < level {
-                counter.last_target = Some(caster);
+                self.entities
+                    .get_mut(target)
+                    .unwrap_or_else(|| panic!("runtime counter owner disappeared: {}", target.0))
+                    .runtime
+                    .counter
+                    .last_target = Some(caster);
             }
             return;
         }
 
+        if self.control.passive_decision_mode() {
+            if !self.entities.get(target).is_some_and(EntityRecord::is_active)
+                || !self.entity_mp_ready(target)
+            {
+                return;
+            }
+            let Some(decision) = self.control.next_passive_decision() else {
+                let request = PassiveRequest {
+                    actor: target.0 as PlrId,
+                    target: Some(caster.0 as PlrId),
+                    skill: DEFAULT_CORE_COUNTER_SKILL_EXPORT.to_owned(),
+                    level,
+                    candidates: Vec::new(),
+                    unavoidable: false,
+                    intercept: false,
+                    batch_id: self.control.damage_batch().map(|batch| batch.id),
+                    phase: None,
+                };
+                self.control.set_pending_passive(request);
+                std::panic::panic_any(PassivePause);
+            };
+
+            let counter = &mut self
+                .entities
+                .get_mut(target)
+                .unwrap_or_else(|| panic!("runtime counter owner disappeared: {}", target.0))
+                .runtime
+                .counter;
+            counter.last_updates_id = Some(updates.id);
+            counter.pending = decision.activate && decision.success;
+            counter.last_target = counter.pending.then_some(caster);
+            if counter.pending {
+                updates.on_update_end.push(target.0 as usize);
+            }
+            return;
+        }
+
+        let counter = &mut self
+            .entities
+            .get_mut(target)
+            .unwrap_or_else(|| panic!("runtime counter owner disappeared: {}", target.0))
+            .runtime
+            .counter;
         counter.last_updates_id = Some(updates.id);
         if self.rng.r255() < level {
             counter.last_target = Some(caster);
