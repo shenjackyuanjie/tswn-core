@@ -85,6 +85,7 @@ fn plain_counter_post_damage_requests_a_target_decision() {
     runtime.control.set_passive_decision_mode(true);
     runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.magic_point = 100;
     let mut updates = RunUpdates::new();
+    let rng_before = runtime.rng.clone();
 
     let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         runtime.run_plain_counter_post_damage_into(
@@ -102,6 +103,7 @@ fn plain_counter_post_damage_requests_a_target_decision() {
     assert_eq!(request.skill, DEFAULT_CORE_COUNTER_SKILL_EXPORT);
     assert!(updates.updates.is_empty());
     assert!(updates.on_update_end.is_empty());
+    assert_rng_state_eq(&runtime.rng, &rng_before);
 }
 
 #[test]

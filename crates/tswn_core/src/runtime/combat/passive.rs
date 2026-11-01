@@ -174,9 +174,7 @@ impl CombatRuntime {
         }
 
         if self.control.passive_decision_mode() {
-            if !self.entities.get(target).is_some_and(EntityRecord::is_active)
-                || !self.entity_mp_ready(target)
-            {
+            if !self.entities.get(target).is_some_and(EntityRecord::is_active) {
                 return;
             }
             let Some(decision) = self.control.next_passive_decision() else {
