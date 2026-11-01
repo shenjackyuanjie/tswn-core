@@ -190,6 +190,7 @@ impl CombatRuntime {
                     phase: None,
                 };
                 self.control.set_pending_passive(request);
+                self.control.set_pending_updates(updates);
                 std::panic::panic_any(PassivePause);
             };
 
@@ -403,6 +404,7 @@ impl CombatRuntime {
                     phase: None,
                 };
                 self.control.set_pending_passive(request);
+                self.control.set_pending_updates(updates);
                 std::panic::panic_any(PassivePause);
             };
             if !decision.activate || !decision.success {

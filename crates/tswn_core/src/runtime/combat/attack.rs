@@ -359,7 +359,7 @@ impl CombatRuntime {
             )
         };
         if target_active {
-            self.prepare_plain_dodge(target, accuracy, dodge_value, false);
+            self.prepare_plain_dodge(target, accuracy, dodge_value, false, updates);
         }
         #[cfg(not(feature = "no_debug"))]
         let debug_attack = self.probe_default_attack_matches(actor);

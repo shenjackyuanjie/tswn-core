@@ -227,6 +227,7 @@ impl CombatRuntime {
                             };
                             self.control.record_damage_phase(crate::runtime::DamageDecisionPhase::Evade);
                             self.control.set_pending_passive(request);
+                            self.control.set_pending_updates(updates);
                             std::panic::panic_any(PassivePause);
                         };
                     }

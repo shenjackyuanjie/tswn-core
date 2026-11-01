@@ -175,6 +175,7 @@ pub struct BattleControl {
     passive_decisions: Vec<PassiveDecision>,
     passive_cursor: usize,
     pending_passive: Option<PassiveRequest>,
+    pending_updates: Option<crate::runtime::update::RunUpdates>,
     passive_decision_mode: bool,
     controlled_minions: bool,
     damage_batches: Vec<DamageDecisionBatch>,
@@ -262,6 +263,13 @@ impl BattleControl {
     pub fn take_pending_passive(&mut self) -> Option<PassiveRequest> { self.pending_passive.take() }
 
     pub fn pending_passive(&self) -> Option<&PassiveRequest> { self.pending_passive.as_ref() }
+
+    /// Preserve updates already emitted before a passive pause unwinds the round.
+    pub fn set_pending_updates(&mut self, updates: &crate::runtime::update::RunUpdates) {
+        self.pending_updates = Some(updates.clone());
+    }
+
+    pub fn take_pending_updates(&mut self) -> Option<crate::runtime::update::RunUpdates> { self.pending_updates.take() }
 
     pub fn begin_damage_batch(&mut self, attacker: PlrId, target: PlrId) -> u64 {
         self.next_damage_batch_id = self.next_damage_batch_id.saturating_add(1);

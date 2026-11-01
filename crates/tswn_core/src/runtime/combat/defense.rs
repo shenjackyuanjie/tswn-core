@@ -220,6 +220,7 @@ impl CombatRuntime {
                     };
                     self.control.record_damage_phase(crate::runtime::DamageDecisionPhase::Protect);
                     self.control.set_pending_passive(request);
+                    self.control.set_pending_updates(updates);
                     std::panic::panic_any(PassivePause);
                 };
                 if !decision.activate || !decision.success {
@@ -621,7 +622,14 @@ impl CombatRuntime {
     }
 
     /// 在确定成为目标时预演并记录回避；真正的回避结算仍由 `roll_plain_dodge` 消费。
-    pub fn prepare_plain_dodge(&mut self, target: EntityIdx, accuracy: i32, dodge_value: i32, unavoidable: bool) {
+    pub fn prepare_plain_dodge(
+        &mut self,
+        target: EntityIdx,
+        accuracy: i32,
+        dodge_value: i32,
+        unavoidable: bool,
+        updates: &RunUpdates,
+    ) {
         if !self.control.passive_decision_mode() {
             return;
         }
@@ -646,6 +654,7 @@ impl CombatRuntime {
             };
             self.control.record_damage_phase(crate::runtime::DamageDecisionPhase::Evade);
             self.control.set_pending_passive(request);
+            self.control.set_pending_updates(updates);
             std::panic::panic_any(PassivePause);
         };
         self.control.set_evade_decision(crate::runtime::control::EvadeDecision {

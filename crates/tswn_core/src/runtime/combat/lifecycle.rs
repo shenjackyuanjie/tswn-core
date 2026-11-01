@@ -314,6 +314,7 @@ impl CombatRuntime {
                         }
                     }
                     self.control.set_pending_passive(request.clone());
+                    self.control.set_pending_updates(updates);
                     std::panic::panic_any(PassivePause);
                 };
                 if !decision.activate || !decision.success {
@@ -429,6 +430,7 @@ impl CombatRuntime {
                         self.control.record_damage_phase(phase);
                     }
                     self.control.set_pending_passive(request);
+                    self.control.set_pending_updates(updates);
                     std::panic::panic_any(PassivePause);
                 };
                 if !decision.activate || !decision.success {

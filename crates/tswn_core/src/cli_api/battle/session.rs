@@ -232,7 +232,21 @@ impl BattleSession {
                 Err(payload) => {
                     if payload.downcast_ref::<PassivePause>().is_some() {
                         self.pending_passive = self.driver.runner.runtime_mut().control.take_pending_passive();
-                        return Ok(None);
+                        let Some(updates) = self.driver.runner.runtime_mut().control.take_pending_updates() else {
+                            return Ok(None);
+                        };
+                        let states = states_from_runner(
+                            &self.driver.runner,
+                            self.options.include_icons,
+                            self.options.include_skills,
+                            &mut self.icon_cache,
+                        );
+                        let mut frame = build_frame(&updates, &self.current_states, &states, &self.driver.runner);
+                        frame.frame_index = self.driver.frames_emitted;
+                        frame.round_index = self.driver.rounds_advanced;
+                        self.driver.frames_emitted += 1;
+                        self.current_states = states;
+                        return Ok(Some(frame));
                     }
                     std::panic::resume_unwind(payload);
                 }
