@@ -88,13 +88,7 @@ fn plain_counter_post_damage_requests_a_target_decision() {
     let rng_before = runtime.rng.clone();
 
     let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        runtime.run_plain_counter_post_damage_into(
-            EntityIdx(1),
-            255,
-            10,
-            EntityIdx(0),
-            &mut updates,
-        );
+        runtime.run_plain_counter_post_damage_into(EntityIdx(1), 255, 10, EntityIdx(0), &mut updates);
     }));
     assert!(panic.is_err());
     let request = runtime.control.pending_passive().expect("counter should pause for a decision");
@@ -120,13 +114,7 @@ fn plain_counter_decision_success_queues_the_counter_attack() {
     runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.magic_point = 100;
     let mut updates = RunUpdates::new();
 
-    runtime.run_plain_counter_post_damage_into(
-        EntityIdx(1),
-        255,
-        10,
-        EntityIdx(0),
-        &mut updates,
-    );
+    runtime.run_plain_counter_post_damage_into(EntityIdx(1), 255, 10, EntityIdx(0), &mut updates);
 
     assert_eq!(updates.on_update_end.as_slice(), &[1]);
     assert!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.counter.pending);

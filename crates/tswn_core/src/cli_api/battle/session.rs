@@ -8,7 +8,9 @@ use crate::replay_view::{
     hp_delta_for_tone, is_percent_hp_damage_update, render_update_message,
 };
 use crate::runtime::update::{RunUpdates, UpdateType};
-use crate::runtime::{EntityIdx, PassivePause, PlannedAction, PlannedSkill, PlrId, RuntimeMinionKind, RuntimePlayerSnapshot, RuntimeRunner};
+use crate::runtime::{
+    EntityIdx, PassivePause, PlannedAction, PlannedSkill, PlrId, RuntimeMinionKind, RuntimePlayerSnapshot, RuntimeRunner,
+};
 
 use super::dto::*;
 use crate::cli_api::CliApiResult;
@@ -101,11 +103,7 @@ impl BattleSession {
             .runtime_mut()
             .control
             .set_passive_decision_mode(options.passive_decision_mode);
-        driver
-            .runner
-            .runtime_mut()
-            .control
-            .set_controlled_minions(options.controlled_minions);
+        driver.runner.runtime_mut().control.set_controlled_minions(options.controlled_minions);
         let initial_states = states_from_runner(&driver.runner, options.include_icons, options.include_skills, &mut icon_cache);
         Ok(Self {
             driver,
@@ -228,19 +226,12 @@ impl BattleSession {
             return Ok(None);
         }
         loop {
-            let advanced = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                self.driver.advance_round()
-            }));
+            let advanced = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.driver.advance_round()));
             let step = match advanced {
                 Ok(result) => result?,
                 Err(payload) => {
                     if payload.downcast_ref::<PassivePause>().is_some() {
-                        self.pending_passive = self
-                            .driver
-                            .runner
-                            .runtime_mut()
-                            .control
-                            .take_pending_passive();
+                        self.pending_passive = self.driver.runner.runtime_mut().control.take_pending_passive();
                         return Ok(None);
                     }
                     std::panic::resume_unwind(payload);

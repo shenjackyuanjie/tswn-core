@@ -55,17 +55,11 @@ pub(crate) fn parse_planned_skill(value: &str) -> PyResult<PlannedSkill> {
         name => BuiltinActiveSkill::from_export_name(name)
             .or_else(|| BuiltinActiveSkill::ALL.iter().copied().find(|skill| skill.local_name() == name))
             .map(PlannedSkill::Builtin)
-            .ok_or_else(|| {
-                pyo3::exceptions::PyValueError::new_err(format!("unknown skill: {value}"))
-            }),
+            .ok_or_else(|| pyo3::exceptions::PyValueError::new_err(format!("unknown skill: {value}"))),
     }
 }
 
-pub(crate) fn parse_planned_action(
-    actor: usize,
-    skill: &str,
-    magic_cost: Option<u8>,
-) -> PyResult<PlannedAction> {
+pub(crate) fn parse_planned_action(actor: usize, skill: &str, magic_cost: Option<u8>) -> PyResult<PlannedAction> {
     Ok(PlannedAction {
         actor,
         skill: parse_planned_skill(skill)?,

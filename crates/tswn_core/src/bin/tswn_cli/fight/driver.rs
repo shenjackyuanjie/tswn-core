@@ -157,7 +157,7 @@ mod tests {
                 max_rounds,
                 ..BattleOptions::default()
             };
-            let replay = tswn_core::cli_api::battle::battle_replay(raw, options).unwrap();
+            let replay = tswn_core::cli_api::battle::battle_replay(raw, options.clone()).unwrap();
             let mut session = BattleSession::new(raw, options).unwrap();
             let mut writer = LineWriter::default();
             write_battle(&mut session, &mut writer, true).unwrap();
