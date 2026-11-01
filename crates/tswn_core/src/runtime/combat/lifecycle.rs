@@ -298,6 +298,8 @@ impl CombatRuntime {
                     };
                     let batch_id = self.control.damage_batch().map(|batch| batch.id);
                     let request = PassiveRequest {
+                        initiator: self.control.damage_batch().map(|batch| batch.attacker),
+                        mp_costs: self.passive_mp_costs(owner, &export_name, false),
                         actor: owner.0 as PlrId,
                         target: None,
                         skill: export_name,
@@ -416,6 +418,8 @@ impl CombatRuntime {
                         .and_then(|entity| entity.template.skills.level_at(entry.fixed_lane))
                         .unwrap_or(0);
                     let request = PassiveRequest {
+                        initiator: Some(defend_value.caster().0 as PlrId),
+                        mp_costs: self.passive_mp_costs(entry.owner, &export_name, false),
                         actor: entry.owner.0 as PlrId,
                         target: Some(defend_value.target().0 as PlrId),
                         skill: export_name,

@@ -177,8 +177,14 @@ impl CombatRuntime {
             if !self.entities.get(target).is_some_and(EntityRecord::is_active) {
                 return;
             }
+            let magic_cost = self
+                .passive_mp_costs(target, DEFAULT_CORE_COUNTER_SKILL_EXPORT, false)
+                .get(DEFAULT_CORE_COUNTER_SKILL_EXPORT)
+                .copied();
             let Some(decision) = self.control.next_passive_decision() else {
                 let request = PassiveRequest {
+                    initiator: Some(caster.0 as PlrId),
+                    mp_costs: self.passive_mp_costs(target, DEFAULT_CORE_COUNTER_SKILL_EXPORT, false),
                     actor: target.0 as PlrId,
                     target: Some(caster.0 as PlrId),
                     skill: DEFAULT_CORE_COUNTER_SKILL_EXPORT.to_owned(),
@@ -202,6 +208,7 @@ impl CombatRuntime {
                 .counter;
             counter.last_updates_id = Some(updates.id);
             counter.pending = decision.activate && decision.success;
+            counter.magic_cost = counter.pending.then_some(magic_cost).flatten();
             counter.last_target = counter.pending.then_some(caster);
             if counter.pending {
                 updates.on_update_end.push(target.0 as usize);
@@ -262,7 +269,7 @@ impl CombatRuntime {
             .unwrap_or_default();
 
         for _level in counter_levels {
-            let target = {
+            let (target, magic_cost) = {
                 let Some(owner_entity) = self.entities.get_mut(owner) else {
                     return;
                 };
@@ -272,7 +279,7 @@ impl CombatRuntime {
                 }
                 counter.pending = false;
                 counter.last_updates_id = None;
-                counter.last_target.take()
+                (counter.last_target.take(), counter.magic_cost.take())
             };
             let Some(target) = target else {
                 continue;
@@ -285,7 +292,15 @@ impl CombatRuntime {
                 continue;
             }
 
-            if !self.entity_mp_ready(owner) {
+            if let Some(required) = magic_cost {
+                // 保留原支付点的随机步进，但实际扣除已向玩家展示的决策成本。
+                let _ = self.rng.r3x3();
+                let actor = self.entities.get_mut(owner).unwrap();
+                if actor.runtime.magic_point < required as i32 {
+                    continue;
+                }
+                actor.runtime.magic_point -= required as i32;
+            } else if !self.entity_mp_ready(owner) {
                 continue;
             }
             let atp = self
@@ -393,6 +408,8 @@ impl CombatRuntime {
         if self.control.passive_decision_mode() {
             let Some(decision) = self.control.next_passive_decision() else {
                 let request = PassiveRequest {
+                    initiator: Some(caster.0 as PlrId),
+                    mp_costs: self.passive_mp_costs(target, DEFAULT_CORE_HIDE_SKILL_EXPORT, false),
                     actor: target.0 as PlrId,
                     target: Some(caster.0 as PlrId),
                     skill: DEFAULT_CORE_HIDE_SKILL_EXPORT.to_owned(),

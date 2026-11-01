@@ -18,7 +18,7 @@ fn battle_session_replay_parity_on_frozen_corpus() {
             eval_rq: case.eval_rq,
             ..BattleOptions::default()
         };
-        let replay = battle_replay(&raw, options).unwrap();
+        let replay = battle_replay(&raw, options.clone()).unwrap();
         let mut session = BattleSession::new(&raw, options).unwrap();
         assert_eq!(session.initial_states(), replay.initial_states, "{} initial", case.file_name);
         for expected in &replay.frames {
@@ -63,7 +63,7 @@ fn battle_session_replay_parity_with_round_budget_and_icons() {
             include_icons: true,
             ..BattleOptions::default()
         };
-        let replay = battle_replay(&raw, options).unwrap();
+        let replay = battle_replay(&raw, options.clone()).unwrap();
         let mut session = BattleSession::new(&raw, options).unwrap();
         let mut frames = Vec::new();
         while let Some(frame) = session.next_frame().unwrap() {

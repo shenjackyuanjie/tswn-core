@@ -52,6 +52,8 @@ impl CombatRuntime {
             .unwrap_or(0);
         let Some(decision) = self.control.next_passive_decision() else {
             let request = PassiveRequest {
+                initiator: Some(entry.owner.0 as PlrId),
+                mp_costs: self.passive_mp_costs(entry.owner, export_name, false),
                 actor: entry.owner.0 as PlrId,
                 target: Some(killed_target.0 as PlrId),
                 skill: export_name.to_owned(),

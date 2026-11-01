@@ -215,6 +215,8 @@ impl CombatRuntime {
                     if self.control.passive_decision_mode() {
                         let Some(_decision) = self.control.next_passive_decision() else {
                             let request = PassiveRequest {
+                                initiator: Some(caster.0 as PlrId),
+                                mp_costs: Default::default(),
                                 actor: target.0 as PlrId,
                                 target: Some(target.0 as PlrId),
                                 skill: "evade".to_owned(),

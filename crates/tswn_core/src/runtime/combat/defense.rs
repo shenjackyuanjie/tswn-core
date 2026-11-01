@@ -208,6 +208,8 @@ impl CombatRuntime {
             if same_group && self.control.passive_decision_mode() {
                 let Some(decision) = self.control.next_passive_decision() else {
                     let request = PassiveRequest {
+                        initiator: Some(caster.0 as PlrId),
+                        mp_costs: self.passive_mp_costs(link.owner, "core.skill.protect", true),
                         actor: link.owner.0 as PlrId,
                         target: Some(target.0 as PlrId),
                         skill: "core.skill.protect".to_owned(),
@@ -642,6 +644,8 @@ impl CombatRuntime {
         let chance = Self::plain_dodge_chance(accuracy, dodge_value);
         let Some(decision) = self.control.next_passive_decision() else {
             let request = PassiveRequest {
+                initiator: self.control.damage_batch().map(|batch| batch.attacker),
+                mp_costs: Default::default(),
                 actor: target.0 as PlrId,
                 target: Some(target.0 as PlrId),
                 skill: "evade".to_owned(),
@@ -674,6 +678,8 @@ impl CombatRuntime {
             let Some(decision) = self.control.next_passive_decision() else {
                 let batch_id = self.control.damage_batch().map(|batch| batch.id);
                 let request = PassiveRequest {
+                    initiator: self.control.damage_batch().map(|batch| batch.attacker),
+                    mp_costs: Default::default(),
                     actor: target.0 as PlrId,
                     target: Some(target.0 as PlrId),
                     skill: "evade".to_owned(),

@@ -71,13 +71,13 @@ fn forced_reflect_still_requires_magic_point() {
     let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
         vec![
             PlayerTemplate::new(1, "caster", 0, 100, 3),
-            PlayerTemplate::new(2, "reflector", 1, 100, 3)
-                .with_skill_loadout(SkillLoadout::from_skill_levels([(reflect, 255)])),
+            PlayerTemplate::new(2, "reflector", 1, 100, 3).with_skill_loadout(SkillLoadout::from_skill_levels([(reflect, 255)])),
         ],
         registry,
     ));
     runtime.set_skill_handler(reflect, run_reflect_pre_defend_skill);
     runtime.control.set_passive_decision_mode(true);
+    let quoted_mp = runtime.rng.clone().r3x3();
 
     let mut updates = RunUpdates::new();
     let mut defend_value = RuntimeDefendValue::Atp {
@@ -95,6 +95,8 @@ fn forced_reflect_still_requires_magic_point() {
     assert_eq!(request.actor, 1);
     assert_eq!(request.target, Some(1));
     assert_eq!(request.skill, DEFAULT_CORE_REFLECT_SKILL_EXPORT);
+    assert_eq!(request.initiator, Some(0));
+    assert_eq!(request.mp_costs[DEFAULT_CORE_REFLECT_SKILL_EXPORT], quoted_mp);
     runtime.control.take_pending_updates().expect("paused updates should be preserved");
 
     runtime.control.set_passive_decisions([PassiveDecision {

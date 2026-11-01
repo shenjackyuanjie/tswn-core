@@ -98,6 +98,10 @@ pub struct PassiveDecision {
 /// 引擎在被动 hook 处缺少决策时返回的待确认信息。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PassiveRequest {
+    /// 当前响应的实际发起者；反击和反弹使用嵌套伤害的攻击者。
+    pub initiator: Option<PlrId>,
+    /// 当前可选技能实际需要支付的 MP；无消耗的技能不在表内。
+    pub mp_costs: std::collections::BTreeMap<String, u32>,
     pub actor: PlrId,
     /// 该触发指向的角色：回避是回避者，守护拦截是被守护者。
     pub target: Option<PlrId>,

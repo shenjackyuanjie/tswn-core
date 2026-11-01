@@ -94,6 +94,9 @@ pub struct AssassinateRuntime {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CounterRuntime {
+    /// 手动决策时展示的成本，延迟到 update-end 执行时使用同一个值。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub magic_cost: Option<u32>,
     pub pending: bool,
     pub last_target: Option<EntityIdx>,
     pub last_updates_id: Option<u64>,

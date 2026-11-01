@@ -1,6 +1,29 @@
 use super::*;
 
 impl CombatRuntime {
+    /// 预读被动的真实 MP 消耗，不推进随机流；被动使用 r3x3，而非主动技的 8~23。
+    pub(crate) fn passive_mp_costs(
+        &self,
+        owner: EntityIdx,
+        skill: &str,
+        intercept: bool,
+    ) -> std::collections::BTreeMap<String, u32> {
+        let payable = match skill {
+            "core.skill.reflect" | "core.skill.defend" | "core.skill.counter" => Some(skill),
+            "core.skill.protect" if intercept => Some(skill),
+            "core.skill.merge" | "core.skill.zombie"
+                if self.preview_plain_minion_blueprint(owner, crate::namerena::MinionKind::Zombie).is_some() =>
+            {
+                Some("core.skill.zombie")
+            }
+            _ => None,
+        };
+        payable.map_or_else(Default::default, |skill| {
+            let mut rng = self.rng.clone();
+            [(skill.to_owned(), rng.r3x3())].into_iter().collect()
+        })
+    }
+
     pub fn entity_mp_ready(&mut self, owner: EntityIdx) -> bool {
         let Some(entity) = self.entities.get(owner) else {
             return false;

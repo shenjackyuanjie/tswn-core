@@ -157,6 +157,8 @@ impl PyBattleSession {
         };
         let dict = pyo3::types::PyDict::new(py);
         dict.set_item("actor", request.actor)?;
+        dict.set_item("initiator", request.initiator)?;
+        dict.set_item("mp_costs", request.mp_costs.clone())?;
         dict.set_item("target", request.target)?;
         dict.set_item("skill", request.skill.as_str())?;
         dict.set_item("level", request.level)?;
@@ -215,7 +217,20 @@ mod tests {
     fn python_session_exposes_real_sticky_runtime_failure() {
         Python::initialize();
         Python::attach(|py| {
-            let mut session = PyBattleSession::new("alpha@red+bed2[3000]\n\nbeta@blue", None, false, None).unwrap();
+            let mut session = PyBattleSession::new(
+                "alpha@red+bed2[3000]\n\nbeta@blue",
+                None,
+                false,
+                false,
+                None,
+                None,
+                None,
+                false,
+                None,
+                false,
+                false,
+            )
+            .unwrap();
             session.inner.invalidate_runtime_for_test();
             let object = Py::new(py, session).unwrap();
             let object = object.bind(py);
