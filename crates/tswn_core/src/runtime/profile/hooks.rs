@@ -21,11 +21,10 @@ pub fn run_reflect_pre_defend_skill(context: &mut SkillContext<'_>, entry: &Skil
     }
 
     let level = context.skill_level(entry);
-    if !context.force_passive()
-        && (context.rng_r255() >= level
-            || !context.rng_c50()
-            || !context.owner_mp_ready().expect("runtime reflect skill owner must exist"))
-    {
+    if !context.force_passive() && (context.rng_r255() >= level || !context.rng_c50()) {
+        return;
+    }
+    if !context.owner_mp_ready().expect("runtime reflect skill owner must exist") {
         return;
     }
 

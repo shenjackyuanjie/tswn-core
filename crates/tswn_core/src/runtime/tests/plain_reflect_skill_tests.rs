@@ -55,6 +55,64 @@ fn plain_reflect_pre_defend_skips_frozen_owner_without_mp_rng() {
 }
 
 #[test]
+fn forced_reflect_still_requires_magic_point() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let reflect = builder
+        .register_skill_with_hooks(
+            "core",
+            "reflect",
+            DEFAULT_CORE_REFLECT_SKILL_EXPORT,
+            ProcMask::PRE_DEFEND,
+            TargetPolicy::None,
+            SkillPriority(0),
+        )
+        .expect("reflect skill should register");
+    let registry = builder.build();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "caster", 0, 100, 3),
+            PlayerTemplate::new(2, "reflector", 1, 100, 3)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(reflect, 255)])),
+        ],
+        registry,
+    ));
+    runtime.set_skill_handler(reflect, run_reflect_pre_defend_skill);
+    runtime.control.set_passive_decision_mode(true);
+
+    let mut updates = RunUpdates::new();
+    let mut defend_value = RuntimeDefendValue::Atp {
+        value: 50.0,
+        caster: EntityIdx(0),
+        target: EntityIdx(1),
+        is_magic: true,
+    };
+
+    let pause = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        runtime.drain_pre_defend_hooks_into(EntityIdx(1), &mut updates, &mut defend_value);
+    }));
+    assert!(pause.is_err());
+    let request = runtime.control.take_pending_passive().expect("reflect should pause for a decision");
+    assert_eq!(request.actor, 1);
+    assert_eq!(request.target, Some(1));
+    assert_eq!(request.skill, DEFAULT_CORE_REFLECT_SKILL_EXPORT);
+    runtime.control.take_pending_updates().expect("paused updates should be preserved");
+
+    runtime.control.set_passive_decisions([PassiveDecision {
+        actor: 1,
+        skill: DEFAULT_CORE_REFLECT_SKILL_EXPORT.to_owned(),
+        activate: true,
+        success: true,
+        target: None,
+    }]);
+    runtime.drain_pre_defend_hooks_into(EntityIdx(1), &mut updates, &mut defend_value);
+
+    assert_eq!(defend_value.atp(), Some(50.0));
+    assert!(updates.updates.is_empty());
+    assert!(runtime.effects.is_empty());
+    assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_point, 0);
+}
+
+#[test]
 fn reflected_fire_attack_keeps_fire_on_damage_callback() {
     let registry = ExtensionRegistryBuilder::default().build();
     let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(

@@ -417,7 +417,7 @@ impl CombatRuntime {
                         .unwrap_or(0);
                     let request = PassiveRequest {
                         actor: entry.owner.0 as PlrId,
-                        target: Some(defend_value.caster().0 as PlrId),
+                        target: Some(defend_value.target().0 as PlrId),
                         skill: export_name,
                         level,
                         candidates: Vec::new(),
