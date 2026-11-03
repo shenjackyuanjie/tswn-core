@@ -1,3 +1,5 @@
+import { formatGlobalPlayerName, replayDisplayName } from "./show-utils.js?v=20261103-global-id-1";
+
 /** 显示装饰绝不修改规范状态、片段、组成部分或结果。 */
 export class BattleDisplay {
     constructor(players, loadIcon, nicknameForKey = () => "") {
@@ -21,10 +23,17 @@ export class BattleDisplay {
             this.iconClasses.set(iconKey, this.iconClasses.size + 1);
             this.iconBase64.set(iconKey, icon);
         }
+        const rawName = actor._raw_display_name ?? actor.display_name;
+        const nickname = this.nickname(actor);
+        const name = nickname || rawName;
+        const displayLabel = nickname || rawName !== actor.display_name
+            ? formatGlobalPlayerName(name, actor.id)
+            : replayDisplayName(actor, actor.id);
         return {
             ...actor,
-            _raw_display_name: actor._raw_display_name ?? actor.display_name,
-            display_name: this.nickname(actor) || actor._raw_display_name || actor.display_name,
+            _raw_display_name: rawName,
+            display_name: name,
+            display_label: displayLabel,
             icon_class_id: this.iconClasses.get(iconKey),
         };
     }
@@ -48,7 +57,12 @@ export class BattleDisplay {
                         parts: (clip.parts ?? []).map(part => {
                             const actor = byId.get(part.player_id) ?? this.roots.get(part.player_id);
                             const nickname = part.kind === "player" && actor ? this.nickname(actor) : "";
-                            return nickname ? { ...part, text: nickname } : { ...part };
+                            if (part.kind !== "player") return { ...part };
+                            const displayLabel = nickname
+                                ? formatGlobalPlayerName(nickname, part.player_id ?? actor.id)
+                                : actor ? replayDisplayName(actor, part.player_id) : part.display_label;
+                            return { ...part, ...(nickname ? { text: nickname } : {}),
+                                ...(displayLabel != null ? { display_label: displayLabel } : {}) };
                         }),
                     };
                 }),

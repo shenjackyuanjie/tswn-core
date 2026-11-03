@@ -433,41 +433,32 @@ export function buildStateMap(states) {
 }
 
 /**
- * 为没有名字的召唤/幻影单位生成显示名。
- * @param {number} playerId
- * @returns {string}
+ * 名称只使用实体全局 ID，不解析用户原名中的 #数字，也不使用分身局部序号。
+ * display_label 是调用方显式提供的已格式化名称，避免跨适配层重复添加编号。
  */
-export function phantomDisplayName(playerId) {
-  return `幻影 #${playerId}`;
+export function formatGlobalPlayerName(rawName, playerId, fallback = "角色") {
+  const name = rawName == null || rawName === "" ? fallback : String(rawName);
+  return playerId == null ? name : `${name}#${playerId}`;
 }
 
-/**
- * 统一格式化回放状态里的显示名。
- * clone 使用底层给出的 display_index 表示同一名字下的第几个分身；左侧 playerId 另行显示。
- * @param {FightState|undefined} state
- * @param {number} [fallbackPlayerId]
- * @returns {string}
- */
+/** 为缺少状态的日志实体保留原始 ID，包括 0。 */
+export function phantomDisplayName(playerId) {
+  return formatGlobalPlayerName("幻影", playerId);
+}
+
+/** 所有本体、分身、召唤物使用同一套全局实体编号，过滤/分组不重新编号。 */
 export function replayDisplayName(state, fallbackPlayerId) {
-  const playerId = fallbackPlayerId ?? state?.id;
+  if (state?.display_label != null && state.display_label !== "") {
+    return String(state.display_label);
+  }
+  const playerId = state?.id ?? fallbackPlayerId;
   if (!state) {
     return playerId == null ? "未知角色" : phantomDisplayName(playerId);
   }
-  if (state.minion_kind === "clone") {
-    const displayIndex = Number(state.display_index);
-    return Number.isFinite(displayIndex) && displayIndex > 0 ? `${state.display_name} #${displayIndex}` : state.display_name;
-  }
-  if (
-    state.minion_kind === "summon" ||
-    state.minion_kind === "shadow" ||
-    state.minion_kind === "zombie"
-  ) {
-    const baseName =
-      state.display_name ??
-      (state.minion_kind === "shadow" ? "幻影" : state.minion_kind === "zombie" ? "丧尸" : "使魔");
-    return baseName;
-  }
-  return state.display_name ?? phantomDisplayName(playerId ?? 0);
+  const fallback = state.minion_kind === "shadow" ? "幻影"
+    : state.minion_kind === "zombie" ? "丧尸"
+    : state.minion_kind === "summon" ? "使魔" : "角色";
+  return formatGlobalPlayerName(state.display_name ?? state.base_name, playerId, fallback);
 }
 
 /**

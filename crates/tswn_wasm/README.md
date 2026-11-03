@@ -130,8 +130,14 @@ try {
 | `GroupWinRateResult` | 批量胜率结果：`opponent`, `result`                                                                                                                     |
 | `Cli*Result`         | 与 `tswn-cli` / `tswn_py` 高层 helper 对齐的一组结果类型                                                                                                |
 
-`display_index` 是底层分配的展示序号：普通本体为 `0`；同名分身在名字中显示为 `#1`、`#2`……。
-左侧仍会单独显示对象 `#playerId`，用于区分唯一对象编号。
+角色名称统一显示为 `原名#全局实体id`，从 `0` 开始。本体、clone、summon、shadow、zombie
+均使用独立实体 ID，不按可见列表重排；不再追加 `display_index` 的局部分身序号，也不再
+在名字旁重复显示另一份对象编号。例如 `A#0` / `B#2` 的分身分别可以是 `A#4` / `B#7`。
+
+`display_index` 保留在机制 DTO 中用于兼容，但 UI 不再以它命名。若适配器已经格式化名称，
+应传显式 `display_label`；工具直接使用它，避免重复追加。原名 `A#23` 不会被正则剥尾，
+角色 4 显示 `A#23#4`。ID 0、缺省快照的 fallback ID 和有空洞的 ID 都保持稳定。角色表、
+消息 player token、详情、胜者和结算统一调用同一规则；`id_name` 仍是未改写的技术身份键。
 
 左侧玩家列表按输入顺序排列：分组与 `Team N` 标签都用 `BattlePlayerState.input_team_index`（输入里第几组，空行或 `@队名` 决定），组内按对象 id（也就是输入行序）排列；运行时 `team_index` 由对局内部分配、可能与输入相反，只参与胜负判定，不参与展示排序。召唤单位紧跟其主人，缺 `input_team_index` 的旧数据退回运行时分队号。
 
@@ -238,7 +244,7 @@ python -m http.server 8000
 ```powershell
 # 前端测试：Bun 与 Node 任选一种
 bun test ./crates/tswn_wasm/tests
-node --test crates/tswn_wasm/tests/show-*.test.mjs
+node --experimental-default-type=module --test crates/tswn_wasm/tests/show-*.test.mjs
 
 # Rust 测试
 cargo test -p tswn_wasm
@@ -261,3 +267,13 @@ cargo install -f wasm-bindgen-cli --version 0.2.129
 ## 版本
 
 当前版本见 [CHANGELOG.md](CHANGELOG.md)。
+
+
+### 全局角色编号验收
+
+2026-11-03 使用隔离即时对战页面复用同一份共享展示模块，覆盖同名本体及各自分身
+`#0/#2/#4/#7`、视角过滤不重新编号、原名内含 `#数字`、只读完整历史和长中文昵称。
+移动端确认末尾编号在真实可见区域，不被省略号或滚动容器裁掉；未改原始机制 DTO。
+
+- [桌面全局实体编号](../../docs/images/wasm-show/global-entity-ids-desktop.png)
+- [窄屏长昵称与全局编号](../../docs/images/wasm-show/global-entity-ids-mobile.png)

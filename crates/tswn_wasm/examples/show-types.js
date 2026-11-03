@@ -1,12 +1,14 @@
 /**
  * @fileoverview tswn_wasm 战斗回放展示页 — 共享类型说明
  *
+ * display_index 仅保留底层兼容元数据，不再参与任何界面编号。
  * 典型的 State 结构（来自 WASM）：
  * @typedef {{
  *   id: number,
  *   id_name: string,
  *   icon_key: string,
  *   display_name: string,
+ *   display_label?: string,
  *   display_index: number,
  *   icon_png_base64?: string|null,
  *   icon_class_id?: number,
@@ -45,6 +47,7 @@
  *   id_name: string,
  *   icon_key: string,
  *   display_name: string,
+ *   display_label?: string,
  *   icon_png_base64: string|null,
  *   icon_class_id?: number
  * }} FightPlayer
@@ -96,6 +99,7 @@
  *   kind: 'text' | 'highlight' | 'player' | 'data',
  *   text: string,
  *   player_id?: number|null,
+ *   display_label?: string,
  *   show_hp?: boolean,
  *   hp_before?: number,
  *   hp_after?: number,

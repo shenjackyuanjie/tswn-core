@@ -5,8 +5,8 @@
  * playReplay 主循环因需要频繁读写全局状态（playbackToken 等），保留在 show.js 中。
  */
 
-import { renderPlayers, buildFrameRows } from './show-render.js';
-import { actorHpMetrics, escapeHtml, replayDisplayName, renderIconSprite } from './show-utils.js';
+import { renderPlayers, buildFrameRows } from './show-render.js?v=20261103-global-id-1';
+import { actorHpMetrics, escapeHtml, replayDisplayName, renderIconSprite } from './show-utils.js?v=20261103-global-id-1';
 
 /** 显示计划随收到的规范帧增长。现有块保持不变。 */
 export function createReplayPlan(initialStates) {
@@ -131,7 +131,7 @@ export function playbackDelay(frame, speedMode) {
  * 根据回放中的 winner_ids 拼接获胜者名字。
  *
  * @param {FightReplay} replay
- * @returns {string} 如 "张三、李四" 或 "未分出胜负"
+ * @returns {string} 如 "张三#0、李四#1" 或 "未分出胜负"
  */
 export function winnerNamesText(replay) {
     // 构建玩家 id → 玩家对象的索引
@@ -139,7 +139,7 @@ export function winnerNamesText(replay) {
     // 构建最终状态 id → 展示名的索引（用于召唤物等非玩家单元）
     const finalStateNames = new Map(replay.final_states.map((state) => [state.id, replayDisplayName(state)]));
     // 解析每个 winner_id 对应的可读名字，兜底显示 #id
-    const names = replay.winner_ids.map((winnerId) => playersById.get(winnerId)?.display_name ?? finalStateNames.get(winnerId) ?? `#${winnerId}`);
+    const names = replay.winner_ids.map((winnerId) => finalStateNames.get(winnerId) ?? replayDisplayName(playersById.get(winnerId), winnerId));
     return names.length ? names.join("、") : "未分出胜负";
 }
 
@@ -232,8 +232,8 @@ function actorSummaryMeta(actorId, replayPlayersById, statesById) {
 
     const player = replayPlayersById.get(actorId);
     const state = statesById.get(actorId);
-    // 优先取玩家名，其次取状态展示名，最后兜底
-    const displayName = player?.display_name ?? replayDisplayName(state, actorId);
+    // 使用最终可见状态的全局标签，缺状态时回退玩家元数据。
+    const displayName = replayDisplayName(state ?? player, actorId);
     let iconPngBase64 = player?.icon_png_base64 ?? state?.icon_png_base64 ?? null;
 
     // 如果自身没有图标，尝试从主人继承
@@ -243,7 +243,8 @@ function actorSummaryMeta(actorId, replayPlayersById, statesById) {
 
     return {
         id: actorId,
-        display_name: displayName,
+        display_name: state?.display_name ?? player?.display_name,
+        display_label: displayName,
         icon_png_base64: iconPngBase64,
         // 存活状态：有状态则用状态的 alive，否则默认存活
         alive: state?.alive ?? true,
@@ -311,7 +312,7 @@ function actorSummaryHtml(actor, { showHp = false } = {}) {
                 ${hpBar}
             </span>
             <span class="summary-actor-body">
-                <span class="${nameClass}">${escapeHtml(actor.display_name)}</span>
+                <span class="${nameClass}">${escapeHtml(replayDisplayName(actor, actor.id))}</span>
             </span>
         </span>
     `;
@@ -339,6 +340,7 @@ export function buildReplayResultSummary(replay) {
             id: player.id,
             order,
             display_name: player.display_name,
+            display_label: replayDisplayName(finalStatesById.get(player.id) ?? statesById.get(player.id) ?? player, player.id),
             icon_png_base64: player.icon_png_base64,
             icon_class_id: player.icon_class_id ?? player.id,
             final_state: finalStatesById.get(player.id) ?? statesById.get(player.id) ?? null,

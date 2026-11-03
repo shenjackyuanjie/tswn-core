@@ -41,7 +41,7 @@ test("左侧按输入分组与输入顺序排列，与运行时分队号无关",
   const states = inputOrder.map(stateOf);
   const { names, labels } = renderList(states, inputOrder.map(playerOf));
   // 运行时把先输入的一组判成 team 1，展示仍按输入顺序来。
-  assert.deepEqual(names, ["z_last", "a_first", "m_third", "b_second"]);
+  assert.deepEqual(names, ["z_last#0", "a_first#1", "m_third#2", "b_second#3"]);
   assert.deepEqual(labels, ["Team 1", "Team 2"]);
 });
 
@@ -59,7 +59,7 @@ test("缺 input_team_index 的旧数据退回运行时分队号", () => {
     icon_class_id: id,
   }));
   const { names, labels } = renderList(legacyStates, legacyPlayers);
-  assert.deepEqual(names, ["m_third", "b_second", "z_last", "a_first"], "没有输入信息时按运行时分队号排");
+  assert.deepEqual(names, ["m_third#2", "b_second#3", "z_last#0", "a_first#1"], "没有输入信息时按运行时分队号排");
   assert.deepEqual(labels, ["Team 1", "Team 2"]);
 });
 
@@ -72,7 +72,7 @@ test("召唤单位仍排在其主人之后，并沿用主人的输入分组", ()
     icon_class_id: 2,
   };
   const { names } = renderList([...states, minion], [...inputOrder.map(playerOf), { ...minion, id_name: "summon" }]);
-  assert.deepEqual(names, ["z_last", "a_first", "m_third", "召唤物", "b_second"]);
+  assert.deepEqual(names, ["z_last#0", "a_first#1", "m_third#2", "召唤物#9", "b_second#3"]);
 });
 
 test("换组时重建整张表，布局键包含输入分组序号", () => {
@@ -84,5 +84,5 @@ test("换组时重建整张表，布局键包含输入分组序号", () => {
   renderPlayers(inputOrder.map(playerOf), regrouped, regrouped, null, list, new Map());
   assert.equal(list.dataset.playerLayoutKey, "0:2|0:3|1:0|1:1");
   const { names } = renderList(regrouped, inputOrder.map(playerOf));
-  assert.deepEqual(names, ["m_third", "b_second", "z_last", "a_first"]);
+  assert.deepEqual(names, ["m_third#2", "b_second#3", "z_last#0", "a_first#1"]);
 });

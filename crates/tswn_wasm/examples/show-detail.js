@@ -1,5 +1,5 @@
 /** 角色详情的纯渲染函数，读取当前可见快照。 */
-import { escapeHtml, playerStatusLabels, replayDisplayName } from "./show-utils.js";
+import { escapeHtml, formatGlobalPlayerName, playerStatusLabels, replayDisplayName } from "./show-utils.js?v=20261103-global-id-1";
 
 function detailValue(value, fallback = "-") {
   if (value == null || value === "") {
@@ -22,12 +22,13 @@ function detailRow(label, value) {
 
 export function buildPlayerDetailHtml(player, state, canEditNickname) {
   const source = state ?? player ?? null;
-  const displayName = state ? replayDisplayName(state, state.id) : (player?.display_name ?? "未知角色");
-  const rawName = player?._raw_display_name ?? state?._raw_display_name ?? displayName;
+  const playerId = state?.id ?? player?.id;
+  const displayName = replayDisplayName(state ?? player, playerId);
+  const rawName = player?._raw_display_name ?? state?._raw_display_name ?? state?.display_name ?? player?.display_name;
   const idName = player?.id_name ?? state?.id_name ?? "";
   const statusLabels = playerStatusLabels(source).join("、");
   const rows = [
-    detailRow("原名", detailValue(rawName)),
+    detailRow("原名", detailValue(formatGlobalPlayerName(rawName, playerId))),
     detailRow("ID 名", detailValue(idName)),
     detailRow("playerId", detailNumber(player?.id ?? source?.id)),
     detailRow("队伍", detailNumber(player?.team_index ?? source?.team_index)),

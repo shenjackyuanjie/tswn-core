@@ -39,7 +39,7 @@ import {
   buildStateMap,
   replayDisplayName,
   renderIconSprite,
-} from "./show-utils.js";
+} from "./show-utils.js?v=20261103-global-id-1";
 
 function playerIconClassId(player) {
   return player?.icon_class_id ?? player?.id;
@@ -96,12 +96,12 @@ export function actorToken(player, state, previousState, update, { showHp = true
   const nameClass = `actor-name${isKnockout ? " namedie" : ""}`;
   const vitals = hpBar || shieldBar ? `<span class="actor-vitals">${hpBar}${shieldBar}</span>` : "";
 
-  return `<span class="actor-token${hpClass}${shieldClass}" data-player-id="${player.id}"><span class="actor-avatar-wrap">${renderIconSprite(playerIconClassId(player), "msg-avatar icon-sprite")}</span><span class="${nameClass}">${vitals}${escapeHtml(player.display_name)}</span></span>`;
+  return `<span class="actor-token${hpClass}${shieldClass}" data-player-id="${player.id}"><span class="actor-avatar-wrap">${renderIconSprite(playerIconClassId(player), "msg-avatar icon-sprite")}</span><span class="${nameClass}">${vitals}${escapeHtml(replayDisplayName(player, player.id))}</span></span>`;
 }
 
 /**
  * 从状态里补出一个可渲染的玩家对象。
- * 优先使用 WASM 提供的真实名字，避免把 clone/shadow/summon 一律退化成“幻影 #id”。
+ * 优先使用 WASM 提供的真实名字，避免把 clone/shadow/summon 一律退化成“幻影#id”。
  * @param {number} playerId
  * @param {FightState|undefined} state
  * @param {Map<number, FightPlayer>} playersById
@@ -129,7 +129,8 @@ function syntheticPlayerFromState(playerId, state, playersById) {
     display_index: state?.display_index ?? 0,
     id_name: state?.id_name ?? `player_${playerId}`,
     icon_key: state?.icon_key ?? state?.id_name ?? `player_${playerId}`,
-    display_name: replayDisplayName(state, playerId),
+    display_name: state?.display_name ?? state?.base_name,
+    display_label: replayDisplayName(state, playerId),
     icon_png_base64: icon,
     icon_class_id,
   };
@@ -282,7 +283,8 @@ function playerWithCurrentState(player, state) {
     display_index: state?.display_index ?? player.display_index ?? 0,
     id_name: state?.id_name ?? player.id_name,
     icon_key: state?.icon_key ?? player.icon_key,
-    display_name: state ? replayDisplayName(state, state.id ?? player.id) : player.display_name,
+    display_name: state?.display_name ?? player.display_name,
+    display_label: replayDisplayName(state ?? player, player.id),
     icon_png_base64: state?.icon_png_base64 ?? player.icon_png_base64,
     icon_class_id: state?.icon_class_id ?? player.icon_class_id,
   };
@@ -451,7 +453,6 @@ export function renderPlayers(
                                 <div class="player-name-wrap">
                                     ${renderIconSprite(playerIconClassId(player), "sgl icon-sprite")}
                                     <span class="${nameClass}">${escapeHtml(replayDisplayName(state, player.id))}</span>
-                                    <span class="player-id"> #${player.id}</span>
                                     <button type="button" class="detail-btn" data-player-detail-id="${player.id}" title="打开角色详情" aria-label="打开角色详情">i</button>
                                 </div>
                                 <div class="hpwrap compact" style="width:${totalWidth}px">
@@ -640,13 +641,8 @@ export function renderPlayers(
           iconEl.outerHTML = renderIconSprite(playerIconClassId(player), "sgl icon-sprite");
         }
 
-        let idSpan = nameWrap.querySelector(".player-id");
-        if (!idSpan) {
-          idSpan = document.createElement("span");
-          idSpan.className = "player-id";
-          nameWrap.appendChild(idSpan);
-        }
-        idSpan.textContent = " #" + player.id;
+        // 名字本身已包含全局编号；清除旧版本残留的重复编号节点。
+        nameWrap.querySelector(".player-id")?.remove();
 
         let detailBtn = nameWrap.querySelector(".detail-btn");
         if (!detailBtn) {
@@ -714,17 +710,21 @@ function structuredPlayerToken(part, clip, stateMap, previousStateMap, playersBy
   );
   const nextHp = Number(part.hp_after ?? stateBase?.hp ?? 0);
   const previousHp = Number(part.hp_before ?? stateBase?.hp ?? nextHp);
+  const cachedPlayer = playersById.get(playerId);
   const nextState = {
-    ...(stateBase ?? {
+    ...(stateBase ?? cachedPlayer ?? {
       id: playerId,
       team_index: 0,
       id_name: `player_${playerId}`,
       icon_key: `player_${playerId}`,
-      display_name: part.text ?? `#${playerId}`,
+      display_name: part.text ?? "幻影",
+      display_label: part.display_label,
       max_hp: maxHp,
       hp: nextHp,
       alive: nextHp > 0,
     }),
+    id: playerId,
+    ...(part.display_label != null ? { display_label: part.display_label } : {}),
     hp: nextHp,
     max_hp: maxHp,
     alive: nextHp > 0,
@@ -736,10 +736,7 @@ function structuredPlayerToken(part, clip, stateMap, previousStateMap, playersBy
     max_hp: maxHp,
     alive: previousHp > 0,
   };
-  const player =
-    stateBase != null
-      ? syncSyntheticPlayerFromState(playerId, nextState, playersById)
-      : (playersById.get(playerId) ?? syncSyntheticPlayerFromState(playerId, nextState, playersById));
+  const player = syncSyntheticPlayerFromState(playerId, nextState, playersById);
   return actorToken(player, nextState, previousState, { tone: clip.tone ?? "normal" }, {
     showHp: Boolean(part.show_hp),
     forceHp: Boolean(part.show_hp),
@@ -761,12 +758,18 @@ function renderStructuredPart(part, clip, stateMap, previousStateMap, playersByI
 }
 
 function structuredClipHtml(clip, playersById) {
-  if (clip.winner) {
-    const text = (clip.parts ?? []).map((part) => escapeHtml(part.text ?? "")).join("");
-    return `<span class="winner-row">${text}</span>`;
-  }
   const stateMap = buildStateMap(clip.sidebar_states ?? []);
   const previousStateMap = buildStateMap(clip.sidebar_previous_states ?? clip.sidebar_states ?? []);
+  if (clip.winner) {
+    const text = (clip.parts ?? []).map((part) => {
+      if (part.kind !== "player") return escapeHtml(part.text ?? "");
+      const source = stateMap.get(part.player_id) ?? previousStateMap.get(part.player_id)
+        ?? playersById.get(part.player_id) ?? { id: part.player_id, display_name: part.text };
+      return escapeHtml(replayDisplayName(part.display_label != null
+        ? { ...source, display_label: part.display_label } : source, part.player_id));
+    }).join("");
+    return `<span class="winner-row">${text}</span>`;
+  }
   const body = (clip.parts ?? [])
     .map((part) => renderStructuredPart(part, clip, stateMap, previousStateMap, playersById))
     .join("");

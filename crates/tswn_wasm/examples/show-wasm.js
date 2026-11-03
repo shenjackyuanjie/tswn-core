@@ -114,7 +114,7 @@ function playersFromBattleReplayStates(states) {
             input_team_index: state.input_team_index == null ? null : Number(state.input_team_index),
             id_name: state.id_name ?? state.base_name ?? `entity_${state.id}`,
             icon_key: state.icon_key ?? state.id_name ?? `entity_${state.id}`,
-            display_name: state.display_name ?? state.base_name ?? `#${state.id}`,
+            display_name: state.display_name ?? state.base_name ?? "角色",
             icon_png_base64: state.icon_png_base64 ?? null,
         }));
 }
