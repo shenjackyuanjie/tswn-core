@@ -9,7 +9,8 @@ use crate::replay_view::{
 };
 use crate::runtime::update::{RunUpdates, UpdateType};
 use crate::runtime::{
-    EntityIdx, PassivePause, PlannedAction, PlannedSkill, PlrId, RuntimeMinionKind, RuntimePlayerSnapshot, RuntimeRunner,
+    EntityIdx, ForcedAction, PassivePause, PlannedAction, PlannedSkill, PlrId, RuntimeMinionKind, RuntimePlayerSnapshot,
+    RuntimeRunner,
 };
 
 use super::dto::*;
@@ -39,6 +40,8 @@ pub struct BattleSession {
     icon_cache: HashMap<String, String>,
     /// 受控单位逼停回放时的等待者；非暂停边界为 `None`。
     paused: Option<PlrId>,
+    /// 实际主动暂停位置捕获的强制行动，不从展示快照反推。
+    paused_forced_action: Option<ForcedAction>,
     /// 被动 hook 等待玩家确认时保留的请求；此会话不应继续推进。
     pending_passive: Option<crate::runtime::PassiveRequest>,
 }
@@ -112,6 +115,7 @@ impl BattleSession {
             initial_states,
             icon_cache,
             paused: None,
+            paused_forced_action: None,
             pending_passive: None,
         })
     }
@@ -149,6 +153,15 @@ impl BattleSession {
     /// 结束该回合，本次会话不再继续推进；调用方应把新指令并入脚本后重新创建会话
     /// （例如再调一次 `battle_replay_with_actions`），而不是继续 `next_frame`。
     pub fn paused_actor(&self) -> Option<PlrId> { self.paused }
+
+    /// 当前缺指令暂停是否仍由引擎强制行动；普通暂停、被动请求和终止/失败返回 None。
+    /// 只读查询不消费脚本或随机数，也不会恢复或推进会话。
+    pub fn paused_forced_action(&self) -> Option<ForcedAction> {
+        if self.paused.is_none() || self.pending_passive.is_some() || self.is_done() || self.is_failed() {
+            return None;
+        }
+        self.paused_forced_action
+    }
 
     /// 被动 hook 等待决策时返回请求；此时会话已不可继续推进。
     pub fn pending_passive(&self) -> Option<&crate::runtime::PassiveRequest> { self.pending_passive.as_ref() }
@@ -276,8 +289,10 @@ impl BattleSession {
                 self.driver.failure = Some(error.clone());
                 return Err(error);
             }
+            let forced_action = self.driver.runner.runtime().control.awaiting_forced_action();
             if let Some(actor) = self.driver.runner.runtime_mut().take_awaiting_actor() {
                 self.paused = Some(actor);
+                self.paused_forced_action = forced_action;
             }
             if frame.is_some() || self.is_done() || self.paused.is_some() {
                 return Ok(frame);
@@ -635,6 +650,51 @@ mod tests {
     }
 
     #[test]
+    fn paused_forced_action_captures_exact_boundary_and_is_read_only() {
+        for hide in [false, true] {
+            let skills = if hide { r#"{"hide":128}"# } else { "{}" };
+            let raw = format!("left@red+ol:{{\"skills\":{skills}}}\n\nright@blue+ol:{{\"skills\":{{}}}}\nseed:7@!");
+            let mut session = BattleSession::new(
+                &raw,
+                BattleOptions {
+                    controlled_teams: vec![0, 1],
+                    ..BattleOptions::default()
+                },
+            )
+            .unwrap();
+            assert_eq!(session.paused_forced_action(), None);
+            let runtime = session.driver.runner.runtime_mut();
+            runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.move_state.speed_points =
+                crate::runtime::MOVE_POINT_THRESHOLD + 1;
+            runtime
+                .entities
+                .get_mut(EntityIdx(0))
+                .unwrap()
+                .states
+                .add_entry(crate::runtime::StateEntry::berserk(10, 2));
+            session.next_frame().unwrap();
+            assert_eq!(session.paused_actor(), Some(0));
+            assert!(session.current_states()[0].status_labels.iter().any(|label| label.starts_with("狂暴")));
+            let expected = (!hide).then_some(ForcedAction::Berserk);
+            let state = session.model_state().unwrap();
+            let rng = session.driver.runner.runtime().rng.clone();
+            let rounds = session.rounds_advanced();
+            for _ in 0..3 {
+                assert_eq!(session.paused_forced_action(), expected);
+                assert_eq!(session.next_frame().unwrap(), None);
+                assert_eq!(session.model_state().unwrap(), state);
+                assert_eq!(session.rounds_advanced(), rounds);
+                let current_rng = &session.driver.runner.runtime().rng;
+                assert_eq!(
+                    (current_rng.i, current_rng.j, current_rng.main_val),
+                    (rng.i, rng.j, rng.main_val)
+                );
+            }
+            assert_eq!(session.driver.runner.runtime().control.awaiting_forced_action(), None);
+        }
+    }
+
+    #[test]
     fn shield_serializes_through_initial_frame_clip_and_final_states() {
         let mut session = session(1);
         let initial_json = serde_json::to_value(session.initial_states()).unwrap();
@@ -824,6 +884,7 @@ seed:7@!"#;
         assert_eq!(initial, session.initial_states());
         let result = session.result().unwrap();
         assert_eq!(result.status, BattleStatus::Finished);
+        assert_eq!(session.paused_forced_action(), None);
         assert_eq!(result.stop_reason, BattleStopReason::Winner);
         assert!(result.finished && !result.truncated);
         assert_eq!(result.frames_emitted, count);
@@ -1059,6 +1120,7 @@ seed:7@!"#;
         for _ in 0..2 {
             let error = session.next_frame().unwrap_err();
             assert!(session.is_failed());
+            assert_eq!(session.paused_forced_action(), None);
             assert!(!session.is_done());
             assert_eq!(session.status(), BattleStatus::Running);
             assert!(!session.is_truncated());

@@ -22,6 +22,20 @@ pub enum PlannedSkill {
     MagicAttack,
 }
 
+/// 缺少外部指令的暂停边界上，引擎仍将接管的行动类型。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForcedAction {
+    Berserk,
+}
+
+impl ForcedAction {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Berserk => "berserk",
+        }
+    }
+}
+
 /// 被动 hook 暂停时使用的 panic 标记；避免把内部借用状态暴露给调用方。
 #[derive(Debug, Clone, Copy)]
 pub struct PassivePause;
@@ -174,7 +188,7 @@ impl std::error::Error for PlannedActionError {}
 pub struct BattleControl {
     controlled_teams: Vec<usize>,
     queue: Vec<PlannedAction>,
-    awaiting: Option<PlrId>,
+    awaiting: Option<(PlrId, Option<ForcedAction>)>,
     error: Option<PlannedActionError>,
     passive_decisions: Vec<PassiveDecision>,
     passive_cursor: usize,
@@ -235,12 +249,19 @@ impl BattleControl {
     pub fn reset(&mut self) { *self = Self::default(); }
 
     /// 记录“这个单位在等玩家指令”。
-    pub fn set_awaiting(&mut self, actor: PlrId) { self.awaiting = Some(actor); }
+    pub fn set_awaiting(&mut self, actor: PlrId) { self.set_awaiting_forced_action(actor, None); }
 
-    pub fn awaiting(&self) -> Option<PlrId> { self.awaiting }
+    /// 仅在实际缺指令暂停的位置写入，不能用角色状态标签推测。
+    pub(crate) fn set_awaiting_forced_action(&mut self, actor: PlrId, forced_action: Option<ForcedAction>) {
+        self.awaiting = Some((actor, forced_action));
+    }
 
-    /// 取走暂停标记；会话层每个边界只读一次，避免残留到下一场战斗。
-    pub fn take_awaiting(&mut self) -> Option<PlrId> { self.awaiting.take() }
+    pub fn awaiting(&self) -> Option<PlrId> { self.awaiting.map(|(actor, _)| actor) }
+
+    pub fn awaiting_forced_action(&self) -> Option<ForcedAction> { self.awaiting.and_then(|(_, forced)| forced) }
+
+    /// 取走暂停标记及附属元数据；会话层每个边界只读一次，避免残留到下一场战斗。
+    pub fn take_awaiting(&mut self) -> Option<PlrId> { self.awaiting.take().map(|(actor, _)| actor) }
 
     /// 设置本次回放可消费的被动决策脚本，按触发顺序消费。
     pub fn set_passive_decisions(&mut self, decisions: impl IntoIterator<Item = PassiveDecision>) {
@@ -354,6 +375,26 @@ impl CombatRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn awaiting_forced_metadata_is_bound_to_the_active_pause() {
+        let mut control = BattleControl::default();
+        control.set_awaiting_forced_action(3, Some(ForcedAction::Berserk));
+        assert_eq!(control.awaiting(), Some(3));
+        assert_eq!(control.awaiting_forced_action(), Some(ForcedAction::Berserk));
+        assert_eq!(control.take_awaiting(), Some(3));
+        assert_eq!(control.awaiting_forced_action(), None);
+        for reset in 0..4 {
+            control.set_awaiting_forced_action(3, Some(ForcedAction::Berserk));
+            match reset {
+                0 => control.set_awaiting(4),
+                1 => control.set_controlled_team(None),
+                2 => control.set_controlled_teams([0, 1]),
+                _ => control.reset(),
+            }
+            assert_eq!(control.awaiting_forced_action(), None);
+        }
+    }
 
     #[test]
     fn damage_decision_batch_declares_boundary_and_orders() {

@@ -153,6 +153,10 @@ impl PyBattleSession {
     }
     /// 受控单位暂停时等待指令的实体 ID；非暂停边界为 None。
     fn paused_actor(&self) -> Option<usize> { self.inner.paused_actor() }
+    /// 缺指令暂停仍需引擎强制狂暴行动时返回 "berserk"；其他边界为 None，不推进会话。
+    fn paused_forced_action(&self) -> Option<&'static str> {
+        self.inner.paused_forced_action().map(tswn_core::runtime::ForcedAction::as_str)
+    }
     /// 预读下一条主动技的 MP 消耗（8~23），不推进随机数。
     fn peek_magic_cost(&self) -> Option<u8> { self.inner.peek_magic_cost() }
     /// 被动 hook 待确认请求；没有时为 None。
@@ -254,6 +258,7 @@ mod tests {
                 assert!(object.call_method0("is_failed").unwrap().extract::<bool>().unwrap());
                 assert!(!object.call_method0("is_done").unwrap().extract::<bool>().unwrap());
                 assert!(object.call_method0("result").unwrap().is_none());
+                assert!(object.call_method0("paused_forced_action").unwrap().is_none());
                 assert!(object.call_method0("stop_reason").unwrap().is_none());
                 assert_eq!(object.call_method0("status").unwrap().extract::<String>().unwrap(), "running");
             }

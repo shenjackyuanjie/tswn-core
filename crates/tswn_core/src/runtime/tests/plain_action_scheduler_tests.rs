@@ -273,3 +273,94 @@ fn plain_frozen_actor_threshold_action_skips_mp_gate_and_visible_action() {
     assert!(actor.states.is_frozen());
     assert_eq!(runtime.rng.i, 2);
 }
+
+#[test]
+fn paused_forced_action_distinguishes_berserk_from_pre_action_cancellation() {
+    let actor = EntityIdx(0);
+    for cancellation in ["none", "hide", "invalid_assassinate"] {
+        let mut runtime = pre_action_runtime([0, 1]);
+        let entity = runtime.entities.get_mut(actor).unwrap();
+        entity.states.add_entry(StateEntry::berserk(PLAIN_BERSERK_STATE_KEY, 2));
+        match cancellation {
+            "hide" => entity.runtime.assassinate = None,
+            "invalid_assassinate" => {
+                entity.template.skills.remove_pre_action_lane(1);
+                entity.runtime.assassinate.as_mut().unwrap().target = EntityIdx(999);
+            }
+            _ => {
+                entity.template.skills.remove_pre_action_lane(0);
+                entity.template.skills.remove_pre_action_lane(1);
+                entity.runtime.assassinate = None;
+            }
+        }
+        let pre_action = runtime.run_plain_skill_pre_action_accumulator(actor);
+        assert!(pre_action.forced_skill.is_none());
+        assert_eq!(pre_action.clear_forced_action, cancellation != "none");
+        assert!(runtime.has_plain_berserk_state(actor));
+        let mut automatic = runtime.clone();
+        runtime.set_controlled_team(Some(0));
+        let before = runtime.rng.clone();
+        assert_eq!(runtime.prepare_plain_action(actor, false, pre_action.clone()), None);
+        assert_eq!(runtime.awaiting_actor(), Some(0));
+        let forced = (cancellation == "none").then_some(ForcedAction::Berserk);
+        for _ in 0..3 {
+            assert_eq!(runtime.control.awaiting_forced_action(), forced);
+            assert_rng_state_eq(&runtime.rng, &before);
+        }
+        assert_eq!(runtime.take_awaiting_actor(), Some(0));
+        assert_eq!(runtime.control.awaiting_forced_action(), None);
+
+        // basic 仍只为真正狂暴消费节奏；取消强制后必须允许真正的手动攻击。
+        runtime.queue_planned_action(PlannedAction {
+            actor: 0,
+            skill: PlannedSkill::BasicAttack,
+            magic_cost: Some(0),
+        });
+        let prepared = runtime.prepare_plain_action(actor, false, pre_action.clone()).unwrap();
+        assert_eq!(runtime.planned_actions_pending(), 0);
+        assert_eq!(runtime.awaiting_actor(), None);
+        assert_eq!(runtime.control.awaiting_forced_action(), None);
+        if forced.is_some() {
+            assert!(matches!(prepared, PreparedPlainAction::ForcedAttack { .. }));
+            let auto = automatic.prepare_plain_action(actor, false, pre_action).unwrap();
+            assert_eq!(auto, prepared);
+            assert_rng_state_eq(&runtime.rng, &automatic.rng);
+        } else {
+            assert!(matches!(prepared, PreparedPlainAction::BasicAttack { use_magic: false, .. }));
+        }
+    }
+}
+
+#[test]
+fn berserk_automatic_and_controlled_pacing_keep_full_round_and_rng_identical() {
+    let mut automatic = CombatRuntime::from_template(PreparedCombatTemplate::new(vec![
+        PlayerTemplate::new(1, "berserk", 0, 1000, 3).with_speed(600),
+        PlayerTemplate::new(2, "target", 1, 1000, 3).with_speed(1),
+    ]));
+    let actor = automatic.entities.get_mut(EntityIdx(0)).unwrap();
+    actor.states.add_entry(StateEntry::berserk(PLAIN_BERSERK_STATE_KEY, 2));
+    actor.runtime.move_state.speed_points = MOVE_POINT_THRESHOLD + 1;
+    let mut controlled = automatic.clone();
+    controlled.set_controlled_team(Some(0));
+    controlled.queue_planned_action(PlannedAction {
+        actor: 0,
+        skill: PlannedSkill::BasicAttack,
+        magic_cost: Some(0),
+    });
+    let expected = automatic.run_minimal_round_once().unwrap();
+    let actual = controlled.run_minimal_round_once().unwrap();
+    assert_eq!(actual.action, expected.action);
+    assert_eq!(
+        format!("{:?}", actual.frame.unwrap().updates.updates),
+        format!("{:?}", expected.frame.unwrap().updates.updates)
+    );
+    assert_eq!(actual.winner_team, expected.winner_team);
+    assert_rng_state_eq(&controlled.rng, &automatic.rng);
+    assert_eq!(
+        controlled.entities.get(EntityIdx(0)).unwrap().states,
+        automatic.entities.get(EntityIdx(0)).unwrap().states
+    );
+    assert_eq!(controlled.planned_actions_pending(), 0);
+    assert_eq!(controlled.awaiting_actor(), None);
+    assert_eq!(controlled.control.awaiting_forced_action(), None);
+}

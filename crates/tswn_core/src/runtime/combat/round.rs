@@ -373,7 +373,9 @@ impl CombatRuntime {
         }
         // 受控单位没有排好的指令就停下来等玩家，绝不代替玩家行动。
         if !engine_forced && !script_consumed && self.is_controlled_actor(actor) {
-            self.control.set_awaiting(actor.0 as PlrId);
+            let forced_action =
+                (!pre_action.clear_forced_action && self.has_plain_berserk_state(actor)).then_some(ForcedAction::Berserk);
+            self.control.set_awaiting_forced_action(actor.0 as PlrId, forced_action);
             return None;
         }
         if let Some(forced_skill) = pre_action.forced_skill {
