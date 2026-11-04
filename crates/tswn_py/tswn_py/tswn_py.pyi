@@ -292,6 +292,11 @@ class BattleSession:
         actions: list[tuple[int, str, int | None]] | None = None,
         max_rounds: int | None = None,
         allow_future_actors: bool = False,
+        passive_decisions: list[tuple[int, str, bool, bool, int | None]] | None = None,
+        passive_decision_mode: bool = False,
+        controlled_minions: bool = False,
+        *,
+        team_upgrades: bool = True,
     ) -> None: ...
     def initial_states(self) -> list[BattlePlayerState]: ...
     def current_states(self) -> list[BattlePlayerState]: ...

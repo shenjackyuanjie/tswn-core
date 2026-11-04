@@ -91,6 +91,10 @@ let mut runner = Runner::new_from_namerena_raw(raw_input).unwrap();
 let summary = runner.run_to_completion(20_000);
 ```
 
+`cli_api::BattleOptions.team_upgrades` 默认开启同组同 clan 初始角色强化；显式关闭仅
+跳过该强化，仍维持组内排序、名字系数与单位派生规则。`PreparedRoster::build` 保持
+原有默认，`build_with_team_upgrades` 可显式选择；外部战斗脚本重放应沿用同一选项。
+
 根级 `Runner` / `PreparedRunner` 是主 Runtime 的稳定入口。0.5.0 已删除旧
 `engine` / `player` 对象模型及其兼容别名；名字解析、属性与 overlay 数据位于
 `namerena`，运行期实体、调度和更新类型位于 `runtime`。

@@ -87,6 +87,7 @@ impl PyBattleSession {
     /// 解析空行分队的 raw；max_rounds 为正数回合预算，None 使用 core 默认值。
     /// include_icons 会把图标 data URL 加入快照，eval_rq 仅在创建时确定。
     /// include_skills 会附带技能熟练度与主动技能行动顺序。
+    /// team_upgrades 控制初始输入角色的同组同 clan 强化，不影响名字系数。
     /// controlled_teams 中的队伍会在缺指令时暂停；actions 为 `(actor, skill, magic_cost)`。
     #[new]
     #[pyo3(signature = (
@@ -100,7 +101,9 @@ impl PyBattleSession {
         allow_future_actors=false,
         passive_decisions=None,
         passive_decision_mode=false,
-        controlled_minions=false
+        controlled_minions=false,
+        *,
+        team_upgrades=true
     ))]
     fn new(
         raw: &str,
@@ -114,8 +117,9 @@ impl PyBattleSession {
         passive_decisions: Option<Vec<(usize, String, bool, bool, Option<usize>)>>,
         passive_decision_mode: bool,
         controlled_minions: bool,
+        team_upgrades: bool,
     ) -> PyResult<Self> {
-        let options = options(
+        let mut options = options(
             eval_rq,
             include_icons,
             include_skills,
@@ -126,6 +130,7 @@ impl PyBattleSession {
             passive_decision_mode,
             controlled_minions,
         );
+        options.team_upgrades = team_upgrades;
         let planned = actions
             .unwrap_or_default()
             .into_iter()
@@ -229,6 +234,7 @@ mod tests {
                 None,
                 false,
                 false,
+                true,
             )
             .unwrap();
             session.inner.invalidate_runtime_for_test();

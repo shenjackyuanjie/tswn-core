@@ -54,6 +54,12 @@ Runtime error 后会话进入 sticky failure（poisoned）：`is_failed() = true
 
 `BattleSession(raw, eval_rq=None, include_icons=False, max_rounds=None)` 支持迭代器和 `next_frame()`；初始/当前快照用 `initial_states()` / `current_states()` 获取。`status()`、`stop_reason()`、完成标记、轮次/帧计数和 `result()` 与 [公共 API](../../docs/reference/public-api.md) 一致。终止后 `next_frame()` 返回 None；运行中没有 result。
 
+`BattleSession(..., team_upgrades=True)` 的 `team_upgrades` 是仅关键字参数，默认开启。
+传 `False` 时跳过初始输入角色之间同一输入组、相同 clan 的相互强化，但保持输入分组、
+组内排序、名字系数 `name_factor`、身份与召唤物/分身派生规则不变。它是可信会话配置，
+不能被名字内的 `+ol:` 字段覆盖；重新构造会话做脚本回放或预览时必须传同一个值。
+`battle_replay()` 等其他入口继续使用默认行为。
+
 `max_rounds` 默认 20,000，统计真实 Runtime round，包括空轮；frame_index / round_index 均从零开始。正式 `BattleReplay` / `BattleResult` 等 TypedDict 位于 `_types_battle.pyi`。错误异常携带 core 的稳定 `.code`。
 
 ## 主要 API

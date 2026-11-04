@@ -33,7 +33,7 @@ impl BattleDriver {
             return Err(CliApiError::InvalidArgument("battle eval_rq must be finite".into()));
         }
         let (groups, seed) = RuntimeRunner::split_namerena_into_groups(raw.to_owned());
-        let runner = RuntimeRunner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, options.eval_rq)
+        let runner = RuntimeRunner::new_from_groups_with_options(&groups, &seed, options.eval_rq, options.team_upgrades)
             .map_err(|e| CliApiError::RunnerInit(e.to_string()))?;
         Self::new(runner, options.max_rounds)
     }

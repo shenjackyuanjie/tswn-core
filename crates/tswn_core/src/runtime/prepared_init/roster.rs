@@ -23,6 +23,16 @@ impl PreparedBattleRoster {
         Self::from_groups_with_eval_rq_and_skill_import_selected(raw_groups, eval_rq, registry, skill_import, &[])
     }
 
+    pub(crate) fn from_groups_with_team_upgrades(
+        raw_groups: &[Vec<String>],
+        eval_rq: f64,
+        registry: &ExtensionRegistry,
+        skill_import: &BuiltinSkillImportMap,
+        team_upgrades: bool,
+    ) -> Result<Self, RuntimeBattleInitError> {
+        Self::from_groups_with_options(raw_groups, eval_rq, registry, skill_import, &[], team_upgrades)
+    }
+
     /// 复用首轮已经准备好的固定 target，只重建位于尾部的动态 profile。
     ///
     /// score 的玩家编号布局始终是“固定 target 在前、动态 profile 在后”。固定
@@ -252,6 +262,17 @@ impl PreparedBattleRoster {
         skill_import: &BuiltinSkillImportMap,
         lazy_blueprint_players: &[PlrId],
     ) -> Result<Self, RuntimeBattleInitError> {
+        Self::from_groups_with_options(raw_groups, eval_rq, registry, skill_import, lazy_blueprint_players, true)
+    }
+
+    fn from_groups_with_options(
+        raw_groups: &[Vec<String>],
+        eval_rq: f64,
+        registry: &ExtensionRegistry,
+        skill_import: &BuiltinSkillImportMap,
+        lazy_blueprint_players: &[PlrId],
+        team_upgrades: bool,
+    ) -> Result<Self, RuntimeBattleInitError> {
         let mut groups = Vec::with_capacity(raw_groups.len());
         for (team_index, raw_group) in raw_groups.iter().enumerate() {
             let mut group = Vec::with_capacity(raw_group.len());
@@ -275,7 +296,7 @@ impl PreparedBattleRoster {
             groups,
             seed: Vec::new(),
         };
-        let prepared = match crate::namerena::PreparedRoster::build(&input, eval_rq) {
+        let prepared = match crate::namerena::PreparedRoster::build_with_team_upgrades(&input, eval_rq, team_upgrades) {
             Ok(prepared) => prepared,
             Err(error) => match error {},
         };

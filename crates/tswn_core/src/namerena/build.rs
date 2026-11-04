@@ -83,6 +83,15 @@ impl PreparedRoster {
     /// 输入解析的长度约束应已成立，`eval_rq` 沿用底层评估函数的参数语义。
     /// 当前 `PreparedRosterError` 没有可构造变体，Result 保留既有接口形状。
     pub fn build(input: &NamerenaInput, eval_rq: f64) -> Result<Self, PreparedRosterError> {
+        Self::build_with_team_upgrades(input, eval_rq, true)
+    }
+
+    /// 控制初始输入角色的同组同 clan 强化；不影响名字系数、分组或派生单位规则。
+    pub fn build_with_team_upgrades(
+        input: &NamerenaInput,
+        eval_rq: f64,
+        team_upgrades: bool,
+    ) -> Result<Self, PreparedRosterError> {
         let mut builds = Vec::new();
         let mut groups = Vec::with_capacity(input.groups.len());
         for raw_group in &input.groups {
@@ -96,7 +105,7 @@ impl PreparedRoster {
                 groups.push(group);
             }
         }
-        apply_team_upgrades(&mut builds, &mut groups);
+        apply_team_upgrades(&mut builds, &mut groups, team_upgrades);
         let mut build_order = (0..builds.len()).collect::<Vec<_>>();
         build_order.sort_by(|left, right| builds[*left].id_key_name.cmp(&builds[*right].id_key_name));
         let mut players = vec![None; builds.len()];
@@ -475,9 +484,12 @@ impl PlayerBuild {
     }
 }
 
-fn apply_team_upgrades(players: &mut [PlayerBuild], groups: &mut [Vec<usize>]) {
+fn apply_team_upgrades(players: &mut [PlayerBuild], groups: &mut [Vec<usize>], enabled: bool) {
     for group in groups {
         group.sort_by(|left, right| compare_builds(&players[*left], &players[*right]));
+        if !enabled {
+            continue;
+        }
         for left_index in 0..group.len() {
             for right_index in (left_index + 1)..group.len() {
                 let left_id = group[left_index];
@@ -611,6 +623,42 @@ mod tests {
         assert!(!summon.reuse_stats_on_recast);
         assert!(summon.inherit_owner_def_res);
         assert_eq!(zombie.reserved_player_ids_before_spawn, 1);
+    }
+
+    #[test]
+    fn team_upgrade_option_only_changes_matching_initial_players() {
+        let rq = crate::namerena::eval_name::DEFAULT_EVAL_RQ;
+        for raw in [
+            "bob@red\nalice@red\nother@blue\n\nsolo@green",
+            "bob@red\nother@blue\n\nalice@red",
+            "bob@red\nalice@blue\n\nsolo@green",
+        ] {
+            let input = NamerenaInput::parse(raw).unwrap();
+            let default = PreparedRoster::build(&input, rq).unwrap();
+            let enabled = PreparedRoster::build_with_team_upgrades(&input, rq, true).unwrap();
+            let disabled = PreparedRoster::build_with_team_upgrades(&input, rq, false).unwrap();
+            assert_eq!(default.groups, enabled.groups);
+            assert_eq!(enabled.groups, disabled.groups);
+            for ((a, b), c) in default.players.iter().zip(&enabled.players).zip(&disabled.players) {
+                assert_eq!(a.attrs, b.attrs);
+                assert_eq!(a.skills, b.skills);
+                assert_eq!(a.name_base, b.name_base);
+                assert_eq!(b.raw_name_base, c.raw_name_base);
+                assert_eq!(b.name_factor, c.name_factor);
+                assert_eq!((b.id, &b.id_key_name), (c.id, &c.id_key_name));
+            }
+            let changed = enabled
+                .players
+                .iter()
+                .zip(&disabled.players)
+                .any(|(a, b)| a.attrs != b.attrs || a.skills != b.skills);
+            assert_eq!(changed, raw.starts_with("bob@red\nalice@red"));
+            if raw.starts_with("bob@red\nalice@red") {
+                assert_eq!(enabled.players[2].attrs, disabled.players[2].attrs);
+                assert_eq!(enabled.players[2].skills, disabled.players[2].skills);
+                assert_eq!(enabled.players[3].attrs, disabled.players[3].attrs);
+            }
+        }
     }
 
     #[test]

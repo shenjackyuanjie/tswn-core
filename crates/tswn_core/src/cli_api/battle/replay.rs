@@ -71,6 +71,32 @@ mod tests {
     }
 
     #[test]
+    fn team_upgrade_option_is_shared_by_replay_preview_and_session() {
+        let raw = "bob@red\nalice@red\n\nother@blue\nseed:7@!";
+        for team_upgrades in [true, false] {
+            let options = BattleOptions {
+                team_upgrades,
+                include_skills: true,
+                max_rounds: 200,
+                ..BattleOptions::default()
+            };
+            let replay = battle_replay(raw, options.clone()).unwrap();
+            let mut session = BattleSession::new(raw, options).unwrap();
+            assert_eq!(session.initial_states(), replay.initial_states);
+            let before = session.current_states().to_vec();
+            let first = session.preview_targets(0, PlannedSkill::BasicAttack).unwrap();
+            assert_eq!(first, session.preview_targets(0, PlannedSkill::BasicAttack).unwrap());
+            assert_eq!(session.current_states(), before);
+            let mut frames = Vec::new();
+            while let Some(frame) = session.next_frame().unwrap() {
+                frames.push(frame);
+            }
+            assert_eq!(frames, replay.frames);
+            assert_eq!(session.current_states(), replay.final_states);
+        }
+    }
+
+    #[test]
     fn battle_replay_returns_render_ready_frames() {
         let replay = battle_replay("left@red\n\nright@blue\n", BattleOptions::default()).unwrap();
 

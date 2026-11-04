@@ -632,12 +632,22 @@ impl PreparedRuntimeRunner {
         eval_rq: f64,
         config: CustomRuntimeImportConfig<'_>,
     ) -> Result<Self, CustomRuntimeImportError> {
+        Self::from_custom_mixed_roster_with_options(raw_groups, eval_rq, config, true)
+    }
+
+    pub(crate) fn from_custom_mixed_roster_with_options(
+        raw_groups: &[Vec<String>],
+        eval_rq: f64,
+        config: CustomRuntimeImportConfig<'_>,
+        team_upgrades: bool,
+    ) -> Result<Self, CustomRuntimeImportError> {
         let skill_import = BuiltinSkillImportMap::new(&config.registry);
-        let battle_roster = PreparedBattleRoster::from_groups_with_eval_rq_and_skill_import(
+        let battle_roster = PreparedBattleRoster::from_groups_with_team_upgrades(
             raw_groups,
             eval_rq,
             &config.registry,
             &skill_import,
+            team_upgrades,
         )?;
         let mut prototype = RuntimeRunner::from_custom_mixed_roster(raw_groups, config)?;
         let base_init = battle_roster.with_seed(&[]);

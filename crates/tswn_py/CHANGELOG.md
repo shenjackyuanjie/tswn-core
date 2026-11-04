@@ -2,6 +2,11 @@
 
 ## [Unreleased] - 0.5.5
 
+### 新增
+
+- `BattleSession` 新增关键字参数 `team_upgrades=True`，可关闭初始同组同 clan 强化，
+  不改变名字系数、分组、排序或派生单位规则，旧代码默认行为不变。
+
 ### 依赖更新
 
 - `pyo3` 升级到 `0.29`；Python API、类型存根与返回结构保持不变。

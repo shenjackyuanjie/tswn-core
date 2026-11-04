@@ -5,6 +5,8 @@ use serde::Serialize;
 /// 面向用户的完整战斗回放选项。
 #[derive(Debug, Clone, PartialEq)]
 pub struct BattleOptions {
+    /// 是否对初始输入角色应用同组同 clan 强化，默认开启。
+    pub team_upgrades: bool,
     /// 有限的名字评估参数，默认普通 fight 口径。
     pub eval_rq: f64,
     /// 是否在快照中附 PNG Base64；默认关闭以减少计算和载荷。
@@ -43,6 +45,7 @@ pub struct BattleOptions {
 impl Default for BattleOptions {
     fn default() -> Self {
         Self {
+            team_upgrades: true,
             eval_rq: crate::namerena::eval_name::DEFAULT_EVAL_RQ,
             include_icons: false,
             max_rounds: BINDING_COMPLETION_MAX_ROUNDS,

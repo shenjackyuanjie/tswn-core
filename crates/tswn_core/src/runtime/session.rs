@@ -87,6 +87,17 @@ impl RuntimeRunner {
         prepared.new_with_seed(seed).map_err(Into::into)
     }
 
+    pub(crate) fn new_from_groups_with_options(
+        groups: &[Vec<String>],
+        seed: &[String],
+        eval_rq: f64,
+        team_upgrades: bool,
+    ) -> Result<Self, RuntimeBuildError> {
+        let config = default_custom_runtime_import_config()?;
+        let prepared = PreparedRuntimeRunner::from_custom_mixed_roster_with_options(groups, eval_rq, config, team_upgrades)?;
+        prepared.new_with_seed(seed).map_err(Into::into)
+    }
+
     pub fn prepare_groups(groups: &[Vec<String>]) -> Result<PreparedRuntimeRunner, RuntimeBuildError> {
         Self::prepare_groups_with_eval_rq(groups, crate::namerena::eval_name::DEFAULT_EVAL_RQ)
     }
