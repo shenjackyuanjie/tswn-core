@@ -214,6 +214,18 @@ impl PyBattleSession {
             .map(|frame| dto_to_python(py, &frame))
             .transpose()
     }
+    /// 重演到暂停/终局，仅把指定前缀之后的帧转换为 Python 对象。
+    /// 历史仍完整执行，随机流、错误和暂停边界与逐次 next_frame 完全一致。
+    #[pyo3(signature = (start_frame=0))]
+    fn drain_frames(&mut self, py: Python<'_>, start_frame: usize) -> PyResult<(usize, Vec<Py<PyAny>>)> {
+        let mut frames = Vec::new();
+        while let Some(frame) = self.inner.next_frame().map_err(map_cli_error)? {
+            if frame.frame_index >= start_frame {
+                frames.push(dto_to_python(py, &frame)?);
+            }
+        }
+        Ok((self.inner.frames_emitted(), frames))
+    }
     /// 正常结束或截断后返回结果副本；运行中/失败时为 None，重复读取不消费结果。
     fn result(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         self.inner.result().map(|result| dto_to_python(py, &result)).transpose()
@@ -234,6 +246,58 @@ impl PyBattleSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn draining_suffix_preserves_frames_and_final_state() {
+        Python::initialize();
+        Python::attach(|py| {
+            let open = || {
+                PyBattleSession::new(
+                    "alpha@red\n\nbeta@blue\n\nseed:instant-frame-suffix@!",
+                    None,
+                    false,
+                    true,
+                    None,
+                    None,
+                    Some(100),
+                    false,
+                    None,
+                    false,
+                    false,
+                    true,
+                    1.0,
+                )
+                .unwrap()
+            };
+            let mut full = open();
+            let mut expected = Vec::new();
+            while let Some(frame) = full.next_frame(py).unwrap() {
+                expected.push(frame);
+            }
+            assert!(!expected.is_empty());
+            for start in [0, expected.len() / 2, expected.len(), expected.len() + 3] {
+                let mut suffix = open();
+                let (count, actual) = suffix.drain_frames(py, start).unwrap();
+                assert_eq!(count, expected.len());
+                let tail = &expected[start.min(expected.len())..];
+                assert_eq!(actual.len(), tail.len());
+                for (a, b) in actual.iter().zip(tail) {
+                    assert!(a.bind(py).eq(b.bind(py)).unwrap());
+                }
+                assert!(
+                    suffix
+                        .current_states(py)
+                        .unwrap()
+                        .bind(py)
+                        .eq(full.current_states(py).unwrap().bind(py))
+                        .unwrap()
+                );
+                assert_eq!(suffix.paused_actor(), full.paused_actor());
+                assert_eq!(suffix.peek_magic_cost(), full.peek_magic_cost());
+                assert_eq!(suffix.inner.status(), full.inner.status());
+            }
+        });
+    }
 
     #[test]
     fn python_session_exposes_real_sticky_runtime_failure() {
