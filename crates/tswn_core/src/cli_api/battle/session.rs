@@ -245,15 +245,18 @@ impl BattleSession {
                 Err(payload) => {
                     if payload.downcast_ref::<PassivePause>().is_some() {
                         self.pending_passive = self.driver.runner.runtime_mut().control.take_pending_passive();
-                        let Some(updates) = self.driver.runner.runtime_mut().control.take_pending_updates() else {
-                            return Ok(None);
-                        };
                         let states = states_from_runner(
                             &self.driver.runner,
                             self.options.include_icons,
                             self.options.include_skills,
                             &mut self.icon_cache,
                         );
+                        let Some(updates) = self.driver.runner.runtime_mut().control.take_pending_updates() else {
+                            // 击倒被动可能没有待输出的消息，但吞噬等效果已改变技能/生死状态。
+                            // 暂停查询必须反映当前边界，不能退回上一可见帧的快照。
+                            self.current_states = states;
+                            return Ok(None);
+                        };
                         let mut frame = build_frame(&updates, &self.current_states, &states, &self.driver.runner);
                         frame.frame_index = self.driver.frames_emitted;
                         frame.round_index = self.driver.rounds_advanced;
@@ -647,6 +650,58 @@ mod tests {
         for id in session.driver.runner.all_player_ids() {
             session.driver.runner.runtime_mut().world.remove_round_actor(EntityIdx(id as u32));
         }
+    }
+
+    #[test]
+    fn kill_pause_refreshes_states_without_pending_updates() {
+        let raw = r#"killer@red+ol:{"attrs":[127,127,127,127,127,127,127,10000],"skills":{"quake":128,"merge":64}}
+
+victim-a@blue+ol:{"attrs":[1,1,1,1,1,1,1,1],"skills":{"zombie":32}}
+victim-b@blue+ol:{"attrs":[1,1,1,1,1,1,1,1],"skills":{"zombie":32}}
+victim-c@blue+ol:{"attrs":[1,1,1,1,1,1,1,1],"skills":{"zombie":32}}
+seed:kill-pause-snapshot@!"#;
+        let mut decisions = Vec::new();
+        let mut kills = 0;
+        for _ in 0..40 {
+            let mut session = BattleSession::new(
+                raw,
+                BattleOptions {
+                    team_upgrades: false,
+                    include_skills: true,
+                    passive_decision_mode: true,
+                    passive_decisions: decisions.clone(),
+                    ..BattleOptions::default()
+                },
+            )
+            .unwrap();
+            while session.next_frame().unwrap().is_some() {}
+            let request = session.pending_passive().expect("应在击倒被动边界暂停").clone();
+            let merge = request.skill == "core.skill.merge";
+            if merge {
+                kills += 1;
+                let target = request.target.unwrap();
+                assert!(!session.current_states().iter().find(|state| state.id == target).unwrap().alive);
+                let expected = states_from_runner(&session.driver.runner, false, true, &mut session.icon_cache);
+                assert_eq!(session.current_states(), expected);
+                if kills == 2 {
+                    assert!(
+                        session.current_states()[0]
+                            .skills
+                            .iter()
+                            .any(|skill| skill.export_name == "core.skill.zombie")
+                    );
+                    return;
+                }
+            }
+            decisions.push(crate::runtime::PassiveDecision {
+                actor: request.actor,
+                skill: request.skill,
+                activate: merge,
+                success: merge,
+                target: None,
+            });
+        }
+        panic!("未到达第二次击倒");
     }
 
     #[test]
