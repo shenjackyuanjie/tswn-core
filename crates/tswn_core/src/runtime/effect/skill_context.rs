@@ -23,6 +23,7 @@ pub struct SkillContext<'a> {
     owner: EntityIdx,
     capabilities: &'a [ExtensionCapability],
     force_passive: bool,
+    skill_multiplier: f64,
 }
 
 impl<'a> SkillContext<'a> {
@@ -53,6 +54,7 @@ impl<'a> SkillContext<'a> {
             owner: entry.owner,
             capabilities,
             force_passive: false,
+            skill_multiplier: 1.0,
         }
     }
 
@@ -77,6 +79,15 @@ impl<'a> SkillContext<'a> {
     }
 
     pub fn force_passive(&self) -> bool { self.force_passive }
+
+    pub fn with_skill_multiplier(mut self, multiplier: f64) -> Self {
+        self.skill_multiplier = multiplier;
+        self
+    }
+
+    pub fn roll_automatic_skill(&mut self, level: u32, range: u32) -> bool {
+        crate::runtime::control::roll_scaled_skill(self.rng, level, range, self.skill_multiplier)
+    }
 
     pub fn owner_idx(&self) -> EntityIdx { self.owner }
 

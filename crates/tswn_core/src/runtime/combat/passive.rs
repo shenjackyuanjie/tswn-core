@@ -340,7 +340,7 @@ impl CombatRuntime {
         if hp >= min_hp + self.rng.r63() as i32 {
             return;
         }
-        if self.rng.r63() >= level {
+        if !crate::runtime::control::roll_scaled_skill(&mut self.rng, level, 64, self.control.skill_multiplier()) {
             return;
         }
 

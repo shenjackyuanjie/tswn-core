@@ -107,7 +107,7 @@ pub use combat::{
 };
 pub use control::{
     BattleControl, DamageDecisionBatch, DamageDecisionPhase, ForcedAction, PassiveDecision, PassivePause, PassiveRequest,
-    PlannedAction, PlannedActionError, PlannedSkill,
+    PlannedAction, PlannedActionError, PlannedSkill, ThunderContext,
 };
 pub use cqp::{
     RuntimeCqpBatchResult, RuntimeCqpMatchup, RuntimeCqpMatchupResult, resolve_cqp_workers, runtime_cqp_matchups,

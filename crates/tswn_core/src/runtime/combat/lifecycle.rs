@@ -1,11 +1,8 @@
 use super::*;
 
-/// 需要玩家确认的被动技能；护盾保持自动，不在此列。
+/// 需要玩家确认的被动技能；护盾、垂死和护身符由核心自动判定。
 fn passive_decision_skill(export_name: &str) -> bool {
-    matches!(
-        export_name,
-        "core.skill.defend" | "core.skill.protect" | "core.skill.reflect" | "core.skill.reraise"
-    )
+    matches!(export_name, "core.skill.defend" | "core.skill.protect" | "core.skill.reflect")
 }
 use smallvec::SmallVec;
 
@@ -272,6 +269,17 @@ impl CombatRuntime {
             let mut force_passive = false;
             let mut force_target = None;
             let export_name = skill_export.clone().unwrap_or_default();
+            // 兼容旧即时对局已经确认的护符结果，保留原随机数消费与后续决策顺序。
+            // 没有匹配的旧决策时直接走自然判定，不再生成护符暂停点。
+            if self.control.passive_decision_mode()
+                && export_name == DEFAULT_CORE_RERAISE_SKILL_EXPORT
+                && let Some(decision) = self.control.next_passive_decision_for(owner.0 as PlrId, &export_name)
+            {
+                if !decision.activate || !decision.success {
+                    continue;
+                }
+                force_passive = true;
+            }
             let candidates = if export_name == "core.skill.protect" {
                 self.protect_target_candidates(owner)
                     .into_iter()
@@ -353,6 +361,7 @@ impl CombatRuntime {
                         None => context,
                     }
                 };
+                context = context.with_skill_multiplier(self.control.skill_multiplier());
                 if force_passive {
                     context = context.with_force_passive(true);
                 }

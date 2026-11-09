@@ -40,6 +40,8 @@ pub struct BattleOptions {
     pub passive_decision_mode: bool,
     /// 是否让召唤物也按玩家指令暂停；预览/日志重建应关闭。
     pub controlled_minions: bool,
+    /// 即时对战技能倍率；外部累计概率由调用方计算，核心用于自动护符和垂死。
+    pub skill_multiplier: f64,
 }
 
 impl Default for BattleOptions {
@@ -56,6 +58,7 @@ impl Default for BattleOptions {
             passive_decisions: Vec::new(),
             passive_decision_mode: false,
             controlled_minions: false,
+            skill_multiplier: 1.0,
         }
     }
 }

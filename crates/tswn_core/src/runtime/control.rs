@@ -11,6 +11,15 @@
 use super::{BuiltinActiveSkill, CombatRuntime, PlrId};
 use std::fmt;
 
+/// 即时对局自动技能的概率倍率。1x 保留原单字节随机流，其他倍率用 24 位精度判定。
+pub(crate) fn roll_scaled_skill(rng: &mut crate::rc4::RC4, level: u32, range: u32, multiplier: f64) -> bool {
+    if multiplier == 1.0 {
+        return (u32::from(rng.next_u8()) & (range - 1)) < level;
+    }
+    let chance = ((level.min(range) as f64 / range as f64) * multiplier).clamp(0.0, 1.0);
+    (rng.rFFFFFF() as f64 / 16_777_216.0) < chance
+}
+
 /// 一次行动要用的技能。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlannedSkill {
@@ -70,6 +79,18 @@ pub struct EvadeDecision {
     pub activate: bool,
     pub success: bool,
     pub unavoidable: bool,
+}
+
+/// 同一次雷击的暂停上下文；嵌套防御/反击暂停也保留归属，但不属于雷击回避本身。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ThunderContext {
+    pub id: u64,
+    pub attacker: PlrId,
+    pub target: PlrId,
+    pub hit: u32,
+    pub is_evade: bool,
+    /// 上一段的原始回避阈值，首段为 None；用于只累计概率差值。
+    pub previous_level: Option<u32>,
 }
 
 impl DamageDecisionBatch {
@@ -198,6 +219,9 @@ pub struct BattleControl {
     controlled_minions: bool,
     damage_batches: Vec<DamageDecisionBatch>,
     next_damage_batch_id: u64,
+    thunder: Option<ThunderContext>,
+    next_thunder_id: u64,
+    skill_multiplier: Option<f64>,
 }
 
 impl BattleControl {
@@ -273,6 +297,16 @@ impl BattleControl {
 
     pub fn passive_decision_mode(&self) -> bool { self.passive_decision_mode }
 
+    pub fn set_skill_multiplier(&mut self, multiplier: f64) { self.skill_multiplier = Some(multiplier); }
+
+    pub fn skill_multiplier(&self) -> f64 {
+        if self.passive_decision_mode {
+            self.skill_multiplier.unwrap_or(1.0)
+        } else {
+            1.0
+        }
+    }
+
     pub fn set_controlled_minions(&mut self, enabled: bool) { self.controlled_minions = enabled; }
 
     pub fn controlled_minions(&self) -> bool { self.controlled_minions }
@@ -283,11 +317,47 @@ impl BattleControl {
         Some(decision)
     }
 
+    /// 仅消费匹配的旧决策；自动护身符不能拿走后续其他被动的脚本。
+    pub(crate) fn next_passive_decision_for(&mut self, actor: PlrId, skill: &str) -> Option<PassiveDecision> {
+        let next = self.passive_decisions.get(self.passive_cursor)?;
+        if next.actor != actor || next.skill != skill {
+            return None;
+        }
+        self.next_passive_decision()
+    }
+
     pub fn set_pending_passive(&mut self, request: PassiveRequest) { self.pending_passive = Some(request); }
 
     pub fn take_pending_passive(&mut self) -> Option<PassiveRequest> { self.pending_passive.take() }
 
     pub fn pending_passive(&self) -> Option<&PassiveRequest> { self.pending_passive.as_ref() }
+
+    pub fn thunder_context(&self) -> Option<ThunderContext> { self.thunder }
+
+    pub(crate) fn begin_thunder(&mut self, attacker: PlrId, target: PlrId) {
+        if !self.passive_decision_mode {
+            return;
+        }
+        self.next_thunder_id += 1;
+        self.thunder = Some(ThunderContext {
+            id: self.next_thunder_id,
+            attacker,
+            target,
+            hit: 0,
+            is_evade: false,
+            previous_level: None,
+        });
+    }
+
+    pub(crate) fn set_thunder_hit(&mut self, hit: u32, is_evade: bool, previous_level: Option<u32>) {
+        if let Some(thunder) = self.thunder.as_mut() {
+            thunder.hit = hit;
+            thunder.is_evade = is_evade;
+            thunder.previous_level = previous_level;
+        }
+    }
+
+    pub(crate) fn finish_thunder(&mut self) { self.thunder = None; }
 
     /// Preserve updates already emitted before a passive pause unwinds the round.
     pub fn set_pending_updates(&mut self, updates: &crate::runtime::update::RunUpdates) {

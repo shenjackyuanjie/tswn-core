@@ -107,6 +107,12 @@ impl BattleSession {
             .control
             .set_passive_decision_mode(options.passive_decision_mode);
         driver.runner.runtime_mut().control.set_controlled_minions(options.controlled_minions);
+        if !options.skill_multiplier.is_finite() || !(0.1..=100.0).contains(&options.skill_multiplier) {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "技能倍率必须在 0.1x～100x 之间".into(),
+            ));
+        }
+        driver.runner.runtime_mut().control.set_skill_multiplier(options.skill_multiplier);
         let initial_states = states_from_runner(&driver.runner, options.include_icons, options.include_skills, &mut icon_cache);
         Ok(Self {
             driver,
@@ -165,6 +171,12 @@ impl BattleSession {
 
     /// 被动 hook 等待决策时返回请求；此时会话已不可继续推进。
     pub fn pending_passive(&self) -> Option<&crate::runtime::PassiveRequest> { self.pending_passive.as_ref() }
+
+    /// 当前被动暂停所在的雷击段次；雷击结束或无被动暂停时返回 None。
+    pub fn pending_thunder(&self) -> Option<crate::runtime::ThunderContext> {
+        self.pending_passive.as_ref()?;
+        self.driver.runner.runtime().control.thunder_context()
+    }
 
     /// 预读下一条外部主动技的 MP 消耗，不推进随机数。
     ///

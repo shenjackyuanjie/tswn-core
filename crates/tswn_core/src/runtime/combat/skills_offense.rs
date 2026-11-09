@@ -226,7 +226,9 @@ impl CombatRuntime {
                 .runtime
                 .agility;
         let count = 3 + self.rng.r3() as usize;
-        for _ in 0..count {
+        self.control.begin_thunder(actor.0 as PlrId, target.0 as PlrId);
+        let mut previous_level = None;
+        for hit in 0..count {
             let actor_active = self.entities.get(actor).is_some_and(EntityRecord::is_active);
             let target_alive = self.entities.get(target).is_some_and(|entity| entity.runtime.alive);
             if !actor_active || !target_alive {
@@ -244,14 +246,19 @@ impl CombatRuntime {
                     target_entity.runtime.agility + target_entity.runtime.resistance,
                 )
             };
-            if target_active && self.roll_plain_dodge(target, accuracy, target_dodge, false) {
+            self.control.set_thunder_hit(hit as u32 + 1, true, previous_level);
+            let dodged =
+                target_active && self.roll_plain_dodge_with_updates(target, accuracy, target_dodge, false, Some(updates));
+            previous_level = Some(u32::from(Self::plain_dodge_chance(accuracy, target_dodge)));
+            self.control.set_thunder_hit(hit as u32 + 1, false, previous_level);
+            if dodged {
                 updates.add(RuntimeFrame::replay_update(
                     target.0 as usize,
                     actor.0 as usize,
                     "[0][回避]了攻击",
                     0,
                 ));
-                return;
+                break;
             }
 
             accuracy -= 10;
@@ -268,6 +275,7 @@ impl CombatRuntime {
                 update.delay0 = 300;
             }
         }
+        self.control.finish_thunder();
     }
 
     pub fn drain_plain_quake_skill_into(&mut self, actor: EntityIdx, mut targets: PreparedTargetList, updates: &mut RunUpdates) {

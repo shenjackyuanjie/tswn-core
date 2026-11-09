@@ -103,7 +103,8 @@ impl PyBattleSession {
         passive_decision_mode=false,
         controlled_minions=false,
         *,
-        team_upgrades=true
+        team_upgrades=true,
+        skill_multiplier=1.0
     ))]
     fn new(
         raw: &str,
@@ -118,6 +119,7 @@ impl PyBattleSession {
         passive_decision_mode: bool,
         controlled_minions: bool,
         team_upgrades: bool,
+        skill_multiplier: f64,
     ) -> PyResult<Self> {
         let mut options = options(
             eval_rq,
@@ -131,6 +133,7 @@ impl PyBattleSession {
             controlled_minions,
         );
         options.team_upgrades = team_upgrades;
+        options.skill_multiplier = skill_multiplier;
         let planned = actions
             .unwrap_or_default()
             .into_iter()
@@ -182,6 +185,16 @@ impl PyBattleSession {
             tswn_core::runtime::DamageDecisionPhase::Defend => "defend",
         });
         dict.set_item("phase", phase)?;
+        if let Some(thunder) = self.inner.pending_thunder() {
+            let context = pyo3::types::PyDict::new(py);
+            context.set_item("id", thunder.id)?;
+            context.set_item("attacker", thunder.attacker)?;
+            context.set_item("target", thunder.target)?;
+            context.set_item("hit", thunder.hit)?;
+            context.set_item("is_evade", thunder.is_evade)?;
+            context.set_item("previous_level", thunder.previous_level)?;
+            dict.set_item("thunder", context)?;
+        }
         Ok(Some(dict.into_any().unbind()))
     }
     /// 预览指定实体使用某个技能会选中的目标 ID；不推进随机数。
@@ -239,6 +252,7 @@ mod tests {
                 false,
                 false,
                 true,
+                1.0,
             )
             .unwrap();
             session.inner.invalidate_runtime_for_test();

@@ -611,7 +611,7 @@ impl CombatRuntime {
         ));
     }
 
-    fn plain_dodge_chance(accuracy: i32, dodge_value: i32) -> u8 {
+    pub(super) fn plain_dodge_chance(accuracy: i32, dodge_value: i32) -> u8 {
         let temp = 24 + dodge_value - accuracy;
         let chance = if temp < 7 {
             7
@@ -670,6 +670,18 @@ impl CombatRuntime {
     }
 
     pub fn roll_plain_dodge(&mut self, target: EntityIdx, accuracy: i32, dodge_value: i32, unavoidable: bool) -> bool {
+        self.roll_plain_dodge_with_updates(target, accuracy, dodge_value, unavoidable, None)
+    }
+
+    /// 雷击逐段暂停时需要保留前面各段已产生的伤害与状态快照。
+    pub(super) fn roll_plain_dodge_with_updates(
+        &mut self,
+        target: EntityIdx,
+        accuracy: i32,
+        dodge_value: i32,
+        unavoidable: bool,
+        updates: Option<&RunUpdates>,
+    ) -> bool {
         if self.control.passive_decision_mode() {
             if let Some(decision) = self.control.take_evade_decision() {
                 return !decision.unavoidable && decision.activate && decision.success;
@@ -692,6 +704,9 @@ impl CombatRuntime {
                 };
                 self.control.record_damage_phase(crate::runtime::DamageDecisionPhase::Evade);
                 self.control.set_pending_passive(request);
+                if let Some(updates) = updates {
+                    self.control.set_pending_updates(updates);
+                }
                 std::panic::panic_any(PassivePause);
             };
             if unavoidable || !decision.activate || !decision.success {

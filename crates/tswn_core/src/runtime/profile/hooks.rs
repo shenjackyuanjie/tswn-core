@@ -81,7 +81,7 @@ pub fn run_merge_kill_skill(context: &mut SkillContext<'_>, entry: &SkillHookPla
 
 pub fn run_reraise_die_skill(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let level = context.skill_level(entry);
-    if !context.force_passive() && context.rng_r127() >= level {
+    if !context.force_passive() && !context.roll_automatic_skill(level, 128) {
         return;
     }
     let hp = context.rng_r16() as i32;
