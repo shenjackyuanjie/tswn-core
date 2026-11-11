@@ -38,6 +38,7 @@ mod cqp;
 pub mod effect;
 pub mod entity;
 pub mod extension;
+pub mod forced_action;
 mod handlers;
 pub mod lang;
 pub mod model_state;
