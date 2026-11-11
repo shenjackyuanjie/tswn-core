@@ -52,6 +52,16 @@ impl BattleSession {
     /// 同步推进至下一可见帧；正常结束或截断后返回 JS null，可重复调用。
     /// Runtime 失败会保留 sticky error 并重复抛错，应停止推进并释放会话。
     pub fn next_frame(&mut self) -> WasmResult<JsValue> { dto_to_js(&self.inner.next_frame().map_err(cli_api_error)?) }
+    /// 大逃杀在开局设置各角色当前 HP，最大 HP 保持原始构建值。
+    pub fn set_initial_hp(&mut self, packet: Vec<u32>) -> WasmResult<()> {
+        self.inner.set_initial_hp(&packet).map_err(cli_api_error)
+    }
+    /// 当前等待指令的实体；暂停不是终局。
+    pub fn paused_actor(&self) -> Option<u32> { self.inner.paused_actor() }
+    /// 为暂停实体提交与批量接口相同的指令，再调用 next_frame 继续。
+    pub fn submit_action(&mut self, actor: u32, skill: u32, packed_mp: u32) -> WasmResult<()> {
+        self.inner.submit_action(actor, skill, packed_mp).map_err(cli_api_error)
+    }
     #[wasm_bindgen(unchecked_return_type = "BattleStatus")]
     pub fn status(&self) -> WasmResult<JsValue> { dto_to_js(&self.inner.status()) }
     #[wasm_bindgen(unchecked_return_type = "BattleStopReason | null")]

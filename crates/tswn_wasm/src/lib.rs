@@ -370,6 +370,36 @@ pub fn battle_replay(raw_input: String, options: Option<Ts<BattleReplayOptions>>
     battle::dto_to_js(&replay)
 }
 
+/// 与 battle_replay 相同的回放，但允许卡牌前端为某个实体按顺序强制技能。
+///
+/// actions 为完整的 actor/skill/packed_mp 三元组，药水放在 packed_mp 高字节。
+/// 受控队伍指令耗尽后暂停，非法编号或不完整三元组返回 INVALID_ARGUMENT。
+#[wasm_bindgen(unchecked_return_type = "BattleReplay")]
+pub fn battle_replay_forced(
+    raw_input: String,
+    actions: Vec<u32>,
+    options: Option<Ts<BattleReplayOptions>>,
+) -> WasmResult<JsValue> {
+    install_panic_hook();
+    let options = ts_in(options)?;
+    let actions = tswn_core::runtime::forced_action::decode_actions(&actions).map_err(error::invalid_argument)?;
+    // 即使解析 raw 失败也清除尚未被会话接走的指令，不污染下一场对局。
+    struct ClearPending;
+    impl Drop for ClearPending {
+        fn drop(&mut self) { tswn_core::runtime::forced_action::clear(); }
+    }
+    let _clear_pending = ClearPending;
+    tswn_core::runtime::forced_action::set_actions(actions);
+    let result = tswn_core::cli_api::battle_replay(&raw_input, options.to_core());
+    battle::dto_to_js(&result.map_err(error::cli_api_error)?)
+}
+
+#[wasm_bindgen]
+pub fn forced_hits() -> u32 { tswn_core::runtime::forced_action::hits() }
+
+#[wasm_bindgen]
+pub fn forced_taken() -> u32 { tswn_core::runtime::forced_action::taken() }
+
 #[wasm_bindgen]
 /// 将单名转换为 DIY 文本；old/minions 省略时为 false，冲突选项由 core 校验。
 pub fn to_diy(name: String, old: Option<bool>, minions: Option<bool>) -> WasmResult<String> {
