@@ -253,3 +253,43 @@ mod tests {
         assert_eq!(controlled_team(), None);
     }
 }
+// 能力卡包在推进之前校验，非法长度、越界编号、非法强度与重复技能都拒绝。
+#[cfg(all(test, feature = "cards"))]
+mod ability_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_malformed_ability_packets() {
+        for packet in [
+            vec![0],
+            vec![0, 1],
+            vec![37, 0, 10000],
+            vec![0, 21, 10000],
+            vec![0, 0, 9999],
+            vec![0, 0, 20001],
+        ] {
+            assert!(decode_abilities(&packet).is_err(), "{packet:?}");
+        }
+        assert!(decode_abilities(&[0, 1, 10000, 0, 2, 12000]).is_err(), "重复技能必须拒绝");
+        let decoded = decode_abilities(&[0, 1, 10000, 36, 2, 20000]).unwrap();
+        assert_eq!(decoded.get("core.skill.fire"), Some(&(1, 10000)));
+        assert_eq!(decoded.get("custom.minion.possess"), Some(&(2, 20000)));
+    }
+
+    // 只有受控队伍读到卡牌；倍率按万分数换算，未受控队伍保持原值。
+    #[test]
+    fn ability_values_are_scoped_to_the_controlled_team() {
+        let mut state = ForcedState {
+            abilities: decode_abilities(&[0, 1, 11000, 29, 3, 10800]).unwrap(),
+            controlled_team: Some(0),
+            ..Default::default()
+        };
+        with_state(&mut state, || {
+            assert_eq!(ability_value(0, "core.skill.fire"), (1, 1.1));
+            assert_eq!(ability_value(0, "core.skill.shield"), (3, 1.08));
+            assert_eq!(ability_value(1, "core.skill.fire"), (0, 1.0));
+            assert_eq!(max_ability_cost(0), 3);
+            assert_eq!(max_ability_cost(1), 0);
+        });
+    }
+}
