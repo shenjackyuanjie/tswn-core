@@ -7,6 +7,8 @@
 
 use super::*;
 
+#[cfg(feature = "cards")]
+mod abilities;
 mod attack;
 mod defense;
 mod effects;

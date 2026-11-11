@@ -15,6 +15,9 @@ pub struct ForcedState {
     pub queue: Vec<ForcedAction>,
     pub controlled_team: Option<usize>,
     pub paused_actor: Option<u32>,
+    /// 能力卡为独立乘区及减耗，不参与技能熟练度读写。
+    #[cfg(feature = "cards")]
+    pub abilities: BTreeMap<String, (u32, u32)>,
     active_potions: BTreeMap<u32, (u8, i32)>,
     fallback: Option<(u32, &'static str)>,
 }
@@ -94,6 +97,125 @@ pub fn take_fallback() -> Option<(u32, &'static str)> { ACTIVE.with(|cell| cell.
 pub fn hit() { HITS.with(|cell| cell.set(cell.get() + 1)); }
 pub fn hits() -> u32 { HITS.with(|cell| cell.get()) }
 pub fn taken() -> u32 { TAKEN.with(|cell| cell.get()) }
+
+/// 能力卡内核：编号表、开局解码、按队伍取值与作用域守卫。
+/// 只随 cards feature 编译；关闭时本模块及其导出整体不存在。
+#[cfg(feature = "cards")]
+mod ability {
+    use super::*;
+
+    /// 编号与卡牌前端一致；附体和使魔自爆保留引擎的实际导出名。
+    pub const ABILITY_SKILLS: [&str; 37] = [
+        "fire",
+        "ice",
+        "thunder",
+        "quake",
+        "absorb",
+        "poison",
+        "rapid",
+        "critical",
+        "half",
+        "exchange",
+        "berserk",
+        "charm",
+        "haste",
+        "slow",
+        "curse",
+        "heal",
+        "revive",
+        "disperse",
+        "iron",
+        "charge",
+        "accumulate",
+        "assassinate",
+        "summon",
+        "clone",
+        "shadow",
+        "defend",
+        "protect",
+        "reflect",
+        "reraise",
+        "shield",
+        "counter",
+        "merge",
+        "zombie",
+        "upgrade",
+        "hide",
+        "summon-explode",
+        "possess",
+    ];
+    pub fn ability_export(id: usize) -> Option<String> {
+        ABILITY_SKILLS.get(id).map(|name| {
+            if *name == "possess" {
+                "custom.minion.possess".into()
+            } else {
+                format!("core.skill.{name}")
+            }
+        })
+    }
+    pub fn decode_abilities(packet: &[u32]) -> Result<BTreeMap<String, (u32, u32)>, &'static str> {
+        if !packet.len().is_multiple_of(3) {
+            return Err("ability packets must contain skill/cost/power triples");
+        }
+        let mut out = BTreeMap::new();
+        for effect in packet.chunks_exact(3) {
+            let Some(name) = ability_export(effect[0] as usize) else {
+                return Err("unknown ability skill");
+            };
+            if effect[1] > 20 || !(10000..=20000).contains(&effect[2]) {
+                return Err("invalid ability strength");
+            }
+            if out.insert(name, (effect[1], effect[2])).is_some() {
+                return Err("duplicate ability skill packet");
+            }
+        }
+        Ok(out)
+    }
+    pub fn ability_value(team: usize, skill: &str) -> (u32, f64) {
+        ACTIVE.with(|cell| {
+            let state = cell.borrow();
+            if state.controlled_team != Some(team) {
+                return (0, 1.0);
+            }
+            state
+                .abilities
+                .get(skill)
+                .map_or((0, 1.0), |(cost, power)| (*cost, *power as f64 / 10000.0))
+        })
+    }
+    pub fn max_ability_cost(team: usize) -> u32 {
+        ACTIVE.with(|cell| {
+            let state = cell.borrow();
+            if state.controlled_team != Some(team) {
+                return 0;
+            }
+            state.abilities.values().map(|v| v.0).max().unwrap_or(0)
+        })
+    }
+    thread_local! { static ABILITY_SCOPE: Cell<(u32,f64,u32)> = const { Cell::new((u32::MAX,1.0,0)) }; }
+    /// 技能内的随机攻击乘区按根角色隔离，嵌套反弹/反击退出后恢复原作用域。
+    pub struct AbilityScope((u32, f64, u32));
+    impl Drop for AbilityScope {
+        fn drop(&mut self) { ABILITY_SCOPE.with(|cell| cell.set(self.0)); }
+    }
+    pub fn scope_ability(root: u32, power: f64, cost: u32) -> AbilityScope {
+        AbilityScope(ABILITY_SCOPE.with(|cell| cell.replace((root, power, cost))))
+    }
+    pub fn attack_multiplier(root: u32) -> f64 {
+        ABILITY_SCOPE.with(|cell| {
+            let (owner, power, _) = cell.get();
+            if root == owner { power } else { 1.0 }
+        })
+    }
+    pub fn mp_reduction(root: u32) -> i32 {
+        ABILITY_SCOPE.with(|cell| {
+            let (owner, _, cost) = cell.get();
+            if root == owner { cost as i32 } else { 0 }
+        })
+    }
+}
+#[cfg(feature = "cards")]
+pub use ability::*;
 
 // 非法包必须在推进之前报错，不能丢尾部或把被动技能当主动技能执行。
 #[cfg(test)]
