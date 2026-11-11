@@ -181,6 +181,20 @@ impl BattleSession {
         Ok(())
     }
 
+    /// 开局配置能力卡；不修改技能组或熟练度，不能在行动后篡改配置。
+    #[cfg(feature = "cards")]
+    pub fn set_abilities(&mut self, packet: &[u32]) -> CliApiResult<()> {
+        use crate::cli_api::CliApiError;
+        if self.driver.rounds_advanced != 0 || self.driver.forced.controlled_team.is_none() {
+            return Err(CliApiError::InvalidArgument(
+                "abilities require an unadvanced controlled session".into(),
+            ));
+        }
+        self.driver.forced.abilities = crate::runtime::forced_action::decode_abilities(packet)
+            .map_err(|message| CliApiError::InvalidArgument(message.into()))?;
+        Ok(())
+    }
+
     /// 为当前暂停实体补交指令；暂停不是终局，推进会重新执行同一个行动。
     pub fn submit_action(&mut self, actor: u32, skill: u32, packed_mp: u32) -> CliApiResult<()> {
         if self.paused != Some(actor) {

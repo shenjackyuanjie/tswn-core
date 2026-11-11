@@ -52,6 +52,11 @@ impl BattleSession {
     /// 同步推进至下一可见帧；正常结束或截断后返回 JS null，可重复调用。
     /// Runtime 失败会保留 sticky error 并重复抛错，应停止推进并释放会话。
     pub fn next_frame(&mut self) -> WasmResult<JsValue> { dto_to_js(&self.inner.next_frame().map_err(cli_api_error)?) }
+    /// 独立能力乘区与 MP 减耗；三元组为技能编号、减耗量、倍率万分数。
+    #[cfg(feature = "cards")]
+    pub fn set_abilities(&mut self, packet: Vec<u32>) -> WasmResult<()> {
+        self.inner.set_abilities(&packet).map_err(cli_api_error)
+    }
     /// 大逃杀在开局设置各角色当前 HP，最大 HP 保持原始构建值。
     pub fn set_initial_hp(&mut self, packet: Vec<u32>) -> WasmResult<()> {
         self.inner.set_initial_hp(&packet).map_err(cli_api_error)

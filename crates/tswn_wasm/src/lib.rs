@@ -45,6 +45,8 @@
 //! WinRateSession / win_rate_sync 在当前线程同步计算，仅接受 thread=0/1；
 //! 不会自行创建 Web Worker。分批 step 之间需由宿主让出事件循环，或把整个计算放进 Worker。
 //! 绑定版本与核心版本分别由 [`version`] / [`core_version`] 返回。
+//! 可选 feature `cards`（默认关闭）转发 `tswn_core/cards`，只有开启时
+//! `BattleSession::set_abilities` 才参与编译，生成的 `.d.ts` 也随之一并变化。
 //! 打包、网页运行、Node/Bun 验证和资源路径见
 //! [WASM 使用说明](https://github.com/shenjackyuanjie/tswn-core/tree/main/crates/tswn_wasm)。
 
