@@ -120,7 +120,8 @@ typedef enum tswn_battle_status_t {
 } tswn_battle_status_t;
 typedef enum tswn_battle_stop_reason_t {
     TSWN_BATTLE_STOP_NONE = 0, TSWN_BATTLE_STOP_WINNER = 1,
-    TSWN_BATTLE_STOP_MAX_ROUNDS = 2, TSWN_BATTLE_STOP_NO_PROGRESS = 3
+    TSWN_BATTLE_STOP_MAX_ROUNDS = 2, TSWN_BATTLE_STOP_NO_PROGRESS = 3,
+    TSWN_BATTLE_STOP_PAUSED = 4
 } tswn_battle_stop_reason_t;
 
 /* 覆写字段前先初始化。default 永久仅写 V1，并设置 struct_size=V1_SIZE；

@@ -2,9 +2,11 @@
 from typing import Literal, TypedDict
 
 BattleStatus = Literal["running", "finished", "truncated"]
-BattleStopReason = Literal["winner", "max_rounds", "no_progress"]
+BattleStopReason = Literal["winner", "max_rounds", "no_progress", "paused"]
 
 class BattleReplay(TypedDict):
+    # 暂停实体可以继续提交行动。
+    paused_actor: int | None
     status: BattleStatus
     stop_reason: BattleStopReason
     rounds_advanced: int
@@ -19,6 +21,8 @@ class BattleReplay(TypedDict):
     state_granularity: Literal["round"]
 
 class BattlePlayerState(TypedDict):
+    # 技能导出名与当前熟练度。
+    skills: list[tuple[str, int]]
     id: int
     team_index: int
     input_team_index: int | None
