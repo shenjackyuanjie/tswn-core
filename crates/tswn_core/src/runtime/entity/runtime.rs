@@ -339,6 +339,9 @@ impl PlayerRuntime {
 
     pub fn mp_ready(&mut self, randomer: &mut RC4) -> bool {
         let require_mp = randomer.r3x3() as i32;
+        // 能力卡减耗只作用于当前技能的作用域，不改变掷骰消费。
+        #[cfg(feature = "cards")]
+        let require_mp = (require_mp - crate::runtime::forced_action::mp_reduction(self.root_owner.0)).max(0);
         if self.magic_point < require_mp {
             return false;
         }
@@ -356,7 +359,11 @@ impl PlayerRuntime {
             atk,
         ) as f64;
         let b = median_i32_3(randomer.r63() as i32 + 64, randomer.r63() as i32 + 64, atk + 64) as f64;
-        a * b * self.at_boost()
+        let at = a * b * self.at_boost();
+        // 能力卡在攻击力之后独立乘算，不额外消耗随机流。
+        #[cfg(feature = "cards")]
+        let at = at * crate::runtime::forced_action::attack_multiplier(self.root_owner.0);
+        at
     }
 
     pub fn magic_defense(&self) -> i32 { self.resistance + 64 }
@@ -470,7 +477,12 @@ impl EntityRecord {
     pub fn effective_speed(&self) -> i32 {
         let mut speed = self.states.effective_speed(self.template.speed);
         if self.runtime.upgrade_active {
-            speed += 20;
+            // 增益量独立乘算，保留原始技能等级。
+            #[cfg(feature = "cards")]
+            let power = crate::runtime::forced_action::ability_value(self.template.team, "core.skill.upgrade").1;
+            #[cfg(not(feature = "cards"))]
+            let power: f64 = 1.0;
+            speed += (20.0 * power).round() as i32;
         }
         speed
     }
@@ -513,13 +525,18 @@ impl EntityRecord {
         self.runtime.attract_bits = self.template.attract_bits;
         self.runtime.attract_bits = self.states.effective_attract(self.runtime.attract()).to_bits();
         if self.runtime.upgrade_active {
-            self.runtime.attack += 30;
-            self.runtime.defense += 30;
-            self.runtime.agility += 30;
-            self.runtime.magic += 30;
-            self.runtime.resistance += 30;
-            self.runtime.speed += 20;
-            self.runtime.wisdom += 20;
+            // 增益量独立乘算，保留原始技能等级。
+            #[cfg(feature = "cards")]
+            let power = crate::runtime::forced_action::ability_value(self.template.team, "core.skill.upgrade").1;
+            #[cfg(not(feature = "cards"))]
+            let power: f64 = 1.0;
+            self.runtime.attack += (30.0 * power).round() as i32;
+            self.runtime.defense += (30.0 * power).round() as i32;
+            self.runtime.agility += (30.0 * power).round() as i32;
+            self.runtime.magic += (30.0 * power).round() as i32;
+            self.runtime.resistance += (30.0 * power).round() as i32;
+            self.runtime.speed += (20.0 * power).round() as i32;
+            self.runtime.wisdom += (20.0 * power).round() as i32;
         }
         self.refresh_runtime_at_boost();
         if let Some(level) = hide_level {
@@ -530,9 +547,13 @@ impl EntityRecord {
                 defense: self.runtime.defense,
                 resistance: self.runtime.resistance,
             });
-            self.runtime.attract_bits = (self.runtime.attract() / 10.0).to_bits();
+            #[cfg(feature = "cards")]
+            let hide_power = crate::runtime::forced_action::ability_value(self.template.team, "core.skill.hide").1;
+            #[cfg(not(feature = "cards"))]
+            let hide_power: f64 = 1.0;
+            self.runtime.attract_bits = (self.runtime.attract() / (10.0 * hide_power)).to_bits();
             if level > 63 {
-                let boost = (level - 63) as i32;
+                let boost = ((level - 63) as f64 * hide_power).round() as i32;
                 self.runtime.agility += boost;
                 self.runtime.defense += boost;
                 self.runtime.resistance += boost;

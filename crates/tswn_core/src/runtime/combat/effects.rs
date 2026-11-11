@@ -505,8 +505,14 @@ impl CombatRuntime {
         self.ensure_effect_entity("merge", "target", target);
         let target_skills = self.entities.get(target).unwrap().template.skills.clone();
         let target_build = self.entities.get(target).unwrap().template.clone_build.clone();
-        let target_magic_point = self.entities.get(target).unwrap().runtime.magic_point;
-        let target_move_points = self.entities.get(target).unwrap().runtime.move_state.speed_points;
+        // 吞噬转移的 MP 与行动点按能力倍率放大，不改变目标自身属性。
+        #[cfg(feature = "cards")]
+        let ability_power = self.ability_value(caster, "core.skill.merge").1;
+        #[cfg(not(feature = "cards"))]
+        let ability_power: f64 = 1.0;
+        let target_magic_point = (self.entities.get(target).unwrap().runtime.magic_point as f64 * ability_power).round() as i32;
+        let target_move_points =
+            (self.entities.get(target).unwrap().runtime.move_state.speed_points as f64 * ability_power).round() as i32;
         let (merged, transfer_magic_point, transfer_move_points) = {
             let caster_entity = self
                 .entities

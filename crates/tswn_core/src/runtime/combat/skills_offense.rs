@@ -7,6 +7,9 @@ impl CombatRuntime {
         prepared: PreparedBuiltinSkillAction,
         updates: &mut RunUpdates,
     ) {
+        // 效果倍率限定于实际施法者的能力作用域。
+        #[cfg(feature = "cards")]
+        let _ability = self.ability_scope(actor, prepared.selected.skill.export_name());
         match prepared.selected.skill {
             BuiltinActiveSkill::Fire => {
                 let target = prepared.targets[0];

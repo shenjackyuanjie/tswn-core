@@ -52,6 +52,9 @@ pub fn run_shield_pre_action_skill(context: &mut SkillContext<'_>, entry: &Skill
     }
     let max = (1 + (level as i32 * 3 / 4)).max(1);
     let add = context.rng_next_i32(max) + 1;
+    // 护盾增量按能力倍率缩放；随机流与关闭 feature 时一致。
+    #[cfg(feature = "cards")]
+    let add = (add as f64 * context.ability_multiplier()).round() as i32;
     context.set_owner_shield(shield + add).expect("runtime shield skill owner must exist");
 }
 
@@ -85,6 +88,9 @@ pub fn run_reraise_die_skill(context: &mut SkillContext<'_>, entry: &SkillHookPl
         return;
     }
     let hp = context.rng_r16() as i32;
+    // 复活体力按能力倍率缩放；随机流与关闭 feature 时一致。
+    #[cfg(feature = "cards")]
+    let hp = (hp as f64 * context.ability_multiplier()).round() as i32;
     context.reraise_owner(entry, hp).expect("runtime reraise owner must exist");
     let mut reraise_update = crate::runtime::update::RunUpdate::new(
         "[0]使用[护身符]抵挡了一次死亡",

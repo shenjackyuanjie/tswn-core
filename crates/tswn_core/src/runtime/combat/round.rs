@@ -470,6 +470,12 @@ impl CombatRuntime {
                             (req_mp_byte & 15) as i32 + 8
                         }
                     };
+                    // 能力卡按玩家点名的技能减耗，最低仍消耗 1 点。
+                    #[cfg(feature = "cards")]
+                    let req_mp = (req_mp
+                        - public_builtin_skill(forced_skill)
+                            .map_or(0, |skill| self.ability_value(actor, skill.export_name()).0 as i32))
+                    .max(1);
                     let mp = {
                         let entity = self
                             .entities
@@ -540,7 +546,18 @@ impl CombatRuntime {
                 actor_entity.runtime.flags.contains(PlayerKindFlags::BOSS),
             )
         };
+        #[cfg(not(feature = "cards"))]
         let can_scan_skills = mp_before >= req_mp;
+        // 能力卡减耗可能让原本放不出的技能进入扫描。
+        #[cfg(feature = "cards")]
+        let can_scan_skills = {
+            let ability_team = self
+                .entities
+                .get(actor)
+                .and_then(|e| self.entities.get(e.runtime.root_owner))
+                .map_or(usize::MAX, |e| e.template.team);
+            mp_before >= (req_mp - crate::runtime::forced_action::max_ability_cost(ability_team) as i32).max(1)
+        };
         #[cfg(not(feature = "no_debug"))]
         let probe_action = self.probe_plain_action_matches(actor);
         #[cfg(not(feature = "no_debug"))]
@@ -596,8 +613,24 @@ impl CombatRuntime {
                 self.scan_plain_action_skill_probabilities(actor, smart)
                     .map(PreparedPlainAction::BuiltinSkill)
             };
-            self.entities.get_mut(actor).unwrap().runtime.magic_point -= req_mp;
-            selected
+            // 能力卡按实际选中的技能减耗，最低仍消耗 1 点。
+            #[cfg(feature = "cards")]
+            let cost = (req_mp
+                - match selected.as_ref() {
+                    Some(PreparedPlainAction::BuiltinSkill(prepared)) => {
+                        self.ability_value(actor, prepared.selected.skill.export_name()).0 as i32
+                    }
+                    _ => 0,
+                })
+            .max(1);
+            #[cfg(not(feature = "cards"))]
+            let cost = req_mp;
+            if mp_before < cost {
+                None
+            } else {
+                self.entities.get_mut(actor).unwrap().runtime.magic_point -= cost;
+                selected
+            }
         } else {
             None
         };
@@ -1079,6 +1112,9 @@ impl CombatRuntime {
         level: u32,
         smart: bool,
     ) -> bool {
+        // 卡牌玩家的幻术熟练度按 5 封顶；其它技能与普通对局保持原等级。
+        #[cfg(feature = "cards")]
+        let level = self.card_skill_level(actor, builtin_skill, level);
         #[cfg(not(feature = "no_debug"))]
         let probe_action = self.probe_plain_action_matches(actor);
         match builtin_skill {

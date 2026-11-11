@@ -340,6 +340,8 @@ impl CombatRuntime {
             return;
         }
 
+        #[cfg(feature = "cards")]
+        let _ability = self.ability_scope(owner, "core.skill.counter");
         if !self.entity_mp_ready(owner) {
             return;
         }

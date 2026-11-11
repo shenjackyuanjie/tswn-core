@@ -23,11 +23,7 @@ impl CombatRuntime {
         let root = self.entities.get(entity.runtime.root_owner).unwrap_or(entity);
         crate::runtime::forced_action::ability_value(root.template.team, skill)
     }
-    pub(crate) fn ability_scope(
-        &self,
-        actor: EntityIdx,
-        skill: &str,
-    ) -> crate::runtime::forced_action::AbilityScope {
+    pub(crate) fn ability_scope(&self, actor: EntityIdx, skill: &str) -> crate::runtime::forced_action::AbilityScope {
         let (cost, power) = self.ability_value(actor, skill);
         let root = self.entities.get(actor).map_or(actor, |e| e.runtime.root_owner);
         crate::runtime::forced_action::scope_ability(root.0, power, cost)

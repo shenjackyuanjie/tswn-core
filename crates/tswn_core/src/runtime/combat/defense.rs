@@ -214,6 +214,9 @@ impl CombatRuntime {
                 .get(link.owner)
                 .is_some_and(|_| self.plain_effective_team(link.owner) == target_team);
             let trigger_ok = same_group && self.rng.r127() < level;
+            // 守护按实际守护者的能力计算。
+            #[cfg(feature = "cards")]
+            let _ability = self.ability_scope(link.owner, "core.skill.protect");
             let protector_ready = trigger_ok && self.entity_mp_ready(link.owner);
 
             #[cfg(not(feature = "no_debug"))]
