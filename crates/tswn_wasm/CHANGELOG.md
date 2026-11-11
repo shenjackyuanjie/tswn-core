@@ -1,5 +1,11 @@
 # 更新日志
 
+## [Unreleased]
+
+### 新增
+
+- 新增 `cards` feature（默认关闭），转发 `tswn_core/cards`。开启后 `BattleSession.set_abilities(packet)` 可用：三元组为技能编号、减耗量、倍率万分数，让能力卡的独立乘区与减耗生效；关闭时该方法不参与编译，生成的 `.d.ts` 也不含 `set_abilities`。
+
 ## [0.5.12] - 2026-10-17
 
 ### 变更

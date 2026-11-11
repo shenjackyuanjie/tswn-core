@@ -2,6 +2,12 @@
 
 本文件记录跨 crate 的维护与兼容性变更；各 crate 的版本发布历史仍以对应 CHANGELOG 为准。
 
+## 未发布 · 2026-11-11 强制行动、受控会话与能力卡
+
+- `tswn_core`：新增卡牌强制行动与受控会话子系统（`BattleSession` 暂停/续行、`set_initial_hp`、`battle_replay` 指令重放），已进入 main；上层绑定按各自进度导出。
+- `tswn_core` / `tswn_wasm`：能力卡子系统以可选 feature `cards` 带入（默认关闭），开启后 `set_abilities` 让卡牌减耗、独立乘区与幻术熟练度上限生效；来源 `KODU16/tswn-cards@929d0db`，遗物（relic）相关代码未随本批移植。
+- 关闭该 feature 时相关字段、函数与调用点都不参与编译，默认构建的战斗规则、随机流与既有测试数量不变；开关方式见各 crate 的 README 与 CHANGELOG。
+
 ## 未发布 · 2026-10-30 日志补全
 
 - 按各模块 manifest、提交历史与当前实现补全未发布条目；版本号与发布日期维持现状，旧版本记录当时验证的测试数量和性能结论。
