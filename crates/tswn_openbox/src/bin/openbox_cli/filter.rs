@@ -125,6 +125,8 @@ fn effective_skill_level(player: &PreparedPlayer, id: usize) -> f64 {
             BuiltinSkillRef::Normal(skill) => BuiltinActiveSkill::from_legacy_key(skill).is_some(),
             BuiltinSkillRef::SummonFire | BuiltinSkillRef::SummonExplode | BuiltinSkillRef::Possess => true,
             BuiltinSkillRef::SummonShareDamage => false,
+            // 武器与身份专属技能没有普通技能键，暂不参与有效熟练度计算；如需纳入，按实际发动规则补分支。
+            _ => false,
         };
         if !active {
             continue;
