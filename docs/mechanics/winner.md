@@ -16,7 +16,7 @@
 
 ## 1. Rust 侧定义
 
-[WorldArena::sync_winner](../../crates/tswn_core/src/runtime/world.rs#L294-L311) 扫描 `EntityArena` 的 `runtime.alive`：
+[WorldArena::sync_winner](../../crates/tswn_core/src/runtime/world.rs#L367-L384) 扫描 `EntityArena` 的 `runtime.alive`：
 
 ```rust
 pub fn sync_winner(&mut self, entities: &EntityArena) -> Option<usize> {
@@ -123,7 +123,7 @@ legacy `Engine.y.a.Q` 与 Rust `WorldArena.alive_group_count` 语义一致：
 
 **判胜不属于它的合法用途。** 需要“当前存活队伍”时，用 `team_alive` 的非空槽位或实体表 `runtime.alive`。
 
-另有一处相关用法：[post-action 状态循环](../../crates/tswn_core/src/runtime/combat/round.rs#L269) 在行动者已死亡且 `alive_group_count() <= 1` 时提前跳出。那是对 legacy 行为的有意对齐，与判胜无关，本文不改动；修改它需要先拿到能区分 legacy 行为的用例。
+另有一处相关用法：[post-action 状态循环](../../crates/tswn_core/src/runtime/combat/round.rs#L329) 在行动者已死亡且 `alive_group_count() <= 1` 时提前跳出。那是对 legacy 行为的有意对齐，与判胜无关，本文不改动；修改它需要先拿到能区分 legacy 行为的用例。
 
 ## 4. 历史缺陷与修复
 
@@ -186,8 +186,8 @@ cargo test -p tswn_core --lib world_alive_view_winner
 cargo test -p tswn_test --features runtime-corpus
 
 # 名字池上的频率扫描（本地诊断，依赖未纳入版本库的 tests/sqp5900.txt）
-$env:TSWN_DIVERGENCE_BATTLES=10000
-cargo test -p tswn_core --lib pool_matchups -- --ignored --nocapture
+# 原 Rust pool_matchups 忽略测试已移除，当前名字池扫描走 legacy 探针
+node scripts/md5_winner_probe.cjs ..\fast-namerena\md5.js --names tests/sqp5900.txt --battles 10000
 
 # legacy 对照（需要外部 md5.js）
 node scripts/md5_winner_probe.cjs ..\fast-namerena\md5.js --case-dir crates/tswn_test/cases/runtime_stress
@@ -201,9 +201,9 @@ node scripts/md5_winner_probe.cjs ..\fast-namerena\md5.js --names tests/sqp5900.
 
 | 主题 | Rust | legacy `md5.js` |
 | --- | --- | --- |
-| 判胜 | [world.rs](../../crates/tswn_core/src/runtime/world.rs#L294-L335) `sync_winner` / `sync_winner_from_alive_views` | `T.Grp.prototype.dj`（17726-17749） |
+| 判胜 | [world.rs](../../crates/tswn_core/src/runtime/world.rs#L367-L408) `sync_winner` / `sync_winner_from_alive_views` | `T.Grp.prototype.dj`（17726-17749） |
 | 存活视图维护 | [world.rs](../../crates/tswn_core/src/runtime/world.rs) `add_spawned_alive` / `revive_alive` / `remove_alive` | `T.Grp.prototype.aZ`（17707-17725）、`dj` |
-| 队伍计数 | [world.rs](../../crates/tswn_core/src/runtime/world.rs#L248-L286) `alive_group_count` | `Engine.y.a.Q`（初始化 17267、递减 17742、使用 18883） |
+| 队伍计数 | [world.rs](../../crates/tswn_core/src/runtime/world.rs#L273) `alive_group_count` | `Engine.y.a.Q`（初始化 17267、递减 17742、使用 18883） |
 | 回合循环 | [round.rs](../../crates/tswn_core/src/runtime/combat/round.rs) `run_minimal_round_with_capture` | `T.Engine.prototype.O`（17514-17588） |
 | 复活技能 | [skills_lifecycle.rs](../../crates/tswn_core/src/runtime/combat/skills_lifecycle.rs) | `T.SklRevive.prototype.v`（15702-15748） |
-| 回归测试 | [winner_path_divergence_tests.rs](../../crates/tswn_core/src/runtime/tests/winner_path_divergence_tests.rs)、[world.rs 单测](../../crates/tswn_core/src/runtime/world.rs#L340) | [md5_winner_probe.cjs](../../scripts/md5_winner_probe.cjs) |
+| 回归测试 | [winner_path_divergence_tests.rs](../../crates/tswn_core/src/runtime/tests/winner_path_divergence_tests.rs)、[world.rs 单测](../../crates/tswn_core/src/runtime/world.rs#L592) | [md5_winner_probe.cjs](../../scripts/md5_winner_probe.cjs) |

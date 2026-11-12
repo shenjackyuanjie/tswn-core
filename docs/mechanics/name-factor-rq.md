@@ -16,7 +16,7 @@
 
 ## 1. 当前构造链
 
-实现位于 [namerena/build.rs](../../crates/tswn_core/src/namerena/build.rs#L255-L263)，不是旧对象模型的 `impl_ctor.rs` / `Storage`：
+实现位于 [namerena/build.rs](../../crates/tswn_core/src/namerena/build.rs#L290-L298)，不是旧对象模型的 `impl_ctor.rs` / `Storage`：
 
 ```text
 Test1 / Test2 / TestEx                           -> name_factor = 0
@@ -31,7 +31,7 @@ Test1 / Test2 / TestEx                           -> name_factor = 0
 
 ## 2. rq 改变了什么
 
-[namerena/eval_name.rs](../../crates/tswn_core/src/namerena/eval_name.rs#L65-L224) 先按 UTF-16 码元统计字符类别、类型变化和长度，再计算类别权重乘积的自然对数。对数值经过分段压缩并减去 32，得到中间量 `x`。rq 只进入最后的归一化：
+[namerena/eval_name.rs](../../crates/tswn_core/src/namerena/eval_name.rs#L67-L225) 先按 UTF-16 码元统计字符类别、类型变化和长度，再计算类别权重乘积的自然对数。对数值经过分段压缩并减去 32，得到中间量 `x`。rq 只进入最后的归一化：
 
 ```text
 x > 0       : name_factor = x / (32768 - 3500)
@@ -63,7 +63,7 @@ x < -rq     : name_factor = (x + rq) / (rq - 3)
 
 ## 3. 对属性的影响
 
-普通构造的缩放见 [namerena/build.rs](../../crates/tswn_core/src/namerena/build.rs#L412-L439)；分身使用同类公式重新派生，见 [runtime/entity.rs](../../crates/tswn_core/src/runtime/entity.rs#L216-L230)。
+普通构造的缩放见 [namerena/build.rs](../../crates/tswn_core/src/namerena/build.rs#L469-L486)；分身使用同类公式重新派生，见 [runtime/entity.rs](../../crates/tswn_core/src/runtime/entity.rs#L229-L250)。
 
 ```text
 攻击 / 防御 / 基础速度 / 敏捷 / 魔法 / 抗性:
@@ -93,7 +93,7 @@ HP:
 
 ## 4. seed 与 rq 是两个独立维度
 
-当前胜率批处理的 [profile_seed_for_round](../../crates/tswn_core/src/runtime/batch.rs#L340-L348) 不按 rq 分支：
+当前胜率批处理的 [profile_seed_for_round](../../crates/tswn_core/src/runtime/batch.rs#L375-L381) 不按 rq 分支：
 
 ```text
 round == 0  -> 不附加 profile seed
