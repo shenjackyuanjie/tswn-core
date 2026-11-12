@@ -47,6 +47,7 @@
 - [全仓库更新日志](../CHANGELOG.md)：跨组件变更汇总，各 crate 的历史条目继续保留。
 - [2026-10 综合维护报告](maintenance-2026-10.md)：源码、依赖与文档审查的统一覆盖和验收。
 - [2026-10 文档审查覆盖与验证](reviews/2026-10-maintenance-doc-audit.md)：148 份受跟踪 Markdown、33 份脚本源文件的逐项清单、主要过时点与实际验证边界。
+- [2026-10 fix/Rinick-feature 补丁分支](reviews/2026-10-fix-rinick-feature.md)：两处战斗语义修正（隐匿×狂暴、诅咒×蓄力）的根因、改动、测试与语料影响，供开发者按需 cherry-pick。
 
 主 Runtime 的 release 行为与完整 corpus 回归入口：
 

@@ -202,7 +202,7 @@ fn plain_curse_skill_applies_state_after_damage() {
 }
 
 #[test]
-fn plain_curse_on_damage_stacks_charge_bonus_without_reapplying_atk_sum() {
+fn plain_curse_on_damage_stacks_caster_charge_bonus_without_reapplying_atk_sum() {
     let mut builder = ExtensionRegistryBuilder::default();
     builder
         .register_state(
@@ -216,12 +216,13 @@ fn plain_curse_on_damage_stacks_charge_bonus_without_reapplying_atk_sum() {
     let registry = builder.build();
     let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
         vec![
-            PlayerTemplate::new(1, "caster", 0, 100, 3),
-            PlayerTemplate::new(2, "charged-target", 1, 100, 3).with_target_score_stats(0, 7, 1.0),
+            // 蓄力的是施法者：诅咒才应当拿到 +10 prob / +1 multiply 的蓄力加成。
+            PlayerTemplate::new(1, "charged-caster", 0, 100, 3),
+            PlayerTemplate::new(2, "target", 1, 100, 3).with_target_score_stats(0, 7, 1.0),
         ],
         registry,
     ));
-    runtime.entities.get_mut(EntityIdx(1)).unwrap().activate_charge_runtime();
+    runtime.entities.get_mut(EntityIdx(0)).unwrap().activate_charge_runtime();
     let mut updates = RunUpdates::new();
 
     runtime.apply_curse_on_damage(EntityIdx(0), EntityIdx(1), 1, &mut updates);
@@ -240,6 +241,41 @@ fn plain_curse_on_damage_stacks_charge_bonus_without_reapplying_atk_sum() {
             .map(|update| (update.message.as_ref(), update.score))
             .collect::<Vec<_>>(),
         vec![("[1]被[诅咒]了", 60), ("[1]被[诅咒]了", 60)]
+    );
+}
+
+#[test]
+fn plain_curse_on_damage_ignores_target_charge_bonus() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    builder
+        .register_state(
+            "core",
+            "curse",
+            DEFAULT_CORE_CURSE_STATE_EXPORT,
+            ProcMask::POST_DEFEND,
+            SkillPriority(10_000),
+        )
+        .expect("curse state should register");
+    let registry = builder.build();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "caster", 0, 100, 3),
+            // 目标蓄力不再影响诅咒强度：基础 42/2，叠一次后 52/3。
+            PlayerTemplate::new(2, "charged-target", 1, 100, 3).with_target_score_stats(0, 7, 1.0),
+        ],
+        registry,
+    ));
+    // main 的蓄力口径是运行时 charge 状态；目标蓄力不应改变诅咒强度。
+    runtime.entities.get_mut(EntityIdx(1)).unwrap().activate_charge_runtime();
+    let mut updates = RunUpdates::new();
+
+    runtime.apply_curse_on_damage(EntityIdx(0), EntityIdx(1), 1, &mut updates);
+    runtime.apply_curse_on_damage(EntityIdx(0), EntityIdx(1), 1, &mut updates);
+
+    let target = runtime.entities.get(EntityIdx(1)).unwrap();
+    assert_eq!(
+        target.states.entry(PLAIN_CURSE_STATE_KEY).map(|entry| entry.payload.clone()),
+        Some(StatePayload::Curse { prob: 52, multiply: 3 })
     );
 }
 
