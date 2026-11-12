@@ -181,6 +181,47 @@ impl BattleSession {
         Ok(())
     }
 
+    /// 输入席位映射到机制队伍，不能把排序后的机制编号当作网站席位。
+    fn target_runtime_team(&self, input_team: usize) -> CliApiResult<usize> {
+        self.initial_states
+            .iter()
+            .find(|s| s.input_team_index == Some(input_team))
+            .map(|s| s.team_index)
+            .ok_or_else(|| crate::cli_api::CliApiError::InvalidArgument(format!("unknown target input team {input_team}")))
+    }
+
+    /// 首次推进前设置每条脚本的目标席位；长度必须与待执行脚本完全相同。
+    pub fn set_action_target_teams(&mut self, teams: &[Option<usize>]) -> CliApiResult<()> {
+        if self.rounds_advanced() != 0
+            || self.frames_emitted() != 0
+            || self.paused.is_some()
+            || self.pending_passive.is_some()
+            || self.is_done()
+            || self.is_failed()
+            || teams.len() != self.driver.runner.runtime().planned_actions_pending()
+        {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "target teams require an unstarted, matching action script".into(),
+            ));
+        }
+        let mapped = teams
+            .iter()
+            .map(|team| team.map(|t| self.target_runtime_team(t)).transpose())
+            .collect::<CliApiResult<Vec<_>>>()?;
+        self.driver.runner.runtime_mut().control.set_action_target_teams(&mapped);
+        Ok(())
+    }
+
+    /// 在当前暂停点按指定输入席位预览首段，保持真实战场与随机流不变。
+    pub fn preview_targets_for_team(&mut self, actor: PlrId, skill: PlannedSkill, input_team: usize) -> CliApiResult<Vec<PlrId>> {
+        let team = self.target_runtime_team(input_team)?;
+        self.driver
+            .runner
+            .runtime_mut()
+            .preview_targeted_planned_targets(EntityIdx(actor as u32), skill, false, Some(team))
+            .map_err(|e| crate::cli_api::CliApiError::InvalidArgument(e.to_string()))
+    }
+
     /// 受控单位逼停回放时返回等待指令的实体 ID；非暂停边界为 `None`。
     ///
     /// 暂停不是终局：[`Self::result`] 仍为 `None`，`status` 仍为 running。暂停边界已经
@@ -276,6 +317,11 @@ impl BattleSession {
         Ok(())
     }
     pub fn pending_passive(&self) -> Option<&crate::runtime::PassiveRequest> { self.pending_passive.as_ref() }
+
+    /// 按被动脚本索引读取回避结算；None等待中，false未执行或被覆盖，true实际执行。
+    pub fn evade_result(&self, decision_index: usize) -> Option<bool> {
+        self.driver.runner.runtime().control.evade_result(decision_index)
+    }
 
     /// 当前被动暂停所在的雷击段次；雷击结束或无被动暂停时返回 None。
     pub fn pending_thunder(&self) -> Option<crate::runtime::ThunderContext> {

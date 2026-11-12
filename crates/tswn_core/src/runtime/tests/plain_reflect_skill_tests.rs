@@ -144,3 +144,43 @@ fn reflected_fire_attack_keeps_fire_on_damage_callback() {
 
     assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(91), 0.5);
 }
+
+#[test]
+fn frozen_incoming_caster_cannot_bypass_manual_reflect_decision() {
+    let config = default_custom_runtime_import_config().unwrap();
+    let reflect = config.registry.skill_id_by_export_name(DEFAULT_CORE_REFLECT_SKILL_EXPORT).unwrap();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "caster", 0, 100, 3),
+            PlayerTemplate::new(2, "reflector", 1, 100, 3)
+                .with_magic_point(100)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(reflect, 128)])),
+        ],
+        config.registry,
+    ));
+    runtime.set_skill_handler(reflect, run_reflect_pre_defend_skill);
+    runtime.control.set_passive_decision_mode(true);
+    runtime
+        .entities
+        .get_mut(EntityIdx(0))
+        .unwrap()
+        .states
+        .add_entry(StateEntry::ice(PLAIN_ICE_STATE_KEY, 2));
+    let mut updates = RunUpdates::new();
+    let mut value = RuntimeDefendValue::Atp {
+        value: 50.0,
+        kind: DamageKind::Default,
+        caster: EntityIdx(0),
+        target: EntityIdx(1),
+        is_magic: true,
+    };
+    let paused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        runtime.drain_pre_defend_hooks_into(EntityIdx(1), &mut updates, &mut value);
+    }));
+    assert!(paused.is_err());
+    assert_eq!(
+        runtime.control.pending_passive().unwrap().skill,
+        DEFAULT_CORE_REFLECT_SKILL_EXPORT
+    );
+    assert!(updates.updates.is_empty());
+}

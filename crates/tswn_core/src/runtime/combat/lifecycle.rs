@@ -424,7 +424,7 @@ impl CombatRuntime {
             _ => None,
         };
         let reflect_caster_active = export_name != DEFAULT_CORE_REFLECT_SKILL_EXPORT
-            || self.entities.get(defend_value.caster()).is_some_and(EntityRecord::is_active);
+            || self.entities.get(defend_value.caster()).is_some_and(|entity| entity.runtime.active());
         let force_passive =
             if self.control.passive_decision_mode() && passive_decision_skill(&export_name) && reflect_caster_active {
                 let Some(decision) = self.control.next_passive_decision() else {

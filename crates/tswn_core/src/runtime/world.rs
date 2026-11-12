@@ -268,6 +268,19 @@ impl WorldArena {
 
     pub fn team_alive(&self, team: usize) -> Option<&[EntityIdx]> { self.team_alive.get(team).map(Vec::as_slice) }
 
+    /// 仅供目标预选使用的双队视图；不提交到真实战场，也不推进战斗。
+    pub(crate) fn targeting_duel(&self, actor_team: usize, target_team: usize) -> Self {
+        let mut view = self.clone();
+        for (team, alive) in view.team_alive.iter_mut().enumerate() {
+            if team != actor_team && team != target_team {
+                alive.clear();
+            }
+        }
+        view.flat_alive.retain(|id| view.team_alive.iter().any(|team| team.contains(id)));
+        view.alive_group_count = view.team_alive.iter().filter(|team| !team.is_empty()).count();
+        view
+    }
+
     pub fn flat_alive(&self) -> &[EntityIdx] { &self.flat_alive }
 
     pub fn alive_group_count(&self) -> usize { self.alive_group_count }

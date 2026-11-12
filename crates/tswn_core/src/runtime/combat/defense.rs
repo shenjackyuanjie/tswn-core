@@ -828,10 +828,9 @@ impl CombatRuntime {
                 }
                 std::panic::panic_any(PassivePause);
             };
-            if unavoidable || !decision.activate || !decision.success {
-                return false;
-            }
-            return true;
+            let success = !unavoidable && decision.activate && decision.success;
+            self.control.record_direct_evade_result(success);
+            return success;
         }
         PlayerRuntime::dodge(accuracy, dodge_value, &mut self.rng)
     }
