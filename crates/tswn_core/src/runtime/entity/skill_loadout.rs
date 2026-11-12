@@ -698,7 +698,7 @@ impl SkillLoadout {
     pub fn merge_fixed_lanes_from(&mut self, source: &Self, policy: MergePolicy) -> bool {
         match policy {
             MergePolicy::None => false,
-            MergePolicy::FixedLane => {
+            MergePolicy::FixedLane | MergePolicy::FixedLaneHalfResources => {
                 // legacy 的 Merge 只会按双方 `slot_skill` 的位置配对；store 中额外注册的
                 // 分摊伤害等技能不属于固定槽位，不能挤进普通技能槽位。
                 let lane_count = self.merge_lane_order.len().min(source.merge_lane_order.len());

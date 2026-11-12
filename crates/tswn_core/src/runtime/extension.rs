@@ -209,6 +209,8 @@ pub enum MergePolicy {
     None,
     #[default]
     FixedLane,
+    /// 固定槽位合并技能，但只获得目标一半的 MP 差值与行动点（bed2 召唤物玩法）。
+    FixedLaneHalfResources,
     DropUnmappedSkills,
 }
 

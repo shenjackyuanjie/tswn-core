@@ -272,5 +272,6 @@ pub(super) fn merge_id(policy: MergePolicy) -> i32 {
         MergePolicy::None => 1,
         MergePolicy::FixedLane => 2,
         MergePolicy::DropUnmappedSkills => 3,
+        MergePolicy::FixedLaneHalfResources => 4,
     }
 }

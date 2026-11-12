@@ -17,6 +17,21 @@ fn summon_share_level(runtime: &CombatRuntime, summoned: EntityIdx) -> u32 {
 }
 
 #[test]
+fn default_custom_profile_halves_bed2_summon_merge_resources() {
+    let config = default_custom_runtime_import_config().expect("default runtime profile should build");
+    let summon_kind = config
+        .bed2_minion_overlays
+        .as_ref()
+        .expect("default runtime profile should configure bed2 minion overlays")
+        .summon
+        .summon_kind;
+
+    assert_eq!(
+        config.registry.player_kind(summon_kind).unwrap().policies.merge,
+        MergePolicy::FixedLaneHalfResources
+    );
+}
+#[test]
 fn plain_summon_probability_gates_low_smart_hp_and_alive_remembered_entity_without_rng() {
     let mut runtime = summon_runtime();
     let owner = EntityIdx(1);

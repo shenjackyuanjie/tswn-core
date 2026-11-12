@@ -660,6 +660,61 @@ fn flush_effects_merges_fixed_lane_skill_loadout() {
 }
 
 #[test]
+fn flush_effects_merges_fixed_lanes_with_half_resource_gain() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let skill_a = builder
+        .register_skill("custom", "a", "custom.a", TargetPolicy::Enemy, SkillPriority(0))
+        .expect("skill should register");
+    let skill_b = builder
+        .register_skill("custom", "b", "custom.b", TargetPolicy::Enemy, SkillPriority(1))
+        .expect("skill should register");
+    let merge_kind = builder
+        .register_player_kind_with_policies(
+            "custom",
+            "half-resource-merge",
+            "custom.half_resource_merge",
+            PlayerKindFlags::SUMMON,
+            PlayerKindPolicies {
+                owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                damage_share: DamageSharePolicy::None,
+                merge: MergePolicy::FixedLaneHalfResources,
+                inherit_owner_def_res: false,
+            },
+        )
+        .expect("merge kind should register");
+    let registry = builder.build();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::with_kind(1, "left", merge_kind, 0, 10, 3)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(skill_a, 1)])),
+            PlayerTemplate::new(2, "right", 1, 10, 3).with_skill_loadout(SkillLoadout::from_skill_levels([(skill_b, 2)])),
+        ],
+        registry,
+    ));
+    {
+        let caster = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+        caster.runtime.magic_point = 11;
+        caster.runtime.move_state.speed_points = 22;
+        let target = runtime.entities.get_mut(EntityIdx(1)).unwrap();
+        target.runtime.magic_point = 777;
+        target.runtime.move_state.speed_points = 888;
+    }
+    runtime.effects.push(QueuedEffect::Merge {
+        caster: EntityIdx(0),
+        target: EntityIdx(1),
+    });
+
+    runtime.flush_effects().expect("merge should emit update");
+
+    let caster = runtime.entities.get(EntityIdx(0)).unwrap();
+    assert_eq!(caster.template.skills.levels(), &[2]);
+    assert_eq!(caster.runtime.magic_point, 394);
+    assert_eq!(caster.runtime.move_state.speed_points, 466);
+    let target = runtime.entities.get(EntityIdx(1)).unwrap();
+    assert_eq!(target.runtime.magic_point, 0);
+    assert_eq!(target.runtime.move_state.speed_points, 0);
+}
+#[test]
 fn flush_effects_merge_drops_unmapped_skills_when_policy_requires() {
     let mut builder = ExtensionRegistryBuilder::default();
     let skill_a = builder

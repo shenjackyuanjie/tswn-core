@@ -585,13 +585,20 @@ impl CombatRuntime {
                     }
                 }
             }
+            // bed2 召唤物只拿目标一半的 MP 差值与行动点；其它策略保持全量转移。
+            let half_resources = matches!(caster_entity.runtime.policies.merge, MergePolicy::FixedLaneHalfResources);
             let transfer_magic_point = target_magic_point > caster_entity.runtime.magic_point;
             if transfer_magic_point {
-                caster_entity.runtime.magic_point = target_magic_point;
+                let gain = target_magic_point - caster_entity.runtime.magic_point;
+                caster_entity.runtime.magic_point += if half_resources { gain / 2 } else { gain };
             }
             let transfer_move_points = target_move_points > caster_entity.runtime.move_state.speed_points;
             if transfer_move_points {
-                caster_entity.runtime.move_state.speed_points += target_move_points;
+                caster_entity.runtime.move_state.speed_points += if half_resources {
+                    target_move_points / 2
+                } else {
+                    target_move_points
+                };
             }
             if merged_attrs || merged_skills {
                 // legacy Merge 在属性或技能发生变化后统一调用 update_states；即使本次

@@ -311,7 +311,7 @@ pub fn default_custom_runtime_import_config() -> Result<CustomRuntimeImportConfi
         PlayerKindPolicies {
             owner_resolution: OwnerResolutionPolicy::RootOwner,
             damage_share: DamageSharePolicy::ShareToOwner,
-            merge: MergePolicy::FixedLane,
+            merge: MergePolicy::FixedLaneHalfResources,
             inherit_owner_def_res: true,
         },
     )?;
