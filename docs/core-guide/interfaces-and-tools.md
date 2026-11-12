@@ -72,7 +72,7 @@ try {
 }
 ```
 
-示例把绑定模块放在当前目录；实际分发路径按 [WASM README](../../crates/tswn_wasm/README.md) 配置。`BattleSession` 返回规范 DTO，`FightSession` 保留旧页面字段投影，新接入从规范接口开始最直接。
+示例把绑定模块放在当前目录；实际分发路径按 [WASM README](../../crates/tswn_wasm/README.md) 配置。`BattleSession` 返回规范 DTO，`FightSession` 保留旧页面字段投影，新接入从规范接口开始最直接。手动/卡牌玩法用受控会话逐手驱动：受控队伍缺指令时 `paused_actor()` 给出等待者，`submit_action(actor, skill, packed_mp)` 补指令后继续，详见 [会话与回放](sessions-and-replay.md)。
 
 `WinRateSession.step(batch_size)` 让应用分批计算并报告进度。每次调用是同步的，页面在批次间让出事件循环或自行放入 Web Worker；当前 WASM 胜率运行单 worker。
 
@@ -89,7 +89,7 @@ for frame in session:
 result = session.result()
 ```
 
-BattleSession 是可迭代对象，frame 与 result 经规范 DTO 转成 dict/list。评分、胜率、格式转换等高层 helper 直接注册在 `tswn_py` 顶层（例如 `tswn_py.score`）；`cli_api` 是 Rust 内部模块，不是可导入的 Python 子模块。Runner/PreparedRunner pyclass 支持高级机制和重复阵容计算。
+BattleSession 是可迭代对象，frame 与 result 经规范 DTO 转成 dict/list。评分、胜率、格式转换等高层 helper 直接注册在 `tswn_py` 顶层（例如 `tswn_py.score`）；`cli_api` 是 Rust 内部模块，不是可导入的 Python 子模块。Runner/PreparedRunner pyclass 支持高级机制和重复阵容计算。受控会话同样可用：构造时传 `controlled_teams`，用 `queue_actions` 预排或补指令，`paused_actor` 读等待指令的实体，详见 [会话与回放](sessions-and-replay.md)。
 
 Python 异常携带对应 code，Runtime failure 由 `is_failed` 查询。Python 包的 `.pyi` 提供宿主签名，Cargo doc 提供 Rust 适配结构；安装和示例见 [Python README](../../crates/tswn_py/README.md)。
 

@@ -4,7 +4,7 @@
 
 这套指南面向已经了解 namerena 游戏、希望理解或使用 tswn 的读者。你熟悉的名字、八围、技能、阵营、召唤物与战斗消息，在这里都会对应到具体数据结构和执行阶段。阅读时可以先沿着一场对局走，再按兴趣深入 hook、语言绑定、批量工具或学习数据。
 
-**初稿基准：2026-10-14，core 0.7.0、WASM 0.5.7；2026-10-23 复核现行入口与展示说明。** 初稿版本号不是当前安装清单；当前版本与 feature 以各 crate 的 Cargo.toml 为准。字段和签名可以通过源码链接与 Cargo doc 继续查阅，版本变化由各 crate CHANGELOG 记录。
+**版本与 feature 以各 crate 的 Cargo.toml 为准**，版本变化记录在各 crate 的 CHANGELOG。字段和签名可以通过源码链接与 Cargo doc 继续查阅。
 
 ## 阅读路线
 
@@ -13,7 +13,7 @@
 | 项目整体是什么 | [项目地图](project-map.md) → [一场战斗](battle-flow.md) | 找到各工具与 core 的关系 |
 | 熟悉游戏，第一次看引擎 | [角色构建](name-to-player.md) → [运行时模型](runtime-model.md) → [战斗流程](battle-flow.md) | 将游戏概念映射到代码 |
 | 技能和状态怎样执行 | [技能与 hook](skills-and-hooks.md) → [状态与召唤物](statuses-and-minions.md) | 理解阶段、排序、嵌套效果和归属 |
-| 接入网页、程序或脚本 | [会话与回放](sessions-and-replay.md) → [交互与工具](interfaces-and-tools.md) | 正确推进会话、处理结果和释放资源 |
+| 接入网页、程序或脚本 | [会话与回放](sessions-and-replay.md) → [交互与工具](interfaces-and-tools.md) | 正确推进会话、处理受控暂停、结果和释放资源 |
 | 对拍、复现或修改机制 | [随机与兼容](randomness-and-compatibility.md) → [开发与排查](contributing-and-debugging.md) | 固定输入和 seed，定位第一处差异 |
 | 胜率、筛号或机器学习 | [项目地图](project-map.md) → [数据与批量计算](datasets-and-extension.md) | 选择 PreparedRunner、DS4 或 PWP 链路 |
 
