@@ -162,7 +162,7 @@ tswn_capi.dll.exp
 
 ## 6. `clang++` 动态链接命令
 
-这是 Windows 下最稳妥、最省心的方案。
+这是 Windows 下最稳妥的方案。
 
 以下命令继续以 C API 包根目录为工作目录：
 
@@ -335,7 +335,7 @@ g++ openbox_capi_prepare.cpp libtswn_capi.dll.a -o openbox_capi_prepare.exe -O3 
 ### 推荐 3：`g++`
 
 只有在你明确使用 MinGW / `g++` 时再考虑。  
-若 `g++` 不能直接吃 `.dll.lib`，则需要自行转 `.dll.a`。
+若 `g++` 不能直接使用 `.dll.lib`，则需要自行转换成 `.dll.a`。
 
 ---
 
@@ -402,7 +402,7 @@ ntdll.lib
 
 ---
 
-### 12.4 `g++` 不认 `.dll.lib`
+### 12.4 `g++` 无法识别 `.dll.lib`
 
 这是库格式兼容问题，不是命令写错。  
 解决方式：

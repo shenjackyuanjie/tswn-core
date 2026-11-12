@@ -1,6 +1,6 @@
-# 主 Runtime 0.5 迁移指南
+# 主 Runtime 迁移与发布门禁
 
-`tswn_core 0.5.0` 完成主 Runtime 独立化，并删除仓库内的旧执行器与对象模型。本次是有意的破坏性升级：不提供 Rust 兼容壳，也不再允许 CLI 或绑定层选择旧执行器。
+迁移已经完成：`tswn_core 0.5.0` 完成主 Runtime 独立化，并删除仓库内的旧执行器与对象模型。本文保留当时的版本边界、删除面清单与回归门禁，作为发布行为与「已删除入口不再回流」的维护记录。本次是有意的破坏性升级：不提供 Rust 兼容壳，也不再允许 CLI 或绑定层选择旧执行器。
 
 ## 版本边界
 
@@ -55,7 +55,7 @@ cargo run -p tswn_core --bin tswn-cli -- runtime normalized-run -f input.txt --m
 | --- | --- |
 | `Runner.round_tick*()` | `Runner.main_round()` |
 | `runner.world_state.winner` | `runner.winner_team_index()` / `winner_team_indices()` |
-| `runner.storage`、`Storage`、`WorldState`、`Player` getter | `runner.snapshot_players()`、`alives*()`、`all_plrs()`、`input_groups` |
+| `runner.storage`、`Storage`、`WorldState`、`Player` getter | `runner.snapshot_players()`、`alives()` / `alives_flat()`、`all_plrs()`、`get_input_groups()` |
 | parity helper | 运行仓库冻结 corpus |
 
 `run_to_completion()` 与 `Runner.build_replay(limit=None)` 都受 20,000 主回合保护。后者的显式 `limit` 另按可见事件数计量，不能当作帧数或替换主回合预算；完整回合 frame 与截断的扁平 events 可能覆盖不同长度。普通对局优先使用规范 `BattleSession` / `battle_replay`。
@@ -70,7 +70,7 @@ if (tswn_capi_abi_version() != 4) {
 }
 ```
 
-从 `tswn_capi 0.5.x` 升级时必须重新编译并重新链接调用方。
+从 `tswn_capi 0.5.x` 升级的调用方必须重新编译并重新链接；当前 ABI 仍为 4，后续升级同样以 ABI 版本为准。
 
 ## WASM 与 replay
 

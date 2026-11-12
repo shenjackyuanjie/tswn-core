@@ -30,7 +30,7 @@
 2. **展示状态层**：`initial` 事件的派生属性、HP、MP、`name_factor` 等。`BattlePlayerState` 不含完整技能 loadout，不能用这一层代替技能构造检查。
 3. **战斗层**：逐帧 updates、状态、终止原因、胜者与推进次数。初始状态相同还不足以证明分身重建、行动顺序和召唤物行为相同。
 
-源码层应对照 [PreparedPlayer 构造](../../crates/tswn_core/src/namerena/build.rs)、[SkillLoadoutSpec](../../crates/tswn_core/src/namerena/skill.rs)、[导出器](../../crates/tswn_core/src/cli_api/parse.rs#L83-L185) 与 [BattlePlayerState](../../crates/tswn_core/src/cli_api/battle/dto.rs#L40-L75)。
+源码层应对照 [PreparedPlayer 构造](../../crates/tswn_core/src/namerena/build.rs)、[SkillLoadoutSpec](../../crates/tswn_core/src/namerena/skill.rs)、[导出器](../../crates/tswn_core/src/cli_api/parse.rs#L83-L108) 与 [BattlePlayerState](../../crates/tswn_core/src/cli_api/battle/dto.rs#L91-L156)。
 
 ## 3. 当前 CLI 冒烟工作流
 
@@ -55,7 +55,7 @@ Set-Content -Encoding utf8 target/diy_docs_smoke/input_ol.txt "$alpha`n`n$beta"
 & $cli fight -f target/diy_docs_smoke/input_ol.txt --jsonl --max-rounds 20000 > target/diy_docs_smoke/fight_ol.jsonl
 ```
 
-PowerShell 示例使用原生换行转义；也可以直接写多行字符串。`to-diy --no-details` 仅关闭属性附加详情，不关闭 CLI 欢迎 banner，所以机器回读应使用 `-o` 输出文件，见 [to_diy.rs](../../crates/tswn_core/src/bin/tswn_cli/to_diy.rs#L10-L28) 与 [main.rs](../../crates/tswn_core/src/bin/tswn_cli/main.rs#L75-L86)。自动化时请统一 UTF-8 输出，并检查每次 CLI 的退出码与 stderr。JSONL 外壳固定为 `{"type":"initial|frame|result","data":...}`，不是旧的 raw 文本；实现与逐行刷新测试见 [fight/driver.rs](../../crates/tswn_core/src/bin/tswn_cli/fight/driver.rs)。
+PowerShell 示例使用原生换行转义；也可以直接写多行字符串。`to-diy --no-details` 仅关闭属性附加详情，不关闭 CLI 欢迎 banner，所以机器回读应使用 `-o` 输出文件，见 [to_diy.rs](../../crates/tswn_core/src/bin/tswn_cli/to_diy.rs#L14-L32) 与 [main.rs](../../crates/tswn_core/src/bin/tswn_cli/main.rs#L75-L83)。自动化时请统一 UTF-8 输出，并检查每次 CLI 的退出码与 stderr。JSONL 外壳固定为 `{"type":"initial|frame|result","data":...}`，不是旧的 raw 文本；实现与逐行刷新测试见 [fight/driver.rs](../../crates/tswn_core/src/bin/tswn_cli/fight/driver.rs)。
 
 > 文件批量导出使用 `to-diy -f names.txt -o diy.txt`，按非空行输出名字；原始战斗中的空行分组需要由调用方保留，不能把批量转换结果直接当作已保留队伍边界的战斗文件。需要模板时加 `--minions`；此选项只支持 OL，不能与 `--old` 同时使用。
 
@@ -97,8 +97,8 @@ cargo test -p tswn_core --lib plain_raw_import_tests
 
 当前确定的限制与边界：
 
-- **武器行为不能完整还原**：提供 attrs 或 skills 的 DIY / OL 会关闭武器构造，导出器也不输出武器信息。即使八围可被保存，武器技能或运行期行为仍可能不同，见 [build.rs](../../crates/tswn_core/src/namerena/build.rs#L274-L294)。
-- **加成由当前元数据表示**：`SkillBoost` 保留 Normal / LastBoost / SlotBoost；原生构造在技能已有 boosted 标记时跳过重复末端加成，见 [build.rs](../../crates/tswn_core/src/namerena/build.rs#L385-L408)。不要沿用旧 `Skill.diy_boost` 对象字段或把旧“双 boost 丢失”统计当作当前缺陷结论。
+- **武器行为不能完整还原**：提供 attrs 或 skills 的 DIY / OL 会关闭武器构造，导出器也不输出武器信息。即使八围可被保存，武器技能或运行期行为仍可能不同，见 [build.rs](../../crates/tswn_core/src/namerena/build.rs#L309-L319)。
+- **加成由当前元数据表示**：`SkillBoost` 保留 Normal / LastBoost / SlotBoost；原生构造在技能已有 boosted 标记时跳过重复末端加成，见 [build.rs](../../crates/tswn_core/src/namerena/build.rs#L539-L578)。不要沿用旧 `Skill.diy_boost` 对象字段或把旧“双 boost 丢失”统计当作当前缺陷结论。
 - **模板导出有范围**：`to-diy --minions` 导出当前可生成或显式配置的 shadow / summon / zombie 模板，并省略 0 等级技能；它不是任意运行期实体与状态的存档格式。
 
 ## 6. 历史验证记录

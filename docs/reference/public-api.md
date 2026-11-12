@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-三端方法保持一致：`initial_states()`、`current_states()`、`next_frame()`、`status()`、`stop_reason()`、`is_done()`、`is_failed()`、`is_finished()`、`is_truncated()`、`rounds_advanced()`、`frames_emitted()`、`result()`。C 通过对应 JSON / enum 输出参数提供这些状态；计数和完成标记包含在 result JSON 中。受控会话另有 `paused_actor()`、`paused_forced_action()`、`pending_passive()`、`pending_thunder()`、`peek_magic_cost()`、`preview_targets()`、`queue_actions()`、`submit_action()`、`set_initial_hp()` 与（`cards` feature）`set_abilities()`。
+三端方法保持一致：`initial_states()`、`current_states()`、`next_frame()`、`status()`、`stop_reason()`、`is_done()`、`is_failed()`、`is_finished()`、`is_truncated()`、`rounds_advanced()`、`frames_emitted()`、`result()`。C 通过对应 JSON / enum 输出参数提供这些状态；计数和完成标记包含在 result JSON 中。受控会话的进阶方法按绑定分别暴露：Rust 提供全集——`paused_actor()`、`paused_forced_action()`、`pending_passive()`、`pending_thunder()`、`peek_magic_cost()`、`preview_targets()`、`queue_actions()`、`submit_action()`、`set_initial_hp()` 与（`cards` feature）`set_abilities()`；WASM 有 `paused_actor()`、`submit_action()`、`set_initial_hp()` 与（`cards` feature）`set_abilities()`；Python 有 `queue_actions()`、`paused_actor()`、`paused_forced_action()`、`peek_magic_cost()`、`preview_targets()`、`pending_passive()` 与 `drain_frames()`。
 
 | 参数 | 默认值 | 语义 |
 | --- | --- | --- |
@@ -75,7 +75,12 @@ Runtime error 后会话进入 sticky failure（poisoned）：`is_failed() = true
 
 ## 外部行动脚本
 
-`battle_replay_with_actions(raw, options, actions)`（WASM/Python 同名，`actions` 为 `[actor, skill, packed]` 扁平三元组数组）用调用方给出的指令替代自动技能选择：
+外部脚本用调用方给出的指令替代自动技能选择，入口分两端：
+
+- WASM：`battle_replay_with_actions(raw, actions, options)`，`actions` 是 `[actor, skill, packed]` 扁平三元组数组。
+- Python：没有同名函数；脚本经 `BattleSession(raw, ..., actions=[(actor, skill, magic_cost), ...])` 入队，或用 `queue_actions()` 追加，三元组只有 MP 消耗、不含药水字段。
+
+指令语义按 WASM 线格式描述：
 
 - `actor` 是 `BattlePlayerState.id`；指令可以为任意实体排队，不必属于 `controlled_team`。
 - `skill` 在 core 是 `PlannedSkill`（`Builtin` / `BasicAttack` / `MagicAttack`）；线格式用 overlay 公开编号 `0..24`，`255` 表示普通攻击。
@@ -83,7 +88,7 @@ Runtime error 后会话进入 sticky failure（poisoned）：`is_failed() = true
 - 引擎自身的强制动作（潜行→背刺第二段、狂暴）优先，这期间排好的指令留到该单位的下一次行动。
 - 指令无法执行（未装备该技能、MP 不足、选不出目标）会返回 `INVALID_ARGUMENT`，不会静默改成普攻。
 
-脚本用尽后，受控队伍里的本体与分身（不含幻影/使魔/丧尸，`controlled_minions` 打开时例外）逼停回放，返回 `paused_actor` 与 `stop_reason: "paused"`；`status` 仍是 `running`、`result()` 仍为 `null`。暂停时整个回合已回滚，行动条与随机流都不被消耗；推荐用同一会话的 `submit_action(actor, skill, packed)` 补交指令后继续 `next_frame()`，也可以带上新脚本重新调用 `battle_replay_with_actions` 从头重放（结果确定）。空脚本且未设 `controlled_team` 时，结果与 `battle_replay` 完全一致。
+脚本用尽后，受控队伍里的本体与分身（不含幻影/使魔/丧尸，`controlled_minions` 打开时例外）逼停回放，返回 `paused_actor` 与 `stop_reason: "paused"`；`status` 仍是 `running`、`result()` 仍为 `null`。暂停时整个回合已回滚，行动条与随机流都不被消耗。暂停后续跑有两种方式：Rust/WASM 用同一会话的 `submit_action(actor, skill, packed)` 补交指令后继续 `next_frame()`；或带上新脚本重新调用 `battle_replay_with_actions` 从头重放（结果确定）。Python 没有 `submit_action`，`queue_actions()` 也不清除暂停标记，暂停后应重新创建会话并传入合并后的 `actions`。空脚本且未设 `controlled_team` 时，结果与 `battle_replay` 完全一致。
 
 ```text
 actions = []                         → paused_actor = 0（等玩家出牌）
@@ -124,7 +129,7 @@ assert session.next_frame() is None
 
 `battle_replay(raw, eval_rq=None, include_icons=False, max_rounds=None)` 返回 `BattleReplay` TypedDict。旧 Advanced tick 类型单独保留，不用于正式 battle DTO。
 
-`BattleSession` 另有 `queue_actions([(actor, skill, magic_cost), ...])`、`submit_action(actor, skill, packed_mp)`、`paused_actor()`、`paused_forced_action()`、`peek_magic_cost()`、`preview_targets(actor, skill)`、`pending_passive()` 与 `drain_frames(start_frame)`；后者按需批量取走尾帧，避免逐帧往返。
+`BattleSession` 另有 `queue_actions([(actor, skill, magic_cost), ...])`、`paused_actor()`、`paused_forced_action()`、`peek_magic_cost()`、`preview_targets(actor, skill)`、`pending_passive()` 与 `drain_frames(start_frame)`；后者按需批量取走尾帧，避免逐帧往返。
 
 ## WASM
 

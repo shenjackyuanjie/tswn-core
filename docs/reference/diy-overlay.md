@@ -331,7 +331,7 @@ DIY 玩家分身时，克隆体不会简单复制初始 overlay 等级。当前�
 3. 根据 `SkillBoost` 元数据重放加成：LastBoost 为基底 ×2；SlotBoost 为基底 + `min(saved_boost, 基底)`。
 4. 分身技能自身另以本体本次衰减后等级的 `ceil(sqrt(level))` 覆盖。
 
-无加成技能保留等级下降；带加成技能可能恢复一部分等级，但不会无条件重置到初始值。实现见 [SkillLoadout::rebuilt_for_clone](../../crates/tswn_core/src/runtime/entity/skill_loadout.rs#L501-L518)，score profile 的特殊重建与数值示例见 [分身机制](../mechanics/clone.md)。
+无加成技能保留等级下降；带加成技能可能恢复一部分等级，但不会无条件重置到初始值。实现见 [SkillLoadout::rebuilt_for_clone](../../crates/tswn_core/src/runtime/entity/skill_loadout.rs#L508-L525)，score profile 的特殊重建与数值示例见 [分身机制](../mechanics/clone.md)。
 
 ## Boss 与特殊玩家
 
