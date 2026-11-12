@@ -1,4 +1,8 @@
 use super::*;
+use crate::runtime::forced_action::ForcedFallback;
+
+/// 卡牌兼容模式的降级战报；前端按这句话判断「点名的技能没生效」。
+pub const FORCED_FALLBACK_MESSAGE: &str = "[1]的指定技能无法生效，改为普通攻击";
 
 impl CombatRuntime {
     pub fn run_minimal_round(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture::<true>() }
@@ -123,6 +127,11 @@ impl CombatRuntime {
             }
             let forced_pre_action_skill = plain_skill_pre_action.forced_skill.is_some();
             let prepared = self.prepare_plain_action(action.actor, smart, plain_skill_pre_action);
+            // 卡牌兼容模式：点名的技能放不出来时引擎改用普攻，这里补一条说明战报。
+            if let Some((actor, reason)) = crate::runtime::forced_action::take_fallback() {
+                updates.add_newline();
+                updates.add(RuntimeFrame::replay_update(actor as usize, actor as usize, reason, 0));
+            }
             let Some(prepared) = prepared else {
                 return Some(self.finish_round_with_capture::<CAPTURE_UPDATES>(None, updates));
             };
@@ -421,10 +430,8 @@ impl CombatRuntime {
             } else {
                 match self.prepare_planned_action(actor, planned, false) {
                     Ok(prepared) => return Some(prepared),
-                    Err(error) => {
-                        self.control.set_error(error);
-                        return None;
-                    }
+                    // 严格模式把失败原样交给调用方；兼容模式按失败类型降级。
+                    Err(error) => return self.resolve_planned_action_failure(actor, error, smart),
                 }
             }
         }
@@ -643,6 +650,48 @@ impl CombatRuntime {
                 amount: attack,
             })
         }
+    }
+
+    /// 指令执行失败的两种去向：默认报错，或卡牌前端的兼容降级。
+    ///
+    /// 严格模式把失败记进 control，由会话层映射成 INVALID_ARGUMENT。兼容模式下技能未装备、
+    /// MP 不足都改用普攻并留战报；选不出目标时暂停，整回合回滚保证行动条与随机流不被消耗。
+    fn resolve_planned_action_failure(
+        &mut self,
+        actor: EntityIdx,
+        error: PlannedActionError,
+        smart: bool,
+    ) -> Option<PreparedPlainAction> {
+        if crate::runtime::forced_action::fallback_mode() == ForcedFallback::Strict {
+            self.control.set_error(error);
+            return None;
+        }
+        if let PlannedActionError::NoValidTarget { .. } = error {
+            self.control.set_awaiting_forced_action(actor.0 as PlrId, None);
+            return None;
+        }
+        self.prepare_fallback_plain_attack(actor, smart)
+    }
+
+    /// 兼容降级：玩家点名的技能放不出来时改用普通攻击，并留一条战报说明原因。
+    ///
+    /// 普通攻击也选不出目标时同样暂停，行动不丢；目标口径与卡牌前端一致，
+    /// 先按 smart 口径选，选不出再退到宽松口径。
+    fn prepare_fallback_plain_attack(&mut self, actor: EntityIdx, smart: bool) -> Option<PreparedPlainAction> {
+        let target = self
+            .select_plain_default_attack_target(actor, smart)
+            .or_else(|| self.select_plain_default_attack_target(actor, false));
+        let Some(target) = target else {
+            self.control.set_awaiting_forced_action(actor.0 as PlrId, None);
+            return None;
+        };
+        crate::runtime::forced_action::record_fallback(actor.0, FORCED_FALLBACK_MESSAGE);
+        let amount = self.entities.get(actor).map_or(0, |entity| entity.runtime.attack);
+        Some(PreparedPlainAction::BasicAttack {
+            target,
+            use_magic: false,
+            amount,
+        })
     }
 
     /// 玩家操控的单位：受控队伍里的本体（默认 kind）与分身。

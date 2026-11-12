@@ -15,12 +15,15 @@ pub struct ForcedState {
     /// 能力卡为独立乘区及减耗，不参与技能熟练度读写。
     #[cfg(feature = "cards")]
     pub abilities: BTreeMap<String, (u32, u32)>,
+    /// 本次推进里被降级成普攻的指定技能；行动准备阶段写入，当回合取走并落成战报。
+    fallback: Option<(u32, &'static str)>,
 }
 
 thread_local! {
     static ACTIVE: RefCell<ForcedState> = RefCell::new(ForcedState::default());
     static HITS: Cell<u32> = const { Cell::new(0) };
     static TAKEN: Cell<u32> = const { Cell::new(0) };
+    static FALLBACK_MODE: Cell<ForcedFallback> = const { Cell::new(ForcedFallback::Strict) };
 }
 
 /// 作用域守卫保证错误或 unwind 不会把当前会话的受控队伍、能力卡泄漏给另一场对局。
@@ -38,6 +41,39 @@ pub fn with_state<R>(state: &mut ForcedState, f: impl FnOnce() -> R) -> R {
 }
 
 pub fn controlled_team() -> Option<usize> { ACTIVE.with(|cell| cell.borrow().controlled_team) }
+
+/// 指定技能在运行时生效失败时的处理策略。
+///
+/// core 默认严格：失败原样交给调用方并映射为 INVALID_ARGUMENT，不静默改动行为。
+/// 只有显式切到 Fallback 的入口（卡牌前端兼容入口）才降级。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ForcedFallback {
+    /// 失败即报错：技能未装备、MP 不足、无可用目标都交给调用方。
+    #[default]
+    Strict,
+    /// 兼容卡牌前端：技能放不出来时改用普攻并留战报，选不出目标时暂停并保留这一手。
+    Fallback,
+}
+
+pub fn fallback_mode() -> ForcedFallback { FALLBACK_MODE.with(Cell::get) }
+
+/// 作用域守卫：进入时切换策略，退出（含提前返回与 unwind）时还原，
+/// 避免兼容语义借给同一进程里的其他对局或会话。
+pub fn with_fallback_mode<R>(mode: ForcedFallback, f: impl FnOnce() -> R) -> R {
+    struct Restore(ForcedFallback);
+    impl Drop for Restore {
+        fn drop(&mut self) { FALLBACK_MODE.with(|cell| cell.set(self.0)); }
+    }
+    let _restore = Restore(FALLBACK_MODE.with(|cell| cell.replace(mode)));
+    f()
+}
+
+/// 记录一条降级说明；战报措辞沿用卡牌前端的既有文案。
+pub fn record_fallback(actor: u32, reason: &'static str) {
+    ACTIVE.with(|cell| cell.borrow_mut().fallback = Some((actor, reason)));
+}
+
+pub fn take_fallback() -> Option<(u32, &'static str)> { ACTIVE.with(|cell| cell.borrow_mut().fallback.take()) }
 
 /// 诊断计数：引擎实际走到「这一次行动要谁出招」的次数。
 pub fn hit() { HITS.with(|cell| cell.set(cell.get() + 1)); }
@@ -200,6 +236,7 @@ mod ability_tests {
         let mut state = ForcedState {
             abilities: decode_abilities(&[0, 1, 11000, 29, 3, 10800]).unwrap(),
             controlled_team: Some(0),
+            ..Default::default()
         };
         with_state(&mut state, || {
             assert_eq!(ability_value(0, "core.skill.fire"), (1, 1.1));

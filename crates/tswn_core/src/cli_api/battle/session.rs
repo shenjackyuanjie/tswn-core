@@ -1418,6 +1418,32 @@ mod card_control_tests {
         }
     }
 
+    // 兼容模式选不出目标时暂停并保留这一手：整回合回滚，行动条与随机流不被消耗。
+    #[test]
+    fn fallback_mode_pauses_without_dropping_a_targetless_action() {
+        // 两组都学会治疗，受控方无论落在哪一组都能走到目标选择。
+        let raw = r#"left@red+ol:{"skills":{"heal":50},"name_factor_enabled":false}
+
+right@blue+ol:{"skills":{"heal":50},"name_factor_enabled":false}"#;
+        let mut session = BattleSession::new(raw, options()).unwrap();
+        pause(&mut session);
+        let actor = session.paused_actor().unwrap();
+        // 治疗只挑受伤的队友；先把受控方补满，目标口径就必然选不出目标。
+        let entity = session.driver.runner.runtime_mut().entities.get_mut(EntityIdx(actor as u32)).unwrap();
+        let max_hp = entity.template.max_hp;
+        entity.runtime.hp = max_hp;
+        // 15 是公开编号里的治疗。
+        session.submit_action(actor, 15, 1).unwrap();
+        forced_action::with_fallback_mode(forced_action::ForcedFallback::Fallback, || pause(&mut session));
+        assert_eq!(session.paused_actor(), Some(actor), "选不出目标时应当暂停在原位");
+        // 暂停那回合整段回滚，这一手没被消耗：调用方仍能从队列里读到它。
+        assert_eq!(
+            session.driver.runner.runtime().control.pending(),
+            1,
+            "暂停后这一手必须还在队列里"
+        );
+    }
+
     // 普攻不得掷技能耗蓝骰；只允许目标选择本身消耗随机流。
     #[test]
     fn normal_attack_skips_skill_budget_rng() {

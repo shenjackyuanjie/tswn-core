@@ -8,6 +8,7 @@
 - 两种快照新增 `max_shield`，读取当前护盾技能熟练度，吞噬或其他技能等级变更后随快照更新；`max_shield` 是展示上限，实际盾值按原值参与战斗，战斗规则不变。
 - 公共 replay view 在角色首次实际出现在消息文字时推进该回合的护盾净值，后续片段沿用更新值，避免重复展示；`ReplayState` 的盾值方法提供兼容默认实现。
 - 上述公开输出结构体增加字段，外部 Rust 结构体字面量构造需补充 `shield` 与 `max_shield`；文本片段协议与战斗机制保持原样。
+- 恢复 `forced_action::ForcedFallback` 运行时策略：默认 `Strict`（失败映射 `INVALID_ARGUMENT`），`battle_replay_forced` 显式切到 `Fallback`，点名的技能未装备或 MP 不足时降级普通攻击并写「改为普通攻击」战报，选不出目标时暂停并保留行动；`with_fallback_mode` 用作用域守卫复位，会话路径仍默认严格。
 - 新增卡牌强制行动与受控会话子系统：`BattleSession` 可按玩家指令驱动指定队伍，缺指令时暂停（`paused_actor`）并可 `submit_action` 续行，`set_initial_hp` 在大逃杀开局注入当前 HP；`forced_action` 提供指令解码、药水生效与回退记录，`battle_replay` 接受同一批指令重放。
 
 ### 能力卡（`cards` feature，默认关闭）

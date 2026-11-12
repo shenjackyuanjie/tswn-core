@@ -61,6 +61,7 @@ mod win_rate;
 use std::sync::Once;
 use tsify::Ts;
 use tswn_core::cli_api::PlannedAction;
+use tswn_core::runtime::forced_action::ForcedFallback;
 
 pub use battle::BattleSession;
 use convert::{ts_in, ts_out, ts_out_vec};
@@ -393,14 +394,20 @@ pub fn battle_replay_with_actions(
     battle::dto_to_js(&replay)
 }
 
-/// 与 [`battle_replay_with_actions`] 相同的回放；保留卡牌前端的旧入口名，签名不变。
+/// 卡牌前端的兼容入口：入参校验与 [`battle_replay_with_actions`] 相同，运行时语义更宽松。
+///
+/// 点名的技能放不出来（未装备、MP 不足）时降级为普通攻击，并在战报里写
+/// 「[1]的指定技能无法生效，改为普通攻击」；选不出目标时暂停并保留这一手。
+/// 非法三元组、编号越界与不存在的行动者仍然抛 INVALID_ARGUMENT。
 #[wasm_bindgen(unchecked_return_type = "BattleReplay")]
 pub fn battle_replay_forced(
     raw_input: String,
     actions: Vec<u32>,
     options: Option<Ts<BattleReplayOptions>>,
 ) -> WasmResult<JsValue> {
-    battle_replay_with_actions(raw_input, actions, options)
+    tswn_core::runtime::forced_action::with_fallback_mode(ForcedFallback::Fallback, || {
+        battle_replay_with_actions(raw_input, actions, options)
+    })
 }
 
 /// 前端线格式 `[actor, skill, packed]` 三元组；校验与编号翻译统一由 core 完成。

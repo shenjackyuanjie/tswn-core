@@ -183,13 +183,15 @@ show 页面右下角控制栏还支持 `C/P/F/T/I/R/S/D` 字母快捷键；字�
 
 ### 外部行动脚本
 
-`battle_replay_with_actions(raw_input, actions, { controlled_team?, ... })`（旧名 `battle_replay_forced`，签名相同）让前端指定每个单位这一次用哪个技能，`actions` 是 `[actor, skill, packed]` 扁平三元组数组：
+`battle_replay_with_actions(raw_input, actions, { controlled_team?, ... })` 让前端指定每个单位这一次用哪个技能，`actions` 是 `[actor, skill, packed]` 扁平三元组数组。兼容入口 `battle_replay_forced` 签名相同，只是运行时语义更宽松，见下文：
 
 - `actor` 是 `BattlePlayerState.id`，可以为任意实体排队；
 - `skill` 用 overlay 编号 `0..24`，`255` 表示普通攻击；
 - `packed` 低字节是 `magic_cost`（传 `0` 表示由引擎现场掷，否则应是抽牌时掷好的消耗 `8..=23`），高字节是药水编号（`1..=8` 属性下标加一，`9` 能量药水、`10` 体力药水）；药水不占行动。
 
-受控队伍（`controlled_team` / `controlled_teams`）的本体与分身用尽脚本后会逼停回放：返回对象带 `paused_actor`，`stop_reason` 为 `"paused"`，但 `status` 仍是 `"running"`、`finished` 为 false。暂停时整个回合已回滚，可用 `BattleSession.submit_action(actor, skill, packed_mp)` 补交指令后继续 `next_frame()`，也可以追加一条指令再次调用本函数从头重放。指令不可执行（技能未装备、MP 不足、无目标）抛出 `INVALID_ARGUMENT`，不会静默改成普攻。脚本为空时与 `battle_replay` 等价。`forced_hits()` / `forced_taken()` 是脚本消费情况的诊断计数。
+受控队伍（`controlled_team` / `controlled_teams`）的本体与分身用尽脚本后会逼停回放：返回对象带 `paused_actor`，`stop_reason` 为 `"paused"`，但 `status` 仍是 `"running"`、`finished` 为 false。暂停时整个回合已回滚，可用 `BattleSession.submit_action(actor, skill, packed_mp)` 补交指令后继续 `next_frame()`，也可以追加一条指令再次调用本函数从头重放。指令不可执行（技能未装备、MP 不足、无目标）抛出 `INVALID_ARGUMENT`，不会静默改成普攻。脚本为空时与 `battle_replay` 等价。
+
+`battle_replay_forced` 保留卡牌前端的兼容语义：入参校验同样严格（非法三元组、编号越界仍抛 `INVALID_ARGUMENT`），但点名的技能未装备或 MP 不足时降级为普通攻击，并在战报里写「[1]的指定技能无法生效，改为普通攻击」；按该技能选不出目标时暂停并保留这一手（`paused_actor`），不丢行动。`forced_hits()` / `forced_taken()` 是脚本消费情况的诊断计数。
 
 ### 实时状态标签
 

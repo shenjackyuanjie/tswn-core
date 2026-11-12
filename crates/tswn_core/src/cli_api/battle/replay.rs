@@ -60,6 +60,7 @@ pub fn battle_replay_with_actions(raw: &str, options: BattleOptions, actions: &[
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime::forced_action::{ForcedFallback, with_fallback_mode};
     use crate::runtime::{BuiltinActiveSkill, PlannedSkill};
 
     fn controlled_options() -> BattleOptions {
@@ -180,6 +181,73 @@ right@blue+ol:{"skills":{}}"#;
         .unwrap_err();
         assert_eq!(error.code(), crate::cli_api::CliApiErrorCode::InvalidArgument);
         assert!(error.to_string().contains("has not equipped"), "{error}");
+    }
+
+    // 卡牌兼容入口：合法编号 24 但角色没学该技能时降级普攻并留战报，不报错。
+    #[test]
+    fn fallback_mode_downgrades_unusable_skill_to_plain_attack() {
+        let raw = r#"left@red+ol:{"skills":{"fire":50}}
+
+right@blue+ol:{"skills":{}}"#;
+        let paused = battle_replay_with_actions(raw, controlled_options(), &[]).unwrap();
+        let actor = paused.paused_actor.expect("受控单位应当逼停回放");
+        let replay = with_fallback_mode(ForcedFallback::Fallback, || {
+            battle_replay_with_actions(
+                raw,
+                controlled_options(),
+                &[PlannedAction {
+                    actor,
+                    skill: PlannedSkill::Builtin(BuiltinActiveSkill::Shadow),
+                    magic_cost: Some(1),
+                    potion: 0,
+                }],
+            )
+        })
+        .expect("兼容模式下放不出来的技能不应报错");
+        let messages: Vec<&str> = replay
+            .frames
+            .iter()
+            .flat_map(|frame| &frame.updates)
+            .map(|update| update.message_template.as_str())
+            .collect();
+        assert!(
+            messages.iter().any(|message| message.contains("改为普通攻击")),
+            "降级战报缺失：{messages:?}"
+        );
+    }
+
+    // 同一份输入在默认严格语义下仍然报 INVALID_ARGUMENT，不被兼容模式带偏。
+    #[test]
+    fn strict_mode_rejects_the_same_unusable_skill() {
+        let raw = r#"left@red+ol:{"skills":{"fire":50}}
+
+right@blue+ol:{"skills":{}}"#;
+        let paused = battle_replay_with_actions(raw, controlled_options(), &[]).unwrap();
+        let actor = paused.paused_actor.expect("受控单位应当逼停回放");
+        let error = battle_replay_with_actions(
+            raw,
+            controlled_options(),
+            &[PlannedAction {
+                actor,
+                skill: PlannedSkill::Builtin(BuiltinActiveSkill::Shadow),
+                magic_cost: Some(1),
+                potion: 0,
+            }],
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), crate::cli_api::CliApiErrorCode::InvalidArgument);
+        assert!(error.to_string().contains("has not equipped"), "{error}");
+    }
+
+    // 入参校验发生在推进之前，与运行时降级模式无关：两个入口都先拒绝非法包。
+    #[test]
+    fn malformed_action_packets_are_rejected_in_both_modes() {
+        for mode in [ForcedFallback::Strict, ForcedFallback::Fallback] {
+            let error = with_fallback_mode(mode, || crate::runtime::decode_actions(&[0, 24])).unwrap_err();
+            assert!(error.contains("triples"), "{mode:?}: {error}");
+            let error = with_fallback_mode(mode, || crate::runtime::decode_actions(&[0, 25, 0])).unwrap_err();
+            assert!(error.contains("active id 0..24"), "{mode:?}: {error}");
+        }
     }
 
     #[test]
