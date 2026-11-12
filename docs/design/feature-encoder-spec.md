@@ -29,7 +29,7 @@
 
 遵循 [后续训练和网页约束](battle-analyze.md#后续训练和网页约束)：原始 Parquet `state` 是机制事实来源；核心 encoder 负责固定张量转换，`tswn-pwp encode` 负责流式训练包，Python 读取已编码数组开展训练与评估。模型训练和推理属于后续阶段。
 
-下文“规定”描述编码契约；“后续目标／拟议”专指尚未落地的绑定或模型相关约束。当前公共接口以第 14 节为准。`M:行` 指 [runtime/model_state.rs](../../crates/tswn_core/src/runtime/model_state.rs) 的源码定位；其余缩写在第 17 节给出完整路径。复合类型叶子已在第 3.1 节展开，默认槽语义白名单已在第 3.2 节与实现中冻结；跨端与导出完整验收边界单独记录，见第 15／16 节。
+下文“规定”描述编码契约；“后续目标／拟议”专指尚未落地的绑定或模型相关约束。当前公共接口以第 14 节为准。`M:行` 等行号只是 [runtime/model_state.rs](../../crates/tswn_core/src/runtime/model_state.rs) 等源码的定位线索，会随源码演进而漂移；字段归属与结论以符号名和第 17 节的当前定位为准。复合类型叶子已在第 3.1 节展开，默认槽语义白名单已在第 3.2 节与实现中冻结；跨端与导出完整验收边界单独记录，见第 15／16 节。
 
 ## 2. 输入契约
 
@@ -137,7 +137,7 @@
 
 ### 3.2 槽语义白名单（默认注册表）
 
-默认注册表只登记 7 个实体槽、3 个全局模板槽和 0 个 battle 槽（J:265–277），而 encoder 只接受该注册表（M:83），所以下表对支持域是封闭的。**同一个 `U64` 存储槽在本仓库里同时表示实体引用、计数和浮点 bit 三种语义**，因此不能按 `SlotValue` 的存储类型推断用途；逐槽核对结果如下。
+默认注册表只登记 7 个实体槽、3 个全局模板槽和 0 个 battle 槽（J:281–293），而 encoder 只接受该注册表（M:83），所以下表对支持域是封闭的。**同一个 `U64` 存储槽在本仓库里同时表示实体引用、计数和浮点 bit 三种语义**，因此不能按 `SlotValue` 的存储类型推断用途；逐槽核对结果如下。
 
 | scope | slot_id | export_name | 存储类型 | 机制语义 | encoder 通道 |
 | --- | --- | --- | --- | --- | --- |
@@ -152,7 +152,7 @@
 | template | 1 | `custom.bed2.shadow_template` | `PlayerTemplate` | bed2 幻影模板 | `slot_template` |
 | template | 2 | `custom.bed2.zombie_template` | `PlayerTemplate` | bed2 丧尸模板 | `slot_template` |
 
-证据：槽登记 J:265–277；蓝图槽写入 `K:init:209–223`、`K:seed:146`，读取 `K:seed:169`、`K:summon:179`、`K:zombie:62`、`K:handlers:47/137`；延迟蓝图 rq 写入 `K:init:172–181`，值来自 `K:prepared:312/359` 的 `eval_rq.to_bits()`；记忆召唤物写入 `K:summon:93`、`K:handlers:124`，读取 `K:summon:12–25/45–50`；命名计数写入 `K:summon:283–293`、`K:minions:11–17`，读取 `K:skills_control:360–370`；bed2 模板槽写入 `K:import:203–221`。
+证据：槽登记 J:281–293；蓝图槽写入 `K:init:209–223`、`K:seed:146`，读取 `K:seed:169`、`K:summon:179`、`K:zombie:62`、`K:handlers:47/137`；延迟蓝图 rq 写入 `K:init:172–181`，值来自 `K:prepared:312/359` 的 `eval_rq.to_bits()`；记忆召唤物写入 `K:summon:93`、`K:handlers:124`，读取 `K:summon:12–25/45–50`；命名计数写入 `K:summon:283–293`、`K:minions:11–17`，读取 `K:skills_control:360–370`；bed2 模板槽写入 `K:import:203–221`。
 
 未登记的槽、未知 export_name 或存储类型与本表不符时返回 `UnknownSlotSemantics{path}`（第 14 节）；新增槽必须先更新本表并重算 `Q_max`。
 
@@ -170,7 +170,7 @@
 | `H_max`（实体模板及槽内蓝图） | 512 | `H_max ≥ e+h_b`。按实测比例定档：8 人池 `e=46` 时 `h=184`（≈4e），`E_max=64` 外推 256，取 `ceil_pow2(256)=256` 后再留一倍余量得 512。**不采用**“每个实体槽都持有模板”的 `E+7E+3=515` 结构上界：第 3.2 节白名单里默认注册表没有标志位槽，实测也没有该形态；若出现 `h/e>8` 的输入须重算并发布新 profile |
 | `L_max`（所有模板的 lane） | 4096 | `L_max ≥ Σ_h templates[h].skills.lanes.len()`，必须含蓝图。8 人池实测 max 1560（≈34e），`E_max=64` 外推约 2176，4096 保留约 1.9 倍余量；P:165 的实体模板 max 742／p99 422 是 2v2v2 口径。全局槽模板也须计入实际总量 |
 | `S_max`（全样本状态条目） | 64 | `S_max ≥ Σ_e entities[e].states.len()`，至少覆盖 P:164 的 max=10；随 `E_max` 取 `max(64,ceil_pow2(10))=64`，是每实体一条状态的规划预留，不限制机制只能一条状态；Boss 分支本轮不映射 |
-| `Q_max`（机制槽） | 512 | `Q_max ≥ 7×E_max+3+0=451`，取 `ceil_pow2(451)=512`。默认注册表登记 7 个实体槽、3 个全局模板槽、0 个 battle 槽（J:265–277）；这是槽条目数上界，区别于 `entity_slot_count`。`E_max` 从 32 提到 64 后此维必须同步，原 256 是 `E_max=32` 时代的值 |
+| `Q_max`（机制槽） | 512 | `Q_max ≥ 7×E_max+3+0=451`，取 `ceil_pow2(451)=512`。默认注册表登记 7 个实体槽、3 个全局模板槽、0 个 battle 槽（J:281–293）；这是槽条目数上界，区别于 `entity_slot_count`。`E_max` 从 32 提到 64 后此维必须同步，原 256 是 `E_max=32` 时代的值 |
 | `V_max`（有序列表项） | 32768 | 五类 lane list 的规划下界为 `5×L_max=20480`；取 `ceil_pow2(20480)=32768`，余下 12288 条给世界列表、states、protect_from、input_member、ice_release、deferred 与注册序记录。8 人池实测 max 4868。完整公式见下文 |
 | `X_max`（扩展叶子） | 65536 | `X_max ≥ 分身计划叶子 + 保护链叶子 + 暗杀 lane + slot refs/bits + 其余 raw 旁路`。按 `V_max+15×H_max+9×E_max+3×Q_max+3×S_max+2=42754` 取 `ceil_pow2(42754)=65536`。**每槽按 3 条计费**（`slot_id` raw + 至多一条有效值 raw + 至多一条实体 ref），依据是第 3.2 节白名单：默认注册表没有标志位槽，旧式的 66 条/槽（64 位 + 2 raw）在冻结白名单下不可达；一旦新增标志位槽必须重算本式与 `Q_max` |
 
@@ -297,7 +297,7 @@ Felix CQACSVGRXSAT@nan
 
 于是 `e` 只受 `max_rounds`（默认 20000）、行动点与 MP 约束，量级远大于任何可用预算。可选处置只有三种：(a) 按支持域取 `E_max`（覆盖实测取 64）并报告溢出率，接受超限样本被 `CapacityExceeded` 拒绝；(b) 抬到更大的 profile；(c) 在引擎层新增实体数约束（给 shadow／clone 加记忆槽，或加全局上限），但这会改变战斗语义与既有金标、数据集，不属于本轮范围。
 
-上述容量对应的固定缓冲足迹（`B=1`，按第 4 节张量族与 presence 清单逐项相加）约为 4.2 MiB／样本：`extra_*` 合计 2.38 MiB（其中 `extra_index` 1.00 MiB）、V 轴合计 1.22 MiB（`list_index` 640 KiB、`order_key` 256 KiB、`list_position/order_rank` 各 128 KiB）、`clan_equal` 256 KiB，其余各维合计约 0.35 MiB。`E_max`／`S_max`／`Q_max` 三轴从 32／32／256 提到 64／64／512 只让足迹增加不到 40 KiB，因为大头（X 轴、V 轴、`clan_equal`）不随这三轴变化。因此 `B=64` 时单批约 269 MiB、`B=512` 约 2.15 GiB；训练侧必须按批流式编码，不能把整库样本一次性物化成张量。这些数字是当前 profile 的 padding 预算，随容量或字段增减重算，不表示实际有效值占用。
+上述容量对应的固定缓冲足迹（`B=1`，按第 4 节张量族与 presence 清单逐项相加）约为 4.2 MiB／样本：`extra_*` 合计 2.38 MiB（其中 `extra_index` 1.00 MiB）、V 轴合计 1.22 MiB（`list_index` 640 KiB、`order_key` 256 KiB、`list_position/order_rank` 各 128 KiB）、`clan_equal` 256 KiB，其余各维合计约 0.35 MiB。`E_max`／`S_max`／`Q_max` 三轴从 32／32／256 提到 64／64／512 只让足迹增加不到 40 KiB，因为大头（X 轴、V 轴、`clan_equal`）不随这三轴变化。因此 `B=64` 时单批约 269 MiB、`B=512` 约 2.1 GiB；训练侧必须按批流式编码，不能把整库样本一次性物化成张量。这些数字是当前 profile 的 padding 预算，随容量或字段增减重算，不表示实际有效值占用。
 
 | 输出张量族 | dtype 与 shape | 内容 |
 | --- | --- | --- |
@@ -364,7 +364,7 @@ Felix CQACSVGRXSAT@nan
 | `template_cat[1]`：`identity.boss_kind` | M:477 按 `crate::namerena::BOSS_NAMES` 的位置投影；manifest 冻结该序列，原始位置 k→类 k+1，不把名字文本送入模型 | `Some(0)` 为类 1/presence=1，`None` 为 0/presence=0；原始位置走 `raw.template.identity.boss_kind`，按 u64 拆分，不先转 i32；这不恢复 Boss 载荷支持 |
 | `state_cat[0]`：`legacy_order_key` | 默认规则状态构造点的 legacy-key 白名单，按原始 u32 升序分配 `1..K` 并冻结；M:429 只提供类型，白名单已由 [state_legacy_vocabulary](../../crates/tswn_core/src/encoder/manifest.rs) 固化并与 manifest 交叉核对 | 有效原值 0 也是正 ID；该字段不可空，真实 state 的 presence=1；原值走 `raw.state.legacy_order_key`，hi=0，不与精确注册序字段混用 |
 | `state_cat[1]`：`extension_state_id` | 默认规则 `register_state` 登记的状态 ID 词表；按登记 ID 升序生成并冻结，不与 legacy key 或 payload kind 共用词表 | `Some(0)` 映射到正 ID/presence=1，`None` 为 0/presence=0；有效原始 u32 走 `raw.state.extension_state_id`，hi=0 |
-| `slot_index[...,2]`：`slot_id` | 按作用域分别从默认注册表的 entity/template/battle 槽表生成原始 u32→稠密 ID；当前有效原值分别为 0..6、0..2、空集（J:265–277） | 各域原始 0 映射到该域类 1；scope 和稠密 `slot_id` 必须一起使用；原值走 `raw.slot.slot_id`，hi=0，禁止把原始 u32 直接塞进 index |
+| `slot_index[...,2]`：`slot_id` | 按作用域分别从默认注册表的 entity/template/battle 槽表生成原始 u32→稠密 ID；当前有效原值分别为 0..6、0..2、空集（J:281–293） | 各域原始 0 映射到该域类 1；scope 和稠密 `slot_id` 必须一起使用；原值走 `raw.slot.slot_id`，hi=0，禁止把原始 u32 直接塞进 index |
 
 `state_kind` 的独立词表见第 8 节（0=PAD、真实 `none`=1），`lane_skill_id/lane_boost_kind` 见第 6／7 节，`extra_cat` 的分类域由第 14 节字段表指定。第 4 节的 presence 清单负责区分可空分类的 0 与 padding；标识符／关系引用不因本表而变成可学习的数值编号。
 
@@ -378,7 +378,7 @@ Felix CQACSVGRXSAT@nan
 
 ## 5. 归一化与数值域
 
-历史数量基线只支持数量尺度；[stats.rs 的内容统计](../../crates/tswn_pwp/src/stats.rs#L218-L240) 不负责 HP、等级、属性或 payload 标量拟合。当前容量统计包含蓝图预算，逐字段标量另由已实现的 `calibrate` 收集。不能把“HP/100”“技能等级/255”写成实测结论，也不能把 P:152 的最终轮数 167 当当前 state 的固定上限。
+历史数量基线只支持数量尺度；[stats.rs 的内容统计](../../crates/tswn_pwp/src/stats.rs#L224-L246) 不负责 HP、等级、属性或 payload 标量拟合。当前容量统计包含蓝图预算，逐字段标量另由已实现的 `calibrate` 收集。不能把“HP/100”“技能等级/255”写成实测结论，也不能把 P:152 的最终轮数 167 当当前 state 的固定上限。
 
 | 标量类别 | 规定的变换、裁剪与依据 |
 | --- | --- |
@@ -391,7 +391,7 @@ Felix CQACSVGRXSAT@nan
 
 这里按字段来源而非“是否是整数／字段名是否含 count”切分：**机制计数的绝对量**仅指实体数、实体槽数、状态数、实体模板 lane 数、当前存活数，使用上述固定线性尺度；**逐字段标量**使用各自拟合的 `N_f`。`alive_group_count` 是后者的粘性机制字段，不等于从当前存活列表重算的存活数量。`global_num[1,5]` 属于前者，`global_num[0,2,3]` 属于后者，`global_num[4]` 是 bool；任一数值槽只归一类，禁止先线性缩放再套 `N_f`。`list_position/order_rank` 是第 4 节单独定义的结构关系量，不归入这两类标量统计。
 
-所有拟合仅使用已决 train 行中存在的值，不含 padding/None；按字段排序后用 `round((n-1)*q)` 取分位数，与 [stats.rs 的分位数选择](../../crates/tswn_pwp/src/stats.rs#L58-L61) 一致。模板和 runtime 即使同名也各自统计；`round_pos=-1` 若出现作为真实有符号数保留，不充当缺失值。
+所有拟合仅使用已决 train 行中存在的值，不含 padding/None；按字段排序后用 `round((n-1)*q)` 取分位数，与 [stats.rs 的分位数选择](../../crates/tswn_pwp/src/stats.rs#L62-L65) 一致。模板和 runtime 即使同名也各自统计；`round_pos=-1` 若出现作为真实有符号数保留，不充当缺失值。
 
 P:160 的样本轮数 p99=61、max=146 来自 `SampleRow.rounds_advanced`（[stats.rs](../../crates/tswn_pwp/src/stats.rs#L204-L217)），尚未核对它与 `state.round` 的偏移关系；它只提示采样范围，不能直接给 `state.round` 定归一化常数。
 
@@ -413,14 +413,14 @@ P:160 的样本轮数 p99=61、max=146 来自 `SampleRow.rounds_advanced`（[sta
 | runtime team `r` | `template.team/runtime.team` 与 `world.team_*` 的关系轴；建立独立映射，禁止强制 `r=t` |
 | charm 临时阵营 | `group_id` 为局内关系键；`effective_team_idx/source_team_idx` 各保留独立可空关系，不能改写输入队伍归属（M:579–584；见[抽样和标签](../../crates/tswn_pwp/README.md#抽样和标签)） |
 | `clan_group`、`PlrId` | 前者仅相等关系；`PlrId` 是实体槽下标 + 1 的派生值（`K:entity_runtime:732`），只作局内键，不进模型、不送 embedding。初始行动顺序虽由名字派生键排序（`K:roster:386–425`），但结果已完整落在 `round_order`／`team_roster`／`runtime.team` 中，encoder 只读这些列表，不需要名字或 `PlrId` 数值 |
-| `skill_id` | 固定 1–50，当前 1–42，43–50 预留；0 只作 PAD（M:281–325）；遇到未启用预留项报错 |
+| `skill_id` | 固定 1–50，当前 1–47，48–50 预留；0 只作 PAD（[MODEL_SKILL_EXPORTS](../../crates/tswn_core/src/runtime/model_state.rs#L295-L343)）；遇到未启用预留项报错 |
 | fixed lane、legacy key、extension、slot ID | 分离词表；fixed lane 只在所属模板内解引用，slot ID 必须同时携带作用域（M:391、420、428） |
 
-技能编号例：`core.skill.revive` 是 `MODEL_SKILL_EXPORTS` 第 22 项（M:305），不能照搬 [复活与获胜资格](../mechanics/winner.md#5-复活与获胜资格) 的 legacy 技能 ID 16。模板 kind 的 `u32::MAX` 是实测有效类（P:172），必须经第 4 节重映射进 cat 通道，禁止直接塞进 i32，也不能当作 -1/PAD；原始 u32 只走具名精确旁路。其余 kind 词表按已审计规则冻结，基线未出现不等于非法。
+技能编号例：`core.skill.revive` 是 `MODEL_SKILL_EXPORTS` 第 22 项（M:317），不能照搬 [复活与获胜资格](../mechanics/winner.md#5-复活与获胜资格) 的 legacy 技能 ID 16。模板 kind 的 `u32::MAX` 是实测有效类（P:172），必须经第 4 节重映射进 cat 通道，禁止直接塞进 i32，也不能当作 -1/PAD；原始 u32 只走具名精确旁路。其余 kind 词表按已审计规则冻结，基线未出现不等于非法。
 
 ## 7. 技能槽方案
 
-采用“每个真实 lane 一行、全样本打包”的方案；不分配 `[E_max,50]` 单等级表，不按 skill_id 合并重复 lane。P:165、180 的中位 211／均值 241.6／最大 742 条说明这一块需单独预算，而 42 个技能类别不构成 lane 数量上限。
+采用“每个真实 lane 一行、全样本打包”的方案；不分配 `[E_max,50]` 单等级表，不按 skill_id 合并重复 lane。P:165、180 的中位 211／均值 241.6／最大 742 条说明这一块需单独预算，而 47 个技能类别不构成 lane 数量上限。
 
 `lane_skill_id` 供分类 embedding；`lane_num=[level,build_level,boost.base,boost.extra]`，四项分别按第 5 节归一化。`lane_bool=boosted`，`lane_boost_kind` 的 0=PAD、1=None、2=normal、3=last_boost、4=slot_boost；`lane_num_present[2,3]` 在 boost=None 时为 0，Some 时即使 base/extra 为 0 仍为 1；`[0,1]` 跟随 lane_mask（M:15–37）。
 
@@ -432,28 +432,29 @@ deferred 保存原列表顺序和精确 `state_cursor`，与实体状态注册�
 
 ## 8. 状态载荷方案
 
-`state_entity` 指向承载该 states 条目的实体行；`state_num[0]` 是 priority，以下 `p0..p7` 对应 `[1..8]`；`r0..r3` 对应 `state_ref[0..3]` 的实体引用（charm 的 `group_id` 也走这里，见下表），`g0..g2` 对应 `state_group[0..2]` 的关系键，当前只有 charm 的 `effective_team_idx`／`source_team_idx` 使用 `g0,g1`。`state_num_present/state_ref_present/state_group_present` 与三个值族同 shape；数值 unused=0/presence=0，引用和关系键 unused=-1/presence=0。kind=0 为 PAD，真实 `none`=1。投影分支由 M:628–753 穷举，规定词表如下。
+`state_entity` 指向承载该 states 条目的实体行；`state_num[0]` 是 priority，以下 `p0..p7` 对应 `[1..8]`；`r0..r3` 对应 `state_ref[0..3]` 的实体引用（charm 的 `group_id` 也走这里，见下表），`g0..g2` 对应 `state_group[0..2]` 的关系键，当前只有 charm 的 `effective_team_idx`／`source_team_idx` 使用 `g0,g1`。`state_num_present/state_ref_present/state_group_present` 与三个值族同 shape；数值 unused=0/presence=0，引用和关系键 unused=-1/presence=0。kind=0 为 PAD，真实 `none`=1。投影分支由 [From<&StatePayload>](../../crates/tswn_core/src/runtime/model_state.rs#L652-L787) 穷举，规定词表如下。
 
 | kind 编号／字符串 | payload 字段 → 槽位 | 来源 |
 | --- | --- | --- |
-| 1 `none` | 无 payload；真实条目 mask=1 | M:632 |
-| 2 `fire_mag_half_steps` | 同名整数 → p0 | M:530、635 |
-| 3 `ice` | `frozen_step` → p0 | M:548–550 |
-| 4 `shield_value` | 同名整数 → p0 | M:532、645 |
-| 5 `curse` | `prob,multiply` → p0,p1；不假定 prob 已是 `[0,1]` | M:553–556 |
-| 6 `poison` | `caster,target` → r0,r1；`atp_bits` 还原后 → p0；`count` → p1 | M:559–564 |
-| 7 `haste` | `faster,effective_faster,step` → p0,p1,p2 | M:567–571 |
-| 8 `berserk` | `step` → p0 | M:574–576 |
-| 9 `charm` | `group_id` → r1（**它是施法者的 `EntityIdx`，必须按实体引用重映射**）；`target` → r0；`effective_team_idx,source_team_idx` → g0,g1（runtime team 关系键）；`step` → p0 | M:579–585；K:skills_team:208–219 |
-| 10 `slow` | `step` → p0 | M:588–590 |
-| 11 `iron` | `protect,step` → p0,p1 | M:593–596 |
-| 12 `covid_boss` | 本轮不映射（Boss 专属）；遇到该 kind 返回 `UnsupportedPayloadKind` | M:599–601 |
-| 13 `covid_infection` | 本轮不映射（Boss 派生感染）；同上 | M:604–608、260–263 |
-| 14 `saitama_boss` | 本轮不映射（Boss 专属）；同上 | M:611–616 |
-| 15 `lazy_boss` | 本轮不映射（Boss 专属）；同上 | M:619–621 |
-| 16 `lazy_infection` | 本轮不映射（Boss 派生感染）；同上 | M:624–625 |
+| 1 `none` | 无 payload；真实条目 mask=1 | M:656–658 |
+| 2 `fire_mag_half_steps` | 同名整数 → p0 | M:547、659–662 |
+| 3 `ice` | `frozen_step` → p0 | M:566–568、663–668 |
+| 4 `shield_value` | 同名整数 → p0 | M:549、669–672 |
+| 5 `curse` | `prob,multiply` → p0,p1；不假定 prob 已是 `[0,1]` | M:571–574、673–679 |
+| 6 `poison` | `caster,target` → r0,r1；`atp_bits` 还原后 → p0；`count` → p1 | M:577–582、680–693 |
+| 7 `haste` | `faster,effective_faster,step` → p0,p1,p2 | M:585–589、694–705 |
+| 8 `berserk` | `step` → p0 | M:592–594、706–709 |
+| 9 `charm` | `group_id` → r1（**它是施法者的 `EntityIdx`，必须按实体引用重映射**）；`target` → r0；`effective_team_idx,source_team_idx` → g0,g1（runtime team 关系键）；`step` → p0 | M:597–603、710–725；K:skills_team:208–219 |
+| 10 `slow` | `step` → p0 | M:606–608、726–729 |
+| 11 `iron` | `protect,step` → p0,p1 | M:611–614、730–736 |
+| 12 `covid_boss` | 本轮不映射（Boss 专属）；遇到该 kind 返回 `UnsupportedPayloadKind` | M:617–619、737–740 |
+| 13 `covid_infection` | 本轮不映射（Boss 派生感染）；同上 | M:622–626、741–752 |
+| 14 `saitama_boss` | 本轮不映射（Boss 专属）；同上 | M:629–634、753–766 |
+| 15 `lazy_boss` | 本轮不映射（Boss 专属）；同上 | M:637–639、767–772 |
+| 16 `lazy_infection` | 本轮不映射（Boss 派生感染）；同上 | M:642–644、773–776 |
+| 17 `mario_boss` | 本轮不映射（Boss 专属，成长值与火球等级）；同上 | M:647–650、777–783 |
 
-禁止把任何子列表平均池化成一个数量；子 list 共享 V 容量并以状态行作 owner。Boss 分支本轮不映射，因此 `CovidInfectionEntry`（Y:17）与两个 Boss 载荷的叶子不需要张量槽位；一旦恢复 Boss 支持，必须按第 3.1 节的粒度补齐，不能静默省略。
+禁止把任何子列表平均池化成一个数量；子 list 共享 V 容量并以状态行作 owner。Boss 分支（12–17）本轮不映射，因此 `CovidInfectionEntry`（Y:17）与三个 Boss 载荷的叶子不需要张量槽位；一旦恢复 Boss 支持，必须按第 3.1 节的粒度补齐，不能静默省略。
 
 校验 kind 与唯一载荷分支匹配；`none` 不得带分支，其他 kind 必须恰有对应分支；错误返回字段路径。`state_cat_present[0]` 跟随 state_mask、`[1]` 表示 extension_state_id 的 Option；状态条目原序、legacy key、hook、priority、两套注册序与实体注册游标共同保留。`compressed_state_flags` 独立编码，因为 [字段来源](battle-model-state-audit.md#字段来源) 明确压缩 Shield/Protect/Upgrade/Corpse/Minion 不一定出现在 entries。
 
@@ -645,12 +646,12 @@ raw 路径的 runtime/template/state/slot/world 前缀指第 3 节相应结构�
 
 | 类别 | 必须覆盖与判定标准 |
 | --- | --- |
-| 字段覆盖／版本 | 每个 M 中字段有消费或有理由的排除；第 4 节逐名核对张量 dtype/shape 与字段／presence 映射；field_class 全局唯一、编号段不交叉、raw 仅走旁路；新增字段时同步映射与实际输出回归；未知 kind、43–50 未启用技能、schema 不符均报错 |
+| 字段覆盖／版本 | 每个 M 中字段有消费或有理由的排除；第 4 节逐名核对张量 dtype/shape 与字段／presence 映射；field_class 全局唯一、编号段不交叉、raw 仅走旁路；新增字段时同步映射与实际输出回归；未知 kind、48–50 未启用技能、schema 不符均报错 |
 | 引用／关系 | 稀疏 EntityIdx、预留空槽、同号不同域、死亡 owner、悬空引用；有效引用可还原到同一源实体，非法引用报字段路径 |
 | 数值／缺失 | 0、None、PAD、负属性、极大整数、NaN/Inf；逐项核对 presence 清单、父子联动、Some(0)/Some(false)、计划 Some 但 slot_boosts[i]=None；分类 u32::MAX 只能重映射后入 cat，原始 0 类与 PAD 区分；固定计数尺度与 N_f 不重叠 |
 | bit 精度 | 0、负零、f64 正常值、超过 `2^53` 的整数和 u64 全 1；第 3 轴固定 0=lo/1=hi，u32 hi=0；compressed_state_flags 低 5 位逐位一致，高 3 位任一置 1 返回 ReservedFlagBitSet，不得静默清除 |
 | 技能 | 重复 skill_id、多 lane、零等级、三种 boost、五类 lane list 及 deferred；list(lanes) 的 owner/ordinal/target 与 lane_template 一致，每条 lane 恰有一条数组序记录；执行列表重复项不去重，固定键不与 skill_id 混用 |
-| 状态／压缩 | 已映射的 11 个 kind、稀疏状态、所有可空引用；Boss 分支（12–16）必须返回 `UnsupportedPayloadKind`；kind／分支不匹配拒绝，压缩状态独立存在 |
+| 状态／压缩 | 已映射的 11 个 kind、稀疏状态、所有可空引用；Boss 分支（12–17）必须返回 `UnsupportedPayloadKind`；kind／分支不匹配拒绝，压缩状态独立存在 |
 | 蓝图／复合类型 | 实体、全局模板、battle 三域槽；四个 value_type 与 presence 一一对应，slot_id=0 需重映射，未知语义不得猜测；clone_build、policies、charge/accumulate/hide/assassinate、corpse 与 protect_from 逐叶映射，第 3.1 节每个叶子至少一条断言；新增叶子同步映射表和对应行为回归 |
 | 变长／容量 | 按 `baseline-64` 测：`E=63/64/65`（65 报错）、`Q=511/512/513`、`H`／`L`／`S`／`R`／`V`／`X` 各自 `limit−1/limit/limit+1`、`T=32/33`；同时验证 `V_max≥5×L_max`、实际 list 总和（含重复、deferred、注册序）、Q/X 公式及 raw 计费，不用实测子集替代蓝图容量验收 |
 | 资格／终局 | 真实队伍零存活仍 mask=1；复活前后 mask 不变；全灭无 winner 不伪造终局；winner 非空拒绝；null 标签无监督权重 |
@@ -691,7 +692,7 @@ git diff --check
 2. [历史性能报告的字节构成](../perf/reports/winprob-dataset-scale-baseline.md#每样本字节构成100k)把 seed 列列在 samples 字节构成中；当前 [SampleRow/BattleRow](../../crates/tswn_pwp/src/lib.rs#L101-L123) 明确只有 BattleRow 有 seed。报告的测量数据／历史 schema 来源仍待确认；当前应按这两种 Rust 行类型理解列集，本稿不改原数据格式。
 3. [公共 API 入口](../reference/public-api.md#入口选择)应将 BattleModelSession 作为数据集驱动入口；[generate_battle](../../crates/tswn_pwp/src/generate.rs#L272-L326) 在 prepared 阵容之上两遍运行，以 `next_frame()` 取可见帧边界、`model_state()` 导出状态。Runner/PreparedRunner 是执行内核入口，不是生成器直接推进的会话。
 4. 历史判胜说明曾把粘性计数的用途描述得过窄；[当前语义与边界](../mechanics/winner.md#3-alive_group_count-的语义与边界)已记录目标选择和 post-action 用法。本稿继续保留计数，禁止把它用于判胜或 team_mask。
-5. [内容数量统计](../../crates/tswn_pwp/src/stats.rs#L218-L240)只统计实体模板 lane 等数量，不负责复合叶子和标量拟合；[容量统计](../../crates/tswn_pwp/src/stats.rs#L240-L250)已调用含蓝图的 `CapacityMeasure`，[calibrate](../../crates/tswn_pwp/src/calibrate.rs)另行采集标量。早期缺测是扩充统计和校准的历史动机，不再是 `baseline-64` 无法冻结的现状；Boss 专属载荷当前仍属不支持域。
+5. [内容数量统计](../../crates/tswn_pwp/src/stats.rs#L224-L246)只统计实体模板 lane 等数量，不负责复合叶子和标量拟合；[容量统计](../../crates/tswn_pwp/src/stats.rs#L247-L255)已调用含蓝图的 `CapacityMeasure`，[calibrate](../../crates/tswn_pwp/src/calibrate.rs)另行采集标量。早期缺测是扩充统计和校准的历史动机，不再是 `baseline-64` 无法冻结的现状；Boss 专属载荷当前仍属不支持域。
 6. Parquet 读回的 struct **子字段不继承父级 null**：`clone_build.score_skill_boost_plan` 全为 `None` 时，它的 `initially_boosted_mask` 与 `slot_boosts` 仍被判为有效（实测父级 valid=0、孙字段 valid=全部行）。判断可选 struct 是否存在必须检查**该 struct 自身**的 validity；[measure_encoder_capacity.py](../../scripts/measure_encoder_capacity.py) 已按此修正，100k 池的 `X_required` 峰值由 2271 降为 1671，与 `tswn-pwp stats` 的上界计费（1737）方向一致（差值来自前者按实际 ref 槽、后者按每槽一条 ref 计费）。第 4 节的 8 人池两张表已按修正脚本重测（X 峰值 3335 → 2465），深测表未重测、其 X 列仍是修正前数值。
 
 7. `BattleModelState::validate` **不是 encoder 校验的替代品**：它只检查了部分引用（如 charm `target`），没有覆盖 charm 的 `group_id` 实体引用、槽内 `U64` 实体引用与全部引用域语义。encoder 必须自己完成引用域、presence、词表与容量校验（`UnknownSlotSemantics`、`InvalidSlotValue` 等），不能以“数据已通过 validate”为由跳过。
@@ -703,13 +704,13 @@ git diff --check
 | 缩写／主题 | 文件与定位 |
 | --- | --- |
 | 仓库约定 | [AGENTS.md](../../AGENTS.md)、[文档索引](../README.md)、[设计索引](README.md) |
-| M 输入／校验 | [model_state.rs:78](../../crates/tswn_core/src/runtime/model_state.rs#L78)（RuntimeRunner::model_state）、[校验:197](../../crates/tswn_core/src/runtime/model_state.rs#L197)、[根结构:336](../../crates/tswn_core/src/runtime/model_state.rs#L336) |
-| M 技能 | [model_state.rs:7](../../crates/tswn_core/src/runtime/model_state.rs#L7)（ModelSkills::from）、[编号空间:281](../../crates/tswn_core/src/runtime/model_state.rs#L281)、[lane 类型:390](../../crates/tswn_core/src/runtime/model_state.rs#L390) |
-| M 实体／身份 | [ModelEntity:351](../../crates/tswn_core/src/runtime/model_state.rs#L351)、[ModelWorld:364](../../crates/tswn_core/src/runtime/model_state.rs#L364)、[ModelIdentity:375](../../crates/tswn_core/src/runtime/model_state.rs#L375) |
-| M 槽／模板 | [ModelSlot::project:56](../../crates/tswn_core/src/runtime/model_state.rs#L56)、[槽:420](../../crates/tswn_core/src/runtime/model_state.rs#L420)、[模板:439](../../crates/tswn_core/src/runtime/model_state.rs#L439)、[模板投影:469](../../crates/tswn_core/src/runtime/model_state.rs#L469) |
-| M 状态／payload | [StateEntry:428](../../crates/tswn_core/src/runtime/model_state.rs#L428)、[Payload:528](../../crates/tswn_core/src/runtime/model_state.rs#L528)、[分支:548](../../crates/tswn_core/src/runtime/model_state.rs#L548)、[穷举投影:628](../../crates/tswn_core/src/runtime/model_state.rs#L628) |
-| M runtime／精度例 | [Counter:759](../../crates/tswn_core/src/runtime/model_state.rs#L759)、[PlayerRuntime:765](../../crates/tswn_core/src/runtime/model_state.rs#L765)、[poison bit:906](../../crates/tswn_core/src/runtime/model_state.rs#L906) |
-| J 默认槽注册表 | [registry.rs:265–277](../../crates/tswn_core/src/runtime/profile/registry.rs#L265-L277)（7 个实体槽、3 个全局模板槽、无 battle 槽） |
+| M 输入／校验 | [model_state.rs:90](../../crates/tswn_core/src/runtime/model_state.rs#L90)（RuntimeRunner::model_state）、[校验:209](../../crates/tswn_core/src/runtime/model_state.rs#L209)、[根结构:353](../../crates/tswn_core/src/runtime/model_state.rs#L353) |
+| M 技能 | [model_state.rs:19](../../crates/tswn_core/src/runtime/model_state.rs#L19)（ModelSkills::from）、[编号空间:294–343](../../crates/tswn_core/src/runtime/model_state.rs#L294-L343)、[lane 类型:407](../../crates/tswn_core/src/runtime/model_state.rs#L407) |
+| M 实体／身份 | [ModelEntity:368](../../crates/tswn_core/src/runtime/model_state.rs#L368)、[ModelWorld:381](../../crates/tswn_core/src/runtime/model_state.rs#L381)、[ModelIdentity:392](../../crates/tswn_core/src/runtime/model_state.rs#L392) |
+| M 槽／模板 | [ModelSlot::project:69](../../crates/tswn_core/src/runtime/model_state.rs#L69)、[槽:437](../../crates/tswn_core/src/runtime/model_state.rs#L437)、[模板:456](../../crates/tswn_core/src/runtime/model_state.rs#L456)、[模板投影:486](../../crates/tswn_core/src/runtime/model_state.rs#L486) |
+| M 状态／payload | [StateEntry:445](../../crates/tswn_core/src/runtime/model_state.rs#L445)、[Payload:545](../../crates/tswn_core/src/runtime/model_state.rs#L545)、[分支:566](../../crates/tswn_core/src/runtime/model_state.rs#L566)、[穷举投影:652–787](../../crates/tswn_core/src/runtime/model_state.rs#L652-L787) |
+| M runtime／精度例 | [Counter:790](../../crates/tswn_core/src/runtime/model_state.rs#L790)、[PlayerRuntime:796](../../crates/tswn_core/src/runtime/model_state.rs#L796)、[poison bit:683](../../crates/tswn_core/src/runtime/model_state.rs#L683) |
+| J 默认槽注册表 | [registry.rs:281–293](../../crates/tswn_core/src/runtime/profile/registry.rs#L281-L293)（7 个实体槽、3 个全局模板槽、无 battle 槽） |
 | E 扩展注册表 | [extension.rs](../../crates/tswn_core/src/runtime/extension.rs)（PlayerKindFlags、具名位、PlayerKindPolicies） |
 | R 实体运行时 | [entity/runtime.rs](../../crates/tswn_core/src/runtime/entity/runtime.rs)（MoveState、PlayerPolicyOverrides、ProtectLinkRuntime、HideRuntime、AssassinateRuntime、RuntimeCorpseKind、ChargeRuntime、AccumulateRuntime） |
 | C 实体与分身 | [entity.rs](../../crates/tswn_core/src/runtime/entity.rs)（CloneStatAdjustments、ScoreCloneSkillBoostPlan、CloneBuildData 及访问器） |
@@ -720,7 +721,7 @@ git diff --check
 | API 绑定 | [入口](../reference/public-api.md#入口选择)、[DTO](../reference/public-api.md#规范-dto)、[WASM](../reference/public-api.md#wasm)、[播放](../reference/public-api.md#网页流式播放) |
 | P 历史实测 | [winprob-dataset-scale-baseline.md](../perf/reports/winprob-dataset-scale-baseline.md)（环境、字节口径、分布与早期 encoder 建议） |
 | D 生成器说明 | [抽样和标签](../../crates/tswn_pwp/README.md#抽样和标签)、[统计／基准](../../crates/tswn_pwp/README.md#分布统计与基准)、[离线编码](../../crates/tswn_pwp/README.md#离线张量编码)、[Python 读取](../../crates/tswn_pwp/README.md#python-读取) |
-| S 统计口径 | [stats.rs:150](../../crates/tswn_pwp/src/stats.rs#L150)（collect）、[内容数量:218–240](../../crates/tswn_pwp/src/stats.rs#L218-L240)、[容量统计:240–250](../../crates/tswn_pwp/src/stats.rs#L240-L250) |
+| S 统计口径 | [stats.rs:157](../../crates/tswn_pwp/src/stats.rs#L157)（collect）、[内容数量:224–246](../../crates/tswn_pwp/src/stats.rs#L224-L246)、[容量统计:247–255](../../crates/tswn_pwp/src/stats.rs#L247-L255) |
 | F 抽样 | [sampling.rs:5](../../crates/tswn_pwp/src/sampling.rs#L5)（select，排终局与最终轮数分桶） |
 | G 生成 | [generate.rs:166](../../crates/tswn_pwp/src/generate.rs#L166)（write_shard）、[两遍运行:272–326](../../crates/tswn_pwp/src/generate.rs#L272-L326)、[样本／对局:301–337](../../crates/tswn_pwp/src/generate.rs#L301-L337) |
 | 编码与导出 | [encoder/encode.rs](../../crates/tswn_core/src/encoder/encode.rs)、[batch.rs](../../crates/tswn_core/src/encoder/batch.rs)、[capacity.rs](../../crates/tswn_core/src/encoder/capacity.rs)、[manifest.rs](../../crates/tswn_core/src/encoder/manifest.rs)、[校准通道](../../crates/tswn_pwp/src/calibrate.rs)、[训练包导出](../../crates/tswn_pwp/src/encode.rs)、[包检查脚本](../../scripts/read_encoded_batches.py) |

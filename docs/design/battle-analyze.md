@@ -8,7 +8,7 @@
 | --- | --- |
 | Rust 机制状态导出、共享逐回合驱动、无展示会话 | [runtime/model_state.rs](../../crates/tswn_core/src/runtime/model_state.rs)；[driver.rs](../../crates/tswn_core/src/cli_api/battle/driver.rs)；[model_session.rs](../../crates/tswn_core/src/cli_api/battle/model_session.rs)（含与回放边界一致、sticky failure 和停止策略测试） |
 | 两遍运行、分层抽样、Parquet 分片、恢复、校验与统计 | [generate.rs](../../crates/tswn_pwp/src/generate.rs)；[sampling.rs](../../crates/tswn_pwp/src/sampling.rs)；[storage.rs](../../crates/tswn_pwp/src/storage.rs)；[validate.rs](../../crates/tswn_pwp/src/validate.rs)；[stats.rs](../../crates/tswn_pwp/src/stats.rs)；[pwp 测试](../../crates/tswn_pwp/src/tests.rs) |
-| Rust 固定张量编码与容量/词表/数值/引用校验 | [encoder/encode.rs](../../crates/tswn_core/src/encoder/encode.rs#L390-L506)；[张量注册表](../../crates/tswn_core/src/encoder/batch.rs#L115-L546)；[编码器复核测试](../../crates/tswn_core/src/encoder/encode/tests/review.rs) |
+| Rust 固定张量编码与容量/词表/数值/引用校验 | [encoder/encode.rs](../../crates/tswn_core/src/encoder/encode.rs)（主路径与 `encode/` 各族写入器）；[张量注册表](../../crates/tswn_core/src/encoder/batch.rs#L115-L546)；[编码器复核测试](../../crates/tswn_core/src/encoder/encode/tests/review.rs) |
 | 校准、完整契约发布与训练包导出 | [命令注册](../../crates/tswn_pwp/src/lib.rs)；[calibrate.rs](../../crates/tswn_pwp/src/calibrate.rs)；[manifest.rs](../../crates/tswn_pwp/src/manifest.rs)；[encode.rs](../../crates/tswn_pwp/src/encode.rs) |
 
 **落地边界：** `calibrate` 输出标量校准报告，`build-manifest` 发布通过核心门禁的完整契约；版本 2 的 `encode` 流式导出小端张量、标签、精确旁路和源行审计关联，默认过滤空标签，并通过源数据共享锁、空间预算、摘要回读和临时目录提交保障完整性。模型训练、推理、Python/WASM 编码/机制状态查询接口和胜率 UI 仍是后续工作，见 [FeatureEncoder 接口边界](feature-encoder-spec.md#14-接口边界)。
@@ -25,7 +25,7 @@
 
 `runtime::model_state::BattleModelState` 是版本化、类型化的机制数据。包含输入队伍、实体、模板、当前属性、技能、状态载荷、引用关系、世界顺序、调度信息和运行时槽。原始 state 保留整数、布尔值和浮点 bit 的精度；固定张量与 f32 数值模型通道由后续 encoder 转换生成。
 
-当前 Rust 方法签名见 [展示会话](../../crates/tswn_core/src/cli_api/battle/session.rs#L43-L48) 和 [无展示会话](../../crates/tswn_core/src/cli_api/battle/model_session.rs#L30-L64)：
+当前 Rust 方法签名见 [展示会话](../../crates/tswn_core/src/cli_api/battle/session.rs#L311-L316) 和 [无展示会话](../../crates/tswn_core/src/cli_api/battle/model_session.rs#L34-L66)：
 
 | 方法 | 参数与返回值 |
 | --- | --- |
@@ -43,7 +43,7 @@
 
 输出标签和 `input_team_index` 均指输入队伍；运行时队伍编号及魅惑的临时阵营另行表达。实体 ID 是引用键，不应作为连续数值特征。调整实体数组排列必须同步处理引用，并保留真正影响战斗的行动顺序、存活列表顺序和游标。
 
-技能编号空间固定为 1–50。当前默认注册表实际有 42 项，按现有顺序映射到 1–42，43–50 预留；`MODEL_SKILL_EXPORTS` 与测试锁定映射。技能 ID、legacy key 和 fixed lane 是不同概念，不能互换。
+技能编号空间固定为 1–50。当前默认注册表实际有 47 项，按现有顺序映射到 1–47，48–50 预留；`MODEL_SKILL_EXPORTS` 与测试锁定映射。技能 ID、legacy key 和 fixed lane 是不同概念，不能互换。
 
 `BattleSession` 和 `BattleModelSession` 共用逐回合驱动。胜者优先于轮数保护，无进展上限仍为当前实体数量（至少 1）乘 16。回放会话在空回合后也更新差分快照；无展示会话仅返回可见帧末的边界元数据，不构造展示 DTO。底层 Runtime 更新仍用于判断可见帧。
 

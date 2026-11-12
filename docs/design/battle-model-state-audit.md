@@ -24,7 +24,7 @@
 | `SkillLoadout` | 导出每个 lane 的稳定技能 ID、level、build_level、boost 构成、boosted、fixed_lane_key，以及 merge/active/pre_action/post_damage/deferred 顺序；不是单个技能等级列表 |
 | `StateStore` | 保留所有条目、运行期注册顺序、下次注册游标和压缩状态位；压缩的 Shield/Protect/Upgrade/Corpse/Minion 不会因不在 entries 中而丢失 |
 | `StateEntry` | 保留 legacy key、extension state ID、hook mask、priority、注册顺序及完整 payload |
-| `StatePayload` | 16 个分支穷尽匹配，含毒、魅惑、加速、Boss 感染记录、恢复标志、一拳超人命中者/使魔关系等；Rust 增加新分支会使投影匹配无法编译 |
+| `StatePayload` | 17 个分支穷尽匹配，含毒、魅惑、加速、Boss 感染记录、恢复标志、一拳超人命中者/使魔关系与 Mario Boss 的成长/火球等级；Rust 增加新分支会使投影匹配无法编译 |
 | `EntitySlotStorage` | 按已审计注册槽导出 Bool/I64/U64/模板；包括召唤计数、记忆目标、蓝图及延迟蓝图参数；逐槽语义与张量通道见 [FeatureEncoder 规格 §3.2](feature-encoder-spec.md) |
 | `TemplateSlotStorage` / `BattleSlotStorage` | 导出实际存在的机制值，保留槽 ID；未知文本不能静默进入特征 |
 | `PhaseScheduler` | 保留 Minimal/LegacyStep 模式和待处理 ice_release_events；读取不清空事件 |
@@ -57,7 +57,7 @@
 
 ## 契约与校验
 
-技能映射由 `MODEL_SKILL_EXPORTS` 固定，当前 42 项占用约定的 1–50 空间中的 1–42（43–50 预留）。新增处理器、重排顺序或改变含义时，必须同时更新本审计、评估 `MODEL_STATE_SCHEMA_VERSION` 是否需要 bump，并更新锁定映射的测试；不能静默重新解释已有数据。技能 ID、legacy key 与 fixed lane 是三个不同概念，不得互换。
+技能映射由 `MODEL_SKILL_EXPORTS` 固定，当前 47 项占用约定的 1–50 空间中的 1–47（48–50 预留）。新增处理器、重排顺序或改变含义时，必须同时更新本审计、评估 `MODEL_STATE_SCHEMA_VERSION` 是否需要 bump，并更新锁定映射的测试；不能静默重新解释已有数据。技能 ID、legacy key 与 fixed lane 是三个不同概念，不得互换。
 
 `BattleModelState::validate` 检查实体 ID、空槽范围、输入队伍、世界顺序、owner/root_owner、保护链、暗杀/反击目标、毒/魅惑及感染/Boss 引用。Parquet 校验层另外检查对局行序、标签唯一性、样本轮数、终局排除、样本计数和集合隔离。
 
@@ -65,6 +65,6 @@
 
 ## 当前源码依据
 
-- [runtime/model_state.rs](../../crates/tswn_core/src/runtime/model_state.rs)：状态投影、实体引用校验、schema 版本、42 项技能映射，以及压缩状态和 slot 的投影测试。
+- [runtime/model_state.rs](../../crates/tswn_core/src/runtime/model_state.rs)：状态投影、实体引用校验、schema 版本、47 项技能映射，以及压缩状态和 slot 的投影测试。
 - [BattleModelSession](../../crates/tswn_core/src/cli_api/battle/model_session.rs)：复用 BattleDriver 的推进边界；同 seed 与回放逐边界一致、重复读取无副作用和 sticky failure 回归。
 - [generate.rs](../../crates/tswn_pwp/src/generate.rs)、[storage.rs](../../crates/tswn_pwp/src/storage.rs)、[validate.rs](../../crates/tswn_pwp/src/validate.rs)：两遍采样、Parquet 存储与数据集级校验。
