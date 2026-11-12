@@ -265,22 +265,23 @@ impl CombatRuntime {
         selected_target: Option<EntityIdx>,
     ) {
         for entry in entries {
-            let skill_export = self.registry.skill(entry.skill_id).map(|skill| skill.export_name.clone());
+            let skill_export = self.registry.skill(entry.skill_id).map(|skill| skill.export_name.as_str());
             let mut force_passive = false;
             let mut force_target = None;
-            let export_name = skill_export.clone().unwrap_or_default();
+            let export_name = skill_export.unwrap_or_default();
             // 兼容旧即时对局已经确认的护符结果，保留原随机数消费与后续决策顺序。
             // 没有匹配的旧决策时直接走自然判定，不再生成护符暂停点。
             if self.control.passive_decision_mode()
                 && export_name == DEFAULT_CORE_RERAISE_SKILL_EXPORT
-                && let Some(decision) = self.control.next_passive_decision_for(owner.0 as PlrId, &export_name)
+                && let Some(decision) = self.control.next_passive_decision_for(owner.0 as PlrId, export_name)
             {
                 if !decision.activate || !decision.success {
                     continue;
                 }
                 force_passive = true;
             }
-            let candidates = if export_name == "core.skill.protect" {
+            // 守护候选只在被动决策模式下需要；自动模式不为每个钩子分配。
+            let candidates = if self.control.passive_decision_mode() && export_name == "core.skill.protect" {
                 self.protect_target_candidates(owner)
                     .into_iter()
                     .map(|entity| entity.0 as PlrId)
@@ -289,7 +290,7 @@ impl CombatRuntime {
                 Vec::new()
             };
             if self.control.passive_decision_mode()
-                && skill_export.as_deref().is_some_and(passive_decision_skill)
+                && skill_export.is_some_and(passive_decision_skill)
                 && !(export_name == "core.skill.protect" && candidates.is_empty())
             {
                 let Some(decision) = self.control.next_passive_decision() else {
@@ -298,7 +299,7 @@ impl CombatRuntime {
                         .get(owner)
                         .and_then(|entity| entity.template.skills.level_at(entry.fixed_lane))
                         .unwrap_or(0);
-                    let phase = match export_name.as_str() {
+                    let phase = match export_name {
                         "core.skill.reflect" => Some(crate::runtime::DamageDecisionPhase::Reflect),
                         "core.skill.defend" => Some(crate::runtime::DamageDecisionPhase::Defend),
                         "core.skill.protect" => Some(crate::runtime::DamageDecisionPhase::Protect),
@@ -307,10 +308,10 @@ impl CombatRuntime {
                     let batch_id = self.control.damage_batch().map(|batch| batch.id);
                     let request = PassiveRequest {
                         initiator: self.control.damage_batch().map(|batch| batch.attacker),
-                        mp_costs: self.passive_mp_costs(owner, &export_name, false),
+                        mp_costs: self.passive_mp_costs(owner, export_name, false),
                         actor: owner.0 as PlrId,
                         target: None,
-                        skill: export_name,
+                        skill: export_name.to_owned(),
                         level,
                         candidates,
                         unavoidable: false,

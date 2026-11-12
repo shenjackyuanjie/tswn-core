@@ -380,6 +380,29 @@ impl CombatRuntime {
         )
     }
 
+    /// 命中/回避判定口径：攻击方命中值、目标闪避值与目标当前是否活跃。
+    ///
+    /// 只在真正需要判定时调用，取值时机决定语义：PRE_DEFEND 钩子可能改变存活与攻防敏，
+    /// 因此实际闪避判定必须在钩子之后重新取值。
+    fn plain_dodge_values(&self, actor: EntityIdx, target: EntityIdx, use_magic: bool) -> (i32, i32, bool) {
+        let actor_runtime = &self.entities.get(actor).unwrap().runtime;
+        let target_entity = self.entities.get(target).unwrap();
+        let target_runtime = &target_entity.runtime;
+        (
+            if use_magic {
+                actor_runtime.magic + actor_runtime.agility
+            } else {
+                actor_runtime.attack + actor_runtime.agility
+            },
+            if use_magic {
+                target_runtime.resistance + target_runtime.agility
+            } else {
+                target_runtime.defense + target_runtime.agility
+            },
+            target_entity.is_active(),
+        )
+    }
+
     /// 完整攻击入口，携带 0.5.5 `a3` 的伤害类型标记。
     ///
     /// `kind` 只在双方都携带时才有可观察差异：青雉的 POST_DEFEND 吸收依赖
@@ -398,27 +421,12 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
     ) -> i32 {
         let batch_id = self.control.begin_damage_batch(actor.0 as PlrId, target.0 as PlrId);
-        let (accuracy, dodge_value, target_active) = {
-            let actor_runtime = &self.entities.get(actor).unwrap().runtime;
-            let target_entity = self.entities.get(target).unwrap();
-            let target_runtime = &target_entity.runtime;
-            (
-                if use_magic {
-                    actor_runtime.magic + actor_runtime.agility
-                } else {
-                    actor_runtime.attack + actor_runtime.agility
-                },
-                if use_magic {
-                    target_runtime.resistance + target_runtime.agility
-                } else {
-                    target_runtime.defense + target_runtime.agility
-                },
-                target_entity.is_active(),
-            )
-        };
-        // 回避预演只读判定口径，不推进随机数；自动模式下立即返回。
-        if target_active {
-            self.prepare_plain_dodge(target, accuracy, dodge_value, false, updates);
+        // 回避预演必须在 PRE_DEFEND 之前询问（被动决策协议），且只在决策模式下需要判定口径。
+        if self.control.passive_decision_mode() {
+            let (accuracy, dodge_value, target_active) = self.plain_dodge_values(actor, target, use_magic);
+            if target_active {
+                self.prepare_plain_dodge(target, accuracy, dodge_value, false, updates);
+            }
         }
         #[cfg(not(feature = "no_debug"))]
         let debug_attack = self.probe_default_attack_matches(actor);
@@ -451,6 +459,9 @@ impl CombatRuntime {
             self.control.finish_damage_batch(batch_id);
             return 0;
         }
+        // 实际判定沿用 PRE_DEFEND 之后的状态：反弹/守护钩子可能改变目标存活或攻防敏，
+        // main 一直在这里重算，提前取值会让命中与随机数消耗偏离开源语义。
+        let (accuracy, dodge_value, target_active) = self.plain_dodge_values(actor, target, use_magic);
         #[cfg(not(feature = "no_debug"))]
         if debug_attack {
             eprintln!(

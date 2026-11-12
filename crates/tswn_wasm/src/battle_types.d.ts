@@ -67,6 +67,8 @@ export interface BattlePlayerState {
     status_labels: Array<string>;
     /** 技能熟练度；仅在选项 include_skills 为 true 时出现，或为空时省略。 */
     skills?: Array<SkillSnapshot>;
+    /** 主动技能及其行动扫描顺序；仅在 include_skills 为 true 时出现。 */
+    active_skills?: Array<SkillSnapshot>;
 }
 
 /** 单个技能的熟练度投影；同名技能合并为最高等级。 */

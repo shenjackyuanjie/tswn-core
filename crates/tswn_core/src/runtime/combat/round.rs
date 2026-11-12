@@ -971,11 +971,13 @@ impl CombatRuntime {
 
     pub fn has_plain_berserk_state(&self, actor: EntityIdx) -> bool {
         self.entities.get(actor).is_some_and(|entity| {
-            entity
-                .states
-                .entries()
-                .iter()
-                .any(|entry| matches!(entry.payload, StatePayload::Berserk { .. }))
+            // 位图预判：没有狂暴标签时不做 entries 遍历，行动热路径保持原开销。
+            entity.states.may_contain(StatePayloadKind::Berserk)
+                && entity
+                    .states
+                    .entries()
+                    .iter()
+                    .any(|entry| matches!(entry.payload, StatePayload::Berserk { .. }))
         })
     }
 
