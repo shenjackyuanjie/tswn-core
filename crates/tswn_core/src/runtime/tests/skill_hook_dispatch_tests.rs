@@ -650,3 +650,101 @@ fn run_minimal_round_flushes_post_damage_state_effect_before_post_action() {
     assert_eq!(frame.updates.updates[2].message, "state mark");
     assert_eq!(frame.updates.updates[2].score, 44);
 }
+
+#[test]
+fn damage_phases_dispatch_custom_skills_after_unprepared_loadout_replacement() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let pre = builder
+        .register_skill_with_hooks(
+            "custom",
+            "before",
+            "custom.before",
+            ProcMask::PRE_DAMAGE,
+            TargetPolicy::None,
+            SkillPriority(0),
+        )
+        .unwrap();
+    let post = builder
+        .register_skill_with_hooks(
+            "custom",
+            "after",
+            "custom.after",
+            ProcMask::POST_DAMAGE,
+            TargetPolicy::None,
+            SkillPriority(0),
+        )
+        .unwrap();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "left", 0, 100, 3),
+            PlayerTemplate::new(2, "right", 1, 100, 3),
+        ],
+        builder.build(),
+    ));
+    runtime.entities.get_mut(EntityIdx(0)).unwrap().template.skills = SkillLoadout::from_skills([pre, post]);
+    runtime.set_skill_handler(pre, skill_marks_update);
+    runtime.set_skill_handler(post, skill_marks_update);
+    let frame = runtime.run_minimal_round().frame.unwrap();
+    let marks: Vec<_> = frame
+        .updates
+        .updates
+        .iter()
+        .filter(|update| update.message == "skill mark")
+        .map(|update| update.score)
+        .collect();
+    assert_eq!(marks, vec![pre.0, post.0]);
+}
+
+fn damage_skill_adds_same_phase_state(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
+    context.push_nested(QueuedEffect::AddState {
+        target: entry.owner,
+        state: StateEntry {
+            legacy_order_key: 77,
+            extension_state_id: Some(StateId(0)),
+            hook_mask: ProcMask::PRE_DAMAGE | ProcMask::POST_DAMAGE,
+            priority: SkillPriority(0),
+            registration_order: RegistrationOrder(0),
+            payload: StatePayload::None,
+        },
+    });
+}
+
+#[test]
+fn damage_phase_reads_state_mask_after_skill_adds_same_phase_state() {
+    for hook in [ProcMask::PRE_DAMAGE, ProcMask::POST_DAMAGE] {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "add-state",
+                "custom.add_state",
+                hook,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .unwrap();
+        let state = builder
+            .register_state(
+                "custom",
+                "marker",
+                "custom.marker",
+                ProcMask::PRE_DAMAGE | ProcMask::POST_DAMAGE,
+                SkillPriority(0),
+            )
+            .unwrap();
+        assert_eq!(state, StateId(0));
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 100, 3).with_skills([skill]),
+                PlayerTemplate::new(2, "right", 1, 100, 3),
+            ],
+            builder.build(),
+        ));
+        runtime.set_skill_handler(skill, damage_skill_adds_same_phase_state);
+        runtime.set_state_handler(state, state_marks_update);
+        let frame = runtime.run_minimal_round().frame.unwrap();
+        let marks: Vec<_> = frame.updates.updates.iter().filter(|update| update.message == "state mark").collect();
+        assert_eq!(marks.len(), if hook == ProcMask::PRE_DAMAGE { 2 } else { 1 });
+        assert!(marks.iter().all(|update| update.score == 77));
+    }
+}

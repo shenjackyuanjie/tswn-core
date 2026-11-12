@@ -64,7 +64,8 @@ K_i = BASE_K_FACTOR / (1 + 累计场次_i / LADDER_K_SHRINK_MATCHES)，不低于
 ```
 
 新玩家仍用满 K 快速就位（约 130 轮 ≈ 2 小时收缩到下限），老玩家的单场改分收敛到 `K=12`。
-累计场次存在 `LADDER_STATE_DIR` 下的小文本快照里（默认 `ladder_matchcount.txt`），
+累计场次、名称哈希、K 恢复截止轮和全局轮次存在 `LADDER_STATE_DIR` 下的小文本快照里（默认 `ladder_matchcount.txt`）。
+首行 `r <轮次>` 让重启后继续恢复期限与维护计数，仍兼容没有该头部的旧快照；
 每 `MATCHCOUNT_SAVE_EVERY` 轮和收到退出信号时原子写回；文件丢了只会让所有人按新玩家
 K 重新跑两小时，不影响数据正确性。
 
@@ -193,6 +194,6 @@ cargo +nightly fmt -p tswn_ladder --check
 ```
 
 单元测试覆盖 cron、core 胜者映射、统一衰减的分差不变性、自适应 K 的收缩与下限、
-handicap 回写刻度判断、场次快照往返。`sql/handicap_maintenance.sql` 之外的数据库行为
+handicap 回写刻度判断、轮次/场次快照往返、资格门预筛和极端评分差值。`sql/handicap_maintenance.sql` 之外的数据库行为
 （完整更新、事务回写、信号处理）仍需在测试数据库或干跑模式中单独验收，不能把单元测试
 当作数据库端到端验证。

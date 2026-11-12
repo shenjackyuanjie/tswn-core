@@ -290,9 +290,9 @@ impl BattleModelState {
 
 pub const MODEL_STATE_SCHEMA_VERSION: u32 = 1;
 
-/// 编号空间固定为 1–50；当前 42 个处理器沿用注册顺序，43–50 预留。
+/// 编号空间固定为 1–50；当前 47 个处理器沿用注册顺序，48–50 预留。
 pub const MODEL_SKILL_ID_LIMIT: u32 = 50;
-pub const MODEL_SKILL_EXPORTS: [&str; 42] = [
+pub const MODEL_SKILL_EXPORTS: [&str; 47] = [
     "custom.summon",
     "custom.summon.fire",
     "custom.summon.explode",
@@ -335,6 +335,11 @@ pub const MODEL_SKILL_EXPORTS: [&str; 42] = [
     "core.skill.merge",
     "core.skill.zombie",
     "core.skill.reraise",
+    "core.weapon.s11",
+    "core.weapon.death-note",
+    "core.weapon.xuan-yue-counter",
+    "core.weapon.rinick-ice-age",
+    "core.weapon.rinick-yuri-control",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -554,6 +559,7 @@ pub struct ModelPayload {
     pub saitama_boss: Option<SaitamaBossPayload>,
     pub lazy_boss: Option<LazyBossPayload>,
     pub lazy_infection: Option<LazyInfectionPayload>,
+    pub mario_boss: Option<MarioBossPayload>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -635,6 +641,12 @@ pub struct LazyBossPayload {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LazyInfectionPayload {
     pub boss: EntityIdx,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MarioBossPayload {
+    pub grow: i32,
+    pub fire_level: u32,
 }
 
 impl From<&StatePayload> for ModelPayload {
@@ -761,6 +773,13 @@ impl From<&StatePayload> for ModelPayload {
             StatePayload::LazyInfection { boss } => {
                 result.kind = "lazy_infection".into();
                 result.lazy_infection = Some(LazyInfectionPayload { boss: *boss });
+            }
+            StatePayload::MarioBoss { grow, fire_level } => {
+                result.kind = "mario_boss".into();
+                result.mario_boss = Some(MarioBossPayload {
+                    grow: *grow,
+                    fire_level: *fire_level,
+                });
             }
         }
         result

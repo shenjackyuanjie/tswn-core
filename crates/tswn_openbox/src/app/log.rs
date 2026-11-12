@@ -8,33 +8,33 @@ use std::collections::VecDeque;
 
 const MAX_LOG_BYTES: usize = 4 * 1024 * 1024;
 /// 纯文本里不同输入组之间的分隔行。
-pub(crate) const DIY_GROUP_SEPARATOR: &str = "=========";
+pub const DIY_GROUP_SEPARATOR: &str = "=========";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum LogKind {
+pub enum LogKind {
     Plain,
     Highlight,
     SkillBoard,
 }
 
-pub(crate) struct LogLine {
+pub struct LogLine {
     text: String,
-    pub(crate) kind: LogKind,
+    pub kind: LogKind,
 }
 
 impl LogLine {
-    pub(crate) fn display_text(&self) -> &str { self.text.strip_suffix('\r').unwrap_or(&self.text) }
+    pub fn display_text(&self) -> &str { self.text.strip_suffix('\r').unwrap_or(&self.text) }
 }
 
 /// 折行后的一段渲染行：所属日志行（绝对下标）与该段在行内的字节区间。
 #[derive(Clone, Copy)]
-pub(crate) struct WrappedRow {
-    pub(crate) line: usize,
-    pub(crate) start: usize,
-    pub(crate) end: usize,
+pub struct WrappedRow {
+    pub line: usize,
+    pub start: usize,
+    pub end: usize,
 }
 
-pub(crate) struct LogBuffer {
+pub struct LogBuffer {
     lines: VecDeque<LogLine>,
     bytes: usize,
     non_blank_lines: usize,
@@ -68,7 +68,7 @@ impl LogBuffer {
         }
     }
 
-    pub(crate) fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.lines.clear();
         self.bytes = 0;
         self.non_blank_lines = 0;
@@ -78,24 +78,24 @@ impl LogBuffer {
         self.wrapped_lines = 0;
     }
 
-    pub(crate) fn is_empty(&self) -> bool { self.non_blank_lines == 0 }
+    pub fn is_empty(&self) -> bool { self.non_blank_lines == 0 }
 
-    pub(crate) fn len(&self) -> usize { self.lines.len() }
+    pub fn len(&self) -> usize { self.lines.len() }
 
-    pub(crate) fn get(&self, index: usize) -> Option<&LogLine> { self.lines.get(index) }
+    pub fn get(&self, index: usize) -> Option<&LogLine> { self.lines.get(index) }
 
-    pub(crate) fn skill_board_line_count(&self) -> usize { self.skill_board_indices.len() }
+    pub fn skill_board_line_count(&self) -> usize { self.skill_board_indices.len() }
 
-    pub(crate) fn skill_board_line(&self, index: usize) -> Option<&LogLine> {
+    pub fn skill_board_line(&self, index: usize) -> Option<&LogLine> {
         self.get(self.skill_board_indices.get(index)?.checked_sub(self.discarded)?)
     }
 
-    pub(crate) fn discarded_lines(&self) -> usize { self.discarded }
+    pub fn discarded_lines(&self) -> usize { self.discarded }
 
     /// 按可用宽度把日志切成渲染行，返回总段数；宽度未变时只切分新增内容。
     ///
     /// 每段宽度不超过 `width`，因此渲染时仍可用固定行高做可见行虚拟化。
-    pub(crate) fn wrap_rows(&mut self, width: f32, ascii_width: f32) -> usize {
+    pub fn wrap_rows(&mut self, width: f32, ascii_width: f32) -> usize {
         if width <= 0.0 || ascii_width <= 0.0 {
             return self.lines.len();
         }
@@ -137,12 +137,12 @@ impl LogBuffer {
     }
 
     /// 第 `index` 段所属的日志行与行内字节区间；已裁剪的段返回 `None`。
-    pub(crate) fn wrapped_row(&self, index: usize) -> Option<(usize, usize, usize)> {
+    pub fn wrapped_row(&self, index: usize) -> Option<(usize, usize, usize)> {
         let row = self.wrapped.get(index)?;
         Some((row.line.checked_sub(self.discarded)?, row.start, row.end))
     }
 
-    pub(crate) fn append(&mut self, text: &str, kind: LogKind) {
+    pub fn append(&mut self, text: &str, kind: LogKind) {
         let trimmed = text.trim_end_matches('\n');
         if trimmed.is_empty() {
             return;
@@ -157,7 +157,7 @@ impl LogBuffer {
     }
 
     /// 追加一组结果；已有内容时先插入分隔行，便于区分不同输入组。
-    pub(crate) fn append_diy_block(&mut self, text: &str, kind: LogKind) {
+    pub fn append_diy_block(&mut self, text: &str, kind: LogKind) {
         if text.trim().is_empty() {
             return;
         }
@@ -169,7 +169,7 @@ impl LogBuffer {
         self.append(text, kind);
     }
 
-    pub(crate) fn copy_text(&self) -> String {
+    pub fn copy_text(&self) -> String {
         let mut text = String::with_capacity(self.bytes);
         for line in &self.lines {
             text.push_str(&line.text);

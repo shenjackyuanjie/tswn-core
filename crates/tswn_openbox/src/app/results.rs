@@ -4,7 +4,7 @@
 //! 状态。模型负责缓存、排序与较早记录裁剪，子模块只绘制可见行；所有更新和渲染
 //! 在 UI 线程进行，不把模型引用交给后台计算。复制结果只覆盖当前保留的记录。
 
-pub(crate) use view::{RESULT_FOOTER_HEIGHT, scrolled_to_end};
+pub use view::{RESULT_FOOTER_HEIGHT, scrolled_to_end};
 
 mod view;
 
@@ -13,22 +13,23 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use serde::{Deserialize, Serialize};
 use tswn_openbox::backend::live::{EntryKind, ResultEntry, ResultFinish, ResultKind, ResultUpdate};
 
+use super::icons::IconCache;
 use super::log::{LogBuffer, LogKind};
 
 const MAX_RESULT_BYTES: usize = 8 * 1024 * 1024;
 
 /// 表格高度的自动模式：按可用高度的 [`TABLE_AUTO_RATIO`] 分配，拖动分隔条后写入具体像素值。
-pub(crate) const TABLE_HEIGHT_AUTO: f32 = 0.0;
-pub(crate) const TABLE_HEIGHT_MIN: f32 = 80.0;
-pub(crate) const TABLE_HEIGHT_MAX: f32 = 2000.0;
+pub const TABLE_HEIGHT_AUTO: f32 = 0.0;
+pub const TABLE_HEIGHT_MIN: f32 = 80.0;
+pub const TABLE_HEIGHT_MAX: f32 = 10_000.0;
 /// 自动模式下表格占结果区高度的比例；与拖动前的默认版面一致。
-pub(crate) const TABLE_AUTO_RATIO: f32 = 0.55;
-/// 表格下方选中行明细至少保留的高度。
-pub(crate) const TABLE_DETAIL_MIN: f32 = 120.0;
+pub const TABLE_AUTO_RATIO: f32 = 0.55;
+/// 表格下方选中行明细至少保留的高度；表格因此最多占到可用高度减去这段空间。
+pub const TABLE_DETAIL_MIN: f32 = 80.0;
 
 /// 与 [`Tool::ALL`] 顺序一致的默认视图：导出与配队看卡片，评分与胜率看表格，
 /// 只有纯文本结果的 base 与 DS4 看纯文本。
-pub(crate) const DEFAULT_VIEW_MODES: [ViewMode; 6] = [
+pub const DEFAULT_VIEW_MODES: [ViewMode; 6] = [
     ViewMode::Cards,
     ViewMode::Table,
     ViewMode::Table,
@@ -38,7 +39,7 @@ pub(crate) const DEFAULT_VIEW_MODES: [ViewMode; 6] = [
 ];
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) enum ViewMode {
+pub enum ViewMode {
     Text,
     #[default]
     Cards,
@@ -46,14 +47,14 @@ pub(crate) enum ViewMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) enum ColumnAlign {
+pub enum ColumnAlign {
     Left,
     Center,
     Right,
 }
 
 impl ColumnAlign {
-    pub(crate) const ALL: [Self; 3] = [Self::Left, Self::Center, Self::Right];
+    pub const ALL: [Self; 3] = [Self::Left, Self::Center, Self::Right];
 
     fn label(self) -> &'static str {
         match self {
@@ -78,14 +79,17 @@ struct DisplayEntry {
 }
 
 /// 卡片与表格里的一行详情；`kind` 决定整体着色，缩进与差额由文本自身决定。
-pub(crate) struct DetailLine {
-    pub(crate) text: String,
-    pub(crate) kind: EntryKind,
+pub struct DetailLine {
+    pub text: String,
+    /// 行首的玩家名字，用于渲染徽章；为空表示该行不是按名字索引的明细
+    /// （DIY 导出行、namer-pf 的指标行），只显示文本。
+    pub label: String,
+    pub kind: EntryKind,
 }
 
 /// 结果区的一行：结果标题、展开卡片的明细行，或展开卡片右下角的“复制全部”页脚。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ResultRow {
+pub enum ResultRow {
     Header(usize),
     Detail { group: usize, index: usize },
     CardCopy(usize),
@@ -187,6 +191,7 @@ impl Record {
                 .iter()
                 .map(|line| DetailLine {
                     text: line.clone(),
+                    label: String::new(),
                     kind: EntryKind::Plain,
                 })
                 .collect()
@@ -195,8 +200,13 @@ impl Record {
                 .iter()
                 .map(|&index| {
                     let entry = &self.entries[&index];
+                    // 只有按名字索引的明细（配队队友、批量靶子）才带徽章；namer-pf 的标签是指标名。
+                    let label = matches!(self.kind, ResultKind::Rate | ResultKind::Pair)
+                        .then(|| entry.data.label.clone())
+                        .unwrap_or_default();
                     DetailLine {
                         text: detail_line_text(entry),
+                        label,
                         kind: entry.data.kind,
                     }
                 })
@@ -221,14 +231,28 @@ impl Record {
     }
 }
 
-pub(crate) struct ResultsView {
+/// 表格当前按哪一列排序；`None` 表示按输入顺序。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SortState {
+    /// 表格列下标：0 是名字，2 起是各分数列。
+    pub column: usize,
+    pub descending: bool,
+}
+
+pub struct ResultsView {
     pub mode: ViewMode,
     pub follow: bool,
     pub column_widths: [f32; 7],
     pub column_alignments: [ColumnAlign; 7],
     pub card_align: ColumnAlign,
+    /// 名字旁是否渲染玩家徽章；排版设置按工具页保存。
+    pub show_icons: bool,
+    /// 徽章纹理缓存；随视图常驻，清空结果不回收。
+    icons: IconCache,
     /// 表格区域高度；[`TABLE_HEIGHT_AUTO`] 表示按可用高度自动分配。
     pub table_height: f32,
+    /// 表头点击后的排序状态；切换视图或清空结果时回到输入顺序。
+    pub sort: Option<SortState>,
     records: HashMap<usize, Record>,
     order: VecDeque<usize>,
     expanded: HashSet<usize>,
@@ -262,7 +286,10 @@ impl Default for ResultsView {
                 ColumnAlign::Right,
             ],
             card_align: ColumnAlign::Left,
+            show_icons: true,
+            icons: IconCache::default(),
             table_height: TABLE_HEIGHT_AUTO,
+            sort: None,
             records: HashMap::new(),
             order: VecDeque::new(),
             expanded: HashSet::new(),
@@ -282,7 +309,7 @@ impl Default for ResultsView {
 
 impl ResultsView {
     /// 按指定视图模式创建空结果视图；初始状态与设置恢复共用。
-    pub(crate) fn with_mode(mode: ViewMode) -> Self { Self { mode, ..Self::default() } }
+    pub fn with_mode(mode: ViewMode) -> Self { Self { mode, ..Self::default() } }
 
     pub fn clear(&mut self) {
         *self = Self {
@@ -291,13 +318,15 @@ impl ResultsView {
             column_widths: self.column_widths,
             column_alignments: self.column_alignments,
             card_align: self.card_align,
+            show_icons: self.show_icons,
+            icons: std::mem::take(&mut self.icons),
             table_height: self.table_height,
             ..Self::default()
         };
     }
 
     /// 勾选“跟随最新”时立即跳到最新；取消勾选只停止跟随，不改变当前位置。
-    pub(crate) fn set_follow(&mut self, follow: bool) {
+    pub fn set_follow(&mut self, follow: bool) {
         if follow && !self.follow {
             self.follow_jump = true;
         }
@@ -308,7 +337,7 @@ impl ResultsView {
     ///
     /// 用上一次渲染的内容高度与视口高度算出到底部的偏移，勾选后当帧就直接落在最新一行；
     /// 还没有度量时返回 0，由 `stick_to_bottom` 在后续帧接管。
-    pub(crate) fn take_follow_jump(&mut self, extent: Option<(f32, f32)>) -> Option<f32> {
+    pub fn take_follow_jump(&mut self, extent: Option<(f32, f32)>) -> Option<f32> {
         if !std::mem::take(&mut self.follow_jump) {
             return None;
         }
@@ -316,19 +345,19 @@ impl ResultsView {
     }
 
     /// 记录结果区滚动区本次的内容高度与视口高度。
-    pub(crate) fn set_results_extent(&mut self, content: f32, viewport: f32) { self.results_extent = Some((content, viewport)); }
+    pub fn set_results_extent(&mut self, content: f32, viewport: f32) { self.results_extent = Some((content, viewport)); }
 
     /// 记录日志滚动区本次的内容高度与视口高度。
-    pub(crate) fn set_log_extent(&mut self, content: f32, viewport: f32) { self.log_extent = Some((content, viewport)); }
+    pub fn set_log_extent(&mut self, content: f32, viewport: f32) { self.log_extent = Some((content, viewport)); }
 
     /// 上一次渲染时结果区滚动区的度量。
-    pub(crate) fn results_extent(&self) -> Option<(f32, f32)> { self.results_extent }
+    pub fn results_extent(&self) -> Option<(f32, f32)> { self.results_extent }
 
     /// 上一次渲染时日志滚动区的度量。
-    pub(crate) fn log_extent(&self) -> Option<(f32, f32)> { self.log_extent }
+    pub fn log_extent(&self) -> Option<(f32, f32)> { self.log_extent }
 
     /// 表格区域高度；自动模式按可用高度取比例，拖动后按保存的像素值。
-    pub(crate) fn table_area_height(&self, available: f32) -> f32 {
+    pub fn table_area_height(&self, available: f32) -> f32 {
         let limit = (available - TABLE_DETAIL_MIN).max(TABLE_HEIGHT_MIN);
         if self.table_height > TABLE_HEIGHT_AUTO {
             self.table_height.clamp(TABLE_HEIGHT_MIN, limit)
@@ -337,8 +366,69 @@ impl ResultsView {
         }
     }
 
+    /// 点击表头时循环切换排序：输入顺序 → 升序 → 降序 → 输入顺序。
+    ///
+    /// 第 1 列是状态与复制按钮，没有可比较的值，点击不产生排序。
+    pub fn cycle_sort(&mut self, column: usize) {
+        if column == 1 {
+            return;
+        }
+        self.sort = match self.sort {
+            Some(state) if state.column == column => {
+                if state.descending {
+                    None
+                } else {
+                    Some(SortState {
+                        column,
+                        descending: true,
+                    })
+                }
+            }
+            _ => Some(SortState {
+                column,
+                descending: false,
+            }),
+        };
+        self.dirty = true;
+    }
+
+    /// 当前要渲染的组顺序：默认按输入顺序，排序生效时按列值比较，同值保持输入顺序。
+    fn sorted_groups(&self) -> Vec<usize> {
+        let mut groups: Vec<usize> = self.order.iter().copied().collect();
+        let Some(sort) = self.sort else {
+            return groups;
+        };
+        groups.sort_by(|a, b| {
+            let order = self.compare_by_column(*a, *b, sort.column);
+            if sort.descending { order.reverse() } else { order }
+        });
+        groups
+    }
+
+    fn compare_by_column(&self, a: usize, b: usize, column: usize) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+        let (Some(left), Some(right)) = (self.records.get(&a), self.records.get(&b)) else {
+            return Ordering::Equal;
+        };
+        if column == 0 {
+            return left.label.cmp(&right.label);
+        }
+        if column < 2 {
+            return Ordering::Equal;
+        }
+        let left_value = left.entries.get(&(column - 2)).and_then(|entry| entry.data.value);
+        let right_value = right.entries.get(&(column - 2)).and_then(|entry| entry.data.value);
+        match (left_value, right_value) {
+            (Some(left), Some(right)) => left.total_cmp(&right),
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => Ordering::Equal,
+        }
+        .then(a.cmp(&b))
+    }
+
     /// 记录拖动后的表格高度；`None` 恢复自动分配。
-    pub(crate) fn set_table_height(&mut self, height: Option<f32>) {
+    pub fn set_table_height(&mut self, height: Option<f32>) {
         self.table_height = match height {
             Some(height) if height.is_finite() => height.clamp(TABLE_HEIGHT_MIN, TABLE_HEIGHT_MAX),
             _ => TABLE_HEIGHT_AUTO,
@@ -346,16 +436,16 @@ impl ResultsView {
     }
 
     /// 当前选中卡片或选中行的可复制文本；没有选中项时返回 `None`。
-    pub(crate) fn copy_selected_text(&mut self) -> Option<String> {
+    pub fn copy_selected_text(&mut self) -> Option<String> {
         let group = self.selected?;
         self.copy_record_text(group)
     }
 
     /// 是否有选中的卡片或行；底部“复制全部”按钮据此决定是否可用。
-    pub(crate) fn has_selection(&self) -> bool { self.selected.is_some() }
+    pub fn has_selection(&self) -> bool { self.selected.is_some() }
 
     /// 指定结果块的可复制文本：标题行加明细行；明细顺序在此处刷新。
-    pub(crate) fn copy_record_text(&mut self, group: usize) -> Option<String> {
+    pub fn copy_record_text(&mut self, group: usize) -> Option<String> {
         let record = self.records.get_mut(&group)?;
         record.refresh_detail_order();
         Some(record.copy_text(group))

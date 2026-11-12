@@ -58,6 +58,8 @@ try {
 }
 ```
 
+能力卡（`cards` feature，默认关闭）：开启后 `BattleSession.set_abilities(packet)` 接受技能编号、减耗量、倍率万分数三元组，让卡牌的独立乘区与减耗生效；关闭时该方法与生成的 `.d.ts` 声明都不存在。
+
 完整方法与 DTO 见 [公共 API](../../docs/reference/public-api.md)。返回值为 plain JS object，缺省值为 null，TypeScript 类型随生成包导出。`max_rounds` 包含空 round；terminal next_frame 幂等。`battle_replay` 仅收集同一个 session。
 
 示例页面先显示 initial states，再逐帧拉取，最多预取 2 帧；昵称与图标只装饰显示层。`?perf=1` 输出性能统计，参见 [性能基线](../../docs/perf/reports/web-streaming-baseline.md)。

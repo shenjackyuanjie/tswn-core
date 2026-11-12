@@ -67,6 +67,7 @@ pub enum tswn_battle_stop_reason_t {
     TSWN_BATTLE_STOP_WINNER = 1,
     TSWN_BATTLE_STOP_MAX_ROUNDS = 2,
     TSWN_BATTLE_STOP_NO_PROGRESS = 3,
+    TSWN_BATTLE_STOP_PAUSED = 4,
 }
 
 #[allow(
@@ -299,6 +300,7 @@ pub unsafe extern "C" fn tswn_battle_session_stop_reason(
                 Some(BattleStopReason::Winner) => tswn_battle_stop_reason_t::TSWN_BATTLE_STOP_WINNER,
                 Some(BattleStopReason::MaxRounds) => tswn_battle_stop_reason_t::TSWN_BATTLE_STOP_MAX_ROUNDS,
                 Some(BattleStopReason::NoProgress) => tswn_battle_stop_reason_t::TSWN_BATTLE_STOP_NO_PROGRESS,
+                Some(BattleStopReason::Paused) => tswn_battle_stop_reason_t::TSWN_BATTLE_STOP_PAUSED,
             })
         };
         Ok(())
@@ -389,6 +391,7 @@ mod tests {
             eval_rq: 0.5,
             max_rounds: 1,
             include_icons: true,
+            ..BattleOptions::default()
         };
         let old = SimulatedOldBattleOptionsV1 {
             struct_size: size_of::<SimulatedOldBattleOptionsV1>() as u32,

@@ -9,10 +9,29 @@ pub fn battle_replay(raw: &str, options: BattleOptions) -> CliApiResult<BattleRe
     while let Some(frame) = session.next_frame()? {
         frames.push(frame);
     }
+    // 玩家单位把战斗逼停：不是终局，回放截到这里，等前端下指令后重新模拟。
+    if let Some(paused_actor) = session.paused_actor() {
+        return Ok(BattleReplay {
+            paused_actor: Some(paused_actor as usize),
+            status: BattleStatus::Running,
+            stop_reason: BattleStopReason::Paused,
+            rounds_advanced: session.rounds_advanced(),
+            frames_emitted: session.frames_emitted(),
+            finished: false,
+            truncated: false,
+            initial_states,
+            frames,
+            final_states: session.current_states().to_vec(),
+            winner_ids: Vec::new(),
+            winner_team_indices: Vec::new(),
+            state_granularity: "round",
+        });
+    }
     let result = session
         .result()
         .ok_or_else(|| CliApiError::Internal("session ended without a result".into()))?;
     Ok(BattleReplay {
+        paused_actor: None,
         status: result.status,
         stop_reason: result.stop_reason,
         rounds_advanced: result.rounds_advanced,

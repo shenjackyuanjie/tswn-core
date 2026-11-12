@@ -38,11 +38,13 @@ mod cqp;
 pub mod effect;
 pub mod entity;
 pub mod extension;
+pub mod forced_action;
 mod handlers;
 pub mod lang;
 pub mod model_state;
 mod normalized;
 mod plain_assassinate;
+mod plain_slime;
 mod plain_summon;
 mod plain_zombie;
 mod prepared_init;
@@ -76,8 +78,8 @@ pub use effect::{
 pub use entity::{
     AssassinateRuntime, CloneBuildData, CloneDerivedStats, CloneStatAdjustments, CompressedLegacyState, CounterRuntime,
     CovidInfectionEntry, EntityArena, EntityIdx, EntityRecord, HideRuntime, MoveState, PlayerPolicyOverrides, PlayerRuntime,
-    PlayerTemplate, ProtectLinkRuntime, RuntimeCorpseKind, ScoreCloneSkillBoostPlan, SkillLoadout, StateEntry, StatePayload,
-    StatePayloadKind, StateStore,
+    PlayerTemplate, ProtectLinkRuntime, RinickTemplateData, RuntimeCorpseKind, ScoreCloneSkillBoostPlan, SkillLoadout,
+    StateEntry, StatePayload, StatePayloadKind, StateStore,
 };
 pub use extension::{
     BattleSlotId, BattleSlotSpec, DamageSharePolicy, EffectHandlerId, EffectHandlerSpec, EntitySlotId, EntitySlotSpec,
@@ -102,7 +104,8 @@ pub use batch::{
     runtime_groups_win_rate_timed, runtime_score, runtime_score_range, runtime_score_range_timed, runtime_score_timed,
 };
 pub use combat::{
-    CombatRuntime, PreparedBuiltinSkillAction, PreparedPlainAction, PreparedTargetList, RoundOutcome, SelectedBuiltinSkill,
+    CombatRuntime, PreparedBossSkillAction, PreparedBuiltinSkillAction, PreparedPlainAction, PreparedTargetList, RoundOutcome,
+    SelectedBuiltinSkill,
 };
 pub use cqp::{
     RuntimeCqpBatchResult, RuntimeCqpMatchup, RuntimeCqpMatchupResult, resolve_cqp_workers, runtime_cqp_matchups,

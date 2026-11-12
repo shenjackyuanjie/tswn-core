@@ -1,6 +1,7 @@
 /** 本地浏览器基准测试。安装工具：npm install --prefix target/web-test-tools playwright linkedom
  * TSWN_BENCH_WEB_RUNS 指定每类输入的重复次数；PACKAGE 选择 WASM 包目录，OUTPUT 隔离报告和截图。
- * 未指定时保持每类 20 次、target/web_streaming/pkg 读取包及 target/web_streaming 输出。
+ * TSWN_BENCH_WEB_SCREENSHOT=0 仅跳过计时外的示例截图，适用于无截图能力的远程桌面环境。
+ * 未指定时保持每类 20 次、原包/输出目录及截图行为。
  */
 import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
@@ -12,6 +13,7 @@ import { percentile } from '../crates/tswn_wasm/examples/show-metrics.js';
 const examples = resolve('crates/tswn_wasm/examples');
 const output = resolve(process.env.TSWN_BENCH_WEB_OUTPUT ?? 'target/web_streaming');
 const packageDir = resolve(process.env.TSWN_BENCH_WEB_PACKAGE ?? resolve(output, 'pkg'));
+const captureScreenshot = process.env.TSWN_BENCH_WEB_SCREENSHOT !== '0';
 const runsText = process.env.TSWN_BENCH_WEB_RUNS ?? '20';
 const runsPerFixture = Number(runsText);
 if (!/^[1-9][0-9]*$/.test(runsText) || !Number.isSafeInteger(runsPerFixture)) {
@@ -68,12 +70,12 @@ try {
       const result = await page.evaluate(() => ({ ...battleBenchmark.snapshot, ...battleBenchmark.samples, error: battleBenchmark.error }));
       if (result.error || errors.length) throw new Error(JSON.stringify({ result: result.error, errors }));
       runs.push({ fixture, run, ...result });
-      if (run === 0 && fixture.startsWith('2v2')) await page.screenshot({ path: resolve(output, 'streaming_result.png'), fullPage: false });
+      if (captureScreenshot && run === 0 && fixture.startsWith('2v2')) await page.screenshot({ path: resolve(output, 'streaming_result.png'), fullPage: false });
       console.log(`${fixture} ${run + 1}/${runsPerFixture}: TTIS=${result.ttis_ms.toFixed(2)} TTFE=${result.ttfe_ms.toFixed(2)} pull-p95=${result.frame_pull_p95_ms.toFixed(2)} frames=${result.frames_received}`);
     }
   }
   const environment = { browser: await browser.version(), os: `${platform()} ${release()}`, cpu: cpus()[0].model,
-    viewport: '1440x1000', runs_per_fixture: runsPerFixture, build: 'cargo release, wasm-bindgen --target web', mode: 'headless Edge, warm WASM module, fresh session/icons each run, turbo playback' };
+    viewport: '1440x1000', runs_per_fixture: runsPerFixture, capture_screenshot: captureScreenshot, build: 'cargo release, wasm-bindgen --target web', mode: 'headless Edge, warm WASM module, fresh session/icons each run, turbo playback' };
   await writeFile(resolve(output, 'baseline.json'), JSON.stringify({ environment, runs }, null, 2));
   const rows = fixtures.map(fixture => {
     const group = runs.filter(run => run.fixture === fixture);

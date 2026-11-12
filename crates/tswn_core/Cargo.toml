@@ -33,6 +33,8 @@ png_render = ["dep:png"]
 aux_bins = []
 mimalloc_alloc = ["dep:mimalloc"]
 no_debug = []
+# 能力卡乘区、减耗与技能等级归属；默认关闭，关闭时相关代码整体不参与编译。
+cards = []
 # 仅供绑定的 dev-dependency 注入 Runtime validation 故障，不默认启用。
 battle-test-support = []
 

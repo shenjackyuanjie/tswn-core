@@ -161,6 +161,21 @@ impl std::fmt::Display for RuntimeReadyError {
 
 impl std::error::Error for RuntimeReadyError {}
 
+/// 伤害类型标记，对应 0.5.5 中传给 `a3` 的 `T.ad()` / `T.oH()` / `T.mE()`。
+///
+/// 青雉的 POST_DEFEND 吸收会区分冰冻与物理伤害，其余 Boss 防御只看数值；
+/// 其余攻击全部使用默认类型。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DamageKind {
+    /// `T.ad()`：普通攻击与绝大多数技能。
+    #[default]
+    Default,
+    /// `T.oH()`：`SklAttack` 的物理分支。
+    Physical,
+    /// `T.mE()`：冰冻术与冰河时代。
+    Ice,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RuntimeDefendValue {
     Atp {
@@ -168,11 +183,13 @@ pub enum RuntimeDefendValue {
         caster: EntityIdx,
         target: EntityIdx,
         is_magic: bool,
+        kind: DamageKind,
     },
     Damage {
         value: i32,
         caster: EntityIdx,
         target: EntityIdx,
+        kind: DamageKind,
     },
 }
 
@@ -221,6 +238,12 @@ impl RuntimeDefendValue {
     pub fn target(self) -> EntityIdx {
         match self {
             Self::Atp { target, .. } | Self::Damage { target, .. } => target,
+        }
+    }
+
+    pub fn kind(self) -> DamageKind {
+        match self {
+            Self::Atp { kind, .. } | Self::Damage { kind, .. } => kind,
         }
     }
 }

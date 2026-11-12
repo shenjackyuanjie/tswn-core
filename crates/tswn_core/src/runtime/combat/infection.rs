@@ -25,7 +25,7 @@ impl CombatRuntime {
             .unwrap_or_else(|| panic!("unknown runtime poison target: {}", target.0))
             .runtime
             .hp;
-        if target_hp <= 0 || self.status_immune(target, "poison") {
+        if target_hp <= 0 || self.status_immune(target, "piston") {
             return;
         }
 

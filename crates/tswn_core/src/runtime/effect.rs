@@ -23,7 +23,7 @@ use crate::runtime::extension::{
 use crate::runtime::scheduler::{SkillHookPlanEntry, StateHookPlanEntry};
 use crate::runtime::update::{RunUpdate, RunUpdates};
 use crate::runtime::{
-    BattleSlotStorage, CompressedLegacyState, EntityArena, EntityRecord, EntitySlotId, ProcMask, ProtectLinkRuntime,
+    BattleSlotStorage, CompressedLegacyState, DamageKind, EntityArena, EntityRecord, EntitySlotId, ProcMask, ProtectLinkRuntime,
     RuntimeDefendValue, SlotError, SlotValue, TemplateSlotId, TemplateSlotStorage, WorldArena,
 };
 use std::collections::VecDeque;
@@ -51,6 +51,7 @@ pub enum QueuedEffect {
         caster: EntityIdx,
         target: EntityIdx,
         atp_bits: u64,
+        kind: DamageKind,
         on_damage: PlainAttackOnDamage,
     },
     PoisonTick {

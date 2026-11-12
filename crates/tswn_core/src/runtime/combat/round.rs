@@ -73,7 +73,24 @@ impl CombatRuntime {
         }
         #[cfg(not(feature = "no_debug"))]
         let action_rng_before = RngCheckpoint::from_rc4(&self.rng);
+        // 药水持续到服用者的下一次行动，不因其他单位行动而失效。
+        self.revert_active_potion(action.actor);
         let smart = self.roll_actor_smart(action.actor);
+        if legacy_plain_action {
+            // 属性修改器身份的 `RinickModifierPreAction` 在行动前静默清除负向状态，
+            // 被清掉的狂暴等状态无法再强制本次行动。
+            self.run_plain_rinick_modifier_pre_action(action.actor, &mut updates);
+        }
+        // 潜行 pending 的 pre-action 槽位可能在技能表重建（升级/合并/状态刷新）时被丢掉，
+        // tswn 自己在施放时会 ensure 一次，这里在每次行动前补回来，
+        // 之后完全交给引擎的 pre_action 规则判断要不要背刺、会不会被识破。
+        if crate::runtime::forced_action::controlled_team().is_some_and(|team| self.is_controlled_actor(action.actor, team)) {
+            if let Some(pending) = self.entities.get(action.actor).and_then(|entity| entity.runtime.assassinate) {
+                if let Some(entity) = self.entities.get_mut(action.actor) {
+                    entity.template.skills.ensure_pre_action_lane(pending.fixed_lane);
+                }
+            }
+        }
         let plain_skill_pre_action = legacy_plain_action
             .then(|| self.run_plain_skill_pre_action_accumulator(action.actor))
             .unwrap_or_default();
@@ -105,7 +122,13 @@ impl CombatRuntime {
                 return None;
             }
             let forced_pre_action_skill = plain_skill_pre_action.forced_skill.is_some();
-            let Some(prepared) = self.prepare_plain_action(action.actor, smart, plain_skill_pre_action) else {
+            let prepared = self.prepare_plain_action(action.actor, smart, plain_skill_pre_action);
+            // 玩家点名的技能放不出来时，引擎改用普攻并留一条战报说明原因。
+            if let Some((actor, reason)) = crate::runtime::forced_action::take_fallback() {
+                updates.add_newline();
+                updates.add(RuntimeFrame::replay_update(actor as usize, actor as usize, reason, 0));
+            }
+            let Some(prepared) = prepared else {
                 return Some(self.finish_round_with_capture::<CAPTURE_UPDATES>(None, updates));
             };
             match &prepared {
@@ -121,12 +144,20 @@ impl CombatRuntime {
                     action.target = target.unwrap_or(action.actor);
                     action.amount = 0;
                 }
+                PreparedPlainAction::Conan { targets } => {
+                    action.target = targets.first().copied().unwrap_or(action.actor);
+                    action.amount = 0;
+                }
                 PreparedPlainAction::BuiltinSkill(prepared) => {
                     if forced_pre_action_skill {
                         action.target = action.actor;
                     } else {
                         action.target = prepared.targets.first().copied().unwrap_or(action.actor);
                     }
+                    action.amount = 0;
+                }
+                PreparedPlainAction::BossSkill(prepared) => {
+                    action.target = prepared.targets.first().copied().unwrap_or(action.actor);
                     action.amount = 0;
                 }
             }
@@ -146,23 +177,26 @@ impl CombatRuntime {
             });
         }
         let forced_plain_action = matches!(prepared_plain_action.as_ref(), Some(PreparedPlainAction::ForcedAttack { .. }));
-        let builtin_plain_action = matches!(prepared_plain_action.as_ref(), Some(PreparedPlainAction::BuiltinSkill(_)));
+        let builtin_plain_action = matches!(
+            prepared_plain_action.as_ref(),
+            Some(PreparedPlainAction::BuiltinSkill(_) | PreparedPlainAction::BossSkill(_))
+        );
         let terminal_plain_action = if state_intercepted_action {
             // PRE_ACTION 状态钩子接管本次行动后，legacy 仍会继续执行恢复和完整的行动后链。
             legacy_plain_action && !self.has_alive_enemy_or_pending_spawn(action.actor)
         } else if builtin_plain_action {
-            let Some(PreparedPlainAction::BuiltinSkill(prepared)) = prepared_plain_action.take() else {
-                unreachable!("builtin action marker must retain the prepared action")
-            };
-            self.drain_plain_builtin_skill_into(action.actor, prepared, &mut updates);
+            match prepared_plain_action.take() {
+                Some(PreparedPlainAction::BuiltinSkill(prepared)) => {
+                    self.drain_plain_builtin_skill_into(action.actor, prepared, &mut updates);
+                }
+                Some(PreparedPlainAction::BossSkill(prepared)) => {
+                    self.drain_plain_boss_skill_into(action.actor, prepared, &mut updates);
+                }
+                _ => unreachable!("builtin action marker must retain the prepared action"),
+            }
             legacy_plain_action && !self.has_alive_enemy_or_pending_spawn(action.actor)
         } else {
-            let pre_damage_skill_plan =
-                self.scheduler
-                    .skill_hook_plan(&self.entities, &self.registry, action.actor, ProcMask::PRE_DAMAGE);
-            self.drain_skill_hook_plan_into(&pre_damage_skill_plan, &mut updates);
-            let pre_damage_state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::PRE_DAMAGE);
-            self.drain_state_hook_plan_into(&pre_damage_state_plan, &mut updates);
+            self.drain_action_damage_phase_into(action.actor, ProcMask::PRE_DAMAGE, &mut updates);
             match prepared_plain_action.take() {
                 Some(PreparedPlainAction::BasicAttack { use_magic, .. }) => {
                     self.drain_plain_default_attack_into(action.actor, action.target, use_magic, &mut updates);
@@ -173,8 +207,14 @@ impl CombatRuntime {
                 Some(PreparedPlainAction::Saitama { target }) => {
                     self.drain_plain_saitama_action_into(action.actor, target, &mut updates);
                 }
+                Some(PreparedPlainAction::Conan { targets }) => {
+                    self.drain_plain_conan_action_into(action.actor, targets, &mut updates);
+                }
                 Some(PreparedPlainAction::BuiltinSkill(_)) => {
                     unreachable!("builtin skill actions are handled before the default action branch")
+                }
+                Some(PreparedPlainAction::BossSkill(_)) => {
+                    unreachable!("boss skill actions are handled before the default action branch")
                 }
                 None => {
                     self.effects.push(QueuedEffect::Damage {
@@ -186,12 +226,7 @@ impl CombatRuntime {
                 }
             }
             let terminal_plain_action = legacy_plain_action && !self.has_alive_enemy_or_pending_spawn(action.actor);
-            let post_damage_skill_plan =
-                self.scheduler
-                    .skill_hook_plan(&self.entities, &self.registry, action.actor, ProcMask::POST_DAMAGE);
-            self.drain_skill_hook_plan_into(&post_damage_skill_plan, &mut updates);
-            let post_damage_state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::POST_DAMAGE);
-            self.drain_state_hook_plan_into(&post_damage_state_plan, &mut updates);
+            self.drain_action_damage_phase_into(action.actor, ProcMask::POST_DAMAGE, &mut updates);
             terminal_plain_action
         };
         if !terminal_plain_action {
@@ -234,6 +269,27 @@ impl CombatRuntime {
             );
         }
         Some(self.finish_round_with_capture::<CAPTURE_UPDATES>(Some(action), updates))
+    }
+
+    /// 空钩子不需要构造拥有型快照；缓存失效时仍走完整的注册表扫描。
+    /// 技能执行完再读取状态位图，保留技能新增状态在同一阶段立即生效的顺序。
+    fn drain_action_damage_phase_into(&mut self, owner: EntityIdx, hook: ProcMask, updates: &mut RunUpdates) {
+        let skills = &self.entities.get(owner).expect("runtime damage phase owner missing").template.skills;
+        if !skills.cached_hook_entries(hook).is_some_and(|entries| entries.is_empty()) {
+            let plan = self.scheduler.skill_hook_plan(&self.entities, &self.registry, owner, hook);
+            self.drain_skill_hook_plan_into(&plan, updates);
+        }
+        if self
+            .entities
+            .get(owner)
+            .expect("runtime damage phase owner missing")
+            .states
+            .hook_mask()
+            .intersects(hook)
+        {
+            let plan = self.scheduler.state_hook_plan(&self.entities, owner, hook);
+            self.drain_state_hook_plan_into(&plan, updates);
+        }
     }
 
     fn drain_post_action_chain_into(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
@@ -330,6 +386,38 @@ impl CombatRuntime {
         }
     }
 
+    /// 玩家操控的单位：受控队伍里的本体（默认 kind）与分身。
+    /// 幻影 / 使魔 / 丧尸属于召唤物，仍由引擎自动行动。
+    fn is_controlled_actor(&self, actor: EntityIdx, team: usize) -> bool {
+        let Some(entity) = self.entities.get(actor) else {
+            return false;
+        };
+        // 双方对局使用 u32::MAX 表示双方本体和分身均由玩家控制。
+        if team != u32::MAX as usize && entity.template.team != team {
+            return false;
+        }
+        match self.registry.player_kind(entity.runtime.kind) {
+            None => true,
+            Some(spec) => spec.export_name == crate::runtime::profile::DEFAULT_CORE_CLONE_KIND_EXPORT,
+        }
+    }
+
+    // 普攻与技能耗蓝完全分开：不读取 MP、不掷技能费用，也不扣除任何 MP。
+    fn prepare_forced_normal_attack(&mut self, actor: EntityIdx, smart: bool) -> Option<PreparedPlainAction> {
+        let target = self
+            .select_plain_default_attack_target(actor, smart)
+            .or_else(|| self.select_plain_default_attack_target(actor, false));
+        let Some(target) = target else {
+            crate::runtime::forced_action::set_pause(actor.0);
+            return None;
+        };
+        Some(PreparedPlainAction::BasicAttack {
+            target,
+            use_magic: false,
+            amount: self.entities.get(actor).expect("normal attack actor exists").runtime.attack,
+        })
+    }
+
     pub fn roll_actor_smart(&mut self, actor: EntityIdx) -> bool {
         let smart_byte = self.rng.next_u8();
         let smart_roll = (smart_byte & 63) as i32;
@@ -353,6 +441,78 @@ impl CombatRuntime {
         smart: bool,
         pre_action: PlainSkillPreActionOutcome,
     ) -> Option<PreparedPlainAction> {
+        crate::runtime::forced_action::hit();
+        // 狂暴（含被附体）期间由引擎接管：不接收玩家指令、也不停下来要牌。
+        let berserk_forced = !pre_action.clear_forced_action && self.has_plain_berserk_state(actor);
+        let mut berserk_submitted = false;
+        // 卡牌玩法注入：轮到指定实体时优先执行玩家排好的行动。
+        // 但引擎自己有强制动作时（潜行→背刺的第二步）必须先让引擎走完，
+        // 否则玩家能在这段窗口里插别的技能，背刺就永远放不出来。
+        if pre_action.forced_skill.is_none() {
+            if let Some(command) = crate::runtime::forced_action::take(actor.0 as u32) {
+                let forced_skill = command.skill;
+                let forced_mp = command.mp;
+                if command.potion > 0 {
+                    self.apply_potion(actor, command.potion);
+                }
+                if berserk_forced {
+                    // 狂暴：玩家这一手只用来推进节奏，真正动作由引擎接管
+                    berserk_submitted = true;
+                } else {
+                    if forced_skill == 255 {
+                        return self.prepare_forced_normal_attack(actor, smart);
+                    }
+                    // 玩家抽到这张牌时已经掷过消耗；没有就按 tswn 现场掷。
+                    let req_mp = match forced_mp {
+                        Some(cost) => cost as i32,
+                        None => {
+                            let req_mp_byte = self.rng.next_u8();
+                            (req_mp_byte & 15) as i32 + 8
+                        }
+                    };
+                    // 能力卡按玩家点名的技能减耗，最低仍消耗 1 点。
+                    #[cfg(feature = "cards")]
+                    let req_mp = (req_mp
+                        - public_builtin_skill(forced_skill)
+                            .map_or(0, |skill| self.ability_value(actor, skill.export_name()).0 as i32))
+                    .max(1);
+                    let mp = {
+                        let entity = self
+                            .entities
+                            .get(actor)
+                            .unwrap_or_else(|| panic!("unknown forced action actor: {}", actor.0));
+                        entity.runtime.magic_point
+                    };
+                    // 玩家点名要用这个技能：目标选择按「不挑目标」的宽松口径，
+                    // 避免因为 AI 的 smart 过滤（例如瘟疫只挑 160~400 血的目标）而放不出来。
+                    let prepared = if mp >= req_mp {
+                        self.prepare_forced_builtin_skill(actor, forced_skill, smart)
+                    } else {
+                        None
+                    };
+                    if let Some(prepared) = prepared {
+                        if let Some(entity) = self.entities.get_mut(actor) {
+                            entity.runtime.magic_point -= req_mp;
+                        }
+                        return Some(PreparedPlainAction::BuiltinSkill(prepared));
+                    }
+                    crate::runtime::forced_action::record_fallback(actor.0 as u32, "[1]的指定技能无法生效，改为普通攻击");
+                    return self.prepare_forced_normal_attack(actor, smart);
+                }
+            }
+        }
+
+        // 受控单位：只有在引擎没有强制动作、且不是「狂暴已收到玩家这一手」时才暂停。
+        if pre_action.forced_skill.is_none() && !berserk_submitted {
+            if let Some(team) = crate::runtime::forced_action::controlled_team() {
+                // 玩家操控的单位（本体 + 分身）：没有排好的指令就停在这里，绝不代替玩家行动。
+                // 召唤物（幻影 / 使魔 / 丧尸）不在此列，仍按 tswn 的规则自动行动。
+                if self.is_controlled_actor(actor, team) {
+                    crate::runtime::forced_action::set_pause(actor.0 as u32);
+                    return None;
+                }
+            }
+        }
         if let Some(forced_skill) = pre_action.forced_skill {
             return Some(PreparedPlainAction::BuiltinSkill(forced_skill));
         }
@@ -374,25 +534,30 @@ impl CombatRuntime {
         let rng_before = (self.rng.i, self.rng.j);
         let req_mp_byte = self.rng.next_u8();
         let req_mp = (req_mp_byte & 15) as i32 + 8;
-        let (mp_before, attack, magic, is_boss, boss_action_prob_count) = {
+        let (mp_before, attack, magic, is_boss) = {
             let actor_entity = self
                 .entities
                 .get(actor)
                 .unwrap_or_else(|| panic!("unknown runtime default attack actor: {}", actor.0));
-            let is_boss = actor_entity.runtime.flags.contains(PlayerKindFlags::BOSS);
             (
                 actor_entity.runtime.magic_point,
                 actor_entity.runtime.attack,
                 actor_entity.runtime.magic,
-                is_boss,
-                if is_boss {
-                    crate::namerena::boss_action_prob_count(&actor_entity.template.name)
-                } else {
-                    0
-                },
+                actor_entity.runtime.flags.contains(PlayerKindFlags::BOSS),
             )
         };
+        #[cfg(not(feature = "cards"))]
         let can_scan_skills = mp_before >= req_mp;
+        // 能力卡减耗可能让原本放不出的技能进入扫描。
+        #[cfg(feature = "cards")]
+        let can_scan_skills = {
+            let ability_team = self
+                .entities
+                .get(actor)
+                .and_then(|e| self.entities.get(e.runtime.root_owner))
+                .map_or(usize::MAX, |e| e.template.team);
+            mp_before >= (req_mp - crate::runtime::forced_action::max_ability_cost(ability_team) as i32).max(1)
+        };
         #[cfg(not(feature = "no_debug"))]
         let probe_action = self.probe_plain_action_matches(actor);
         #[cfg(not(feature = "no_debug"))]
@@ -443,32 +608,53 @@ impl CombatRuntime {
         }
         let prepared_skill = if can_scan_skills {
             let selected = if is_boss {
-                for _ in 0..boss_action_prob_count {
-                    let _ = self.rng.r127();
-                }
-                None
+                self.scan_plain_boss_action_skills(actor, smart).map(PreparedPlainAction::BossSkill)
             } else {
                 self.scan_plain_action_skill_probabilities(actor, smart)
+                    .map(PreparedPlainAction::BuiltinSkill)
             };
-            self.entities.get_mut(actor).unwrap().runtime.magic_point -= req_mp;
-            selected
+            // 能力卡按实际选中的技能减耗，最低仍消耗 1 点。
+            #[cfg(feature = "cards")]
+            let cost = (req_mp
+                - match selected.as_ref() {
+                    Some(PreparedPlainAction::BuiltinSkill(prepared)) => {
+                        self.ability_value(actor, prepared.selected.skill.export_name()).0 as i32
+                    }
+                    _ => 0,
+                })
+            .max(1);
+            #[cfg(not(feature = "cards"))]
+            let cost = req_mp;
+            if mp_before < cost {
+                None
+            } else {
+                self.entities.get_mut(actor).unwrap().runtime.magic_point -= cost;
+                selected
+            }
         } else {
             None
         };
-        if let Some(prepared) = prepared_skill {
+        if let Some(prepared_action) = prepared_skill {
             #[cfg(not(feature = "no_debug"))]
             if probe_action {
-                eprintln!(
-                    "[action_probe:runtime:selected] actor={} skill={} lane={} targets={:?} rc4=({}, {})",
-                    actor.0,
-                    prepared.selected.skill.export_name(),
-                    prepared.selected.fixed_lane,
-                    prepared.targets,
-                    self.rng.i,
-                    self.rng.j,
-                );
+                match &prepared_action {
+                    PreparedPlainAction::BuiltinSkill(prepared) => eprintln!(
+                        "[action_probe:runtime:selected] actor={} skill={} lane={} targets={:?} rc4=({}, {})",
+                        actor.0,
+                        prepared.selected.skill.export_name(),
+                        prepared.selected.fixed_lane,
+                        prepared.targets,
+                        self.rng.i,
+                        self.rng.j,
+                    ),
+                    PreparedPlainAction::BossSkill(prepared) => eprintln!(
+                        "[action_probe:runtime:selected_boss] actor={} skill={:?} targets={:?} rc4=({}, {})",
+                        actor.0, prepared.selected, prepared.targets, self.rng.i, self.rng.j,
+                    ),
+                    _ => {}
+                }
             }
-            return Some(PreparedPlainAction::BuiltinSkill(prepared));
+            return Some(prepared_action);
         }
 
         if is_boss {
@@ -476,7 +662,34 @@ impl CombatRuntime {
                 let target = self.select_plain_default_attack_target(actor, smart);
                 return Some(PreparedPlainAction::Saitama { target });
             }
+            let boss_name = self
+                .entities
+                .get(actor)
+                .unwrap_or_else(|| panic!("unknown runtime boss fallback actor: {}", actor.0))
+                .template
+                .name
+                .clone();
+            if boss_name == "conan" {
+                let targets = self.select_plain_conan_targets(actor);
+                if targets.is_empty() {
+                    return None;
+                }
+                return Some(PreparedPlainAction::Conan { targets });
+            }
             let target = self.select_plain_default_attack_target(actor, smart)?;
+            // SklAttack 在 smart、魔法高于攻击且扫描技能后蓝量足够时改走魔法攻击。
+            if crate::namerena::boss_uses_skill_attack(&boss_name) && smart && magic > attack {
+                let magic_cost = (magic - attack) >> 2;
+                let mp_after_skill_scan = if can_scan_skills { mp_before - req_mp } else { mp_before };
+                if mp_after_skill_scan >= magic_cost {
+                    self.entities.get_mut(actor).unwrap().runtime.magic_point -= magic_cost;
+                    return Some(PreparedPlainAction::BasicAttack {
+                        target,
+                        use_magic: true,
+                        amount: magic,
+                    });
+                }
+            }
             return Some(PreparedPlainAction::BasicAttack {
                 target,
                 use_magic: false,
@@ -508,6 +721,55 @@ impl CombatRuntime {
                 use_magic: false,
                 amount: attack,
             })
+        }
+    }
+
+    /// 喝药：加强当前角色一项属性一回合（不占行动）+ 少量回血
+    fn apply_potion(&mut self, actor: EntityIdx, code: u32) {
+        // code = 属性下标 + 1（0 表示没喝药）
+        let field = ((code & 0xF) as usize).saturating_sub(1);
+        let Some(entity) = self.entities.get_mut(actor) else { return };
+        if field == 9 {
+            // 9 = 能量药水：回复 40 点 MP（上限 100）
+            entity.runtime.magic_point = (entity.runtime.magic_point + 40).min(100);
+            return;
+        }
+        if field >= 8 {
+            // 8 = 体力药水：回复 25% 最大体力
+            let heal = (entity.template.max_hp / 4).max(10);
+            entity.runtime.hp = (entity.runtime.hp + heal).min(entity.template.max_hp);
+            return;
+        }
+        let slot = match field {
+            0 => &mut entity.runtime.attack,
+            1 => &mut entity.runtime.defense,
+            2 => &mut entity.runtime.speed,
+            3 => &mut entity.runtime.agility,
+            4 => &mut entity.runtime.magic,
+            5 => &mut entity.runtime.resistance,
+            _ => &mut entity.runtime.wisdom,
+        };
+        let delta = (*slot / 4).max(8);
+        *slot += delta;
+        crate::runtime::forced_action::set_active_potion(actor.0 as u32, field as u8, delta);
+    }
+
+    /// 还原上一回合的药水加成
+    fn revert_active_potion(&mut self, actor: EntityIdx) {
+        let Some((field, delta)) = crate::runtime::forced_action::take_active_potion(actor.0 as u32) else {
+            return;
+        };
+        let entity = self.entities.get_mut(actor);
+        let Some(entity) = entity else { return };
+        match field {
+            0 => entity.runtime.attack -= delta,
+            1 => entity.runtime.defense -= delta,
+            2 => entity.runtime.speed -= delta,
+            3 => entity.runtime.agility -= delta,
+            4 => entity.runtime.magic -= delta,
+            5 => entity.runtime.resistance -= delta,
+            6 => entity.runtime.wisdom -= delta,
+            _ => {}
         }
     }
 
@@ -624,6 +886,98 @@ impl CombatRuntime {
         debug_assert!(removed, "runtime berserk state disappeared before state clear");
     }
 
+    /// 按技能 id 构造一次主动技能行动（卡牌玩法强制出招）。
+    ///
+    /// 只校验该技能在当前 loadout 中的等级是否大于 0，并用与自动选择相同的
+    /// 目标选择函数；队列为空时 Runtime 行为与上游完全一致。
+    pub fn prepare_forced_builtin_skill(
+        &mut self,
+        actor: EntityIdx,
+        skill_id: u32,
+        smart: bool,
+    ) -> Option<PreparedBuiltinSkillAction> {
+        let builtin_skill = public_builtin_skill(skill_id)?;
+        let fixed_lane = {
+            let entity = self.entities.get(actor)?;
+            let loadout = &entity.template.skills;
+            let mut found = None;
+            for (lane, id) in loadout.skills().iter().enumerate() {
+                if self.builtin_active_skill(*id) == Some(builtin_skill) {
+                    found = Some(lane);
+                    break;
+                }
+            }
+            let lane = found?;
+            if loadout.level_at(lane).unwrap_or(0) == 0 {
+                return None;
+            }
+            lane
+        };
+        // 目标与命中都交给 tswn：优先用引擎这一回合掷出的 smart 口径；
+        // 只有当这个口径一个目标都选不出来时才退到宽松口径，避免玩家点名的技能变成普攻。
+        let mut targets = self.select_forced_skill_targets(actor, builtin_skill, smart);
+        if targets.is_empty() {
+            targets = self.select_forced_skill_targets(actor, builtin_skill, false);
+        }
+        let allows_empty_targets = builtin_skill == BuiltinActiveSkill::Assassinate
+            && self.entities.get(actor).is_some_and(|entity| entity.runtime.assassinate.is_some());
+        if targets.is_empty() && !allows_empty_targets {
+            return None;
+        }
+        Some(PreparedBuiltinSkillAction {
+            selected: SelectedBuiltinSkill {
+                skill: builtin_skill,
+                fixed_lane,
+            },
+            targets,
+        })
+    }
+
+    fn select_forced_skill_targets(
+        &mut self,
+        actor: EntityIdx,
+        builtin_skill: BuiltinActiveSkill,
+        smart: bool,
+    ) -> PreparedTargetList {
+        match builtin_skill {
+            BuiltinActiveSkill::Fire
+            | BuiltinActiveSkill::Thunder
+            | BuiltinActiveSkill::Absorb
+            | BuiltinActiveSkill::Poison
+            | BuiltinActiveSkill::Critical
+            | BuiltinActiveSkill::SummonExplode => self.select_plain_default_enemy_targets(actor, smart),
+            BuiltinActiveSkill::Berserk => self.select_plain_berserk_targets(actor, smart),
+            BuiltinActiveSkill::Quake => {
+                self.select_plain_default_enemy_targets_with_count(actor, smart, if smart { 6 } else { 5 })
+            }
+            BuiltinActiveSkill::Ice => self.select_plain_ice_targets(actor, smart),
+            BuiltinActiveSkill::Rapid => self.select_plain_rapid_targets(actor, smart),
+            BuiltinActiveSkill::Half => self.select_plain_half_targets(actor, smart),
+            BuiltinActiveSkill::Shadow => smallvec::smallvec![actor],
+            BuiltinActiveSkill::Charm => self.select_plain_charm_targets(actor, smart),
+            BuiltinActiveSkill::Curse => self.select_plain_curse_targets(actor, smart),
+            BuiltinActiveSkill::Haste => self.select_plain_haste_targets(actor, smart),
+            BuiltinActiveSkill::Heal => self.select_plain_heal_targets(actor, smart),
+            BuiltinActiveSkill::Slow => self.select_plain_slow_targets(actor, smart),
+            BuiltinActiveSkill::Exchange => self.select_plain_exchange_targets(actor, smart),
+            BuiltinActiveSkill::Revive => self.select_plain_revive_targets(actor, smart),
+            BuiltinActiveSkill::Disperse => self.select_plain_disperse_targets(actor, smart),
+            BuiltinActiveSkill::Iron => smallvec::smallvec![actor],
+            BuiltinActiveSkill::Clone => smallvec::smallvec![actor],
+            BuiltinActiveSkill::Charge => smallvec::smallvec![actor],
+            BuiltinActiveSkill::Accumulate => smallvec::smallvec![actor],
+            BuiltinActiveSkill::Assassinate => self.select_plain_assassinate_targets(actor, smart),
+            BuiltinActiveSkill::Summon => smallvec::smallvec![actor],
+            BuiltinActiveSkill::Possess => self.select_plain_possess_targets(actor, smart),
+            // 武器与属性修改器技能不在卡牌的公开编号内，玩家无法点名到这里。
+            BuiltinActiveSkill::WeaponS11
+            | BuiltinActiveSkill::WeaponDeathNote
+            | BuiltinActiveSkill::WeaponXuanYue
+            | BuiltinActiveSkill::RinickIceAge
+            | BuiltinActiveSkill::RinickYuriControl => PreparedTargetList::new(),
+        }
+    }
+
     pub fn scan_plain_action_skill_probabilities(&mut self, actor: EntityIdx, smart: bool) -> Option<PreparedBuiltinSkillAction> {
         let (scan_len, cached_scan) = {
             let skills = &self
@@ -711,6 +1065,15 @@ impl CombatRuntime {
                     BuiltinActiveSkill::Assassinate => self.select_plain_assassinate_targets(actor, smart),
                     BuiltinActiveSkill::Summon => smallvec::smallvec![actor],
                     BuiltinActiveSkill::Possess => self.select_plain_possess_targets(actor, smart),
+                    // 武器技能的 `aa` 恒返回空数组，目标在技能自身结算时再解析。
+                    BuiltinActiveSkill::WeaponS11 | BuiltinActiveSkill::WeaponDeathNote | BuiltinActiveSkill::WeaponXuanYue => {
+                        smallvec::smallvec![]
+                    }
+                    // 属性修改器追加的 Boss 技能沿用其原型的选目标口径。
+                    BuiltinActiveSkill::RinickIceAge => {
+                        self.select_plain_default_enemy_targets_with_count(actor, smart, if smart { 6 } else { 5 })
+                    }
+                    BuiltinActiveSkill::RinickYuriControl => self.select_plain_yuri_control_targets(actor, smart),
                 };
                 #[cfg(not(feature = "no_debug"))]
                 if self.probe_plain_action_matches(actor) {
@@ -724,8 +1087,11 @@ impl CombatRuntime {
                         self.rng.j,
                     );
                 }
-                let allows_empty_targets = builtin_skill == BuiltinActiveSkill::Assassinate
-                    && self.entities.get(actor).is_some_and(|entity| entity.runtime.assassinate.is_some());
+                let allows_empty_targets = matches!(
+                    builtin_skill,
+                    BuiltinActiveSkill::WeaponS11 | BuiltinActiveSkill::WeaponDeathNote
+                ) || (builtin_skill == BuiltinActiveSkill::Assassinate
+                    && self.entities.get(actor).is_some_and(|entity| entity.runtime.assassinate.is_some()));
                 if targets.is_empty() && !allows_empty_targets {
                     continue;
                 }
@@ -746,6 +1112,9 @@ impl CombatRuntime {
         level: u32,
         smart: bool,
     ) -> bool {
+        // 卡牌玩家的幻术熟练度按 5 封顶；其它技能与普通对局保持原等级。
+        #[cfg(feature = "cards")]
+        let level = self.card_skill_level(actor, builtin_skill, level);
         #[cfg(not(feature = "no_debug"))]
         let probe_action = self.probe_plain_action_matches(actor);
         match builtin_skill {
@@ -875,6 +1244,57 @@ impl CombatRuntime {
                     return false;
                 }
             }
+            // 剁手刀：等级为 0 时直接失败且不消耗字节；否则只掷一次 r63。
+            BuiltinActiveSkill::WeaponS11 => {
+                let actor_entity = self
+                    .entities
+                    .get(actor)
+                    .unwrap_or_else(|| panic!("unknown runtime weapon s11 probability actor: {}", actor.0));
+                let Some(s11) = actor_entity.runtime.weapon_s11 else {
+                    return false;
+                };
+                if s11.level == 0 {
+                    return false;
+                }
+                #[cfg(not(feature = "no_debug"))]
+                let before = (self.rng.i, self.rng.j);
+                let roll = self.rng.r63() as i32;
+                let pass = roll + s11.level as i32 > actor_entity.runtime.wisdom;
+                #[cfg(not(feature = "no_debug"))]
+                if probe_action {
+                    eprintln!(
+                        "[action_probe:runtime:prob] actor={} skill={} level={} smart={} roll={} pass={} rc4=({},{}) -> ({},{})",
+                        actor.0,
+                        builtin_skill.export_name(),
+                        s11.level,
+                        smart,
+                        roll,
+                        pass,
+                        before.0,
+                        before.1,
+                        self.rng.i,
+                        self.rng.j,
+                    );
+                }
+                return pass;
+            }
+            // 死亡笔记：只有写下的目标仍在场时才可能行动；智能模式不消耗字节。
+            BuiltinActiveSkill::WeaponDeathNote => {
+                let mark = self
+                    .entities
+                    .get(actor)
+                    .and_then(|entity| entity.runtime.death_note_mark)
+                    .filter(|mark| self.entities.get(*mark).is_some_and(|entity| entity.runtime.hp > 0));
+                let Some(mark) = mark else {
+                    return false;
+                };
+                if smart {
+                    return self.plain_effective_team(mark) != self.plain_effective_team(actor);
+                }
+                return self.rng.c50();
+            }
+            // 玄月奖杯只注册受击回调，从不进入主动扫描。
+            BuiltinActiveSkill::WeaponXuanYue => return false,
             _ => {}
         }
         #[cfg(not(feature = "no_debug"))]
@@ -933,5 +1353,86 @@ impl CombatRuntime {
             );
         }
         roll < level
+    }
+}
+
+/// 卡牌前端使用的公开技能编号（overlay 里的 0..24）→ 引擎内置主动技能。
+/// 25..34 是防御/触发类技能，不参与「主动出招」，返回 None。
+fn public_builtin_skill(id: u32) -> Option<BuiltinActiveSkill> {
+    Some(match id {
+        0 => BuiltinActiveSkill::Fire,
+        1 => BuiltinActiveSkill::Ice,
+        2 => BuiltinActiveSkill::Thunder,
+        3 => BuiltinActiveSkill::Quake,
+        4 => BuiltinActiveSkill::Absorb,
+        5 => BuiltinActiveSkill::Poison,
+        6 => BuiltinActiveSkill::Rapid,
+        7 => BuiltinActiveSkill::Critical,
+        8 => BuiltinActiveSkill::Half,
+        9 => BuiltinActiveSkill::Exchange,
+        10 => BuiltinActiveSkill::Berserk,
+        11 => BuiltinActiveSkill::Charm,
+        12 => BuiltinActiveSkill::Haste,
+        13 => BuiltinActiveSkill::Slow,
+        14 => BuiltinActiveSkill::Curse,
+        15 => BuiltinActiveSkill::Heal,
+        16 => BuiltinActiveSkill::Revive,
+        17 => BuiltinActiveSkill::Disperse,
+        18 => BuiltinActiveSkill::Iron,
+        19 => BuiltinActiveSkill::Charge,
+        20 => BuiltinActiveSkill::Accumulate,
+        21 => BuiltinActiveSkill::Assassinate,
+        22 => BuiltinActiveSkill::Summon,
+        23 => BuiltinActiveSkill::Clone,
+        24 => BuiltinActiveSkill::Shadow,
+        _ => return None,
+    })
+}
+
+#[cfg(test)]
+mod damage_phase_cache_tests {
+    use super::*;
+
+    fn mark(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
+        context.add_update(crate::runtime::update::RunUpdate::new("post damage", 0, 0, entry.skill_id.0));
+    }
+
+    #[test]
+    fn post_damage_phase_rechecks_skills_after_intervening_mutation() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let post = builder
+            .register_skill_with_hooks(
+                "custom",
+                "post",
+                "custom.post",
+                ProcMask::POST_DAMAGE,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .unwrap();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "owner", 0, 100, 3)],
+            builder.build(),
+        ));
+        runtime.set_skill_handler(post, mark);
+        let mut updates = RunUpdates::new();
+        runtime.drain_action_damage_phase_into(EntityIdx(0), ProcMask::PRE_DAMAGE, &mut updates);
+        assert!(updates.updates.is_empty());
+        // 两阶段之间替换技能，必须重新查询，不沿用前一阶段的空缓存。
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().template.skills = SkillLoadout::from_skills([post]);
+        runtime.drain_action_damage_phase_into(EntityIdx(0), ProcMask::POST_DAMAGE, &mut updates);
+        assert_eq!(updates.updates.len(), 1);
+        assert_eq!(updates.updates[0].message, "post damage");
+        assert_eq!(updates.updates[0].score, post.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "runtime damage phase owner missing")]
+    fn damage_phase_rejects_missing_owner_even_when_no_hooks_exist() {
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "owner", 0, 100, 3)],
+            ExtensionRegistryBuilder::default().build(),
+        ));
+        runtime.drain_action_damage_phase_into(EntityIdx(99), ProcMask::PRE_DAMAGE, &mut RunUpdates::new());
     }
 }

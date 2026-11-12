@@ -259,6 +259,12 @@ impl CombatRuntime {
         selected_target: Option<EntityIdx>,
     ) {
         for entry in entries {
+            // 被动技能同样使用实际发动者的独立能力。
+            #[cfg(feature = "cards")]
+            let _ability = self.ability_scope(
+                entry.owner,
+                &self.registry.skill(entry.skill_id).expect("skill exists").export_name,
+            );
             let (handler, capabilities) = if let Some(static_handler) = self.builtin_static_skill_handler(entry.skill_id) {
                 static_handler
             } else {
@@ -325,6 +331,12 @@ impl CombatRuntime {
         defend_value: &mut RuntimeDefendValue,
         on_damage: PlainAttackOnDamage,
     ) {
+        // 防御与反弹按实际发动者计算独立能力。
+        #[cfg(feature = "cards")]
+        let _ability = self.ability_scope(
+            entry.owner,
+            &self.registry.skill(entry.skill_id).expect("skill exists").export_name,
+        );
         let (handler, capabilities) = if let Some(static_handler) = self.builtin_static_skill_handler(entry.skill_id) {
             static_handler
         } else {

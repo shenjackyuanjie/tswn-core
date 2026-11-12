@@ -45,6 +45,8 @@
 //! WinRateSession / win_rate_sync 在当前线程同步计算，仅接受 thread=0/1；
 //! 不会自行创建 Web Worker。分批 step 之间需由宿主让出事件循环，或把整个计算放进 Worker。
 //! 绑定版本与核心版本分别由 [`version`] / [`core_version`] 返回。
+//! 可选 feature `cards`（默认关闭）转发 `tswn_core/cards`，只有开启时
+//! `BattleSession::set_abilities` 才参与编译，生成的 `.d.ts` 也随之一并变化。
 //! 打包、网页运行、Node/Bun 验证和资源路径见
 //! [WASM 使用说明](https://github.com/shenjackyuanjie/tswn-core/tree/main/crates/tswn_wasm)。
 
@@ -369,6 +371,36 @@ pub fn battle_replay(raw_input: String, options: Option<Ts<BattleReplayOptions>>
     let replay = tswn_core::cli_api::battle_replay(&raw_input, options.to_core()).map_err(error::cli_api_error)?;
     battle::dto_to_js(&replay)
 }
+
+/// 与 battle_replay 相同的回放，但允许卡牌前端为某个实体按顺序强制技能。
+///
+/// actions 为完整的 actor/skill/packed_mp 三元组，药水放在 packed_mp 高字节。
+/// 受控队伍指令耗尽后暂停，非法编号或不完整三元组返回 INVALID_ARGUMENT。
+#[wasm_bindgen(unchecked_return_type = "BattleReplay")]
+pub fn battle_replay_forced(
+    raw_input: String,
+    actions: Vec<u32>,
+    options: Option<Ts<BattleReplayOptions>>,
+) -> WasmResult<JsValue> {
+    install_panic_hook();
+    let options = ts_in(options)?;
+    let actions = tswn_core::runtime::forced_action::decode_actions(&actions).map_err(error::invalid_argument)?;
+    // 即使解析 raw 失败也清除尚未被会话接走的指令，不污染下一场对局。
+    struct ClearPending;
+    impl Drop for ClearPending {
+        fn drop(&mut self) { tswn_core::runtime::forced_action::clear(); }
+    }
+    let _clear_pending = ClearPending;
+    tswn_core::runtime::forced_action::set_actions(actions);
+    let result = tswn_core::cli_api::battle_replay(&raw_input, options.to_core());
+    battle::dto_to_js(&result.map_err(error::cli_api_error)?)
+}
+
+#[wasm_bindgen]
+pub fn forced_hits() -> u32 { tswn_core::runtime::forced_action::hits() }
+
+#[wasm_bindgen]
+pub fn forced_taken() -> u32 { tswn_core::runtime::forced_action::taken() }
 
 #[wasm_bindgen]
 /// 将单名转换为 DIY 文本；old/minions 省略时为 false，冲突选项由 core 校验。

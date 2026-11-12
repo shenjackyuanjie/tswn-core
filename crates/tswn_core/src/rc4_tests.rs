@@ -236,3 +236,92 @@ fn rc4_sort_int_test() {
 
     assert_eq!(rc4.main_val, result);
 }
+
+#[test]
+fn scalar_skip_range_preserves_indices_and_full_rng_state() {
+    // 覆盖非连续、反序、重复排除项，仍按 legacy 的首项和数量解释。
+    let exclusions = [
+        vec![],
+        vec![0],
+        vec![1],
+        vec![0, 2],
+        vec![2, 0],
+        vec![1, 1],
+        vec![0, 1, 2],
+        (0..17).collect(),
+    ];
+    for len in 0..=24 {
+        let list = vec![(); len];
+        for skips in &exclusions {
+            let span = skips.iter().copied().collect::<PickSkipRange>();
+            let mut candidate = RC4::new(b"scalar-range-regression", 1);
+            let mut reference = candidate.clone();
+            for _ in 0..64 {
+                let expected = if skips.is_empty() {
+                    reference.pick(&list)
+                } else if len > skips.len() {
+                    let index = reference.next_i32((len - skips.len()) as i32) as usize;
+                    Some(if index >= skips[0] { index + skips.len() } else { index })
+                } else {
+                    None
+                };
+                assert_eq!(candidate.pick_skip_span(&list, span), expected);
+                assert_eq!(
+                    (candidate.i, candidate.j, candidate.main_val),
+                    (reference.i, reference.j, reference.main_val)
+                );
+                #[cfg(not(feature = "no_debug"))]
+                assert_eq!(candidate.byte_count, reference.byte_count);
+            }
+        }
+    }
+}
+
+#[test]
+fn small_range_reciprocals_match_every_16_bit_remainder() {
+    for divisor in 1..=255u32 {
+        for value in 0..=u16::MAX as u32 {
+            assert_eq!(
+                small_range_remainder(value, divisor as u8),
+                (value % divisor) as i32,
+                "value={value}, divisor={divisor}"
+            );
+        }
+    }
+}
+
+#[test]
+fn small_range_sampling_preserves_full_rng_state_and_large_range_fallback() {
+    fn reference_next_i32(rng: &mut RC4, max: i32) -> i32 {
+        if max == 0 {
+            return 0;
+        }
+        let mut round = max;
+        let mut value = rng.next_u8() as i32;
+        loop {
+            value = (value << 8) | rng.next_u8() as i32;
+            if value >= max {
+                value %= max;
+            }
+            round >>= 8;
+            if round == 0 {
+                return value;
+            }
+        }
+    }
+    for key in [b"small-range".as_slice(), b"another-stream".as_slice()] {
+        let mut candidate = RC4::new(key, 1);
+        let mut reference = candidate.clone();
+        for _ in 0..32 {
+            for max in (0..=257).chain([511, 65535, 65536, 16777216]) {
+                assert_eq!(candidate.next_i32(max), reference_next_i32(&mut reference, max));
+                assert_eq!(
+                    (candidate.i, candidate.j, candidate.main_val),
+                    (reference.i, reference.j, reference.main_val)
+                );
+                #[cfg(not(feature = "no_debug"))]
+                assert_eq!(candidate.byte_count, reference.byte_count);
+            }
+        }
+    }
+}

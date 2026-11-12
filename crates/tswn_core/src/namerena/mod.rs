@@ -48,7 +48,7 @@ mod stats;
 mod weapon;
 
 pub(crate) use build::score_profile_team_rng;
-pub use build::{MinionKind, PreparedMinionBlueprint, PreparedPlayer, PreparedRoster, PreparedRosterError};
+pub use build::{MinionKind, PreparedMinionBlueprint, PreparedPlayer, PreparedRinickData, PreparedRoster, PreparedRosterError};
 pub use input::{
     NAME_MAX_LEN, NamerenaInput, PlayerClass, PlayerSpec, PlayerSpecError, SEED_PREFIX, TEAM_MAX_LEN, is_seed_line,
     raw_namerena_to_id_name,
@@ -56,14 +56,15 @@ pub use input::{
 pub(crate) use input::{raw_namerena_to_id_name_into, trim_js_line_end};
 pub use overlay::{MinionOverlay, PlayerOverlay};
 pub use rules::{
-    BOOST_NAMES, BOSS_NAMES, boost_value, boss_action_prob_count, boss_append_attr, boss_display_name, boss_immune_threshold,
-    median,
+    BOOST_NAMES, BOSS_NAMES, BossActionSkill, boost_value, boss_action_prob_count, boss_action_skills, boss_append_attr,
+    boss_default_skill_levels, boss_display_name, boss_immune_threshold, boss_uses_skill_attack, median,
 };
 pub use skill::{
     BuiltinSkillRef, CLASSIFIED_SKILL_SLOT_COUNT, ClassifiedSkillRef, PHANTOM_POSSESS_SKILL_KEY, SUMMON_EXPLODE_SKILL_KEY,
     SUMMON_FIRE1_SKILL_KEY, SUMMON_FIRE2_SKILL_KEY, SUMMON_MINION_NORMAL_SKILL_KEY_BASE, SUMMON_SHARE_DAMAGE_SKILL_KEY,
-    SkillBoost, SkillEntrySpec, SkillLoadoutSpec, classified_player_skill_name_for_export,
-    classified_summon_minion_skill_name_for_export, parse_prefixed_classified_skill_name, phantom_skill_ref_from_name,
-    player_classified_skill_ref_from_name, skill_name_for_export, skill_name_to_id, summon_slot_skill_ref_from_name,
+    SkillBoost, SkillEntrySpec, SkillLoadoutSpec, WEAPON_RINICK_ICE_AGE_SKILL_KEY, WEAPON_RINICK_YURI_CONTROL_SKILL_KEY,
+    classified_player_skill_name_for_export, classified_summon_minion_skill_name_for_export,
+    parse_prefixed_classified_skill_name, phantom_skill_ref_from_name, player_classified_skill_ref_from_name,
+    skill_name_for_export, skill_name_to_id, summon_slot_skill_ref_from_name,
 };
 pub use stats::PlayerStats;

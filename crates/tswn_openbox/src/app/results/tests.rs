@@ -395,12 +395,17 @@ fn table_height_switches_between_auto_and_dragged_value() {
     assert_eq!(view.table_height, 300.0, "保存的是拖动后的高度");
     assert!((view.table_area_height(900.0) - 300.0).abs() < 0.5, "空间足够时按保存值");
     assert!(
-        (view.table_area_height(400.0) - (400.0 - TABLE_DETAIL_MIN)).abs() < 0.5,
+        (view.table_area_height(350.0) - (350.0 - TABLE_DETAIL_MIN)).abs() < 0.5,
         "可用高度不足时压缩表格，给明细区留空间"
     );
     assert!(
         view.table_area_height(200.0) <= 200.0 - TABLE_DETAIL_MIN + 0.5,
         "表格过高时必须给明细区留出空间"
+    );
+    view.set_table_height(Some(TABLE_HEIGHT_MAX));
+    assert!(
+        (view.table_area_height(900.0) - (900.0 - TABLE_DETAIL_MIN)).abs() < 0.5,
+        "填满时表格占到可用高度上限，只给明细留最小高度"
     );
     view.set_table_height(Some(f32::NAN));
     assert_eq!(view.table_height, TABLE_HEIGHT_AUTO, "非法高度回退自动");
@@ -408,6 +413,38 @@ fn table_height_switches_between_auto_and_dragged_value() {
     assert!(view.table_height >= TABLE_HEIGHT_MIN, "过小的高度被夹到下限");
     view.set_table_height(None);
     assert_eq!(view.table_height, TABLE_HEIGHT_AUTO);
+}
+
+/// 点击表头按列排序：升序 → 降序 → 输入顺序，同分保持输入顺序。
+#[test]
+fn table_header_cycles_sort_by_score() {
+    let mut view = ResultsView {
+        mode: ViewMode::Table,
+        follow: false,
+        ..Default::default()
+    };
+    let mut log = LogBuffer::default();
+    for (group, score) in [(0usize, 30.0), (1, 10.0), (2, 20.0)] {
+        let mut update = ResultUpdate::new_with_legacy(group, "名字", ResultKind::Scores, 0);
+        update.entries.push(ResultEntry::number(0, "pp".into(), score));
+        update.finish = Some(ResultFinish {
+            score: Some(score),
+            visible: true,
+            highlight: false,
+        });
+        view.apply(update, &mut log);
+    }
+    assert_eq!(view.sorted_groups(), vec![0, 1, 2], "默认按输入顺序");
+    view.cycle_sort(2);
+    assert_eq!(view.sorted_groups(), vec![1, 2, 0], "第一次点击按 pp 升序");
+    view.cycle_sort(2);
+    assert_eq!(view.sorted_groups(), vec![0, 2, 1], "第二次点击按 pp 降序");
+    view.cycle_sort(2);
+    assert_eq!(view.sorted_groups(), vec![0, 1, 2], "第三次点击回到输入顺序");
+    // 状态 / 复制列没有可比较的值，点击不改变排序。
+    view.cycle_sort(2);
+    view.cycle_sort(1);
+    assert_eq!(view.sorted_groups(), vec![1, 2, 0], "点击第 1 列保持原排序");
 }
 
 /// 复制内容是该卡片/该行自己的文本：标题行加明细，不含日志里的其它结果。

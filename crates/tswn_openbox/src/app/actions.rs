@@ -12,7 +12,7 @@ use tswn_openbox::backend::{
     ProgressEvent,
 };
 
-use super::state::{CountMode, OpenboxApp};
+use super::state::{CountMode, NamerPfState, OpenboxApp};
 use super::widgets::OptionalFileOutput;
 use tswn_openbox::presets::{load_selected_target_text, load_selected_teammate_text};
 
@@ -65,6 +65,8 @@ impl OpenboxApp {
                 return;
             }
         };
+        // 评分项一个都不勾时不报错：等价于不过滤，把所有指标输出到屏幕。
+        let unfiltered = namer_pf_unfiltered(&self.namer_pf);
         let mut metrics = Vec::with_capacity(self.namer_pf.metrics.len());
         for metric in &self.namer_pf.metrics {
             let min_screen = if metric.screen {
@@ -113,7 +115,7 @@ impl OpenboxApp {
             };
             metrics.push(NamerPfMetricOptions {
                 metric: metric.metric,
-                screen: metric.screen,
+                screen: metric.screen || unfiltered,
                 min_screen,
                 highlight_delta,
                 output_file,
@@ -358,6 +360,15 @@ impl OpenboxApp {
     }
 }
 
+/// 评分项一个都不勾时按“不过滤”处理：把全部指标输出到屏幕，阈值保持不限。
+///
+/// 这里只决定是否回退到全选屏幕，不改变结算规则，也不影响技能榜与文件输出。
+fn namer_pf_unfiltered(state: &NamerPfState) -> bool {
+    !state.skill_board.screen
+        && !state.skill_board.file_output.enabled
+        && state.metrics.iter().all(|metric| !metric.screen && !metric.file_output.enabled)
+}
+
 fn resolve_output_path(output: &OptionalFileOutput) -> Result<Option<std::path::PathBuf>, String> {
     match output.selected_path() {
         Some(path) => Ok(Some(path)),
@@ -421,4 +432,37 @@ fn parse_f64(raw: &str, field_name: &str) -> Result<f64, String> {
         return Err(format!("{field_name} 需要是有限数字。"));
     }
     Ok(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn namer_pf_unfiltered_only_when_nothing_is_selected() {
+        let mut state = NamerPfState::default();
+        // 默认把五项都输出到屏幕，不算“全不选”。
+        assert!(!namer_pf_unfiltered(&state));
+
+        for metric in &mut state.metrics {
+            metric.screen = false;
+        }
+        assert!(namer_pf_unfiltered(&state), "全不选应回退为不过滤");
+
+        // 任一项重新勾选、启用技能榜或选中输出文件，都应退出不过滤分支。
+        state.metrics[2].screen = true;
+        assert!(!namer_pf_unfiltered(&state));
+        state.metrics[2].screen = false;
+
+        state.skill_board.screen = true;
+        assert!(!namer_pf_unfiltered(&state));
+        state.skill_board.screen = false;
+
+        state.skill_board.file_output.enabled = true;
+        assert!(!namer_pf_unfiltered(&state));
+        state.skill_board.file_output.enabled = false;
+
+        state.metrics[0].file_output.enabled = true;
+        assert!(!namer_pf_unfiltered(&state));
+    }
 }

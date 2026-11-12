@@ -15,5 +15,9 @@ tsify = { version = "0.5.8", default-features = false, features = ["js"] }
 tswn_core = { path = "../tswn_core", default-features = false, features = ["no_debug", "png_render"] }
 wasm-bindgen = "0.2.129"
 
+[features]
+# 转发 core 的 cards 能力卡子系统；默认关闭，关闭时 set_abilities 不参与编译。
+cards = ["tswn_core/cards"]
+
 [dev-dependencies]
 tswn_core = { path = "../tswn_core", default-features = false, features = ["battle-test-support"] }

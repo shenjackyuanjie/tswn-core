@@ -53,6 +53,11 @@ pub const DEFAULT_CORE_SUMMON_ENTITY_EXPORT: &str = "core.entity.summoned_entity
 pub const DEFAULT_CORE_MINION_COUNTER_ENTITY_EXPORT: &str = "core.entity.minion_counter";
 pub const DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT: &str = "core.skill.summon-explode";
 pub const DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT: &str = "core.skill.summon-share-damage";
+pub const DEFAULT_CORE_WEAPON_S11_SKILL_EXPORT: &str = "core.weapon.s11";
+pub const DEFAULT_CORE_WEAPON_DEATH_NOTE_SKILL_EXPORT: &str = "core.weapon.death-note";
+pub const DEFAULT_CORE_WEAPON_XUAN_YUE_COUNTER_SKILL_EXPORT: &str = "core.weapon.xuan-yue-counter";
+pub const DEFAULT_CORE_WEAPON_RINICK_ICE_AGE_SKILL_EXPORT: &str = "core.weapon.rinick-ice-age";
+pub const DEFAULT_CORE_WEAPON_RINICK_YURI_CONTROL_SKILL_EXPORT: &str = "core.weapon.rinick-yuri-control";
 pub const DEFAULT_CUSTOM_BED2_SUMMON_SKILL_EXPORT: &str = "custom.summon";
 pub const DEFAULT_CUSTOM_BED2_SUMMON_FIRE_SKILL_EXPORT: &str = "custom.summon.fire";
 pub const DEFAULT_CUSTOM_BED2_SUMMON_EXPLODE_SKILL_EXPORT: &str = "custom.summon.explode";
@@ -95,6 +100,11 @@ pub enum BuiltinActiveSkill {
     Clone,
     Shadow,
     Possess,
+    WeaponS11,
+    WeaponDeathNote,
+    WeaponXuanYue,
+    RinickIceAge,
+    RinickYuriControl,
 }
 
 pub const PLAIN_FIRE_STATE_KEY: u32 = 0;
@@ -112,9 +122,10 @@ pub const PLAIN_COVID_INFECTION_STATE_KEY: u32 = 91;
 pub const PLAIN_LAZY_BOSS_STATE_KEY: u32 = 92;
 pub const PLAIN_LAZY_INFECTION_STATE_KEY: u32 = 93;
 pub const PLAIN_SAITAMA_BOSS_STATE_KEY: u32 = 94;
+pub const PLAIN_MARIO_BOSS_STATE_KEY: u32 = 95;
 
 /// 默认规则会产生的 legacy state key，按原始值升序冻结给 encoder 分类词表。
-pub const PLAIN_STATE_LEGACY_KEYS: [u32; 15] = [
+pub const PLAIN_STATE_LEGACY_KEYS: [u32; 16] = [
     PLAIN_FIRE_STATE_KEY,
     PLAIN_ICE_STATE_KEY,
     PLAIN_BERSERK_STATE_KEY,
@@ -130,6 +141,7 @@ pub const PLAIN_STATE_LEGACY_KEYS: [u32; 15] = [
     PLAIN_LAZY_BOSS_STATE_KEY,
     PLAIN_LAZY_INFECTION_STATE_KEY,
     PLAIN_SAITAMA_BOSS_STATE_KEY,
+    PLAIN_MARIO_BOSS_STATE_KEY,
 ];
 
 impl BuiltinActiveSkill {
@@ -161,7 +173,7 @@ impl BuiltinActiveSkill {
         Self::Shadow,
     ];
 
-    pub const ALL: [Self; 26] = [
+    pub const ALL: [Self; 31] = [
         Self::Fire,
         Self::Ice,
         Self::Thunder,
@@ -188,6 +200,11 @@ impl BuiltinActiveSkill {
         Self::Clone,
         Self::Shadow,
         Self::Possess,
+        Self::WeaponS11,
+        Self::WeaponDeathNote,
+        Self::WeaponXuanYue,
+        Self::RinickIceAge,
+        Self::RinickYuriControl,
     ];
 
     pub const fn legacy_key(self) -> usize {
@@ -219,6 +236,11 @@ impl BuiltinActiveSkill {
             Self::Clone => 23,
             Self::Shadow => 24,
             Self::Possess => 43,
+            Self::WeaponS11 => 44,
+            Self::WeaponDeathNote => 45,
+            Self::WeaponXuanYue => 46,
+            Self::RinickIceAge => 47,
+            Self::RinickYuriControl => 48,
         }
     }
 
@@ -251,6 +273,11 @@ impl BuiltinActiveSkill {
             Self::Clone => "clone",
             Self::Shadow => "shadow",
             Self::Possess => "minion-possess",
+            Self::WeaponS11 => "weapon-s11",
+            Self::WeaponDeathNote => "weapon-death-note",
+            Self::WeaponXuanYue => "weapon-xuan-yue-counter",
+            Self::RinickIceAge => "weapon-rinick-ice-age",
+            Self::RinickYuriControl => "weapon-rinick-yuri-control",
         }
     }
 
@@ -283,12 +310,25 @@ impl BuiltinActiveSkill {
             Self::Clone => "core.skill.clone",
             Self::Shadow => "core.skill.shadow",
             Self::Possess => DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT,
+            Self::WeaponS11 => DEFAULT_CORE_WEAPON_S11_SKILL_EXPORT,
+            Self::WeaponDeathNote => DEFAULT_CORE_WEAPON_DEATH_NOTE_SKILL_EXPORT,
+            Self::WeaponXuanYue => DEFAULT_CORE_WEAPON_XUAN_YUE_COUNTER_SKILL_EXPORT,
+            Self::RinickIceAge => DEFAULT_CORE_WEAPON_RINICK_ICE_AGE_SKILL_EXPORT,
+            Self::RinickYuriControl => DEFAULT_CORE_WEAPON_RINICK_YURI_CONTROL_SKILL_EXPORT,
         }
     }
 
     pub const fn target_policy(self) -> TargetPolicy {
         match self {
-            Self::Iron | Self::Charge | Self::Accumulate | Self::Summon | Self::Clone | Self::Shadow => TargetPolicy::None,
+            Self::Iron
+            | Self::Charge
+            | Self::Accumulate
+            | Self::Summon
+            | Self::Clone
+            | Self::Shadow
+            | Self::WeaponS11
+            | Self::WeaponDeathNote
+            | Self::WeaponXuanYue => TargetPolicy::None,
             Self::Haste | Self::Heal | Self::Revive => TargetPolicy::Ally,
             _ => TargetPolicy::Enemy,
         }
@@ -309,7 +349,7 @@ pub struct BuiltinSkillImportMap {
     plain_by_legacy_key: [Option<SkillId>; 35],
     score_hook_plan: Vec<ScoreSkillHookPlanEntry>,
     score_hook_plan_needs_active_sort: bool,
-    special_skill_ids: [Option<SkillId>; 4],
+    special_skill_ids: [Option<SkillId>; 9],
 }
 
 impl BuiltinSkillImportMap {
@@ -373,6 +413,11 @@ impl BuiltinSkillImportMap {
                 registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT),
                 registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT),
                 registry.skill_id_by_export_name(DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT),
+                registry.skill_id_by_export_name(DEFAULT_CORE_WEAPON_S11_SKILL_EXPORT),
+                registry.skill_id_by_export_name(DEFAULT_CORE_WEAPON_DEATH_NOTE_SKILL_EXPORT),
+                registry.skill_id_by_export_name(DEFAULT_CORE_WEAPON_XUAN_YUE_COUNTER_SKILL_EXPORT),
+                registry.skill_id_by_export_name(DEFAULT_CORE_WEAPON_RINICK_ICE_AGE_SKILL_EXPORT),
+                registry.skill_id_by_export_name(DEFAULT_CORE_WEAPON_RINICK_YURI_CONTROL_SKILL_EXPORT),
             ],
         }
     }
@@ -388,6 +433,11 @@ impl BuiltinSkillImportMap {
                 registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT),
                 registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT),
                 registry.skill_id_by_export_name(DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT),
+                None,
+                None,
+                None,
+                None,
+                None,
             ],
         }
     }
@@ -456,6 +506,11 @@ impl BuiltinSkillImportMap {
                     BuiltinSkillRef::SummonExplode => self.special_skill_ids[1],
                     BuiltinSkillRef::SummonShareDamage => self.special_skill_ids[2],
                     BuiltinSkillRef::Possess => self.special_skill_ids[3],
+                    BuiltinSkillRef::WeaponS11 => self.special_skill_ids[4],
+                    BuiltinSkillRef::WeaponDeathNote => self.special_skill_ids[5],
+                    BuiltinSkillRef::WeaponXuanYue => self.special_skill_ids[6],
+                    BuiltinSkillRef::RinickIceAge => self.special_skill_ids[7],
+                    BuiltinSkillRef::RinickYuriControl => self.special_skill_ids[8],
                 }?;
                 Some((entry.key, skill_id, entry.level, entry.boosted, entry.boost.clone()))
             })

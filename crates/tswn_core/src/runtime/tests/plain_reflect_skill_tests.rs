@@ -43,6 +43,7 @@ fn plain_reflect_pre_defend_skips_frozen_owner_without_mp_rng() {
         caster: EntityIdx(0),
         target: EntityIdx(1),
         is_magic: true,
+        kind: DamageKind::Default,
     };
 
     runtime.drain_pre_defend_hooks_into(EntityIdx(1), &mut updates, &mut defend_value);
@@ -74,6 +75,7 @@ fn reflected_fire_attack_keeps_fire_on_damage_callback() {
         caster: EntityIdx(0),
         target: EntityIdx(1),
         atp_bits: 50.0_f64.to_bits(),
+        kind: DamageKind::Default,
         on_damage: PlainAttackOnDamage::Fire(91),
     });
 

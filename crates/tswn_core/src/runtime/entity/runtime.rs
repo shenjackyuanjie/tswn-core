@@ -99,12 +99,20 @@ pub struct CounterRuntime {
     pub last_updates_id: Option<u64>,
 }
 
+/// 0.5.5 `SklS11` 的运行时字段：技能等级会被砍手分支改写，耐久从 3 开始递减。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WeaponS11Runtime {
+    pub level: u32,
+    pub durability: i32,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RuntimeCorpseKind {
     #[default]
     None,
     Merge,
     Zombie,
+    Slime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -141,6 +149,20 @@ pub struct PlayerRuntime {
     pub hide: Option<HideRuntime>,
     pub assassinate: Option<AssassinateRuntime>,
     pub counter: CounterRuntime,
+    /// 玄月奖杯的受击反击登记；与普通反击分开保存。
+    pub counter_xuan_yue: CounterRuntime,
+    /// 剁手刀的运行时技能等级与耐久。
+    pub weapon_s11: Option<WeaponS11Runtime>,
+    /// 死亡笔记当前写下的目标。
+    pub death_note_mark: Option<EntityIdx>,
+    /// 马里奥 Boss 的复活次数；0.5.5 存在技能实例上，不随离散状态清除。
+    pub mario_reraise_lives: Option<u32>,
+    /// 属性修改器身份的复活次数；0.5.5 存在隐身型 `SklMarioReraise` 子类实例上。
+    pub rinick_reraise_lives: Option<u32>,
+    /// 柯南 Boss 的推理计数；0.5.5 保存在 `SklConan` 实例上，初始为 -1。
+    pub conan_thinking: Option<i32>,
+    /// 史莱姆 Boss 的分裂代数；0 为原始 Boss，1 为第一代子体，2 起不再分裂。
+    pub slime_split_generation: Option<u32>,
     pub corpse: RuntimeCorpseKind,
 }
 
@@ -156,6 +178,15 @@ impl PlayerRuntime {
             .map_or((PlayerKindFlags::NONE, PlayerKindPolicies::default()), |kind| {
                 (kind.flags, template.policy_overrides.apply_to(kind.policies))
             });
+        let weapon_s11 = template.skills.skills().iter().copied().enumerate().find_map(|(fixed_lane, skill_id)| {
+            (registry.skill(skill_id)?.export_name == crate::runtime::DEFAULT_CORE_WEAPON_S11_SKILL_EXPORT)
+                .then(|| template.skills.level_at(fixed_lane))
+                .flatten()
+                .map(|level| WeaponS11Runtime { level, durability: 3 })
+        });
+        let mario_reraise_lives = (flags.contains(PlayerKindFlags::BOSS) && template.name == "mario").then_some(3);
+        let conan_thinking = (flags.contains(PlayerKindFlags::BOSS) && template.name == "conan").then_some(-1);
+        let slime_split_generation = (flags.contains(PlayerKindFlags::BOSS) && template.name == "slime").then_some(0);
         Self {
             hp: template.max_hp,
             alive: true,
@@ -179,7 +210,7 @@ impl PlayerRuntime {
             flags,
             policies,
             move_state: template.move_state,
-            charge: ChargeRuntime::default(),
+            charge: ChargeRuntime::from_permanent(template.permanent_charge),
             accumulate: AccumulateRuntime::default(),
             shield: 0,
             protect_to: None,
@@ -189,6 +220,13 @@ impl PlayerRuntime {
             hide: None,
             assassinate: None,
             counter: CounterRuntime::default(),
+            counter_xuan_yue: CounterRuntime::default(),
+            weapon_s11,
+            death_note_mark: None,
+            mario_reraise_lives,
+            rinick_reraise_lives: template.rinick.as_ref().is_some_and(|data| data.revive_attrs.is_some()).then_some(2),
+            conan_thinking,
+            slime_split_generation,
             corpse: RuntimeCorpseKind::None,
         }
     }
@@ -224,7 +262,7 @@ impl PlayerRuntime {
         self.flags = PlayerKindFlags::NONE;
         self.policies = PlayerKindPolicies::default();
         self.move_state = template.move_state;
-        self.charge = ChargeRuntime::default();
+        self.charge = ChargeRuntime::from_permanent(template.permanent_charge);
         self.accumulate = AccumulateRuntime::default();
         self.shield = 0;
         self.protect_to = None;
@@ -234,6 +272,13 @@ impl PlayerRuntime {
         self.hide = None;
         self.assassinate = None;
         self.counter = CounterRuntime::default();
+        self.counter_xuan_yue = CounterRuntime::default();
+        self.weapon_s11 = None;
+        self.death_note_mark = None;
+        self.mario_reraise_lives = None;
+        self.rinick_reraise_lives = None;
+        self.conan_thinking = None;
+        self.slime_split_generation = None;
         self.corpse = RuntimeCorpseKind::None;
     }
 
@@ -272,6 +317,13 @@ impl PlayerRuntime {
         self.hide = prepared.hide;
         self.assassinate = prepared.assassinate;
         self.counter.clone_from(&prepared.counter);
+        self.counter_xuan_yue.clone_from(&prepared.counter_xuan_yue);
+        self.weapon_s11 = prepared.weapon_s11;
+        self.death_note_mark = prepared.death_note_mark;
+        self.mario_reraise_lives = prepared.mario_reraise_lives;
+        self.rinick_reraise_lives = prepared.rinick_reraise_lives;
+        self.conan_thinking = prepared.conan_thinking;
+        self.slime_split_generation = prepared.slime_split_generation;
         self.corpse = prepared.corpse;
     }
 
@@ -287,6 +339,9 @@ impl PlayerRuntime {
 
     pub fn mp_ready(&mut self, randomer: &mut RC4) -> bool {
         let require_mp = randomer.r3x3() as i32;
+        // 能力卡减耗只作用于当前技能的作用域，不改变掷骰消费。
+        #[cfg(feature = "cards")]
+        let require_mp = (require_mp - crate::runtime::forced_action::mp_reduction(self.root_owner.0)).max(0);
         if self.magic_point < require_mp {
             return false;
         }
@@ -304,7 +359,11 @@ impl PlayerRuntime {
             atk,
         ) as f64;
         let b = median_i32_3(randomer.r63() as i32 + 64, randomer.r63() as i32 + 64, atk + 64) as f64;
-        a * b * self.at_boost()
+        let at = a * b * self.at_boost();
+        // 能力卡在攻击力之后独立乘算，不额外消耗随机流。
+        #[cfg(feature = "cards")]
+        let at = at * crate::runtime::forced_action::attack_multiplier(self.root_owner.0);
+        at
     }
 
     pub fn magic_defense(&self) -> i32 { self.resistance + 64 }
@@ -360,6 +419,19 @@ pub struct ChargeRuntime {
     pub active: bool,
     pub post_action_active: bool,
     pub step: i32,
+    /// 桂月奖杯注入的常驻 `charge` 标记：只参与状态存在性判定，不带攻击倍率且永不过期。
+    pub permanent: bool,
+}
+
+impl ChargeRuntime {
+    pub(crate) fn from_permanent(permanent: bool) -> Self {
+        Self {
+            active: permanent,
+            post_action_active: false,
+            step: 0,
+            permanent,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -405,7 +477,12 @@ impl EntityRecord {
     pub fn effective_speed(&self) -> i32 {
         let mut speed = self.states.effective_speed(self.template.speed);
         if self.runtime.upgrade_active {
-            speed += 20;
+            // 增益量独立乘算，保留原始技能等级。
+            #[cfg(feature = "cards")]
+            let power = crate::runtime::forced_action::ability_value(self.template.team, "core.skill.upgrade").1;
+            #[cfg(not(feature = "cards"))]
+            let power: f64 = 1.0;
+            speed += (20.0 * power).round() as i32;
         }
         speed
     }
@@ -448,13 +525,18 @@ impl EntityRecord {
         self.runtime.attract_bits = self.template.attract_bits;
         self.runtime.attract_bits = self.states.effective_attract(self.runtime.attract()).to_bits();
         if self.runtime.upgrade_active {
-            self.runtime.attack += 30;
-            self.runtime.defense += 30;
-            self.runtime.agility += 30;
-            self.runtime.magic += 30;
-            self.runtime.resistance += 30;
-            self.runtime.speed += 20;
-            self.runtime.wisdom += 20;
+            // 增益量独立乘算，保留原始技能等级。
+            #[cfg(feature = "cards")]
+            let power = crate::runtime::forced_action::ability_value(self.template.team, "core.skill.upgrade").1;
+            #[cfg(not(feature = "cards"))]
+            let power: f64 = 1.0;
+            self.runtime.attack += (30.0 * power).round() as i32;
+            self.runtime.defense += (30.0 * power).round() as i32;
+            self.runtime.agility += (30.0 * power).round() as i32;
+            self.runtime.magic += (30.0 * power).round() as i32;
+            self.runtime.resistance += (30.0 * power).round() as i32;
+            self.runtime.speed += (20.0 * power).round() as i32;
+            self.runtime.wisdom += (20.0 * power).round() as i32;
         }
         self.refresh_runtime_at_boost();
         if let Some(level) = hide_level {
@@ -465,9 +547,13 @@ impl EntityRecord {
                 defense: self.runtime.defense,
                 resistance: self.runtime.resistance,
             });
-            self.runtime.attract_bits = (self.runtime.attract() / 10.0).to_bits();
+            #[cfg(feature = "cards")]
+            let hide_power = crate::runtime::forced_action::ability_value(self.template.team, "core.skill.hide").1;
+            #[cfg(not(feature = "cards"))]
+            let hide_power: f64 = 1.0;
+            self.runtime.attract_bits = (self.runtime.attract() / (10.0 * hide_power)).to_bits();
             if level > 63 {
-                let boost = (level - 63) as i32;
+                let boost = ((level - 63) as f64 * hide_power).round() as i32;
                 self.runtime.agility += boost;
                 self.runtime.defense += boost;
                 self.runtime.resistance += boost;
@@ -506,7 +592,7 @@ impl EntityRecord {
     }
 
     pub fn tick_charge_post_action(&mut self) -> bool {
-        if !self.runtime.charge.post_action_active {
+        if !self.runtime.charge.post_action_active || self.runtime.charge.permanent {
             return false;
         }
 
@@ -522,7 +608,7 @@ impl EntityRecord {
     }
 
     pub fn clear_charge_runtime(&mut self) -> bool {
-        if !self.runtime.charge.active {
+        if !self.runtime.charge.active || self.runtime.charge.permanent {
             return false;
         }
 
@@ -538,7 +624,7 @@ impl EntityRecord {
             return false;
         }
 
-        let charge_active = self.runtime.at_boost_millionths >= 3_000_000;
+        let charge_active = self.runtime.charge.active;
         self.runtime.accumulate.active = true;
         self.runtime.accumulate.set_charge_bonus(if charge_active { 1.0 } else { 0.0 });
         if charge_active {
@@ -606,11 +692,21 @@ impl EntityRecord {
 
     fn refresh_runtime_at_boost(&mut self) {
         let mut at_boost = f64::from_bits(self.template.at_boost_bits);
-        if self.runtime.charge.active {
+        // 攻击倍率来自 SklCharge.ar；桂月的常驻标记没有 ar，只满足存在性判定。
+        if self.runtime.charge.active && !self.runtime.charge.permanent {
             at_boost *= 3.0;
         }
         if self.runtime.accumulate.active {
             at_boost *= self.runtime.accumulate.acc() + self.runtime.accumulate.charge_bonus();
+        }
+        // 马里奥吃到蘑菇后 SklMarioGet 让攻击力乘 1.5。
+        if self
+            .states
+            .entry(crate::runtime::profile::PLAIN_MARIO_BOSS_STATE_KEY)
+            .and_then(StateEntry::mario_boss_value)
+            .is_some_and(|(grow, _)| grow > 0)
+        {
+            at_boost *= 1.5;
         }
         self.runtime.at_boost_bits = at_boost.to_bits();
         self.runtime.at_boost_millionths = at_boost_to_millionths(at_boost);
