@@ -2,6 +2,11 @@
 
 本文件记录跨 crate 的维护与兼容性变更；各 crate 的版本发布历史仍以对应 CHANGELOG 为准。
 
+## 未发布 · 2026-11-12 吸收 custom 分支的 bed2 半资源策略
+
+- 通过 `merge(custom)` 把 `custom` 并入 main（内容提交署名原作者 1cy3ish）：新增 `MergePolicy::FixedLaneHalfResources`，bed2 召唤物合并时只获得目标一半的 MP 差值与行动点；其它合并策略保持全量，默认对局与 golden 基线不变。
+- 分支上落后的实现没有回灌：summon/overlay 体系已按 main 重构，代码按现有结构重写；encoder 的 merge policy 编码新增值 4。
+
 ## 未发布 · 2026-11-12 合入 fix/Rinick-feature（默认关闭）
 
 - 通过 `merge(rinick)` 合入 `fix/Rinick-feature` 的两处语义补丁并保留分支历史，语义放进两个默认关闭的 feature：`hide_berserk_compat`（隐匿不再吞掉狂暴强制行动）与 `curse_caster_charge`（诅咒蓄力按施法者判定）。

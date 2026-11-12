@@ -11,6 +11,7 @@
 - 恢复 `forced_action::ForcedFallback` 运行时策略：默认 `Strict`（失败映射 `INVALID_ARGUMENT`），`battle_replay_forced` 显式切到 `Fallback`，点名的技能未装备或 MP 不足时降级普通攻击并写「改为普通攻击」战报，选不出目标时暂停并保留行动；`with_fallback_mode` 用作用域守卫复位，会话路径仍默认严格。
 - 新增卡牌强制行动与受控会话子系统：`BattleSession` 可按玩家指令驱动指定队伍，缺指令时暂停（`paused_actor`）并可 `submit_action` 续行，`set_initial_hp` 在大逃杀开局注入当前 HP；`forced_action` 提供指令解码、药水生效与回退记录，`battle_replay` 接受同一批指令重放。
 - 合入 `fix/Rinick-feature` 的两处修正，收进默认关闭的 feature，默认构建与 golden 基线不变：`hide_berserk_compat`（隐匿的 pre-action 不再置 `clear_forced_action`，修「带隐匿 + 狂暴 → 狂暴永久挂身」）与 `curse_caster_charge`（诅咒蓄力加成按施法者判定）；开启后 `runtime-corpus` 分别有 14 / 1 条预期差异，见 [评审文档](../../docs/reviews/2026-10-fix-rinick-feature.md)。
+- 新增 `MergePolicy::FixedLaneHalfResources`：bed2 召唤物合并时只获得目标一半的 MP 差值与行动点，默认 custom 导入配置的 `custom.bed2-summon` 使用该策略；其它策略保持全量转移，编码侧 merge policy 补值 4。来源 `custom@1181956b`（原作者 1cy3ish）。
 
 ### 能力卡（`cards` feature，默认关闭）
 
