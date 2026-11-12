@@ -46,7 +46,7 @@ print(tswn_py.core_version_str())
 
 ### 1) Rust 工具链
 
-需要安装 Rust（包含 `cargo`）。当前 workspace 的全功能依赖要求 Rust 至少 1.95；此要求来自依赖声明，本轮实际工具链为 1.99，未单独完成最低版本构建验收。
+需要安装 Rust（包含 `cargo`）。当前 workspace 的全功能依赖要求 Rust 至少 1.95。
 
 ### 2) Python（多版本）
 

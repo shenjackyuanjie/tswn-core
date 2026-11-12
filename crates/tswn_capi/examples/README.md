@@ -18,17 +18,7 @@
 
 ### 错误处理范例
 
-如果你想看更完整的错误处理流程，而不只是最小的“触发一次错误后读消息”，可以直接看：
-
-- `examples/error_handling.c`
-
-这个示例演示了：
-
-- 如何检查 `tswn_status_t`
-- 如何读取 `tswn_last_error_message()`
-- 如何用 `tswn_clear_error()` 手动清空错误
-- 如何在一次失败之后继续调用其他接口
-- 成功调用后，旧的 last-error 会如何被清掉
+`examples/error_handling.c` 演示完整的错误处理流程：检查 `tswn_status_t`、读取 `tswn_last_error_message()`、用 `tswn_clear_error()` 手动清空错误、在一次失败之后继续调用其他接口，以及成功调用后旧 last-error 如何被清掉。
 
 ## 重要说明
 

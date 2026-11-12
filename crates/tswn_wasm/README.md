@@ -248,7 +248,7 @@ python -m http.server 8000
 ```powershell
 # 前端测试：Bun 与 Node 任选一种
 bun test ./crates/tswn_wasm/tests
-node --experimental-default-type=module --test crates/tswn_wasm/tests/show-*.test.mjs
+node --test crates/tswn_wasm/tests/show-*.test.mjs
 
 # Rust 测试
 cargo test -p tswn_wasm

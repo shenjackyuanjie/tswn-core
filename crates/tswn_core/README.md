@@ -133,6 +133,8 @@ let summary = runner.run_to_completion(20_000);
 | `aux_bins`   | ❌   | 启用 `track_test` 辅助二进制     |
 | `battle-test-support` | ❌ | 供绑定测试注入 Runtime 校验故障 |
 | `cards`      | ❌   | 卡牌能力卡子系统（减耗、独立乘区、幻术等级上限）；关闭时相关代码不参与编译 |
+| `hide_berserk_compat` | ❌ | Rinick 语义补丁：隐匿 pre-action 不再取消狂暴强制行动；关闭时保持上游口径 |
+| `curse_caster_charge` | ❌ | Rinick 语义补丁：诅咒的蓄力加成按施法者判定；关闭时沿用上游「按目标判定」口径 |
 
 ## 测试
 

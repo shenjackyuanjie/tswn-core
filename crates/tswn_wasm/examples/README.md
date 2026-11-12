@@ -11,7 +11,7 @@
 - `show-theme-compat.js`：原生主题声明与 Dark Reader 注入提醒，不参与战斗和播放状态。
 - `show.css`：样式入口，按原始层叠顺序导入 `show-base.css`、`show-players.css`、`show-replay.css`、`show-panels.css`。
 
-前端回归测试位于源码仓库的 `crates/tswn_wasm/tests/`，不随示例分发。在仓库根目录执行 `bun test ./crates/tswn_wasm/tests` 或 `node --experimental-default-type=module --test crates/tswn_wasm/tests/show-*.test.mjs`；页面行为测试和浏览器基线命令见 [性能基线](../../../docs/perf/reports/web-streaming-baseline.md)。
+前端回归测试位于源码仓库的 `crates/tswn_wasm/tests/`，不随示例分发。在仓库根目录执行 `bun test ./crates/tswn_wasm/tests` 或 `node --test crates/tswn_wasm/tests/show-*.test.mjs`；页面行为测试和浏览器基线命令见 [性能基线](../../../docs/perf/reports/web-streaming-baseline.md)。
 
 ## 示例一览
 

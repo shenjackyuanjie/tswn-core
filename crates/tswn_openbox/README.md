@@ -545,19 +545,13 @@ cargo run -p tswn_openbox --bin tswn_openbox --features ui_capture -- --capture-
 
 性能检查、窗口化内存对照与验证范围见 [Openbox 代码检查报告](../../docs/perf/reports/openbox-review-2026-09-29.md)。
 
-## 0.3.9 说明
-
-`0.3.9` 重点修复 `cqd/cqp` 大批量双人组运行时的内存增长问题。Openbox 后端的批量胜率路径现在使用 uncached prepared runner，不再把 `tests\allCO3pure.txt` 这类高唯一度 matchup 写入全局 prepared 缓存。
-
 ## 内存排查
 
-仓库提供 `openbox_mem_probe` 调试入口，用于复现 Openbox 后端 `cqd/cqp` 路径并采样 RSS：
+Openbox 后端的批量胜率路径使用 uncached prepared runner，不把高唯一度 matchup 写入全局 prepared 缓存。仓库提供 `openbox_mem_probe` 调试入口，用于复现该路径并采样 RSS，对比改动前后的内存曲线：
 
 ```powershell
 cargo run -p tswn_openbox --bin openbox_mem_probe -- --players tests/allCO3pure.txt --targets crates/tswn_openbox_backend/assets/targets/target2.txt --limit 10000 --target-limit all --count 1 --threads 8 --report-ms 2000
 ```
-
-`0.3.9` 修复后，`allCO3pure.txt` 取 10000 组、`target2.txt` 全 41 个靶子、共 410000 个 matchup 的测试中，RSS 运行中稳定在约 `15-16 MB`，结束约 `9.1 MB`。
 
 ## pair 并行基准
 
