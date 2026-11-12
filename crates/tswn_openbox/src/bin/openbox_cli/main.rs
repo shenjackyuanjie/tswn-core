@@ -14,6 +14,7 @@
 
 mod args;
 mod base;
+mod filter;
 mod input;
 mod plan;
 mod tools;
@@ -50,6 +51,13 @@ fn main() {
                     eprintln!("{err}");
                     std::process::exit(1);
                 }
+            }
+            return;
+        }
+        args::Job::Filter(plan) => {
+            if let Err(err) = filter::run(plan) {
+                eprintln!("{err}");
+                std::process::exit(1);
             }
             return;
         }

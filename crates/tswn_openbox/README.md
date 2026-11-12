@@ -576,3 +576,19 @@ stdout 是该路径的日志行（可用于新旧输出哈希对账），stderr 
 `--count` 对应 1% / 10% / 100%（100 / 1000 / 10000），`--threads auto` 为自动线程。
 参数、输出约定与同机交替 A/B 的完整口径见
 [`docs/perf/guides/openbox-pair-probe.md`](../../docs/perf/guides/openbox-pair-probe.md)。
+
+### 名字筛选
+
+`filter` 从 UTF-8 文件逐行读取单个名字，所有筛选条件同时满足时将名字写入指定文件；空行跳过，输出文件会覆盖。至少需要一个条件。
+
+遇到非 UTF-8 内容时，默认报告首个错误的行号并退出。对于混合编码的名单，可显式添加 `--skip-invalid-utf8`，整行跳过无法按 UTF-8 解码的名字，并在 stderr 报告数量；其他行保持原有 Unicode 文本，不自动猜测编码或替换乱码。要保留所有名字，应先修正输入文件编码。
+
+```text
+openbox-cli filter -f names.txt -o result.txt --skill-sklfire 60 --addr-def 90
+openbox-cli filter -f names.txt -o result.txt --skill-sklice -60 --addr-all8 550
+openbox-cli filter -f names.txt -o result.txt --skills-sklfire 32 --skills-ice -64
+```
+
+`--skill-skl...` 使用技能导出名，不以 `skl` 开头时按技能名的前缀匹配，不限制长度，如 `--skill-fi` 匹配火球。前缀必须唯一：`char` 同时对应魅惑和蓄力会报错，可分别使用 `--skill-charm` 和 `--skill-charge`。以 `skl` 开头的名称仍须精确匹配。未拥有的技能按熟练度 0 计算。`--addr-` 支持 `atk`（攻）、`def`（防）、`spd`（速）、`agi`（敏）、`mag`（魔）、`res`（抗）、`int`（智）、`hp`、`all7`、`all8`。七围使用 36~99 的属性口径；`all7` 是攻到智的和，`all8` 是七围之和加 HP/3。阈值为非负数时要求大于等于阈值，为负数时要求严格小于其绝对值；可重复设置条件，支持小数阈值。
+
+`--skills-skl...` 按主动技能的等效熟练度筛选，同样支持唯一前缀（如 `--skills-fi`）、负阈值和小数阈值，并可与其他条件组合。等效熟练度为发动概率乘以 128：按名字的主动技能发动顺序，当前技能发动概率为 `min(熟练度, 128) / 128` 乘以前面所有主动技能均未发动的概率。例如冰冻64、火球64、雷击128依次得到等效熟练度64、32、32。计算保留小数，未拥有的主动技能为0；被动技能不影响计算，也不能用于此类条件。此口径只考虑熟练度和发动顺序，不引入战局、目标及状态条件。

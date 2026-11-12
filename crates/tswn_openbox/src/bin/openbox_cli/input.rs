@@ -22,6 +22,41 @@ pub(super) fn read_file(path: &Path) -> Result<String, clap::Error> {
     Ok(content)
 }
 
+/// 名字依赖准确的 Unicode 文本；无效字节必须整行拒绝或显式跳过，不能替换成乱码。
+pub(super) fn read_filter_file(path: &Path, skip_invalid_utf8: bool) -> Result<String, clap::Error> {
+    let bytes = fs::read(path).map_err(|err| cli_error(format!("读取 {} 失败: {err}", path.display())))?;
+    let (content, skipped) = decode_filter_input(&bytes, skip_invalid_utf8).map_err(|line| {
+        cli_error(format!(
+            "{} 第 {line} 行不是合法 UTF-8；请转换文件编码，或使用 --skip-invalid-utf8 跳过此类行",
+            path.display()
+        ))
+    })?;
+    if skipped > 0 {
+        eprintln!("{}：已跳过 {skipped} 行非 UTF-8 名字。", path.display());
+    }
+    Ok(content)
+}
+
+fn decode_filter_input(bytes: &[u8], skip_invalid_utf8: bool) -> Result<(String, usize), usize> {
+    let bytes = bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(bytes);
+    match std::str::from_utf8(bytes) {
+        Ok(text) => return Ok((text.to_owned(), 0)),
+        Err(error) if !skip_invalid_utf8 => {
+            return Err(bytes[..error.valid_up_to()].iter().filter(|byte| **byte == b'\n').count() + 1);
+        }
+        Err(_) => {}
+    }
+    let mut content = String::with_capacity(bytes.len());
+    let mut skipped = 0;
+    for line in bytes.split_inclusive(|byte| *byte == b'\n') {
+        match std::str::from_utf8(line) {
+            Ok(line) => content.push_str(line),
+            Err(_) => skipped += 1,
+        }
+    }
+    Ok((content, skipped))
+}
+
 /// 把命令行里的字面量 `\n` 还原成真实换行。
 pub(super) fn decode_raw(raw: &str) -> String { raw.replace("\\n", "\n") }
 
@@ -177,5 +212,14 @@ mod tests {
         std::fs::write(&path, b"\xef\xbb\xbfmario\nluigi").unwrap();
         assert_eq!(read_file(&path).unwrap(), "mario\nluigi");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn filter_input_reports_invalid_line_and_preserves_utf8_names() {
+        let bytes = b"\xef\xbb\xbf\xe4\xb8\xad\xe6\x96\x87@team\r\ninvalid\xc8\xba\xcc\xe5\r\nmario\nlast\xed";
+        assert_eq!(decode_filter_input(bytes, false), Err(2));
+        assert_eq!(decode_filter_input(bytes, true), Ok(("中文@team\r\nmario\n".to_owned(), 2)));
+        assert_eq!(decode_filter_input(b"\xff\n", true), Ok((String::new(), 1)));
+        assert_eq!(decode_filter_input(b"\xef\xbb\xbfmario", false), Ok(("mario".to_owned(), 0)));
     }
 }
