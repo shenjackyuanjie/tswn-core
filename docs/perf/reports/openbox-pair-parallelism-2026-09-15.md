@@ -46,7 +46,7 @@ cargo build --release -p tswn_core --bin tswn-cli --example perf_runtime --featu
 - 正确性门禁：每个配置对两侧输出取 SHA-256 并逐字节比较。25 个配置全部分别只有 1 组哈希，
   即新旧输出完全一致（见第 4.4 节）。
 - 固定输入及其 LF 归一化 SHA-256 见随附 JSON 的 `input_sha256_lf`；其中
-  `cqp_double_target.txt` 已不在仓库内（`d9dcba0d` 删除且被 `.gitignore` 忽略），
+  `cqp_double_target.txt` 已不在仓库内（`d9dcba0d` 删除；`.gitignore` 用 `!cqp_double_target.txt` 豁免过 `*.txt` 规则，删除后未再入库），
   本次从 `d9dcba0d^` 原样恢复，哈希 `EF42B91E…` 与历史 `cqp-runtime-baseline.md` 记载一致。
 
 本轮覆盖的入口与各自的职责：

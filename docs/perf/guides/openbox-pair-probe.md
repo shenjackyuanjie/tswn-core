@@ -44,7 +44,7 @@ cargo build --release -p tswn_openbox --bin openbox_pair_probe
   -h, --help                   打印本说明
 ```
 
-- 解析器当前为三个输入设置了默认文件（见下方全网格示例）；复测时显式传入它们，确保输入可追溯。`--help` 中的“必填”文字与这一默认行为有差异，以实际参数解析和文件内容为准。
+- 解析器当前为三个输入设置了默认文件（见下方全网格示例）；复测时显式传入它们，确保输入可追溯。`--help` 中的「必填」文字与这一默认行为有差异，以实际参数解析和文件内容为准。
 - `--count` 对应 GUI 的精度档：`100` = 1%、`1000` = 10%、`10000` = 100%。
 - `--threads auto` 与 `openbox_mem_probe --threads 0` 同义；自动线程按逻辑核数取 1.5 倍
   （`--count <= 100`）或 2 倍（其它档），本机 16 逻辑核即 24 / 32 个 worker。
@@ -119,7 +119,7 @@ Get-Content .\pair-run.err
 | --- | --- |
 | `docs/perf/cqp/sqp6000_first20.txt` | 20 个选手组 |
 | `crates/tswn_openbox_backend/assets/teammates/teammate_fz.txt` | 16 个队友组 |
-| `crates/tswn_openbox_backend/assets/teammates/teammate_fz.toml` | 同一批队友的带权 TOML 版本 |
+| `crates/tswn_openbox_backend/assets/teammates/teammate_fz.toml` | 带权队友 TOML，19 个 `[[targets]]` 块，与 `teammate_fz.txt` 不是同一批名单 |
 | `crates/tswn_openbox_backend/assets/targets/target1.txt` / `target2.txt` | 35 / 41 个靶子组 |
 
 全网格跑 100% 精度档耗时较长。要控制单轮时长，可按下面的方式派生确定性子集
@@ -193,4 +193,4 @@ stdout 契约。stderr 的 `elapsed_s` 只计算后端执行时间，`visible_s`
 测速可使用 `--report-ms 100000` 避免中途启动 PowerShell 查询 RSS 干扰结果。
 这些 probe 包含 GUI 收件箱，不包含 GPU 呈现；真实窗口截图可使用 Openbox 的 `ui_capture` feature。
 
-后续缓存、文件排序与胜率窗口化的对照见 [Openbox 全面检查报告（2026-09-29）](../reports/openbox-review-2026-09-29.md)。
+后续缓存、文件排序与矩阵有界窗口的对照见 [Openbox 全面检查报告（2026-09-29）](../reports/openbox-review-2026-09-29.md)。

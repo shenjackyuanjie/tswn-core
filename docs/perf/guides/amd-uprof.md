@@ -30,8 +30,7 @@ cargo build -p tswn_core --release --features no_debug --bin tswn-cli --config "
 & $uProf report -i target\amduprof\before --detail -g
 ```
 
-uProf 5.3 将结果自动写至 `target\amduprof\before\report.csv`；`report` 子命令不接受旧版本
-教程中的 `-o`。每次采样使用新的输出目录，例如 `before`、`after`，避免混合原始数据。
+uProf 5.3 将结果自动写至 `target\amduprof\before\report.csv`；`report` 子命令不接受旧版本文档中的 `-o`。每次采样使用新的输出目录，例如 `before`、`after`，避免混合原始数据。
 
 `collect -g` 负责采集调用栈，`report -g` 才会把调用栈写入 CSV；两处都需要。
 默认只输出前 10 个函数，需要扩大范围时追加 `--cutoff 40`（`--cutoff 0` 输出全部）。

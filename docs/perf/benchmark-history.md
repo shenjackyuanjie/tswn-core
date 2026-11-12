@@ -1,6 +1,6 @@
 # 性能追踪与历史比较
 
-专项记录：[性能分支简报与主线同步（2026-10-29）](reports/performance-branch-2026-10-29.md)。历史优化数字不代表合入新战斗逻辑后重新测得的收益。
+专项记录：[无武器路径成本简报与主线同步（2026-10-29）](reports/performance-branch-2026-10-29.md)。历史优化数字不代表合入新战斗逻辑后重新测得的收益。
 
 本文用于长期记录 `tswn_core` 在 `tswn-cli bench win-rate` 路径上的性能结果，方便横向比较：
 
@@ -39,7 +39,7 @@
 - Runtime `0.4.0` 的历史回归基线与 legacy score 硬目标见 [`runtime-0.4.0-baseline.md`](reports/runtime-0.4.0-baseline.md)；
 - Runtime `0.5.0` 的发版基准与 3% 回退门禁见 [`runtime-0.5.0-749fcd1-release-benchmark.md`](reports/runtime-0.5.0-749fcd1-release-benchmark.md)；
 
-- `Bun` 与 `0.2.12` 的数据来自 `docs\releases\0.2.12.md` 中的同机历史记录；
+- `Bun` 与 `0.2.12` 的数据来自 `docs/releases/0.2.12.md` 中的同机历史记录；
 - `0.2.13` 数据来自 detached worktree：`f9b0e3c`；
 - `0.2.14` 数据来自当时主线；
 - `0.2.20` 数据来自当时工作树（已步进版本号并继续回收本轮性能回退）；

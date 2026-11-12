@@ -65,7 +65,7 @@ UB 修复引入了 `take_skill_type()` / `put_skill_type()` 的 Box swap 操作�
 
 ### 正确性验证
 
-两个版本在测试输入 "aaa vs bbb" 上产出完全一致的结果：
+两个版本在测试输入「aaa vs bbb」上产出完全一致的结果：
 
 - 胜率：53.97%（53972/100000）
 - 该对局不涉及吞噬技能（MergeSkill），UB 不影响结果

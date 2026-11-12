@@ -2,7 +2,7 @@
 
 [返回文档中心](../README.md)
 
-报告按采样时的版本、提交和机器环境解读，不将不同口径直接视为当前性能。旧执行器与临时 harness 的命令可能已不可用；当前发布约束见 [性能准则](guides/performance.md)。
+报告中的数字按采样时的版本、提交与机器环境解读，不同口径之间不能直接横向比较。旧执行器与临时 harness 的命令可能已不可用，当前发布约束见 [性能准则](guides/performance.md)。
 
 ## 方法与追踪
 
@@ -15,16 +15,16 @@
 
 ## 调查报告
 
-- [性能分支简报与主线同步（2026-10-29）](reports/performance-branch-2026-10-29.md)：保留核心优化结论、边界、验证及复现入口，不在分支顶层堆积逐轮数据。
+- [无武器路径成本简报与主线同步（2026-10-29）](reports/performance-branch-2026-10-29.md)：保留核心优化结论、边界、验证及复现入口，不在分支顶层堆积逐轮数据。
 
 - [维护前后完整性能与正确性复测（2026-10-24）](reports/maintenance-2026-10-24.md)：34配置五轮A/B、三组七轮独立确认、绑定长尾与17项正确性门禁；明确记录PWP真实校准缺口。
 - [Openbox 实时通路基线（2026-09-29）](reports/openbox-live-2026-09-29.md)：LiveFeed、首条结果延迟与实时输出。
-- [Openbox 全面检查报告（2026-09-29）](reports/openbox-review-2026-09-29.md)：缓存、文件排序、胜率窗口化与 GUI 通路。
+- [Openbox 全面检查报告（2026-09-29）](reports/openbox-review-2026-09-29.md)：缓存、文件排序、矩阵有界窗口与 GUI 通路。
 
 - [OpenBox pair 并行修复复测（2026-09-15）](reports/openbox-pair-parallelism-2026-09-15.md)：
   fixed30 / CQP / CQD / pair 的同机交替 A/B，含仪表伪影排查与原始样本。
 - [winprob 数据集生成规模基线](reports/winprob-dataset-scale-baseline.md)：10k/100k 局生成的吞吐、存储、内存与校验开销，含 Parquet 行组缺陷的修复前后对比。
-- [胜率数据集 HP-only 基线（100k 局）](reports/winprob-hp-baseline.md)：只用队伍血量比例的无参数基线，含九维容量溢出与 99 字段标量校准结果，作为后续模型的对照下界。
+- [胜率数据集 HP-only 基线（100k 局）](reports/winprob-hp-baseline.md)：只用队伍血量比例的无参数基线，含九维容量溢出与 104 字段标量校准结果，作为后续模型的对照下界。
 - [Web Streaming 基线](reports/web-streaming-baseline.md)。
 - [Python BattleSession DTO 转换基线](reports/python-battle-session-baseline.md)。
 - [RC4 热点与优化调查（2026-09-05）](reports/rc4-profile-2026-09-05.md)。
@@ -52,6 +52,7 @@
 | [fixed_cases_30_results/](fixed_cases_30_results/) | 工具生成的 [初始](fixed_cases_30_results/perf_cases.md)、[0.3.8](fixed_cases_30_results/perf_cases_0.3.8.md)、[0.3.10](fixed_cases_30_results/perf_cases_0.3.10.md) 报告与同名 JSON |
 | [score/](score/)、[cqp/](cqp/)、[win_rate/](win_rate/)、[pgo_training/](pgo_training/) | score、CQP、胜率与 PGO 输入 |
 | `runtime_*.json` | 对应 Runtime 报告的原始结果；从报告内链接进入 |
+| [reports/openbox-live-2026-09-29.json](reports/openbox-live-2026-09-29.json)、[reports/openbox-review-2026-09-29.json](reports/openbox-review-2026-09-29.json) | 对应 OpenBox 报告的逐轮原始数据 |
 | [openbox_pair_parallelism_9b07a04e_ab_samples.json](openbox_pair_parallelism_9b07a04e_ab_samples.json) | OpenBox pair 并行修复复测的逐轮样本与输入哈希 |
 | [maintenance_2026-10-24_benchmark.json](maintenance_2026-10-24_benchmark.json) | 维护前后逐轮统计、独立确认、原始样本合并分位数、哈希及正确性状态 |
 | [maintenance_2026-10-24_raw.zip](archives/maintenance_2026-10-24_raw.zip) | 原始测量/监测证据、失败和污染现场及执行脚本；不受 cargo clean 影响 |
