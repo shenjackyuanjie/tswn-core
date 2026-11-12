@@ -4,6 +4,24 @@
 
 **不建议直接合入 main**：两处修正都会改变战斗结果，冻结语料 `runtime_stress/golden.json` 因此有 15 条基线不一致（见[语料影响](#对冻结语料的影响)），需要维护者先决定是否接受新语义。
 
+## 落地方式（2026-11-12）
+
+两处补丁已通过 `merge(rinick)` 合入 `main`（保留分支历史），但语义收进两个**默认关闭**的 feature，默认构建与冻结语料都不变：
+
+| feature | 补丁 | 开启后的语料差异 |
+| --- | --- | --- |
+| `hide_berserk_compat` | 补丁一：隐匿不再吞掉狂暴强制行动 | 14 条（`large_*` / `stress_*` / `fight_multi_1/4/5` / `large_full`） |
+| `curse_caster_charge` | 补丁二：诅咒蓄力按施法者判定 | 1 条（`fight_multi_3`） |
+
+`tswn_core` / `tswn_wasm` / `tswn_py` / `tswn_test` 都转发了这两个 feature，可以单独开关：
+
+```sh
+cargo test -p tswn_core --features hide_berserk_compat
+cargo test -p tswn_test --features "runtime-corpus,curse_caster_charge"
+```
+
+默认 `cargo test -p tswn_test --features runtime-corpus` 仍是 124 全绿；开启后出现的差异是预期结果。仓库没有 bless 工具，不要改 `golden.json`，差异只记录在本节。
+
 ## 分支与提交
 
 ```

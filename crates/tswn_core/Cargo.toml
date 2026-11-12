@@ -38,6 +38,12 @@ cards = []
 # 仅供绑定的 dev-dependency 注入 Runtime validation 故障，不默认启用。
 battle-test-support = []
 
+# 隐匿 pre-action 不再取消狂暴强制行动（修「隐匿 + 狂暴 → 狂暴永久挂身」）。
+# 默认关闭：关闭时保持上游语义，开启后才会改变对局结果。
+hide_berserk_compat = []
+# 诅咒的蓄力加成按施法者判定；默认关闭时沿用上游的「按目标判定」口径。
+curse_caster_charge = []
+
 [[bin]]
 name = "tswn-cli"
 path = "src/bin/tswn_cli/main.rs"

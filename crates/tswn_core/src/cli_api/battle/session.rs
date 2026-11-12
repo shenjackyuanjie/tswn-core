@@ -857,8 +857,8 @@ seed:kill-pause-snapshot@!"#;
             session.next_frame().unwrap();
             assert_eq!(session.paused_actor(), Some(0));
             assert!(session.current_states()[0].status_labels.iter().any(|label| label.starts_with("狂暴")));
-            // 隐匿不再取消狂暴强制行动：带不带隐匿都应捕获 Berserk。
-            let expected = Some(ForcedAction::Berserk);
+            // 默认上游语义下隐匿会取消强制行动；`hide_berserk_compat` 打开后带隐匿也捕获 Berserk。
+            let expected = (cfg!(feature = "hide_berserk_compat") || !hide).then_some(ForcedAction::Berserk);
             let state = session.model_state().unwrap();
             let rng = session.driver.runner.runtime().rng.clone();
             let rounds = session.rounds_advanced();

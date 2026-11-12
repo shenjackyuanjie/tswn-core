@@ -216,13 +216,19 @@ fn plain_curse_on_damage_stacks_caster_charge_bonus_without_reapplying_atk_sum()
     let registry = builder.build();
     let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
         vec![
-            // 蓄力的是施法者：诅咒才应当拿到 +10 prob / +1 multiply 的蓄力加成。
-            PlayerTemplate::new(1, "charged-caster", 0, 100, 3),
+            // 蓄力来源由 curse_caster_charge 决定：默认看目标，开启后看施法者。
+            PlayerTemplate::new(1, "caster", 0, 100, 3),
             PlayerTemplate::new(2, "target", 1, 100, 3).with_target_score_stats(0, 7, 1.0),
         ],
         registry,
     ));
-    runtime.entities.get_mut(EntityIdx(0)).unwrap().activate_charge_runtime();
+    // 默认读目标的蓄力状态；`curse_caster_charge` 打开后改读施法者。
+    let charged = if cfg!(feature = "curse_caster_charge") {
+        EntityIdx(0)
+    } else {
+        EntityIdx(1)
+    };
+    runtime.entities.get_mut(charged).unwrap().activate_charge_runtime();
     let mut updates = RunUpdates::new();
 
     runtime.apply_curse_on_damage(EntityIdx(0), EntityIdx(1), 1, &mut updates);
@@ -245,7 +251,7 @@ fn plain_curse_on_damage_stacks_caster_charge_bonus_without_reapplying_atk_sum()
 }
 
 #[test]
-fn plain_curse_on_damage_ignores_target_charge_bonus() {
+fn plain_curse_target_charge_bonus_follows_compat_feature() {
     let mut builder = ExtensionRegistryBuilder::default();
     builder
         .register_state(
@@ -260,23 +266,31 @@ fn plain_curse_on_damage_ignores_target_charge_bonus() {
     let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
         vec![
             PlayerTemplate::new(1, "caster", 0, 100, 3),
-            // 目标蓄力不再影响诅咒强度：基础 42/2，叠一次后 52/3。
+            // 目标蓄力：默认口径下会加成诅咒，`curse_caster_charge` 打开后不再生效。
             PlayerTemplate::new(2, "charged-target", 1, 100, 3).with_target_score_stats(0, 7, 1.0),
         ],
         registry,
     ));
-    // main 的蓄力口径是运行时 charge 状态；目标蓄力不应改变诅咒强度。
+    // 蓄力口径是运行时 charge 状态。
     runtime.entities.get_mut(EntityIdx(1)).unwrap().activate_charge_runtime();
     let mut updates = RunUpdates::new();
 
     runtime.apply_curse_on_damage(EntityIdx(0), EntityIdx(1), 1, &mut updates);
     runtime.apply_curse_on_damage(EntityIdx(0), EntityIdx(1), 1, &mut updates);
 
+    // 默认沿用上游口径：读目标蓄力，连叠两次得到 72/5。
+    // `curse_caster_charge` 打开后只看施法者，目标蓄力不再改变强度（52/3）。
+    let expected = if cfg!(feature = "curse_caster_charge") {
+        (52, 3)
+    } else {
+        (72, 5)
+    };
     let target = runtime.entities.get(EntityIdx(1)).unwrap();
-    assert_eq!(
-        target.states.entry(PLAIN_CURSE_STATE_KEY).map(|entry| entry.payload.clone()),
-        Some(StatePayload::Curse { prob: 52, multiply: 3 })
-    );
+    let payload = target.states.entry(PLAIN_CURSE_STATE_KEY).map(|entry| match entry.payload {
+        StatePayload::Curse { prob, multiply } => (prob, multiply),
+        _ => panic!("curse state payload changed"),
+    });
+    assert_eq!(payload, Some(expected));
 }
 
 #[test]

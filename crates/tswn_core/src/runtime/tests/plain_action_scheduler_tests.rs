@@ -115,8 +115,8 @@ fn plain_merge_restores_newly_enabled_hide_pre_action_lane() {
     owner.states.add_entry(StateEntry::berserk(PLAIN_BERSERK_STATE_KEY, 2));
     let outcome = runtime.run_plain_skill_pre_action_accumulator(EntityIdx(0));
     assert!(outcome.forced_skill.is_none());
-    // 隐匿的 pre-action 不再掐掉狂暴行动；这里只验证它不会置 clear_forced_action。
-    assert!(!outcome.clear_forced_action);
+    // 隐匿的 pre-action 是否置 clear_forced_action 由 hide_berserk_compat 决定。
+    assert_eq!(outcome.clear_forced_action, !cfg!(feature = "hide_berserk_compat"));
 }
 
 #[test]
@@ -212,8 +212,8 @@ fn plain_merge_restores_hide_pre_action_for_minion_lane() {
         .states
         .add_entry(StateEntry::berserk(PLAIN_BERSERK_STATE_KEY, 2));
     let outcome = runtime.run_plain_skill_pre_action_accumulator(minion);
-    // 隐匿的 pre-action 不再掐掉狂暴行动；分身同样适用。
-    assert!(!outcome.clear_forced_action);
+    // 默认上游语义下隐匿会置 clear_forced_action；`hide_berserk_compat` 打开后不会。
+    assert_eq!(outcome.clear_forced_action, !cfg!(feature = "hide_berserk_compat"));
 }
 
 #[test]
@@ -297,14 +297,21 @@ fn paused_forced_action_distinguishes_berserk_from_pre_action_cancellation() {
         }
         let pre_action = runtime.run_plain_skill_pre_action_accumulator(actor);
         assert!(pre_action.forced_skill.is_none());
-        assert_eq!(pre_action.clear_forced_action, cancellation == "invalid_assassinate");
+        // 默认保持上游语义（隐匿也会取消强制行动）；`hide_berserk_compat` 打开后只有
+        // 无效潜行目标才会取消。
+        let cancels_forced_action = if cfg!(feature = "hide_berserk_compat") {
+            cancellation == "invalid_assassinate"
+        } else {
+            cancellation != "none"
+        };
+        assert_eq!(pre_action.clear_forced_action, cancels_forced_action);
         assert!(runtime.has_plain_berserk_state(actor));
         let mut automatic = runtime.clone();
         runtime.set_controlled_team(Some(0));
         let before = runtime.rng.clone();
         assert_eq!(runtime.prepare_plain_action(actor, false, pre_action.clone()), None);
         assert_eq!(runtime.awaiting_actor(), Some(0));
-        let forced = (cancellation != "invalid_assassinate").then_some(ForcedAction::Berserk);
+        let forced = (!cancels_forced_action).then_some(ForcedAction::Berserk);
         for _ in 0..3 {
             assert_eq!(runtime.control.awaiting_forced_action(), forced);
             assert_rng_state_eq(&runtime.rng, &before);
@@ -370,7 +377,7 @@ fn berserk_automatic_and_controlled_pacing_keep_full_round_and_rng_identical() {
 }
 
 #[test]
-fn plain_hide_does_not_swallow_berserk_forced_attack() {
+fn plain_hide_berserk_forced_action_follows_compat_feature() {
     let mut builder = ExtensionRegistryBuilder::default();
     let hide = builder
         .register_skill(
@@ -399,11 +406,18 @@ fn plain_hide_does_not_swallow_berserk_forced_attack() {
 
     let outcome = runtime.run_plain_skill_pre_action_accumulator(EntityIdx(0));
     assert!(outcome.forced_skill.is_none());
-    assert!(!outcome.clear_forced_action, "隐匿不应再掐掉狂暴行动");
-
-    let prepared = runtime.prepare_plain_action(EntityIdx(0), false, outcome);
-    assert!(
-        matches!(prepared, Some(PreparedPlainAction::ForcedAttack { .. })),
-        "带隐匿技能的单位被狂暴命中后仍应执行强制攻击，实际为 {prepared:?}"
+    // 默认保持上游语义（隐匿会取消强制行动）；`hide_berserk_compat` 打开后不再取消。
+    let cancels = !cfg!(feature = "hide_berserk_compat");
+    assert_eq!(
+        outcome.clear_forced_action, cancels,
+        "隐匿是否取消强制行动由 hide_berserk_compat 决定"
     );
+
+    if cfg!(feature = "hide_berserk_compat") {
+        let prepared = runtime.prepare_plain_action(EntityIdx(0), false, outcome);
+        assert!(
+            matches!(prepared, Some(PreparedPlainAction::ForcedAttack { .. })),
+            "开启 hide_berserk_compat 后仍应执行强制攻击，实际为 {prepared:?}"
+        );
+    }
 }

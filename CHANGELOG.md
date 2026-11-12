@@ -2,6 +2,12 @@
 
 本文件记录跨 crate 的维护与兼容性变更；各 crate 的版本发布历史仍以对应 CHANGELOG 为准。
 
+## 未发布 · 2026-11-12 合入 fix/Rinick-feature（默认关闭）
+
+- 通过 `merge(rinick)` 合入 `fix/Rinick-feature` 的两处语义补丁并保留分支历史，语义放进两个默认关闭的 feature：`hide_berserk_compat`（隐匿不再吞掉狂暴强制行动）与 `curse_caster_charge`（诅咒蓄力按施法者判定）。
+- 默认构建行为与冻结语料不变：`cargo test -p tswn_test --features runtime-corpus` 仍 124 全绿；开启 `hide_berserk_compat` 有 14 条语料差异、`curse_caster_charge` 有 1 条（`fight_multi_3`），属于预期且只记录在 [评审文档](docs/reviews/2026-10-fix-rinick-feature.md#落地方式2026-11-12)，仓库没有 bless 工具，不改 `golden.json`。
+- `tswn_core` / `tswn_wasm` / `tswn_py` / `tswn_test` 均转发这两个 feature，可分别开关。
+
 ## 未发布 · 2026-11-12 合并 instant 开发线
 
 - 把 `instant` 的「外部驱动对局」并入 main：`battle_replay_with_actions`、`BattleSession::new_with_actions/queue_actions/paused_actor/paused_forced_action/peek_magic_cost/preview_targets/`（Python）`drain_frames`、被动决策暂停（`passive_decisions`/`passive_decision_mode`）、多受控队伍与 `controlled_minions` 全部保留。

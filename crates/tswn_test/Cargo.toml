@@ -6,6 +6,9 @@ publish = false
 
 [features]
 runtime-corpus = []
+# 透传 core 的语义补丁开关，便于开启后重新核对语料差异（默认关闭时基线不变）。
+hide_berserk_compat = ["tswn_core/hide_berserk_compat"]
+curse_caster_charge = ["tswn_core/curse_caster_charge"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

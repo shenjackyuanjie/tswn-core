@@ -20,6 +20,9 @@ crate-type = ["cdylib"]
 #   cargo build --release -p tswn_py --features "no_debug,mimalloc_alloc"
 no_debug = ["tswn_core/no_debug"]
 mimalloc_alloc = ["tswn_core/mimalloc_alloc"]
+# 转发 core 的 Rinick 语义补丁；默认关闭，保持冻结基线的对局结果。
+hide_berserk_compat = ["tswn_core/hide_berserk_compat"]
+curse_caster_charge = ["tswn_core/curse_caster_charge"]
 
 [dev-dependencies]
 tswn_core = { path = "../tswn_core", default-features = false, features = ["battle-test-support"] }

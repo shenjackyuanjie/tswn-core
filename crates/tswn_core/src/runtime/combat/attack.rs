@@ -749,8 +749,11 @@ impl CombatRuntime {
         if target_hp <= 0 || target_flags.intersects(PlayerKindFlags::BOSS | PlayerKindFlags::BOOST) {
             return;
         }
-        // 蓄力加成取施法者：和狂暴、冰冻等其它受击效果保持同一口径。
-        // 曾经误读目标的 at_boost，导致"蓄力中施法"拿到普通诅咒，而"诅咒命中蓄力目标"反而变强。
+        // 默认沿用上游口径：读目标的蓄力状态。
+        // `curse_caster_charge` 打开后改读施法者，与狂暴、冰冻等其它受击效果一致。
+        #[cfg(not(feature = "curse_caster_charge"))]
+        let charge_active = self.entities.get(target).is_some_and(|entity| entity.runtime.charge.active);
+        #[cfg(feature = "curse_caster_charge")]
         let charge_active = self.entities.get(caster).is_some_and(|entity| entity.runtime.charge.active);
 
         let curse_state = self
