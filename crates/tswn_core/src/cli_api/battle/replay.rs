@@ -143,6 +143,7 @@ mod tests {
                 actor,
                 skill: PlannedSkill::BasicAttack,
                 magic_cost: None,
+                potion: 0,
             }],
         )
         .unwrap();
@@ -173,6 +174,7 @@ right@blue+ol:{"skills":{}}"#;
                 actor,
                 skill: PlannedSkill::Builtin(BuiltinActiveSkill::Summon),
                 magic_cost: Some(8),
+                potion: 0,
             }],
         )
         .unwrap_err();
@@ -189,6 +191,7 @@ right@blue+ol:{"skills":{}}"#;
                 actor: 99,
                 skill: PlannedSkill::BasicAttack,
                 magic_cost: None,
+                potion: 0,
             }],
         )
         .unwrap_err();
@@ -226,6 +229,7 @@ right@blue+ol:{"skills":{}}"#;
                 actor,
                 skill: PlannedSkill::BasicAttack,
                 magic_cost: None,
+                potion: 0,
             }],
         )
         .unwrap();
@@ -246,6 +250,7 @@ right@blue+ol:{"skills":{}}"#;
                 actor,
                 skill: PlannedSkill::MagicAttack,
                 magic_cost: None,
+                potion: 0,
             }],
         )
         .unwrap();
@@ -292,6 +297,7 @@ right@blue+ol:{"skills":{}}"#;
             actor: 99,
             skill: PlannedSkill::BasicAttack,
             magic_cost: None,
+            potion: 0,
         };
         assert!(
             battle_replay_with_actions("a\n\nb", options, &[action]).is_ok(),

@@ -21,6 +21,8 @@ class BattleReplay(TypedDict):
     state_granularity: Literal["round"]
 
 class BattlePlayerState(TypedDict):
+    # 技能导出名与当前熟练度。
+    skills: list[tuple[str, int]]
     id: int
     team_index: int
     input_team_index: int | None

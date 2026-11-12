@@ -7,6 +7,8 @@
 
 use super::*;
 
+#[cfg(feature = "cards")]
+mod abilities;
 mod attack;
 mod defense;
 mod effects;
@@ -14,11 +16,13 @@ mod infection;
 mod lifecycle;
 mod passive;
 mod round;
+mod skills_boss;
 mod skills_control;
 mod skills_debuff;
 mod skills_lifecycle;
 mod skills_offense;
 mod skills_team;
+mod skills_weapon;
 
 #[derive(Debug, Clone)]
 /// 单回合结果：分别记录行动、可选可见帧与当前胜者。
@@ -40,6 +44,13 @@ pub type PreparedTargetList = smallvec::SmallVec<[EntityIdx; 8]>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreparedBuiltinSkillAction {
     pub selected: SelectedBuiltinSkill,
+    pub targets: PreparedTargetList,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+/// Boss `k4` 扫描选中的专属或通用主动技能；`targets` 由技能自身的 `aa` 选出。
+pub struct PreparedBossSkillAction {
+    pub selected: crate::namerena::BossActionSkill,
     pub targets: PreparedTargetList,
 }
 
@@ -68,7 +79,11 @@ pub enum PreparedPlainAction {
     Saitama {
         target: Option<EntityIdx>,
     },
+    Conan {
+        targets: PreparedTargetList,
+    },
     BuiltinSkill(PreparedBuiltinSkillAction),
+    BossSkill(PreparedBossSkillAction),
 }
 
 #[derive(Debug, Clone)]

@@ -112,6 +112,8 @@ impl CombatRuntime {
             self.mark_zombie_corpse(killed_target);
             return true;
         }
+        #[cfg(feature = "cards")]
+        let _ability = self.ability_scope(caster, "core.skill.zombie");
         if !self.entity_mp_ready(caster) {
             return false;
         }

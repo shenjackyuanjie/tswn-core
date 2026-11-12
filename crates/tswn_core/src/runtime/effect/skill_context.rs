@@ -273,12 +273,30 @@ impl<'a> SkillContext<'a> {
             return Ok(false);
         }
         let required_mp = self.rng.r3x3() as i32;
+        // 能力卡减耗只作用于当前技能的作用域，不改变掷骰消费。
+        #[cfg(feature = "cards")]
+        let required_mp = {
+            let root = self
+                .entities
+                .get(self.owner)
+                .ok_or(EffectContextError::UnknownEntity(self.owner))?
+                .runtime
+                .root_owner;
+            (required_mp - crate::runtime::forced_action::mp_reduction(root.0)).max(0)
+        };
         let owner = self.entities.get_mut(self.owner).ok_or(EffectContextError::UnknownEntity(self.owner))?;
         if owner.runtime.magic_point < required_mp {
             return Ok(false);
         }
         owner.runtime.magic_point -= required_mp;
         Ok(true)
+    }
+
+    /// 只读取独立能力乘区，不触碰技能的等级与锻造记录。
+    #[cfg(feature = "cards")]
+    pub fn ability_multiplier(&self) -> f64 {
+        let root = self.entities.get(self.owner).map_or(self.owner, |e| e.runtime.root_owner);
+        crate::runtime::forced_action::attack_multiplier(root.0)
     }
 
     pub fn owner_attack_power(&mut self, use_magic: bool) -> Result<f64, EffectContextError> {
@@ -459,6 +477,8 @@ impl<'a> SkillContext<'a> {
     pub fn defend_atp(&self) -> Option<f64> { self.defend_value.as_ref().and_then(|value| value.atp()) }
 
     pub fn defend_is_magic(&self) -> Option<bool> { self.defend_value.as_ref().and_then(|value| value.is_magic()) }
+
+    pub fn defend_kind(&self) -> Option<DamageKind> { self.defend_value.as_ref().map(|value| value.kind()) }
 
     pub fn defend_on_damage(&self) -> PlainAttackOnDamage { self.defend_on_damage }
 

@@ -166,6 +166,9 @@ pub struct PlannedAction {
     /// 给出具体值时不再消耗那一次随机数，因此脚本回放与自动回放的随机流不同，
     /// 但同一份脚本的重复模拟仍然确定。
     pub magic_cost: Option<u8>,
+    /// 这一手附带的药水编号：`0` 表示不喝药，`1..=8` 是属性下标加一，
+    /// `9` 是能量药水、`10` 是体力药水。药水不占行动，先于技能结算。
+    pub potion: u32,
 }
 
 /// 脚本指令无法执行的原因；会话层把它映射成 `INVALID_ARGUMENT`。
@@ -204,6 +207,77 @@ impl fmt::Display for PlannedActionError {
 
 impl std::error::Error for PlannedActionError {}
 
+/// 卡牌前端使用的公开技能编号（overlay 里的 `0..24`）→ 引擎内置主动技能。
+///
+/// `25..34` 是防御/触发类技能，不参与「主动出招」，返回 `None`。
+pub fn public_builtin_skill(id: u32) -> Option<BuiltinActiveSkill> {
+    Some(match id {
+        0 => BuiltinActiveSkill::Fire,
+        1 => BuiltinActiveSkill::Ice,
+        2 => BuiltinActiveSkill::Thunder,
+        3 => BuiltinActiveSkill::Quake,
+        4 => BuiltinActiveSkill::Absorb,
+        5 => BuiltinActiveSkill::Poison,
+        6 => BuiltinActiveSkill::Rapid,
+        7 => BuiltinActiveSkill::Critical,
+        8 => BuiltinActiveSkill::Half,
+        9 => BuiltinActiveSkill::Exchange,
+        10 => BuiltinActiveSkill::Berserk,
+        11 => BuiltinActiveSkill::Charm,
+        12 => BuiltinActiveSkill::Haste,
+        13 => BuiltinActiveSkill::Slow,
+        14 => BuiltinActiveSkill::Curse,
+        15 => BuiltinActiveSkill::Heal,
+        16 => BuiltinActiveSkill::Revive,
+        17 => BuiltinActiveSkill::Disperse,
+        18 => BuiltinActiveSkill::Iron,
+        19 => BuiltinActiveSkill::Charge,
+        20 => BuiltinActiveSkill::Accumulate,
+        21 => BuiltinActiveSkill::Assassinate,
+        22 => BuiltinActiveSkill::Summon,
+        23 => BuiltinActiveSkill::Clone,
+        24 => BuiltinActiveSkill::Shadow,
+        _ => return None,
+    })
+}
+
+/// 公开编号里的「普通物理攻击」；其余编号按 [`public_builtin_skill`] 翻译。
+pub const PUBLIC_BASIC_ATTACK: u32 = 255;
+
+/// 解码前端线格式 `[actor, skill, packed]` 三元组。
+///
+/// `skill` 是公开主动技能编号或 [`PUBLIC_BASIC_ATTACK`]；`packed` 低字节是这一手的
+/// MP 消耗（`0` 表示现场掷），高字节是药水编号。长度不完整、编号越界或药水码非法
+/// 都在推进之前整体拒绝，不静默丢弃尾部数据。
+pub fn decode_actions(actions: &[u32]) -> Result<Vec<PlannedAction>, &'static str> {
+    if !actions.len().is_multiple_of(3) {
+        return Err("actions must contain complete actor/skill/mp triples");
+    }
+    actions
+        .chunks_exact(3)
+        .map(|triple| {
+            let skill = if triple[1] == PUBLIC_BASIC_ATTACK {
+                PlannedSkill::BasicAttack
+            } else {
+                PlannedSkill::Builtin(
+                    public_builtin_skill(triple[1]).ok_or("forced skill must be active id 0..24 or normal attack 255")?,
+                )
+            };
+            let potion = triple[2] >> 8;
+            if triple[2] > 0xffff || !matches!(potion, 0..=7 | 9 | 10) {
+                return Err("invalid packed potion code");
+            }
+            let cost = triple[2] & 0xff;
+            Ok(PlannedAction {
+                actor: triple[0] as PlrId,
+                skill,
+                magic_cost: u8::try_from(cost).ok().filter(|cost| *cost > 0),
+                potion,
+            })
+        })
+        .collect()
+}
+
 /// 一场战斗的外部控制状态：受控队伍、指令队列、暂停标记与首条执行错误。
 #[derive(Debug, Clone, Default)]
 pub struct BattleControl {
@@ -217,6 +291,8 @@ pub struct BattleControl {
     pending_updates: Option<crate::runtime::update::RunUpdates>,
     passive_decision_mode: bool,
     controlled_minions: bool,
+    /// 药水加成：实体 →（属性下标, 增量）。持续到服用者的下一次行动前还原。
+    active_potions: std::collections::BTreeMap<PlrId, (u8, i32)>,
     damage_batches: Vec<DamageDecisionBatch>,
     next_damage_batch_id: u64,
     thunder: Option<ThunderContext>,
@@ -251,9 +327,15 @@ impl BattleControl {
 
     pub fn controlled_teams(&self) -> &[usize] { &self.controlled_teams }
 
-    pub fn is_controlled_team(&self, team: usize) -> bool { self.controlled_teams.contains(&team) }
+    /// 表示「双方本体与分身都由玩家控制」的特殊队伍编号，沿用 `u32::MAX` 线格式。
+    pub const CONTROLLED_ALL_TEAMS: usize = u32::MAX as usize;
 
-    /// 追加一条指令；同一实体的多条指令按入队顺序消费。
+    /// 受控判定；`usize::MAX` 表示双方本体与分身都由玩家控制。
+    pub fn is_controlled_team(&self, team: usize) -> bool {
+        self.controlled_teams
+            .iter()
+            .any(|controlled| *controlled == Self::CONTROLLED_ALL_TEAMS || *controlled == team)
+    }
     pub fn queue(&mut self, action: PlannedAction) { self.queue.push(action); }
 
     pub fn queue_all(&mut self, actions: impl IntoIterator<Item = PlannedAction>) { self.queue.extend(actions); }
@@ -264,6 +346,8 @@ impl BattleControl {
     /// 取走属于 `actor` 的第一条指令。
     pub fn take_for(&mut self, actor: PlrId) -> Option<PlannedAction> {
         let index = self.queue.iter().position(|action| action.actor == actor)?;
+        // 诊断计数：绑定层据此确认脚本确实被消费，而不是靠回放外观推断。
+        crate::runtime::forced_action::note_taken();
         Some(self.queue.remove(index))
     }
 
@@ -409,6 +493,14 @@ impl BattleControl {
     pub fn take_evade_decision(&mut self) -> Option<EvadeDecision> { self.damage_batches.last_mut()?.take_evade() }
 
     /// 记录一条指令的执行失败；会话层据此返回 `INVALID_ARGUMENT`。
+    /// 记录这一回合生效的属性药水，供下一次行动前还原。
+    pub fn set_active_potion(&mut self, actor: PlrId, field: u8, delta: i32) {
+        self.active_potions.insert(actor, (field, delta));
+    }
+
+    /// 取走并清空该实体的药水加成记录。
+    pub fn take_active_potion(&mut self, actor: PlrId) -> Option<(u8, i32)> { self.active_potions.remove(&actor) }
+
     pub fn set_error(&mut self, error: PlannedActionError) { self.error = Some(error); }
 
     pub fn take_error(&mut self) -> Option<PlannedActionError> { self.error.take() }
@@ -516,16 +608,19 @@ mod tests {
             actor: 1,
             skill: PlannedSkill::BasicAttack,
             magic_cost: None,
+            potion: 0,
         });
         control.queue(PlannedAction {
             actor: 0,
             skill: PlannedSkill::BasicAttack,
             magic_cost: Some(12),
+            potion: 0,
         });
         control.queue(PlannedAction {
             actor: 0,
             skill: PlannedSkill::BasicAttack,
             magic_cost: None,
+            potion: 0,
         });
         assert_eq!(control.pending(), 3);
 

@@ -7,6 +7,9 @@ impl CombatRuntime {
         prepared: PreparedBuiltinSkillAction,
         updates: &mut RunUpdates,
     ) {
+        // 效果倍率限定于实际施法者的能力作用域。
+        #[cfg(feature = "cards")]
+        let _ability = self.ability_scope(actor, prepared.selected.skill.export_name());
         match prepared.selected.skill {
             BuiltinActiveSkill::Fire => {
                 let target = prepared.targets[0];
@@ -114,6 +117,22 @@ impl CombatRuntime {
                 let target = prepared.targets[0];
                 self.drain_plain_possess_skill_into(actor, target, updates);
             }
+            BuiltinActiveSkill::WeaponS11 => {
+                self.drain_plain_weapon_s11_skill_into(actor, updates);
+            }
+            BuiltinActiveSkill::WeaponDeathNote => {
+                self.drain_plain_weapon_death_note_skill_into(actor, updates);
+            }
+            BuiltinActiveSkill::RinickIceAge => {
+                self.drain_plain_boss_ice_age_into(actor, prepared.targets, updates);
+            }
+            BuiltinActiveSkill::RinickYuriControl => {
+                let target = prepared.targets[0];
+                self.drain_plain_yuri_control_into(actor, target, updates);
+            }
+            BuiltinActiveSkill::WeaponXuanYue => {
+                unreachable!("runtime weapon xuan-yue skill never enters the action scan");
+            }
         }
     }
 
@@ -144,15 +163,11 @@ impl CombatRuntime {
                     .is_some_and(|entity| entity.runtime.team == actor_team)
                     .then_some(index)
             })
-            .collect::<smallvec::SmallVec<[usize; 8]>>();
+            .collect::<crate::rc4::PickSkipRange>();
         let mut selected = smallvec::SmallVec::<[EntityIdx; 8]>::new();
         let mut duplicate_count = 0usize;
         while duplicate_count <= select_count {
-            let picked = if ally_skip_indices.is_empty() {
-                self.rng.pick(all_alive)
-            } else {
-                self.rng.pick_skip_range(all_alive, &ally_skip_indices)
-            };
+            let picked = self.rng.pick_skip_span(all_alive, ally_skip_indices);
             let Some(picked) = picked else {
                 return PreparedTargetList::new();
             };
@@ -330,7 +345,15 @@ impl CombatRuntime {
             target.0 as usize,
             1,
         ));
-        self.drain_plain_attack_with_atp_and_on_damage_into(actor, target, true, atp, PlainAttackOnDamage::Absorb, updates);
+        self.drain_plain_attack_with_atp_and_on_damage_into(
+            actor,
+            target,
+            true,
+            atp,
+            DamageKind::Default,
+            PlainAttackOnDamage::Absorb,
+            updates,
+        );
     }
 
     pub fn drain_plain_poison_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
@@ -346,7 +369,15 @@ impl CombatRuntime {
             target.0 as usize,
             1,
         ));
-        self.drain_plain_attack_with_atp_and_on_damage_into(actor, target, true, atp, PlainAttackOnDamage::Poison, updates);
+        self.drain_plain_attack_with_atp_and_on_damage_into(
+            actor,
+            target,
+            true,
+            atp,
+            DamageKind::Default,
+            PlainAttackOnDamage::Poison,
+            updates,
+        );
     }
 
     pub fn drain_plain_critical_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
@@ -383,17 +414,13 @@ impl CombatRuntime {
                     .is_some_and(|entity| entity.runtime.team == actor_team)
                     .then_some(index)
             })
-            .collect::<smallvec::SmallVec<[usize; 8]>>();
+            .collect::<crate::rc4::PickSkipRange>();
         let select_count = if smart { 3 } else { 2 };
         let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
         let mut duplicate_count = 0usize;
         let mut invalid_count = -(select_count as i32);
         while duplicate_count <= select_count && invalid_count <= select_count as i32 {
-            let picked = if ally_skip_indices.is_empty() {
-                self.rng.pick(all_alive)
-            } else {
-                self.rng.pick_skip_range(all_alive, &ally_skip_indices)
-            };
+            let picked = self.rng.pick_skip_span(all_alive, ally_skip_indices);
             let Some(picked) = picked else {
                 return PreparedTargetList::new();
             };
@@ -458,7 +485,15 @@ impl CombatRuntime {
             target.0 as usize,
             1,
         ));
-        self.drain_plain_attack_with_atp_and_on_damage_into(actor, target, true, atp, PlainAttackOnDamage::Berserk, updates);
+        self.drain_plain_attack_with_atp_and_on_damage_into(
+            actor,
+            target,
+            true,
+            atp,
+            DamageKind::Default,
+            PlainAttackOnDamage::Berserk,
+            updates,
+        );
     }
 
     pub fn select_plain_haste_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
@@ -615,7 +650,7 @@ impl CombatRuntime {
                 .entities
                 .get(actor)
                 .unwrap_or_else(|| panic!("unknown runtime iron actor: {}", actor.0));
-            (owner.runtime.magic, owner.runtime.at_boost_millionths >= 3_000_000)
+            (owner.runtime.magic, owner.runtime.charge.active)
         };
         let step = 3 + if charge_active { 4 } else { 0 };
         let protect = 110 + magic + if charge_active { 240 + magic * 4 } else { 0 };
@@ -681,16 +716,12 @@ impl CombatRuntime {
                     .is_some_and(|entity| entity.runtime.team == actor_team)
                     .then_some(index)
             })
-            .collect::<smallvec::SmallVec<[usize; 8]>>();
+            .collect::<crate::rc4::PickSkipRange>();
         let select_count = if smart { 5 } else { 3 };
         let mut selected = smallvec::SmallVec::<[EntityIdx; 5]>::new();
         let mut duplicate_count = 0usize;
         while duplicate_count <= select_count {
-            let picked = if enemy_skip_indices.is_empty() {
-                self.rng.pick(all_alive)
-            } else {
-                self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
-            };
+            let picked = self.rng.pick_skip_span(all_alive, enemy_skip_indices);
             let Some(picked) = picked else {
                 return PreparedTargetList::new();
             };

@@ -333,6 +333,12 @@ impl CombatRuntime {
                 force_passive = true;
                 force_target = decision.target.map(|target| EntityIdx(target as u32));
             }
+            // 被动技能同样使用实际发动者的独立能力。
+            #[cfg(feature = "cards")]
+            let _ability = self.ability_scope(
+                entry.owner,
+                &self.registry.skill(entry.skill_id).expect("skill exists").export_name,
+            );
             let (handler, capabilities) = if let Some(static_handler) = self.builtin_static_skill_handler(entry.skill_id) {
                 static_handler
             } else {
@@ -453,6 +459,12 @@ impl CombatRuntime {
             } else {
                 false
             };
+        // 防御与反弹按实际发动者计算独立能力。
+        #[cfg(feature = "cards")]
+        let _ability = self.ability_scope(
+            entry.owner,
+            &self.registry.skill(entry.skill_id).expect("skill exists").export_name,
+        );
         let (handler, capabilities) = if let Some(static_handler) = self.builtin_static_skill_handler(entry.skill_id) {
             static_handler
         } else {

@@ -1,12 +1,16 @@
 use super::{BattleOptions, BattleStopReason};
 use crate::cli_api::{CliApiError, CliApiResult, invalid_input};
 use crate::runtime::model_state::{BattleModelState, ModelStateError};
-use crate::runtime::{RunUpdates, RuntimeRunner};
+use crate::runtime::{ForcedAction, PlrId, RunUpdates, RuntimeRunner, forced_action};
 
 /// 两种会话共享的逐回合驱动；展示层仍在每个空回合后更新差分快照。
 #[derive(Debug)]
 pub(super) struct BattleDriver {
     pub runner: RuntimeRunner,
+    /// cards 的能力卡快照；指令队列与暂停标记在 runtime 的 control 上，随 runner 一起回滚。
+    pub forced: forced_action::ForcedState,
+    /// 因缺指令暂停的实体与强制行动原因；补交指令后清空。
+    pub paused: Option<(PlrId, Option<ForcedAction>)>,
     pub rounds_advanced: usize,
     pub frames_emitted: usize,
     pub stop_reason: Option<BattleStopReason>,
@@ -45,6 +49,8 @@ impl BattleDriver {
         Ok(Self {
             stop_reason: runner.have_winner().then_some(BattleStopReason::Winner),
             runner,
+            forced: forced_action::ForcedState::default(),
+            paused: None,
             max_rounds,
             rounds_advanced: 0,
             frames_emitted: 0,
@@ -60,6 +66,10 @@ impl BattleDriver {
         self.runner.model_state()
     }
 
+    /// 推进一个 Runtime 回合。
+    ///
+    /// 受控对局可能停在半个回合里，因此在推进前留检查点：一旦有单位缺指令，整回合回滚，
+    /// 只保留暂停标记。补交指令后再调一次即重放同一行动，行动条与随机流都不被消耗。
     pub fn advance_round(&mut self) -> CliApiResult<Option<RoundStep>> {
         if let Some(error) = &self.failure {
             return Err(error.clone());
@@ -73,7 +83,18 @@ impl BattleDriver {
             return Err(error);
         }
         let round_index = self.rounds_advanced;
-        let updates = self.runner.main_round();
+        let checkpoint = (!self.runner.runtime().control.controlled_teams().is_empty()).then(|| self.runner.clone());
+        // 机制层按队伍查询能力卡，进入推进前把会话快照借给 Runtime。
+        self.forced.controlled_team = self.runner.runtime().control.controlled_team();
+        let updates = forced_action::with_state(&mut self.forced, || self.runner.main_round());
+        if let Some(actor) = self.runner.runtime().control.awaiting() {
+            let forced = self.runner.runtime().control.awaiting_forced_action();
+            if let Some(runner) = checkpoint {
+                self.runner = runner;
+            }
+            self.paused = Some((actor, forced));
+            return Ok(None);
+        }
         self.rounds_advanced += 1;
         let visible = !updates.updates.is_empty() || self.runner.have_winner();
         self.no_progress_rounds = if visible { 0 } else { self.no_progress_rounds + 1 };

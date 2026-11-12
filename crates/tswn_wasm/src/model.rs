@@ -73,6 +73,9 @@ pub struct BattleOptions {
     /// 由外部驱动的队伍编号；设定后该队伍的本体/分身缺指令时暂停。
     #[tsify(optional)]
     pub controlled_team: Option<usize>,
+    /// 开局体力倍率（只作用于受控队伍），1.25 = 125%
+    #[tsify(optional)]
+    pub start_hp_pct: Option<f64>,
 }
 
 impl Default for BattleOptions {
@@ -83,6 +86,7 @@ impl Default for BattleOptions {
             max_rounds: None,
             include_skills: None,
             controlled_team: None,
+            start_hp_pct: None,
         }
     }
 }
@@ -99,6 +103,7 @@ impl BattleOptions {
         }
         options.include_skills = self.include_skills.unwrap_or(false);
         options.controlled_team = self.controlled_team;
+        options.start_hp_pct = self.start_hp_pct;
         options
     }
 }

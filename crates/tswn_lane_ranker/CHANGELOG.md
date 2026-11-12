@@ -4,19 +4,22 @@
 
 ### 内部整理
 
-- 按职责拆分 SQLite 存储、Raw/Golden 排名、Correct/Python 校准与服务任务模块；不改变 SQL、评分公式、求解器脚本或 HTTP 调用契约。
+- 按职责拆分 SQLite 存储、Raw/Golden 排名、Correct/Python 校准与服务任务模块；SQL、评分公式、求解器脚本与 HTTP 调用契约保持原状。
 - 默认阈值和替换槽位策略留在 README，删除只比较固定返回值的两项测试，保留七项实际行为回归。
-- 2026-10-13 使用正常 SQLite/mimalloc 配置执行 `cargo test -p tswn_lane_ranker` 通过；下方 D8050 记录保留当时的环境状态。
+- 2026-10-13 使用正常 SQLite/mimalloc 配置执行 `cargo test -p tswn_lane_ranker`，全部通过。
 
 ### 依赖更新
 
 - `axum` 升级到 `0.8`、`tower-http` 升级到 `0.7`、`rusqlite` 升级到 `0.40`。
 - 路由路径参数改用 axum 0.8 的 `{name}` 语法，前端请求的 URL 保持不变。
 
+### 文档
+
+- 明确边界：任务提交后计算异步完成，同赛道请求各自独立执行，跨步骤不使用全局事务；补充胜率适配层与缓存层职责说明，排名算法与服务行为不变。
+
 ### 验证
 
-- 本机 MSVC 工具链无法编译 `libsqlite3-sys`（`D8050`，既有环境故障），本轮未能执行
-  `cargo check -p tswn_lane_ranker`；改动仅涉及版本约束与路由语法字符串。
+- 本机 MSVC 工具链无法编译 `libsqlite3-sys`（`D8050`，既有环境故障），`cargo check -p tswn_lane_ranker` 需在 MSVC 正常的环境复跑；本次改动只涉及版本约束与路由语法字符串。
 
 ## [0.1.0] - 2026-09-30
 
@@ -51,4 +54,4 @@
 
 ### 说明
 
-- 该 crate 作为内部 Web 工具加入 workspace，本轮首次封板为 `0.1.0`，不进入默认聚合包。
+- 该 crate 作为内部 Web 工具加入 workspace，首次封板为 `0.1.0`，不进入默认聚合包。

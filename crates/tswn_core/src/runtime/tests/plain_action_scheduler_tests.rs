@@ -315,6 +315,7 @@ fn paused_forced_action_distinguishes_berserk_from_pre_action_cancellation() {
             actor: 0,
             skill: PlannedSkill::BasicAttack,
             magic_cost: Some(0),
+            potion: 0,
         });
         let prepared = runtime.prepare_plain_action(actor, false, pre_action.clone()).unwrap();
         assert_eq!(runtime.planned_actions_pending(), 0);
@@ -346,6 +347,7 @@ fn berserk_automatic_and_controlled_pacing_keep_full_round_and_rng_identical() {
         actor: 0,
         skill: PlannedSkill::BasicAttack,
         magic_cost: Some(0),
+        potion: 0,
     });
     let expected = automatic.run_minimal_round_once().unwrap();
     let actual = controlled.run_minimal_round_once().unwrap();

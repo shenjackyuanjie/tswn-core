@@ -78,6 +78,14 @@ impl BattleSession {
         {
             controlled_teams.push(team);
         }
+        // 开局体力倍率必须有受控队伍且为有限正数；无队伍时不得悄悄改动双方状态。
+        if let Some(pct) = options.start_hp_pct
+            && (!pct.is_finite() || pct <= 0.0 || controlled_teams.is_empty())
+        {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "start_hp_pct must be finite and positive; bonuses require controlled_team".into(),
+            ));
+        }
         if !controlled_teams.is_empty() {
             let runtime = driver.runner.runtime_mut();
             if !runtime.scheduler.uses_legacy_step_scheduler() {
@@ -87,13 +95,33 @@ impl BattleSession {
             }
             // 队伍编号写错时不能静默不暂停：先确认这场里确实有这个队伍。
             for team in &controlled_teams {
-                if !runtime.entities.iter().any(|(_, entity)| entity.runtime.team == *team) {
+                if *team != crate::runtime::BattleControl::CONTROLLED_ALL_TEAMS
+                    && !runtime.entities.iter().any(|(_, entity)| entity.template.team == *team)
+                {
                     return Err(crate::cli_api::CliApiError::InvalidArgument(format!(
                         "controlled_team {team} matches no entity in this battle"
                     )));
                 }
             }
             runtime.set_controlled_teams(controlled_teams.iter().copied());
+            // 能力卡快照按受控队伍判定生效范围，构造时先同步一次。
+            driver.forced.controlled_team = controlled_teams.first().copied();
+            if let Some(pct) = options.start_hp_pct {
+                let ids: Vec<_> = runtime.entities.iter().map(|(id, _)| id).collect();
+                for id in ids {
+                    let Some(entity) = runtime.entities.get_mut(id) else {
+                        continue;
+                    };
+                    if !entity.runtime.alive {
+                        continue;
+                    }
+                    if controlled_teams.contains(&entity.template.team)
+                        || controlled_teams.contains(&crate::runtime::BattleControl::CONTROLLED_ALL_TEAMS)
+                    {
+                        entity.runtime.hp = (entity.template.max_hp as f64 * pct).round().clamp(1.0, i32::MAX as f64) as i32;
+                    }
+                }
+            }
         }
         let mut icon_cache = HashMap::new();
         driver
@@ -170,6 +198,83 @@ impl BattleSession {
     }
 
     /// 被动 hook 等待决策时返回请求；此时会话已不可继续推进。
+
+    /// 为当前暂停实体补交一条指令，并继续同一个会话。
+    ///
+    /// `packed_mp` 与前端线格式一致：低字节是这一手的 MP 消耗（0 表示按 tswn 规则现场掷），
+    /// 高字节是药水编号。暂停时整个回合已回滚，补交后推进会重放同一行动，
+    /// 行动条与随机流都不被消耗。
+    pub fn submit_action(&mut self, actor: PlrId, skill: u32, packed_mp: u32) -> CliApiResult<()> {
+        if self.paused != Some(actor) {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "actor is not waiting for an action".into(),
+            ));
+        }
+        let actions = crate::runtime::decode_actions(&[actor as u32, skill, packed_mp])
+            .map_err(|message| crate::cli_api::CliApiError::InvalidArgument(message.into()))?;
+        self.queue_actions(&actions)?;
+        self.paused = None;
+        self.paused_forced_action = None;
+        self.driver.paused = None;
+        Ok(())
+    }
+
+    /// 地图遭遇只继承当前 HP，最大 HP 不变；整批验证后才修改，且不能在行动后重设。
+    pub fn set_initial_hp(&mut self, packet: &[u32]) -> CliApiResult<()> {
+        if self.driver.rounds_advanced != 0 || self.paused.is_some() || !packet.len().is_multiple_of(2) {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "initial HP requires an unadvanced session and id/hp pairs".into(),
+            ));
+        }
+        let mut seen = std::collections::HashSet::new();
+        for pair in packet.chunks_exact(2) {
+            let entity = self
+                .driver
+                .runner
+                .runtime()
+                .entities
+                .get(EntityIdx(pair[0]))
+                .ok_or_else(|| crate::cli_api::CliApiError::InvalidArgument("unknown initial HP actor".into()))?;
+            if !seen.insert(pair[0])
+                || pair[1] == 0
+                || i64::from(pair[1]) > i64::from(entity.template.max_hp)
+                || entity.runtime.owner != entity.runtime.root_owner
+            {
+                return Err(crate::cli_api::CliApiError::InvalidArgument("invalid initial HP".into()));
+            }
+        }
+        for pair in packet.chunks_exact(2) {
+            self.driver
+                .runner
+                .runtime_mut()
+                .entities
+                .get_mut(EntityIdx(pair[0]))
+                .expect("initial HP actor validated")
+                .runtime
+                .hp = pair[1] as i32;
+        }
+        self.initial_states = states_from_runner(
+            &self.driver.runner,
+            self.options.include_icons,
+            self.options.include_skills,
+            &mut self.icon_cache,
+        );
+        self.current_states = self.initial_states.clone();
+        Ok(())
+    }
+
+    /// 开局配置能力卡；不修改技能组或熟练度，不能在行动后篡改配置。
+    #[cfg(feature = "cards")]
+    pub fn set_abilities(&mut self, packet: &[u32]) -> CliApiResult<()> {
+        if self.driver.rounds_advanced != 0 || self.driver.forced.controlled_team.is_none() {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "abilities require an unadvanced controlled session".into(),
+            ));
+        }
+        self.driver.forced.abilities = crate::runtime::forced_action::decode_abilities(packet)
+            .map_err(|message| crate::cli_api::CliApiError::InvalidArgument(message.into()))?;
+        Ok(())
+    }
     pub fn pending_passive(&self) -> Option<&crate::runtime::PassiveRequest> { self.pending_passive.as_ref() }
 
     /// 当前被动暂停所在的雷击段次；雷击结束或无被动暂停时返回 None。
@@ -224,7 +329,10 @@ impl BattleSession {
         }
     }
     /// 正常终止原因；运行中及 Runtime 失败后均为 `None`。
-    pub fn stop_reason(&self) -> Option<BattleStopReason> { self.driver.stop_reason }
+    /// 暂停等待 cards 指令时不是终局，但需要向前端报告 paused 原因。
+    pub fn stop_reason(&self) -> Option<BattleStopReason> {
+        self.paused.map(|_| BattleStopReason::Paused).or(self.driver.stop_reason)
+    }
     /// 是否已产生正常 terminal BattleResult；Runtime failure 不属于正常终止。
     pub fn is_done(&self) -> bool { self.driver.stop_reason.is_some() }
     /// Runtime error 后为 true；后续推进返回相同错误，调用方应停止推进并释放会话。
@@ -280,6 +388,18 @@ impl BattleSession {
                 }
             };
             let Some(step) = step else {
+                // 受控单位缺指令：driver 已回滚整个回合，这里只登记暂停边界。
+                if let Some((actor, forced)) = self.driver.paused {
+                    self.paused = Some(actor);
+                    self.paused_forced_action = forced;
+                    // 回滚后仍要让面板反映回合前的真实状态（例如已存在的狂暴标签）。
+                    self.current_states = states_from_runner(
+                        &self.driver.runner,
+                        self.options.include_icons,
+                        self.options.include_skills,
+                        &mut self.icon_cache,
+                    );
+                }
                 return Ok(None);
             };
             let round_index = step.round_index;
@@ -303,11 +423,6 @@ impl BattleSession {
                 let error = crate::cli_api::CliApiError::InvalidArgument(error.to_string());
                 self.driver.failure = Some(error.clone());
                 return Err(error);
-            }
-            let forced_action = self.driver.runner.runtime().control.awaiting_forced_action();
-            if let Some(actor) = self.driver.runner.runtime_mut().take_awaiting_actor() {
-                self.paused = Some(actor);
-                self.paused_forced_action = forced_action;
             }
             if frame.is_some() || self.is_done() || self.paused.is_some() {
                 return Ok(frame);
@@ -1074,7 +1189,11 @@ seed:7@!"#;
             without_icon.icon_png_base64 = None;
             assert_eq!(&without_icon, plain);
         }
-        assert_eq!(state_from_snapshot(snapshots[1].clone(), true), with_icons[1],);
+        // 纯快照没有技能槽位；图标投影比较只覆盖快照本身负责的字段。
+        assert!(with_icons[1].skills.is_empty(), "include_skills 关闭时不填技能表");
+        let mut projected_snapshot = with_icons[1].clone();
+        projected_snapshot.skills.clear();
+        assert_eq!(state_from_snapshot(snapshots[1].clone(), true), projected_snapshot);
         let filled_cache = cache.clone();
         assert_eq!(states_from_runner(&runner, true, false, &mut cache), with_icons);
         assert_eq!(cache, filled_cache);
@@ -1201,5 +1320,270 @@ seed:7@!"#;
             assert_eq!(session.stop_reason(), None);
             assert_eq!(session.rounds_advanced(), 0);
         }
+    }
+}
+
+// 覆盖实际暂停续行和多实体药水失效，不冻结源码或静态配置。
+#[cfg(test)]
+mod card_control_tests {
+    use super::*;
+    use crate::runtime::forced_action;
+    const RAW: &str = "one@red+ol:{\"attrs\":[40,40,140,40,40,40,100,20000],\"skills\":{},\"name_factor_enabled\":false}\ntwo@red+ol:{\"attrs\":[40,40,140,40,40,40,100,20000],\"skills\":{},\"name_factor_enabled\":false}\n\nenemy@blue+ol:{\"attrs\":[10,40,100,40,40,40,100,20000],\"skills\":{},\"name_factor_enabled\":false}\nseed:card-regression@!";
+    fn options() -> BattleOptions {
+        BattleOptions {
+            controlled_team: Some(0),
+            max_rounds: 2000,
+            ..BattleOptions::default()
+        }
+    }
+    fn pause(session: &mut BattleSession) -> Vec<BattleReplayFrame> {
+        let mut frames = Vec::new();
+        while let Some(frame) = session.next_frame().unwrap() {
+            frames.push(frame);
+        }
+        assert!(session.paused_actor().is_some());
+        assert_eq!(session.stop_reason(), Some(BattleStopReason::Paused));
+        assert!(!session.is_done());
+        frames
+    }
+    // 双方本体轮流停在同一增量会话，地图当前 HP 不改变最大 HP，非法整批不产生部分修改。
+    #[test]
+    fn pvp_controls_both_sides_and_preserves_initial_max_hp() {
+        let mut session = BattleSession::new(
+            RAW,
+            BattleOptions {
+                controlled_team: Some(u32::MAX as usize),
+                ..options()
+            },
+        )
+        .unwrap();
+        let ids: Vec<u32> = session.initial_states().iter().map(|s| s.id as u32).collect();
+        session.set_initial_hp(&[ids[0], 77, ids[1], 88]).unwrap();
+        assert_eq!(
+            session.initial_states().iter().find(|s| s.id == ids[0] as usize).unwrap().hp,
+            77
+        );
+        assert_eq!(
+            session.initial_states().iter().find(|s| s.id == ids[0] as usize).unwrap().max_hp,
+            20000
+        );
+        assert!(session.set_initial_hp(&[ids[0], 55, ids[1], 0]).is_err());
+        assert_eq!(
+            session.initial_states().iter().find(|s| s.id == ids[0] as usize).unwrap().hp,
+            77
+        );
+        let mut teams = std::collections::HashSet::new();
+        for _ in 0..8 {
+            pause(&mut session);
+            let actor = session.paused_actor().unwrap();
+            teams.insert(session.current_states().iter().find(|s| s.id == actor).unwrap().team_index);
+            assert!(session.set_initial_hp(&[actor as u32, 100]).is_err());
+            session.submit_action(actor, 255, 0).unwrap();
+        }
+        assert_eq!(teams.len(), 2);
+    }
+
+    // 真正暂停的运行时处于负 MP 时，普通攻击仍须产生战报并继续到下一次决策。
+    #[test]
+    fn normal_attack_advances_with_negative_mp() {
+        for mp in [-1, -20, -200] {
+            let mut session = BattleSession::new(RAW, options()).unwrap();
+            pause(&mut session);
+            let actor = session.paused_actor().unwrap();
+            session
+                .driver
+                .runner
+                .runtime_mut()
+                .entities
+                .get_mut(crate::runtime::EntityIdx(actor as u32))
+                .unwrap()
+                .runtime
+                .magic_point = mp;
+            session.submit_action(actor, 255, 0).unwrap();
+            let frames = pause(&mut session);
+            assert!(!frames.is_empty(), "negative MP {mp} must still advance a normal attack");
+            assert_eq!(
+                session
+                    .driver
+                    .runner
+                    .runtime()
+                    .entities
+                    .get(crate::runtime::EntityIdx(actor as u32))
+                    .unwrap()
+                    .runtime
+                    .magic_point,
+                mp + 16,
+                "normal attack must cost zero MP and recover normally"
+            );
+        }
+    }
+
+    // 普攻不得掷技能耗蓝骰；只允许目标选择本身消耗随机流。
+    #[test]
+    fn normal_attack_skips_skill_budget_rng() {
+        use crate::runtime::{EntityIdx, PlainSkillPreActionOutcome};
+        let mut session = BattleSession::new(RAW, options()).unwrap();
+        pause(&mut session);
+        let actor = EntityIdx(session.paused_actor().unwrap() as u32);
+        let runtime = session.driver.runner.runtime_mut();
+        runtime.entities.get_mut(actor).unwrap().runtime.magic_point = -20;
+        let mut reference = runtime.clone();
+        reference
+            .select_plain_default_attack_target(actor, true)
+            .or_else(|| reference.select_plain_default_attack_target(actor, false));
+        let mut forced = forced_action::ForcedState::default();
+        forced.controlled_team = Some(0);
+        runtime.control.queue_all(crate::runtime::decode_actions(&[actor.0, 255, 0]).unwrap());
+        let action = forced_action::with_state(&mut forced, || {
+            runtime.prepare_plain_action(actor, true, PlainSkillPreActionOutcome::default())
+        });
+        assert!(action.is_some());
+        assert_eq!(
+            (runtime.rng.i, runtime.rng.j, runtime.rng.main_val),
+            (reference.rng.i, reference.rng.j, reference.rng.main_val)
+        );
+    }
+
+    #[test]
+    fn streaming_resume_matches_batch_and_potions_expire_per_actor() {
+        let mut session = BattleSession::new(RAW, options()).unwrap();
+        let mut independent = BattleSession::new(RAW, options()).unwrap();
+        let mut commands = Vec::new();
+        let mut frames = pause(&mut session);
+        let initial = session.initial_states().to_vec();
+        let mut counts = HashMap::<PlrId, usize>::new();
+        let mut overlap = false;
+        for turn in 0..10 {
+            let actor = session.paused_actor().unwrap();
+            let before = session.model_state().unwrap();
+            assert!(session.next_frame().unwrap().is_none());
+            assert_eq!(before, session.model_state().unwrap());
+            // 交错推进另一会话，不能影响当前会话的待发动作或药水。
+            if turn == 0 {
+                pause(&mut independent);
+            }
+            let count = counts.entry(actor).or_default();
+            let packed = if *count == 0 { 1 << 8 } else { 0 };
+            *count += 1;
+            session.submit_action(actor, 255, packed).unwrap();
+            commands.extend([actor as u32, 255, packed]);
+            let added = pause(&mut session);
+            let mut boosted = 0;
+            for state in session.current_states().iter().filter(|s| s.team_index == 0) {
+                let base = initial.iter().find(|s| s.id == state.id).unwrap().attack;
+                let n = counts.get(&state.id).copied().unwrap_or(0);
+                let expected = if n == 1 { base + (base / 4).max(8) } else { base };
+                assert_eq!(state.attack, expected, "turn {turn}, actor {}", state.id);
+                boosted += usize::from(n == 1);
+            }
+            overlap |= boosted == 2;
+            frames.extend(added);
+        }
+        assert!(overlap, "两个角色的药水必须能同时生效");
+        assert!(counts.values().all(|n| *n >= 2));
+        let replay =
+            super::super::battle_replay_with_actions(RAW, options(), &crate::runtime::decode_actions(&commands).unwrap())
+                .unwrap();
+        assert_eq!(replay.frames, frames);
+        assert_eq!(replay.final_states, session.current_states());
+        assert_eq!(replay.paused_actor, session.paused_actor());
+        assert!(independent.paused_actor().is_some());
+    }
+
+    // 批量重放从开局重新创建实体，队列中的分身 id 必须等召唤后再消费。
+    #[test]
+    fn replay_accepts_commands_for_clones_created_after_initialization() {
+        let raw = "caster@red+ol:{\"attrs\":[40,40,200,40,40,40,100,20000],\"skills\":{\"sklclone\":106},\"name_factor_enabled\":false}\n\nenemy@blue+ol:{\"attrs\":[10,40,80,40,40,40,40,20000],\"skills\":{},\"name_factor_enabled\":false}\nseed:3719276890@!";
+        let baseline = BattleSession::new(raw, BattleOptions::default()).unwrap();
+        let team = baseline
+            .initial_states()
+            .iter()
+            .find(|s| s.input_team_index == Some(0))
+            .unwrap()
+            .team_index;
+        let replay_options = BattleOptions {
+            allow_future_actors: true,
+            controlled_team: Some(team),
+            ..options()
+        };
+        let mut session = BattleSession::new(raw, replay_options.clone()).unwrap();
+        let mut frames = pause(&mut session);
+        let initial_ids: Vec<_> = session.initial_states().iter().map(|s| s.id as u32).collect();
+        let mut commands = Vec::new();
+        let mut clone_turns = 0;
+        for turn in 0..12 {
+            let actor = session.paused_actor().unwrap();
+            if !initial_ids.contains(&(actor as u32)) {
+                clone_turns += 1;
+            }
+            let (skill, mp) = if turn == 0 { (23, 8) } else { (255, 0) };
+            session.submit_action(actor, skill, mp).unwrap();
+            commands.extend([actor as u32, skill, mp]);
+            frames.extend(pause(&mut session));
+            let replay = super::super::battle_replay_with_actions(
+                raw,
+                replay_options.clone(),
+                &crate::runtime::decode_actions(&commands).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(replay.frames, frames);
+            assert_eq!(replay.paused_actor, session.paused_actor());
+        }
+        assert!(clone_turns >= 2, "分身需要能重复出牌并继续行动");
+    }
+
+    #[test]
+    fn fractional_hp_is_team_scoped_and_invalid_options_are_rejected() {
+        let base = BattleSession::new(RAW, options()).unwrap();
+        let half = BattleSession::new(
+            RAW,
+            BattleOptions {
+                start_hp_pct: Some(0.5),
+                ..options()
+            },
+        )
+        .unwrap();
+        for (a, b) in base.initial_states().iter().zip(half.initial_states()) {
+            assert_eq!(
+                b.hp,
+                if a.team_index == 0 {
+                    (a.max_hp as f64 * 0.5).round() as i32
+                } else {
+                    a.hp
+                }
+            );
+        }
+        for pct in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert!(
+                BattleSession::new(
+                    RAW,
+                    BattleOptions {
+                        start_hp_pct: Some(pct),
+                        ..options()
+                    }
+                )
+                .is_err()
+            );
+        }
+        assert!(
+            BattleSession::new(
+                RAW,
+                BattleOptions {
+                    start_hp_pct: Some(1.2),
+                    ..BattleOptions::default()
+                }
+            )
+            .is_err()
+        );
+        assert!(
+            BattleSession::new(
+                RAW,
+                BattleOptions {
+                    controlled_team: Some(50),
+                    ..options()
+                }
+            )
+            .is_err()
+        );
     }
 }

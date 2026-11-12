@@ -5,9 +5,40 @@
 ### 新增
 
 - `RuntimePlayerSnapshot` 与 `BattlePlayerState` 新增 `shield`，合计常规蓄盾与 `ShieldValue` 的非负剩余值，使用饱和加法；死亡或 HP 不大于零时投影为零，铁壁阈值不纳入可消耗护盾。
-- 两种快照新增 `max_shield`，读取当前护盾技能熟练度，吞噬或其他技能等级变更后随快照更新；仅作为展示上限，不截断实际盾值或改变战斗规则。
+- 两种快照新增 `max_shield`，读取当前护盾技能熟练度，吞噬或其他技能等级变更后随快照更新；`max_shield` 是展示上限，实际盾值按原值参与战斗，战斗规则不变。
 - 公共 replay view 在角色首次实际出现在消息文字时推进该回合的护盾净值，后续片段沿用更新值，避免重复展示；`ReplayState` 的盾值方法提供兼容默认实现。
 - 上述公开输出结构体增加字段，外部 Rust 结构体字面量构造需补充 `shield` 与 `max_shield`；文本片段协议与战斗机制保持原样。
+- 新增卡牌强制行动与受控会话子系统：`BattleSession` 可按玩家指令驱动指定队伍，缺指令时暂停（`paused_actor`）并可 `submit_action` 续行，`set_initial_hp` 在大逃杀开局注入当前 HP；`forced_action` 提供指令解码、药水生效与回退记录，`battle_replay` 接受同一批指令重放。
+
+### 能力卡（`cards` feature，默认关闭）
+
+- 新增可选 feature `cards`，移植 `KODU16/tswn-cards@929d0db` 的能力卡子系统。默认关闭，关闭时 `ForcedState.abilities`、能力卡函数与全部调用点整体不参与编译；普通引擎对局的随机流、MP 结算和 AI 扫描口径与之前完全一致。
+- 开启后 `BattleSession::set_abilities` 接受「技能编号 / 减耗量 / 倍率万分数」三元组，只允许在尚未推进的受控会话中设置，非法包整批拒绝。
+- 减耗：玩家点名技能与 AI 扫描按卡牌减耗降低 MP 需求，最低仍消耗 1 点；AI 是否进入技能扫描按最大减耗放宽。
+- 乘区：攻击力、护盾、护身符复活体力、吞噬转移的 MP 与行动点、升级与隐身增益按能力倍率独立乘算，不写技能熟练度、不额外消耗随机流。
+- 技能等级：卡牌玩家及其派生单位的幻术（`core.skill.shadow`）熟练度按 5 封顶，敌方与被魅惑单位不受影响。
+- 作用域：守护、反击、反弹、被动与内置技能效果按实际发动者隔离乘区与减耗，嵌套反弹/反击退出后恢复外层作用域。
+- 回归共 5 项随 feature 编译（幻术概率、独立乘区、被动护盾与能力卡包校验），默认构建不新增测试。
+- 目前只有 `tswn_wasm` 通过同名 feature 转发；C-API、Python 与 Openbox 绑定未接入该 feature。
+
+### Boss 与武器移植（主线已实现，仍有接入边界）
+
+- 对齐 0.5.5 的 Boss 属性、免疫表与默认技能装配；补充专属主动技能扫描、魔法攻击、柯南推理、青雉/斑鸠防御吸收、马里奥满血复活及史莱姆分裂。
+- 对齐特殊武器身份/阵营判定与 Boss 武器重键；加入剁手刀运行态、死亡笔记受击标记、玄月受击反击，以及属性修改器技能改写、身份复活与分身的内部实现和回归。
+- 模型技能导出表从42项扩展到47项，追加S11、死亡笔记、玄月反击及两项Rinick技能；原编号不重排，编号空间上限仍为50、state schema版本仍为1。
+- 目前只有部分特殊武器能从公开入口完整运行：S11、死亡笔记、玄月、Rinick 的 handler 未接通，会返回 `NotReady`；Rinick 的场前模板复制也有遗漏。已知范围见[无武器路径简报](../../docs/perf/reports/performance-branch-2026-10-29.md#验证与上游缺口)。
+
+### 性能与 API（当前性能分支，尚未合入 main）
+
+- 世界存活阵营/roster 数量使用派生缓存；跳过空伤害阶段 hook 计划，选敌排除信息改用标量区间，RC4 小范围取余保留原随机流消费规则。
+- 多画像评分构建仅在超过四个 profile 时按四个一组执行交错 KSA；补充多名字、跨十进制边界及重复轮次回归，不改变 `namer-pf` 输出契约。
+- Rinick 复活属性与分身技能合并为按需分配的冷载荷；公开 Rust 字段 `rinick_revive_attrs` / `rinick_clone_skills` 改经 `PreparedPlayer::rinick` / `PlayerTemplate::rinick` 访问，载荷内两项仍独立可选、克隆互不共享。`PlayerRuntime` 序列化形状不变。
+- 无本批待发玄月反击时不扫描武器技能。以上是代码与空间优化，不依赖 PGO；实测范围、负向结果和复现入口见[性能简报](../../docs/perf/reports/performance-branch-2026-10-29.md)。
+
+### 内部整理
+
+- 按职责拆分编码器字段映射、索引、校验、张量族写入和状态存储；保持公共入口、编码布局及既有回归。
+- FeatureEncoder 复用验证阶段容量计量；快照图标键与图标缓存命中路径减少重复复制。
 
 ### 依赖更新
 
@@ -16,6 +47,10 @@
 - wasm 目标的 `js-sys` 升级到 `0.3.106`，与 `tswn_wasm` 的 `wasm-bindgen 0.2.129` 配套。
 
 ### 修复
+
+- CLI 非负阈值拒绝 NaN、无穷和溢出；文件参数拒绝 Windows 盘符之后的额外冒号，保留合法盘符与 UNC 路径。
+- 调试标志并发首次初始化等待写入完成；RC4 `peek_next_u8` 按交换后排列预览且不推进随机状态，修正输出槽与交换槽重合的情形。
+- 关闭 `png_render` 时仍可编译并使用战斗/模型会话；展示会话请求图标时返回 `UNSUPPORTED_OPTION`，不生成占位图。
 
 - 百分比体力损失消息（如瘟疫的 `[1]体力减少[2]%`）正确归类为 `Damage`，恢复结构化回放中的 HP 条；血量变化继续采用 `score` 的实际伤害，文本百分比 `param` 仅用于显示。
 
@@ -34,6 +69,8 @@
   文件后复现通过，确认与 `-Z7` 直接相关。
 
 ### 验证
+
+以下检查记录对应各项改动完成时；当前分支的完整测试总数与全部武器端到端覆盖以最新一轮为准。
 
 - `cargo test -p tswn_core --no-default-features --features png_render`：`tswn_core` lib 602 项、
   `tswn-cli` 89 项通过；`cargo +nightly fmt --check` 无输出。
@@ -114,7 +151,7 @@
   wasm 侧一旦走到 `_timed` 路径就 `RuntimeError: unreachable`，之后整个实例失效，
   `win_rate_sync` / `group_win_rate` / `score` / `namer_pf` / `batch_rate` / `pair_rate`
   等导出全部无法调用。新增 `time::Stopwatch`：native 仍走 `Instant`，wasm 改用 `js-sys` 的
-  `Date::now()`（毫秒精度、不保证严格单调），`runtime/batch.rs` 与 `runtime/cqp.rs` 的计时
+  `Date::now()`（毫秒精度，时间可能回退），`runtime/batch.rs` 与 `runtime/cqp.rs` 的计时
   统一改走该辅助类型。`init_nanos` / `fight_nanos` 与 matchup 墙钟耗时在 wasm 上恢复可用，
   数值语义与 native 一致，仅精度回退；战斗与胜率计算不读取计时值，结果不变。
 
@@ -133,7 +170,7 @@
 ### 新增
 
 - 公开 `CloneBuildData` 构造参数、`CloneStatAdjustments` 与 `ScoreCloneSkillBoostPlan` 及其字段，
-  供机制状态导出读取；只放宽可见性，不改变分身构造、技能强化或战斗行为。
+  供机制状态导出读取；本次仅放宽可见性，分身构造、技能强化与战斗行为不变。
 
 ### 性能与诊断
 
@@ -244,7 +281,7 @@
 
 - 使用当前 nightly 同工具链重建 `749fcd1`，对普通 score 做五轮交替 A/B；
   mario、CQP 单人和 CQP 双人 wall 中位数分别回退 2.41%、3.46% 和 3.19%。
-  本轮以正确性为第一优先级，完整原始轮次与附加 qp 结果见
+  本版本以正确性为第一优先级，完整原始轮次与附加 qp 结果见
   `docs/releases/0.5.1.md`。
 
 ## [0.5.0] - 2026-07-18
@@ -273,7 +310,7 @@
 - 批量无 replay 路径不再为铁壁判定保留整份最后 `RunUpdate`，只记录普通防御事件的施法者、目标和紧凑布尔标记；完整帧路径仍从 replay 读取同一语义，后续非防御事件会显式覆盖标记。fixed30/no_debug/13000 单线程三组交替 A/B 的 overall 中位从 `27.707` 降至 `27.050 us/battle`，fight 从 `24.896` 降至 `24.253 us/battle`，分别缩短 2.37% 与 2.58%，结果聚合保持 `150858`。mario 26 万场三组交替 A/B 的整体中位从 `8.296` 降至 `8.257 s`，fight 从 `5.404` 降至 `5.359 s`，分别缩短 0.47% 与 0.84%，胜场保持 `83916/260000`。`cargo test -p tswn_core` 全量通过：核心库 596 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过；`no_debug` 核心库 589 通过、2 忽略；release Runtime corpus 124/124 通过；固定 SBY 12000-case 的 TS/Rust 执行失败、空输出与 diff 均为 0。
 - Runtime 的内置主动技能扫描在缓存命中时固定只读缓存与等级切片指针；失败概率分支只推进 RC4，不再为平均约十个候选逐项重复查询实体槽、Option 与切片边界，成功进入目标选择后立即返回且不再读取指针。fixed30/no_debug/13000 单线程三组交替 A/B 的 overall 中位从 `28.970` 降至 `28.499 us/battle`，缩短 1.63%；core 1v1/2v2、1v1、2v2、stress_multi 全部同向，结果聚合保持 `150858`。mario 13 万场三组交替 A/B 的整体中位从 `4.290` 降至 `4.216 s`，缩短 1.73%，胜场保持 `41930/130000`。`cargo test -p tswn_core` 全量通过：核心库 596 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过；`no_debug` 核心库 589 通过、2 忽略；release Runtime corpus 124/124 通过；固定 SBY 12000-case 的 TS/Rust 执行失败与 diff 均为 0。
 - score 准备对象的 Shadow、Summon、Zombie 三类可选蓝图改为使用最终实体槽本来就需要的 `Box<PlayerTemplate>`；常见延迟蓝图路径不再因三个空 `Option<PlayerTemplate>` 固定携带三份大模板，`PreparedPlayerInit` 从 `4920` 字节降至 `1272` 字节，缩小 74.15%，有蓝图时则直接把同一个 Box 移交实体槽，不增加净分配。mario 13 万场单线程五组交替 A/B 的整体与初始化配对中位分别缩短 0.95% 和 2.44%，fight 基本持平；fixed30/no_debug/13000 单线程三组交替 A/B 的 overall 与 init 配对中位分别缩短 0.62% 和 0.91%，五个分组均未回退，2v2 缩短 1.24%，结果聚合保持 `150858`。`cargo test -p tswn_core` 全量通过：核心库 596 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过；`no_debug` 核心库 589 通过、2 忽略，release Runtime corpus 124/124 通过。
-- Runtime 将是否保留 replay 帧改为编译期常量，批量胜率/评分独立生成无捕获回合与收尾路径，消除每回合反复判断交互模式、构造 frame 和选择赢家扫描方式的分支。fixed30/no_debug/13000 单线程三轮中位 overall 从 `30.989` 降至 `30.655 us/battle`，fight 从 `27.910` 降至 `27.533 us/battle`，分别缩短 1.08% 与 1.35%；core 1v1/2v2、1v1、2v2、stress_multi 分别缩短 1.84%、2.90%、1.17%、0.59%，结果聚合保持 `150858`。mario 13 万场 score 三轮未观察到超出噪音的稳定变化。`cargo test -p tswn_core` 全量通过：核心库 596 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过；release Runtime corpus 124/124 通过。
+- Runtime 将是否保留 replay 帧改为编译期常量，批量胜率/评分独立生成无捕获回合与收尾路径，消除每回合反复判断交互模式、构造 frame 和选择赢家扫描方式的分支。fixed30/no_debug/13000 单线程三轮中位 overall 从 `30.989` 降至 `30.655 us/battle`，fight 从 `27.910` 降至 `27.533 us/battle`，分别缩短 1.08% 与 1.35%；core 1v1/2v2、1v1、2v2、stress_multi 分别缩短 1.84%、2.90%、1.17%、0.59%，结果聚合保持 `150858`。mario 13 万场 score 三轮的变化在噪音范围内。`cargo test -p tswn_core` 全量通过：核心库 596 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过；release Runtime corpus 124/124 通过。
 
 ### 验证
 
@@ -310,12 +347,12 @@
 
 ### 验证
 
-- 在正确性修复提交 `1ed1258` 上完成 Runtime-only 单次完整 benchmark，并用独立 target 额外构建系统分配器版本；未运行 legacy Runtime、Node.js 或 Bun 性能测试。默认 mimalloc fixed30 单线程/自动线程 overall 为 `31.307/3.895 us/battle`，stress_multi 为 `65.044 us/battle`，win-rate 为 `0.107 s`；score mario、CQP 单人、双人为 `0.519/0.765/1.044 s`；CQP 单人 1%/10%/100% 为 `0.137/1.040/10.404 s`，CQD 双人为 `0.511/4.602/44.255 s`。mimalloc 在全部正式指标上比系统分配器快 8.55%～25.41%，系统分配器则明显降低 OpenBox 结束 RSS。完整数据见 `docs/perf/reports/runtime-0.4.2-1ed1258-allocator-snapshot.md`。
+- 在正确性修复提交 `1ed1258` 上完成 Runtime-only 单次完整 benchmark，并用独立 target 额外构建系统分配器版本；legacy Runtime、Node.js 与 Bun 性能测试未纳入本轮验证。默认 mimalloc fixed30 单线程/自动线程 overall 为 `31.307/3.895 us/battle`，stress_multi 为 `65.044 us/battle`，win-rate 为 `0.107 s`；score mario、CQP 单人、双人为 `0.519/0.765/1.044 s`；CQP 单人 1%/10%/100% 为 `0.137/1.040/10.404 s`，CQD 双人为 `0.511/4.602/44.255 s`。mimalloc 在全部正式指标上比系统分配器快 8.55%～25.41%，系统分配器则明显降低 OpenBox 结束 RSS。完整数据见 `docs/perf/reports/runtime-0.4.2-1ed1258-allocator-snapshot.md`。
 - 四方 CQD 矩阵复测发现的 4 个单 seed 胜负分叉和 1 个行动保护上限异常现已全部闭环。逐 seed 对比排除了复用 runner 污染；5 个原始输入均已归档到 `tswn_test/cases/runtime_stress` 并接入长期 strict-diff 回归。保护异常与瘟疫分摊后的活动使魔致死链缺口同源，修复后无需提高行动保护上限。
 - 对四个胜负分叉坐标各扩展扫描 1000 个 seed，并对原保护异常坐标扫描 10000 个 seed，共 14000 个 seed，异常数为 0。加入 benchmark 发现的 mario score 回归后，完整 release Runtime corpus 124/124 通过；`cargo test -p tswn_core` 为核心库 596 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过；release `no_debug` Runtime 库测试 429 通过、2 忽略，release CLI Runtime 测试 12 通过。
 - 新增 `track_cqp_case` 辅助诊断工具，可按 CQP/CQD 的真实 seed 调度扫描指定 matchup，并在胜负或保护上限异常时同时对比 legacy、复用 Runtime runner 与全新 Runtime runner，输出首个 strict/non-score 分叉及 JSON 报告；该工具仅在 `aux_bins` feature 下构建，不进入正式运行路径。
 - 新增 `track_cqp_perf`，以相同外层 worker 数在同一批 `player × target` matchup 上交替测量 legacy Runtime/runtime，输出逐 matchup 对账和机器可读 JSON；`track_perf_cases` 同步增加 `--engine legacy|main`，并新增 Node.js/Bun 官方 `md5.js` 稳态基准脚本，统一覆盖 fixed30、win-rate、score 与 CQP/CQD 动态矩阵。
-- `d813e5f` 完成单次全套阶段快照：fixed30 单线程/自动线程 overall 为 `32.105/4.644 us/battle`，stress_multi 为 `66.340 us/battle`，win-rate 13000 场为 `0.117 s`、`7077` 胜；score mario、CQP 单人、双人分别达到同轮 legacy 的 `1.734x/1.814x/2.018x` 吞吐且逐组 0 差异；CQP/CQD 六档较旧 runtime 再快 25.78%～29.38%。该快照不重置既定半时硬线，完整数据见 `docs/perf/reports/runtime-0.4.2-d813e5f-snapshot.md`。
+- `d813e5f` 完成单次全套阶段快照：fixed30 单线程/自动线程 overall 为 `32.105/4.644 us/battle`，stress_multi 为 `66.340 us/battle`，win-rate 13000 场为 `0.117 s`、`7077` 胜；score mario、CQP 单人、双人分别达到同轮 legacy 的 `1.734x/1.814x/2.018x` 吞吐且逐组 0 差异；CQP/CQD 六档较旧 runtime 再快 25.78%～29.38%。该快照沿用既定半时硬线，完整数据见 `docs/perf/reports/runtime-0.4.2-d813e5f-snapshot.md`。
 
 ## [0.4.1] - 2026-07-14
 
@@ -326,8 +363,8 @@
 - score 在连续轮次间复用 seed/world 向量、动态 profile 身份字符串、35-lane `SkillLoadout` 与实体槽容量，动态实体复位不再复制随即覆盖的模板；技能 hook 计划改用栈内 `SmallVec`，并在 profile 初始化时一次性缓存八类 hook 的稳定顺序，战斗阶段不再为每次 hook 分配 `Vec`、扫描并排序完整技能表。fat-LTO 单线程同轮对账中，mario、CQP 单人 20 组 × 1000 场、双人 32 组 × 1000 场的 runtime/legacy wall 分别为 `0.656/0.833 s`、`1.002/1.324 s`、`1.421/2.204 s`，三组差异均为零；相对 0.4.0 runtime 基线分别缩短 71.8%、72.2% 与 74.7%，双人吞吐已超过 legacy 的 1.5 倍，mario 与单人继续优化。
 - RC4 密钥调度热循环改用循环键下标与一次性边界证明，移除每字节取模和重复边界检查；安全参考实现覆盖 1～256 字节密钥及多轮 `new`、`update`、`round` 对账，三组 score 单线程裸计时中位数提升约 1.0%～1.5%。
 - score 每轮生成的动态 profile 改为按技能实际触发延迟构造幻影、使魔和丧尸蓝图，并在本场首次构造后写回实体槽；固定 target 与 prepared 胜率仍保持预构造。同步补齐动态复位时的模板名字更新，并增加第 42 轮严格对账回归。mario、CQP 单人 20 组 × 1000 场、双人 32 组 × 1000 场的五次单线程裸时间中位数降至 `1.436 s`、`2.224 s`、`4.037 s`，较 0.4.0 基线分别提升 38.2%、38.4%、28.1%，三组全量对账均为零差异。
-- score 复用首轮固定 target 的完整模板，只重建尾部数字 profile；标准 `!` / `\x02` profile 直接从交错 KSA 结果生成八围、boost 与 Runtime 技能 loadout，不再中转 40 个 legacy 动态技能对象。64 轮双模式模板逐字段对账和完整 core 测试通过；同机单次全量对账中，mario、CQP 单人、双人 wall 分别为 `0.816/0.807 s`、`1.271/1.280 s`、`1.721/2.174 s`（runtime/legacy），三组结果差异均为零。该数据是继续优化前的阶段样本，正式结论仍以五次中位数为准。
-- score 动态 profile 首次触发幻影、使魔或丧尸时，直接由普通名字 RC4 状态生成召唤物八围、固定技能布局和 Runtime 模板，不再临场构造完整 legacy Player、40 技能对象与 proc 缓存。双 modifier、64 轮、三类召唤物模板均与 legacy 构造逐字段相等；单次 mario 全量对账 wall 降至 `0.756 s`，同次 legacy 为 `0.793 s`，赢家差异为零。该数据仍是继续优化前的阶段样本。
+- score 复用首轮固定 target 的完整模板，只重建尾部数字 profile；标准 `!` / `\x02` profile 直接从交错 KSA 结果生成八围、boost 与 Runtime 技能 loadout，不再中转 40 个 legacy 动态技能对象。64 轮双模式模板逐字段对账和完整 core 测试通过；同机单次全量对账中，mario、CQP 单人、双人 wall 分别为 `0.816/0.807 s`、`1.271/1.280 s`、`1.721/2.174 s`（runtime/legacy），三组结果差异均为零。该数据为优化过程中的阶段样本，正式结论以五次中位数为准。
+- score 动态 profile 首次触发幻影、使魔或丧尸时，直接由普通名字 RC4 状态生成召唤物八围、固定技能布局和 Runtime 模板，不再临场构造完整 legacy Player、40 技能对象与 proc 缓存。双 modifier、64 轮、三类召唤物模板均与 legacy 构造逐字段相等；单次 mario 全量对账 wall 降至 `0.756 s`，同次 legacy 为 `0.793 s`，赢家差异为零。该数据为优化过程中的阶段样本。
 
 ## [0.4.0] - 2026-07-14
 
@@ -345,7 +382,7 @@
 - 新增 Runtime CQP/CQD matchup 矩阵执行器，CLI `bench batch-rate` / `cqp` 的自动线程路径改为按 `player × target` 动态派发给持久 worker；短任务自动使用 1.5 倍逻辑核，中长任务使用 2 倍逻辑核，显式 `-t` 与 `-s` 语义保持不变。
 - 固定 roster 的 `PreparedRuntimeRunner` 复位路径改为只恢复战斗热字段，并复用 seed、输入分组和 world view 小向量容量；每轮改变 profile 身份的 score 路径继续完整复位，避免错误复用冷身份数据。
 - 新增 `track_score_perf` 单线程裸计时/对账工具，按输入组分别运行 Runtime 与 legacy score，报告整批 wall、init、fight、吞吐及首个结果差异；计时排除编译、进程启动、输入读取和报告序列化，可固定 mario、CQP 单人及双人输入作为长期回归口径。
-- 原生 `tswn_core` 默认启用已有 `mimalloc_alloc` feature；WASM 依赖显式关闭默认 feature 并保留 `png_render`，不把原生 allocator 带入浏览器构建。
+- 原生 `tswn_core` 默认启用已有 `mimalloc_alloc` feature；WASM 依赖显式关闭默认 feature 并保留 `png_render`，浏览器构建不带原生 allocator。
 - `tswn-cli fight`（含 `--out-raw`）、`tswn-cli diff` 与 `tswn-cli raw`（含 `!test!` 评分/胜率）默认改用 Runtime；需要旧实现对账时可显式传入 `--runtime legacy`。普通日志、raw 聚合日志、赢家输入索引、玩家状态摘要及 benchmark 汇总输出保持与 legacy 逐行一致。
 - 独立 `bench` 的自动分流、score、win-rate、group-win-rate、分段 buckets 与 `namer-pf` 默认改用 Runtime；core `cli_api` 及 C、Python、WASM 高层评分/胜率包装同步切换，无 runtime 参数的正式入口不再隐式构造 legacy Runner。
 - Runtime 批量层新增 prepared win-rate 与 score 的区间执行 API，供 CLI 分段输出和 WASM `WinRateSession` 在多次 step 之间保持全局 round/profile seed 调度。
@@ -389,10 +426,10 @@
 - CLI 自动矩阵与 `-s` 串行路径的 20 条 CQP 业务字段差异为 0；`sby_test.md` 六模式共 12000 case 为 `ts_failures=0`、`rust_failures=0`、`diff_failures=0`。
 - `cargo test -p tswn_core`（核心库 576 通过、2 忽略；CLI 59、runtime trace 3、engine 集成 29 均通过）；`track_score_perf` 自身 3 项测试通过。
 - fixed30/no_debug/13000 单线程正式中位数：overall `46.729 us/battle`，比 0.3.10 快 32.23%；core 1v1/2v2、1v1、2v2、stress_multi 分别快 34.70%、32.93%、36.01%、30.85%；自动线程 overall 为 `5.872 us/battle`。
-- score 单线程裸计时：mario 13000 场 runtime/legacy wall 为 `2.325/0.819 s`；CQP 单人 20 组 × 1000 场为 `3.608/1.287 s`；双人 32 组 × 1000 场为 `5.613/2.166 s`。三类输入各 5 轮逐组结果差异均为 0；runtime 性能尚未达到 legacy 硬目标，仍需分别压缩 64.77%、64.33%、61.41%。
+- score 单线程裸计时：mario 13000 场 runtime/legacy wall 为 `2.325/0.819 s`；CQP 单人 20 组 × 1000 场为 `3.608/1.287 s`；双人 32 组 × 1000 场为 `5.613/2.166 s`。三类输入各 5 轮逐组结果差异均为 0；runtime 性能距离 legacy 硬目标还需分别压缩 64.77%、64.33%、61.41%。
 - win-rate 13000 场单线程 runtime wall/init/fight 中位数为 `0.184/0.040/0.142 s`，相对同口径 legacy wall `0.2177835 s` 快 15.51%；完整新基线见 `docs/perf/reports/runtime-0.4.0-baseline.md`。
 - `cargo test -p tswn_core --bin tswn-cli --release`（61 通过）
-- 历史 noalias 门禁当时完成 core/no_debug/CLI 与 118 项 corpus；当前 rustc 已移除对应参数，现行门禁统一使用 `python scripts/check_runtime_release.py --corpus`。
+- 历史 noalias 门禁在 core/no_debug/CLI 与 118 项 corpus 上完成；当前 rustc 已移除对应参数，现行门禁统一使用 `python scripts/check_runtime_release.py --corpus`。
 - `python track_test.py --engine main -q`
 - `cargo test -p tswn_core replay_view`
 - `cargo test -p tswn_core summon_minion_charge -- --nocapture`
@@ -537,7 +574,7 @@
 ### 测试
 
 - 为浮点边界修复和中毒解除修复补充回归测试。
-- 新增 `large 72` 测试用例，覆盖本轮修复涉及的复杂对战场景。
+- 新增 `large 72` 测试用例，覆盖相关修复涉及的复杂对战场景。
 
 ## [0.3.8] - 2026-05-21
 
@@ -561,11 +598,11 @@
 
 - 新增 / 扩展 Rust 侧 track 工具，用于 case generation、DIY roundtrip、性能样本跟踪和固定样本对比。
 - 固定性能样本从 20 个扩展到 30 个，并新增分组汇总，便于观察 1v1、多人混战、组队等不同类型对局的优化收益。
-- 更新性能跟踪文档与固定样本结果，记录 `0.3.7` 基线及本轮优化目标。
+- 更新性能跟踪文档与固定样本结果，记录 `0.3.7` 基线与优化目标。
 
 ### 兼容性说明
 
-- 本次以 DIY 行为修复和性能优化为主，不刻意引入新的公开玩法语义。
+- 本版本聚焦 DIY 行为修复和性能优化，公开玩法语义保持不变。
 - DIY / Overlay 内部结构有所调整，直接依赖 `PlayerOverlay.skills` 具体类型的调用方需要按新的 ordered skill slots 表达方式适配。
 
 ## [0.3.7] - 2026-05-18
@@ -680,8 +717,8 @@
 
 ### 说明
 
-- 本次只同步战斗日志 / 播放节奏相关字段，不改变战斗判定顺序、目标选择或伤害结算语义。
-- delay 行为以混淆版 `md5.js` 为准，未混淆 Dart 源仅作为辅助参考。
+- 本版本只同步战斗日志 / 播放节奏相关字段，战斗判定顺序、目标选择和伤害结算语义保持不变。
+- delay 行为以混淆版 `md5.js` 为准，未混淆 Dart 源作为辅助参考。
 
 ## [0.3.3] - 2026-05-17
 
@@ -873,7 +910,7 @@
 
 ### 性能
 
-- 统一当前 benchmark 的串并行切换阈值到 `n >= 100`：`prepared_win_rate` 不再固定等到 `n >= 2000` 才并行；CLI 评分 benchmark 也同步从 `2000` 下调到 `100`。这让 `bench win-rate`、`bench group-win-rate`、`bench batch-rate`、单组 `bench auto`、raw `!test!` 的评分/胜率路径，以及 `tswn_capi` / `tswn_py` 的 prepared win-rate 在中小样本批次下都能更早利用并行执行。
+- 统一当前 benchmark 的串并行切换阈值到 `n >= 100`：`prepared_win_rate` 的并行阈值从 `n >= 2000` 下调到 `n >= 100`；CLI 评分 benchmark 同步从 `2000` 下调到 `100`。这让 `bench win-rate`、`bench group-win-rate`、`bench batch-rate`、单组 `bench auto`、raw `!test!` 的评分/胜率路径，以及 `tswn_capi` / `tswn_py` 的 prepared win-rate 在中小样本批次下都能更早利用并行执行。
 
 ### 修复
 
@@ -913,7 +950,7 @@
 
 ### 文档
 
-- 将本轮新增批量胜率命令相关注释与帮助文案统一改为中文，并补齐内部参数说明，降低后续维护和继续扩展 CLI 时的阅读成本。
+- 将新增批量胜率命令相关注释与帮助文案统一改为中文，并补齐内部参数说明，降低后续维护和继续扩展 CLI 时的阅读成本。
 
 ## [0.2.14] - 2026-04-08
 
@@ -956,7 +993,7 @@
 - **新增 `raw` 子命令**：`tswn-cli` 现在提供独立的 `raw` 入口，用于直接运行原始 namerena 输入，不再必须通过 `fight --out-raw` 触发 raw 聚合战斗日志输出。
 - **`raw` 支持评分相关参数**：`raw` 子命令新增 `-n, --count` 与 `-t, --thread` 选项，用于控制评分/胜率测试的对局数量与 benchmark 线程数；默认对局数统一提升为 `10000`，并与其他 `bench` 子命令保持一致。
 - **`raw` 按 `!test!` 头自动分流**：当输入不以 `!test!` 开头时，`raw` 会直接按原始对战模式输出 raw 聚合战斗日志；当输入以 `!test!` 开头时，则切换到 benchmark 语义。
-- **`raw` 的 benchmark 分流规则补齐**：`!test!` 模式下，去掉头部后的有效输入若只有 1 组，则运行评分；若恰好有 2 组，则运行胜率；若达到 3 组及以上，则直接报错，避免继续按不明确语义执行。
+- **`raw` 的 benchmark 分流规则补齐**：`!test!` 模式下，去掉头部后的有效输入为 1 组时运行评分，为 2 组时运行胜率，达到 3 组及以上直接报错。
 - **`raw` 的 `!test!` 识别兼容前导空行**：即使输入最前面存在空行，只要去除首尾空白后以 `!test!` 开头，仍会正确进入 benchmark 分支，保持与实际 raw 文本使用习惯一致。
 - **补充 `raw` 路由单测**：为 `!test!` 头识别、去头后 body 保留、前导空行、BOM 前缀和非 `!test!` 输入等情况补充单元测试，降低后续继续调整 CLI 分流逻辑时的回归风险。
 
@@ -1089,7 +1126,7 @@
 - **case miner 支持稳定分段排查**：`tswn_case_miner` 与 `track_case_miner.py` 新增 `--case-offset-per-mode`，允许按每种模式的稳定生成顺序跳过前 N 个唯一 case，直接检查后续区间，避免前面已经修过的样本反复重跑，缩短大样本排查反馈周期。
 - **TS 缓存命中信息显式可见**：case miner 现在会统计并输出 `TS cache hit`、`TS cache miss` 与 `bun` 调用次数，同时把这些统计写入 `summary.json`，便于区分“命中共享 trace 缓存”和“真的重新调用了 bun”。
 - **tracker 非 quiet 模式改为流式显示阶段信息**：`track_case_miner.py` 在非 `-q` 下不再吞掉 `cargo run` 输出，会直接显示 Rust 编译日志以及 miner 的阶段提示，降低“卡在编译/缓存/比对哪一步”不透明的问题。
-- **比较范围变化时不再误判回归**：tracker 现在会把 `case_offset_per_mode`、`max_cases_per_mode`、`modes` 等关键配置纳入比较范围检查；当本轮与上轮/存档点的测试区间不一致时，直接提示“比较范围已变化”，避免把不同区间的 failed case 误报成修复或退步。
+- **比较范围变化时不再误判回归**：tracker 现在会把 `case_offset_per_mode`、`max_cases_per_mode`、`modes` 等关键配置纳入比较范围检查；当前运行与上一次运行/存档点的测试区间不一致时，直接提示“比较范围已变化”，不同区间的 failed case 不再被误报成修复或退步。
 
 ### 文档
 
@@ -1124,7 +1161,7 @@
 
 ### 验证
 
-- 持续以 `cargo test -p tswn_core` 和固定 case miner / SBY 对账驱动本轮回归
+- 持续以 `cargo test -p tswn_core` 和固定 case miner / SBY 对账驱动回归
 - 覆盖 `Protect` / `Charm` / `Summon` / revive / `flat_alive` 等重点路径
 
 ## [0.2.6] - 2026-03-29

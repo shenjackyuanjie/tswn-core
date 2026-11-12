@@ -25,6 +25,8 @@ export interface BattleReplay {
 }
 
 export interface BattlePlayerState {
+    /** 技能导出名与当前熟练度。 */
+    skills: Array<[string, number]>;
     id: number;
     team_index: number;
     input_team_index: number | null;

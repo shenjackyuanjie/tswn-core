@@ -253,6 +253,7 @@ fn plain_protect_redirect_uses_magic_resistance_for_magic_attacks() {
         caster: EntityIdx(2),
         target: EntityIdx(1),
         is_magic: true,
+        kind: DamageKind::Default,
     };
 
     runtime.drain_pre_defend_hooks_into(EntityIdx(1), &mut updates, &mut defend_value);
@@ -297,6 +298,7 @@ fn plain_protect_redirect_preserves_absorb_on_damage_heal() {
         EntityIdx(1),
         true,
         4_352.0,
+        DamageKind::Default,
         PlainAttackOnDamage::Absorb,
         &mut updates,
     );
@@ -351,6 +353,7 @@ fn nested_plain_protect_redirect_preserves_poison_on_damage() {
         EntityIdx(0),
         true,
         10_000.0,
+        DamageKind::Default,
         PlainAttackOnDamage::Poison,
         &mut updates,
     );

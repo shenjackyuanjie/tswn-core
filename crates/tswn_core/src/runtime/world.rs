@@ -7,16 +7,33 @@
 
 use crate::runtime::entity::{EntityArena, EntityIdx};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct WorldArena {
     round_order: Vec<EntityIdx>,
     team_roster: Vec<Vec<EntityIdx>>,
     team_alive: Vec<Vec<EntityIdx>>,
     flat_alive: Vec<EntityIdx>,
+    // 纯派生索引：team_alive 中首次出现的位置；usize::MAX 表示未出现。
+    alive_team_by_entity: Vec<usize>,
+    roster_count: usize,
     alive_group_count: usize,
     round_pos: i32,
     winner_team: Option<usize>,
 }
+
+impl PartialEq for WorldArena {
+    fn eq(&self, other: &Self) -> bool {
+        self.round_order == other.round_order
+            && self.team_roster == other.team_roster
+            && self.team_alive == other.team_alive
+            && self.flat_alive == other.flat_alive
+            && self.alive_group_count == other.alive_group_count
+            && self.round_pos == other.round_pos
+            && self.winner_team == other.winner_team
+    }
+}
+
+impl Eq for WorldArena {}
 
 impl WorldArena {
     pub(crate) fn model_state(&self) -> super::model_state::ModelWorld {
@@ -46,15 +63,20 @@ impl WorldArena {
             flat_alive.push(idx);
         }
         let alive_group_count = team_alive.iter().filter(|team| !team.is_empty()).count();
-        Self {
+        let roster_count = team_roster.iter().map(Vec::len).sum();
+        let mut world = Self {
             round_order,
             team_roster,
             team_alive,
             flat_alive,
+            alive_team_by_entity: Vec::new(),
+            roster_count,
             alive_group_count,
             round_pos: -1,
             winner_team: None,
-        }
+        };
+        world.rebuild_alive_team_cache(entities.len());
+        world
     }
 
     pub fn sync_initial_views(
@@ -83,6 +105,8 @@ impl WorldArena {
         self.team_alive = team_alive;
         self.flat_alive = flat_alive;
         self.alive_group_count = self.team_alive.iter().filter(|team| !team.is_empty()).count();
+        self.rebuild_alive_team_cache(entities.len());
+        self.roster_count = self.team_roster.iter().map(Vec::len).sum();
         self.round_pos = -1;
         self.winner_team = None;
     }
@@ -114,6 +138,8 @@ impl WorldArena {
         Self::clone_nested_reusing(&mut self.team_alive, team_alive);
         Self::clone_slice_reusing(&mut self.flat_alive, flat_alive);
         self.alive_group_count = self.team_alive.iter().filter(|team| !team.is_empty()).count();
+        self.rebuild_alive_team_cache(entities.len());
+        self.roster_count = self.team_roster.iter().map(Vec::len).sum();
         self.round_pos = -1;
         self.winner_team = None;
     }
@@ -181,6 +207,7 @@ impl WorldArena {
         }
         if !self.team_roster[team].contains(&actor) {
             self.team_roster[team].push(actor);
+            self.roster_count += 1;
         }
         self.append_round_actor(actor);
         self.revive_alive(actor, team);
@@ -233,7 +260,7 @@ impl WorldArena {
 
     /// 返回 legacy `WorldState::all_plr_len()` 对应的世界 roster 实体数。
     /// 已死亡实体仍保留在 roster 中，EntityArena 的空 ID 槽则不计入。
-    pub fn roster_entity_count(&self) -> usize { self.team_roster.iter().map(Vec::len).sum() }
+    pub fn roster_entity_count(&self) -> usize { self.roster_count }
 
     pub const fn round_position(&self) -> i32 { self.round_pos }
 
@@ -246,10 +273,44 @@ impl WorldArena {
     pub fn alive_group_count(&self) -> usize { self.alive_group_count }
 
     pub fn alive_group_len_containing(&self, actor: EntityIdx) -> usize {
-        let Some(team) = self.team_alive.iter().find(|team| team.contains(&actor)) else {
-            return 0;
-        };
-        team.len()
+        if let Some(&team) = self.alive_team_by_entity.get(actor.0 as usize) {
+            return self.team_alive.get(team).map_or(0, Vec::len);
+        }
+        self.team_alive.iter().find(|team| team.contains(&actor)).map_or(0, Vec::len)
+    }
+
+    fn rebuild_alive_team_cache(&mut self, entity_slots: usize) {
+        self.alive_team_by_entity.clear();
+        self.alive_team_by_entity.resize(entity_slots, usize::MAX);
+        self.fill_alive_team_cache_from(0);
+    }
+
+    fn fill_alive_team_cache_from(&mut self, start: usize) {
+        for (team, alive) in self.team_alive.iter().enumerate() {
+            for actor in alive {
+                let index = actor.0 as usize;
+                if index >= start {
+                    if let Some(cached) = self.alive_team_by_entity.get_mut(index) {
+                        *cached = (*cached).min(team);
+                    }
+                }
+            }
+        }
+    }
+
+    fn cache_revived_actor(&mut self, actor: EntityIdx, team: usize) {
+        let index = actor.0 as usize;
+        if let Some(cached) = self.alive_team_by_entity.get_mut(index) {
+            *cached = (*cached).min(team);
+        } else {
+            let previous_len = self.alive_team_by_entity.len();
+            // 常规 spawn 有界扩容；极稀疏公开 ID 沿用扫描，不引入巨额分配。
+            if index.saturating_sub(previous_len) < 64 {
+                self.alive_team_by_entity.resize(index + 1, usize::MAX);
+                // 新覆盖范围可能已有实体，不能只填本次复活者。
+                self.fill_alive_team_cache_from(previous_len);
+            }
+        }
     }
 
     pub fn revive_alive(&mut self, actor: EntityIdx, team: usize) {
@@ -265,6 +326,7 @@ impl WorldArena {
             .rev()
             .find_map(|idx| self.flat_alive.iter().position(|alive| alive == idx));
         self.team_alive[team].push(actor);
+        self.cache_revived_actor(actor, team);
         if let Some(pos) = last_teammate_pos {
             self.flat_alive.insert(pos + 1, actor);
         } else {
@@ -288,6 +350,10 @@ impl WorldArena {
             if was_team_alive && team_alive.is_empty() {
                 self.alive_group_count = self.alive_group_count.saturating_sub(1);
             }
+        }
+        if let Some(cached) = self.alive_team_by_entity.get_mut(actor.0 as usize) {
+            // 错队删除或重复视图可能仍在别队保留实体，必须重找首次匹配。
+            *cached = self.team_alive.iter().position(|alive| alive.contains(&actor)).unwrap_or(usize::MAX);
         }
         was_flat_alive
     }
@@ -547,5 +613,116 @@ mod tests {
 
         assert_eq!(world.sync_winner_from_alive_views(), None);
         assert_eq!(world.sync_winner(&entities), None);
+    }
+}
+
+#[cfg(test)]
+mod derived_view_tests {
+    use super::*;
+    use crate::runtime::PlayerTemplate;
+
+    fn assert_matches_views(world: &WorldArena) {
+        assert_eq!(
+            world.roster_entity_count(),
+            world.team_roster.iter().map(Vec::len).sum::<usize>()
+        );
+        for actor in (0..80).map(EntityIdx).chain([EntityIdx(u32::MAX)]) {
+            let expected = world.team_alive.iter().find(|team| team.contains(&actor)).map_or(0, Vec::len);
+            assert_eq!(world.alive_group_len_containing(actor), expected, "actor={actor:?}");
+        }
+    }
+
+    #[test]
+    fn derived_views_track_death_revival_spawn_and_sparse_ids() {
+        let entities = EntityArena::from_templates(vec![
+            PlayerTemplate::new(1, "first", 0, 10, 3),
+            PlayerTemplate::new(2, "second", 1, 10, 3),
+            PlayerTemplate::new(3, "third", 0, 10, 3),
+        ]);
+        let mut world = WorldArena::from_entities(&entities);
+        assert_matches_views(&world);
+        for mask in 0..8 {
+            for (index, team) in [(0, 0), (1, 1), (2, 0)] {
+                if mask & (1 << index) == 0 {
+                    world.mark_dead(EntityIdx(index), team);
+                } else {
+                    world.revive_alive(EntityIdx(index), team);
+                    world.revive_round_actor(EntityIdx(index));
+                }
+                assert_matches_views(&world);
+            }
+        }
+        world.add_spawned_alive(EntityIdx(3), 1);
+        world.add_spawned_alive(EntityIdx(3), 1);
+        assert_eq!(world.roster_entity_count(), 4);
+        assert_matches_views(&world);
+        let cache_len = world.alive_team_by_entity.len();
+        world.revive_alive(EntityIdx(u32::MAX), 1);
+        assert_eq!(world.alive_team_by_entity.len(), cache_len);
+        assert_matches_views(&world);
+        world.remove_alive(EntityIdx(u32::MAX), 1);
+        let cloned = world.clone();
+        world.remove_alive(EntityIdx(3), 1);
+        assert_matches_views(&world);
+        assert_matches_views(&cloned);
+        assert_eq!(cloned.alive_group_len_containing(EntityIdx(3)), 2);
+    }
+
+    #[test]
+    fn derived_views_preserve_duplicate_first_match_and_sync_semantics() {
+        let entities = EntityArena::from_templates(vec![
+            PlayerTemplate::new(1, "first", 0, 10, 3),
+            PlayerTemplate::new(2, "second", 1, 10, 3),
+        ]);
+        let mut world = WorldArena::from_entities(&entities);
+        // 错队移除仅删除 flat_alive；公开复活可形成跨队重复，仍取首次匹配。
+        world.remove_alive(EntityIdx(1), 0);
+        world.revive_alive(EntityIdx(1), 2);
+        world.revive_alive(EntityIdx(2), 2);
+        assert_eq!(world.alive_group_len_containing(EntityIdx(1)), 1);
+        assert_matches_views(&world);
+        world.remove_alive(EntityIdx(1), 1);
+        assert_eq!(world.alive_group_len_containing(EntityIdx(1)), 2);
+        assert_matches_views(&world);
+        world.sync_initial_views(
+            &entities,
+            vec![EntityIdx(0), EntityIdx(1)],
+            vec![vec![EntityIdx(0), EntityIdx(0)], vec![EntityIdx(1)]],
+            vec![vec![EntityIdx(0), EntityIdx(0)], vec![EntityIdx(1)]],
+            vec![EntityIdx(0), EntityIdx(1)],
+        );
+        assert_eq!(world.alive_group_len_containing(EntityIdx(0)), 2);
+        assert_eq!(world.roster_entity_count(), 3);
+        assert_matches_views(&world);
+        let original = WorldArena::from_entities(&entities);
+        world.sync_initial_views_reusing(
+            &entities,
+            &original.round_order,
+            &original.team_roster,
+            &original.team_alive,
+            &original.flat_alive,
+        );
+        assert_eq!(world, original);
+        assert_matches_views(&world);
+        // 覆盖范围是缓存实现细节，不改变世界语义相等性。
+        world.alive_team_by_entity.push(usize::MAX);
+        assert_eq!(world, original);
+        world.add_spawned_alive(EntityIdx(2), 0);
+        world.add_spawned_alive(EntityIdx(2), 1);
+        assert_eq!(world.roster_entity_count(), 4);
+        world.mark_dead(EntityIdx(2), 0);
+        assert_eq!(world.roster_entity_count(), 4);
+        assert_matches_views(&world);
+    }
+
+    #[test]
+    fn cache_growth_recovers_previously_uncached_public_entities() {
+        let entities = EntityArena::from_templates(vec![]);
+        let mut world = WorldArena::from_entities(&entities);
+        world.revive_alive(EntityIdx(65), 0);
+        world.revive_alive(EntityIdx(63), 1);
+        world.revive_alive(EntityIdx(66), 1);
+        assert_matches_views(&world);
+        assert_eq!(world.alive_group_len_containing(EntityIdx(65)), 1);
     }
 }

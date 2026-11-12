@@ -1,0 +1,16 @@
+[package]
+name = "allocation-probe"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+tswn_core = { path = "../../crates/tswn_core", default-features = false, features = ["no_debug", "png_render"] }
+mimalloc = "=0.1.52"
+serde_json = "=1.0.154"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1

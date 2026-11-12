@@ -139,6 +139,7 @@ fn run_skill_hooks_charge_post_action_decrements_step_without_update() {
             active: true,
             post_action_active: true,
             step: 1,
+            permanent: false,
         }
     );
     assert_eq!(owner.runtime.at_boost_millionths, 3_000_000);
@@ -321,6 +322,7 @@ fn run_minimal_round_charge_late_post_action_clears_after_state_hooks() {
             active: false,
             post_action_active: false,
             step: 0,
+            permanent: false,
         }
     );
     assert_eq!(owner.runtime.at_boost_millionths, 1_000_000);

@@ -58,6 +58,8 @@ try {
 }
 ```
 
+能力卡（`cards` feature，默认关闭）：开启后 `BattleSession.set_abilities(packet)` 接受技能编号、减耗量、倍率万分数三元组，让卡牌的独立乘区与减耗生效；关闭时该方法与生成的 `.d.ts` 声明都不存在。
+
 完整方法与 DTO 见 [公共 API](../../docs/reference/public-api.md)。返回值为 plain JS object，缺省值为 null，TypeScript 类型随生成包导出。`max_rounds` 包含空 round；terminal next_frame 幂等。`battle_replay` 仅收集同一个 session。
 
 示例页面先显示 initial states，再逐帧拉取，最多预取 2 帧；昵称与图标只装饰显示层。`?perf=1` 输出性能统计，参见 [性能基线](../../docs/perf/reports/web-streaming-baseline.md)。
@@ -181,13 +183,13 @@ show 页面右下角控制栏还支持 `C/P/F/T/I/R/S/D` 字母快捷键；字�
 
 ### 外部行动脚本
 
-`battle_replay_with_actions(raw_input, actions, { controlled_team?, ... })` 让前端指定每个单位这一次用哪个技能，`actions` 是 `[actor, skill, magic_cost]` 扁平三元组数组：
+`battle_replay_with_actions(raw_input, actions, { controlled_team?, ... })`（旧名 `battle_replay_forced`，签名相同）让前端指定每个单位这一次用哪个技能，`actions` 是 `[actor, skill, packed]` 扁平三元组数组：
 
 - `actor` 是 `BattlePlayerState.id`，可以为任意实体排队；
 - `skill` 用 overlay 编号 `0..24`，`255` 表示普通攻击；
-- `magic_cost` 传 `0` 表示由引擎现场掷，否则应是抽牌时掷好的消耗（`8..=23`）。
+- `packed` 低字节是 `magic_cost`（传 `0` 表示由引擎现场掷，否则应是抽牌时掷好的消耗 `8..=23`），高字节是药水编号（`1..=8` 属性下标加一，`9` 能量药水、`10` 体力药水）；药水不占行动。
 
-受控队伍（`controlled_team`）的本体与分身用尽脚本后会逼停回放：返回对象带 `paused_actor`，`stop_reason` 为 `"paused"`，但 `status` 仍是 `"running"`、`finished` 为 false；追加一条指令再次调用即可。指令不可执行（技能未装备、MP 不足、无目标）抛出 `INVALID_ARGUMENT`，不会静默改成普攻。脚本为空时与 `battle_replay` 等价。
+受控队伍（`controlled_team` / `controlled_teams`）的本体与分身用尽脚本后会逼停回放：返回对象带 `paused_actor`，`stop_reason` 为 `"paused"`，但 `status` 仍是 `"running"`、`finished` 为 false。暂停时整个回合已回滚，可用 `BattleSession.submit_action(actor, skill, packed_mp)` 补交指令后继续 `next_frame()`，也可以追加一条指令再次调用本函数从头重放。指令不可执行（技能未装备、MP 不足、无目标）抛出 `INVALID_ARGUMENT`，不会静默改成普攻。脚本为空时与 `battle_replay` 等价。`forced_hits()` / `forced_taken()` 是脚本消费情况的诊断计数。
 
 ### 实时状态标签
 

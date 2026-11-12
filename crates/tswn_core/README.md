@@ -132,6 +132,7 @@ let summary = runner.run_to_completion(20_000);
 | `no_debug`   | ❌   | 关闭调试输出，用于 release 分发 |
 | `aux_bins`   | ❌   | 启用 `track_test` 辅助二进制     |
 | `battle-test-support` | ❌ | 供绑定测试注入 Runtime 校验故障 |
+| `cards`      | ❌   | 卡牌能力卡子系统（减耗、独立乘区、幻术等级上限）；关闭时相关代码不参与编译 |
 
 ## 测试
 

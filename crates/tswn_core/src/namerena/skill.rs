@@ -1,3 +1,5 @@
+use super::weapon::WeaponKind;
+
 /// 技能最终等级的构成方式；用于 overlay 导入和 clone 重建。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SkillBoost {
@@ -63,6 +65,11 @@ pub const SUMMON_FIRE1_SKILL_KEY: usize = 40;
 pub const SUMMON_FIRE2_SKILL_KEY: usize = 41;
 pub const SUMMON_EXPLODE_SKILL_KEY: usize = 42;
 pub const PHANTOM_POSSESS_SKILL_KEY: usize = 43;
+pub const WEAPON_S11_SKILL_KEY: usize = 44;
+pub const WEAPON_DEATH_NOTE_SKILL_KEY: usize = 45;
+pub const WEAPON_XUAN_YUE_COUNTER_SKILL_KEY: usize = 46;
+pub const WEAPON_RINICK_ICE_AGE_SKILL_KEY: usize = 47;
+pub const WEAPON_RINICK_YURI_CONTROL_SKILL_KEY: usize = 48;
 pub const SUMMON_MINION_NORMAL_SKILL_KEY_BASE: usize = 80;
 pub const SUMMON_SHARE_DAMAGE_SKILL_KEY: usize = 255;
 
@@ -73,6 +80,13 @@ pub enum BuiltinSkillRef {
     SummonExplode,
     SummonShareDamage,
     Possess,
+    WeaponS11,
+    WeaponDeathNote,
+    WeaponXuanYue,
+    /// 0.5.5 `RinickModifier.b6()` 身份分支追加的 `SklAokijiIceAge`。
+    RinickIceAge,
+    /// 0.5.5 `RinickModifier.b6()` 身份分支追加的 `SklYuriControl`。
+    RinickYuriControl,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -348,6 +362,53 @@ impl SkillLoadoutSpec {
             post_action_after_states: Vec::new(),
         }
     }
+
+    /// 0.5.5 `bs()` 中武器 `b6()` 追加的技能表。
+    ///
+    /// 武器技能排在全部普通技能之后：剁手刀进入 k2 主动表，死亡笔记同时进入
+    /// k1 与 k2，玄月奖杯只注册 k1 受击回调。`e=true` 在产物中不参与末位翻倍
+    /// 与槽位强化，这里仅保留标记。属性修改器在身份分支还会追加
+    /// `SklAokijiIceAge`（20 级）与 `SklYuriControl`（10 级，随后吃末位翻倍到 20）。
+    pub(crate) fn append_weapon_skills(&mut self, kind: WeaponKind, rinick_identity: bool) {
+        if kind == WeaponKind::RinickModifier && rinick_identity {
+            self.entries.push(SkillEntrySpec {
+                key: WEAPON_RINICK_ICE_AGE_SKILL_KEY,
+                skill: BuiltinSkillRef::RinickIceAge,
+                level: 20,
+                boosted: false,
+                boost: None,
+            });
+            self.entries.push(SkillEntrySpec {
+                key: WEAPON_RINICK_YURI_CONTROL_SKILL_KEY,
+                skill: BuiltinSkillRef::RinickYuriControl,
+                level: 20,
+                boosted: true,
+                boost: Some(SkillBoost::LastBoost(10)),
+            });
+            self.active_order.push(WEAPON_RINICK_ICE_AGE_SKILL_KEY);
+            self.active_order.push(WEAPON_RINICK_YURI_CONTROL_SKILL_KEY);
+            return;
+        }
+        let (key, skill, level, boosted) = match kind {
+            WeaponKind::S11 => (WEAPON_S11_SKILL_KEY, BuiltinSkillRef::WeaponS11, 31, true),
+            WeaponKind::DeathNote => (WEAPON_DEATH_NOTE_SKILL_KEY, BuiltinSkillRef::WeaponDeathNote, 1, true),
+            WeaponKind::XuanYue => (WEAPON_XUAN_YUE_COUNTER_SKILL_KEY, BuiltinSkillRef::WeaponXuanYue, 1, false),
+            _ => return,
+        };
+        self.entries.push(SkillEntrySpec {
+            key,
+            skill,
+            level,
+            boosted,
+            boost: None,
+        });
+        if matches!(kind, WeaponKind::S11 | WeaponKind::DeathNote) {
+            self.active_order.push(key);
+        }
+        if matches!(kind, WeaponKind::DeathNote | WeaponKind::XuanYue) {
+            self.post_damage_order.push(key);
+        }
+    }
 }
 
 fn empty_entry(key: usize, skill: BuiltinSkillRef) -> SkillEntrySpec {
@@ -544,4 +605,73 @@ fn normalize_skill_name(name: &str) -> String {
         .or_else(|| lower.strip_prefix("skill"))
         .unwrap_or(&lower)
         .to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::weapon::WeaponKind;
+    use super::*;
+
+    #[test]
+    fn weapon_skills_append_to_the_legacy_lanes() {
+        let mut loadout = SkillLoadoutSpec::default();
+        loadout.append_weapon_skills(WeaponKind::S11, false);
+        assert_eq!(loadout.entries.len(), 1);
+        assert_eq!(loadout.entries[0].key, WEAPON_S11_SKILL_KEY);
+        assert_eq!(loadout.entries[0].skill, BuiltinSkillRef::WeaponS11);
+        assert_eq!(loadout.entries[0].level, 31);
+        assert!(loadout.entries[0].boosted);
+        assert_eq!(loadout.active_order, vec![WEAPON_S11_SKILL_KEY]);
+        assert!(loadout.post_damage_order.is_empty());
+
+        let mut loadout = SkillLoadoutSpec::default();
+        loadout.append_weapon_skills(WeaponKind::DeathNote, false);
+        assert_eq!(loadout.entries.len(), 1);
+        assert_eq!(loadout.entries[0].key, WEAPON_DEATH_NOTE_SKILL_KEY);
+        assert_eq!(loadout.entries[0].level, 1);
+        assert!(loadout.entries[0].boosted);
+        assert_eq!(loadout.active_order, vec![WEAPON_DEATH_NOTE_SKILL_KEY]);
+        assert_eq!(loadout.post_damage_order, vec![WEAPON_DEATH_NOTE_SKILL_KEY]);
+
+        let mut loadout = SkillLoadoutSpec::default();
+        loadout.append_weapon_skills(WeaponKind::XuanYue, false);
+        assert_eq!(loadout.entries.len(), 1);
+        assert_eq!(loadout.entries[0].key, WEAPON_XUAN_YUE_COUNTER_SKILL_KEY);
+        assert_eq!(loadout.entries[0].skill, BuiltinSkillRef::WeaponXuanYue);
+        assert_eq!(loadout.entries[0].level, 1);
+        assert!(!loadout.entries[0].boosted);
+        assert!(loadout.active_order.is_empty());
+        assert_eq!(loadout.post_damage_order, vec![WEAPON_XUAN_YUE_COUNTER_SKILL_KEY]);
+
+        let mut loadout = SkillLoadoutSpec::default();
+        loadout.append_weapon_skills(WeaponKind::Generic, false);
+        assert!(loadout.entries.is_empty());
+    }
+
+    #[test]
+    fn rinick_identity_appends_ice_age_and_boosted_yuri_control() {
+        let mut loadout = SkillLoadoutSpec::default();
+        loadout.append_weapon_skills(WeaponKind::RinickModifier, true);
+        assert_eq!(loadout.entries.len(), 2);
+        assert_eq!(loadout.entries[0].key, WEAPON_RINICK_ICE_AGE_SKILL_KEY);
+        assert_eq!(loadout.entries[0].skill, BuiltinSkillRef::RinickIceAge);
+        assert_eq!(loadout.entries[0].level, 20);
+        assert!(!loadout.entries[0].boosted);
+        assert_eq!(loadout.entries[1].key, WEAPON_RINICK_YURI_CONTROL_SKILL_KEY);
+        assert_eq!(loadout.entries[1].skill, BuiltinSkillRef::RinickYuriControl);
+        assert_eq!(loadout.entries[1].level, 20);
+        assert!(loadout.entries[1].boosted);
+        assert_eq!(loadout.entries[1].boost, Some(SkillBoost::LastBoost(10)));
+        assert_eq!(
+            loadout.active_order,
+            vec![WEAPON_RINICK_ICE_AGE_SKILL_KEY, WEAPON_RINICK_YURI_CONTROL_SKILL_KEY]
+        );
+        assert!(loadout.post_damage_order.is_empty());
+
+        // 非身份分支与普通武器一样不追加任何技能。
+        let mut loadout = SkillLoadoutSpec::default();
+        loadout.append_weapon_skills(WeaponKind::RinickModifier, false);
+        assert!(loadout.entries.is_empty());
+        assert!(loadout.active_order.is_empty());
+    }
 }

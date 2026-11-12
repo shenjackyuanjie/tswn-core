@@ -17,7 +17,8 @@ impl CombatRuntime {
             (
                 owner.runtime.wisdom,
                 owner.runtime.magic,
-                owner.runtime.at_boost_millionths >= 3_000_000,
+                // 蓄力状态与 3 倍攻击加成（蓄力三段）都视为「必中」。
+                owner.runtime.charge.active || owner.runtime.at_boost_millionths >= 3_000_000,
             )
         };
         let (target_hp, target_resistance, target_agility, target_flags, target_name, target_active) = {
@@ -104,17 +105,13 @@ impl CombatRuntime {
                     .is_some_and(|entity| entity.runtime.team == actor_team)
                     .then_some(index)
             })
-            .collect::<smallvec::SmallVec<[usize; 8]>>();
+            .collect::<crate::rc4::PickSkipRange>();
         let select_count = if smart { 3 } else { 2 };
         let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
         let mut dup = 0usize;
         let mut invalid = -(select_count as i32);
         while dup <= select_count && invalid <= select_count as i32 {
-            let picked = if enemy_skip_indices.is_empty() {
-                self.rng.pick(all_alive)
-            } else {
-                self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
-            };
+            let picked = self.rng.pick_skip_span(all_alive, enemy_skip_indices);
             let Some(picked) = picked else {
                 return PreparedTargetList::new();
             };
@@ -183,7 +180,15 @@ impl CombatRuntime {
             "[0]使用[冰冻术]",
             1,
         ));
-        self.drain_plain_attack_with_atp_and_on_damage_into(actor, target, true, atp, PlainAttackOnDamage::Ice, updates);
+        self.drain_plain_attack_with_atp_and_on_damage_into(
+            actor,
+            target,
+            true,
+            atp,
+            DamageKind::Ice,
+            PlainAttackOnDamage::Ice,
+            updates,
+        );
     }
 
     pub fn drain_plain_charge_skill_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
@@ -243,10 +248,7 @@ impl CombatRuntime {
             .expect("default runtime profile must register core clone kind");
         let random_factor = (u32::from(self.rng.next_u8()) & 63) + 64;
         let mut decayed_level = ((current_level as f64) * random_factor as f64 / 128.0).ceil() as u32;
-        let charge_active = self
-            .entities
-            .get(actor)
-            .is_some_and(|entity| entity.runtime.at_boost_millionths >= 3_000_000);
+        let charge_active = self.entities.get(actor).is_some_and(|entity| entity.runtime.charge.active);
 
         if !charge_active {
             let owner = self
@@ -460,17 +462,13 @@ impl CombatRuntime {
                     .is_some_and(|entity| entity.runtime.team == actor_team)
                     .then_some(index)
             })
-            .collect::<smallvec::SmallVec<[usize; 8]>>();
+            .collect::<crate::rc4::PickSkipRange>();
         let select_count = if smart { 3 } else { 2 };
         let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
         let mut dup = 0usize;
         let mut invalid = -(select_count as i32);
         while dup <= select_count && invalid <= select_count as i32 {
-            let picked = if enemy_skip_indices.is_empty() {
-                self.rng.pick(all_alive)
-            } else {
-                self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
-            };
+            let picked = self.rng.pick_skip_span(all_alive, enemy_skip_indices);
             let Some(picked) = picked else {
                 return PreparedTargetList::new();
             };
@@ -563,7 +561,8 @@ impl CombatRuntime {
             .map(|owner| {
                 (
                     owner.runtime.magic,
-                    owner.runtime.at_boost_millionths >= 3_000_000,
+                    // 蓄力状态与 3 倍攻击加成（蓄力三段）都视为「必中」。
+                    owner.runtime.charge.active || owner.runtime.at_boost_millionths >= 3_000_000,
                     owner.runtime.hp,
                     owner.template.max_hp,
                 )

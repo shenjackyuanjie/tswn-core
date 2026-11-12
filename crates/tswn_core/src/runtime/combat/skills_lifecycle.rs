@@ -139,17 +139,13 @@ impl CombatRuntime {
                     .is_some_and(|entity| entity.runtime.team == actor_team)
                     .then_some(index)
             })
-            .collect::<smallvec::SmallVec<[usize; 8]>>();
+            .collect::<crate::rc4::PickSkipRange>();
         let select_count = if smart { 3 } else { 2 };
         let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
         let mut dup = 0usize;
         let mut invalid = -(select_count as i32);
         while dup <= select_count && invalid <= select_count as i32 {
-            let picked = if enemy_skip_indices.is_empty() {
-                self.rng.pick(all_alive)
-            } else {
-                self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
-            };
+            let picked = self.rng.pick_skip_span(all_alive, enemy_skip_indices);
             let Some(picked) = picked else {
                 return PreparedTargetList::new();
             };
@@ -221,7 +217,7 @@ impl CombatRuntime {
                 .entities
                 .get(actor)
                 .unwrap_or_else(|| panic!("unknown runtime slow actor: {}", actor.0));
-            (owner.runtime.magic, owner.runtime.at_boost_millionths >= 3_000_000)
+            (owner.runtime.magic, owner.runtime.charge.active)
         };
         let (target_flags, target_name, target_resistance, target_active) = {
             let target_entity = self
@@ -334,11 +330,7 @@ impl CombatRuntime {
             .set(counter_slot, SlotValue::U64(next_minion_index + 1))
             .expect("runtime core minion counter slot must exist");
         shadow_template.name = format!("{root_name}?{next_minion_index}");
-        shadow_template.move_state.speed_points = if self
-            .entities
-            .get(actor)
-            .is_some_and(|entity| entity.runtime.at_boost_millionths >= 3_000_000)
-        {
+        shadow_template.move_state.speed_points = if self.entities.get(actor).is_some_and(|entity| entity.runtime.charge.active) {
             2048
         } else {
             -2048
@@ -384,7 +376,7 @@ impl CombatRuntime {
                     .is_some_and(|entity| entity.runtime.team == actor_team)
                     .then_some(index)
             })
-            .collect::<smallvec::SmallVec<[usize; 8]>>();
+            .collect::<crate::rc4::PickSkipRange>();
         let has_enemy = all_alive
             .iter()
             .copied()
@@ -397,11 +389,7 @@ impl CombatRuntime {
         let mut duplicate_count = 0usize;
         let invalid_count = -(select_count as i32);
         while duplicate_count <= select_count && invalid_count <= select_count as i32 {
-            let picked = if enemy_skip_indices.is_empty() {
-                self.rng.pick(all_alive)
-            } else {
-                self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
-            };
+            let picked = self.rng.pick_skip_span(all_alive, enemy_skip_indices);
             let Some(picked) = picked else {
                 return PreparedTargetList::new();
             };

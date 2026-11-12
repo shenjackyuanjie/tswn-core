@@ -98,7 +98,7 @@ impl Ds4State {
 }
 
 impl OpenboxApp {
-    pub(crate) fn ds4_workflow_ui(&mut self, ui: &mut egui::Ui) {
+    pub fn ds4_workflow_ui(&mut self, ui: &mut egui::Ui) {
         let palette = Palette::of(ui);
         let requested_help = Cell::new(None);
         colored_section(ui, "从名字到候选组合", palette.info, |ui| {
@@ -116,7 +116,7 @@ impl OpenboxApp {
         }
     }
 
-    pub(crate) fn ds4_ui(&mut self, ui: &mut egui::Ui) {
+    pub fn ds4_ui(&mut self, ui: &mut egui::Ui) {
         tool_header(ui, "DS4", "批量评分、增量配对与实战筛选", Some(&mut self.more_settings_open));
         let palette = Palette::of(ui);
         let requested_help = Cell::new(None);
@@ -258,7 +258,7 @@ impl OpenboxApp {
         }
     }
 
-    pub(crate) fn ds4_more_settings(&mut self, ui: &mut egui::Ui) {
+    pub fn ds4_more_settings(&mut self, ui: &mut egui::Ui) {
         let palette = Palette::of(ui);
         let requested_help = Cell::new(None);
         ui.horizontal(|ui| {
@@ -302,7 +302,7 @@ impl OpenboxApp {
         }
     }
 
-    pub(crate) fn start_ds4(&mut self) {
+    pub fn start_ds4(&mut self) {
         let (root, config) = match self.ds4.save() {
             Ok(value) => value,
             Err(err) => {

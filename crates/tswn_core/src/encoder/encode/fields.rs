@@ -245,6 +245,7 @@ pub(super) fn corpse_kind_id(corpse: RuntimeCorpseKind) -> i32 {
         RuntimeCorpseKind::None => 1,
         RuntimeCorpseKind::Merge => 2,
         RuntimeCorpseKind::Zombie => 3,
+        RuntimeCorpseKind::Slime => 4,
     }
 }
 

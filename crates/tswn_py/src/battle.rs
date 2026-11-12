@@ -59,11 +59,12 @@ pub(crate) fn parse_planned_skill(value: &str) -> PyResult<PlannedSkill> {
     }
 }
 
-pub(crate) fn parse_planned_action(actor: usize, skill: &str, magic_cost: Option<u8>) -> PyResult<PlannedAction> {
+pub(crate) fn parse_planned_action(actor: usize, skill: &str, magic_cost: Option<u8>, potion: u32) -> PyResult<PlannedAction> {
     Ok(PlannedAction {
         actor,
         skill: parse_planned_skill(skill)?,
         magic_cost,
+        potion,
     })
 }
 
@@ -137,7 +138,7 @@ impl PyBattleSession {
         let planned = actions
             .unwrap_or_default()
             .into_iter()
-            .map(|(actor, skill, magic_cost)| parse_planned_action(actor, &skill, magic_cost))
+            .map(|(actor, skill, magic_cost)| parse_planned_action(actor, &skill, magic_cost, 0))
             .collect::<PyResult<Vec<_>>>()?;
         let inner = if planned.is_empty() {
             BattleSession::new(raw, options).map_err(map_cli_error)?
@@ -150,7 +151,7 @@ impl PyBattleSession {
     fn queue_actions(&mut self, actions: Vec<(usize, String, Option<u8>)>) -> PyResult<()> {
         let planned = actions
             .into_iter()
-            .map(|(actor, skill, magic_cost)| parse_planned_action(actor, &skill, magic_cost))
+            .map(|(actor, skill, magic_cost)| parse_planned_action(actor, &skill, magic_cost, 0))
             .collect::<PyResult<Vec<_>>>()?;
         self.inner.queue_actions(&planned).map_err(map_cli_error)
     }

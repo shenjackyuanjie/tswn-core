@@ -42,6 +42,8 @@ pub struct BattleOptions {
     pub controlled_minions: bool,
     /// 即时对战技能倍率；外部累计概率由调用方计算，核心用于自动护符和垂死。
     pub skill_multiplier: f64,
+    /// 开局体力倍率（如 1.25 表示以 125% 体力开场）；只作用于受控队伍。
+    pub start_hp_pct: Option<f64>,
 }
 
 impl Default for BattleOptions {
@@ -59,6 +61,7 @@ impl Default for BattleOptions {
             passive_decision_mode: false,
             controlled_minions: false,
             skill_multiplier: 1.0,
+            start_hp_pct: None,
         }
     }
 }
@@ -175,6 +178,7 @@ impl ReplayState for BattlePlayerState {
     fn with_shield(&self, shield: i32) -> Self {
         Self {
             shield: if self.alive { shield.max(0) } else { 0 },
+            skills: self.skills.clone(),
             ..self.clone()
         }
     }

@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-三端方法保持一致：`initial_states()`、`current_states()`、`next_frame()`、`status()`、`stop_reason()`、`is_done()`、`is_failed()`、`is_finished()`、`is_truncated()`、`rounds_advanced()`、`frames_emitted()`、`result()`。C 通过对应 JSON / enum 输出参数提供这些状态；计数和完成标记包含在 result JSON 中。
+三端方法保持一致：`initial_states()`、`current_states()`、`next_frame()`、`status()`、`stop_reason()`、`is_done()`、`is_failed()`、`is_finished()`、`is_truncated()`、`rounds_advanced()`、`frames_emitted()`、`result()`。C 通过对应 JSON / enum 输出参数提供这些状态；计数和完成标记包含在 result JSON 中。受控会话另有 `paused_actor()`、`paused_forced_action()`、`pending_passive()`、`pending_thunder()`、`peek_magic_cost()`、`preview_targets()`、`queue_actions()`、`submit_action()`、`set_initial_hp()` 与（`cards` feature）`set_abilities()`。
 
 | 参数 | 默认值 | 语义 |
 | --- | --- | --- |
@@ -40,6 +40,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 | `include_icons` | `false` | 是否在状态中带 PNG Base64；关闭时字段为 null |
 | `include_skills` | `false` | 是否在状态中带技能熟练度；关闭时该键省略 |
 | `controlled_team` | `null` | 由外部驱动的队伍编号；设定后该队伍的本体/分身缺指令时暂停。需要 LegacyStep 调度方式，否则返回 `UNSUPPORTED_OPTION` |
+| `controlled_teams` | `[]` | 由外部驱动的多支队伍，与 `controlled_team` 合并去重；`4294967295` 表示双方本体与分身都受控 |
+| `controlled_minions` | `false` | 是否让召唤物也按玩家指令暂停；默认只含本体与分身 |
+| `allow_future_actors` | `false` | 是否允许脚本引用会话创建时还不存在的实体 ID（分身按需出牌时打开） |
+| `passive_decision_mode` | `false` | 是否在被动 hook 处暂停等待决策脚本 |
+| `passive_decisions` | `[]` | 被动触发决策脚本，按引擎触发顺序消费 |
+| `skill_multiplier` | `1.0` | 即时对战技能倍率，范围 `0.1..=100`，用于自动护符与垂死判定 |
+| `start_hp_pct` | `null` | 开局体力倍率（`1.25` = 125%），只作用于受控队伍，必须有限且为正 |
+| `team_upgrades` | `true` | 同组同 clan 初始角色强化；关闭可复现旧构建 |
 | `max_rounds` | `20_000` | Runtime `main_round()` 的调用次数上限，必须大于零 |
 
 `next_frame()` 自动吸收空 round，返回下一可见 frame，或在正常终止后返回 `None` / `null`。空 round 也消耗 `max_rounds`。`frame_index` 与 `round_index` 都从 0 开始：前者连续编号可见帧，后者记录真实推进轮次，允许跳号。空 updates 的获胜轮仍生成包含 winner row 的末帧。
@@ -67,15 +75,15 @@ Runtime error 后会话进入 sticky failure（poisoned）：`is_failed() = true
 
 ## 外部行动脚本
 
-`battle_replay_with_actions(raw, options, actions)`（WASM 同名，`actions` 为 `[actor, skill, magic_cost]` 扁平三元组数组）用调用方给出的指令替代自动技能选择：
+`battle_replay_with_actions(raw, options, actions)`（WASM/Python 同名，`actions` 为 `[actor, skill, packed]` 扁平三元组数组）用调用方给出的指令替代自动技能选择：
 
 - `actor` 是 `BattlePlayerState.id`；指令可以为任意实体排队，不必属于 `controlled_team`。
-- `skill` 在 core 是 `BuiltinActiveSkill`，WASM 用 overlay 公开编号 `0..24`，`255` 表示普通攻击。
-- `magic_cost` 为抽牌时掷好的消耗（`8..=23`）；WASM 传 `0` 表示由引擎现场掷。
+- `skill` 在 core 是 `PlannedSkill`（`Builtin` / `BasicAttack` / `MagicAttack`）；线格式用 overlay 公开编号 `0..24`，`255` 表示普通攻击。
+- `packed` 低字节是抽牌时掷好的 MP 消耗（`0` 表示由引擎现场掷，其余为 `8..=23`），高字节是药水编号（`1..=8` 属性下标加一，`9` 能量药水、`10` 体力药水）；药水不占行动。
 - 引擎自身的强制动作（潜行→背刺第二段、狂暴）优先，这期间排好的指令留到该单位的下一次行动。
 - 指令无法执行（未装备该技能、MP 不足、选不出目标）会返回 `INVALID_ARGUMENT`，不会静默改成普攻。
 
-脚本用尽后，`controlled_team` 里的本体与分身（不含幻影/使魔/丧尸）逼停回放，返回 `paused_actor` 与 `stop_reason: "paused"`；`status` 仍是 `running`、`result()` 仍为 `null`。暂停边界已经结束该回合，恢复方式是带上新指令重新调用 `battle_replay_with_actions`（而不是继续推进同一会话）。空脚本且未设 `controlled_team` 时，结果与 `battle_replay` 完全一致。
+脚本用尽后，受控队伍里的本体与分身（不含幻影/使魔/丧尸，`controlled_minions` 打开时例外）逼停回放，返回 `paused_actor` 与 `stop_reason: "paused"`；`status` 仍是 `running`、`result()` 仍为 `null`。暂停时整个回合已回滚，行动条与随机流都不被消耗；推荐用同一会话的 `submit_action(actor, skill, packed)` 补交指令后继续 `next_frame()`，也可以带上新脚本重新调用 `battle_replay_with_actions` 从头重放（结果确定）。空脚本且未设 `controlled_team` 时，结果与 `battle_replay` 完全一致。
 
 ```text
 actions = []                         → paused_actor = 0（等玩家出牌）
@@ -85,6 +93,10 @@ actions = [0, 21, 0]                 → 玩家 0 用潜行；之后再次暂停
 护盾字段中，`shield` 是当前剩余吸收量，合计普通蓄盾与 `ShieldValue`，死亡时为 0；铁壁由独立状态表达。`max_shield` 是当前护盾技能熟练度，供展示条计算比例，实际盾值可以超过它。它和 `max_hp` 都随当前模板更新，能反映吞噬等机制的变化。身份字段 `owner_id` 表示直接主人，`source_id` 表示根来源。
 
 技能熟练度默认不导出：`BattleOptions.include_skills`（WASM 选项同名）为 true 时，每个 `BattlePlayerState` 附带 `skills: Array<{ export_name, level }>`。`export_name` 与 overlay 导出的技能键一致，0 级技能不出现；同名技能只保留一项并取最高等级，分身等派生单位给的是衰减后的值。关闭时该键被省略，既有载荷和 DTO 形状不变。
+
+### 能力卡（`cards` feature）
+
+启用 `cards` 时，受控队伍可以带一组独立乘区与 MP 减耗的能力卡：`set_abilities([skill_id, cost, power, ...])` 在开局（未推进、已设受控队伍）配置，`skill_id` 是 overlay 的能力编号，`power` 用万分数（`10000` = 1.0）。能力卡只影响受控队伍，敌方与召唤物读到的是原值；`battle_replay_forced` 等旧入口在关闭 feature 时整体不存在。
 
 调用方应保持 canonical snapshots 不变。昵称、图标 CSS 类、播放计划、检查点都是显示层数据。Python/WASM 的快照脱离会话持有的 Rust 内存，修改返回对象不会修改 Runtime。
 
@@ -112,6 +124,8 @@ assert session.next_frame() is None
 
 `battle_replay(raw, eval_rq=None, include_icons=False, max_rounds=None)` 返回 `BattleReplay` TypedDict。旧 Advanced tick 类型单独保留，不用于正式 battle DTO。
 
+`BattleSession` 另有 `queue_actions([(actor, skill, magic_cost), ...])`、`submit_action(actor, skill, packed_mp)`、`paused_actor()`、`paused_forced_action()`、`peek_magic_cost()`、`preview_targets(actor, skill)`、`pending_passive()` 与 `drain_frames(start_frame)`；后者按需批量取走尾帧，避免逐帧往返。
+
 ## WASM
 
 初始化生成的 wasm-bindgen 模块后：
@@ -133,6 +147,8 @@ try {
 ```
 
 WASM 对象 handle 必须显式 `free()`。网页 source 在复制 terminal result、abort、重开或错误时释放，不依赖 GC。旧 `FightSession.run_to_end(limit)` 的 limit 只限制本次收集的帧数；未终止时可以继续调用，终止判断使用 `is_done()`。
+
+受控与脚本入口还提供 `battle_replay_with_actions(raw, actions, options)`（旧名 `battle_replay_forced`，签名相同）与 `forced_hits()` / `forced_taken()` 诊断计数。`actions` 是与 core 相同的 `[actor, skill, packed]` 扁平三元组数组。
 
 ## C ABI 4
 
