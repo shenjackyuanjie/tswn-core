@@ -1,6 +1,6 @@
 # 技能衰减机制
 
-对局中，以下 5 个主动技能在使用后会发生**熟练度衰减**（即技能等级下降）：
+对局中，以下 5 个主动技能在使用后会发生**熟练度衰减**（即技能等级下降）；被动技能护身符在死亡触发时同样会衰减，见第 6 节。
 
 | #   | 技能                     | ID  | 衰减方式                            |
 | --- | ------------------------ | --- | ----------------------------------- |
@@ -181,6 +181,24 @@ new_level = max(ceil(level * 3 / 4), 1)    // 向上取整，最低为 1
 
 ---
 
+## 6. 护身符（ReraiseSkill, ID = 28）：被动触发的半衰
+
+护身符不占主动行动：持有者死亡时由死亡 hook 按 `roll_automatic_skill(level, 128)` 判定是否触发，成功后以 `r16()` 得到的体力复活，同时把该技能等级改成 `ceil(level / 2)`（[run_reraise_die_skill](../../crates/tswn_core/src/runtime/profile/hooks.rs#L86-L113)、[reraise_owner](../../crates/tswn_core/src/runtime/effect/skill_context.rs#L245-L264)）。
+
+```text
+触发成功: new_level = ceil(level / 2)
+```
+
+| 原等级 | 衰减后 |
+| ------ | ------ |
+| 1      | 1      |
+| 2      | 1      |
+| 3      | 2      |
+| 4      | 2      |
+| 5      | 3      |
+
+判定失败时既不复活也不改变等级；它与苏生术的“主动使用后半衰”是两条独立路径。
+
 ## 汇总
 
 | 技能         | ID  | 衰减类型 | 衰减门槛  | 公式                                          |
@@ -191,6 +209,7 @@ new_level = max(ceil(level * 3 / 4), 1)    // 向上取整，最低为 1
 | 分身（本体）   | 23  | 随机     | 每次使用  | `ceil(level * rand[64,127] / 128)` + 条件减半 |
 | 分身（克隆体） | 23  | 开根号   | 创建时    | `ceil(sqrt(owner_level))`                     |
 | 幻术         | 24  | 等比     | level ≥ 4 | `ceil(level * 3 / 4)`, 最低 1                 |
+| 护身符（被动） | 28  | 半衰     | 死亡触发  | `ceil(level / 2)`                             |
 
 这些衰减机制解释了为什么在高技能等级下某些技能的实际发动次数会受限——每次使用后熟练度下降，可能导致后续回合不再满足发动条件。
 
@@ -198,5 +217,6 @@ new_level = max(ceil(level * 3 / 4), 1)    // 向上取整，最低为 1
 
 - 生命之轮与分身：[skills_control.rs](../../crates/tswn_core/src/runtime/combat/skills_control.rs)，分别为 `drain_plain_exchange_skill_into` 与 `drain_plain_clone_skill_into`。
 - 治愈魔法：[skills_team.rs](../../crates/tswn_core/src/runtime/combat/skills_team.rs)，`drain_plain_heal_skill_into` 在当前等级大于 8 时减 1。
-- 苏生术与幻术：[skills_lifecycle.rs](../../crates/tswn_core/src/runtime/combat/skills_lifecycle.rs)，幻术使用整数 `saturating_mul(3).div_ceil(4).max(1)`。
+- 苏生术与幻术：[skills_lifecycle.rs](../../crates/tswn_core/src/runtime/combat/skills_lifecycle.rs)，苏生术为 `(current_level + 1) >> 1`，幻术使用整数 `saturating_mul(3).div_ceil(4).max(1)`。
+- 护身符：[profile/hooks.rs](../../crates/tswn_core/src/runtime/profile/hooks.rs) 的 `run_reraise_die_skill` 调用 [effect/skill_context.rs](../../crates/tswn_core/src/runtime/effect/skill_context.rs) 的 `reraise_owner`，其中 `set_level_at(fixed_lane, current_level.div_ceil(2))`。
 - 分身技能基底与 boost 重建：[entity/tests.rs](../../crates/tswn_core/src/runtime/entity/tests.rs#L234)、[plain_clone_skill_tests.rs](../../crates/tswn_core/src/runtime/tests/plain_clone_skill_tests.rs)。

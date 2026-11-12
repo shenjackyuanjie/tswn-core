@@ -2,13 +2,13 @@
 
 [返回机制索引](README.md)
 
-分身（普通技能 ID 23）创建的是一个重新派生属性与技能的新 Runtime 实体，不是本体的镜像。当前入口为 [drain_plain_clone_skill_into](../../crates/tswn_core/src/runtime/combat/skills_control.rs#L226-L440)，构造数据保存在 `CloneBuildData` 中。
+分身（普通技能 ID 23）创建的是一个重新派生属性与技能的新 Runtime 实体，不是本体的镜像。当前入口为 [drain_plain_clone_skill_into](../../crates/tswn_core/src/runtime/combat/skills_control.rs#L231-L443)，构造数据保存在 `CloneBuildData` 中。
 
 ## 1. 本体与克隆体的属性
 
 ### 本体
 
-只有本体未处于蓄力状态（`at_boost_millionths < 3_000_000`）时，才执行这一步属性衰减：
+只有本体未处于蓄力状态（`runtime.charge.active` 为 false）时，才执行这一步属性衰减：
 
 | 项目 | 当前行为 |
 | --- | --- |
@@ -17,9 +17,9 @@
 | 原始七围 | 各项 `ceil(raw_attr * CLONE_ATTR_DECAY)` |
 | 派生战斗属性 | 从衰减后的构造值重新计算名字系数缩放、速度 +160 和保存的属性修正 |
 | MP | 这个分身处理步骤不重新初始化本体 MP |
-| 技能 | 分身技能自身衰减；其他技能保留本体的当前等级 |
+| 技能 | 分身技能自身按第 2 节衰减；其余技能按第 3 节的基底截断＋加成重放重建 |
 
-`CLONE_ATTR_DECAY` 保留旧实现 f32 常量转为 f64 后的值，约为 `0.7799999713897705`。因此“七围 ×0.78”只是便于理解的近似，不能直接对展示出的攻击、速度等数值乘 0.78。精确操作见 [CloneBuildData::decay_owner / derive_stats](../../crates/tswn_core/src/runtime/entity.rs#L149-L201)。蓄力状态跳过本体 HP 与原始八围衰减，但不跳过后面的分身技能等级处理。
+`CLONE_ATTR_DECAY` 保留旧实现 f32 常量转为 f64 后的值，约为 `0.7799999713897705`。因此“七围 ×0.78”只是便于理解的近似，不能直接对展示出的攻击、速度等数值乘 0.78。精确操作见 [CloneBuildData::decay_owner / derive_stats](../../crates/tswn_core/src/runtime/entity.rs#L162-L214)。蓄力状态跳过本体 HP 与原始八围衰减，但不跳过后面的分身技能等级处理。
 
 ### 克隆体
 
@@ -33,7 +33,7 @@
 | 行动点 | 随机初始化为 `r255() * 4 + 256` |
 | 召唤物蓝图 | 继承已准备好的 shadow / summon / zombie 模板 |
 
-属性派生见 [CloneBuildData::child](../../crates/tswn_core/src/runtime/entity.rs#L156-L164)，实体初始化见 [skills_control.rs](../../crates/tswn_core/src/runtime/combat/skills_control.rs#L378-L439)。当前模型没有旧 `Player::init_values()` 调用，MP 规则直接写在 Runtime 构造链中。
+属性派生见 [CloneBuildData::child](../../crates/tswn_core/src/runtime/entity.rs#L169-L177)，实体初始化见 [skills_control.rs](../../crates/tswn_core/src/runtime/combat/skills_control.rs#L380-L443)。当前模型没有旧 `Player::init_values()` 调用，MP 规则直接写在 Runtime 构造链中。
 
 ## 2. 分身技能自身的衰减
 
@@ -52,7 +52,7 @@ child_clone_level = max(ceil(sqrt(owner_level)), 1)
 
 ## 3. 其他技能：基底截断后重放加成
 
-当前普通 / DIY 路径使用 [SkillLoadout::rebuilt_for_clone](../../crates/tswn_core/src/runtime/entity/skill_loadout.rs#L501-L518)：复制技能布局和构造元数据，以本体当前等级截断保存的加成前构造等级，再重放 `SkillBoost`。
+当前普通 / DIY 路径使用 [SkillLoadout::rebuilt_for_clone](../../crates/tswn_core/src/runtime/entity/skill_loadout.rs#L508-L517)：复制技能布局和构造元数据，以本体当前等级截断保存的加成前构造等级，再重放 `SkillBoost`。
 
 ```text
 base = min(build_level, owner_current_level)
@@ -89,7 +89,7 @@ SlotBoost       : child_level = base + min(saved_boost, base)
 
 ### 3.3 score profile 的特殊路径
 
-数字 score profile 如果带有 `ScoreCloneSkillBoostPlan`，会使用 [rebuilt_for_score_clone](../../crates/tswn_core/src/runtime/entity/skill_loadout.rs#L520-L555)：先截断等级、恢复初始 boosted 标记，再按当前可用主动技能顺序选择末尾加成并重放座位加成。它与普通路径的“按已保存 boost 类型重放”不同，目的是保留评分 profile 的历史行为。
+数字 score profile 如果带有 `ScoreCloneSkillBoostPlan`，会使用 [rebuilt_for_score_clone](../../crates/tswn_core/src/runtime/entity/skill_loadout.rs#L527-L534)：先截断等级、恢复初始 boosted 标记，再按当前可用主动技能顺序选择末尾加成并重放座位加成。它与普通路径的“按已保存 boost 类型重放”不同，目的是保留评分 profile 的历史行为。
 
 ## 4. 对 DIY 拟合与往返验证的影响
 
