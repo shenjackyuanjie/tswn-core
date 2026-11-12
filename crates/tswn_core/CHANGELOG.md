@@ -12,6 +12,10 @@
 - 新增卡牌强制行动与受控会话子系统：`BattleSession` 可按玩家指令驱动指定队伍，缺指令时暂停（`paused_actor`）并可 `submit_action` 续行，`set_initial_hp` 在大逃杀开局注入当前 HP；`forced_action` 提供指令解码、药水生效与回退记录，`battle_replay` 接受同一批指令重放。
 - 合入 `fix/Rinick-feature` 的两处修正，收进默认关闭的 feature，默认构建与 golden 基线不变：`hide_berserk_compat`（隐匿的 pre-action 不再置 `clear_forced_action`，修「带隐匿 + 狂暴 → 狂暴永久挂身」）与 `curse_caster_charge`（诅咒蓄力加成按施法者判定）；开启后 `runtime-corpus` 分别有 14 / 1 条预期差异，见 [评审文档](../../docs/reviews/2026-10-fix-rinick-feature.md)。
 - 新增 `MergePolicy::FixedLaneHalfResources`：bed2 召唤物合并时只获得目标一半的 MP 差值与行动点，默认 custom 导入配置的 `custom.bed2-summon` 使用该策略；其它策略保持全量转移，编码侧 merge policy 补值 4。来源 `custom@1181956b`（原作者 1cy3ish）。
+- 受控会话与强制行动子系统在合入 `instant` 开发线后统一暂停/续行实现：`BattleSession::new_with_actions` / `queue_actions` 预排与追加指令，`paused_forced_action` 暴露强制行动暂停原因，`peek_magic_cost` / `preview_targets` 预览主动技 MP 消耗与合法目标，`battle_replay_with_actions` 按同一批指令重放；指令队列、暂停标记与药水状态集中在 `CombatRuntime::control`，`advance_round` 留检查点、缺指令时整回合回滚，`submit_action` 后重放同一行动而不重复消耗行动条与随机流。
+- 指令线格式统一为 `[actor, skill, packed]`：`skill` 用 overlay 公开编号（`255` 为普攻），`packed` 低字节是 MP 消耗、高字节是药水编号；解码、公开编号表与严格校验集中在 `runtime::control`。
+- 被动决策暂停与多受控队伍：`passive_decisions` / `passive_decision_mode` 让反击、闪避等被动点触发时暂停等待外部裁定；`controlled_teams` / `controlled_minions` / `allow_future_actors` 支持接管多支队伍与召唤物并预读主动技 MP。
+- `BattleSession` 新增 `team_upgrades` 开关（默认开启）：关闭后跳过初始同组同 clan 强化，不改变名字系数、分组、排序与派生单位规则。
 
 ### 能力卡（`cards` feature，默认关闭）
 
@@ -31,7 +35,7 @@
 - 模型技能导出表从42项扩展到47项，追加S11、死亡笔记、玄月反击及两项Rinick技能；原编号不重排，编号空间上限仍为50、state schema版本仍为1。
 - 目前只有部分特殊武器能从公开入口完整运行：S11、死亡笔记、玄月、Rinick 的 handler 未接通，会返回 `NotReady`；Rinick 的场前模板复制也有遗漏。已知范围见[无武器路径简报](../../docs/perf/reports/performance-branch-2026-10-29.md#验证与上游缺口)。
 
-### 性能与 API（当前性能分支，尚未合入 main）
+### 性能与 API（随 `perf/ffa-profile-20261027` 合入 main）
 
 - 世界存活阵营/roster 数量使用派生缓存；跳过空伤害阶段 hook 计划，选敌排除信息改用标量区间，RC4 小范围取余保留原随机流消费规则。
 - 多画像评分构建仅在超过四个 profile 时按四个一组执行交错 KSA；补充多名字、跨十进制边界及重复轮次回归，不改变 `namer-pf` 输出契约。
@@ -56,6 +60,7 @@
 - 关闭 `png_render` 时仍可编译并使用战斗/模型会话；展示会话请求图标时返回 `UNSUPPORTED_OPTION`，不生成占位图。
 
 - 百分比体力损失消息（如瘟疫的 `[1]体力减少[2]%`）正确归类为 `Damage`，恢复结构化回放中的 HP 条；血量变化继续采用 `score` 的实际伤害，文本百分比 `param` 仅用于显示。
+- 修正命中判定的取值时机，对齐合并前的默认语义（`runtime/combat` 的攻击、生命周期与回合结算路径）。
 
 - `tswn-cli bench pair` 与 `cli_api::pair_rate` / `pair_rate_factored`：队友改为和选手一样按“逐个成员单独构建”
   冻结成 `+ol` 后再组队。此前只冻结选手，同公会（`@队名` 相同）的队友会单方面吃到组队加成，

@@ -6,6 +6,7 @@
 
 - `BattleSession` 新增关键字参数 `team_upgrades=True`，可关闭初始同组同 clan 强化，
   不改变名字系数、分组、排序或派生单位规则，旧代码默认行为不变。
+- `BattleSession` 与 `cli_api` 会话入口新增外部驱动能力：`new_with_actions` / `queue_actions` 预排与追加指令，`drain_frames` 按需批量导出回放尾帧；`controlled_teams` / `allow_future_actors` / `controlled_minions` 支持接管多支队伍与召唤物并预读主动技 MP，`passive_decisions` / `passive_decision_mode` 让反击、闪避等被动点触发时暂停等待外部裁定。默认参数下行为与旧版一致。
 
 ### 依赖更新
 
@@ -22,10 +23,6 @@
 - 新增 `no_debug` / `mimalloc_alloc` 转发 feature；`build_dist.py` 默认
   `--release --features "no_debug,mimalloc_alloc"`，统一线上编译口径。
   `Cargo.toml` 的 `tswn_core` 依赖仍固定启用这两个 feature。
-
-### 历史验证说明
-
-- `cargo check -p tswn_py --all-targets` 在临时关闭 mimalloc 的配置下通过（本机 `libmimalloc-sys` 报 `D8050` 环境故障）；默认构建仍启用 mimalloc，后续维护验证见[工作区更新日志](../../CHANGELOG.md)。
 
 ## [0.5.4] - 2026-09-30
 

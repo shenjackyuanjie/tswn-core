@@ -1,10 +1,15 @@
 # 更新日志
 
-## [Unreleased]
+## [Unreleased] - 0.5.13
 
 ### 新增
 
 - 新增 `cards` feature（默认关闭），转发 `tswn_core/cards`。开启后 `BattleSession.set_abilities(packet)` 可用：三元组为技能编号、减耗量、倍率万分数，让能力卡的独立乘区与减耗生效；关闭时该方法不参与编译，生成的 `.d.ts` 也不含 `set_abilities`。
+- 导出强制回放与受控会话接口：新增 `battle_replay_forced`（非法三元组在推进前返回 `INVALID_ARGUMENT`）、`forced_hits` / `forced_taken`；`BattleSession` 增加 `set_initial_hp` / `paused_actor` / `submit_action`；JS options 与 `.d.ts` 同步 `controlled_team` / `start_hp_pct`、暂停与技能字段，`BattleStopReason` 增加 `paused`、`BattlePlayerState` 增加 `skills`。
+
+### 修复
+
+- 角色展示统一改用原名加全局实体 ID，召唤单位支持显式 `display_label`，避免重复编号与误删合法昵称；角色栏、日志、详情与结算展示保持一致。
 
 ## [0.5.12] - 2026-10-17
 
