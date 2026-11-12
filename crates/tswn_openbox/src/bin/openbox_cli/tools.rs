@@ -26,6 +26,7 @@ pub(super) fn run(job: Job, tx: SyncSender<ProgressEvent>, cancel: Arc<AtomicBoo
         Job::Pair(plan) => backend::run_pair(pair_input(plan, cancel), send),
         // to-diy / base 是同步接口，由 main 直接执行，不会走到这里。
         Job::ToDiy(_) => send(ProgressEvent::Done(Err("to-diy 不应经此路径执行".to_string()))),
+        Job::Filter(_) => send(ProgressEvent::Done(Err("filter 不应经此路径执行".to_string()))),
         Job::Base(_) => send(ProgressEvent::Done(Err("base 不应经此路径执行".to_string()))),
     }
 }

@@ -19,7 +19,7 @@ use tswn_openbox::presets::{TargetPresetState, TeammatePresetState};
 
 use super::input::{
     cli_error, decode_raw, parse_metric_spec, parse_non_negative_f64, parse_percent_0_100, parse_thread_count,
-    parse_wr_precision, read_file,
+    parse_wr_precision, read_file, read_filter_file,
 };
 use super::plan::{MetricSpec, SkillBoardPlan};
 
@@ -149,6 +149,30 @@ pub(super) enum Command {
     ///   openbox-cli base -r "mario@team"
     #[command(name = "base", verbatim_doc_comment)]
     Base(BaseArgs),
+
+    /// 按技能熟练度和属性筛选文件中的名字，所有条件同时满足。
+    ///
+    /// 使用 --skill-sklfire 60 或 --addr-def 90 设置下限；负数表示小于其绝对值。
+    /// --skills-sklfire 32 按主动技能的等效熟练度筛选，也可缩写为 --skills-fi 32。
+    /// 等效熟练度 = 128 × 实际发动概率；按发动顺序计算前面主动技能均未发动的概率。
+    /// 例如冰冻64、火球64、雷击128的等效熟练度依次为64、32、32；被动技能不参与。
+    /// 以 skl 开头时精确匹配技能名；其余名称按前缀匹配，如 --skill-fi 匹配火球。
+    /// 前缀必须唯一；char 同时匹配魅惑和蓄力会报错，可使用 charm 或 charge。
+    /// 技能参数（每项前加 --skill-）：
+    ///   sklfire 火球       sklice 冰冻       sklthunder 雷击    sklquake 地裂
+    ///   sklabsorb 吸血     sklpoison 投毒     sklrapid 连击      sklcritical 会心
+    ///   sklhalf 瘟疫       sklexchange 命轮   sklberserk 狂暴    sklcharm 魅惑
+    ///   sklhaste 加速      sklslow 减速       sklcurse 诅咒      sklheal 治愈
+    ///   sklrevive 苏生     skldisperse 净化   skliron 铁壁       sklcharge 蓄力
+    ///   sklaccumulate 聚气 sklassassinate 潜行 sklsummon 血祭    sklclone 分身
+    ///   sklshadow 幻术     skldefend 防御     sklprotect 守护    sklreflect 反弹
+    ///   sklreraise 护符    sklshield 护盾     sklcounter 反击    sklmerge 吞噬
+    ///   sklzombie 召灵     sklupgrade 垂死    sklhide 隐匿       sklnone 空技能
+    ///
+    /// 属性名为 atk、def、spd、agi、mag、res、int、hp、all7、all8。
+    /// 例：openbox-cli filter -f names.txt -o result.txt --skill-sklfire 60 --addr-def -90
+    #[command(name = "filter", verbatim_doc_comment)]
+    Filter(FilterArgs),
 }
 
 /// 四个工具共用的基准参数（对齐 GUI 的公共设置区）。
@@ -208,6 +232,21 @@ pub(super) struct ToDiyArgs {
     /// `-f/--file` 批量模式本来就不输出详情。
     #[arg(long = "no-details")]
     no_details: bool,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct FilterArgs {
+    /// 每行一个名字的 UTF-8 文件。
+    #[arg(short = 'f', long = "file")]
+    file: PathBuf,
+    /// 跳过非 UTF-8 行并报告数量；默认遇到此类行时报告行号并退出。
+    #[arg(long)]
+    skip_invalid_utf8: bool,
+    /// 输出文件，覆盖已有内容。
+    #[arg(short = 'o', long = "output")]
+    output: PathBuf,
+    #[arg(long = "condition", hide = true, action = clap::ArgAction::Append)]
+    conditions: Vec<String>,
 }
 
 #[derive(Debug, Args)]
@@ -496,9 +535,39 @@ impl BenchOptions {
 }
 
 /// 解析命令行并归一化为执行计划（含预设解析与文件读取）。
-pub(super) fn parse() -> Result<Cli, clap::Error> {
-    let cli = Cli::try_parse()?;
-    Ok(cli)
+pub(super) fn parse() -> Result<Cli, clap::Error> { parse_from(std::env::args_os()) }
+
+fn parse_from<I, T>(args: I) -> Result<Cli, clap::Error>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString>,
+{
+    let mut input = args.into_iter().map(Into::into).peekable();
+    let mut rewritten = Vec::new();
+    let mut filter = false;
+    while let Some(arg) = input.next() {
+        if arg == "filter" && rewritten.len() == 1 {
+            filter = true;
+        }
+        if filter {
+            if let Some(text) = arg.to_str() {
+                if text.starts_with("--skill-") || text.starts_with("--skills-") || text.starts_with("--addr-") {
+                    let (name, value) = match text.split_once('=') {
+                        Some((name, value)) => (name.to_owned(), value.to_owned()),
+                        None => {
+                            let value = input.next().ok_or_else(|| cli_error(format!("{text} 需要阈值")))?;
+                            (text.to_owned(), value.to_string_lossy().into_owned())
+                        }
+                    };
+                    rewritten.push(std::ffi::OsString::from("--condition"));
+                    rewritten.push(std::ffi::OsString::from(format!("{}={value}", &name[2..])));
+                    continue;
+                }
+            }
+        }
+        rewritten.push(arg);
+    }
+    Cli::try_parse_from(rewritten)
 }
 
 /// 读取输入文本：`-r` 优先（还原 `\n`），其次 `-f` 文件，最后报错。
@@ -748,6 +817,22 @@ impl Cli {
                     output_file: args.out_file,
                 })
             }
+            Command::Filter(args) => {
+                let conditions = args
+                    .conditions
+                    .iter()
+                    .map(|s| super::filter::Condition::parse(s))
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(cli_error)?;
+                if conditions.is_empty() {
+                    return Err(cli_error("filter 至少需要一个筛选条件"));
+                }
+                Job::Filter(super::filter::FilterPlan {
+                    raw: read_filter_file(&args.file, args.skip_invalid_utf8)?,
+                    output: args.output,
+                    conditions,
+                })
+            }
             Command::Base(args) => {
                 let raw = read_input(args.raw.as_ref(), args.file.as_ref(), "base")?;
                 Job::Base(BasePlan { raw })
@@ -835,6 +920,7 @@ impl Cli {
 pub(super) enum Job {
     ToDiy(ToDiyPlan),
     Base(BasePlan),
+    Filter(super::filter::FilterPlan),
     NamerPf(NamerPfPlan),
     Cqd(CqdPlan),
     Pair(PairPlan),

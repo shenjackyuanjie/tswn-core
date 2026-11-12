@@ -262,3 +262,67 @@ fn cqd_target_preset_and_manual_target_conflict() {
     let err = Cli::try_parse_from(["openbox-cli", "cqd", "-l", "t.txt", "--target-preset", "1", "-p", "p.txt"]).unwrap_err();
     assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
 }
+
+#[test]
+fn filter_parses_multiple_signed_conditions() {
+    let cli = super::parse_from([
+        "openbox-cli",
+        "filter",
+        "-f",
+        "names.txt",
+        "-o",
+        "out.txt",
+        "--skill-sklfire",
+        "-60",
+        "--skills-sklice",
+        "32",
+        "--skills-thun=-16.5",
+        "--addr-def=90",
+        "--addr-all8",
+        "500.5",
+    ])
+    .unwrap();
+    let Command::Filter(args) = cli.command else {
+        panic!("应为 filter")
+    };
+    assert_eq!(
+        args.conditions,
+        [
+            "skill-sklfire=-60",
+            "skills-sklice=32",
+            "skills-thun=-16.5",
+            "addr-def=90",
+            "addr-all8=500.5"
+        ]
+    );
+    assert!(super::super::filter::Condition::parse("skill-sklunknown=60").is_err());
+    assert!(super::super::filter::Condition::parse("addr-unknown=60").is_err());
+}
+
+#[test]
+fn filter_can_explicitly_skip_invalid_utf8_lines() {
+    let path = temp_file("filter_mixed_encoding.txt", "");
+    std::fs::write(&path, b"mario\r\nbad\xff\nluigi").unwrap();
+    let make_cli = |skip| {
+        let mut argv = vec![
+            "openbox-cli",
+            "filter",
+            "-f",
+            path.to_str().unwrap(),
+            "-o",
+            "out.txt",
+            "--skill-fi",
+            "0",
+        ];
+        if skip {
+            argv.push("--skip-invalid-utf8");
+        }
+        super::parse_from(argv).unwrap()
+    };
+    assert!(make_cli(false).plan().unwrap_err().to_string().contains("第 2 行"));
+    let Job::Filter(plan) = make_cli(true).plan().unwrap() else {
+        panic!("应为 filter")
+    };
+    assert_eq!(plan.raw, "mario\r\nluigi");
+    std::fs::remove_file(path).unwrap();
+}
