@@ -306,6 +306,19 @@ Bun 脚本，用于对 tswn-md5 模块进行 profile trace。
 
 输出为 JSON，包含 `win_count` 和 `raw_data`（每轮的 round/wins）。
 
+## 性能测量与 PGO 工具
+
+下列脚本在固定输入下做同机交替 A/B，或生成 PGO 训练矩阵；都不改变默认源码构建，也不按测量结果筛选输入。测量方法、历史结果与复现口径见 [性能索引](../docs/perf/README.md)。
+
+- `generate_perf_matrix.py`：生成固定评估矩阵与独立 PGO 训练矩阵；输出目录必须不存在，不覆盖既有数据。
+- `generate_hook_perf_matrix.py`：生成与主矩阵分离的恢复轮普通/Boss 留出集。
+- `build_pgo.py`：PGO 专用构建，要求 `--input` 训练集与 `--holdout` 评估集分离；配合上面的矩阵使用，不做默认源码构建。
+- `compare_perf_runtime.py`：逐输入串行配对，记录 API 内部耗时；固定顺序，不与其他性能测试并行。
+- `benchmark_namer_pf.py` / `benchmark_namer_pf_confirm.py`：namer-pf 四项 CLI 端到端串行交替配对；`confirm` 版使用预先收窄的候选集。
+- `benchmark_maintenance.py`：以隔离的预构建产物运行维护前后同机交替 A/B，测量过程不构建或安装依赖。
+- `summarize_perf_comparison.py`：汇总严格配对的耗时并保留逐轮数值；不删离群值，不把 MAD 当置信区间。
+- `test_perf_tools.py` / `test_perf_summary.py` / `test_hook_perf_matrix.py`：上述工具的纯逻辑回归，不编译、不启动基准二进制。
+
 ## 其他差分与测量脚本
 
 - `benchmark_md5_runtime.cjs`：使用外部 `md5.js` 测量 fixed/win-rate/score/matrix；参数由脚本解析，不提供 `--help`。固定输入、线程和 `eval_rq` 后再比较，历史口径见 [四方报告](../docs/perf/reports/runtime-four-way-2026-07-15.md)。
