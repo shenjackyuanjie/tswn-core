@@ -5,6 +5,9 @@ use serde::Serialize;
 /// 面向用户的完整战斗回放选项。
 #[derive(Debug, Clone, PartialEq)]
 pub struct BattleOptions {
+    /// 主动暂停时展示行动前处理后的预览，兼容 Python 手动对战的面板与回合计数。
+    /// 默认关闭：增量卡牌会话继续展示尚未提交的回合前状态，药水等效果不会提前消失。
+    pub preview_controlled_pause: bool,
     /// 是否对初始输入角色应用同组同 clan 强化，默认开启。
     pub team_upgrades: bool,
     /// 有限的名字评估参数，默认普通 fight 口径。
@@ -49,6 +52,7 @@ pub struct BattleOptions {
 impl Default for BattleOptions {
     fn default() -> Self {
         Self {
+            preview_controlled_pause: false,
             team_upgrades: true,
             eval_rq: crate::namerena::eval_name::DEFAULT_EVAL_RQ,
             include_icons: false,

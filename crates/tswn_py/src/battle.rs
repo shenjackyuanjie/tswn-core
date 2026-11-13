@@ -22,6 +22,8 @@ pub(crate) fn options(
 ) -> BattleOptions {
     let defaults = BattleOptions::default();
     BattleOptions {
+        // Python 手动对战从 instant 继承行动前预览契约；WASM 卡牌保持默认提交边界。
+        preview_controlled_pause: true,
         eval_rq: eval_rq.unwrap_or(defaults.eval_rq),
         include_icons,
         include_skills,

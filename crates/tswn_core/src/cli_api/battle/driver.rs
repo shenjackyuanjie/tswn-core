@@ -11,6 +11,9 @@ pub(super) struct BattleDriver {
     pub forced: forced_action::ForcedState,
     /// 因缺指令暂停的实体与强制行动原因；补交指令后清空。
     pub paused: Option<(PlrId, Option<ForcedAction>)>,
+    /// 主动暂停发生时的只读预览：保留行动前护盾、行动条和随机位置供面板查询。
+    /// `runner` 仍保存回合前检查点，续行时只执行一次行动前逻辑。
+    pub paused_view: Option<RuntimeRunner>,
     pub rounds_advanced: usize,
     pub frames_emitted: usize,
     pub stop_reason: Option<BattleStopReason>,
@@ -51,6 +54,7 @@ impl BattleDriver {
             runner,
             forced: forced_action::ForcedState::default(),
             paused: None,
+            paused_view: None,
             max_rounds,
             rounds_advanced: 0,
             frames_emitted: 0,
@@ -65,6 +69,10 @@ impl BattleDriver {
         }
         self.runner.model_state()
     }
+
+    pub fn observed_runner(&self) -> &RuntimeRunner { self.paused_view.as_ref().unwrap_or(&self.runner) }
+
+    pub fn observed_runner_mut(&mut self) -> &mut RuntimeRunner { self.paused_view.as_mut().unwrap_or(&mut self.runner) }
 
     /// 推进一个 Runtime 回合。
     ///
@@ -90,7 +98,7 @@ impl BattleDriver {
         if let Some(actor) = self.runner.runtime().control.awaiting() {
             let forced = self.runner.runtime().control.awaiting_forced_action();
             if let Some(runner) = checkpoint {
-                self.runner = runner;
+                self.paused_view = Some(std::mem::replace(&mut self.runner, runner));
             }
             self.paused = Some((actor, forced));
             return Ok(None);

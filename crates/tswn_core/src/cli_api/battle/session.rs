@@ -37,6 +37,8 @@ pub struct BattleSession {
     options: BattleOptions,
     initial_states: Vec<BattlePlayerState>,
     current_states: Vec<BattlePlayerState>,
+    /// 主动暂停的面板投影；内部帧仍以前一已提交边界为起点，避免续行与整场重演不同。
+    paused_states: Option<Vec<BattlePlayerState>>,
     icon_cache: HashMap<String, String>,
     /// 受控单位逼停回放时的等待者；非暂停边界为 `None`。
     paused: Option<PlrId>,
@@ -146,6 +148,7 @@ impl BattleSession {
             driver,
             options,
             current_states: initial_states.clone(),
+            paused_states: None,
             initial_states,
             icon_cache,
             paused: None,
@@ -183,9 +186,8 @@ impl BattleSession {
 
     /// 受控单位逼停回放时返回等待指令的实体 ID；非暂停边界为 `None`。
     ///
-    /// 暂停不是终局：[`Self::result`] 仍为 `None`，`status` 仍为 running。暂停边界已经
-    /// 结束该回合，本次会话不再继续推进；调用方应把新指令并入脚本后重新创建会话
-    /// （例如再调一次 `battle_replay_with_actions`），而不是继续 `next_frame`。
+    /// 暂停不是终局：[`Self::result`] 仍为 `None`，`status` 仍为 running。
+    /// 可用 [`Self::submit_action`] 补交指令后续行，也可把新指令并入完整脚本重建会话。
     pub fn paused_actor(&self) -> Option<PlrId> { self.paused }
 
     /// 当前缺指令暂停是否仍由引擎强制行动；普通暂停、被动请求和终止/失败返回 None。
@@ -196,8 +198,6 @@ impl BattleSession {
         }
         self.paused_forced_action
     }
-
-    /// 被动 hook 等待决策时返回请求；此时会话已不可继续推进。
 
     /// 为当前暂停实体补交一条指令，并继续同一个会话。
     ///
@@ -216,6 +216,8 @@ impl BattleSession {
         self.paused = None;
         self.paused_forced_action = None;
         self.driver.paused = None;
+        self.driver.paused_view = None;
+        self.paused_states = None;
         Ok(())
     }
 
@@ -287,7 +289,7 @@ impl BattleSession {
     ///
     /// 手动对战需要在技能环上展示这一手要多少 MP，同时保证执行与预览使用同一个值。
     pub fn peek_magic_cost(&self) -> Option<u8> {
-        let mut rng = self.driver.runner.runtime().rng.clone();
+        let mut rng = self.driver.observed_runner().runtime().rng.clone();
         Some((rng.next_u8() & 15) + 8)
     }
 
@@ -296,7 +298,7 @@ impl BattleSession {
     /// 仅用于 UI 提示；真正执行仍走外部行动脚本，执行时会重新按同一口径选择目标。
     pub fn preview_targets(&mut self, actor: PlrId, skill: PlannedSkill) -> CliApiResult<Vec<PlrId>> {
         self.driver
-            .runner
+            .observed_runner_mut()
             .runtime_mut()
             .preview_planned_targets(EntityIdx(actor as u32), skill, false)
             .map_err(|error| crate::cli_api::CliApiError::InvalidArgument(error.to_string()))
@@ -311,13 +313,17 @@ impl BattleSession {
     pub fn model_state(
         &self,
     ) -> Result<crate::runtime::model_state::BattleModelState, crate::runtime::model_state::ModelStateError> {
-        self.driver.model_state()
+        if self.options.preview_controlled_pause && self.paused.is_some() {
+            self.driver.observed_runner().model_state()
+        } else {
+            self.driver.model_state()
+        }
     }
 
     /// 本会话创建时保存的初始展示快照。
     pub fn initial_states(&self) -> &[BattlePlayerState] { &self.initial_states }
     /// 最近推进边界的展示快照，适合更新角色面板。
-    pub fn current_states(&self) -> &[BattlePlayerState] { &self.current_states }
+    pub fn current_states(&self) -> &[BattlePlayerState] { self.paused_states.as_deref().unwrap_or(&self.current_states) }
     /// 正常对局状态；失败另由 [`Self::is_failed`] 表示。
     pub fn status(&self) -> BattleStatus {
         match self.driver.stop_reason {
@@ -339,8 +345,11 @@ impl BattleSession {
     pub fn is_failed(&self) -> bool { self.driver.failure.is_some() }
     pub fn is_finished(&self) -> bool { self.status() == BattleStatus::Finished }
     pub fn is_truncated(&self) -> bool { self.status() == BattleStatus::Truncated }
-    /// 实际推进的 Runtime 回合数，包含没有可见帧的回合。
-    pub fn rounds_advanced(&self) -> usize { self.driver.rounds_advanced }
+    /// 已提交的 Runtime 回合数，包含无消息回合。
+    /// `preview_controlled_pause` 开启时另计当前已进入的主动暂停回合，兼容 Python 契约。
+    pub fn rounds_advanced(&self) -> usize {
+        self.driver.rounds_advanced + usize::from(self.options.preview_controlled_pause && self.paused.is_some())
+    }
     /// 已产出的可见帧数，不等于 Runtime 回合数。
     pub fn frames_emitted(&self) -> usize { self.driver.frames_emitted }
 
@@ -392,13 +401,21 @@ impl BattleSession {
                 if let Some((actor, forced)) = self.driver.paused {
                     self.paused = Some(actor);
                     self.paused_forced_action = forced;
-                    // 回滚后仍要让面板反映回合前的真实状态（例如已存在的狂暴标签）。
+                    // 展示实际等待指令的位置；续行检查点仅用于重放，不用于面板或预览。
                     self.current_states = states_from_runner(
                         &self.driver.runner,
                         self.options.include_icons,
                         self.options.include_skills,
                         &mut self.icon_cache,
                     );
+                    if self.options.preview_controlled_pause {
+                        self.paused_states = Some(states_from_runner(
+                            self.driver.observed_runner(),
+                            self.options.include_icons,
+                            self.options.include_skills,
+                            &mut self.icon_cache,
+                        ));
+                    }
                 }
                 return Ok(None);
             };
@@ -776,6 +793,133 @@ mod tests {
     fn remove_round_actors(session: &mut BattleSession) {
         for id in session.driver.runner.all_player_ids() {
             session.driver.runner.runtime_mut().world.remove_round_actor(EntityIdx(id as u32));
+        }
+    }
+
+    // 暂停面板必须包含本次行动前已触发的护盾，不能显示回滚检查点的旧状态。
+    #[test]
+    fn controlled_pause_exposes_pre_action_shield() {
+        let raw = "left@red+ol:{\"attrs\":[60,60,90,60,90,60,90,20000],\"skills\":{\"shield\":128,\"fire\":100},\"name_factor_enabled\":false}\n\nright@blue+ol:{\"attrs\":[60,60,90,60,90,60,90,20000],\"skills\":{},\"name_factor_enabled\":false}\nseed:pause-shield@!";
+        let mut session = BattleSession::new(
+            raw,
+            BattleOptions {
+                controlled_teams: vec![0, 1],
+                preview_controlled_pause: true,
+                team_upgrades: false,
+                ..BattleOptions::default()
+            },
+        )
+        .unwrap();
+        // 让带护盾的本体先行动；验证的是公开面板，不依赖具体随机护盾数值。
+        session
+            .driver
+            .runner
+            .runtime_mut()
+            .entities
+            .get_mut(EntityIdx(0))
+            .unwrap()
+            .runtime
+            .move_state
+            .speed_points = crate::runtime::MOVE_POINT_THRESHOLD + 1;
+        while session.next_frame().unwrap().is_some() {}
+        assert_eq!(session.paused_actor(), Some(0));
+        assert!(session.current_states()[0].shield > 0, "暂停面板必须显示本次行动前生成的护盾");
+    }
+
+    // 预览消耗必须等于实际扣除，覆盖行动前 smart 掷骰导致的随机流偏移。
+    #[test]
+    fn controlled_pause_cost_matches_action_execution() {
+        for seed in 0..4 {
+            let raw = format!(
+                "left@red+ol:{{\"attrs\":[60,60,90,60,90,60,90,20000],\"skills\":{{\"fire\":100}},\"name_factor_enabled\":false}}\n\nright@blue+ol:{{\"attrs\":[60,60,90,60,90,60,90,20000],\"skills\":{{\"fire\":100}},\"name_factor_enabled\":false}}\nseed:pause-cost-{seed}@!"
+            );
+            let options = BattleOptions {
+                controlled_teams: vec![0, 1],
+                preview_controlled_pause: true,
+                team_upgrades: false,
+                ..BattleOptions::default()
+            };
+            let mut paused = BattleSession::new(&raw, options.clone()).unwrap();
+            while paused.next_frame().unwrap().is_some() {}
+            let actor = paused.paused_actor().unwrap();
+            let cost = paused.peek_magic_cost().unwrap();
+            assert_eq!(paused.peek_magic_cost(), Some(cost));
+            let action = PlannedAction {
+                actor,
+                skill: PlannedSkill::Builtin(crate::runtime::BuiltinActiveSkill::Fire),
+                magic_cost: None,
+                potion: 0,
+            };
+            let mut automatic = BattleSession::new_with_actions(&raw, options.clone(), &[action]).unwrap();
+            let mut explicit = BattleSession::new_with_actions(
+                &raw,
+                options,
+                &[PlannedAction {
+                    magic_cost: Some(cost),
+                    ..action
+                }],
+            )
+            .unwrap();
+            let frame = automatic.next_frame().unwrap().unwrap();
+            let after = frame.states.iter().find(|state| state.id == actor).unwrap().magic_point;
+            let explicit_frame = explicit.next_frame().unwrap().unwrap();
+            assert_eq!(
+                explicit_frame.states.iter().find(|state| state.id == actor).unwrap().magic_point,
+                after,
+                "预排消耗与现场消耗必须一致，seed={seed}"
+            );
+        }
+    }
+
+    // 每次等待期间反复查询预览，再原地续行，帧和下一次暂停状态必须与完整脚本重演一致。
+    #[test]
+    fn controlled_resume_matches_replay_after_preview_queries() {
+        let raw = "left@red+ol:{\"attrs\":[60,60,90,60,90,60,90,20000],\"skills\":{\"shield\":128,\"fire\":100},\"name_factor_enabled\":false}\n\nright@blue+ol:{\"attrs\":[60,60,90,60,90,60,90,20000],\"skills\":{\"shield\":128,\"fire\":100},\"name_factor_enabled\":false}\nseed:pause-resume@!";
+        let options = BattleOptions {
+            controlled_teams: vec![0, 1],
+            preview_controlled_pause: true,
+            team_upgrades: false,
+            ..BattleOptions::default()
+        };
+        let collect = |session: &mut BattleSession| {
+            let mut frames = Vec::new();
+            while let Some(frame) = session.next_frame().unwrap() {
+                frames.push(serde_json::to_value(frame).unwrap());
+            }
+            frames
+        };
+        let mut live = BattleSession::new(raw, options.clone()).unwrap();
+        let mut frames = collect(&mut live);
+        let mut actions = Vec::new();
+        for _ in 0..8 {
+            let actor = live.paused_actor().unwrap();
+            let cost = live.peek_magic_cost().unwrap();
+            let enough_mp = live.current_states().iter().find(|state| state.id == actor).unwrap().magic_point >= i32::from(cost);
+            let (skill, public_id, magic_cost) = if enough_mp {
+                (PlannedSkill::Builtin(crate::runtime::BuiltinActiveSkill::Fire), 0, Some(cost))
+            } else {
+                (PlannedSkill::BasicAttack, 255, None)
+            };
+            let state = serde_json::to_value(live.current_states()).unwrap();
+            let targets = live.preview_targets(actor, skill).unwrap();
+            assert_eq!(live.preview_targets(actor, skill).unwrap(), targets);
+            assert_eq!(live.peek_magic_cost(), Some(cost));
+            assert_eq!(serde_json::to_value(live.current_states()).unwrap(), state);
+            actions.push(PlannedAction {
+                actor,
+                skill,
+                magic_cost,
+                potion: 0,
+            });
+            live.submit_action(actor, public_id, u32::from(magic_cost.unwrap_or(0))).unwrap();
+            frames.extend(collect(&mut live));
+            let mut replay = BattleSession::new_with_actions(raw, options.clone(), &actions).unwrap();
+            assert_eq!(collect(&mut replay), frames);
+            assert_eq!(
+                serde_json::to_value(replay.current_states()).unwrap(),
+                serde_json::to_value(live.current_states()).unwrap()
+            );
+            assert_eq!(replay.paused_actor(), live.paused_actor());
         }
     }
 
