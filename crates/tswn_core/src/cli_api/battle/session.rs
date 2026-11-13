@@ -1359,7 +1359,7 @@ seed:7@!"#;
         };
         let raw = "left@red\n\nright@blue";
         for error in [
-            BattleSession::new(raw, options).unwrap_err(),
+            BattleSession::new(raw, options.clone()).unwrap_err(),
             super::super::battle_replay(raw, options).unwrap_err(),
         ] {
             assert_eq!(error.code().as_str(), "UNSUPPORTED_OPTION");
@@ -1375,7 +1375,7 @@ seed:7@!"#;
             max_rounds: 2,
             ..BattleOptions::default()
         };
-        let mut plain = BattleSession::new(raw, options).unwrap();
+        let mut plain = BattleSession::new(raw, options.clone()).unwrap();
         let mut model = super::super::BattleModelSession::new(
             raw,
             BattleOptions {
