@@ -32,9 +32,13 @@ fn run_and_expect_success(args: &[&str]) {
 fn read_bytes(path: &Path) -> Vec<u8> { fs::read(path).unwrap_or_else(|err| panic!("read {} failed: {err}", path.display())) }
 
 fn assert_same_file(actual: &Path, expected: &Path) {
+    // 配对文本沿用 CRLF 输出契约；Git 检出可能把 fixture 改成 LF。
+    // 只规范期望输入，实际输出仍按字节校验，避免改变格式时误通过。
+    let expected_bytes = String::from_utf8(read_bytes(expected)).expect("pairing fixture is UTF-8");
+    let expected_bytes = expected_bytes.replace("\r\n", "\n").replace('\n', "\r\n").into_bytes();
     assert_eq!(
         read_bytes(actual),
-        read_bytes(expected),
+        expected_bytes,
         "file mismatch:\nactual: {}\nexpected: {}",
         actual.display(),
         expected.display()
