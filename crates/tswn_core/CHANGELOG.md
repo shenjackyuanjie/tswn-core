@@ -2,6 +2,10 @@
 
 ## [Unreleased] - 0.7.1
 
+### 修复
+
+- 修复 main 合并 instant 后主动暂停面板和 MP/目标预览退回回合前检查点的问题。保留独立只读等待视图；Python 通过 `preview_controlled_pause` 保持原面板、回合计数，默认 Rust/WASM 卡牌仍采用提交边界。查询不消耗随机流，原地续行与完整脚本重演的帧保持一致。
+
 ### 新增
 
 - `RuntimePlayerSnapshot` 与 `BattlePlayerState` 新增 `shield`，合计常规蓄盾与 `ShieldValue` 的非负剩余值，使用饱和加法；死亡或 HP 不大于零时投影为零，铁壁阈值不纳入可消耗护盾。

@@ -724,10 +724,16 @@ impl CombatRuntime {
         smart: bool,
     ) -> Result<PreparedPlainAction, PlannedActionError> {
         let actor_id = actor.0 as PlrId;
+        if planned.target_team.is_some() && !Self::supports_target_team(planned.skill) {
+            return Err(PlannedActionError::NoValidTarget {
+                actor: actor_id,
+                skill: planned.skill,
+            });
+        }
         match planned.skill {
             PlannedSkill::BasicAttack => {
                 let target = self
-                    .select_plain_default_attack_target(actor, false)
+                    .select_targeted_basic(actor, planned.target_team)
                     .ok_or(PlannedActionError::NoValidTarget {
                         actor: actor_id,
                         skill: planned.skill,
@@ -746,7 +752,7 @@ impl CombatRuntime {
             }
             PlannedSkill::MagicAttack => {
                 let target = self
-                    .select_plain_default_attack_target(actor, false)
+                    .select_targeted_basic(actor, planned.target_team)
                     .ok_or(PlannedActionError::NoValidTarget {
                         actor: actor_id,
                         skill: planned.skill,
@@ -807,9 +813,9 @@ impl CombatRuntime {
                 }
                 // 目标口径与自动选择一致；smart 口径选不出目标时退到宽松口径，
                 // 避免玩家点名的技能因为 AI 过滤而变成失败。
-                let mut targets = self.select_planned_targets(actor, skill, smart);
+                let mut targets = self.select_targeted_planned_targets(actor, skill, smart, planned.target_team);
                 if targets.is_empty() {
-                    targets = self.select_planned_targets(actor, skill, false);
+                    targets = self.select_targeted_planned_targets(actor, skill, false, planned.target_team);
                 }
                 let allows_empty_targets = skill == BuiltinActiveSkill::Assassinate
                     && self.entities.get(actor).is_some_and(|entity| entity.runtime.assassinate.is_some());
@@ -827,6 +833,74 @@ impl CombatRuntime {
                     targets,
                 }))
             }
+        }
+    }
+
+    /// 只有主动敌对技能接受席位索敌；辅助、自身及强制动作不改变目标规则。
+    pub fn supports_target_team(skill: PlannedSkill) -> bool {
+        !matches!(
+            skill,
+            PlannedSkill::Builtin(
+                BuiltinActiveSkill::Heal
+                    | BuiltinActiveSkill::Revive
+                    | BuiltinActiveSkill::Haste
+                    | BuiltinActiveSkill::Iron
+                    | BuiltinActiveSkill::Charge
+                    | BuiltinActiveSkill::Accumulate
+                    | BuiltinActiveSkill::Summon
+                    | BuiltinActiveSkill::Clone
+                    | BuiltinActiveSkill::Shadow
+            )
+        )
+    }
+
+    fn select_targeted_basic(&mut self, actor: EntityIdx, team: Option<usize>) -> Option<EntityIdx> {
+        let Some(team) = team else {
+            return self.select_plain_default_attack_target(actor, false);
+        };
+        let actor_team = self.plain_effective_team(actor);
+        if team == actor_team {
+            return None;
+        }
+        let view = self.world.targeting_duel(actor_team, team);
+        let original = std::mem::replace(&mut self.world, view);
+        let selected = self.select_plain_default_attack_target(actor, false);
+        self.world = original;
+        selected.filter(|id| self.entities.get(*id).is_some_and(|e| e.runtime.team == team))
+    }
+
+    fn select_targeted_planned_targets(
+        &mut self,
+        actor: EntityIdx,
+        skill: BuiltinActiveSkill,
+        smart: bool,
+        team: Option<usize>,
+    ) -> PreparedTargetList {
+        let Some(team) = team else {
+            return self.select_planned_targets(actor, skill, smart);
+        };
+        let actor_team = self.plain_effective_team(actor);
+        if team == actor_team {
+            return PreparedTargetList::new();
+        }
+        let view = self.world.targeting_duel(actor_team, team);
+        let original = std::mem::replace(&mut self.world, view);
+        let mut selected = self.select_planned_targets(actor, skill, smart);
+        self.world = original;
+        selected.retain(|id| self.entities.get(*id).is_some_and(|e| e.runtime.team == team));
+        let Some(first) = selected.first().copied() else {
+            return selected;
+        };
+        if matches!(skill, BuiltinActiveSkill::Quake | BuiltinActiveSkill::Rapid) {
+            // 只锁首段；后续候选仍由全场原算法抽取，不限于指定队伍。
+            let mut rest = self.select_planned_targets(actor, skill, smart);
+            let count = rest.len().max(1);
+            rest.retain(|id| *id != first);
+            rest.insert(0, first);
+            rest.truncate(count);
+            rest
+        } else {
+            selected
         }
     }
 
@@ -894,11 +968,24 @@ impl CombatRuntime {
         skill: PlannedSkill,
         smart: bool,
     ) -> Result<Vec<PlrId>, PlannedActionError> {
+        self.preview_targeted_planned_targets(actor, skill, smart, None)
+    }
+
+    pub fn preview_targeted_planned_targets(
+        &mut self,
+        actor: EntityIdx,
+        skill: PlannedSkill,
+        smart: bool,
+        target_team: Option<usize>,
+    ) -> Result<Vec<PlrId>, PlannedActionError> {
         let actor_id = actor.0 as PlrId;
+        if self.entities.get(actor).is_none() || (target_team.is_some() && !Self::supports_target_team(skill)) {
+            return Err(PlannedActionError::NoValidTarget { actor: actor_id, skill });
+        }
         let rng = self.rng.clone();
         let result = match skill {
             PlannedSkill::BasicAttack | PlannedSkill::MagicAttack => self
-                .select_plain_default_attack_target(actor, false)
+                .select_targeted_basic(actor, target_team)
                 .map(|target| vec![target.0 as PlrId])
                 .ok_or(PlannedActionError::NoValidTarget { actor: actor_id, skill }),
             PlannedSkill::Builtin(builtin) => {
@@ -908,9 +995,9 @@ impl CombatRuntime {
                         skill: builtin,
                     })
                 } else {
-                    let mut targets = self.select_planned_targets(actor, builtin, smart);
+                    let mut targets = self.select_targeted_planned_targets(actor, builtin, smart, target_team);
                     if targets.is_empty() {
-                        targets = self.select_planned_targets(actor, builtin, false);
+                        targets = self.select_targeted_planned_targets(actor, builtin, false, target_team);
                     }
                     Ok(targets.iter().map(|target| target.0 as PlrId).collect())
                 }

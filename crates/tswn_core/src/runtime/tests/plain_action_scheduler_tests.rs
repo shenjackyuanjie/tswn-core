@@ -321,6 +321,7 @@ fn paused_forced_action_distinguishes_berserk_from_pre_action_cancellation() {
 
         // basic 仍只为真正狂暴消费节奏；取消强制后必须允许真正的手动攻击。
         runtime.queue_planned_action(PlannedAction {
+            target_team: None,
             actor: 0,
             skill: PlannedSkill::BasicAttack,
             magic_cost: Some(0),
@@ -353,6 +354,7 @@ fn berserk_automatic_and_controlled_pacing_keep_full_round_and_rng_identical() {
     let mut controlled = automatic.clone();
     controlled.set_controlled_team(Some(0));
     controlled.queue_planned_action(PlannedAction {
+        target_team: None,
         actor: 0,
         skill: PlannedSkill::BasicAttack,
         magic_cost: Some(0),

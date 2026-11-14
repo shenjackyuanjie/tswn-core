@@ -33,7 +33,9 @@ fn read_bytes(path: &Path) -> Vec<u8> { fs::read(path).unwrap_or_else(|err| pani
 
 fn assert_same_file(actual: &Path, expected: &Path) {
     let actual_bytes = read_bytes(actual);
-    let expected_bytes = read_bytes(expected);
+    // 评分文本固定输出 CRLF，期望语料的检出换行不应随运行平台影响比较。
+    let expected_text = String::from_utf8(read_bytes(expected)).expect("single fixture is UTF-8");
+    let expected_bytes = expected_text.replace("\r\n", "\n").replace('\n', "\r\n").into_bytes();
     assert_eq!(
         actual_bytes,
         expected_bytes,

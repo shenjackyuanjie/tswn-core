@@ -2,6 +2,10 @@
 
 ## [Unreleased] - 0.5.5
 
+### 修复
+
+- 恢复合并 instant 前的受控暂停面板、回合计数和 MP/目标预览；自动战斗与 Python 调用签名保持不变。绑定显式开启 core 的行动前暂停视图，独立于 WASM 卡牌的提交边界契约。
+
 ### 新增
 
 - `BattleSession` 新增关键字参数 `team_upgrades=True`，可关闭初始同组同 clan 强化，

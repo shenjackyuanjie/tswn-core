@@ -22,6 +22,8 @@ pub(crate) fn options(
 ) -> BattleOptions {
     let defaults = BattleOptions::default();
     BattleOptions {
+        // Python 手动对战从 instant 继承行动前预览契约；WASM 卡牌保持默认提交边界。
+        preview_controlled_pause: true,
         eval_rq: eval_rq.unwrap_or(defaults.eval_rq),
         include_icons,
         include_skills,
@@ -61,6 +63,7 @@ pub(crate) fn parse_planned_skill(value: &str) -> PyResult<PlannedSkill> {
 
 pub(crate) fn parse_planned_action(actor: usize, skill: &str, magic_cost: Option<u8>, potion: u32) -> PyResult<PlannedAction> {
     Ok(PlannedAction {
+        target_team: None,
         actor,
         skill: parse_planned_skill(skill)?,
         magic_cost,
@@ -147,6 +150,18 @@ impl PyBattleSession {
         };
         Ok(Self { inner })
     }
+    /// 为完整脚本附加输入席位选择；必须在首次推进前调用，None 保留原规则。
+    fn set_action_target_teams(&mut self, teams: Vec<Option<usize>>) -> PyResult<()> {
+        self.inner.set_action_target_teams(&teams).map_err(map_cli_error)
+    }
+
+    /// 指定玩家席位的目标预览，不改变随机流或真实战场。
+    fn preview_targets_for_team(&mut self, actor: usize, skill: &str, team: usize) -> PyResult<Vec<usize>> {
+        self.inner
+            .preview_targets_for_team(actor, parse_planned_skill(skill)?, team)
+            .map_err(map_cli_error)
+    }
+
     /// 追加外部指令；下一次轮到对应实体时生效。
     fn queue_actions(&mut self, actions: Vec<(usize, String, Option<u8>)>) -> PyResult<()> {
         let planned = actions
@@ -198,6 +213,9 @@ impl PyBattleSession {
         }
         Ok(Some(dict.into_any().unbind()))
     }
+    /// 回避库存的只读结算回执，索引对应passive_decisions；不推进战斗。
+    fn evade_result(&self, decision_index: usize) -> Option<bool> { self.inner.evade_result(decision_index) }
+
     /// 预览指定实体使用某个技能会选中的目标 ID；不推进随机数。
     fn preview_targets(&mut self, actor: usize, skill: &str) -> PyResult<Vec<usize>> {
         let skill = parse_planned_skill(skill)?;

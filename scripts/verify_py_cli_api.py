@@ -331,8 +331,20 @@ def verify_battle_session(tswn_py: Any) -> None:
         node.name: {field.target.id for field in node.body if isinstance(field, ast.AnnAssign)}
         for node in dto_tree.body if isinstance(node, ast.ClassDef)
     }
+    optional_keys = {
+        node.name: {
+            field.target.id for field in node.body
+            if isinstance(field, ast.AnnAssign)
+            and isinstance(field.annotation, ast.Subscript)
+            and isinstance(field.annotation.value, ast.Name)
+            and field.annotation.value.id == "NotRequired"
+        }
+        for node in dto_tree.body if isinstance(node, ast.ClassDef)
+    }
     def shape(value: dict[str, Any], name: str) -> None:
-        assert_equal(set(value), dto_keys[name], f"{name} exact TypedDict keys")
+        # 可选字段（例如非受控回放省略的 paused_actor）不要求出现；必填字段与额外字段仍严格校验。
+        assert_equal((dto_keys[name] - optional_keys[name]) - set(value), set(), f"{name} missing required TypedDict keys")
+        assert_equal(set(value) - dto_keys[name], set(), f"{name} unexpected TypedDict keys")
 
     fixture_dir = ROOT / "crates" / "tswn_test" / "cases" / "runtime_stress"
     for fixture in ["1v1-0f92cb76cc37fdc5.txt", "2v2-554f4128af707167.txt",
