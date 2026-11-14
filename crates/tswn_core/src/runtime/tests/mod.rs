@@ -463,3 +463,5 @@ fn render_hp_marker_bar_show(frame: &RuntimeFrame) -> Option<RenderedShow> {
         ),
     ))
 }
+
+mod plain_target_team_tests;

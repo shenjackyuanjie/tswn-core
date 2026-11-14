@@ -157,6 +157,8 @@ pub struct PassiveRequest {
 /// 一条外部行动指令。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlannedAction {
+    /// 本次首段索敌的机制队伍；None 沿用全场自动索敌。
+    pub target_team: Option<usize>,
     /// 行动者实体 ID，与 `BattlePlayerState.id` 相同。
     pub actor: PlrId,
     /// 这一次行动使用的技能。
@@ -269,6 +271,7 @@ pub fn decode_actions(actions: &[u32]) -> Result<Vec<PlannedAction>, &'static st
             }
             let cost = triple[2] & 0xff;
             Ok(PlannedAction {
+                target_team: None,
                 actor: triple[0] as PlrId,
                 skill,
                 magic_cost: u8::try_from(cost).ok().filter(|cost| *cost > 0),
@@ -287,6 +290,9 @@ pub struct BattleControl {
     error: Option<PlannedActionError>,
     passive_decisions: Vec<PassiveDecision>,
     passive_cursor: usize,
+    /// 回避脚本索引的执行回执；无键表示仍等待该伤害批次结算。
+    evade_results: std::collections::BTreeMap<usize, bool>,
+    evade_indices: std::collections::BTreeMap<u64, usize>,
     pending_passive: Option<PassiveRequest>,
     pending_updates: Option<crate::runtime::update::RunUpdates>,
     passive_decision_mode: bool,
@@ -351,6 +357,13 @@ impl BattleControl {
         Some(self.queue.remove(index))
     }
 
+    /// 按原始脚本顺序附加席位选择；在首次推进前设置。
+    pub(crate) fn set_action_target_teams(&mut self, teams: &[Option<usize>]) {
+        for (action, team) in self.queue.iter_mut().zip(teams) {
+            action.target_team = *team;
+        }
+    }
+
     pub fn clear_queue(&mut self) { self.queue.clear(); }
 
     /// 复位到“无脚本、无受控队伍、无暂停”的初始状态；复用 runner 开始下一场时调用。
@@ -375,6 +388,8 @@ impl BattleControl {
     pub fn set_passive_decisions(&mut self, decisions: impl IntoIterator<Item = PassiveDecision>) {
         self.passive_decisions = decisions.into_iter().collect();
         self.passive_cursor = 0;
+        self.evade_results.clear();
+        self.evade_indices.clear();
     }
 
     pub fn set_passive_decision_mode(&mut self, enabled: bool) { self.passive_decision_mode = enabled; }
@@ -472,6 +487,10 @@ impl BattleControl {
     pub fn finish_damage_batch(&mut self, id: u64) -> bool {
         if self.damage_batches.last().is_some_and(|batch| batch.id == id) {
             self.damage_batches.pop();
+            if let Some(index) = self.evade_indices.remove(&id) {
+                // 反弹/守护已覆盖伤害，未执行缓存回避；网站应返还预留资格。
+                self.evade_results.insert(index, false);
+            }
             true
         } else {
             false
@@ -487,10 +506,31 @@ impl BattleControl {
     pub fn set_evade_decision(&mut self, decision: EvadeDecision) -> Option<u64> {
         let batch = self.damage_batches.last_mut()?;
         batch.set_evade(decision);
-        Some(batch.id)
+        let id = batch.id;
+        if let Some(index) = self.passive_cursor.checked_sub(1) {
+            self.evade_indices.insert(id, index);
+        }
+        Some(id)
     }
 
-    pub fn take_evade_decision(&mut self) -> Option<EvadeDecision> { self.damage_batches.last_mut()?.take_evade() }
+    pub fn take_evade_decision(&mut self) -> Option<EvadeDecision> {
+        let batch = self.damage_batches.last_mut()?;
+        let decision = batch.take_evade()?;
+        if let Some(index) = self.evade_indices.remove(&batch.id) {
+            self.evade_results
+                .insert(index, !decision.unavoidable && decision.activate && decision.success);
+        }
+        Some(decision)
+    }
+
+    /// 雷击等直接执行回避的路径，不经过预演缓存。
+    pub(crate) fn record_direct_evade_result(&mut self, success: bool) {
+        if let Some(index) = self.passive_cursor.checked_sub(1) {
+            self.evade_results.insert(index, success);
+        }
+    }
+
+    pub fn evade_result(&self, decision_index: usize) -> Option<bool> { self.evade_results.get(&decision_index).copied() }
 
     /// 记录一条指令的执行失败；会话层据此返回 `INVALID_ARGUMENT`。
     /// 记录这一回合生效的属性药水，供下一次行动前还原。
@@ -605,18 +645,21 @@ mod tests {
         let mut control = BattleControl::default();
         control.set_controlled_team(Some(0));
         control.queue(PlannedAction {
+            target_team: None,
             actor: 1,
             skill: PlannedSkill::BasicAttack,
             magic_cost: None,
             potion: 0,
         });
         control.queue(PlannedAction {
+            target_team: None,
             actor: 0,
             skill: PlannedSkill::BasicAttack,
             magic_cost: Some(12),
             potion: 0,
         });
         control.queue(PlannedAction {
+            target_team: None,
             actor: 0,
             skill: PlannedSkill::BasicAttack,
             magic_cost: None,
@@ -650,5 +693,61 @@ mod tests {
             skill: BuiltinActiveSkill::Fire,
         };
         assert_eq!(error.to_string(), "actor 2 has not equipped core.skill.fire");
+    }
+    #[test]
+    fn evade_receipts_distinguish_execution_coverage_and_nested_batches() {
+        let mut control = BattleControl::default();
+        control.set_passive_decisions((0..2).map(|actor| PassiveDecision {
+            actor,
+            skill: "evade".into(),
+            activate: true,
+            success: true,
+            target: None,
+        }));
+        let outer = control.begin_damage_batch(1, 0);
+        control.next_passive_decision().unwrap();
+        control.set_evade_decision(EvadeDecision {
+            activate: true,
+            success: true,
+            unavoidable: false,
+        });
+        assert_eq!(control.evade_result(0), None);
+        let inner = control.begin_damage_batch(0, 1);
+        control.next_passive_decision().unwrap();
+        control.set_evade_decision(EvadeDecision {
+            activate: true,
+            success: true,
+            unavoidable: false,
+        });
+        control.take_evade_decision().unwrap();
+        assert_eq!(control.evade_result(1), Some(true));
+        assert_eq!(control.evade_result(0), None);
+        control.finish_damage_batch(inner);
+        control.finish_damage_batch(outer);
+        assert_eq!(control.evade_result(0), Some(false));
+        assert_eq!(control.evade_result(1), Some(true));
+        assert_eq!(control.evade_result(99), None);
+    }
+
+    #[test]
+    fn unavoidable_evade_receipt_does_not_report_consumption() {
+        let mut control = BattleControl::default();
+        control.set_passive_decisions([PassiveDecision {
+            actor: 0,
+            skill: "evade".into(),
+            activate: true,
+            success: true,
+            target: None,
+        }]);
+        let batch = control.begin_damage_batch(1, 0);
+        control.next_passive_decision().unwrap();
+        control.set_evade_decision(EvadeDecision {
+            activate: true,
+            success: true,
+            unavoidable: true,
+        });
+        control.take_evade_decision().unwrap();
+        control.finish_damage_batch(batch);
+        assert_eq!(control.evade_result(0), Some(false));
     }
 }

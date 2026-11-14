@@ -151,6 +151,7 @@ fn precomputed_evade_is_consumed_once_and_discarded_when_covered() {
     assert!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp < protector_hp);
     assert!(!updates.updates.iter().any(|update| update.message.as_ref() == "[0][回避]了攻击"));
     assert_eq!(runtime.control.damage_batch(), None);
+    assert_eq!(runtime.control.evade_result(0), Some(false), "守护覆盖后返还预留的回避资格");
 }
 
 #[test]

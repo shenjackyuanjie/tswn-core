@@ -141,6 +141,7 @@ mod tests {
             raw,
             controlled_options(),
             &[PlannedAction {
+                target_team: None,
                 actor,
                 skill: PlannedSkill::BasicAttack,
                 magic_cost: None,
@@ -172,6 +173,7 @@ right@blue+ol:{"skills":{}}"#;
             raw,
             controlled_options(),
             &[PlannedAction {
+                target_team: None,
                 actor,
                 skill: PlannedSkill::Builtin(BuiltinActiveSkill::Summon),
                 magic_cost: Some(8),
@@ -196,6 +198,7 @@ right@blue+ol:{"skills":{}}"#;
                 raw,
                 controlled_options(),
                 &[PlannedAction {
+                    target_team: None,
                     actor,
                     skill: PlannedSkill::Builtin(BuiltinActiveSkill::Shadow),
                     magic_cost: Some(1),
@@ -228,6 +231,7 @@ right@blue+ol:{"skills":{}}"#;
             raw,
             controlled_options(),
             &[PlannedAction {
+                target_team: None,
                 actor,
                 skill: PlannedSkill::Builtin(BuiltinActiveSkill::Shadow),
                 magic_cost: Some(1),
@@ -256,6 +260,7 @@ right@blue+ol:{"skills":{}}"#;
             "left@red\n\nright@blue",
             controlled_options(),
             &[PlannedAction {
+                target_team: None,
                 actor: 99,
                 skill: PlannedSkill::BasicAttack,
                 magic_cost: None,
@@ -294,6 +299,7 @@ right@blue+ol:{"skills":{}}"#;
             raw,
             options,
             &[PlannedAction {
+                target_team: None,
                 actor,
                 skill: PlannedSkill::BasicAttack,
                 magic_cost: None,
@@ -315,6 +321,7 @@ right@blue+ol:{"skills":{}}"#;
             raw,
             controlled_options(),
             &[PlannedAction {
+                target_team: None,
                 actor,
                 skill: PlannedSkill::MagicAttack,
                 magic_cost: None,
@@ -362,6 +369,7 @@ right@blue+ol:{"skills":{}}"#;
             ..BattleOptions::default()
         };
         let action = PlannedAction {
+            target_team: None,
             actor: 99,
             skill: PlannedSkill::BasicAttack,
             magic_cost: None,
