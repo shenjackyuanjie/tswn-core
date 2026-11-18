@@ -2,6 +2,11 @@
 
 本文件记录跨 crate 的维护与兼容性变更；各 crate 的版本发布历史仍以对应 CHANGELOG 为准。
 
+## tswn_core 0.7.1 · 2026-11-19
+
+- 加快普通 1v1、2v2 的批量胜率计算。四局交错准备 RC4 初始状态，复用阵容视图，并减少少候选选敌、空 hook 和免回放战斗推进的开销。
+- 逐 seed 对照覆盖 14 组普通对局、共 458,752 局，检查胜负、回合数与随机状态。版本明细见 [核心更新日志](crates/tswn_core/CHANGELOG.md#071---2026-11-19)。
+
 ## 未发布 · 2026-11-18 补全 mimalloc 分配器与跨制品所有权说明
 
 - 明确 `mimalloc_alloc` 让库堆与调用方进程的 `malloc` / `free` 不共享：`tswn_str_t`、`tswn_bytes_t` 与各 opaque 句柄只能用创建它的那份库的 `*_free` 归还；错分配器释放会破坏堆并直接终止调用方进程，不会以 `tswn_status_t` 或 last_error 的形式失败。
@@ -45,7 +50,7 @@
 
 | 模块 | 当前版本 | 日志 |
 | --- | --- | --- |
-| `tswn_core` | 0.7.0 | [更新日志](crates/tswn_core/CHANGELOG.md) |
+| `tswn_core` | 0.7.1 | [更新日志](crates/tswn_core/CHANGELOG.md) |
 | `tswn_capi` | 0.6.3 | [更新日志](crates/tswn_capi/CHANGELOG.md) |
 | `tswn_py` | 0.5.4 | [更新日志](crates/tswn_py/CHANGELOG.md) |
 | `tswn_wasm` | 0.5.12 | [更新日志](crates/tswn_wasm/CHANGELOG.md) |

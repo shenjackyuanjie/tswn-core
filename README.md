@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-- 核心 crate `tswn_core` 已经是当前主要实现，包含玩家构建、技能系统、战斗 runner、评分/胜率、RC4、图标渲染和 CLI。
+- 核心 crate 当前版本为 `tswn_core 0.7.1`。本版加快普通 1v1、2v2 批量胜率计算，并保持逐 seed 战斗结果一致。版本明细见 [核心更新日志](crates/tswn_core/CHANGELOG.md#071---2026-11-19)。
 - CLI 已覆盖普通对战、JSONL 流式日志、runtime diff 输出、benchmark、图标导出、DIY/OL overlay 导出等常用入口。
 - 仓库内同时维护 Python、WASM、C ABI、Openbox GUI/CLI，以及 `ds4` 数据处理与 `tswn-pwp` 胜率数据集/特征编码工具。
 - 当前仍处在“行为兼容 + 差分追踪 + 性能整理”的开发状态，不是只提供稳定 SDK 的纯发布仓库。
@@ -82,7 +82,7 @@ cargo run -p tswn_core --bin tswn-cli -- fight -f input.txt
 cargo run -p tswn_core --bin tswn-cli -- fight --jsonl -f input.txt
 cargo run -p tswn_core --bin tswn-cli -- runtime diff -f input.txt
 cargo run -p tswn_core --bin tswn-cli -- to-diy -r "mario@team+fire"
-cargo run -p tswn_core --bin tswn-cli -- bench win-rate -f teams.txt -n 10000
+cargo run --release -p tswn_core --bin tswn-cli --features "no_debug,mimalloc_alloc" -- bench win-rate -f teams.txt -n 10000 --thread 8
 ```
 
 普通战斗与绑定复用 `BattleSession`，诊断和评分使用主 Runtime；CLI 不提供执行器选择器。DIY/OL、带权靶子、批量筛选、pair 和技能榜的详细参数只在 [core README](crates/tswn_core/README.md) 维护。
