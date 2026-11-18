@@ -89,14 +89,18 @@ impl CombatRuntime {
         defend_value: &mut RuntimeDefendValue,
         on_damage: PlainAttackOnDamage,
     ) {
+        let defender = self.entities.get(target).expect("runtime pre-defend target missing");
+        let skills = &defender.template.skills;
+        let protect_split = (!defender.runtime.protect_from.is_empty())
+            .then_some(defender.runtime.protect_pre_defend_skill_count)
+            .flatten();
+        if protect_split.is_none() && !skills.may_have_enabled_hook(ProcMask::PRE_DEFEND) {
+            self.drain_pre_defend_state_hooks_into(target, updates, defend_value);
+            return;
+        }
         let skill_plan = self
             .scheduler
-            .skill_hook_plan(&self.entities, &self.registry, target, ProcMask::PRE_DEFEND);
-        let protect_split = self.entities.get(target).and_then(|entity| {
-            (!entity.runtime.protect_from.is_empty())
-                .then_some(entity.runtime.protect_pre_defend_skill_count)
-                .flatten()
-        });
+            .skill_hook_plan_for_loadout(skills, &self.registry, target, ProcMask::PRE_DEFEND);
         if let Some(protect_split) = protect_split {
             let started_zero = defend_value.atp() == Some(0.0);
             let protect_split = protect_split.min(skill_plan.entries.len());
@@ -123,13 +127,25 @@ impl CombatRuntime {
             if defend_value.atp() == Some(0.0) {
                 return;
             }
-            let state_plan = self.scheduler.state_hook_plan(&self.entities, target, ProcMask::PRE_DEFEND);
-            self.drain_state_hook_plan_with_defend_value_into(&state_plan, updates, defend_value);
-            return;
+        } else {
+            self.drain_skill_hook_plan_with_defend_value_and_on_damage_into(&skill_plan, updates, defend_value, on_damage);
         }
-        self.drain_skill_hook_plan_with_defend_value_and_on_damage_into(&skill_plan, updates, defend_value, on_damage);
-        let state_plan = self.scheduler.state_hook_plan(&self.entities, target, ProcMask::PRE_DEFEND);
-        self.drain_state_hook_plan_with_defend_value_into(&state_plan, updates, defend_value);
+        self.drain_pre_defend_state_hooks_into(target, updates, defend_value);
+    }
+
+    #[inline]
+    fn drain_pre_defend_state_hooks_into(
+        &mut self,
+        target: EntityIdx,
+        updates: &mut RunUpdates,
+        defend_value: &mut RuntimeDefendValue,
+    ) {
+        // 防御技能或守护可能在执行时写入状态。
+        let defender = self.entities.get(target).expect("runtime pre-defend state target missing");
+        if defender.states.hook_mask().intersects(ProcMask::PRE_DEFEND) {
+            let plan = self.scheduler.state_hook_plan(&self.entities, target, ProcMask::PRE_DEFEND);
+            self.drain_state_hook_plan_with_defend_value_into(&plan, updates, defend_value);
+        }
     }
 
     pub fn plain_protect_level(&self, owner: EntityIdx, fallback: u32) -> u32 {
@@ -370,20 +386,24 @@ impl CombatRuntime {
             // 状态钩子可能修改自身存储（最常见的是铁甲被击破）。
             // 先记录两类计划代数和护盾存在性；只有执行确实改变计划成员时才重建，
             // 常规防御链可以沿同一份有序计划连续执行，仍以执行记录避免动态重建后重复触发。
-            let (skill_generation, state_generation, shield_active) = {
-                let entity = self
-                    .entities
-                    .get(target)
-                    .unwrap_or_else(|| panic!("runtime 防御钩子目标已消失：{}", target.0));
-                (
-                    entity.template.skills.hook_generation(),
-                    entity.states.generation(),
-                    entity.runtime.shield > 0,
-                )
-            };
+            let defender = self
+                .entities
+                .get(target)
+                .unwrap_or_else(|| panic!("runtime 防御钩子目标已消失：{}", target.0));
+            let skills = &defender.template.skills;
+            let shield_active = defender.runtime.shield > 0;
+            if boss_defend.is_none()
+                && !shield_active
+                && !defender.states.hook_mask().intersects(ProcMask::POST_DEFEND)
+                && !skills.may_have_enabled_hook(ProcMask::POST_DEFEND)
+            {
+                break;
+            }
+            let skill_generation = skills.hook_generation();
+            let state_generation = defender.states.generation();
             let skill_plan = self
                 .scheduler
-                .skill_hook_plan(&self.entities, &self.registry, target, ProcMask::POST_DEFEND);
+                .skill_hook_plan_for_loadout(skills, &self.registry, target, ProcMask::POST_DEFEND);
             let state_plan = self.scheduler.state_hook_plan(&self.entities, target, ProcMask::POST_DEFEND);
             debug_assert_eq!(state_plan.store_generation, state_generation);
             let mut entries =
@@ -625,7 +645,7 @@ impl CombatRuntime {
             .unwrap_or_else(|| panic!("unknown runtime plain legacy damage target entity: {}", target.0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
-        updates.add(RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         was_alive
             && self
@@ -672,7 +692,7 @@ impl CombatRuntime {
             .unwrap_or_else(|| panic!("unknown runtime poison target entity: {}", target.0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
-        updates.add(RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         was_alive
             && self
@@ -697,7 +717,7 @@ impl CombatRuntime {
         };
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
-        updates.add(RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         if amount > 0 {
             self.apply_disperse_hit_into(caster, target, updates);
         }

@@ -384,7 +384,13 @@ impl PreparedBattleRoster {
     }
 
     pub fn seed_state(&self, seed: &[String]) -> PreparedBattleSeed {
-        let mut state = PreparedBattleSeed {
+        let mut state = self.new_seed_state();
+        self.refill_seed_state(seed, &mut state);
+        state
+    }
+
+    pub(in crate::runtime) fn new_seed_state(&self) -> PreparedBattleSeed {
+        PreparedBattleSeed {
             input_groups: Vec::with_capacity(self.input_groups.len()),
             round_order: Vec::with_capacity(self.players.len()),
             team_roster: Vec::with_capacity(self.input_groups.len()),
@@ -396,38 +402,88 @@ impl PreparedBattleRoster {
             sort_ints: vec![0; self.players.len()],
             battle_groups: self.input_groups.clone(),
             rc4_key: String::new(),
-        };
-        self.refill_seed_state(seed, &mut state);
-        state
+        }
     }
 
     /// 原地刷新 seed 状态，供同一 worker 的连续对局复用所有小向量容量。
     pub fn refill_seed_state(&self, seed: &[String], state: &mut PreparedBattleSeed) {
-        PreparedBattleInit::refill_rc4_key_with_seed(&self.base_names_sorted, seed, &mut state.rc4_key);
+        self.refill_seed_key(seed, &mut state.rc4_key);
         let mut rng = self
             .profile_seed_rc4_prefix
             .as_ref()
             .and_then(|prefix| RC4::new_with_key_schedule_prefix(state.rc4_key.as_bytes(), prefix))
             .unwrap_or_else(|| RC4::new(state.rc4_key.as_bytes(), 1));
         rng.js_xor_str(&state.rc4_key);
+        self.refill_seed_state_with_rng(state, rng);
+    }
 
+    pub(in crate::runtime) fn refill_seed_key(&self, seed: &[String], key: &mut String) {
+        PreparedBattleInit::refill_rc4_key_with_seed(&self.base_names_sorted, seed, key);
+    }
+
+    pub(in crate::runtime) fn prepare_seed_rngs<const N: usize>(&self, keys: &[String; N]) -> [RC4; N] {
+        let key_bytes = std::array::from_fn(|i| keys[i].as_bytes());
+        let mut rngs = RC4::new_interleaved_with_key_schedule_prefix(key_bytes, self.profile_seed_rc4_prefix.as_ref());
+        RC4::mix_key_bytes_interleaved(&mut rngs, key_bytes);
+        rngs
+    }
+
+    /// 复用已完成密钥调度和密钥混入的随机状态，继续计算排序和初始移动点。
+    pub(in crate::runtime) fn refill_seed_state_with_rng(&self, state: &mut PreparedBattleSeed, mut rng: RC4) {
         state.sort_ints.clear();
         state.sort_ints.resize(self.players.len(), 0);
         for &id in &self.sorted_by_id_name {
             state.sort_ints[id] = rng.rFFFFFF() as i32;
         }
 
+        let compare = |left, right| PreparedBattleInit::cmp_player_keys(&state.sort_ints, &self.id_key_names, left, right);
         state.battle_groups.clone_from(&self.input_groups);
-        for group in &mut state.battle_groups {
-            group.sort_by(|left, right| PreparedBattleInit::cmp_player_keys(&state.sort_ints, &self.id_key_names, *left, *right));
+        state.round_order.clear();
+        if let [left, right] = state.battle_groups.as_mut_slice()
+            && left.len() == right.len()
+            && (1..=2).contains(&left.len())
+        {
+            // 两队各至多两人，先为输入组排序，再归并两段已有序的行动名单。
+            if left.len() == 2 {
+                if compare(left[0], left[1]).is_gt() {
+                    left.swap(0, 1);
+                }
+                if compare(right[0], right[1]).is_gt() {
+                    right.swap(0, 1);
+                }
+            }
+            Self::refill_entity_groups(&mut state.input_groups, &state.battle_groups);
+            if compare(state.battle_groups[0][0], state.battle_groups[1][0]).is_gt() {
+                state.battle_groups.swap(0, 1);
+            }
+            let left = &state.battle_groups[0];
+            let right = &state.battle_groups[1];
+            let order = match (left.as_slice(), right.as_slice()) {
+                (&[a], &[b]) => [a, b, a, b],
+                (&[a, b], &[c, d]) if compare(b, c).is_le() => [a, b, c, d],
+                (&[a, b], &[c, d]) if compare(b, d).is_le() => [a, c, b, d],
+                (&[a, b], &[c, d]) => [a, c, d, b],
+                _ => unreachable!("两队的席位数量一致且最多两名"),
+            };
+            state
+                .round_order
+                .extend(order[..left.len() * 2].iter().copied().map(PreparedBattleInit::entity_idx));
+        } else {
+            for group in &mut state.battle_groups {
+                group.sort_by(|&left, &right| compare(left, right));
+            }
+            Self::refill_entity_groups(&mut state.input_groups, &state.battle_groups);
+            state.battle_groups.sort_by(|left, right| match (left.first(), right.first()) {
+                (Some(&left), Some(&right)) => compare(left, right),
+                (None, Some(_)) => std::cmp::Ordering::Less,
+                (Some(_), None) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            });
+            state
+                .round_order
+                .extend(state.battle_groups.iter().flatten().copied().map(PreparedBattleInit::entity_idx));
+            state.round_order.sort_by(|left, right| compare(left.0 as usize, right.0 as usize));
         }
-        Self::refill_entity_groups(&mut state.input_groups, &state.battle_groups);
-        state.battle_groups.sort_by(|left, right| match (left.first(), right.first()) {
-            (Some(left), Some(right)) => PreparedBattleInit::cmp_player_keys(&state.sort_ints, &self.id_key_names, *left, *right),
-            (None, Some(_)) => std::cmp::Ordering::Less,
-            (Some(_), None) => std::cmp::Ordering::Greater,
-            (None, None) => std::cmp::Ordering::Equal,
-        });
 
         for group in &state.battle_groups {
             for player in group {
@@ -444,13 +500,6 @@ impl PreparedBattleRoster {
             }
         }
 
-        state.round_order.clear();
-        state
-            .round_order
-            .extend(state.battle_groups.iter().flatten().copied().map(PreparedBattleInit::entity_idx));
-        state.round_order.sort_by(|left, right| {
-            PreparedBattleInit::cmp_player_keys(&state.sort_ints, &self.id_key_names, left.0 as usize, right.0 as usize)
-        });
         state.speed_points.clear();
         state.speed_points.resize(self.players.len(), 0);
         for &player in &state.round_order {

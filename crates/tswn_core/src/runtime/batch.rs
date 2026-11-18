@@ -3,6 +3,7 @@
 //! 胜率路径复用 [`PreparedRuntimeRunner`]，每局只重建 seed 相关状态；评分路径的
 //! profile 名字每轮都会变化，因此复用 registry 配置并按轮构造 roster。两条路径都
 //! 使用不保留逐回合帧的 completion runner，避免 benchmark 热路径积累回放向量。
+//! 胜率按小批交错准备初始随机状态，再按原轮次逐场复位和推进战斗。
 //!
 //! # 轮次、分片与统计
 //!
@@ -30,6 +31,18 @@ use super::{
 
 const BATCH_PARALLEL_THRESHOLD: usize = 100;
 const BATCH_MAX_ROUNDS: usize = 100_000;
+const WIN_RATE_SEED_BATCH: usize = 4;
+
+#[derive(Default)]
+struct WinRateSeedScratch {
+    seed: String,
+    keys: [String; WIN_RATE_SEED_BATCH],
+}
+
+enum WinRateSeed<'a> {
+    Text(&'a [String]),
+    PreparedRng(&'a crate::rc4::RC4),
+}
 
 /// 一批对局的累计统计；比例以 `total` 为分母，不包含初始化失败的轮次。
 ///
@@ -98,7 +111,7 @@ pub fn runtime_groups_win_rate(
 
 /// 与 [`runtime_groups_win_rate`] 相同，但额外统计每场的 init / fight 耗时。
 ///
-/// 计时覆盖每场初始化和战斗完成路径，不包含预构建阵容、线程创建或结果合并。
+/// 计时覆盖准备 seed 批次、每场初始化和战斗完成路径，不包含预构建阵容、线程创建或结果合并。
 /// 多 worker 的时间直接求和，不等于整批的墙钟耗时；不需要计时的调用方使用普通入口。
 pub fn runtime_groups_win_rate_timed(
     groups: &[Vec<String>],
@@ -154,7 +167,7 @@ fn prepared_runtime_win_rate_with_timing<const TIMED: bool>(
     let prepared = Arc::new(prepared.clone());
     let next = Arc::new(AtomicUsize::new(0));
     // 小区间动态领取，减少逐场原子争用，同时为每个 worker 留出多次领取机会。
-    let chunk_size = n.div_ceil(workers.saturating_mul(8)).clamp(1, 32);
+    let chunk_size = n.div_ceil(workers.saturating_mul(8)).clamp(1, 128);
     let mut handles = Vec::with_capacity(workers);
     for _ in 0..workers {
         let prepared = Arc::clone(&prepared);
@@ -318,13 +331,11 @@ fn run_prepared_range<const TIMED: bool>(
     end: usize,
 ) -> Result<RuntimeBatchSummary, CustomRuntimeImportError> {
     let mut summary = RuntimeBatchSummary::default();
-    let mut seed = String::with_capacity(24);
+    let mut seed_scratch = WinRateSeedScratch::default();
     let mut runner = prepared.new_reusable_runner();
     #[cfg(feature = "effective-skill-stats")]
     super::effective_skill_stats::set_first_group(prepared.input_groups().first().map_or(&[], Vec::as_slice));
-    for round in start..end {
-        run_prepared_round::<TIMED>(prepared, &mut runner, profile_seed_for_round(&mut seed, round), &mut summary)?;
-    }
+    run_prepared_chunk::<TIMED>(prepared, &mut runner, &mut seed_scratch, start..end, &mut summary)?;
     Ok(summary)
 }
 
@@ -335,30 +346,61 @@ fn run_prepared_worker<const TIMED: bool>(
     chunk_size: usize,
 ) -> Result<RuntimeBatchSummary, RuntimeBatchError> {
     let mut summary = RuntimeBatchSummary::default();
-    let mut seed = String::with_capacity(24);
+    let mut seed_scratch = WinRateSeedScratch::default();
     let mut runner = prepared.new_reusable_runner();
     loop {
         let start = next.fetch_add(chunk_size, Ordering::Relaxed);
         if start >= end {
             break;
         }
-        for round in start..start.saturating_add(chunk_size).min(end) {
-            run_prepared_round::<TIMED>(prepared, &mut runner, profile_seed_for_round(&mut seed, round), &mut summary)?;
-        }
+        let rounds = start..start.saturating_add(chunk_size).min(end);
+        run_prepared_chunk::<TIMED>(prepared, &mut runner, &mut seed_scratch, rounds, &mut summary)?;
     }
     Ok(summary)
+}
+
+fn run_prepared_chunk<const TIMED: bool>(
+    prepared: &PreparedRuntimeRunner,
+    runner: &mut RuntimeRunner,
+    seed_scratch: &mut WinRateSeedScratch,
+    mut rounds: std::ops::Range<usize>,
+    summary: &mut RuntimeBatchSummary,
+) -> Result<(), CustomRuntimeImportError> {
+    while rounds.len() >= WIN_RATE_SEED_BATCH {
+        let init_started = TIMED.then(Stopwatch::now);
+        for (key, round) in seed_scratch.keys.iter_mut().zip(rounds.by_ref()) {
+            let seed = profile_seed_for_round(&mut seed_scratch.seed, round);
+            prepared.battle_roster.refill_seed_key(seed, key);
+        }
+        let rngs = prepared.battle_roster.prepare_seed_rngs(&seed_scratch.keys);
+        if let Some(init_started) = init_started {
+            summary.timing.init_nanos += init_started.elapsed_nanos();
+        }
+
+        for rng in &rngs {
+            run_prepared_round::<TIMED>(prepared, runner, summary, WinRateSeed::PreparedRng(rng))?;
+        }
+    }
+    for round in rounds {
+        let seed = profile_seed_for_round(&mut seed_scratch.seed, round);
+        run_prepared_round::<TIMED>(prepared, runner, summary, WinRateSeed::Text(seed))?;
+    }
+    Ok(())
 }
 
 fn run_prepared_round<const TIMED: bool>(
     prepared: &PreparedRuntimeRunner,
     runner: &mut RuntimeRunner,
-    seed: &[String],
     summary: &mut RuntimeBatchSummary,
+    seed: WinRateSeed<'_>,
 ) -> Result<(), CustomRuntimeImportError> {
     // 单场只有几微秒，逐场计时在 Windows 上是四次 QPC，占比可达 2%~3%；
     // 只有 `_timed` 入口会把 TIMED 打开，其余批量调用方完全不付这份开销。
     let init_started = TIMED.then(Stopwatch::now);
-    prepared.reset_with_seed(runner, seed)?;
+    match seed {
+        WinRateSeed::Text(seed) => prepared.reset_with_seed(runner, seed)?,
+        WinRateSeed::PreparedRng(rng) => prepared.reset_with_seed_rng(runner, rng.clone())?,
+    }
     if let Some(init_started) = init_started {
         summary.timing.init_nanos += init_started.elapsed_nanos();
     }
@@ -733,6 +775,65 @@ mod tests {
 #[cfg(test)]
 mod chunk_regressions {
     use super::*;
+
+    #[test]
+    fn win_rate_seed_batches_match_scalar_battles() {
+        let groups = [
+            vec!["Don't_Force_It #f4fMecHe1@Shabby_fish".to_owned(), "gamma@red".to_owned()],
+            vec!["涵虚不等式 PFVKEUPBU@TigerStar".to_owned(), "delta@blue".to_owned()],
+        ];
+        let config = default_custom_runtime_import_config().unwrap();
+        let prepared = PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(
+            &groups,
+            crate::namerena::eval_name::WIN_RATE_EVAL_RQ,
+            config,
+        )
+        .unwrap();
+        let mut scalar = prepared.new_reusable_runner();
+        let mut batched = prepared.new_reusable_runner();
+        let mut seed = String::new();
+        let carry = 100_000_000 - crate::runtime::PROFILE_START as usize;
+        for start in [0, 1, carry - 1] {
+            let keys = std::array::from_fn::<_, WIN_RATE_SEED_BATCH, _>(|offset| {
+                let mut key = String::new();
+                prepared
+                    .battle_roster
+                    .refill_seed_key(profile_seed_for_round(&mut seed, start + offset), &mut key);
+                key
+            });
+            let mut rngs = prepared.battle_roster.prepare_seed_rngs(&keys).into_iter();
+            let end = start + WIN_RATE_SEED_BATCH + 3;
+            let mut expected = RuntimeBatchSummary::default();
+            for round in start..end {
+                prepared.reset_with_seed(&mut scalar, profile_seed_for_round(&mut seed, round)).unwrap();
+                let batched_result = rngs.next().map(|rng| {
+                    prepared.reset_with_seed_rng(&mut batched, rng).unwrap();
+                    assert_eq!(batched.input_groups(), scalar.input_groups(), "round={round}");
+                    let expected_rng = &scalar.runtime().rng;
+                    let actual_rng = &batched.runtime().rng;
+                    assert_eq!(
+                        (actual_rng.i, actual_rng.j, actual_rng.main_val),
+                        (expected_rng.i, expected_rng.j, expected_rng.main_val),
+                        "round={round}"
+                    );
+                    batched.run_to_completion_prevalidated(BATCH_MAX_ROUNDS)
+                });
+                let result = scalar.run_to_completion_prevalidated(BATCH_MAX_ROUNDS);
+                expected.wins += usize::from(scalar.input_group_won(0));
+                expected.guard_exhausted += usize::from(result.guard_exhausted);
+                if let Some(batched_result) = batched_result {
+                    assert_eq!(batched_result, result, "round={round}");
+                    assert_eq!(batched.input_group_won(0), scalar.input_group_won(0), "round={round}");
+                }
+            }
+            let actual = prepared_runtime_win_rate_range(&prepared, start, end).unwrap();
+            assert_eq!(
+                (actual.total, actual.wins, actual.errors, actual.guard_exhausted),
+                (end - start, expected.wins, 0, expected.guard_exhausted)
+            );
+        }
+    }
+
     #[test]
     fn chunked_schedulers_preserve_counts_at_uneven_boundaries() {
         let groups = vec![vec!["alpha@red".to_owned()], vec!["beta@blue".to_owned()]];

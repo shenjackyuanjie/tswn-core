@@ -4,44 +4,69 @@ use crate::runtime::forced_action::ForcedFallback;
 /// 卡牌兼容模式的降级战报；前端按这句话判断「点名的技能没生效」。
 pub const FORCED_FALLBACK_MESSAGE: &str = "[1]的指定技能无法生效，改为普通攻击";
 
+fn round_outcome(action: Option<ActionPlan>, frame: Option<RuntimeFrame>, winner_team: Option<usize>) -> RoundOutcome {
+    RoundOutcome {
+        action,
+        frame,
+        winner_team,
+    }
+}
+
 impl CombatRuntime {
-    pub fn run_minimal_round(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture::<true>() }
+    pub fn run_minimal_round(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture::<true, _>(round_outcome) }
 
-    /// 批量胜率与评分只需要胜者，不保留 replay 帧。
-    pub(crate) fn run_minimal_round_no_capture(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture::<false>() }
+    #[cfg(test)]
+    pub(crate) fn run_minimal_round_no_capture(&mut self) -> RoundOutcome {
+        self.world.sync_winner_from_alive_views();
+        self.run_minimal_round_with_capture::<false, _>(round_outcome)
+    }
 
-    /// 将 replay 捕获策略固化为编译期常量，让批量路径消除每回合的交互模式分支。
-    fn run_minimal_round_with_capture<const CAPTURE_UPDATES: bool>(&mut self) -> RoundOutcome {
+    /// 调用方已按存活视图判胜；批量循环只接收本回合的胜者编号。
+    pub(crate) fn run_active_round_no_capture(&mut self) -> Option<usize> {
+        self.run_minimal_round_with_capture::<false, _>(|_, _, winner| winner)
+    }
+
+    fn run_minimal_round_with_capture<const CAPTURE_UPDATES: bool, O>(
+        &mut self,
+        build: impl Fn(Option<ActionPlan>, Option<RuntimeFrame>, Option<usize>) -> O,
+    ) -> O {
         loop {
-            if let Some(outcome) = self.run_minimal_round_once_with_capture::<CAPTURE_UPDATES>() {
+            if let Some(outcome) = self.run_minimal_round_once_with_capture::<CAPTURE_UPDATES, _>(&build) {
                 return outcome;
             }
         }
     }
 
-    pub fn run_minimal_round_once(&mut self) -> Option<RoundOutcome> { self.run_minimal_round_once_with_capture::<true>() }
+    pub fn run_minimal_round_once(&mut self) -> Option<RoundOutcome> {
+        self.run_minimal_round_once_with_capture::<true, _>(round_outcome)
+    }
 
-    fn run_minimal_round_once_with_capture<const CAPTURE_UPDATES: bool>(&mut self) -> Option<RoundOutcome> {
+    fn run_minimal_round_once_with_capture<const CAPTURE_UPDATES: bool, O>(
+        &mut self,
+        build: impl FnOnce(Option<ActionPlan>, Option<RuntimeFrame>, Option<usize>) -> O,
+    ) -> Option<O> {
         let winner_team = if CAPTURE_UPDATES {
             self.world.sync_winner(&self.entities)
         } else {
-            self.world.sync_winner_from_alive_views()
+            self.world.winner_team()
         };
         if let Some(winner_team) = winner_team {
-            return Some(RoundOutcome {
-                action: None,
-                frame: None,
-                winner_team: Some(winner_team),
-            });
+            return Some(build(None, None, Some(winner_team)));
         }
 
         let selected_action = self.scheduler.select_action(&mut self.world, &mut self.entities, &mut self.rng);
+        let ice_release_events = self.scheduler.take_ice_release_events();
+        if !CAPTURE_UPDATES && selected_action.is_none() && ice_release_events.is_empty() {
+            RunUpdates::skip_empty_batch();
+            self.round += 1;
+            return Some(build(None, None, None));
+        }
         let mut updates = if CAPTURE_UPDATES {
             RunUpdates::new()
         } else {
             RunUpdates::new_no_capture()
         };
-        for target in self.scheduler.take_ice_release_events() {
+        for target in ice_release_events {
             updates.add_newline();
             updates.add(RuntimeFrame::replay_update(
                 target.0 as usize,
@@ -51,7 +76,7 @@ impl CombatRuntime {
             ));
         }
         let Some(mut action) = selected_action else {
-            return Some(self.finish_round_with_capture::<CAPTURE_UPDATES>(None, updates));
+            return Some(self.finish_round_with_capture::<CAPTURE_UPDATES, _>(None, updates, build));
         };
         let legacy_plain_action = self.scheduler.uses_legacy_step_scheduler();
         self.scratch.selected_actor_round = self.round;
@@ -99,18 +124,24 @@ impl CombatRuntime {
             .then(|| self.run_plain_skill_pre_action_accumulator(action.actor))
             .unwrap_or_default();
 
-        let skill_plan = self
-            .scheduler
-            .skill_hook_plan(&self.entities, &self.registry, action.actor, ProcMask::PRE_ACTION);
-        let selected_target = if legacy_plain_action {
-            action.target
-        } else {
-            self.selected_pre_action_target(&skill_plan, action.actor, smart).unwrap_or(action.target)
+        let skills = &self.entities.get(action.actor).expect("runtime pre-action owner missing").template.skills;
+        if !legacy_plain_action || skills.may_have_enabled_hook(ProcMask::PRE_ACTION) {
+            let skill_plan =
+                self.scheduler
+                    .skill_hook_plan_for_loadout(skills, &self.registry, action.actor, ProcMask::PRE_ACTION);
+            let selected_target = if legacy_plain_action {
+                action.target
+            } else {
+                self.selected_pre_action_target(&skill_plan, action.actor, smart).unwrap_or(action.target)
+            };
+            self.drain_skill_hook_plan_with_selected_target_into(&skill_plan, &mut updates, Some(selected_target));
+        }
+        // 技能可能在行动前注册状态，执行完技能后再判断是否需要状态计划。
+        let actor = self.entities.get(action.actor).expect("runtime pre-action state owner missing");
+        let state_intercepted_action = actor.states.hook_mask().intersects(ProcMask::PRE_ACTION) && {
+            let state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::PRE_ACTION);
+            self.drain_state_hook_plan_with_action_smart_into(&state_plan, &mut updates, Some(smart))
         };
-        self.drain_skill_hook_plan_with_selected_target_into(&skill_plan, &mut updates, Some(selected_target));
-        let pre_action_state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::PRE_ACTION);
-        let state_intercepted_action =
-            self.drain_state_hook_plan_with_action_smart_into(&pre_action_state_plan, &mut updates, Some(smart));
         let mut prepared_plain_action = None;
         if legacy_plain_action && !state_intercepted_action {
             if self
@@ -121,7 +152,7 @@ impl CombatRuntime {
                 .is_frozen()
             {
                 if updates.had_updates() {
-                    return Some(self.finish_round_with_capture::<CAPTURE_UPDATES>(None, updates));
+                    return Some(self.finish_round_with_capture::<CAPTURE_UPDATES, _>(None, updates, build));
                 }
                 return None;
             }
@@ -133,36 +164,38 @@ impl CombatRuntime {
                 updates.add(RuntimeFrame::replay_update(actor as usize, actor as usize, reason, 0));
             }
             let Some(prepared) = prepared else {
-                return Some(self.finish_round_with_capture::<CAPTURE_UPDATES>(None, updates));
+                return Some(self.finish_round_with_capture::<CAPTURE_UPDATES, _>(None, updates, build));
             };
-            match &prepared {
-                PreparedPlainAction::BasicAttack { target, amount, .. } => {
-                    action.target = *target;
-                    action.amount = *amount;
-                }
-                PreparedPlainAction::ForcedAttack { target, amount } => {
-                    action.target = *target;
-                    action.amount = *amount;
-                }
-                PreparedPlainAction::Saitama { target } => {
-                    action.target = target.unwrap_or(action.actor);
-                    action.amount = 0;
-                }
-                PreparedPlainAction::Conan { targets } => {
-                    action.target = targets.first().copied().unwrap_or(action.actor);
-                    action.amount = 0;
-                }
-                PreparedPlainAction::BuiltinSkill(prepared) => {
-                    if forced_pre_action_skill {
-                        action.target = action.actor;
-                    } else {
-                        action.target = prepared.targets.first().copied().unwrap_or(action.actor);
+            if CAPTURE_UPDATES || cfg!(not(feature = "no_debug")) {
+                match &prepared {
+                    PreparedPlainAction::BasicAttack { target, amount, .. } => {
+                        action.target = *target;
+                        action.amount = *amount;
                     }
-                    action.amount = 0;
-                }
-                PreparedPlainAction::BossSkill(prepared) => {
-                    action.target = prepared.targets.first().copied().unwrap_or(action.actor);
-                    action.amount = 0;
+                    PreparedPlainAction::ForcedAttack { target, amount } => {
+                        action.target = *target;
+                        action.amount = *amount;
+                    }
+                    PreparedPlainAction::Saitama { target } => {
+                        action.target = target.unwrap_or(action.actor);
+                        action.amount = 0;
+                    }
+                    PreparedPlainAction::Conan { targets } => {
+                        action.target = targets.first().copied().unwrap_or(action.actor);
+                        action.amount = 0;
+                    }
+                    PreparedPlainAction::BuiltinSkill(prepared) => {
+                        if forced_pre_action_skill {
+                            action.target = action.actor;
+                        } else {
+                            action.target = prepared.targets.first().copied().unwrap_or(action.actor);
+                        }
+                        action.amount = 0;
+                    }
+                    PreparedPlainAction::BossSkill(prepared) => {
+                        action.target = prepared.targets.first().copied().unwrap_or(action.actor);
+                        action.amount = 0;
+                    }
                 }
             }
             prepared_plain_action = Some(prepared);
@@ -202,8 +235,8 @@ impl CombatRuntime {
         } else {
             self.drain_action_damage_phase_into(action.actor, ProcMask::PRE_DAMAGE, &mut updates);
             match prepared_plain_action.take() {
-                Some(PreparedPlainAction::BasicAttack { use_magic, .. }) => {
-                    self.drain_plain_default_attack_into(action.actor, action.target, use_magic, &mut updates);
+                Some(PreparedPlainAction::BasicAttack { target, use_magic, .. }) => {
+                    self.drain_plain_default_attack_into(action.actor, target, use_magic, &mut updates);
                 }
                 Some(PreparedPlainAction::ForcedAttack { target, .. }) => {
                     self.drain_plain_berserk_forced_attack_into(action.actor, target, &mut updates);
@@ -272,15 +305,15 @@ impl CombatRuntime {
                     .collect::<Vec<_>>(),
             );
         }
-        Some(self.finish_round_with_capture::<CAPTURE_UPDATES>(Some(action), updates))
+        Some(self.finish_round_with_capture::<CAPTURE_UPDATES, _>(Some(action), updates, build))
     }
 
     /// 空钩子不需要构造拥有型快照；缓存失效时仍走完整的注册表扫描。
     /// 技能执行完再读取状态位图，保留技能新增状态在同一阶段立即生效的顺序。
     fn drain_action_damage_phase_into(&mut self, owner: EntityIdx, hook: ProcMask, updates: &mut RunUpdates) {
         let skills = &self.entities.get(owner).expect("runtime damage phase owner missing").template.skills;
-        if !skills.cached_hook_entries(hook).is_some_and(|entries| entries.is_empty()) {
-            let plan = self.scheduler.skill_hook_plan(&self.entities, &self.registry, owner, hook);
+        if skills.may_have_enabled_hook(hook) {
+            let plan = self.scheduler.skill_hook_plan_for_loadout(skills, &self.registry, owner, hook);
             self.drain_skill_hook_plan_into(&plan, updates);
         }
         if self
@@ -297,17 +330,21 @@ impl CombatRuntime {
     }
 
     fn drain_post_action_chain_into(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
-        let mut skill_plans = self.scheduler.skill_post_action_plans(&self.entities, &self.registry, owner);
+        let actor = self.entities.get(owner).expect("runtime post-action owner missing");
+        let skills = &actor.template.skills;
+        if !skills.may_have_enabled_hook(ProcMask::POST_ACTION) && !actor.states.hook_mask().intersects(ProcMask::POST_ACTION) {
+            return;
+        }
+        let mut skill_plans = self.scheduler.skill_post_action_plans(skills, &self.registry, owner);
         self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, &skill_plans.early, updates);
-        let generation_after_early = self
+        let skills_after_early = &self
             .entities
             .get(owner)
             .unwrap_or_else(|| panic!("unknown runtime post-action owner entity: {}", owner.0))
             .template
-            .skills
-            .hook_generation();
-        if generation_after_early != skill_plans.generation {
-            skill_plans = self.scheduler.skill_post_action_plans(&self.entities, &self.registry, owner);
+            .skills;
+        if skills_after_early.hook_generation() != skill_plans.generation {
+            skill_plans = self.scheduler.skill_post_action_plans(skills_after_early, &self.registry, owner);
         }
 
         let state_plan = self.scheduler.state_hook_plan(&self.entities, owner, ProcMask::POST_ACTION);
@@ -344,33 +381,33 @@ impl CombatRuntime {
         self.flush_deferred_owner_state_clears(owner, &deferred_owner_state_clears);
 
         // Charge 以及 Haste、Slow 的尾阶段必须继续晚于状态和中途注册的 early 技能。
-        let generation_after_states = self
+        let skills_after_states = &self
             .entities
             .get(owner)
             .unwrap_or_else(|| panic!("unknown runtime post-action owner entity: {}", owner.0))
             .template
-            .skills
-            .hook_generation();
-        if generation_after_states != skill_plans.generation {
-            skill_plans = self.scheduler.skill_post_action_plans(&self.entities, &self.registry, owner);
+            .skills;
+        if skills_after_states.hook_generation() != skill_plans.generation {
+            skill_plans = self.scheduler.skill_post_action_plans(skills_after_states, &self.registry, owner);
         }
         self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, &skill_plans.late, updates);
     }
 
     pub fn finish_round(&mut self, action: Option<ActionPlan>, updates: RunUpdates) -> RoundOutcome {
         if updates.capture_updates {
-            self.finish_round_with_capture::<true>(action, updates)
+            self.finish_round_with_capture::<true, _>(action, updates, round_outcome)
         } else {
-            self.finish_round_with_capture::<false>(action, updates)
+            self.finish_round_with_capture::<false, _>(action, updates, round_outcome)
         }
     }
 
     /// 批量路径不会生成 frame，也不需要重新扫描实体表判定赢家。
-    fn finish_round_with_capture<const CAPTURE_UPDATES: bool>(
+    fn finish_round_with_capture<const CAPTURE_UPDATES: bool, O>(
         &mut self,
         action: Option<ActionPlan>,
         updates: RunUpdates,
-    ) -> RoundOutcome {
+        build: impl FnOnce(Option<ActionPlan>, Option<RuntimeFrame>, Option<usize>) -> O,
+    ) -> O {
         debug_assert_eq!(updates.capture_updates, CAPTURE_UPDATES);
         let frame = (CAPTURE_UPDATES && updates.had_updates()).then_some(RuntimeFrame { updates });
         self.round += 1;
@@ -383,11 +420,7 @@ impl CombatRuntime {
         if let (Some(trace), Some(frame)) = (&mut self.trace, &frame) {
             trace.record_frame(self.round, frame, winner_team, Some(RngCheckpoint::from_rc4(&self.rng)));
         }
-        RoundOutcome {
-            action,
-            frame,
-            winner_team,
-        }
+        build(action, frame, winner_team)
     }
 
     pub fn roll_actor_smart(&mut self, actor: EntityIdx) -> bool {
@@ -444,7 +477,7 @@ impl CombatRuntime {
         if let Some(forced_skill) = pre_action.forced_skill {
             return Some(PreparedPlainAction::BuiltinSkill(forced_skill));
         }
-        if !pre_action.clear_forced_action && self.has_plain_berserk_state(actor) {
+        if berserk_forced {
             let target = self.select_plain_berserk_forced_attack_target(smart)?;
             let amount = self
                 .entities
@@ -698,6 +731,9 @@ impl CombatRuntime {
     ///
     /// 幻影 / 使魔 / 丧尸属于召唤物，仍由引擎自动行动。
     fn is_controlled_actor(&self, actor: EntityIdx) -> bool {
+        if self.control.controlled_teams().is_empty() {
+            return false;
+        }
         let Some(entity) = self.entities.get(actor) else {
             return false;
         };

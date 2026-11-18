@@ -22,6 +22,206 @@ fn fixture() -> CombatRuntime {
     runtime
 }
 
+#[cfg(feature = "no_debug")]
+#[test]
+fn single_candidate_default_attack_preserves_target_and_rng() {
+    for (teams, actor, dead, target) in [
+        (&[0, 1][..], 0, None, 1),
+        (&[0, 1][..], 1, None, 0),
+        (&[0, 0, 1, 1][..], 0, Some(2), 3),
+        (&[0, 1][..], 0, Some(0), 1),
+    ] {
+        let players = teams
+            .iter()
+            .enumerate()
+            .map(|(id, &team)| PlayerTemplate::new(id, format!("player-{id}"), team, 1000, 3))
+            .collect();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(players));
+        if let Some(dead) = dead {
+            let dead_idx = EntityIdx(dead as u32);
+            let entity = runtime.entities.get_mut(dead_idx).unwrap();
+            entity.runtime.alive = false;
+            entity.runtime.hp = 0;
+            assert!(runtime.world.mark_dead(dead_idx, teams[dead]));
+        }
+        runtime.rng = RC4::new(b"single-candidate-default-attack", 1);
+        let alive = runtime.world.flat_alive().to_vec();
+        let skips = alive
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entity)| (teams[entity.0 as usize] == teams[actor]).then_some(index))
+            .collect::<Vec<_>>();
+        let target = EntityIdx(target);
+        let mut reference = runtime.rng.clone();
+        for smart in [false, true].into_iter().cycle().take(512) {
+            for _ in 0..if smart { 5 } else { 4 } {
+                let picked = reference.pick_skip_range(&alive, &skips).unwrap();
+                assert_eq!(alive[picked], target);
+            }
+            if !smart {
+                reference.rFFFF();
+            }
+            assert_eq!(
+                runtime.select_plain_default_attack_target(EntityIdx(actor as u32), smart),
+                Some(target)
+            );
+            assert_rng_state_eq(&runtime.rng, &reference);
+        }
+    }
+}
+
+#[cfg(feature = "no_debug")]
+#[test]
+fn two_candidate_default_attack_preserves_sampling_and_first_tie() {
+    for (actor, dead) in [(0, &[][..]), (3, &[][..]), (0, &[1][..]), (0, &[0, 1][..])] {
+        let teams = [0, 0, 1, 1];
+        let players = teams
+            .iter()
+            .enumerate()
+            .map(|(id, &team)| PlayerTemplate::new(id, format!("player-{id}"), team, 100, 3))
+            .collect();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(players));
+        for &id in dead {
+            let idx = EntityIdx(id as u32);
+            let entity = runtime.entities.get_mut(idx).unwrap();
+            entity.runtime.alive = false;
+            entity.runtime.hp = 0;
+            assert!(runtime.world.mark_dead(idx, teams[id]));
+        }
+        runtime.rng = RC4::new(b"two-candidate-default-attack", 1);
+        let alive = runtime.world.flat_alive().to_vec();
+        let skips = alive
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entity)| (teams[entity.0 as usize] == teams[actor]).then_some(index))
+            .collect::<Vec<_>>();
+        let mut reference = runtime.rng.clone();
+        for smart in [false, true].into_iter().cycle().take(512) {
+            let limit = if smart { 3 } else { 2 };
+            let mut selected = Vec::new();
+            let mut duplicates = 0;
+            while duplicates <= limit && selected.len() < limit {
+                let index = reference.pick_skip_range(&alive, &skips).unwrap();
+                if selected.contains(&alive[index]) {
+                    duplicates += 1;
+                } else {
+                    selected.push(alive[index]);
+                }
+            }
+            // 两名候选初始属性相同，聪明评分相同；普通评分比较依次读取的随机数。
+            let first = selected[0];
+            let expected = if smart {
+                first
+            } else {
+                let first_score = reference.rFFFF();
+                match selected.get(1).copied() {
+                    Some(second) if reference.rFFFF() > first_score => second,
+                    _ => first,
+                }
+            };
+            assert_eq!(
+                runtime.select_plain_default_attack_target(EntityIdx(actor as u32), smart),
+                Some(expected)
+            );
+            assert_rng_state_eq(&runtime.rng, &reference);
+        }
+    }
+}
+
+#[cfg(feature = "no_debug")]
+#[test]
+fn short_enemy_skill_selection_matches_generic_ranking_and_rng() {
+    for teams in [&[0, 1][..], &[0, 1, 1][..], &[0, 0, 1, 1][..]] {
+        let players = teams
+            .iter()
+            .enumerate()
+            .map(|(id, &team)| PlayerTemplate::new(id, format!("player-{id}"), team, 100, 3))
+            .collect();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(players));
+        runtime.rng = RC4::new(b"short-enemy-skill-selection", 1);
+        let alive = runtime.world.flat_alive().to_vec();
+        let skips = alive
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entity)| (teams[entity.0 as usize] == teams[0]).then_some(index))
+            .collect::<Vec<_>>();
+        let mut reference = runtime.rng.clone();
+        for count in 1..=6 {
+            for smart in [false, true].into_iter().cycle().take(128) {
+                let mut expected = Vec::new();
+                let mut duplicates = 0;
+                while duplicates <= count && expected.len() < count {
+                    let picked = reference.pick_skip_range(&alive, &skips).unwrap();
+                    if expected.contains(&alive[picked]) {
+                        duplicates += 1;
+                    } else {
+                        expected.push(alive[picked]);
+                    }
+                }
+                // 两个目标属性相同；聪明时保留首次命中顺序，普通时以随机评分稳定排序。
+                if !smart {
+                    let mut scored = expected.into_iter().map(|id| (id, reference.rFFFF())).collect::<Vec<_>>();
+                    scored.sort_by_key(|&(_, score)| std::cmp::Reverse(score));
+                    expected = scored.into_iter().map(|(id, _)| id).collect();
+                }
+                let actual = runtime.select_plain_default_enemy_targets_with_count(EntityIdx(0), smart, count);
+                assert_eq!(actual.as_slice(), expected, "teams={teams:?}, smart={smart}, count={count}");
+                assert_rng_state_eq(&runtime.rng, &reference);
+            }
+        }
+    }
+}
+
+#[cfg(feature = "no_debug")]
+#[test]
+fn half_skill_short_selection_preserves_invalid_draw_budget() {
+    for enemy_hp in [
+        &[160][..],
+        &[161][..],
+        &[160, 399][..],
+        &[161, 400][..],
+        &[160, 400][..],
+        &[161, 399][..],
+    ] {
+        let targets = enemy_hp
+            .iter()
+            .enumerate()
+            .map(|(i, &hp)| PlayerTemplate::new(i + 2, format!("target-{i}"), 1, hp, 3));
+        let players = std::iter::once(PlayerTemplate::new(1, "actor", 0, 100, 3)).chain(targets).collect();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(players));
+        let mut reference = runtime.clone();
+        let alive = reference.world.flat_alive().to_vec();
+        let skips = alive.iter().position(|&id| id == EntityIdx(0)).unwrap();
+        for smart in [false, true].into_iter().cycle().take(512) {
+            let limit = if smart { 3 } else { 2 };
+            let mut selected = Vec::new();
+            let mut duplicate = 0;
+            let mut invalid = 0;
+            while duplicate <= limit && invalid <= 2 * limit && selected.len() < limit {
+                let index = reference.rng.pick_skip_range(&alive, &[skips]).unwrap();
+                let id = alive[index];
+                let hp = reference.entities.get(id).unwrap().runtime.hp;
+                if smart && (hp <= 160 || hp >= 400) {
+                    invalid += 1;
+                } else if selected.contains(&id) {
+                    duplicate += 1;
+                } else {
+                    selected.push(id);
+                }
+            }
+            let mut ranked = selected
+                .into_iter()
+                .map(|id| (id, reference.score_plain_half_target(id, smart)))
+                .collect::<Vec<_>>();
+            ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            let expected = ranked.into_iter().map(|(id, _)| id).collect::<Vec<_>>();
+            let actual = runtime.select_plain_half_targets(EntityIdx(0), smart);
+            assert_eq!(actual.as_slice(), expected, "hp={enemy_hp:?}, smart={smart}");
+            assert_rng_state_eq(&runtime.rng, &reference.rng);
+        }
+    }
+}
+
 #[test]
 fn targeted_preview_restores_world_rng_and_matches_duel_selection() {
     for skill in [

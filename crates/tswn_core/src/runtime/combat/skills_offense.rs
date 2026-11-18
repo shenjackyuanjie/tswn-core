@@ -164,6 +164,39 @@ impl CombatRuntime {
                     .then_some(index)
             })
             .collect::<crate::rc4::PickSkipRange>();
+        #[cfg(feature = "no_debug")]
+        if select_count <= 6 {
+            if let Some(index) = ally_skip_indices.single_remaining_index(all_alive.len()) {
+                // 配额为一时首次抽中即结束。否则抽中一次后会再重复配额加一次。
+                if all_alive.len() > 1 {
+                    match select_count {
+                        1 => self.rng.discard_bytes::<2>(),
+                        2 => self.rng.discard_bytes::<8>(),
+                        3 => self.rng.discard_bytes::<10>(),
+                        4 => self.rng.discard_bytes::<12>(),
+                        5 => self.rng.discard_bytes::<14>(),
+                        6 => self.rng.discard_bytes::<16>(),
+                        _ => unreachable!("零目标配额应提前返回"),
+                    }
+                }
+                let target = all_alive[index];
+                self.entities.get(target).unwrap();
+                if !smart {
+                    self.rng.discard_bytes::<2>();
+                }
+                return smallvec::smallvec![target];
+            }
+            if select_count >= 2
+                && self.world.alive_group_count() <= 2
+                && let Some([left, right]) = ally_skip_indices.two_remaining_indices(all_alive.len())
+                && all_alive[left] != all_alive[right]
+            {
+                let (first, second) = self.rank_two_plain_enemy_targets([all_alive[left], all_alive[right]], smart, select_count);
+                let mut targets = smallvec::smallvec![first];
+                targets.extend(second);
+                return targets;
+            }
+        }
         let mut selected = smallvec::SmallVec::<[EntityIdx; 8]>::new();
         let mut duplicate_count = 0usize;
         while duplicate_count <= select_count {
@@ -197,27 +230,19 @@ impl CombatRuntime {
             .entities
             .get(target)
             .unwrap_or_else(|| panic!("unknown runtime default enemy target: {}", target.0));
-        let rate_hi_hp = |hp: i32| -> f64 {
-            if hp < 20 {
-                30.0
-            } else if hp > 300 {
-                300.0
-            } else {
-                hp as f64
-            }
-        };
         if smart {
-            if self.world.alive_group_count() > 2 {
-                rate_hi_hp(entity.runtime.hp) * self.world.alive_group_len_containing(target) as f64 * entity.runtime.attract()
-            } else {
-                (1.0 / rate_hi_hp(entity.runtime.hp)) * entity.runtime.atk_sum as f64 * entity.runtime.attract()
-            }
+            Self::plain_smart_attack_score(&self.world, target, &entity.runtime)
         } else {
             self.rng.rFFFF() as f64 + entity.runtime.attract()
         }
     }
 
     pub fn drain_plain_fire_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
+        if self.effects.is_empty() {
+            self.drain_fire_attack_effect_into(actor, target, PLAIN_FIRE_STATE_KEY, updates);
+            self.drain_effects_into(updates);
+            return;
+        }
         self.effects.push(QueuedEffect::FireAttack {
             caster: actor,
             target,
@@ -400,59 +425,22 @@ impl CombatRuntime {
     }
 
     pub fn select_plain_berserk_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
-        let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
-        if all_alive.is_empty() {
-            return PreparedTargetList::new();
-        }
-        let ally_skip_indices = all_alive
-            .iter()
-            .enumerate()
-            .filter_map(|(index, target)| {
-                self.entities
-                    .get(*target)
-                    .is_some_and(|entity| entity.runtime.team == actor_team)
-                    .then_some(index)
-            })
-            .collect::<crate::rc4::PickSkipRange>();
-        let select_count = if smart { 3 } else { 2 };
-        let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
-        let mut duplicate_count = 0usize;
-        let mut invalid_count = -(select_count as i32);
-        while duplicate_count <= select_count && invalid_count <= select_count as i32 {
-            let picked = self.rng.pick_skip_span(all_alive, ally_skip_indices);
-            let Some(picked) = picked else {
-                return PreparedTargetList::new();
-            };
-            let target = all_alive[picked];
-            let valid = self.entities.get(target).is_some_and(|entity| {
-                !smart
-                    || (!entity
-                        .states
-                        .entries()
-                        .iter()
-                        .any(|entry| matches!(entry.payload, StatePayload::Berserk { .. }))
-                        && !entity.runtime.is_combat_minion())
-            });
-            if !valid {
-                invalid_count += 1;
-                continue;
-            }
-            if selected.contains(&target) {
-                duplicate_count += 1;
-                continue;
-            }
-            selected.push(target);
-            if selected.len() >= select_count {
-                break;
-            }
-        }
-        let mut scored = smallvec::SmallVec::<[(EntityIdx, f64); 3]>::new();
-        for target in selected {
-            scored.push((target, self.score_plain_berserk_target(target, smart)));
-        }
-        scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
-        scored.into_iter().map(|(target, _)| target).collect()
+        self.select_plain_filtered_enemy_targets(
+            actor,
+            smart,
+            |target, smart| {
+                target.is_some_and(|entity| {
+                    !smart
+                        || (!entity
+                            .states
+                            .entries()
+                            .iter()
+                            .any(|entry| matches!(entry.payload, StatePayload::Berserk { .. }))
+                            && !entity.runtime.is_combat_minion())
+                })
+            },
+            Self::score_plain_berserk_target,
+        )
     }
 
     pub fn score_plain_berserk_target(&mut self, target: EntityIdx, smart: bool) -> f64 {

@@ -112,7 +112,11 @@ impl CombatRuntime {
     }
 
     pub fn covid_boss_mutation(&self, boss: EntityIdx) -> Option<i32> {
-        self.entities.get(boss)?.states.entries().iter().find_map(|entry| {
+        let states = &self.entities.get(boss)?.states;
+        if !states.may_contain(StatePayloadKind::CovidBoss) {
+            return None;
+        }
+        states.entries().iter().find_map(|entry| {
             let StatePayload::CovidBoss { mutation } = &entry.payload else {
                 return None;
             };

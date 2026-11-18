@@ -231,6 +231,23 @@ impl PickSkipRange {
         }
         self.len += 1;
     }
+
+    #[inline]
+    fn offset_sample(self, sample: usize) -> usize { if sample >= self.first { sample + self.len } else { sample } }
+
+    /// 返回恰好剩下两个候选时的下标，沿用首项与数量定义的排除区间。
+    #[cfg(feature = "no_debug")]
+    #[inline]
+    pub(crate) fn two_remaining_indices(self, list_len: usize) -> Option<[usize; 2]> {
+        (list_len.checked_sub(self.len) == Some(2)).then(|| [self.offset_sample(0), self.offset_sample(1)])
+    }
+
+    /// 返回这一排除区间恰好剩下一个候选时的下标，不推进随机流。
+    #[cfg(feature = "no_debug")]
+    #[inline]
+    pub(crate) fn single_remaining_index(self, list_len: usize) -> Option<usize> {
+        (list_len.checked_sub(self.len) == Some(1)).then(|| self.offset_sample(0))
+    }
 }
 
 impl FromIterator<usize> for PickSkipRange {
@@ -393,6 +410,44 @@ impl RC4 {
         })
     }
 
+    /// 交错构造多局的独立初始状态。同长密钥共享循环下标，命中前缀时从同一个检查点开始。
+    pub(crate) fn new_interleaved_with_key_schedule_prefix<const N: usize>(
+        keys: [&[u8]; N],
+        prefix: Option<&Rc4KeySchedulePrefix>,
+    ) -> [Self; N] {
+        let key_len = keys.first().map_or(0, |key| key.len());
+        if key_len == 0 || keys.iter().any(|key| key.len() != key_len) {
+            return keys.map(|key| {
+                prefix
+                    .and_then(|prefix| Self::new_with_key_schedule_prefix(key, prefix))
+                    .unwrap_or_else(|| Self::new(key, 1))
+            });
+        }
+
+        let prefix = prefix.filter(|prefix| keys.iter().all(|key| key.starts_with(&prefix.key_prefix)));
+        let (start, initial_j, main_val) = prefix.map_or((0, 0, VAL_INIT), |prefix| (prefix.len(), prefix.j, prefix.main_val));
+        let mut states = std::array::from_fn(|_| Self {
+            main_val,
+            ..Self::default()
+        });
+        let mut js = [initial_j; N];
+        let mut x = start;
+        let mut key_start = if start == key_len { 0 } else { start };
+        while x < VAL_LEN {
+            // 相同长度的密钥同步回绕；循环内只遍历这段连续键，不逐次检查回绕。
+            let count = (key_len - key_start).min(VAL_LEN - x);
+            let keys = keys.map(|key| &key[key_start..key_start + count]);
+            for offset in 0..count {
+                for ((state, key), j) in states.iter_mut().zip(&keys).zip(&mut js) {
+                    apply_key_scheduling_step(&mut state.main_val, key, x + offset, offset, j);
+                }
+            }
+            x += count;
+            key_start = 0;
+        }
+        states
+    }
+
     /// 在当前 S-box 上继续执行指定轮数的密钥调度，保留 i/j 和调试计数。
     ///
     /// `round == 0` 不改变状态；正轮数要求密钥非空，否则 panic。
@@ -454,6 +509,15 @@ impl RC4 {
         }
     }
 
+    /// 仅推进随机状态，适用于没有调用点探针且调用方无需这些输出字节的路径。
+    #[cfg(feature = "no_debug")]
+    #[inline]
+    pub(crate) fn discard_bytes<const N: usize>(&mut self) {
+        for _ in 0..N {
+            self.next_u8_untracked();
+        }
+    }
+
     /// 依次以随机流异或并原地覆盖输入，每个字节推进一次 PRGA。
     ///
     /// 不将变换结果反馈给 j；空切片不改变状态，也不分配输出缓冲。
@@ -504,10 +568,34 @@ impl RC4 {
     /// 状态变化等价于将字符串复制为字节缓冲后调用 [`Self::js_xor_bytes`]，
     /// 但不创建缓冲，也不保留变换后的字节；空字符串不改变状态。
     #[inline]
-    pub fn js_xor_str(&mut self, bytes: &str) {
-        for byte in bytes.as_bytes() {
-            let val = *byte ^ self.next_u8_untracked();
-            self.j = u32::from((self.j as u8).wrapping_add(val));
+    pub fn js_xor_str(&mut self, bytes: &str) { self.mix_key_bytes(bytes.as_bytes()); }
+
+    #[inline]
+    fn mix_key_bytes(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.mix_key_byte(byte);
+        }
+    }
+
+    #[inline(always)]
+    fn mix_key_byte(&mut self, byte: u8) {
+        let val = byte ^ self.next_u8_untracked();
+        self.j = u32::from((self.j as u8).wrapping_add(val));
+    }
+
+    /// 同长密钥逐字节交错推进，仍按各自随机状态应用反馈混入规则。
+    pub(crate) fn mix_key_bytes_interleaved<const N: usize>(states: &mut [Self; N], keys: [&[u8]; N]) {
+        let key_len = keys.first().map_or(0, |key| key.len());
+        if keys.iter().any(|key| key.len() != key_len) {
+            for (state, key) in states.iter_mut().zip(keys) {
+                state.mix_key_bytes(key);
+            }
+            return;
+        }
+        for offset in 0..key_len {
+            for (state, key) in states.iter_mut().zip(&keys) {
+                state.mix_key_byte(key[offset]);
+            }
         }
     }
 
@@ -887,11 +975,9 @@ impl RC4 {
         if skips.len == 0 {
             return self.pick(list);
         }
-        let first = skips.first;
-        let skip_len = skips.len;
-        if list.len() > skip_len {
-            let n = self.next_i32((list.len() - skip_len) as i32) as usize;
-            if n >= first { Some(n + skip_len) } else { Some(n) }
+        if list.len() > skips.len {
+            let n = self.next_i32((list.len() - skips.len) as i32) as usize;
+            Some(skips.offset_sample(n))
         } else {
             None
         }

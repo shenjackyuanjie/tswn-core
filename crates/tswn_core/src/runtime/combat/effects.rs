@@ -1,6 +1,64 @@
 use super::*;
 
 impl CombatRuntime {
+    pub(super) fn drain_fire_attack_effect_into(
+        &mut self,
+        caster: EntityIdx,
+        target: EntityIdx,
+        fire_state_key: u32,
+        updates: &mut RunUpdates,
+    ) {
+        self.ensure_effect_entity("fire-attack", "caster", caster);
+        self.ensure_effect_entity("fire-attack", "target", target);
+        let fire_mag = self.entities.get(target).unwrap().states.fire_mag(fire_state_key);
+        let atp = self.entities.get(caster).unwrap().runtime.get_at(true, &mut self.rng);
+        let mut defend_value = RuntimeDefendValue::Atp {
+            value: atp * (1.5 + fire_mag),
+            caster,
+            target,
+            is_magic: true,
+            kind: DamageKind::Default,
+        };
+        updates.add_with(|| RuntimeFrame::replay_update(caster.0 as usize, target.0 as usize, "[0]使用[火球术]", 1));
+        self.drain_pre_defend_hooks_with_on_damage_into(
+            target,
+            updates,
+            &mut defend_value,
+            PlainAttackOnDamage::Fire(fire_state_key),
+        );
+        let Some(atp) = defend_value.atp() else {
+            panic!("runtime PRE_DEFEND hooks must leave an atp value");
+        };
+        if atp == 0.0 {
+            return;
+        }
+        if self.magic_attack_dodged(caster, target) {
+            updates.add(RuntimeFrame::replay_update(
+                target.0 as usize,
+                caster.0 as usize,
+                "[0][回避]了攻击",
+                20,
+            ));
+        } else {
+            let amount = ceil_damage_to_i32(atp / self.entities.get(target).unwrap().runtime.magic_defense() as f64);
+            let mut defend_value = RuntimeDefendValue::Damage {
+                value: amount,
+                caster,
+                target,
+                kind: DamageKind::Default,
+            };
+            self.drain_post_defend_hooks_into(target, updates, &mut defend_value);
+            let Some(amount) = defend_value.damage() else {
+                panic!("runtime POST_DEFEND hooks must leave a damage value");
+            };
+            if self.apply_plain_legacy_damage_into(caster, target, amount, updates) {
+                self.drain_plain_lethal_damage_into(caster, target, updates);
+            } else if amount > 0 {
+                self.apply_fire_on_damage(target, fire_state_key);
+            }
+        }
+    }
+
     pub fn selected_pre_action_target(&mut self, plan: &SkillHookPlan, actor: EntityIdx, smart: bool) -> Option<EntityIdx> {
         let has_disperse = plan.entries.iter().any(|entry| {
             self.registry
@@ -22,7 +80,16 @@ impl CombatRuntime {
         updates.had_updates().then_some(RuntimeFrame { updates })
     }
 
+    /// 钩子结束后经常没有效果入队，在调用点直接检查队列。
+    #[inline]
     pub fn drain_effects_into(&mut self, updates: &mut RunUpdates) {
+        if !self.effects.is_empty() {
+            self.drain_pending_effects_into(updates);
+        }
+    }
+
+    #[inline(never)]
+    fn drain_pending_effects_into(&mut self, updates: &mut RunUpdates) {
         while let Some(effect) = self.effects.pop_next() {
             match effect {
                 QueuedEffect::Damage { caster, target, amount } => {
@@ -83,60 +150,7 @@ impl CombatRuntime {
                     target,
                     fire_state_key,
                 } => {
-                    self.ensure_effect_entity("fire-attack", "caster", caster);
-                    self.ensure_effect_entity("fire-attack", "target", target);
-                    let fire_mag = self.entities.get(target).unwrap().states.fire_mag(fire_state_key);
-                    let atp = self.entities.get(caster).unwrap().runtime.get_at(true, &mut self.rng);
-                    let mut defend_value = RuntimeDefendValue::Atp {
-                        value: atp * (1.5 + fire_mag),
-                        caster,
-                        target,
-                        is_magic: true,
-                        kind: DamageKind::Default,
-                    };
-                    updates.add(RuntimeFrame::replay_update(
-                        caster.0 as usize,
-                        target.0 as usize,
-                        "[0]使用[火球术]",
-                        1,
-                    ));
-                    self.drain_pre_defend_hooks_with_on_damage_into(
-                        target,
-                        updates,
-                        &mut defend_value,
-                        PlainAttackOnDamage::Fire(fire_state_key),
-                    );
-                    let Some(atp) = defend_value.atp() else {
-                        panic!("runtime PRE_DEFEND hooks must leave an atp value");
-                    };
-                    if atp == 0.0 {
-                        continue;
-                    }
-                    if self.magic_attack_dodged(caster, target) {
-                        updates.add(RuntimeFrame::replay_update(
-                            target.0 as usize,
-                            caster.0 as usize,
-                            "[0][回避]了攻击",
-                            20,
-                        ));
-                    } else {
-                        let amount = (atp / self.entities.get(target).unwrap().runtime.magic_defense() as f64).ceil() as i32;
-                        let mut defend_value = RuntimeDefendValue::Damage {
-                            value: amount,
-                            caster,
-                            target,
-                            kind: DamageKind::Default,
-                        };
-                        self.drain_post_defend_hooks_into(target, updates, &mut defend_value);
-                        let Some(amount) = defend_value.damage() else {
-                            panic!("runtime POST_DEFEND hooks must leave a damage value");
-                        };
-                        if self.apply_plain_legacy_damage_into(caster, target, amount, updates) {
-                            self.drain_plain_lethal_damage_into(caster, target, updates);
-                        } else if amount > 0 {
-                            self.apply_fire_on_damage(target, fire_state_key);
-                        }
-                    }
+                    self.drain_fire_attack_effect_into(caster, target, fire_state_key, updates);
                 }
                 QueuedEffect::SummonExplode {
                     caster,
@@ -184,7 +198,7 @@ impl CombatRuntime {
                             20,
                         ));
                     } else {
-                        let amount = (atp / self.entities.get(target).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+                        let amount = ceil_damage_to_i32(atp / self.entities.get(target).unwrap().runtime.magic_defense() as f64);
                         let mut defend_value = RuntimeDefendValue::Damage {
                             value: amount,
                             caster,
@@ -242,7 +256,7 @@ impl CombatRuntime {
                     // legacy 的 `DisperseSkill::act_with_level` 会刻意调用 `Player::defned`，
                     // 而不是 `Player::attacked`。因此驱散完全跳过 PRE_DEFEND 和闪避，
                     // 但仍会在结算伤害前执行 POST_DEFEND。
-                    let amount = (atp / self.entities.get(target).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+                    let amount = ceil_damage_to_i32(atp / self.entities.get(target).unwrap().runtime.magic_defense() as f64);
                     let mut defend_value = RuntimeDefendValue::Damage {
                         value: amount,
                         caster,

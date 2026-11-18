@@ -69,7 +69,7 @@ pub struct RuntimeCompletionSummary {
 #[derive(Debug, Clone)]
 pub struct PreparedRuntimeRunner {
     prototype: RuntimeRunner,
-    battle_roster: PreparedBattleRoster,
+    pub(super) battle_roster: PreparedBattleRoster,
     skill_import: BuiltinSkillImportMap,
 }
 
@@ -551,8 +551,6 @@ impl RuntimeRunner {
 
     fn run_round_unchecked(&mut self) -> RoundOutcome { self.runtime.run_minimal_round() }
 
-    fn run_round_unchecked_no_capture(&mut self) -> RoundOutcome { self.runtime.run_minimal_round_no_capture() }
-
     /// 推进一个 Runtime 回合；可能没有可见帧。未就绪时会 panic，高层会话会先校验。
     pub fn run_round(&mut self) -> RoundOutcome {
         self.assert_ready();
@@ -599,7 +597,7 @@ impl RuntimeRunner {
         let mut rounds = 0usize;
         let mut winner_team = self.runtime.world.sync_winner_from_alive_views();
         while winner_team.is_none() && rounds < max_rounds {
-            winner_team = self.run_round_unchecked_no_capture().winner_team;
+            winner_team = self.runtime.run_active_round_no_capture();
             rounds += 1;
         }
         RuntimeCompletionSummary {
@@ -708,17 +706,24 @@ impl PreparedRuntimeRunner {
     /// `runner` 应来自此模板；注册表、handler 与模板配置不在此入口重装，调用方
     /// 不应替换它们。失败不保证保留旧对局，调用方可从模板重新创建 runner。
     pub fn reset_with_seed(&self, runner: &mut RuntimeRunner, seed: &[String]) -> Result<(), CustomRuntimeImportError> {
+        self.reset_with_seed_state(runner, |roster, state| roster.refill_seed_state(seed, state))
+    }
+
+    pub(super) fn reset_with_seed_rng(&self, runner: &mut RuntimeRunner, rng: RC4) -> Result<(), CustomRuntimeImportError> {
+        self.reset_with_seed_state(runner, |roster, state| roster.refill_seed_state_with_rng(state, rng))
+    }
+
+    fn reset_with_seed_state(
+        &self,
+        runner: &mut RuntimeRunner,
+        refill: impl FnOnce(&PreparedBattleRoster, &mut PreparedBattleSeed),
+    ) -> Result<(), CustomRuntimeImportError> {
         self.reset_mutable_battle_state(runner);
-        let (mut seed_state, needs_refill) = match runner.prepared_seed.take() {
-            Some(seed_state) => (seed_state, true),
-            None => (self.battle_roster.seed_state(seed), false),
-        };
-        if needs_refill {
-            self.battle_roster.refill_seed_state(seed, &mut seed_state);
-        }
+        let mut seed_state = runner.prepared_seed.take().unwrap_or_else(|| self.battle_roster.new_seed_state());
+        refill(&self.battle_roster, &mut seed_state);
 
         seed_state.swap_input_groups(&mut runner.input_groups);
-        let result = seed_state.apply_reusing(&mut runner.runtime).map_err(Into::into);
+        let result = seed_state.apply_swapping_views(&mut runner.runtime).map_err(Into::into);
         runner.prepared_seed = Some(seed_state);
         result
     }

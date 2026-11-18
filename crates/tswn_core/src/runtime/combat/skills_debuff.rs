@@ -2,58 +2,12 @@ use super::*;
 
 impl CombatRuntime {
     pub fn select_plain_half_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
-        let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
-        if all_alive.is_empty() {
-            return PreparedTargetList::new();
-        }
-        let enemy_skip_indices = all_alive
-            .iter()
-            .enumerate()
-            .filter_map(|(index, target)| {
-                self.entities
-                    .get(*target)
-                    .is_some_and(|entity| entity.runtime.team == actor_team)
-                    .then_some(index)
-            })
-            .collect::<crate::rc4::PickSkipRange>();
-        let select_count = if smart { 3 } else { 2 };
-        let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
-        let mut dup = 0usize;
-        let mut invalid = -(select_count as i32);
-        while dup <= select_count && invalid <= select_count as i32 {
-            let picked = self.rng.pick_skip_span(all_alive, enemy_skip_indices);
-            let Some(picked) = picked else {
-                return PreparedTargetList::new();
-            };
-            let target = all_alive[picked];
-            let valid = !smart
-                || self
-                    .entities
-                    .get(target)
-                    .is_some_and(|entity| entity.runtime.hp > 160 && entity.runtime.hp < 400);
-            if !valid {
-                invalid += 1;
-                continue;
-            }
-            if selected.contains(&target) {
-                dup += 1;
-                continue;
-            }
-            selected.push(target);
-            if selected.len() >= select_count {
-                break;
-            }
-        }
-        if selected.is_empty() {
-            return PreparedTargetList::new();
-        }
-        let mut scored = smallvec::SmallVec::<[(EntityIdx, f64); 3]>::new();
-        for target in selected {
-            scored.push((target, self.score_plain_half_target(target, smart)));
-        }
-        scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
-        scored.into_iter().map(|(target, _)| target).collect()
+        self.select_plain_filtered_enemy_targets(
+            actor,
+            smart,
+            |target, smart| !smart || target.is_some_and(|entity| entity.runtime.hp > 160 && entity.runtime.hp < 400),
+            Self::score_plain_half_target,
+        )
     }
 
     pub fn score_plain_half_target(&mut self, target: EntityIdx, smart: bool) -> f64 {
@@ -83,66 +37,26 @@ impl CombatRuntime {
     }
 
     pub fn select_plain_curse_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
-        let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
-        if all_alive.is_empty() {
-            return PreparedTargetList::new();
-        }
-        let enemy_skip_indices = all_alive
-            .iter()
-            .enumerate()
-            .filter_map(|(index, target)| {
-                self.entities
-                    .get(*target)
-                    .is_some_and(|entity| entity.runtime.team == actor_team)
-                    .then_some(index)
-            })
-            .collect::<crate::rc4::PickSkipRange>();
-        let select_count = if smart { 3 } else { 2 };
-        let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
-        let mut dup = 0usize;
-        let mut invalid = -(select_count as i32);
-        while dup <= select_count && invalid <= select_count as i32 {
-            let picked = self.rng.pick_skip_span(all_alive, enemy_skip_indices);
-            let Some(picked) = picked else {
-                return PreparedTargetList::new();
-            };
-            let target = all_alive[picked];
-            let valid = !smart
-                || self.entities.get(target).is_some_and(|entity| {
-                    entity.runtime.hp >= 80
-                        && entity
-                            .states
-                            .entries()
-                            .iter()
-                            .find_map(|entry| match entry.payload {
-                                StatePayload::Curse { prob, .. } => Some(prob),
-                                _ => None,
-                            })
-                            .is_none_or(|prob| prob <= 32)
-                });
-            if !valid {
-                invalid += 1;
-                continue;
-            }
-            if selected.contains(&target) {
-                dup += 1;
-                continue;
-            }
-            selected.push(target);
-            if selected.len() >= select_count {
-                break;
-            }
-        }
-        if selected.is_empty() {
-            return PreparedTargetList::new();
-        }
-        let mut scored = smallvec::SmallVec::<[(EntityIdx, f64); 3]>::new();
-        for target in selected {
-            scored.push((target, self.score_plain_curse_target(target, smart)));
-        }
-        scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
-        scored.into_iter().map(|(target, _)| target).collect()
+        self.select_plain_filtered_enemy_targets(
+            actor,
+            smart,
+            |target, smart| {
+                !smart
+                    || target.is_some_and(|entity| {
+                        entity.runtime.hp >= 80
+                            && entity
+                                .states
+                                .entries()
+                                .iter()
+                                .find_map(|entry| match entry.payload {
+                                    StatePayload::Curse { prob, .. } => Some(prob),
+                                    _ => None,
+                                })
+                                .is_none_or(|prob| prob <= 32)
+                    })
+            },
+            Self::score_plain_curse_target,
+        )
     }
 
     pub fn score_plain_curse_target(&mut self, target: EntityIdx, smart: bool) -> f64 {

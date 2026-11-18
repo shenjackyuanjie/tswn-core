@@ -87,33 +87,52 @@ impl WorldArena {
         team_alive: Vec<Vec<EntityIdx>>,
         flat_alive: Vec<EntityIdx>,
     ) {
-        debug_assert!(round_order.iter().all(|idx| entities.get(*idx).is_some()));
-        debug_assert!(team_roster.iter().enumerate().all(|(team, roster)| {
-            roster
-                .iter()
-                .all(|idx| entities.get(*idx).is_some_and(|entity| entity.runtime.team == team))
-        }));
-        debug_assert!(flat_alive.iter().all(|idx| entities.get(*idx).is_some_and(|entity| entity.runtime.alive)));
-        debug_assert!(team_alive.iter().enumerate().all(|(team, alive)| alive.iter().all(|idx| {
-            entities
-                .get(*idx)
-                .is_some_and(|entity| entity.runtime.alive && entity.runtime.team == team)
-        })));
+        Self::assert_initial_views(entities, &round_order, &team_roster, &team_alive, &flat_alive);
 
         self.round_order = round_order;
         self.team_roster = team_roster;
         self.team_alive = team_alive;
         self.flat_alive = flat_alive;
-        self.alive_group_count = self.team_alive.iter().filter(|team| !team.is_empty()).count();
-        self.rebuild_alive_team_cache(entities.len());
-        self.roster_count = self.team_roster.iter().map(Vec::len).sum();
-        self.round_pos = -1;
-        self.winner_team = None;
+        self.finish_initial_views(entities.len());
     }
 
     /// 复用现有世界视图的向量容量，同步一局新的初始顺序。
     pub fn sync_initial_views_reusing(
         &mut self,
+        entities: &EntityArena,
+        round_order: &[EntityIdx],
+        team_roster: &[Vec<EntityIdx>],
+        team_alive: &[Vec<EntityIdx>],
+        flat_alive: &[EntityIdx],
+    ) {
+        Self::assert_initial_views(entities, round_order, team_roster, team_alive, flat_alive);
+
+        Self::clone_slice_reusing(&mut self.round_order, round_order);
+        Self::clone_nested_reusing(&mut self.team_roster, team_roster);
+        Self::clone_nested_reusing(&mut self.team_alive, team_alive);
+        Self::clone_slice_reusing(&mut self.flat_alive, flat_alive);
+        self.finish_initial_views(entities.len());
+    }
+
+    /// 接收本局的初始视图，把上一局的向量交还给 seed 缓冲区。
+    pub(crate) fn swap_initial_views(
+        &mut self,
+        entities: &EntityArena,
+        round_order: &mut Vec<EntityIdx>,
+        team_roster: &mut Vec<Vec<EntityIdx>>,
+        team_alive: &mut Vec<Vec<EntityIdx>>,
+        flat_alive: &mut Vec<EntityIdx>,
+    ) {
+        Self::assert_initial_views(entities, round_order, team_roster, team_alive, flat_alive);
+        std::mem::swap(&mut self.round_order, round_order);
+        std::mem::swap(&mut self.team_roster, team_roster);
+        std::mem::swap(&mut self.team_alive, team_alive);
+        std::mem::swap(&mut self.flat_alive, flat_alive);
+        self.finish_initial_views(entities.len());
+    }
+
+    #[inline]
+    fn assert_initial_views(
         entities: &EntityArena,
         round_order: &[EntityIdx],
         team_roster: &[Vec<EntityIdx>],
@@ -132,13 +151,12 @@ impl WorldArena {
                 .get(*idx)
                 .is_some_and(|entity| entity.runtime.alive && entity.runtime.team == team)
         })));
+    }
 
-        Self::clone_slice_reusing(&mut self.round_order, round_order);
-        Self::clone_nested_reusing(&mut self.team_roster, team_roster);
-        Self::clone_nested_reusing(&mut self.team_alive, team_alive);
-        Self::clone_slice_reusing(&mut self.flat_alive, flat_alive);
+    #[inline]
+    fn finish_initial_views(&mut self, entity_slots: usize) {
         self.alive_group_count = self.team_alive.iter().filter(|team| !team.is_empty()).count();
-        self.rebuild_alive_team_cache(entities.len());
+        self.rebuild_alive_team_cache(entity_slots);
         self.roster_count = self.team_roster.iter().map(Vec::len).sum();
         self.round_pos = -1;
         self.winner_team = None;
@@ -158,24 +176,24 @@ impl WorldArena {
     }
 
     pub fn next_actor(&mut self, entities: &EntityArena) -> Option<EntityIdx> {
-        if self.round_order.is_empty() {
-            return None;
-        }
+        self.next_round_actor_with(|actor| entities.get(actor).filter(|entity| entity.runtime.alive).map(|_| actor))
+    }
 
-        for _ in 0..self.round_order.len() {
-            let len = self.round_order.len() as i32;
+    /// 沿行动序列访问第一个可以推进的实体，跳过空槽和已死亡的实体。
+    #[inline]
+    pub(crate) fn next_round_actor_with<T>(&mut self, mut visit: impl FnMut(EntityIdx) -> Option<T>) -> Option<T> {
+        let len = self.round_order.len() as i32;
+        for _ in 0..len {
             let next = self.round_pos + 1;
-            self.round_pos = if next >= len {
-                let wrapped = next - len;
-                if wrapped < len { wrapped } else { next.rem_euclid(len) }
-            } else if next < 0 {
-                let wrapped = next + len;
-                if wrapped >= 0 { wrapped } else { next.rem_euclid(len) }
-            } else {
+            self.round_pos = if (0..len).contains(&next) {
                 next
+            } else if next == len {
+                0
+            } else {
+                next.rem_euclid(len)
             };
             let actor = self.round_order[self.round_pos as usize];
-            if entities.get(actor).is_some_and(|entity| entity.runtime.alive) {
+            if let Some(result) = visit(actor) {
                 #[cfg(not(feature = "no_debug"))]
                 if crate::debug::debug_tick_order().is_some() {
                     eprintln!(
@@ -185,7 +203,7 @@ impl WorldArena {
                         self.round_order.iter().map(|idx| idx.0).collect::<Vec<_>>()
                     );
                 }
-                return Some(actor);
+                return Some(result);
             }
         }
         None

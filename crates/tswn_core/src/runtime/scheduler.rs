@@ -10,7 +10,7 @@
 //! POST_ACTION 按 early、状态间 deferred、late 分区执行。
 //! 计划是派生数据，技能或状态变动后按 generation 刷新。
 
-use crate::runtime::entity::{EntityArena, EntityIdx};
+use crate::runtime::entity::{EntityArena, EntityIdx, SkillLoadout};
 use crate::runtime::extension::{
     ExtensionRegistry, ProcMask, RegistrationOrder, SkillId, SkillPostActionPhase, SkillPriority, StateId, TargetPolicy,
 };
@@ -149,6 +149,34 @@ impl PhaseScheduler {
         // legacy 按世界 roster（包含已死亡实体）限制单帧 tick 数；EntityArena 中为 spawn
         // 保留的 ID 空洞不属于 roster，若把它们计入会让新生成的使魔或亡灵提前一帧行动。
         let max_ticks = world.roster_entity_count().max(1) * 4;
+        #[cfg(feature = "no_debug")]
+        for _ in 0..max_ticks {
+            let (actor, should_act, ice_released) = world.next_round_actor_with(|actor| {
+                let entity = entities.get_mut(actor).filter(|entity| entity.runtime.alive)?;
+                let step_roll = (randomer.next_u8() & 3) as i32;
+                let speed = entity.effective_speed();
+                let move_state = &mut entity.runtime.move_state;
+                let (step, ice_released) = entity.states.apply_ice_pre_step(speed * step_roll, move_state.speed_points);
+                move_state.speed_points += step;
+                let should_act = move_state.speed_points > MOVE_POINT_THRESHOLD;
+                if should_act {
+                    move_state.speed_points -= MOVE_POINT_THRESHOLD;
+                }
+                Some((actor, should_act, ice_released))
+            })?;
+            if ice_released {
+                self.ice_release_events.push(actor);
+                if !should_act {
+                    return None;
+                }
+            }
+            if should_act {
+                let target = world.first_alive_enemy(actor, entities)?;
+                let amount = entities.get(actor).map_or(0, |entity| entity.template.attack);
+                return Some(ActionPlan { actor, target, amount });
+            }
+        }
+        #[cfg(not(feature = "no_debug"))]
         for _ in 0..max_ticks {
             let actor = world.next_actor(entities)?;
             let step_byte = randomer.next_u8();
@@ -247,7 +275,16 @@ impl PhaseScheduler {
         let entity = entities
             .get(owner)
             .unwrap_or_else(|| panic!("unknown runtime skill owner entity: {}", owner.0));
-        let skills = &entity.template.skills;
+        self.skill_hook_plan_for_loadout(&entity.template.skills, registry, owner, hook)
+    }
+
+    pub(super) fn skill_hook_plan_for_loadout(
+        &self,
+        skills: &SkillLoadout,
+        registry: &ExtensionRegistry,
+        owner: EntityIdx,
+        hook: ProcMask,
+    ) -> SkillHookPlan {
         let mut entries = SmallVec::<[SkillHookPlanEntry; 4]>::new();
         if let Some(cached_entries) = skills.cached_hook_entries(hook) {
             for entry in cached_entries {
@@ -328,15 +365,10 @@ impl PhaseScheduler {
     /// 调用方用 generation 判断执行期间是否发生技能写入，再按需重建。
     pub(crate) fn skill_post_action_plans(
         &self,
-        entities: &EntityArena,
+        skills: &SkillLoadout,
         registry: &ExtensionRegistry,
         owner: EntityIdx,
     ) -> SkillPostActionPlans {
-        let skills = &entities
-            .get(owner)
-            .unwrap_or_else(|| panic!("unknown runtime post-action skill owner entity: {}", owner.0))
-            .template
-            .skills;
         let deferred_lanes = skills.post_action_after_states();
         let mut deferred = SmallVec::<[(u64, SkillHookPlanEntry); 4]>::new();
         let mut early_entries = SmallVec::<[SkillHookPlanEntry; 2]>::new();
@@ -368,7 +400,7 @@ impl PhaseScheduler {
                 }
             }
         } else {
-            let plan = self.skill_hook_plan(entities, registry, owner, ProcMask::POST_ACTION);
+            let plan = self.skill_hook_plan_for_loadout(skills, registry, owner, ProcMask::POST_ACTION);
             for (cursor, fixed_lane) in deferred_lanes {
                 let Some(entry) = plan.entries.iter().find(|entry| entry.fixed_lane == *fixed_lane).copied() else {
                     continue;

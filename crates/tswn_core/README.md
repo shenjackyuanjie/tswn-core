@@ -1,6 +1,6 @@
 # tswn_core
 
-名字竞技场的 Rust 核心引擎。
+名字竞技场的 Rust 核心引擎。当前版本为 [0.7.1](CHANGELOG.md#071---2026-11-19)。
 
 熟悉 namerena 的读者可以从 [项目与 core 原理指南](../../docs/core-guide/README.md) 开始，
 按角色构建、Runtime、战斗流程、hook 与交互层理解实现。Rust API 可通过
@@ -25,8 +25,8 @@
 # 构建（线上/发布口径，必须带 no_debug,mimalloc_alloc）
 cargo build -p tswn_core --bin tswn-cli --release --features "no_debug,mimalloc_alloc"
 
-# 胜率基准测试
-./target/release/tswn-cli bench win-rate -r "mario\nluigi" -n 100000 --perf
+# 固定 8 线程计算胜率，每个阵容跑 100,000 局
+./target/release/tswn-cli bench win-rate -f teams.txt -n 100000 --thread 8
 
 # 单局对战（stdin 输入）
 echo '<your raw input>' | ./target/release/tswn-cli fight
@@ -63,6 +63,11 @@ echo '<your raw input>' | ./target/release/tswn-cli fight
 ./target/release/tswn-cli bench pair -l weighted-targets.toml -p players.txt --teammate-list teammates.txt --head 3 --target-factored
 ./target/release/tswn-cli bench pair -l targets.txt -p players.txt --teammate-list weighted-mates.toml --teammate-factored --head 4 --detail top
 ```
+
+`teams.txt` 每行一队，队内默认用 `+` 分隔，例如第一行写 `mario+luigi`，第二行写
+`peach+toad`。固定同一阵容和 `-n` 时，用
+`--single-thread` 或 `--thread 8` 计算的是同一批 seed，胜率按实际完成的对局计数。
+直接对比总耗时可使用上面的命令，查看初始化和战斗阶段耗时可加 `--perf`。
 
 `fight --jsonl` 逐行输出 initial/frame/result 并立即 flush；评分和胜率使用明确的 `bench` 子命令。CLI 不再提供 `--runtime` 执行器选择器或 `runtime parity`。
 
