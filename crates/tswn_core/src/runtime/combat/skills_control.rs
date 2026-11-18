@@ -91,50 +91,7 @@ impl CombatRuntime {
     }
 
     pub fn select_plain_ice_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
-        let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
-        if all_alive.is_empty() {
-            return PreparedTargetList::new();
-        }
-        let enemy_skip_indices = all_alive
-            .iter()
-            .enumerate()
-            .filter_map(|(index, target)| {
-                self.entities
-                    .get(*target)
-                    .is_some_and(|entity| entity.runtime.team == actor_team)
-                    .then_some(index)
-            })
-            .collect::<crate::rc4::PickSkipRange>();
-        let select_count = if smart { 3 } else { 2 };
-        let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
-        let mut dup = 0usize;
-        let mut invalid = -(select_count as i32);
-        while dup <= select_count && invalid <= select_count as i32 {
-            let picked = self.rng.pick_skip_span(all_alive, enemy_skip_indices);
-            let Some(picked) = picked else {
-                return PreparedTargetList::new();
-            };
-            let target = all_alive[picked];
-            if self.entities.get(target).is_none() {
-                invalid += 1;
-                continue;
-            }
-            if selected.contains(&target) {
-                dup += 1;
-                continue;
-            }
-            selected.push(target);
-            if selected.len() >= select_count {
-                break;
-            }
-        }
-        let mut scored = smallvec::SmallVec::<[(EntityIdx, f64); 3]>::new();
-        for target in selected {
-            scored.push((target, self.score_plain_ice_target(target, smart)));
-        }
-        scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
-        scored.into_iter().map(|(target, _)| target).collect()
+        self.select_plain_filtered_enemy_targets(actor, smart, |target, _| target.is_some(), Self::score_plain_ice_target)
     }
 
     pub fn score_plain_ice_target(&mut self, target: EntityIdx, smart: bool) -> f64 {

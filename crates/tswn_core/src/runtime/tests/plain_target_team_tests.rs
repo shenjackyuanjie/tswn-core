@@ -172,6 +172,56 @@ fn short_enemy_skill_selection_matches_generic_ranking_and_rng() {
     }
 }
 
+#[cfg(feature = "no_debug")]
+#[test]
+fn half_skill_short_selection_preserves_invalid_draw_budget() {
+    for enemy_hp in [
+        &[160][..],
+        &[161][..],
+        &[160, 399][..],
+        &[161, 400][..],
+        &[160, 400][..],
+        &[161, 399][..],
+    ] {
+        let targets = enemy_hp
+            .iter()
+            .enumerate()
+            .map(|(i, &hp)| PlayerTemplate::new(i + 2, format!("target-{i}"), 1, hp, 3));
+        let players = std::iter::once(PlayerTemplate::new(1, "actor", 0, 100, 3)).chain(targets).collect();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(players));
+        let mut reference = runtime.clone();
+        let alive = reference.world.flat_alive().to_vec();
+        let skips = alive.iter().position(|&id| id == EntityIdx(0)).unwrap();
+        for smart in [false, true].into_iter().cycle().take(512) {
+            let limit = if smart { 3 } else { 2 };
+            let mut selected = Vec::new();
+            let mut duplicate = 0;
+            let mut invalid = 0;
+            while duplicate <= limit && invalid <= 2 * limit && selected.len() < limit {
+                let index = reference.rng.pick_skip_range(&alive, &[skips]).unwrap();
+                let id = alive[index];
+                let hp = reference.entities.get(id).unwrap().runtime.hp;
+                if smart && (hp <= 160 || hp >= 400) {
+                    invalid += 1;
+                } else if selected.contains(&id) {
+                    duplicate += 1;
+                } else {
+                    selected.push(id);
+                }
+            }
+            let mut ranked = selected
+                .into_iter()
+                .map(|id| (id, reference.score_plain_half_target(id, smart)))
+                .collect::<Vec<_>>();
+            ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            let expected = ranked.into_iter().map(|(id, _)| id).collect::<Vec<_>>();
+            let actual = runtime.select_plain_half_targets(EntityIdx(0), smart);
+            assert_eq!(actual.as_slice(), expected, "hp={enemy_hp:?}, smart={smart}");
+            assert_rng_state_eq(&runtime.rng, &reference.rng);
+        }
+    }
+}
+
 #[test]
 fn targeted_preview_restores_world_rng_and_matches_duel_selection() {
     for skill in [

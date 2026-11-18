@@ -124,10 +124,9 @@ impl CombatRuntime {
     }
 
     #[cfg(feature = "no_debug")]
-    pub(super) fn rank_two_plain_enemy_targets(
+    fn sample_two_plain_enemy_targets(
         &mut self,
         candidates: [EntityIdx; 2],
-        smart: bool,
         select_count: usize,
     ) -> (EntityIdx, Option<EntityIdx>) {
         debug_assert!(select_count >= 2);
@@ -136,40 +135,173 @@ impl CombatRuntime {
         let duplicate_limit = select_count + 1;
         for duplicates in 0..duplicate_limit {
             if (self.rng.rFFFF() & 1) as usize != first {
-                // 两个位置都已入选，配额超过两名时，剩余抽样一定是重复项。
                 if select_count > 2 {
+                    // 两个位置都已入选时，剩余抽样只会增加重复计数。
                     for _ in duplicates..duplicate_limit {
                         self.rng.discard_bytes::<2>();
                     }
                 }
-                let left = candidates[first];
-                let right = candidates[first ^ 1];
-                let left_runtime = &self.entities.get(left).unwrap().runtime;
-                let right_runtime = &self.entities.get(right).unwrap().runtime;
-                let (left_score, right_score) = if smart {
-                    (
-                        Self::plain_smart_attack_score(&self.world, left, left_runtime),
-                        Self::plain_smart_attack_score(&self.world, right, right_runtime),
-                    )
-                } else {
-                    (
-                        self.rng.rFFFF() as f64 + left_runtime.attract(),
-                        self.rng.rFFFF() as f64 + right_runtime.attract(),
-                    )
-                };
-                return if right_score > left_score {
-                    (right, Some(left))
-                } else {
-                    (left, Some(right))
-                };
+                return (candidates[first], Some(candidates[first ^ 1]));
             }
         }
-        let target = candidates[first];
-        self.entities.get(target).unwrap();
-        if !smart {
-            self.rng.discard_bytes::<2>();
+        (candidates[first], None)
+    }
+
+    #[cfg(feature = "no_debug")]
+    pub(super) fn rank_two_plain_enemy_targets(
+        &mut self,
+        candidates: [EntityIdx; 2],
+        smart: bool,
+        select_count: usize,
+    ) -> (EntityIdx, Option<EntityIdx>) {
+        let (first, other) = self.sample_two_plain_enemy_targets(candidates, select_count);
+        let first_runtime = &self.entities.get(first).unwrap().runtime;
+        let Some(second) = other else {
+            if !smart {
+                self.rng.discard_bytes::<2>();
+            }
+            return (first, None);
+        };
+        let second_runtime = &self.entities.get(second).unwrap().runtime;
+        let (first_score, second_score) = if smart {
+            (
+                Self::plain_smart_attack_score(&self.world, first, first_runtime),
+                Self::plain_smart_attack_score(&self.world, second, second_runtime),
+            )
+        } else {
+            (
+                self.rng.rFFFF() as f64 + first_runtime.attract(),
+                self.rng.rFFFF() as f64 + second_runtime.attract(),
+            )
+        };
+        if second_score > first_score {
+            (second, Some(first))
+        } else {
+            (first, Some(second))
         }
-        (target, None)
+    }
+
+    /// 保留受限技能的两个停止条件：重复抽中与抽中无效目标各自计数。
+    pub(in crate::runtime) fn select_plain_filtered_enemy_targets(
+        &mut self,
+        actor: EntityIdx,
+        smart: bool,
+        eligible: impl Fn(Option<&EntityRecord>, bool) -> bool,
+        score: impl Fn(&mut Self, EntityIdx, bool) -> f64,
+    ) -> PreparedTargetList {
+        let team = self.plain_effective_team(actor);
+        let alive = self.world.flat_alive();
+        let skips = alive
+            .iter()
+            .enumerate()
+            .filter_map(|(index, &id)| self.entities.get(id).is_some_and(|entity| entity.runtime.team == team).then_some(index))
+            .collect::<crate::rc4::PickSkipRange>();
+        let limit = if smart { 3 } else { 2 };
+        #[cfg(feature = "no_debug")]
+        if let Some(index) = skips.single_remaining_index(alive.len())
+            && let Some(entity) = self.entities.get(alive[index])
+        {
+            let target = alive[index];
+            let valid = eligible(Some(entity), smart);
+            if alive.len() > 1 {
+                match (smart, valid) {
+                    (true, true) => self.rng.discard_bytes::<10>(),
+                    (true, false) => self.rng.discard_bytes::<14>(),
+                    (false, true) => self.rng.discard_bytes::<8>(),
+                    (false, false) => self.rng.discard_bytes::<10>(),
+                }
+            }
+            if !valid {
+                return PreparedTargetList::new();
+            }
+            score(self, target, smart);
+            return smallvec::smallvec![target];
+        }
+        #[cfg(feature = "no_debug")]
+        if let Some([left, right]) = skips.two_remaining_indices(alive.len())
+            && alive[left] != alive[right]
+            && let (Some(left_entity), Some(right_entity)) = (self.entities.get(alive[left]), self.entities.get(alive[right]))
+        {
+            let candidates = [alive[left], alive[right]];
+            let valid = [eligible(Some(left_entity), smart), eligible(Some(right_entity), smart)];
+            return self.select_two_plain_filtered_targets(candidates, valid, smart, limit, score);
+        }
+        let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
+        let mut duplicates = 0;
+        let mut invalid = 0;
+        while duplicates <= limit && invalid <= limit * 2 {
+            let Some(index) = self.rng.pick_skip_span(alive, skips) else {
+                return PreparedTargetList::new();
+            };
+            let target = alive[index];
+            if !eligible(self.entities.get(target), smart) {
+                invalid += 1;
+            } else if selected.contains(&target) {
+                duplicates += 1;
+            } else {
+                selected.push(target);
+                if selected.len() == limit {
+                    break;
+                }
+            }
+        }
+        let mut scored = selected
+            .into_iter()
+            .map(|target| (target, score(self, target, smart)))
+            .collect::<smallvec::SmallVec<[_; 3]>>();
+        scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored.into_iter().map(|(target, _)| target).collect()
+    }
+
+    #[cfg(feature = "no_debug")]
+    fn select_two_plain_filtered_targets(
+        &mut self,
+        candidates: [EntityIdx; 2],
+        valid: [bool; 2],
+        smart: bool,
+        limit: usize,
+        score: impl Fn(&mut Self, EntityIdx, bool) -> f64,
+    ) -> PreparedTargetList {
+        match valid {
+            [true, true] => {
+                let (first, second) = self.sample_two_plain_enemy_targets(candidates, limit);
+                let first_score = score(self, first, smart);
+                if let Some(second) = second {
+                    if score(self, second, smart) > first_score {
+                        return smallvec::smallvec![second, first];
+                    }
+                    return smallvec::smallvec![first, second];
+                }
+                smallvec::smallvec![first]
+            }
+            [false, false] => {
+                if smart {
+                    self.rng.discard_bytes::<14>();
+                } else {
+                    self.rng.discard_bytes::<10>();
+                }
+                PreparedTargetList::new()
+            }
+            _ => {
+                let valid_index = usize::from(valid[1]);
+                let mut hits = 0;
+                let mut invalid = 0;
+                while hits < limit + 2 && invalid <= limit * 2 {
+                    if (self.rng.rFFFF() & 1) as usize == valid_index {
+                        hits += 1;
+                    } else {
+                        invalid += 1;
+                    }
+                }
+                if hits == 0 {
+                    PreparedTargetList::new()
+                } else {
+                    let target = candidates[valid_index];
+                    score(self, target, smart);
+                    smallvec::smallvec![target]
+                }
+            }
+        }
     }
 
     pub fn drain_plain_default_attack_into(
@@ -527,7 +659,7 @@ impl CombatRuntime {
                     } else {
                         defender.runtime.defense
                     } + 64;
-                    let amount = (atp / defense as f64).ceil() as i32;
+                    let amount = ceil_damage_to_i32(atp / defense as f64);
                     self.settle_plain_attack_damage_into(actor, target, amount, covid_source, on_damage, updates);
                     amount
                 }
@@ -663,7 +795,7 @@ impl CombatRuntime {
                 target_runtime.defense + 64
             }
         };
-        let amount = (atp / defense as f64).ceil() as i32;
+        let amount = ceil_damage_to_i32(atp / defense as f64);
         let mut defend_value = RuntimeDefendValue::Damage {
             value: amount,
             caster: actor,

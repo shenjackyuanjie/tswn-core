@@ -24,6 +24,13 @@ mod skills_offense;
 mod skills_team;
 mod skills_weapon;
 
+/// 截断后仅对正向余量进一，保留 `ceil() as i32` 的饱和及 NaN 规则。
+#[inline]
+fn ceil_damage_to_i32(value: f64) -> i32 {
+    let truncated = value as i32;
+    truncated.saturating_add(i32::from(value > f64::from(truncated)))
+}
+
 #[derive(Debug, Clone)]
 /// 单回合结果：分别记录行动、可选可见帧与当前胜者。
 pub struct RoundOutcome {
@@ -108,4 +115,32 @@ pub struct CombatRuntime {
     #[cfg(not(feature = "no_debug"))]
     pub trace: Option<RuntimeTrace>,
     pub round: u64,
+}
+
+#[cfg(test)]
+mod rounding_tests {
+    use super::ceil_damage_to_i32;
+
+    #[test]
+    fn rounding_damage_matches_ceil_with_saturation() {
+        for value in [
+            f64::NEG_INFINITY,
+            f64::INFINITY,
+            f64::NAN,
+            -0.0,
+            0.0,
+            f64::EPSILON,
+            -f64::EPSILON,
+            -1.5,
+            -1.0,
+            1.0,
+            1.5,
+            f64::from(i32::MIN) - 0.5,
+            f64::from(i32::MIN) + 0.5,
+            f64::from(i32::MAX) - 0.5,
+            f64::from(i32::MAX) + 0.5,
+        ] {
+            assert_eq!(ceil_damage_to_i32(value), value.ceil() as i32, "value={value}");
+        }
+    }
 }

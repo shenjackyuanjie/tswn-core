@@ -551,8 +551,6 @@ impl RuntimeRunner {
 
     fn run_round_unchecked(&mut self) -> RoundOutcome { self.runtime.run_minimal_round() }
 
-    fn run_round_unchecked_no_capture(&mut self) -> RoundOutcome { self.runtime.run_active_round_no_capture() }
-
     /// 推进一个 Runtime 回合；可能没有可见帧。未就绪时会 panic，高层会话会先校验。
     pub fn run_round(&mut self) -> RoundOutcome {
         self.assert_ready();
@@ -599,7 +597,7 @@ impl RuntimeRunner {
         let mut rounds = 0usize;
         let mut winner_team = self.runtime.world.sync_winner_from_alive_views();
         while winner_team.is_none() && rounds < max_rounds {
-            winner_team = self.run_round_unchecked_no_capture().winner_team;
+            winner_team = self.runtime.run_active_round_no_capture();
             rounds += 1;
         }
         RuntimeCompletionSummary {
