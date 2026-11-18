@@ -60,7 +60,7 @@
 //! | Feature | 用途 |
 //! | --- | --- |
 //! | `png_render`（默认） | 图标 PNG / Base64 输出 |
-//! | `mimalloc_alloc`（默认） | 原生全局分配器；嵌入应用需考虑分配器选择 |
+//! | `mimalloc_alloc`（默认） | 原生全局分配器；嵌入应用需考虑分配器选择，跨动态库边界时不得转移分配所有权 |
 //! | `no_debug` | 编译期移除调试探针与 trace 路径，不切换战斗规则 |
 //! | `aux_bins` | 额外诊断 binary |
 //! | `battle-test-support` | 绑定测试用故障注入，不用于生产 |

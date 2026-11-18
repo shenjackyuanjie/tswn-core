@@ -165,6 +165,11 @@ V1 prefix 的字段顺序、类型和尺寸永久冻结，旧 caller 的已知 p
 
 所有成功返回的 JSON 用 `tswn_str_free()` 释放，handle 用 `tswn_battle_session_free()` 释放。调用方不得并发操作同一 handle。完整可编译示例：[battle_session.c](../../crates/tswn_capi/examples/battle_session.c)。
 
+`tswn_str_t` / `tswn_bytes_t` 与 handle 由库以 mimalloc（`mimalloc_alloc`）分配，不属于调用方进程的 C 堆：
+只能用同一份库的 `*_free` 归还，`free` / `delete` 或其他分配器会破坏堆并直接终止进程，不会返回 status。
+同一进程内的多份 tswn 制品（C 库与 Python 扩展）各自持有一份 mimalloc，资源不得跨制品转移。
+完整约定见 [`tswn_capi` 分配器与所有权边界](../../crates/tswn_capi/README.md#分配器与所有权边界)。
+
 `tswn_battle_options_default()` 永久只写入 V1 并将 `struct_size` 设置为 V1_SIZE，避免新 library 覆盖旧 caller 的小缓冲区。未来扩展选项需另增带容量参数的初始化接口；不能扩大此历史函数的写入范围。
 
 ## CLI JSONL 输出
