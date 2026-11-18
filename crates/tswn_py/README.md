@@ -24,6 +24,17 @@ cargo build --release -p tswn_py --features "no_debug,mimalloc_alloc"
 `tswn_core` 的 `no_debug,mimalloc_alloc`，同名转发 feature 只是让上面的统一命令
 可以直接使用；不要用 debug 或 release-fast 产物部署。
 
+## 分配器与跨制品指针
+
+扩展的 `tswn_core` 固定启用 `mimalloc_alloc`，所以本模块内部用 mimalloc，而 Python 对象由
+CPython 的分配器管理——两者不共享堆。正常通过 PyO3 接口使用不会有跨堆问题：`bytes` / `str`
+返回值都是复制到 Python 内存里的，本模块也不导出裸指针或 buffer protocol。
+
+需要注意的只有跨制品场景：如果同一进程同时用 `ctypes` 装载了 `tswn_capi.dll`，**不要把任何一方
+的句柄或缓冲交给另一方释放**。两边的 `*_free` 只认自己那份 mimalloc 的堆，错的释放会直接终止
+解释器进程，不会有 Python 异常。C ABI 侧的完整约定见
+[`tswn_capi` 的分配器与所有权边界](../tswn_capi/README.md#分配器与所有权边界)。
+
 ## 快速开始
 
 ```python
