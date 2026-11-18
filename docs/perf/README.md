@@ -34,6 +34,7 @@
 
 ## Runtime 基准与快照
 
+- [0.7.0 fixed30 快照 · 9888bebc](reports/runtime-0.7.0-9888bebc-fixed30-benchmark.md)：20 轮完整 fixed30（单线程 / 自动线程各 10 轮）、噪声与突发负载记录。
 - [0.5.0 发版基准 · 749fcd1](reports/runtime-0.5.0-749fcd1-release-benchmark.md)。
 - [0.4.3 发版基准 · 9d3a3b9](reports/runtime-0.4.3-9d3a3b9-release-benchmark.md)。
 - [0.4.2 分配器快照 · 1ed1258](reports/runtime-0.4.2-1ed1258-allocator-snapshot.md)。
@@ -55,6 +56,7 @@
 | [reports/openbox-live-2026-09-29.json](reports/openbox-live-2026-09-29.json)、[reports/openbox-review-2026-09-29.json](reports/openbox-review-2026-09-29.json) | 对应 OpenBox 报告的逐轮原始数据 |
 | [openbox_pair_parallelism_9b07a04e_ab_samples.json](openbox_pair_parallelism_9b07a04e_ab_samples.json) | OpenBox pair 并行修复复测的逐轮样本与输入哈希 |
 | [maintenance_2026-10-24_benchmark.json](maintenance_2026-10-24_benchmark.json) | 维护前后逐轮统计、独立确认、原始样本合并分位数、哈希及正确性状态 |
+| [fixed30_2026-11-18_9888bebc_runs.json](fixed30_2026-11-18_9888bebc_runs.json) | 0.7.0 `9888bebc` 的 fixed30 逐轮统计、分组中位数与逐 case 离散度 |
 | [maintenance_2026-10-24_raw.zip](archives/maintenance_2026-10-24_raw.zip) | 原始测量/监测证据、失败和污染现场及执行脚本；不受 cargo clean 影响 |
 | [rc4_20260905_profile.json](rc4_20260905_profile.json) | RC4 调查数据 |
 | [python_battle_session_samples.json](python_battle_session_samples.json) | Python BattleSession DTO 转换基线的逐次样本 |

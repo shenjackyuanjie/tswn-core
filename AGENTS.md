@@ -4,6 +4,12 @@
 
 这是一个 Rust workspace。核心战斗与 CLI 位于 `crates/tswn_core/`；跨语言与界面适配分别在 `tswn_capi`、`tswn_py`、`tswn_wasm`、`tswn_openbox`，排名与对战工具在 `tswn_*ranker`、`tswn_ladder`。共享或集成测试主要在 `crates/tswn_test/`，输入样例在 `tests/`，设计与构建说明在 `docs/`，自动化脚本在 `scripts/`。修改功能时优先将测试放在所属 crate 的模块内；跨 crate 行为放入 `tswn_test`。
 
+## 仓库 skill
+
+仓库内 skill 放在 `.agents/skills/`，DSH 会在本项目中自动发现，也可用 `skill` 工具显式加载：
+
+- [`fixed30-benchmark`](.agents/skills/fixed30-benchmark/SKILL.md)：fixed30 性能基准的采样、汇总出表与 `docs/perf` 留档流程，附 `run_rounds.ps1`、`summarize.mjs` 与历史基线 `history.json`。
+
 ## 构建、测试与开发
 
 - `cargo build --workspace`：构建全部 Rust crate。

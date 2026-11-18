@@ -128,7 +128,7 @@ let summary = runner.run_to_completion(20_000);
 | feature      | 默认 | 说明                            |
 | ------------ | ---- | ------------------------------- |
 | `png_render` | ✅   | PNG 图标渲染支持                |
-| `mimalloc_alloc` | ✅ | 使用 mimalloc 分配器            |
+| `mimalloc_alloc` | ✅ | 使用 mimalloc 分配器；嵌入动态库时不得跨边界转移分配所有权 |
 | `no_debug`   | ❌   | 关闭调试输出，用于 release 分发 |
 | `aux_bins`   | ❌   | 启用 `track_test` 辅助二进制     |
 | `battle-test-support` | ❌ | 供绑定测试注入 Runtime 校验故障 |

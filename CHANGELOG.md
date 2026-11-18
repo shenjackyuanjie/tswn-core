@@ -2,6 +2,12 @@
 
 本文件记录跨 crate 的维护与兼容性变更；各 crate 的版本发布历史仍以对应 CHANGELOG 为准。
 
+## 未发布 · 2026-11-18 补全 mimalloc 分配器与跨制品所有权说明
+
+- 明确 `mimalloc_alloc` 让库堆与调用方进程的 `malloc` / `free` 不共享：`tswn_str_t`、`tswn_bytes_t` 与各 opaque 句柄只能用创建它的那份库的 `*_free` 归还；错分配器释放会破坏堆并直接终止调用方进程，不会以 `tswn_status_t` 或 last_error 的形式失败。
+- 同一进程可同时装载 C 库与 Python 扩展（`scripts/verify_battle_cross_binding.py` 即此用法），但资源不得跨制品转移，两份制品各持有一份 mimalloc。静态链接在同一 crate graph 内会因第二个 `#[global_allocator]` 编译失败，动态库边界没有该保护；宿主自带分配器时可在构建时关闭 `tswn_core` 的默认 feature。
+- 只改文档与注释：C ABI、导出签名、JSON 契约、Python 调用签名与默认战斗行为均不变。
+
 ## 未发布 · 2026-11-12 吸收 custom 分支的 bed2 半资源策略
 
 - 通过 `merge(custom)` 把 `custom` 并入 main（内容提交署名原作者 1cy3ish）：新增 `MergePolicy::FixedLaneHalfResources`，bed2 召唤物合并时只获得目标一半的 MP 差值与行动点；其它合并策略保持全量，默认对局与 golden 基线不变。

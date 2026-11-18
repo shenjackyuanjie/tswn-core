@@ -38,6 +38,7 @@
 
 - Runtime `0.4.0` 的历史回归基线与 legacy score 硬目标见 [`runtime-0.4.0-baseline.md`](reports/runtime-0.4.0-baseline.md)；
 - Runtime `0.5.0` 的发版基准与 3% 回退门禁见 [`runtime-0.5.0-749fcd1-release-benchmark.md`](reports/runtime-0.5.0-749fcd1-release-benchmark.md)；
+- Runtime `0.7.0` fixed30 的常规留档（20 轮、单线程与自动线程各 10 轮）见 [`runtime-0.7.0-9888bebc-fixed30-benchmark.md`](reports/runtime-0.7.0-9888bebc-fixed30-benchmark.md)，不含同会话 A/B；
 
 - `Bun` 与 `0.2.12` 的数据来自 `docs/releases/0.2.12.md` 中的同机历史记录；
 - `0.2.13` 数据来自 detached worktree：`f9b0e3c`；

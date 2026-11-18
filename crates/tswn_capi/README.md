@@ -23,6 +23,22 @@
 
 推荐使用 [跨语言高层 API 约定](../../docs/reference/public-api.md) 中的 JSON helper；`Runner` 句柄和基础 `win_rate` 仍保留为 Advanced API。
 
+## 分配器与所有权边界
+
+本库默认开启 `mimalloc_alloc`，整个制品以 mimalloc 作为全局分配器。它的堆与调用方进程的
+`malloc` / `free` 不共享，所以指针的归属只有一处：**本库分配的，必须由本库的 `*_free` 归还**。
+
+- 释放：`tswn_str_t` 用 `tswn_str_free()`，`tswn_bytes_t` 用 `tswn_bytes_free()`，句柄用各自的 `*_free`。
+- 禁止：`free()` / `delete` / 其他分配器 / 另一份 tswn 制品的 `*_free`。错分配器释放会破坏堆并**直接终止调用方进程**，不会以 `tswn_status_t` 或 last_error 的形式失败。
+- 输入：库只在调用期间借用调用方内存，不接管所有权；需要长期持有时由调用方自己复制。
+- 多制品共存：同一进程可以同时装载 `tswn_capi.dll` 与 `tswn_py` 扩展（`scripts/verify_battle_cross_binding.py` 就是这么用的），但**资源不得跨制品转移**——由 A 创建的句柄或缓冲不能交给 B 释放。两份制品各持有一份 mimalloc，互不感知对方的堆。
+
+Rust 嵌入方注意：`mimalloc_alloc` 在**同一个 crate graph 内**会让 rustc 直接拒绝第二个
+`#[global_allocator]` 并指出冲突的 crate，所以静态链接场景有编译期保护；**动态库边界没有这种
+检查**，上面几条只能靠调用方遵守。如果宿主自带分配器、又要跨边界转移所有权，请在构建时关掉
+`tswn_core` 的默认 feature（`default-features = false`），代价是失去 mimalloc 的吞吐收益，
+见 [分配器快照](../../docs/perf/reports/runtime-0.4.2-1ed1258-allocator-snapshot.md)。
+
 ## 构建与打包
 
 从仓库根目录执行：

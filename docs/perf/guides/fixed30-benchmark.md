@@ -15,6 +15,9 @@ cargo build -p tswn_core --release --features no_debug --example perf_runtime
 target\release\examples\perf_runtime.exe -i docs\perf\fixed_cases_30 -n 13000 --threads 1 --timed
 ```
 
+最近一次完整留档（0.7.0 `9888bebc`，单线程与自动线程各 10 轮）见
+[`runtime-0.7.0-9888bebc-fixed30-benchmark.md`](../reports/runtime-0.7.0-9888bebc-fixed30-benchmark.md)。
+
 输出按文件名排序的 JSONL，保留 FFA/多队输入语义。`--timed` 开启逐场 init/fight 计时；正常热路径采样时去掉它。自动线程使用 `--threads 0`，score 入口、输出字段与 A/B 要求见 [性能追踪](../benchmark-history.md#2-30-case-固定-benchmark)。当前输出与下方旧工具的分组报告结构不同，原始历史报告保留原口径。
 
 ## 1. 固定输入
