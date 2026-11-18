@@ -36,6 +36,7 @@ pub struct PlayerSpec {
 pub enum PlayerSpecError {
     NameTooLong { len: usize, max: usize },
     TeamTooLong { len: usize, max: usize },
+    InvalidEffectiveSkillOverlay,
 }
 
 impl fmt::Display for PlayerSpecError {
@@ -43,6 +44,10 @@ impl fmt::Display for PlayerSpecError {
         match self {
             Self::NameTooLong { len, max } => write!(f, "player name is too long: {len} bytes (max {max})"),
             Self::TeamTooLong { len, max } => write!(f, "team name is too long: {len} bytes (max {max})"),
+            Self::InvalidEffectiveSkillOverlay => write!(
+                f,
+                "invalid effective_skills overlay: expected a boolean or skill weight map with a valid adjustment and redistribution"
+            ),
         }
     }
 }
@@ -100,6 +105,21 @@ impl PlayerSpec {
                 }
                 if let Some(parsed) = PlayerOverlay::parse_inline(segment) {
                     overlay = Some(parsed);
+                } else if (segment.starts_with("diy[") || segment.starts_with("ol:"))
+                    && [
+                        "\"effective_skills\"",
+                        "\"effective_skill_redistribution\"",
+                        "\"effective_skill_priority\"",
+                        "\"effective_skill_adjustment\"",
+                    ]
+                    .into_iter()
+                    .any(|field| {
+                        segment
+                            .match_indices(field)
+                            .any(|(index, key)| segment[index + key.len()..].trim_start().starts_with(':'))
+                    })
+                {
+                    return Err(PlayerSpecError::InvalidEffectiveSkillOverlay);
                 } else if let Some(existing) = &mut weapon {
                     existing.push('+');
                     existing.push_str(segment);

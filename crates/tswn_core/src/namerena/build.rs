@@ -284,7 +284,11 @@ impl PlayerBuild {
             _ => {}
         }
         let mut action_order = std::array::from_fn(|index| index as u32);
-        if spec.overlay.as_ref().and_then(|overlay| overlay.skills.as_ref()).is_none() {
+        if spec
+            .overlay
+            .as_ref()
+            .is_none_or(|overlay| overlay.skills.is_none() && overlay.effective_skills.is_none())
+        {
             rand.sort_list(&mut action_order);
         }
         let name_factor = match spec.class {
@@ -309,7 +313,7 @@ impl PlayerBuild {
         let has_diy = spec
             .overlay
             .as_ref()
-            .is_some_and(|overlay| overlay.attrs.is_some() || overlay.skills.is_some());
+            .is_some_and(|overlay| overlay.attrs.is_some() || overlay.skills.is_some() || overlay.effective_skills.is_some());
         let weapon_name = spec
             .weapon
             .as_deref()
@@ -381,7 +385,12 @@ impl PlayerBuild {
         let mut boosted = [false; 40];
         let mut boosts: [Option<SkillBoost>; 40] = std::array::from_fn(|_| None);
         let mut slot_skill_keys = [None; 16];
-        let overlay_skills = self.overlay.as_ref().and_then(|overlay| overlay.skills.as_ref());
+        let effective_skills = self.overlay.as_ref().and_then(|overlay| overlay.effective_skills.as_deref());
+        let overlay_skills = self
+            .overlay
+            .as_ref()
+            .and_then(|overlay| overlay.skills.as_deref())
+            .or_else(|| effective_skills.map(|_| &[][..]));
         if overlay_skills.is_none() && self.class != PlayerClass::Boss {
             for (slot, offset) in (64..128).step_by(4).enumerate() {
                 let small = self.name_base[offset..offset + 4].iter().copied().min().unwrap();
@@ -498,8 +507,22 @@ impl PlayerBuild {
         }
         let mut skills = overlay_skills.map_or_else(
             || SkillLoadoutSpec::standard(&levels, &boosted, &boosts, &self.action_order),
-            |skills| SkillLoadoutSpec::player_overlay(skills),
+            |skills| SkillLoadoutSpec::player_overlay(skills, effective_skills),
         );
+        if let Some(overlay) = &self.overlay {
+            if overlay.auto_effective_skills && self.class != PlayerClass::Boss {
+                skills.enable_auto_effective_skills();
+                if let Some(clone) = &mut rinick_clone_skills {
+                    clone.enable_auto_effective_skills();
+                }
+            }
+            if skills.effective_skill_weights.is_some() {
+                skills.effective_skill_redistribution = overlay.effective_skill_redistribution;
+                if let Some(adjustment) = &overlay.effective_skill_adjustment {
+                    skills.effective_skill_adjustment = Some(adjustment.clone());
+                }
+            }
+        }
         let mut permanent_charge = false;
         if let Some(weapon) = &self.weapon {
             let kind = weapon.kind();

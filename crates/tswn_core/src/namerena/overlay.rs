@@ -3,7 +3,23 @@
 //! 本模块负责解析名字后缀中的 `diy[...]` / `ol:{...}` 覆盖配置，
 //! 并把主玩家与召唤物模板的属性、技能、武器等信息整理成内部结构。
 
-use super::SkillBoost;
+use super::{ClassifiedSkillRef, SkillBoost, player_classified_skill_ref_from_name};
+
+/// 主动技单次抽样的权重，单位为百万分之一熟练度。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectiveSkillWeight(u64);
+
+impl EffectiveSkillWeight {
+    pub fn new(value: f64) -> Option<Self> {
+        (0.0..=f64::from(u32::MAX))
+            .contains(&value)
+            .then(|| Self((value * 1_000_000.0).round() as u64))
+    }
+
+    pub fn value(self) -> f64 { self.0 as f64 / 1_000_000.0 }
+
+    pub(super) fn default_level(self) -> u32 { self.0.div_ceil(1_000_000) as u32 }
+}
 
 /// 战斗召唤物（幻影 / 使魔 / 丧尸）的覆盖配置。
 ///
@@ -52,6 +68,14 @@ pub struct PlayerOverlay {
     /// 未列出的技能按默认固定顺序排在末尾。
     /// `None` 表示不覆盖，走正常名字推导技能等级。
     pub skills: Option<Vec<(String, SkillBoost)>>,
+    /// 存在时以所列权重抽取主动技。可另设原始熟练度供技能结算使用。
+    pub effective_skills: Option<Vec<(String, EffectiveSkillWeight)>>,
+    /// 从名字原有技能组直接构造条件抽样权重。
+    pub auto_effective_skills: bool,
+    /// 双参数技能的普通技能占用率，最多十项，取值为 0 到 1。
+    pub effective_skill_adjustment: Option<Vec<(usize, EffectiveSkillWeight)>>,
+    /// 预先被状态门槛挡住的主动技，其权重可按此比例从抽样区间移除。
+    pub effective_skill_redistribution: Option<EffectiveSkillWeight>,
     /// 武器名覆盖。
     /// `None` 表示不覆盖，取名字中 `+` 后面的武器名。
     ///
@@ -79,6 +103,10 @@ impl MinionOverlay {
         Some(PlayerOverlay {
             attrs: None,
             skills: None,
+            effective_skills: None,
+            auto_effective_skills: false,
+            effective_skill_adjustment: None,
+            effective_skill_redistribution: None,
             weapon: None,
             name_factor_enabled: true,
             shadow: self.shadow.as_deref().cloned(),
@@ -93,6 +121,10 @@ impl Default for PlayerOverlay {
         Self {
             attrs: None,
             skills: None,
+            effective_skills: None,
+            auto_effective_skills: false,
+            effective_skill_adjustment: None,
+            effective_skill_redistribution: None,
             weapon: None,
             name_factor_enabled: true,
             shadow: None,
@@ -110,13 +142,43 @@ impl PlayerOverlay {
     /// 否则返回 `None`，表示该段是普通武器名。
     pub fn parse_inline(segment: &str) -> Option<Self> {
         let segment = segment.trim();
-        if let Some(rest) = segment.strip_prefix("diy[") {
+        let mut overlay = if let Some(rest) = segment.strip_prefix("diy[") {
             Self::parse_diy(rest)
         } else if let Some(rest) = segment.strip_prefix("ol:") {
             Self::parse_object(rest)
         } else {
             None
+        }?;
+        if overlay.auto_effective_skills || overlay.effective_skill_adjustment.is_some() {
+            if overlay.effective_skill_redistribution.is_some_and(|ratio| ratio.value() != 1.0)
+                || overlay.effective_skill_adjustment.is_some()
+                    && !overlay.effective_skills.as_ref().is_some_and(|weights| {
+                        weights.iter().all(|(name, _)| {
+                            matches!(
+                                player_classified_skill_ref_from_name(name),
+                                Some(ClassifiedSkillRef::Normal(0..=34))
+                            )
+                        })
+                    })
+            {
+                return None;
+            }
+            overlay.effective_skill_redistribution = EffectiveSkillWeight::new(1.0);
         }
+        if overlay.effective_skills.is_some() {
+            overlay.skills.get_or_insert_with(Vec::new);
+        }
+        Some(overlay)
+    }
+
+    fn set_effective_skills(&mut self, raw: &str) -> Option<()> {
+        self.auto_effective_skills = raw == "true";
+        self.effective_skills = if self.auto_effective_skills {
+            None
+        } else {
+            parse_effective_skill_field(raw)?
+        };
+        Some(())
     }
 
     /// 解析紧凑 DIY 格式：`72,39,69,76,67,66,0,84]{"sklfire":5,"reflect":2}`
@@ -133,7 +195,22 @@ impl PlayerOverlay {
         };
         let suffix = suffix.trim();
         if !suffix.is_empty() {
-            overlay.skills = Some(parse_skill_map(suffix)?);
+            let mut skills = Vec::new();
+            parse_named_map(suffix, |key, value| {
+                match key.as_str() {
+                    "effective_skills" => overlay.set_effective_skills(value)?,
+                    "effective_skill_adjustment" => overlay.effective_skill_adjustment = Some(parse_skill_adjustment(value)?),
+                    "effective_skill_priority" => return None,
+                    "effective_skill_redistribution" => {
+                        overlay.effective_skill_redistribution = Some(parse_redistribution(value)?)
+                    }
+                    _ => skills.push((key, parse_skill_boost(value)?)),
+                }
+                Some(())
+            })?;
+            if !overlay.auto_effective_skills || !skills.is_empty() {
+                overlay.skills = Some(skills);
+            }
         }
         Some(overlay)
     }
@@ -169,6 +246,10 @@ impl PlayerOverlay {
             match key.as_str() {
                 "attrs" => overlay.attrs = Some(decode_overlay_attrs(parse_attrs(value)?)),
                 "skills" => overlay.skills = Some(parse_skill_map(value)?),
+                "effective_skills" => overlay.set_effective_skills(value)?,
+                "effective_skill_adjustment" => overlay.effective_skill_adjustment = Some(parse_skill_adjustment(value)?),
+                "effective_skill_priority" => return None,
+                "effective_skill_redistribution" => overlay.effective_skill_redistribution = Some(parse_redistribution(value)?),
                 "weapon" => overlay.weapon = Some(parse_scalar_string(value)?),
                 "name_factor_enabled" => overlay.name_factor_enabled = parse_bool(value)?,
                 "shadow" | "phantom" | "幻影" => overlay.shadow = Some(parse_minion_overlay(value)?),
@@ -272,9 +353,69 @@ fn parse_attrs(raw: &str) -> Option<[i32; 8]> {
 /// - 字符串 `"40+30"` → `SkillBoost::SlotBoost { base: 40, boost: 30 }`
 /// - 字符串 `"2*40"` → `SkillBoost::LastBoost(40)`
 fn parse_skill_map(raw: &str) -> Option<Vec<(String, SkillBoost)>> {
+    let mut skills = Vec::new();
+    parse_named_map(raw, |key, value| {
+        skills.push((key, parse_skill_boost(value)?));
+        Some(())
+    })?;
+    Some(skills)
+}
+
+fn parse_skill_boost(raw: &str) -> Option<SkillBoost> {
+    if raw.starts_with('"') {
+        SkillBoost::parse(&parse_quoted_string(raw, 0)?.0)
+    } else {
+        Some(SkillBoost::Normal(raw.parse().ok()?))
+    }
+}
+
+fn parse_effective_skill_field(raw: &str) -> Option<Option<Vec<(String, EffectiveSkillWeight)>>> {
+    if raw == "false" {
+        return Some(None);
+    }
+    let mut skills = Vec::new();
+    let mut seen = Vec::new();
+    parse_named_map(raw, |key, value| {
+        let skill = player_classified_skill_ref_from_name(&key)?;
+        if matches!(skill, ClassifiedSkillRef::Normal(35..)) || seen.contains(&skill) {
+            return None;
+        }
+        seen.push(skill);
+        skills.push((key, EffectiveSkillWeight::new(value.parse().ok()?)?));
+        Some(())
+    })?;
+    Some(Some(skills))
+}
+
+fn parse_skill_adjustment(raw: &str) -> Option<Vec<(usize, EffectiveSkillWeight)>> {
+    let mut adjustments = Vec::new();
+    parse_named_map(raw, |key, value| {
+        let ClassifiedSkillRef::Normal(key) = player_classified_skill_ref_from_name(&key)? else {
+            return None;
+        };
+        if key >= 25
+            || adjustments.len() >= super::skill::MAX_EFFECTIVE_SKILL_ADJUSTMENTS
+            || adjustments.iter().any(|&(existing, _)| existing == key)
+        {
+            return None;
+        }
+        adjustments.push((key, parse_redistribution(value)?));
+        Some(())
+    })?;
+    adjustments.sort_unstable_by_key(|&(key, _)| key);
+    Some(adjustments)
+}
+
+fn parse_redistribution(raw: &str) -> Option<EffectiveSkillWeight> {
+    raw.parse::<f64>()
+        .ok()
+        .filter(|value| (0.0..=1.0).contains(value))
+        .and_then(EffectiveSkillWeight::new)
+}
+
+fn parse_named_map(raw: &str, mut field: impl FnMut(String, &str) -> Option<()>) -> Option<()> {
     let raw = raw.trim();
     let raw = raw.strip_prefix('{')?.strip_suffix('}')?;
-    let mut list = Vec::new();
     let mut idx = 0usize;
     let bytes = raw.as_bytes();
 
@@ -291,25 +432,12 @@ fn parse_skill_map(raw: &str) -> Option<Vec<(String, SkillBoost)>> {
         }
         idx += 1;
         skip_ws(raw, &mut idx);
-
-        // 值可以是整数或双引号字符串。
-        let value = if bytes.get(idx).copied() == Some(b'"') {
-            // 字符串值：解析为 SkillBoost（支持 "40+30"、"2*40" 等格式）。
-            let (str_val, next_idx) = parse_quoted_string(raw, idx)?;
-            idx = next_idx;
-            SkillBoost::parse(&str_val)?
-        } else {
-            // 整数值：直接作为 Normal 等级。
-            let start = idx;
-            while idx < bytes.len() && bytes[idx] != b',' && bytes[idx] != b'}' {
-                idx += 1;
-            }
-            SkillBoost::Normal(raw[start..idx].trim().parse().ok()?)
-        };
-        list.push((key, value));
+        let (value, next_idx) = extract_json_value(raw, idx)?;
+        field(key, value)?;
+        idx = next_idx;
     }
 
-    Some(list)
+    Some(())
 }
 
 /// 解析标量字符串值（用于 ol: 格式中的 weapon 字段）。

@@ -5,6 +5,8 @@
 //! 当前等级为 0 的技能不进入相应 hook 计划，构建等级保留最初导入语义。
 
 use super::*;
+use crate::namerena::EffectiveSkillWeight;
+use std::sync::Arc;
 
 const SKILL_HOOK_COUNT: usize = 8;
 static NEXT_SKILL_LOADOUT_BASELINE_ID: AtomicU64 = AtomicU64::new(1);
@@ -48,6 +50,14 @@ const SKILL_DIRTY_PRE_ACTION: u8 = 1 << 3;
 const SKILL_DIRTY_POST_DAMAGE: u8 = 1 << 4;
 const SKILL_DIRTY_DEFERRED: u8 = 1 << 5;
 
+#[derive(Debug, PartialEq, Eq)]
+struct EffectiveActionWeights {
+    // 固定槽位、初始等级和初始权重；克隆体共享基准，读取时使用自己的当前等级。
+    entries: Vec<(usize, u32, EffectiveSkillWeight)>,
+    redistribution: Option<EffectiveSkillWeight>,
+    adjustment: Option<Vec<(usize, EffectiveSkillWeight)>>,
+}
+
 #[derive(Debug, Clone)]
 /// 一份技能配置及其运行期变动；handler 函数由 registry ID 另行绑定。
 pub struct SkillLoadout {
@@ -62,6 +72,7 @@ pub struct SkillLoadout {
     pre_action_order: SmallVec<[usize; 8]>,
     post_damage_order: SmallVec<[usize; 8]>,
     post_action_after_states: SmallVec<[(u64, usize); 4]>,
+    effective_skill_weights: Option<Arc<EffectiveActionWeights>>,
     // 主动技能热路径只需要固定槽位和已解析的内置类型；u16 槽位让常见八项缓存留在栈内。
     action_cache: SmallVec<[CachedBuiltinActionEntry; 8]>,
     action_cache_ready: bool,
@@ -91,6 +102,7 @@ impl Default for SkillLoadout {
             pre_action_order: SmallVec::new(),
             post_damage_order: SmallVec::new(),
             post_action_after_states: SmallVec::new(),
+            effective_skill_weights: None,
             action_cache: SmallVec::new(),
             action_cache_ready: false,
             hook_cache: Vec::new(),
@@ -116,6 +128,7 @@ impl PartialEq for SkillLoadout {
             && self.pre_action_order == other.pre_action_order
             && self.post_damage_order == other.post_damage_order
             && self.post_action_after_states == other.post_action_after_states
+            && self.effective_skill_weights == other.effective_skill_weights
     }
 }
 
@@ -144,6 +157,7 @@ impl SkillLoadout {
             pre_action_order: SmallVec::new(),
             post_damage_order,
             post_action_after_states: SmallVec::new(),
+            effective_skill_weights: None,
             action_cache: SmallVec::new(),
             action_cache_ready: false,
             hook_cache: Vec::new(),
@@ -176,6 +190,7 @@ impl SkillLoadout {
             pre_action_order: SmallVec::new(),
             post_damage_order,
             post_action_after_states: SmallVec::new(),
+            effective_skill_weights: None,
             action_cache: SmallVec::new(),
             action_cache_ready: false,
             hook_cache: Vec::new(),
@@ -221,6 +236,7 @@ impl SkillLoadout {
             pre_action_order: SmallVec::new(),
             post_damage_order,
             post_action_after_states: SmallVec::new(),
+            effective_skill_weights: None,
             action_cache: SmallVec::new(),
             action_cache_ready: false,
             hook_cache: Vec::new(),
@@ -244,6 +260,7 @@ impl SkillLoadout {
         action_order: &[u32; 40],
     ) {
         self.invalidate_hook_cache();
+        self.effective_skill_weights = None;
         self.skills.clear();
         self.levels.clear();
         self.build_levels.clear();
@@ -492,6 +509,71 @@ impl SkillLoadout {
     }
 
     pub fn active_order(&self) -> &[usize] { &self.active_order }
+
+    pub(crate) fn with_effective_skill_weights(
+        mut self,
+        weights: Option<&[(usize, EffectiveSkillWeight)]>,
+        redistribution: Option<EffectiveSkillWeight>,
+        adjustment: Option<&[(usize, EffectiveSkillWeight)]>,
+    ) -> Self {
+        self.effective_skill_weights = weights.map(|weights| {
+            Arc::new(EffectiveActionWeights {
+                entries: weights
+                    .iter()
+                    .filter_map(|&(key, weight)| {
+                        let lane = self.fixed_lane_keys.iter().position(|&candidate| candidate == key)?;
+                        let level = self.levels[lane];
+                        (level > 0 && weight.value() > 0.0).then_some((lane, level, weight))
+                    })
+                    .collect(),
+                redistribution,
+                adjustment: adjustment.map(|adjustment| {
+                    adjustment
+                        .iter()
+                        .filter_map(|&(key, cut)| {
+                            let lane = self.fixed_lane_keys.iter().position(|&candidate| candidate == key)?;
+                            Some((lane, cut))
+                        })
+                        .collect()
+                }),
+            })
+        });
+        self
+    }
+
+    pub(crate) fn effective_action_weights(&self) -> Option<impl Iterator<Item = (usize, f64)> + '_> {
+        self.effective_skill_weights.as_ref().map(|weights| {
+            weights.entries.iter().filter_map(|&(lane, initial_level, weight)| {
+                let level = self.levels[lane];
+                (level > 0 && self.active_order.contains(&lane))
+                    .then(|| (lane, weight.value() * f64::from(level) / f64::from(initial_level)))
+            })
+        })
+    }
+
+    pub(crate) fn effective_skill_redistribution(&self) -> f64 {
+        self.effective_skill_weights
+            .as_ref()
+            .and_then(|weights| weights.redistribution)
+            .map_or(0.0, EffectiveSkillWeight::value)
+            .min(1.0)
+    }
+
+    pub(crate) fn uses_compact_effective_skills(&self) -> bool {
+        self.effective_skill_weights.as_ref().is_some_and(|weights| weights.adjustment.is_some())
+    }
+
+    pub(crate) fn effective_skill_cut(&self, lane: usize) -> Option<f64> {
+        self.effective_skill_weights
+            .as_ref()?
+            .adjustment
+            .as_ref()?
+            .iter()
+            .find(|&&(candidate, _)| candidate == lane)
+            .map(|&(_, cut)| cut.value())
+    }
+
+    pub(crate) fn uses_effective_skill_weights(&self) -> bool { self.effective_skill_weights.is_some() }
 
     pub fn pre_action_order(&self) -> &[usize] { &self.pre_action_order }
 

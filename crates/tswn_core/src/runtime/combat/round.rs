@@ -535,7 +535,7 @@ impl CombatRuntime {
             );
         }
         let prepared_skill = if can_scan_skills {
-            let selected = if is_boss {
+            let selected = if is_boss && !self.entities.get(actor).unwrap().template.skills.uses_effective_skill_weights() {
                 self.scan_plain_boss_action_skills(actor, smart).map(PreparedPlainAction::BossSkill)
             } else {
                 self.scan_plain_action_skill_probabilities(actor, smart)
@@ -1179,6 +1179,12 @@ impl CombatRuntime {
                 .unwrap_or_else(|| panic!("unknown runtime action-scan actor: {}", actor.0))
                 .template
                 .skills;
+            if skills.uses_compact_effective_skills() {
+                return self.draw_compact_effective_skill(actor, smart);
+            }
+            if skills.uses_effective_skill_weights() {
+                return self.draw_effective_skill(actor, smart);
+            }
             match skills.cached_builtin_actions() {
                 Some(cache) => (
                     cache.len(),
@@ -1228,86 +1234,267 @@ impl CombatRuntime {
                     skill: builtin_skill,
                     fixed_lane,
                 };
-                let targets = match builtin_skill {
-                    BuiltinActiveSkill::Fire
-                    | BuiltinActiveSkill::Thunder
-                    | BuiltinActiveSkill::Absorb
-                    | BuiltinActiveSkill::Poison
-                    | BuiltinActiveSkill::Critical
-                    | BuiltinActiveSkill::SummonExplode => self.select_plain_default_enemy_targets(actor, smart),
-                    BuiltinActiveSkill::Berserk => self.select_plain_berserk_targets(actor, smart),
-                    BuiltinActiveSkill::Quake => {
-                        self.select_plain_default_enemy_targets_with_count(actor, smart, if smart { 6 } else { 5 })
-                    }
-                    BuiltinActiveSkill::Ice => self.select_plain_ice_targets(actor, smart),
-                    BuiltinActiveSkill::Rapid => self.select_plain_rapid_targets(actor, smart),
-                    BuiltinActiveSkill::Half => self.select_plain_half_targets(actor, smart),
-                    BuiltinActiveSkill::Shadow => smallvec::smallvec![actor],
-                    BuiltinActiveSkill::Charm => self.select_plain_charm_targets(actor, smart),
-                    BuiltinActiveSkill::Curse => self.select_plain_curse_targets(actor, smart),
-                    BuiltinActiveSkill::Haste => self.select_plain_haste_targets(actor, smart),
-                    BuiltinActiveSkill::Heal => self.select_plain_heal_targets(actor, smart),
-                    BuiltinActiveSkill::Slow => self.select_plain_slow_targets(actor, smart),
-                    BuiltinActiveSkill::Exchange => self.select_plain_exchange_targets(actor, smart),
-                    BuiltinActiveSkill::Revive => self.select_plain_revive_targets(actor, smart),
-                    BuiltinActiveSkill::Disperse => self.select_plain_disperse_targets(actor, smart),
-                    BuiltinActiveSkill::Iron => smallvec::smallvec![actor],
-                    BuiltinActiveSkill::Clone => smallvec::smallvec![actor],
-                    BuiltinActiveSkill::Charge => smallvec::smallvec![actor],
-                    BuiltinActiveSkill::Accumulate => smallvec::smallvec![actor],
-                    BuiltinActiveSkill::Assassinate => self.select_plain_assassinate_targets(actor, smart),
-                    BuiltinActiveSkill::Summon => smallvec::smallvec![actor],
-                    BuiltinActiveSkill::Possess => self.select_plain_possess_targets(actor, smart),
-                    // 武器技能的 `aa` 恒返回空数组，目标在技能自身结算时再解析。
-                    BuiltinActiveSkill::WeaponS11 | BuiltinActiveSkill::WeaponDeathNote | BuiltinActiveSkill::WeaponXuanYue => {
-                        smallvec::smallvec![]
-                    }
-                    // 属性修改器追加的 Boss 技能沿用其原型的选目标口径。
-                    BuiltinActiveSkill::RinickIceAge => {
-                        self.select_plain_default_enemy_targets_with_count(actor, smart, if smart { 6 } else { 5 })
-                    }
-                    BuiltinActiveSkill::RinickYuriControl => self.select_plain_yuri_control_targets(actor, smart),
-                };
-                #[cfg(not(feature = "no_debug"))]
-                if self.probe_plain_action_matches(actor) {
-                    eprintln!(
-                        "[action_probe:runtime:targets] actor={} skill={} lane={} targets={:?} rc4=({}, {})",
-                        actor.0,
-                        builtin_skill.export_name(),
-                        fixed_lane,
-                        targets,
-                        self.rng.i,
-                        self.rng.j,
-                    );
+                if let Some(action) = self.prepare_plain_builtin_skill_action(actor, smart, selected) {
+                    return Some(action);
                 }
-                let allows_empty_targets = matches!(
-                    builtin_skill,
-                    BuiltinActiveSkill::WeaponS11 | BuiltinActiveSkill::WeaponDeathNote
-                ) || (builtin_skill == BuiltinActiveSkill::Assassinate
-                    && self.entities.get(actor).is_some_and(|entity| entity.runtime.assassinate.is_some()));
-                if targets.is_empty() && !allows_empty_targets {
-                    continue;
-                }
-                return Some(PreparedBuiltinSkillAction { selected, targets });
             }
         }
         None
+    }
+
+    fn prepare_plain_builtin_skill_action(
+        &mut self,
+        actor: EntityIdx,
+        smart: bool,
+        selected: SelectedBuiltinSkill,
+    ) -> Option<PreparedBuiltinSkillAction> {
+        let builtin_skill = selected.skill;
+        let targets = match builtin_skill {
+            BuiltinActiveSkill::Fire
+            | BuiltinActiveSkill::Thunder
+            | BuiltinActiveSkill::Absorb
+            | BuiltinActiveSkill::Poison
+            | BuiltinActiveSkill::Critical
+            | BuiltinActiveSkill::SummonExplode => self.select_plain_default_enemy_targets(actor, smart),
+            BuiltinActiveSkill::Berserk => self.select_plain_berserk_targets(actor, smart),
+            BuiltinActiveSkill::Quake => {
+                self.select_plain_default_enemy_targets_with_count(actor, smart, if smart { 6 } else { 5 })
+            }
+            BuiltinActiveSkill::Ice => self.select_plain_ice_targets(actor, smart),
+            BuiltinActiveSkill::Rapid => self.select_plain_rapid_targets(actor, smart),
+            BuiltinActiveSkill::Half => self.select_plain_half_targets(actor, smart),
+            BuiltinActiveSkill::Shadow => smallvec::smallvec![actor],
+            BuiltinActiveSkill::Charm => self.select_plain_charm_targets(actor, smart),
+            BuiltinActiveSkill::Curse => self.select_plain_curse_targets(actor, smart),
+            BuiltinActiveSkill::Haste => self.select_plain_haste_targets(actor, smart),
+            BuiltinActiveSkill::Heal => self.select_plain_heal_targets(actor, smart),
+            BuiltinActiveSkill::Slow => self.select_plain_slow_targets(actor, smart),
+            BuiltinActiveSkill::Exchange => self.select_plain_exchange_targets(actor, smart),
+            BuiltinActiveSkill::Revive => self.select_plain_revive_targets(actor, smart),
+            BuiltinActiveSkill::Disperse => self.select_plain_disperse_targets(actor, smart),
+            BuiltinActiveSkill::Iron => smallvec::smallvec![actor],
+            BuiltinActiveSkill::Clone => smallvec::smallvec![actor],
+            BuiltinActiveSkill::Charge => smallvec::smallvec![actor],
+            BuiltinActiveSkill::Accumulate => smallvec::smallvec![actor],
+            BuiltinActiveSkill::Assassinate => self.select_plain_assassinate_targets(actor, smart),
+            BuiltinActiveSkill::Summon => smallvec::smallvec![actor],
+            BuiltinActiveSkill::Possess => self.select_plain_possess_targets(actor, smart),
+            // 武器技能的 `aa` 恒返回空数组，目标在技能自身结算时再解析。
+            BuiltinActiveSkill::WeaponS11 | BuiltinActiveSkill::WeaponDeathNote | BuiltinActiveSkill::WeaponXuanYue => {
+                smallvec::smallvec![]
+            }
+            // 属性修改器追加的 Boss 技能沿用其原型的选目标口径。
+            BuiltinActiveSkill::RinickIceAge => {
+                self.select_plain_default_enemy_targets_with_count(actor, smart, if smart { 6 } else { 5 })
+            }
+            BuiltinActiveSkill::RinickYuriControl => self.select_plain_yuri_control_targets(actor, smart),
+        };
+        #[cfg(not(feature = "no_debug"))]
+        if self.probe_plain_action_matches(actor) {
+            eprintln!(
+                "[action_probe:runtime:targets] actor={} skill={} lane={} targets={:?} rc4=({}, {})",
+                actor.0,
+                builtin_skill.export_name(),
+                selected.fixed_lane,
+                targets,
+                self.rng.i,
+                self.rng.j,
+            );
+        }
+        let allows_empty_targets = matches!(
+            builtin_skill,
+            BuiltinActiveSkill::WeaponS11 | BuiltinActiveSkill::WeaponDeathNote
+        ) || (builtin_skill == BuiltinActiveSkill::Assassinate
+            && self.entities.get(actor).is_some_and(|entity| entity.runtime.assassinate.is_some()));
+        if targets.is_empty() && !allows_empty_targets {
+            return None;
+        }
+        Some(PreparedBuiltinSkillAction { selected, targets })
+    }
+
+    fn draw_effective_skill(&mut self, actor: EntityIdx, smart: bool) -> Option<PreparedBuiltinSkillAction> {
+        let loadout = &self.entities.get(actor).unwrap().template.skills;
+        let redistribution = loadout.effective_skill_redistribution();
+        let mut choices = smallvec::SmallVec::<[(SelectedBuiltinSkill, u32, f64); 8]>::new();
+        let mut total = 0.0;
+        let mut available = 0.0;
+        for (fixed_lane, weight) in loadout.effective_action_weights().unwrap() {
+            let Some(skill) = self.builtin_active_skill(loadout.skills()[fixed_lane]) else {
+                continue;
+            };
+            total += weight;
+            let level = loadout.level_at(fixed_lane).unwrap();
+            if redistribution > 0.0 && !self.plain_action_skill_allowed(actor, skill, level, smart) {
+                continue;
+            }
+            available += weight;
+            choices.push((SelectedBuiltinSkill { skill, fixed_lane }, level, available));
+        }
+        // 用一个 24 位样本保留小数权重。权重不足 128 的区间留给普攻，超出时按比例缩放。
+        // 移除指定比例的不可用区间，其余不可用权重仍留给普攻。全程只做一次技能抽样。
+        let range = total.max(128.0) - redistribution * (total - available);
+        let roll = f64::from(self.rng.rFFFFFF()) * (1.0 / 16_777_216.0) * range;
+        let (selected, level, _) = choices.into_iter().find(|&(_, _, upper)| roll < upper)?;
+        if !self.plain_action_skill_allowed(actor, selected.skill, level, smart) {
+            return None;
+        }
+        self.prepare_plain_builtin_skill_action(actor, smart, selected)
+    }
+
+    fn draw_compact_effective_skill(&mut self, actor: EntityIdx, smart: bool) -> Option<PreparedBuiltinSkillAction> {
+        let loadout = &self.entities.get(actor).unwrap().template.skills;
+        let mut ordinary = smallvec::SmallVec::<[(SelectedBuiltinSkill, f64); 8]>::new();
+        let mut dynamic = smallvec::SmallVec::<[(SelectedBuiltinSkill, f64, f64); 5]>::new();
+        let mut ordinary_total = 0.0;
+        let mut ordinary_blocked = 0.0;
+        for (fixed_lane, weight) in loadout.effective_action_weights().unwrap() {
+            let Some(skill) = self.builtin_active_skill(loadout.skills()[fixed_lane]) else {
+                continue;
+            };
+            let level = loadout.level_at(fixed_lane).unwrap();
+            let allowed = self.plain_action_skill_allowed(actor, skill, level, smart);
+            let choice = SelectedBuiltinSkill { skill, fixed_lane };
+            if let Some(cut) = loadout.effective_skill_cut(fixed_lane) {
+                if allowed {
+                    let probability = self.effective_skill_attempt_probability(actor, smart, skill, level, weight);
+                    dynamic.push((choice, cut, probability));
+                }
+            } else {
+                ordinary_total += weight;
+                if allowed {
+                    ordinary.push((choice, weight));
+                } else {
+                    ordinary_blocked += weight;
+                }
+            }
+        }
+        // 名字附带的武器技能仍排在玩家主动技能之后，不占特征维度。
+        for &fixed_lane in loadout.active_order() {
+            let Some(skill @ (BuiltinActiveSkill::WeaponS11 | BuiltinActiveSkill::WeaponDeathNote)) =
+                self.builtin_active_skill(loadout.skills()[fixed_lane])
+            else {
+                continue;
+            };
+            let probability = self.effective_skill_attempt_probability(actor, smart, skill, 1, 0.0);
+            if probability > 0.0 {
+                dynamic.push((SelectedBuiltinSkill { skill, fixed_lane }, 1.0, probability));
+            }
+        }
+        dynamic.sort_unstable_by(|(left, left_cut, _), (right, right_cut, _)| {
+            left_cut.total_cmp(right_cut).then(left.fixed_lane.cmp(&right.fixed_lane))
+        });
+        let mut roll = (f64::from(self.rng.rFFFFFF()) + 0.5) / 16_777_216.0;
+        let mut passed_cut = 0.0;
+        loop {
+            let available = ordinary.iter().map(|&(_, weight)| weight).sum::<f64>();
+            let range = ordinary_total.max(128.0) - ordinary_blocked;
+            let ordinary_probability = if range > 0.0 { (available / range).min(1.0) } else { 0.0 };
+            let passed = passed_cut * ordinary_probability;
+            let survival_before_cut = 1.0 - passed;
+            let ordinary_probability = if survival_before_cut > 0.0 {
+                (ordinary_probability - passed) / survival_before_cut
+            } else {
+                0.0
+            };
+            let mut previous = 0.0;
+            let mut survival = 1.0;
+            let mut offset = 0.0;
+            let mut ordinary_mass = 0.0;
+            let mut selected = None;
+            for (index, &(choice, cut, probability)) in dynamic.iter().enumerate() {
+                // 将普通技能看成一个抽样池，cut 是在此技能之前消耗的池份额。
+                let remaining_cut = if passed_cut < 1.0 {
+                    (cut - passed_cut) / (1.0 - passed_cut)
+                } else {
+                    0.0
+                };
+                let boundary = remaining_cut * ordinary_probability;
+                ordinary_mass += (boundary - previous) * survival;
+                let mass = (1.0 - boundary) * survival * probability;
+                if roll < offset + mass {
+                    selected = Some((choice, true, index, offset, mass));
+                    break;
+                }
+                offset += mass;
+                previous = boundary;
+                survival *= 1.0 - probability;
+            }
+            if selected.is_none() && available > 0.0 {
+                ordinary_mass += (ordinary_probability - previous) * survival;
+                for (index, &(choice, weight)) in ordinary.iter().enumerate() {
+                    let mass = ordinary_mass * weight / available;
+                    if roll < offset + mass {
+                        selected = Some((choice, false, index, offset, mass));
+                        break;
+                    }
+                    offset += mass;
+                }
+            }
+            let (choice, is_dynamic, index, lower, mass) = selected?;
+            if let Some(action) = self.prepare_plain_builtin_skill_action(actor, smart, choice) {
+                return Some(action);
+            }
+            // 目标失败则移除该候选，使用样本在失败区间中的相对位置继续抽样。
+            roll = (roll - lower) / mass;
+            if is_dynamic {
+                // 此区域已经越过之前的双参数技能和对应的普通技能份额。
+                passed_cut = dynamic[index].1;
+                dynamic.drain(..=index);
+            } else {
+                // 普通技能找不到目标时，扣除该次选择的概率，保留普攻机会。
+                ordinary.remove(index);
+            }
+        }
+    }
+
+    fn effective_skill_attempt_probability(
+        &self,
+        actor: EntityIdx,
+        smart: bool,
+        skill: BuiltinActiveSkill,
+        _level: u32,
+        weight: f64,
+    ) -> f64 {
+        match skill {
+            BuiltinActiveSkill::WeaponS11 => {
+                let runtime = &self.entities.get(actor).unwrap().runtime;
+                runtime.weapon_s11.filter(|weapon| weapon.level > 0).map_or(0.0, |weapon| {
+                    let threshold = i64::from(runtime.wisdom) - i64::from(weapon.level) + 1;
+                    (64 - threshold.clamp(0, 64)) as f64 / 64.0
+                })
+            }
+            BuiltinActiveSkill::WeaponDeathNote => {
+                let Some(mark) = self.death_note_live_mark(actor) else {
+                    return 0.0;
+                };
+                if smart {
+                    f64::from(self.plain_effective_team(mark) != self.plain_effective_team(actor))
+                } else {
+                    0.5
+                }
+            }
+            BuiltinActiveSkill::WeaponXuanYue => 0.0,
+            _ => {
+                #[cfg(feature = "cards")]
+                let weight = weight * f64::from(self.card_skill_level(actor, skill, _level)) / f64::from(_level);
+                weight.min(128.0) / 128.0
+            }
+        }
+    }
+
+    fn death_note_live_mark(&self, actor: EntityIdx) -> Option<EntityIdx> {
+        self.entities
+            .get(actor)?
+            .runtime
+            .death_note_mark
+            .filter(|mark| self.entities.get(*mark).is_some_and(|entity| entity.runtime.hp > 0))
     }
 
     pub fn builtin_active_skill(&self, skill_id: SkillId) -> Option<BuiltinActiveSkill> {
         self.registry.builtin_active_skill(skill_id)
     }
 
-    pub fn plain_action_skill_probability(
-        &mut self,
-        actor: EntityIdx,
-        builtin_skill: BuiltinActiveSkill,
-        level: u32,
-        smart: bool,
-    ) -> bool {
-        // 卡牌玩家的幻术熟练度按 5 封顶；其它技能与普通对局保持原等级。
-        #[cfg(feature = "cards")]
-        let level = self.card_skill_level(actor, builtin_skill, level);
+    fn plain_action_skill_allowed(&self, actor: EntityIdx, builtin_skill: BuiltinActiveSkill, _level: u32, smart: bool) -> bool {
         #[cfg(not(feature = "no_debug"))]
         let probe_action = self.probe_plain_action_matches(actor);
         match builtin_skill {
@@ -1325,7 +1512,7 @@ impl CombatRuntime {
                          rc4=({}, {})",
                             actor.0,
                             builtin_skill.export_name(),
-                            level,
+                            _level,
                             smart,
                             actor_runtime.charge.active,
                             actor_runtime.hp,
@@ -1349,7 +1536,7 @@ impl CombatRuntime {
                          hp={} max_hp={} rc4=({}, {})",
                             actor.0,
                             builtin_skill.export_name(),
-                            level,
+                            _level,
                             smart,
                             actor_entity.runtime.hp,
                             actor_entity.template.max_hp,
@@ -1385,7 +1572,7 @@ impl CombatRuntime {
                          active={} hp={} rc4=({}, {})",
                             actor.0,
                             builtin_skill.export_name(),
-                            level,
+                            _level,
                             smart,
                             actor_runtime.accumulate.active,
                             actor_runtime.hp,
@@ -1428,7 +1615,7 @@ impl CombatRuntime {
                             "[action_probe:runtime:prob] actor={} skill={} level={} smart={} skipped=shadow_low_hp rc4=({}, {})",
                             actor.0,
                             builtin_skill.export_name(),
-                            level,
+                            _level,
                             smart,
                             self.rng.i,
                             self.rng.j,
@@ -1437,6 +1624,27 @@ impl CombatRuntime {
                     return false;
                 }
             }
+            _ => {}
+        }
+        true
+    }
+
+    pub fn plain_action_skill_probability(
+        &mut self,
+        actor: EntityIdx,
+        builtin_skill: BuiltinActiveSkill,
+        level: u32,
+        smart: bool,
+    ) -> bool {
+        // 卡牌玩家的幻术熟练度按 5 封顶；其它技能与普通对局保持原等级。
+        #[cfg(feature = "cards")]
+        let level = self.card_skill_level(actor, builtin_skill, level);
+        #[cfg(not(feature = "no_debug"))]
+        let probe_action = self.probe_plain_action_matches(actor);
+        if !self.plain_action_skill_allowed(actor, builtin_skill, level, smart) {
+            return false;
+        }
+        match builtin_skill {
             // 剁手刀：等级为 0 时直接失败且不消耗字节；否则只掷一次 r63。
             BuiltinActiveSkill::WeaponS11 => {
                 let actor_entity = self
@@ -1473,12 +1681,7 @@ impl CombatRuntime {
             }
             // 死亡笔记：只有写下的目标仍在场时才可能行动；智能模式不消耗字节。
             BuiltinActiveSkill::WeaponDeathNote => {
-                let mark = self
-                    .entities
-                    .get(actor)
-                    .and_then(|entity| entity.runtime.death_note_mark)
-                    .filter(|mark| self.entities.get(*mark).is_some_and(|entity| entity.runtime.hp > 0));
-                let Some(mark) = mark else {
+                let Some(mark) = self.death_note_live_mark(actor) else {
                     return false;
                 };
                 if smart {

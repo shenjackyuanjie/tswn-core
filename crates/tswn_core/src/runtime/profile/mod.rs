@@ -523,6 +523,11 @@ impl BuiltinSkillImportMap {
             &spec.post_damage_order,
             &spec.post_action_after_states,
         )
+        .with_effective_skill_weights(
+            spec.effective_skill_weights.as_deref(),
+            spec.effective_skill_redistribution,
+            spec.effective_skill_adjustment.as_deref(),
+        )
     }
 
     /// 原地重填标准 score profile 技能表，复用上一轮的所有 SmallVec 容量。

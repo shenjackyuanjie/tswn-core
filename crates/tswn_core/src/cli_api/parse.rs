@@ -81,30 +81,70 @@ fn export_group(group: &[String], old: bool, minions: bool) -> CliApiResult<Stri
 }
 
 pub(super) fn export_built_player(player: &PreparedPlayer, old: bool, minions: bool) -> String {
+    let skills = skills_to_json(&player.skills, SkillExportContext::Player);
+    let effective = effective_skills_to_json(&player.skills);
     if old {
+        let skills = if let Some(effective) = effective {
+            let separator = if skills == "{}" { "" } else { "," };
+            format!("{{{effective}{separator}{}", &skills[1..])
+        } else {
+            skills
+        };
         return format!(
             "{}{}+diy[{}]{}",
             player.name,
             team_name_for_export(player),
             attrs_to_overlay_json(player.attrs),
-            skills_to_json(&player.skills, SkillExportContext::Player)
+            skills
         );
     }
 
     let mut fields = vec![
         format!("\"attrs\":[{}]", attrs_to_overlay_json(player.attrs)),
-        format!("\"skills\":{}", skills_to_json(&player.skills, SkillExportContext::Player)),
+        format!("\"skills\":{skills}"),
         format!(
             "\"name_factor_enabled\":{}",
             player.overlay.as_ref().is_none_or(|overlay| overlay.name_factor_enabled)
         ),
     ];
+    if let Some(effective) = effective {
+        fields.push(effective);
+    }
     if minions {
         append_minion_export(player, MinionKind::Shadow, "shadow", &mut fields);
         append_minion_export(player, MinionKind::Summon, "summon", &mut fields);
         append_minion_export(player, MinionKind::Zombie, "zombie", &mut fields);
     }
     format!("{}{}+ol:{{{}}}", player.name, team_name_for_export(player), fields.join(","))
+}
+
+fn effective_skills_to_json(skills: &SkillLoadoutSpec) -> Option<String> {
+    let fields = skills
+        .effective_skill_weights
+        .as_ref()?
+        .iter()
+        .filter_map(|&(key, weight)| {
+            let entry = skills.entries.iter().find(|entry| entry.key == key)?;
+            let name = skill_export_name(entry, SkillExportContext::Player);
+            Some(format!("\"{name}\":{}", weight.value()))
+        })
+        .collect::<Vec<_>>();
+    let mut serialized = format!("\"effective_skills\":{{{}}}", fields.join(","));
+    if let Some(redistribution) = skills.effective_skill_redistribution {
+        serialized.push_str(&format!(",\"effective_skill_redistribution\":{}", redistribution.value()));
+    }
+    if let Some(adjustment) = &skills.effective_skill_adjustment {
+        let fields = adjustment
+            .iter()
+            .filter_map(|&(key, cut)| {
+                let entry = skills.entries.iter().find(|entry| entry.key == key)?;
+                let name = skill_export_name(entry, SkillExportContext::Player);
+                Some(format!("\"{name}\":{}", cut.value()))
+            })
+            .collect::<Vec<_>>();
+        serialized.push_str(&format!(",\"effective_skill_adjustment\":{{{}}}", fields.join(",")));
+    }
+    Some(serialized)
 }
 
 fn team_name_for_export(player: &PreparedPlayer) -> String {
@@ -134,9 +174,17 @@ enum SkillExportContext {
 fn skills_to_json(skills: &SkillLoadoutSpec, context: SkillExportContext) -> String {
     let mut fields = Vec::new();
     for key in &skills.active_order {
-        let Some(entry) = skills.entries.iter().find(|entry| entry.key == *key && entry.level > 0) else {
+        let Some(entry) = skills.entries.iter().find(|entry| entry.key == *key) else {
             continue;
         };
+        if entry.level == 0
+            && !skills
+                .effective_skill_weights
+                .as_ref()
+                .is_some_and(|weights| weights.iter().any(|&(key, weight)| key == entry.key && weight.value() > 0.0))
+        {
+            continue;
+        }
         // 武器技能来自装备而非名字解析结果，导出名字表时不回写。
         if matches!(
             entry.skill,
@@ -367,6 +415,122 @@ fn push_group_segment(group: &mut Vec<String>, current: &mut String) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn effective_skill_overlay_round_trips_in_both_diy_formats() {
+        let raw = r#"owner+ol:{"skills":{"sklclone":"2*32","sklfire":0},"effective_skills":{"sklclone":64.5,"sklfire":44.8,"sklshield":140.5},"effective_skill_redistribution":0.5}"#;
+        let prepare = |raw: &str| {
+            let input = crate::namerena::NamerenaInput::parse(raw).unwrap();
+            crate::namerena::PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ)
+                .unwrap()
+                .players
+                .remove(0)
+                .skills
+        };
+        let original = prepare(raw);
+        assert_eq!(original.entries[0].level, 0);
+        assert_eq!(original.entries[29].level, 141);
+        for old in [false, true] {
+            let exported = crate::cli_api::to_diy(raw, old, false).unwrap();
+            let round_tripped = prepare(&exported);
+            assert_eq!(round_tripped.effective_skill_weights, original.effective_skill_weights);
+            assert_eq!(
+                round_tripped.effective_skill_redistribution,
+                original.effective_skill_redistribution
+            );
+            assert_eq!(round_tripped.entries, original.entries);
+        }
+    }
+
+    #[test]
+    fn auto_effective_skills_keep_native_clone_metadata_and_export_explicit_weights() {
+        let name = "Accio #LD5MtqO8@Shabby_fish";
+        let prepare = |raw: &str| {
+            let input = crate::namerena::NamerenaInput::parse(raw).unwrap();
+            crate::namerena::PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ)
+                .unwrap()
+                .players
+                .remove(0)
+        };
+        let selected = format!(r#"{name}+ol:{{"effective_skills":true}}"#);
+        let native = prepare(name);
+        let auto = prepare(&selected);
+        assert_eq!(auto.attrs, native.attrs);
+        assert_eq!(auto.skills.entries, native.skills.entries);
+        assert_eq!(auto.skills.active_order, native.skills.active_order);
+        assert_eq!(auto.clone_slot_boosts, native.clone_slot_boosts);
+        assert_eq!(auto.clone_initially_boosted_mask, native.clone_initially_boosted_mask);
+        for old in [false, true] {
+            let exported = crate::cli_api::to_diy(&selected, old, false).unwrap();
+            let round_tripped = prepare(&exported);
+            assert_eq!(
+                round_tripped.skills.effective_skill_weights,
+                auto.skills.effective_skill_weights
+            );
+            assert_eq!(
+                round_tripped.skills.effective_skill_adjustment,
+                auto.skills.effective_skill_adjustment
+            );
+        }
+    }
+
+    #[test]
+    fn compact_effective_skill_overlay_validates_adjustment_budget() {
+        use crate::namerena::{PlayerSpec, PlayerSpecError};
+        let raw = r#"owner+ol:{"skills":{"sklquake":64,"sklclone":60,"sklfire":64,"sklshadow":48},"effective_skills":true}"#;
+        let exported = crate::cli_api::to_diy(raw, false, false).unwrap();
+        // 地震在传统扫描命中后总是消耗机会，火的权重为 64 × (1 − 64 / 128)。
+        assert!(exported.contains(r#""effective_skills":{"sklfire":32,"sklquake":64,"sklclone":60,"sklshadow":48}"#));
+        let adjustments = PlayerSpec::parse(&exported).unwrap().overlay.unwrap().effective_skill_adjustment.unwrap();
+        assert_eq!(adjustments.len(), 2);
+        assert_eq!(adjustments[0].0, 23);
+        assert!((adjustments[0].1.value() - (2.0 / 3.0)).abs() < 0.000_01);
+        assert_eq!(adjustments[1].0, 24);
+        let keys = "fire,ice,thunder,quake,absorb,poison,rapid,critical,half,exchange,berserk";
+        let fields = keys.split(',').map(|key| format!(r#""{key}":0.5"#)).collect::<Vec<_>>();
+        for count in [10, 11] {
+            let raw = format!(
+                r#"owner+ol:{{"effective_skills":{{}},"effective_skill_adjustment":{{{}}}}}"#,
+                fields[..count].join(",")
+            );
+            assert_eq!(PlayerSpec::parse(&raw).is_ok(), count == 10);
+        }
+        for invalid in [
+            r#""effective_skill_adjustment":{"sklcounter":0.5}"#,
+            r#""effective_skill_adjustment":{"clone":0,"sklclone":0.8}"#,
+            r#""effective_skill_adjustment":{"clone":1.01}"#,
+            r#""effective_skill_priority":{"clone":1}"#,
+            r#""effective_skill_adjustment":{},"effective_skill_redistribution":0.5"#,
+        ] {
+            let raw = format!(r#"owner+ol:{{"effective_skills":{{}},{invalid}}}"#);
+            assert_eq!(PlayerSpec::parse(&raw), Err(PlayerSpecError::InvalidEffectiveSkillOverlay));
+        }
+        let auto = r#"owner+ol:{"effective_skills":true,"effective_skill_redistribution":0.5}"#;
+        assert_eq!(PlayerSpec::parse(auto), Err(PlayerSpecError::InvalidEffectiveSkillOverlay));
+    }
+
+    #[test]
+    fn effective_skill_overlay_rejects_invalid_weights_and_duplicate_aliases() {
+        use crate::namerena::{PlayerSpec, PlayerSpecError};
+        for fields in [
+            r#"{"sklfire":-1}"#,
+            r#"{"sklfire":1e999}"#,
+            r#"{"sklfire":"64"}"#,
+            r#"{"sklfire":64,"fire":32}"#,
+            r#"{"misspelled":4}"#,
+        ] {
+            for raw in [
+                format!("owner+ol:{{\"effective_skills\":{fields}}}"),
+                format!("owner+diy[86,86,86,86,86,86,116,300]{{\"effective_skills\":{fields}}}"),
+            ] {
+                assert_eq!(PlayerSpec::parse(&raw), Err(PlayerSpecError::InvalidEffectiveSkillOverlay));
+            }
+        }
+        let disabled = PlayerSpec::parse(r#"owner+ol:{"skills":{"sklfire":64},"effective_skills":false}"#).unwrap();
+        assert!(disabled.overlay.unwrap().effective_skills.is_none());
+        let invalid = r#"owner+ol:{"effective_skills":{"sklfire":64},"effective_skill_redistribution":1.5}"#;
+        assert_eq!(PlayerSpec::parse(invalid), Err(PlayerSpecError::InvalidEffectiveSkillOverlay));
+    }
+
     use super::{export_player, parse_plus_separated_groups};
     use crate::namerena::{NamerenaInput, PreparedRoster};
 

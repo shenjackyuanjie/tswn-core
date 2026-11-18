@@ -105,6 +105,9 @@ impl RuntimeRunner {
         let mut clans = Vec::new();
         let mut entities = Vec::new();
         for (id, entity) in rt.entities.iter() {
+            if entity.template.skills.uses_effective_skill_weights() {
+                return Err(ModelStateError("当前模型状态格式不支持 effective_skills 抽样权重".into()));
+            }
             if entity.slots.len() > registry.entity_slots().len()
                 || entity.states.entries().len() != entity.states.runtime_registration_orders().len()
             {

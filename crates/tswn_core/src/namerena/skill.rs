@@ -1,3 +1,4 @@
+use super::EffectiveSkillWeight;
 use super::weapon::WeaponKind;
 
 /// 技能最终等级的构成方式；用于 overlay 导入和 clone 重建。
@@ -143,7 +144,45 @@ pub struct SkillLoadoutSpec {
     pub pre_action_order: Vec<usize>,
     pub post_damage_order: Vec<usize>,
     pub post_action_after_states: Vec<(u64, usize)>,
+    pub effective_skill_weights: Option<Vec<(usize, EffectiveSkillWeight)>>,
+    pub effective_skill_redistribution: Option<EffectiveSkillWeight>,
+    pub effective_skill_adjustment: Option<Vec<(usize, EffectiveSkillWeight)>>,
 }
+
+pub(crate) const MAX_EFFECTIVE_SKILL_ADJUSTMENTS: usize = 10;
+
+/// 条件受战况影响较大的主动技，以及需要保留发动位置的分身。
+const DYNAMIC_EFFECTIVE_SKILLS: [usize; MAX_EFFECTIVE_SKILL_ADJUSTMENTS] = [4, 8, 9, 15, 16, 18, 19, 21, 23, 24];
+
+/// 传统选技中，门槛通过比例与命中后成功选目标比例的乘积，再对十项评分环境取均值。
+/// 双参数技能用运行时判定，不读取这里的系数。
+const EFFECTIVE_SKILL_CONSUMPTION: [f64; 25] = [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.690622644804,
+    1.0,
+    1.0,
+    1.0,
+    0.740312795133,
+    0.501942736741,
+    0.978465351834,
+    0.995293017446,
+    0.913580299714,
+    0.880615921261,
+    0.879706399232,
+    0.634811449246,
+    0.159272254125,
+    1.0,
+    0.683077370271,
+    0.717064745689,
+    0.582567015189,
+    0.799295810602,
+    0.733380167844,
+    1.0,
+    0.905984506680,
+];
 
 impl SkillLoadoutSpec {
     pub(crate) fn standard(
@@ -170,24 +209,36 @@ impl SkillLoadoutSpec {
             pre_action_order: [29, 34].into_iter().filter(|key| positive(*key)).collect(),
             post_damage_order: [30, 33, 34, 21].into_iter().filter(|key| positive(*key)).collect(),
             post_action_after_states: Vec::new(),
+            effective_skill_weights: None,
+            effective_skill_redistribution: None,
+            effective_skill_adjustment: None,
         }
     }
 
-    pub(crate) fn player_overlay(skills: &[(String, SkillBoost)]) -> Self {
-        let classified = skills.iter().any(|(name, _)| is_player_classified_skill_name(name));
+    pub(crate) fn player_overlay(
+        skills: &[(String, SkillBoost)],
+        effective_skills: Option<&[(String, EffectiveSkillWeight)]>,
+    ) -> Self {
+        let classified = skills.iter().any(|(name, _)| is_player_classified_skill_name(name))
+            || effective_skills
+                .into_iter()
+                .flatten()
+                .any(|(name, _)| is_player_classified_skill_name(name));
         let mut entries = if classified {
             classified_player_entries()
         } else {
             normal_player_entries()
         };
         let mut active_order = Vec::with_capacity(entries.len());
-        for (name, boost) in skills {
-            let key = if classified {
+        let key_for_name = |name: &str| {
+            if classified {
                 player_classified_skill_ref_from_name(name).map(ClassifiedSkillRef::player_key)
             } else {
                 skill_name_to_id(name)
-            };
-            let Some(key) = key else { continue };
+            }
+        };
+        for (name, boost) in skills {
+            let Some(key) = key_for_name(name) else { continue };
             if active_order.contains(&key) {
                 continue;
             }
@@ -196,13 +247,78 @@ impl SkillLoadoutSpec {
                 apply_boost(entry, boost);
             }
         }
+        let effective_skill_weights = effective_skills.map(|weights| {
+            let mut by_key = Vec::new();
+            for (name, weight) in weights {
+                let Some(key) = key_for_name(name) else { continue };
+                if by_key.iter().any(|(existing, _)| *existing == key) {
+                    continue;
+                }
+                if let Some(entry) = entries.iter_mut().find(|entry| entry.key == key) {
+                    if !active_order.contains(&key) {
+                        apply_boost(entry, &SkillBoost::Normal(weight.default_level()));
+                    }
+                    by_key.push((key, *weight));
+                }
+            }
+            by_key.sort_unstable_by_key(|&(key, _)| key);
+            by_key
+        });
         for entry in &entries {
             if !active_order.contains(&entry.key) {
                 active_order.push(entry.key);
             }
         }
+        if effective_skill_weights.is_some() {
+            // 被动钩子的同优先级排序也使用行动顺序，等效模式统一以固定槽位为准。
+            active_order.sort_unstable();
+        }
         let fixed_lanes = entries.iter().map(|entry| entry.key).collect();
-        Self::from_entries(entries, fixed_lanes, active_order)
+        let mut spec = Self::from_entries(entries, fixed_lanes, active_order);
+        spec.effective_skill_weights = effective_skill_weights;
+        spec
+    }
+
+    pub(crate) fn enable_auto_effective_skills(&mut self) {
+        let mut weights = Vec::new();
+        let mut adjustments = Vec::new();
+        let mut remaining = 1.0;
+        for &key in &self.active_order {
+            let Some(entry) = self.entries.iter().find(|entry| entry.key == key && entry.level > 0) else {
+                continue;
+            };
+            let level = f64::from(entry.level);
+            let weight = match entry.skill {
+                BuiltinSkillRef::Normal(id) if DYNAMIC_EFFECTIVE_SKILLS.contains(&id) => {
+                    adjustments.push((key, 1.0 - remaining));
+                    level
+                }
+                BuiltinSkillRef::Normal(id @ 0..=24) => {
+                    let weight = remaining * level.min(128.0);
+                    remaining *= 1.0 - EFFECTIVE_SKILL_CONSUMPTION[id] * level.min(128.0) / 128.0;
+                    weight
+                }
+                BuiltinSkillRef::Normal(25..=34) => level,
+                _ => continue,
+            };
+            weights.push((key, EffectiveSkillWeight::new(weight).unwrap()));
+        }
+        weights.sort_unstable_by_key(|&(key, _)| key);
+        let ordinary = 1.0 - remaining;
+        let mut adjustments = adjustments
+            .into_iter()
+            .enumerate()
+            .map(|(index, (key, used))| {
+                let cut = if ordinary > 0.0 { used / ordinary } else { 0.0 };
+                // 给相邻双参数技能留出百万分位，保留它们之间的先后。
+                let cut = cut * (1.0 - MAX_EFFECTIVE_SKILL_ADJUSTMENTS as f64 * 0.000_001) + index as f64 * 0.000_001;
+                (key, EffectiveSkillWeight::new(cut).unwrap())
+            })
+            .collect::<Vec<_>>();
+        adjustments.sort_unstable_by_key(|&(key, _)| key);
+        self.effective_skill_weights = Some(weights);
+        self.effective_skill_adjustment = Some(adjustments);
+        self.effective_skill_redistribution = EffectiveSkillWeight::new(1.0);
     }
 
     pub(crate) fn generic_minion_overlay(skills: &[(String, SkillBoost)]) -> Self {
@@ -360,6 +476,9 @@ impl SkillLoadoutSpec {
             pre_action_order,
             post_damage_order,
             post_action_after_states: Vec::new(),
+            effective_skill_weights: None,
+            effective_skill_redistribution: None,
+            effective_skill_adjustment: None,
         }
     }
 
