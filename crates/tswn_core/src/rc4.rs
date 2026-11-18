@@ -393,6 +393,40 @@ impl RC4 {
         })
     }
 
+    /// 交错构造多局的独立初始状态。同长密钥共享循环下标，命中前缀时从同一个检查点开始。
+    pub(crate) fn new_interleaved_with_key_schedule_prefix<const N: usize>(
+        keys: [&[u8]; N],
+        prefix: Option<&Rc4KeySchedulePrefix>,
+    ) -> [Self; N] {
+        let key_len = keys.first().map_or(0, |key| key.len());
+        if key_len == 0 || keys.iter().any(|key| key.len() != key_len) {
+            return keys.map(|key| {
+                prefix
+                    .and_then(|prefix| Self::new_with_key_schedule_prefix(key, prefix))
+                    .unwrap_or_else(|| Self::new(key, 1))
+            });
+        }
+
+        let prefix = prefix.filter(|prefix| keys.iter().all(|key| key.starts_with(&prefix.key_prefix)));
+        let (start, initial_j, main_val) = prefix.map_or((0, 0, VAL_INIT), |prefix| (prefix.len(), prefix.j, prefix.main_val));
+        let mut states = std::array::from_fn(|_| Self {
+            main_val,
+            ..Self::default()
+        });
+        let mut js = [initial_j; N];
+        let mut key_index = if start == key_len { 0 } else { start };
+        for x in start..VAL_LEN {
+            for ((state, key), j) in states.iter_mut().zip(&keys).zip(&mut js) {
+                apply_key_scheduling_step(&mut state.main_val, key, x, key_index, j);
+            }
+            key_index += 1;
+            if key_index == key_len {
+                key_index = 0;
+            }
+        }
+        states
+    }
+
     /// 在当前 S-box 上继续执行指定轮数的密钥调度，保留 i/j 和调试计数。
     ///
     /// `round == 0` 不改变状态；正轮数要求密钥非空，否则 panic。
@@ -504,10 +538,34 @@ impl RC4 {
     /// 状态变化等价于将字符串复制为字节缓冲后调用 [`Self::js_xor_bytes`]，
     /// 但不创建缓冲，也不保留变换后的字节；空字符串不改变状态。
     #[inline]
-    pub fn js_xor_str(&mut self, bytes: &str) {
-        for byte in bytes.as_bytes() {
-            let val = *byte ^ self.next_u8_untracked();
-            self.j = u32::from((self.j as u8).wrapping_add(val));
+    pub fn js_xor_str(&mut self, bytes: &str) { self.mix_key_bytes(bytes.as_bytes()); }
+
+    #[inline]
+    fn mix_key_bytes(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.mix_key_byte(byte);
+        }
+    }
+
+    #[inline(always)]
+    fn mix_key_byte(&mut self, byte: u8) {
+        let val = byte ^ self.next_u8_untracked();
+        self.j = u32::from((self.j as u8).wrapping_add(val));
+    }
+
+    /// 同长密钥逐字节交错推进，仍按各自随机状态应用反馈混入规则。
+    pub(crate) fn mix_key_bytes_interleaved<const N: usize>(states: &mut [Self; N], keys: [&[u8]; N]) {
+        let key_len = keys.first().map_or(0, |key| key.len());
+        if keys.iter().any(|key| key.len() != key_len) {
+            for (state, key) in states.iter_mut().zip(keys) {
+                state.mix_key_bytes(key);
+            }
+            return;
+        }
+        for offset in 0..key_len {
+            for (state, key) in states.iter_mut().zip(&keys) {
+                state.mix_key_byte(key[offset]);
+            }
         }
     }
 

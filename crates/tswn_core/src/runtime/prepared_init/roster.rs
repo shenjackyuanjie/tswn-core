@@ -384,7 +384,13 @@ impl PreparedBattleRoster {
     }
 
     pub fn seed_state(&self, seed: &[String]) -> PreparedBattleSeed {
-        let mut state = PreparedBattleSeed {
+        let mut state = self.new_seed_state();
+        self.refill_seed_state(seed, &mut state);
+        state
+    }
+
+    pub(in crate::runtime) fn new_seed_state(&self) -> PreparedBattleSeed {
+        PreparedBattleSeed {
             input_groups: Vec::with_capacity(self.input_groups.len()),
             round_order: Vec::with_capacity(self.players.len()),
             team_roster: Vec::with_capacity(self.input_groups.len()),
@@ -396,21 +402,34 @@ impl PreparedBattleRoster {
             sort_ints: vec![0; self.players.len()],
             battle_groups: self.input_groups.clone(),
             rc4_key: String::new(),
-        };
-        self.refill_seed_state(seed, &mut state);
-        state
+        }
     }
 
     /// 原地刷新 seed 状态，供同一 worker 的连续对局复用所有小向量容量。
     pub fn refill_seed_state(&self, seed: &[String], state: &mut PreparedBattleSeed) {
-        PreparedBattleInit::refill_rc4_key_with_seed(&self.base_names_sorted, seed, &mut state.rc4_key);
+        self.refill_seed_key(seed, &mut state.rc4_key);
         let mut rng = self
             .profile_seed_rc4_prefix
             .as_ref()
             .and_then(|prefix| RC4::new_with_key_schedule_prefix(state.rc4_key.as_bytes(), prefix))
             .unwrap_or_else(|| RC4::new(state.rc4_key.as_bytes(), 1));
         rng.js_xor_str(&state.rc4_key);
+        self.refill_seed_state_with_rng(state, rng);
+    }
 
+    pub(in crate::runtime) fn refill_seed_key(&self, seed: &[String], key: &mut String) {
+        PreparedBattleInit::refill_rc4_key_with_seed(&self.base_names_sorted, seed, key);
+    }
+
+    pub(in crate::runtime) fn prepare_seed_rngs<const N: usize>(&self, keys: &[String; N]) -> [RC4; N] {
+        let key_bytes = std::array::from_fn(|i| keys[i].as_bytes());
+        let mut rngs = RC4::new_interleaved_with_key_schedule_prefix(key_bytes, self.profile_seed_rc4_prefix.as_ref());
+        RC4::mix_key_bytes_interleaved(&mut rngs, key_bytes);
+        rngs
+    }
+
+    /// 复用已完成密钥调度和密钥混入的随机状态，继续计算排序和初始移动点。
+    pub(in crate::runtime) fn refill_seed_state_with_rng(&self, state: &mut PreparedBattleSeed, mut rng: RC4) {
         state.sort_ints.clear();
         state.sort_ints.resize(self.players.len(), 0);
         for &id in &self.sorted_by_id_name {

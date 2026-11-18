@@ -170,6 +170,27 @@ fn cached_key_schedule_prefix_matches_full_schedule() {
 }
 
 #[test]
+fn interleaved_key_schedule_prefix_matches_full_schedule() {
+    let prefix = Rc4KeySchedulePrefix::new(b"seed:");
+    let long_key = [b'x'; VAL_LEN + 1];
+    let long_prefix = Rc4KeySchedulePrefix::new(&long_key);
+    for (keys, prefix) in [
+        ([b"seed:1".as_slice(), b"seed:2", b"seed:3", b"seed:4"], Some(&prefix)),
+        ([b"seed:1".as_slice(), b"seed:2", b"seed:3", b"Seed:4"], Some(&prefix)),
+        ([b"seed:9".as_slice(), b"seed:10", b"seed:11", b"seed:12"], Some(&prefix)),
+        ([b"key:1".as_slice(), b"key:2", b"key:3", b"key:4"], None),
+        ([b"seed:".as_slice(); 4], Some(&prefix)),
+        ([long_key.as_slice(); 4], Some(&long_prefix)),
+    ] {
+        let actual = RC4::new_interleaved_with_key_schedule_prefix(keys, prefix);
+        for (rng, key) in actual.into_iter().zip(keys) {
+            let expected = RC4::new(key, 1);
+            assert_eq!((rng.i, rng.j, rng.main_val), (expected.i, expected.j, expected.main_val));
+        }
+    }
+}
+
+#[test]
 fn interleaved_key_scheduling_matches_independent_updates() {
     for same_len in [false, true] {
         for width in 1..=5 {
