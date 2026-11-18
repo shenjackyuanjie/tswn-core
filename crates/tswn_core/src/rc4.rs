@@ -431,15 +431,19 @@ impl RC4 {
             ..Self::default()
         });
         let mut js = [initial_j; N];
-        let mut key_index = if start == key_len { 0 } else { start };
-        for x in start..VAL_LEN {
-            for ((state, key), j) in states.iter_mut().zip(&keys).zip(&mut js) {
-                apply_key_scheduling_step(&mut state.main_val, key, x, key_index, j);
+        let mut x = start;
+        let mut key_start = if start == key_len { 0 } else { start };
+        while x < VAL_LEN {
+            // 相同长度的密钥同步回绕；循环内只遍历这段连续键，不逐次检查回绕。
+            let count = (key_len - key_start).min(VAL_LEN - x);
+            let keys = keys.map(|key| &key[key_start..key_start + count]);
+            for offset in 0..count {
+                for ((state, key), j) in states.iter_mut().zip(&keys).zip(&mut js) {
+                    apply_key_scheduling_step(&mut state.main_val, key, x + offset, offset, j);
+                }
             }
-            key_index += 1;
-            if key_index == key_len {
-                key_index = 0;
-            }
+            x += count;
+            key_start = 0;
         }
         states
     }

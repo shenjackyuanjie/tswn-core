@@ -96,16 +96,6 @@ impl PreparedBattleSeed {
 
     /// 将 seed 状态应用到已复位的 runtime，同时保留本对象和 world 内部向量的容量。
     pub fn apply_reusing(&self, runtime: &mut CombatRuntime) -> Result<(), RuntimeBattleInitError> {
-        self.apply_reusing_with_restored_scheduler(runtime)?;
-        runtime.scheduler.reset_action_mode_from_entities(&runtime.entities);
-        Ok(())
-    }
-
-    /// 复用 runner 已恢复 prototype 的调度器；队伍和初始行动点不改变调度模式。
-    pub(crate) fn apply_reusing_with_restored_scheduler(
-        &self,
-        runtime: &mut CombatRuntime,
-    ) -> Result<(), RuntimeBattleInitError> {
         self.apply_entities(runtime)?;
         runtime.world.sync_initial_views_reusing(
             &runtime.entities,
@@ -113,6 +103,21 @@ impl PreparedBattleSeed {
             &self.team_roster,
             &self.team_alive,
             &self.flat_alive,
+        );
+        runtime.rng.clone_from(&self.rng);
+        runtime.scheduler.reset_action_mode_from_entities(&runtime.entities);
+        Ok(())
+    }
+
+    /// 为已复位的批量 runner 交换场前视图；旧视图由下一局 seed 重新填写。
+    pub(crate) fn apply_swapping_views(&mut self, runtime: &mut CombatRuntime) -> Result<(), RuntimeBattleInitError> {
+        self.apply_entities(runtime)?;
+        runtime.world.swap_initial_views(
+            &runtime.entities,
+            &mut self.round_order,
+            &mut self.team_roster,
+            &mut self.team_alive,
+            &mut self.flat_alive,
         );
         runtime.rng.clone_from(&self.rng);
         Ok(())

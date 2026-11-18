@@ -31,7 +31,7 @@ use super::{
 
 const BATCH_PARALLEL_THRESHOLD: usize = 100;
 const BATCH_MAX_ROUNDS: usize = 100_000;
-const WIN_RATE_SEED_BATCH: usize = 2;
+const WIN_RATE_SEED_BATCH: usize = 4;
 
 #[derive(Default)]
 struct WinRateSeedScratch {
@@ -167,7 +167,7 @@ fn prepared_runtime_win_rate_with_timing<const TIMED: bool>(
     let prepared = Arc::new(prepared.clone());
     let next = Arc::new(AtomicUsize::new(0));
     // 小区间动态领取，减少逐场原子争用，同时为每个 worker 留出多次领取机会。
-    let chunk_size = n.div_ceil(workers.saturating_mul(8)).clamp(1, 32);
+    let chunk_size = n.div_ceil(workers.saturating_mul(8)).clamp(1, 128);
     let mut handles = Vec::with_capacity(workers);
     for _ in 0..workers {
         let prepared = Arc::clone(&prepared);

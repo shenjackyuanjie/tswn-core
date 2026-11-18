@@ -436,17 +436,54 @@ impl PreparedBattleRoster {
             state.sort_ints[id] = rng.rFFFFFF() as i32;
         }
 
+        let compare = |left, right| PreparedBattleInit::cmp_player_keys(&state.sort_ints, &self.id_key_names, left, right);
         state.battle_groups.clone_from(&self.input_groups);
-        for group in &mut state.battle_groups {
-            group.sort_by(|left, right| PreparedBattleInit::cmp_player_keys(&state.sort_ints, &self.id_key_names, *left, *right));
+        state.round_order.clear();
+        if let [left, right] = state.battle_groups.as_mut_slice()
+            && left.len() == right.len()
+            && (1..=2).contains(&left.len())
+        {
+            // 两队各至多两人，先为输入组排序，再归并两段已有序的行动名单。
+            if left.len() == 2 {
+                if compare(left[0], left[1]).is_gt() {
+                    left.swap(0, 1);
+                }
+                if compare(right[0], right[1]).is_gt() {
+                    right.swap(0, 1);
+                }
+            }
+            Self::refill_entity_groups(&mut state.input_groups, &state.battle_groups);
+            if compare(state.battle_groups[0][0], state.battle_groups[1][0]).is_gt() {
+                state.battle_groups.swap(0, 1);
+            }
+            let left = &state.battle_groups[0];
+            let right = &state.battle_groups[1];
+            let order = match (left.as_slice(), right.as_slice()) {
+                (&[a], &[b]) => [a, b, a, b],
+                (&[a, b], &[c, d]) if compare(b, c).is_le() => [a, b, c, d],
+                (&[a, b], &[c, d]) if compare(b, d).is_le() => [a, c, b, d],
+                (&[a, b], &[c, d]) => [a, c, d, b],
+                _ => unreachable!("两队的席位数量一致且最多两名"),
+            };
+            state
+                .round_order
+                .extend(order[..left.len() * 2].iter().copied().map(PreparedBattleInit::entity_idx));
+        } else {
+            for group in &mut state.battle_groups {
+                group.sort_by(|&left, &right| compare(left, right));
+            }
+            Self::refill_entity_groups(&mut state.input_groups, &state.battle_groups);
+            state.battle_groups.sort_by(|left, right| match (left.first(), right.first()) {
+                (Some(&left), Some(&right)) => compare(left, right),
+                (None, Some(_)) => std::cmp::Ordering::Less,
+                (Some(_), None) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            });
+            state
+                .round_order
+                .extend(state.battle_groups.iter().flatten().copied().map(PreparedBattleInit::entity_idx));
+            state.round_order.sort_by(|left, right| compare(left.0 as usize, right.0 as usize));
         }
-        Self::refill_entity_groups(&mut state.input_groups, &state.battle_groups);
-        state.battle_groups.sort_by(|left, right| match (left.first(), right.first()) {
-            (Some(left), Some(right)) => PreparedBattleInit::cmp_player_keys(&state.sort_ints, &self.id_key_names, *left, *right),
-            (None, Some(_)) => std::cmp::Ordering::Less,
-            (Some(_), None) => std::cmp::Ordering::Greater,
-            (None, None) => std::cmp::Ordering::Equal,
-        });
 
         for group in &state.battle_groups {
             for player in group {
@@ -463,13 +500,6 @@ impl PreparedBattleRoster {
             }
         }
 
-        state.round_order.clear();
-        state
-            .round_order
-            .extend(state.battle_groups.iter().flatten().copied().map(PreparedBattleInit::entity_idx));
-        state.round_order.sort_by(|left, right| {
-            PreparedBattleInit::cmp_player_keys(&state.sort_ints, &self.id_key_names, left.0 as usize, right.0 as usize)
-        });
         state.speed_points.clear();
         state.speed_points.resize(self.players.len(), 0);
         for &player in &state.round_order {
