@@ -60,6 +60,9 @@ PlayerName+ol:{"attrs":[86,86,86,86,86,86,86,300],"skills":{"sklfire":5},"name_f
 | ---- | ---- |
 | `attrs` | 玩家八围覆盖，使用前七围 +36 编码 |
 | `skills` | 玩家技能覆盖，有序 object，顺序就是行动尝试顺序 |
+| `effective_skills` | `true` 根据原技能组构造条件抽样，也可填写手工权重对象，默认关闭 |
+| `effective_skill_adjustment` | 最多十种双参数主动技的普通技能占用率，范围为 0 到 1 |
+| `effective_skill_redistribution` | 条件抽样统一为 1；手工权重对象未指定动态参数时可取 0 到 1，默认 0 |
 | `weapon` | 记录武器名；当玩家级 `attrs` 或 `skills` 存在时不计入武器效果 |
 | `name_factor_enabled` | 是否启用名字系数，默认 `true` |
 | `shadow` / `phantom` / `幻影` | 幻影模板 |
@@ -98,6 +101,79 @@ PlayerName+ol:{
   }
 }
 ```
+
+## 按等效熟练度抽取主动技
+
+在普通玩家的 OL 或紧凑 DIY 中加入 `effective_skills: true`，可以从原技能组直接构造条件抽样配置。省略该字段或填写 `false` 时使用传统技能选择。
+
+```text
+PlayerName@Team+ol:{"effective_skills":true,"effective_skill_redistribution":1.0}
+probe+ol:{"skills":{"sklclone":64,"sklfire":64},"effective_skills":true}
+```
+
+普通玩家的训练特征上限为 45 维。`effective_skills` 有 35 个主值（技能 ID 0 到 34）。自动构造的 `effective_skill_adjustment` 有十个固定位置，按技能 ID 排列为 `sklabsorb`、`sklhalf`、`sklexchange`、`sklheal`、`sklrevive`、`skliron`、`sklcharge`、`sklassassinate`、`sklclone`、`sklshadow`。缺失的技能和动态项填 0。两张表按技能名索引，字段重排不改变同一配置的抽样。原名字的整数结算等级、武器与分身加成仍正常构建。
+
+- 单参数主动技沿用 SP2 的形式。原技能组从前到后构造，当前剩余量为 `R`、熟练度为 `L` 时，写入 `R × min(L, 128)`，再令 `R *= 1 - a_i × min(L, 128) / 128`。`a_i` 按传统扫描中技能实际占用行动机会的比例估计，并对十个评分环境等权平均。例如净化取 1，聚气约为 0.583。被动技保留原等级。
+- 双参数主动技独立于上述递推，保存初始熟练度和它前面的普通技能占用率。模拟时用当前等级与发动门槛调整自身尝试概率，并用占用率估计前方普通技能的抢占概率。普通主动技按更新后的单参数权重共享剩余抽样区间。分身技能被扫到并命中时会占用行动，其位置仍会影响衰减前后的发动机会。分身实体沿用基准权重并按自己的当前等级缩放。
+- 状态门槛挡住的技能在抽样前移除，`effective_skill_redistribution` 统一为 1。每次技能选择只取一个 24 位随机数，目标查找失败时复用它在命中区间里的相对位置。选目标与结算沿用各自的随机数。普攻使用剩余概率，训练向量不另设普攻维度。
+
+### 从原始名单生成
+
+```powershell
+cargo build --profile release-fast -p tswn_core --features no_debug --bin tswn-cli
+python scripts/construct_effective_skills.py names.txt effective-names.txt --features effective-features.jsonl
+```
+
+名单每行一个名字。`effective-names.txt` 可直接用于对局。`--features` 只调用 `to-diy` 构建并导出两张特征表，不运行对局或读取评分。若需将自动构造的特征展平成向量，按技能 ID 输出 35 项，再按上述固定顺序输出 10 项。`name` 和固定的 `effective_skill_redistribution` 为元数据。手工指定双参数时可为任意普通主动技添加占用率，解析器最多接受十项。
+
+用同一组训练特征跑多项评分时，先逐号冻结成显式 DIY，例如 `target/release-fast/tswn-cli to-diy -f effective-names.txt -o frozen-names.txt --no-details`。显式 DIY 与训练特征来自单名字构建。把带 `effective_skills:true` 的输入直接加入队伍时，引擎从当局构建出的技能组计算权重，同公会队友的组队加成可能改变结果。
+
+### 复测折减系数和评分环境
+
+采样、系数分布、线性特征的备选方案和逐项评分结论见 [等效熟练度实验报告](../design/effective-skill-experiment-2026-11-19.md)。
+
+`scripts/profile_effective_skills.py` 的 `observe` 阶段统计原版扫描，将按当前等级累计的门槛通过比例乘以命中后成功选目标的比例。门槛失败和目标失败分别记录继续选中技能与进入普攻分支的次数。采样可按本体、分身和智能状态拆分。`focus` 阶段加密指定名字的采样。`compare` 和 `confirm` 使用不同名册分片、不同种子，分别测试缩小队友集合和完整 Openbox 队友、靶子集合。系数估计只用扫描计数，评分用于比较构造方案。
+
+```powershell
+cargo build --profile release-fast -p tswn_core --features no_debug,effective-skill-stats --bin tswn-cli --example effective_skill_scores
+python scripts/profile_effective_skills.py calibration.txt holdout.txt target/effective-skills-profile observe
+python scripts/profile_effective_skills.py calibration.txt holdout.txt target/effective-skills-profile confirm
+```
+
+### 手工指定静态权重
+
+也可用 `effective_skills` 对象直接指定静态权重。以下规则适用于未指定 `effective_skill_adjustment` 的权重对象。
+
+```text
+probe+ol:{"attrs":[86,86,86,86,86,86,116,300],"skills":{"sklclone":64,"sklfire":64,"sklshield":48},"effective_skills":{"sklclone":64,"sklfire":44.8}}
+probe+diy[86,86,86,86,86,86,116,300]{"sklclone":64,"sklfire":64,"sklshield":48,"effective_skills":{"sklclone":64,"sklfire":44.8}}
+```
+
+- 权重接受非负小数，按技能固定槽位划分抽样区间。同优先级的技能钩子也按固定槽位排序，因此重排 `skills` 或 `effective_skills` 的字段会得到相同的战斗行为。
+- 主动技权重和至多为 128 时，单项抽中概率为 `权重 / 128`，剩余概率用于普攻。权重和超过 128 时，按 `权重 / 权重和` 分配全部区间。未列出的主动技权重为零。
+- 蓝量门槛通过后抽取一个 24 位随机数。抽中的技能仍检查状态和目标，无法施放时走普攻，技能结算及选目标继续使用各自的随机数。被动技能按各自的触发条件和整数等级结算。
+- 可选的 `effective_skill_redistribution` 只在等效模式开启时生效。大于零时，抽样前先判定可直接检查的状态门槛，将被挡住的技能从候选区间移除，并从抽样总区间减去其权重乘以该比例。被挡住权重的其余部分留给普攻。技能目标仍在抽中后选择。紧凑 DIY 可将该字段和 `effective_skills` 并列写在同一个对象里。
+- 若未另写某技能的原熟练度，初始结算等级取其权重向上取整。设置了原熟练度时，保留原来的技能效果和加成构成。对局中使用的权重为 `初始权重 × 当前等级 / 初始等级`，因此使用衰减、分身的等级变化和克隆体的加成重建都会反映到抽取概率上。
+- 该模式适用于玩家及其分身，`to-diy` 可以往返保留配置。现有神经网络状态编码格式尚无抽样权重字段，因此这类对局应使用普通战斗输出或胜率评分采集结果。
+
+### 使用评分校准静态权重的实验
+
+实验脚本读取 Openbox 的单人靶、双人靶和五套带权队友预设，以及指定的扩展名单。候选公式在构造时读取原技能顺序，输出为每个名字的一组无序技能权重。各阶段统一写入 `effective_skill_redistribution: 1.0`，模型只需拟合技能权重。逐号选择以五项评分的最大误差为准，`--refine` 对偏差较大的名字追加十项联合校准。脚本为拟合和复核使用不同的轮次区间。
+
+```powershell
+cargo build --profile release-fast -p tswn_core --features no_debug --bin tswn-cli --example effective_skill_scores
+python scripts/experiment_effective_skills.py D:/namerena/tswn-core/tests/sqp6000.txt --pair-n 12 --global-pair --refine --final-check
+```
+
+`target/effective-skills-redistribution/` 中包含每批的 `*-fitted.txt`、固定公式的 `*-global.txt`、评分明细和复核统计。新名单或不同预设用 `--out` 指定独立结果目录。
+
+要将十项评分的逐号误差收紧到 2 个百分点，可以继续运行下面的脚本。它使用 NumPy 和 SciPy，先实测各权重的局部变化，再搜索使十项最大误差尽量小的权重组合。搜索阶段使用候选队友缩小配队矩阵，复核阶段用独立轮次和完整靶池及队友预设。CQD 和 SQP 中的同名样本共用一组权重。
+
+```powershell
+python scripts/calibrate_effective_skills.py
+```
+
+用 `--previous` 可以指定已有的 `*-refined.txt` 或 `*-final.txt` 作为初始权重。脚本先把所有输入的重分配比例设为 1，再复核十项评分并调整超差名字的权重。结果写入 `target/effective-skills-unified/`，包括 `*-final.txt`、记录复核轮次和场数的 `final-scores.csv`、超差名单 `final-over-2.csv` 和技能重排检查 `order-check.json`。达到校准轮数上限仍有超差时，脚本保留报告并返回失败。
 
 ## 普通玩家技能
 
