@@ -69,6 +69,8 @@ pub struct SkillLoadout {
     hook_cache: Vec<CachedSkillHookEntry>,
     hook_cache_offsets: [u16; SKILL_HOOK_COUNT + 1],
     hook_cache_ready: bool,
+    // 缓存有效时只记录有非零等级技能的阶段；失效时保守地保留所有阶段。
+    enabled_hook_mask: u8,
     /// 同一份准备模板与 worker 克隆共享此编号，用来识别外部整体替换技能表的情况。
     baseline_id: u64,
     /// 按字段组记录本局写入，只复位真正变化过的 SmallVec 和 hook 缓存。
@@ -96,6 +98,7 @@ impl Default for SkillLoadout {
             hook_cache: Vec::new(),
             hook_cache_offsets: [0; SKILL_HOOK_COUNT + 1],
             hook_cache_ready: false,
+            enabled_hook_mask: u8::MAX,
             baseline_id: next_skill_loadout_baseline_id(),
             battle_dirty: 0,
             hook_generation: 0,
@@ -149,6 +152,7 @@ impl SkillLoadout {
             hook_cache: Vec::new(),
             hook_cache_offsets: [0; SKILL_HOOK_COUNT + 1],
             hook_cache_ready: false,
+            enabled_hook_mask: u8::MAX,
             baseline_id: next_skill_loadout_baseline_id(),
             battle_dirty: 0,
             hook_generation: 0,
@@ -181,6 +185,7 @@ impl SkillLoadout {
             hook_cache: Vec::new(),
             hook_cache_offsets: [0; SKILL_HOOK_COUNT + 1],
             hook_cache_ready: false,
+            enabled_hook_mask: u8::MAX,
             baseline_id: next_skill_loadout_baseline_id(),
             battle_dirty: 0,
             hook_generation: 0,
@@ -226,6 +231,7 @@ impl SkillLoadout {
             hook_cache: Vec::new(),
             hook_cache_offsets: [0; SKILL_HOOK_COUNT + 1],
             hook_cache_ready: false,
+            enabled_hook_mask: u8::MAX,
             baseline_id: next_skill_loadout_baseline_id(),
             battle_dirty: 0,
             hook_generation: 0,
@@ -361,6 +367,13 @@ impl SkillLoadout {
             self.hook_cache_offsets = prepared.hook_cache_offsets;
             self.hook_cache_ready = prepared.hook_cache_ready;
         }
+        if dirty & (SKILL_DIRTY_LEVELS | SKILL_DIRTY_ACTIVE_HOOKS) != 0 {
+            self.enabled_hook_mask = if self.hook_cache_ready {
+                prepared.enabled_hook_mask
+            } else {
+                u8::MAX
+            };
+        }
         if dirty & SKILL_DIRTY_PRE_ACTION != 0 {
             self.pre_action_order.clone_from(&prepared.pre_action_order);
         }
@@ -424,18 +437,38 @@ impl SkillLoadout {
 
     fn finish_hook_cache_offsets(&mut self) {
         let mut cursor = 0usize;
+        self.enabled_hook_mask = 0;
         for hook_index in 0..SKILL_HOOK_COUNT {
             self.hook_cache_offsets[hook_index] = u16::try_from(cursor).expect("runtime skill hook cache exceeds u16 range");
-            while self
-                .hook_cache
-                .get(cursor)
-                .is_some_and(|entry| usize::from(entry.hook_index) == hook_index)
-            {
+            while let Some(entry) = self.hook_cache.get(cursor).filter(|entry| usize::from(entry.hook_index) == hook_index) {
+                if self.levels[entry.fixed_lane] > 0 {
+                    self.enabled_hook_mask |= 1 << hook_index;
+                }
                 cursor += 1;
             }
         }
         self.hook_cache_offsets[SKILL_HOOK_COUNT] = u16::try_from(cursor).expect("runtime skill hook cache exceeds u16 range");
         self.hook_cache_ready = true;
+    }
+
+    /// 只在已知该阶段无非零等级的技能时返回 false；未缓存的扩展阶段仍走通用查询。
+    #[inline]
+    pub(crate) fn may_have_enabled_hook(&self, hook: ProcMask) -> bool {
+        let absent_hooks = u64::from(!self.enabled_hook_mask);
+        hook.0 & !absent_hooks != 0
+    }
+
+    fn refresh_enabled_hook_mask(&mut self) {
+        if !self.hook_cache_ready {
+            return;
+        }
+        let mut enabled_hooks = 0;
+        for entry in &self.hook_cache {
+            if self.levels[entry.fixed_lane] > 0 {
+                enabled_hooks |= 1 << entry.hook_index;
+            }
+        }
+        self.enabled_hook_mask = enabled_hooks;
     }
 
     pub(crate) fn cached_hook_entries(&self, hook: ProcMask) -> Option<&[CachedSkillHookEntry]> {
@@ -445,6 +478,9 @@ impl SkillLoadout {
         let hook_index = hook.0.trailing_zeros() as usize;
         if hook_index >= SKILL_HOOK_COUNT {
             return None;
+        }
+        if self.enabled_hook_mask & (1 << hook_index) == 0 {
+            return Some(&[]);
         }
         let start = usize::from(self.hook_cache_offsets[hook_index]);
         let end = usize::from(self.hook_cache_offsets[hook_index + 1]);
@@ -461,6 +497,7 @@ impl SkillLoadout {
         self.hook_cache.clear();
         self.hook_cache_offsets.fill(0);
         self.hook_cache_ready = false;
+        self.enabled_hook_mask = u8::MAX;
     }
 
     pub fn skills(&self) -> &[SkillId] { &self.skills }
@@ -486,7 +523,11 @@ impl SkillLoadout {
         if *current == level {
             return true;
         }
+        let eligibility_changed = (*current == 0) != (level == 0);
         *current = level;
+        if eligibility_changed {
+            self.refresh_enabled_hook_mask();
+        }
         self.mark_hook_mutation(SKILL_DIRTY_LEVELS);
         true
     }
@@ -507,6 +548,7 @@ impl SkillLoadout {
 
     pub fn rebuilt_for_clone(&self) -> Self {
         let mut clone = self.clone();
+        let mut eligibility_changed = false;
         for lane in 0..clone.levels.len() {
             let clamped = self.build_levels[lane].min(self.levels[lane]);
             clone.levels[lane] = match &self.boosts[lane] {
@@ -514,6 +556,7 @@ impl SkillLoadout {
                 Some(SkillBoost::LastBoost(_)) => clamped.saturating_mul(2),
                 Some(SkillBoost::SlotBoost { boost, .. }) => clamped.saturating_add((*boost).min(clamped)),
             };
+            eligibility_changed |= self.levels[lane] > 0 && clone.levels[lane] == 0;
         }
         clone
             .pre_action_order
@@ -521,14 +564,19 @@ impl SkillLoadout {
         clone
             .post_action_after_states
             .retain(|(_, lane)| clone.levels.get(*lane).is_some_and(|level| *level > 0));
+        if eligibility_changed {
+            clone.refresh_enabled_hook_mask();
+        }
         clone
     }
 
     pub(crate) fn rebuilt_for_score_clone(&self, plan: &super::ScoreCloneSkillBoostPlan) -> Self {
         let mut clone = self.clone();
+        let mut eligibility_changed = false;
         for lane in 0..clone.levels.len() {
             let key = clone.fixed_lane_keys[lane];
             clone.levels[lane] = self.build_levels[lane].min(self.levels[lane]);
+            eligibility_changed |= self.levels[lane] > 0 && clone.levels[lane] == 0;
             clone.boosts[lane] = None;
             clone.boosted[lane] = key < 64 && plan.initially_boosted_mask & (1u64 << key) != 0;
         }
@@ -567,6 +615,9 @@ impl SkillLoadout {
         clone
             .post_action_after_states
             .retain(|(_, lane)| clone.levels.get(*lane).is_some_and(|level| *level > 0));
+        if eligibility_changed {
+            clone.refresh_enabled_hook_mask();
+        }
         clone
     }
 

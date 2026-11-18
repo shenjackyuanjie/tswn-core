@@ -99,18 +99,24 @@ impl CombatRuntime {
             .then(|| self.run_plain_skill_pre_action_accumulator(action.actor))
             .unwrap_or_default();
 
-        let skill_plan = self
-            .scheduler
-            .skill_hook_plan(&self.entities, &self.registry, action.actor, ProcMask::PRE_ACTION);
-        let selected_target = if legacy_plain_action {
-            action.target
-        } else {
-            self.selected_pre_action_target(&skill_plan, action.actor, smart).unwrap_or(action.target)
+        let skills = &self.entities.get(action.actor).expect("runtime pre-action owner missing").template.skills;
+        if !legacy_plain_action || skills.may_have_enabled_hook(ProcMask::PRE_ACTION) {
+            let skill_plan =
+                self.scheduler
+                    .skill_hook_plan_for_loadout(skills, &self.registry, action.actor, ProcMask::PRE_ACTION);
+            let selected_target = if legacy_plain_action {
+                action.target
+            } else {
+                self.selected_pre_action_target(&skill_plan, action.actor, smart).unwrap_or(action.target)
+            };
+            self.drain_skill_hook_plan_with_selected_target_into(&skill_plan, &mut updates, Some(selected_target));
+        }
+        // 技能可能在行动前注册状态，执行完技能后再判断是否需要状态计划。
+        let actor = self.entities.get(action.actor).expect("runtime pre-action state owner missing");
+        let state_intercepted_action = actor.states.hook_mask().intersects(ProcMask::PRE_ACTION) && {
+            let state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::PRE_ACTION);
+            self.drain_state_hook_plan_with_action_smart_into(&state_plan, &mut updates, Some(smart))
         };
-        self.drain_skill_hook_plan_with_selected_target_into(&skill_plan, &mut updates, Some(selected_target));
-        let pre_action_state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::PRE_ACTION);
-        let state_intercepted_action =
-            self.drain_state_hook_plan_with_action_smart_into(&pre_action_state_plan, &mut updates, Some(smart));
         let mut prepared_plain_action = None;
         if legacy_plain_action && !state_intercepted_action {
             if self
@@ -279,8 +285,8 @@ impl CombatRuntime {
     /// 技能执行完再读取状态位图，保留技能新增状态在同一阶段立即生效的顺序。
     fn drain_action_damage_phase_into(&mut self, owner: EntityIdx, hook: ProcMask, updates: &mut RunUpdates) {
         let skills = &self.entities.get(owner).expect("runtime damage phase owner missing").template.skills;
-        if !skills.cached_hook_entries(hook).is_some_and(|entries| entries.is_empty()) {
-            let plan = self.scheduler.skill_hook_plan(&self.entities, &self.registry, owner, hook);
+        if skills.may_have_enabled_hook(hook) {
+            let plan = self.scheduler.skill_hook_plan_for_loadout(skills, &self.registry, owner, hook);
             self.drain_skill_hook_plan_into(&plan, updates);
         }
         if self
@@ -297,17 +303,21 @@ impl CombatRuntime {
     }
 
     fn drain_post_action_chain_into(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
-        let mut skill_plans = self.scheduler.skill_post_action_plans(&self.entities, &self.registry, owner);
+        let actor = self.entities.get(owner).expect("runtime post-action owner missing");
+        let skills = &actor.template.skills;
+        if !skills.may_have_enabled_hook(ProcMask::POST_ACTION) && !actor.states.hook_mask().intersects(ProcMask::POST_ACTION) {
+            return;
+        }
+        let mut skill_plans = self.scheduler.skill_post_action_plans(skills, &self.registry, owner);
         self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, &skill_plans.early, updates);
-        let generation_after_early = self
+        let skills_after_early = &self
             .entities
             .get(owner)
             .unwrap_or_else(|| panic!("unknown runtime post-action owner entity: {}", owner.0))
             .template
-            .skills
-            .hook_generation();
-        if generation_after_early != skill_plans.generation {
-            skill_plans = self.scheduler.skill_post_action_plans(&self.entities, &self.registry, owner);
+            .skills;
+        if skills_after_early.hook_generation() != skill_plans.generation {
+            skill_plans = self.scheduler.skill_post_action_plans(skills_after_early, &self.registry, owner);
         }
 
         let state_plan = self.scheduler.state_hook_plan(&self.entities, owner, ProcMask::POST_ACTION);
@@ -344,15 +354,14 @@ impl CombatRuntime {
         self.flush_deferred_owner_state_clears(owner, &deferred_owner_state_clears);
 
         // Charge 以及 Haste、Slow 的尾阶段必须继续晚于状态和中途注册的 early 技能。
-        let generation_after_states = self
+        let skills_after_states = &self
             .entities
             .get(owner)
             .unwrap_or_else(|| panic!("unknown runtime post-action owner entity: {}", owner.0))
             .template
-            .skills
-            .hook_generation();
-        if generation_after_states != skill_plans.generation {
-            skill_plans = self.scheduler.skill_post_action_plans(&self.entities, &self.registry, owner);
+            .skills;
+        if skills_after_states.hook_generation() != skill_plans.generation {
+            skill_plans = self.scheduler.skill_post_action_plans(skills_after_states, &self.registry, owner);
         }
         self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, &skill_plans.late, updates);
     }

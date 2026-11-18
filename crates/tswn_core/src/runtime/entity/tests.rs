@@ -231,6 +231,84 @@ fn skill_loadout_caches_only_builtin_action_lanes_and_invalidates_with_order() {
 }
 
 #[test]
+fn enabled_skill_hooks_follow_levels_clones_and_battle_reset() {
+    let mut builder = crate::runtime::ExtensionRegistryBuilder::default();
+    let extension_hook = ProcMask(1 << 12);
+    let both = builder
+        .register_skill_with_hooks(
+            "test",
+            "both",
+            "test.both",
+            ProcMask::PRE_ACTION | ProcMask::POST_ACTION | extension_hook,
+            TargetPolicy::None,
+            SkillPriority(0),
+        )
+        .unwrap();
+    let post = builder
+        .register_skill_with_hooks(
+            "test",
+            "post",
+            "test.post",
+            ProcMask::POST_ACTION,
+            TargetPolicy::None,
+            SkillPriority(1),
+        )
+        .unwrap();
+    let registry = builder.build();
+    let scheduler = crate::runtime::PhaseScheduler::default();
+    let active = |skills: &SkillLoadout, hook| {
+        scheduler
+            .skill_hook_plan_for_loadout(skills, &registry, EntityIdx(0), hook)
+            .entries
+            .into_iter()
+            .map(|entry| entry.skill_id)
+            .collect::<Vec<_>>()
+    };
+
+    let mut prepared = SkillLoadout::from_skill_levels([(both, 0), (post, 3)]);
+    prepared.prepare_hook_cache(&registry);
+    prepared.mark_battle_baseline();
+    assert!(!prepared.may_have_enabled_hook(ProcMask::PRE_ACTION));
+    assert_eq!(active(&prepared, ProcMask::POST_ACTION), [post]);
+
+    let mut skills = prepared.clone();
+    assert!(skills.set_level_at(0, 7));
+    assert!(skills.may_have_enabled_hook(ProcMask::PRE_ACTION));
+    assert_eq!(active(&skills, ProcMask::PRE_ACTION), [both]);
+    assert_eq!(active(&skills, ProcMask::POST_ACTION), [both, post]);
+    assert!(skills.may_have_enabled_hook(extension_hook));
+    assert_eq!(active(&skills, extension_hook), [both]);
+
+    for cloned in [
+        skills.rebuilt_for_clone(),
+        skills.rebuilt_for_score_clone(&ScoreCloneSkillBoostPlan {
+            initially_boosted_mask: 0,
+            slot_boosts: [None; 2],
+        }),
+    ] {
+        assert!(!cloned.may_have_enabled_hook(ProcMask::PRE_ACTION));
+        assert!(active(&cloned, ProcMask::PRE_ACTION).is_empty());
+        assert_eq!(active(&cloned, ProcMask::POST_ACTION), [post]);
+    }
+
+    assert!(skills.set_level_at(0, 0));
+    assert!(!skills.may_have_enabled_hook(ProcMask::PRE_ACTION));
+    assert_eq!(active(&skills, ProcMask::POST_ACTION), [post]);
+    assert!(skills.set_level_at(0, 4));
+    skills.reset_battle_fields_from(&prepared);
+    assert!(!skills.may_have_enabled_hook(ProcMask::PRE_ACTION));
+    assert!(active(&skills, ProcMask::PRE_ACTION).is_empty());
+
+    skills.disable_action_lane(1);
+    assert!(active(&skills, ProcMask::POST_ACTION).is_empty());
+    skills.prepare_hook_cache(&registry);
+    assert!(!skills.may_have_enabled_hook(ProcMask::POST_ACTION));
+    skills.reset_battle_fields_from(&prepared);
+    assert!(skills.may_have_enabled_hook(ProcMask::POST_ACTION));
+    assert_eq!(active(&skills, ProcMask::POST_ACTION), [post]);
+}
+
+#[test]
 fn skill_loadout_rebuilds_clone_levels_from_build_baseline_before_boosts() {
     let mut owner = SkillLoadout::from_skill_levels_and_boosts([
         (SkillId(1), 4, None),

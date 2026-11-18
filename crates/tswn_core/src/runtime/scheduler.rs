@@ -10,7 +10,7 @@
 //! POST_ACTION 按 early、状态间 deferred、late 分区执行。
 //! 计划是派生数据，技能或状态变动后按 generation 刷新。
 
-use crate::runtime::entity::{EntityArena, EntityIdx};
+use crate::runtime::entity::{EntityArena, EntityIdx, SkillLoadout};
 use crate::runtime::extension::{
     ExtensionRegistry, ProcMask, RegistrationOrder, SkillId, SkillPostActionPhase, SkillPriority, StateId, TargetPolicy,
 };
@@ -247,7 +247,16 @@ impl PhaseScheduler {
         let entity = entities
             .get(owner)
             .unwrap_or_else(|| panic!("unknown runtime skill owner entity: {}", owner.0));
-        let skills = &entity.template.skills;
+        self.skill_hook_plan_for_loadout(&entity.template.skills, registry, owner, hook)
+    }
+
+    pub(super) fn skill_hook_plan_for_loadout(
+        &self,
+        skills: &SkillLoadout,
+        registry: &ExtensionRegistry,
+        owner: EntityIdx,
+        hook: ProcMask,
+    ) -> SkillHookPlan {
         let mut entries = SmallVec::<[SkillHookPlanEntry; 4]>::new();
         if let Some(cached_entries) = skills.cached_hook_entries(hook) {
             for entry in cached_entries {
@@ -328,15 +337,10 @@ impl PhaseScheduler {
     /// 调用方用 generation 判断执行期间是否发生技能写入，再按需重建。
     pub(crate) fn skill_post_action_plans(
         &self,
-        entities: &EntityArena,
+        skills: &SkillLoadout,
         registry: &ExtensionRegistry,
         owner: EntityIdx,
     ) -> SkillPostActionPlans {
-        let skills = &entities
-            .get(owner)
-            .unwrap_or_else(|| panic!("unknown runtime post-action skill owner entity: {}", owner.0))
-            .template
-            .skills;
         let deferred_lanes = skills.post_action_after_states();
         let mut deferred = SmallVec::<[(u64, SkillHookPlanEntry); 4]>::new();
         let mut early_entries = SmallVec::<[SkillHookPlanEntry; 2]>::new();
@@ -368,7 +372,7 @@ impl PhaseScheduler {
                 }
             }
         } else {
-            let plan = self.skill_hook_plan(entities, registry, owner, ProcMask::POST_ACTION);
+            let plan = self.skill_hook_plan_for_loadout(skills, registry, owner, ProcMask::POST_ACTION);
             for (cursor, fixed_lane) in deferred_lanes {
                 let Some(entry) = plan.entries.iter().find(|entry| entry.fixed_lane == *fixed_lane).copied() else {
                     continue;
