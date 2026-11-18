@@ -59,7 +59,10 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
-use crate::runtime::profile::BuiltinActiveSkill;
+use crate::runtime::profile::{
+    BuiltinActiveSkill, DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT, DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT,
+    DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PlayerKindId(pub u32);
@@ -759,7 +762,14 @@ impl ExtensionRegistryBuilder {
             .iter()
             .map(|skill| BuiltinActiveSkill::from_export_name(&skill.export_name))
             .collect();
+        let seed_blueprint_slots = [
+            DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT,
+            DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT,
+            DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT,
+        ]
+        .map(|name| self.entity_slots.iter().find(|spec| spec.export_name == name).map(|spec| spec.id));
         ExtensionRegistry {
+            seed_blueprint_slots,
             installed_extensions: self.installed_extensions,
             player_kinds: self.player_kinds,
             skills: self.skills,
@@ -795,9 +805,13 @@ pub struct ExtensionRegistry {
     show_renderers: Vec<ShowRendererSpec>,
     /// 构造期解析好的内置主动技能，战斗热路径按 `SkillId` 直接索引。
     builtin_active_skills: Vec<Option<BuiltinActiveSkill>>,
+    /// 每局会同步队伍编号的内置蓝图槽；注册表构造后 ID 固定。
+    seed_blueprint_slots: [Option<EntitySlotId>; 3],
 }
 
 impl ExtensionRegistry {
+    pub(crate) fn seed_blueprint_slots(&self) -> [Option<EntitySlotId>; 3] { self.seed_blueprint_slots }
+
     pub fn installed_extensions(&self) -> &[InstalledExtensionSpec] { &self.installed_extensions }
 
     pub fn player_kind(&self, id: PlayerKindId) -> Option<&PlayerKindSpec> { self.player_kinds.get(id.0 as usize) }

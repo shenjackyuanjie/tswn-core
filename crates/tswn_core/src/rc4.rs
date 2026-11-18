@@ -235,6 +235,13 @@ impl PickSkipRange {
     #[inline]
     fn offset_sample(self, sample: usize) -> usize { if sample >= self.first { sample + self.len } else { sample } }
 
+    /// 返回恰好剩下两个候选时的下标，沿用首项与数量定义的排除区间。
+    #[cfg(feature = "no_debug")]
+    #[inline]
+    pub(crate) fn two_remaining_indices(self, list_len: usize) -> Option<[usize; 2]> {
+        (list_len.checked_sub(self.len) == Some(2)).then(|| [self.offset_sample(0), self.offset_sample(1)])
+    }
+
     /// 返回这一排除区间恰好剩下一个候选时的下标，不推进随机流。
     #[cfg(feature = "no_debug")]
     #[inline]

@@ -164,6 +164,39 @@ impl CombatRuntime {
                     .then_some(index)
             })
             .collect::<crate::rc4::PickSkipRange>();
+        #[cfg(feature = "no_debug")]
+        if select_count <= 6 {
+            if let Some(index) = ally_skip_indices.single_remaining_index(all_alive.len()) {
+                // 配额为一时首次抽中即结束。否则抽中一次后会再重复配额加一次。
+                if all_alive.len() > 1 {
+                    match select_count {
+                        1 => self.rng.discard_bytes::<2>(),
+                        2 => self.rng.discard_bytes::<8>(),
+                        3 => self.rng.discard_bytes::<10>(),
+                        4 => self.rng.discard_bytes::<12>(),
+                        5 => self.rng.discard_bytes::<14>(),
+                        6 => self.rng.discard_bytes::<16>(),
+                        _ => unreachable!("零目标配额应提前返回"),
+                    }
+                }
+                let target = all_alive[index];
+                self.entities.get(target).unwrap();
+                if !smart {
+                    self.rng.discard_bytes::<2>();
+                }
+                return smallvec::smallvec![target];
+            }
+            if select_count >= 2
+                && self.world.alive_group_count() <= 2
+                && let Some([left, right]) = ally_skip_indices.two_remaining_indices(all_alive.len())
+                && all_alive[left] != all_alive[right]
+            {
+                let (first, second) = self.rank_two_plain_enemy_targets([all_alive[left], all_alive[right]], smart, select_count);
+                let mut targets = smallvec::smallvec![first];
+                targets.extend(second);
+                return targets;
+            }
+        }
         let mut selected = smallvec::SmallVec::<[EntityIdx; 8]>::new();
         let mut duplicate_count = 0usize;
         while duplicate_count <= select_count {
@@ -197,21 +230,8 @@ impl CombatRuntime {
             .entities
             .get(target)
             .unwrap_or_else(|| panic!("unknown runtime default enemy target: {}", target.0));
-        let rate_hi_hp = |hp: i32| -> f64 {
-            if hp < 20 {
-                30.0
-            } else if hp > 300 {
-                300.0
-            } else {
-                hp as f64
-            }
-        };
         if smart {
-            if self.world.alive_group_count() > 2 {
-                rate_hi_hp(entity.runtime.hp) * self.world.alive_group_len_containing(target) as f64 * entity.runtime.attract()
-            } else {
-                (1.0 / rate_hi_hp(entity.runtime.hp)) * entity.runtime.atk_sum as f64 * entity.runtime.attract()
-            }
+            Self::plain_smart_attack_score(&self.world, target, &entity.runtime)
         } else {
             self.rng.rFFFF() as f64 + entity.runtime.attract()
         }

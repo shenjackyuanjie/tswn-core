@@ -465,9 +465,15 @@ impl BattleControl {
 
     pub fn take_pending_updates(&mut self) -> Option<crate::runtime::update::RunUpdates> { self.pending_updates.take() }
 
-    pub fn begin_damage_batch(&mut self, attacker: PlrId, target: PlrId) -> u64 {
+    /// 没有被动决策或回放的攻击仍保留原来的批次编号序列。
+    #[inline]
+    pub(crate) fn advance_damage_batch_id(&mut self) -> u64 {
         self.next_damage_batch_id = self.next_damage_batch_id.saturating_add(1);
-        let id = self.next_damage_batch_id;
+        self.next_damage_batch_id
+    }
+
+    pub fn begin_damage_batch(&mut self, attacker: PlrId, target: PlrId) -> u64 {
+        let id = self.advance_damage_batch_id();
         self.damage_batches.push(DamageDecisionBatch::new(id, attacker, target));
         id
     }

@@ -280,3 +280,25 @@ fn wiped_team_revived_by_charmed_caster_keeps_batch_winner_consistent() {
     let outcome = runtime.run_minimal_round_no_capture();
     assert_ne!(outcome.winner_team, Some(1));
 }
+
+#[test]
+fn idle_rounds_still_consume_the_completion_guard_and_rng() {
+    let mut captured = RuntimeRunner::from_template(PreparedCombatTemplate::new(vec![
+        PlayerTemplate::new(1, "slow-left", 0, 100, 3).with_speed(1),
+        PlayerTemplate::new(2, "slow-right", 1, 100, 3).with_speed(1),
+    ]));
+    let mut uncaptured = captured.clone();
+    for _ in 0..8 {
+        let outcome = captured.run_round();
+        assert!(outcome.action.is_none());
+        assert_eq!(outcome.winner_team, None);
+    }
+    let completion = uncaptured.run_to_completion_prevalidated(8);
+    assert_eq!(completion.rounds, 8);
+    assert_eq!(completion.winner_team, None);
+    assert!(completion.guard_exhausted);
+    assert_eq!(uncaptured.runtime().round, captured.runtime().round);
+    assert_eq!(uncaptured.runtime().world, captured.runtime().world);
+    assert_eq!(uncaptured.runtime().entities, captured.runtime().entities);
+    assert_rng_state_eq(&uncaptured.runtime().rng, &captured.runtime().rng);
+}

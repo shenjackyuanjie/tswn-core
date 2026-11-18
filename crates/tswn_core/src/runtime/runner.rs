@@ -551,7 +551,7 @@ impl RuntimeRunner {
 
     fn run_round_unchecked(&mut self) -> RoundOutcome { self.runtime.run_minimal_round() }
 
-    fn run_round_unchecked_no_capture(&mut self) -> RoundOutcome { self.runtime.run_minimal_round_no_capture() }
+    fn run_round_unchecked_no_capture(&mut self) -> RoundOutcome { self.runtime.run_active_round_no_capture() }
 
     /// 推进一个 Runtime 回合；可能没有可见帧。未就绪时会 panic，高层会话会先校验。
     pub fn run_round(&mut self) -> RoundOutcome {
@@ -725,7 +725,7 @@ impl PreparedRuntimeRunner {
         refill(&self.battle_roster, &mut seed_state);
 
         seed_state.swap_input_groups(&mut runner.input_groups);
-        let result = seed_state.apply_reusing(&mut runner.runtime).map_err(Into::into);
+        let result = seed_state.apply_reusing_with_restored_scheduler(&mut runner.runtime).map_err(Into::into);
         runner.prepared_seed = Some(seed_state);
         result
     }

@@ -8,7 +8,14 @@ impl CombatRuntime {
     pub fn run_minimal_round(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture::<true>() }
 
     /// 批量胜率与评分只需要胜者，不保留 replay 帧。
-    pub(crate) fn run_minimal_round_no_capture(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture::<false>() }
+    #[cfg(test)]
+    pub(crate) fn run_minimal_round_no_capture(&mut self) -> RoundOutcome {
+        self.world.sync_winner_from_alive_views();
+        self.run_active_round_no_capture()
+    }
+
+    /// 调用方已按存活视图判胜。没有行动的调度尝试不会改变存活视图。
+    pub(crate) fn run_active_round_no_capture(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture::<false>() }
 
     /// 将 replay 捕获策略固化为编译期常量，让批量路径消除每回合的交互模式分支。
     fn run_minimal_round_with_capture<const CAPTURE_UPDATES: bool>(&mut self) -> RoundOutcome {
@@ -25,7 +32,7 @@ impl CombatRuntime {
         let winner_team = if CAPTURE_UPDATES {
             self.world.sync_winner(&self.entities)
         } else {
-            self.world.sync_winner_from_alive_views()
+            self.world.winner_team()
         };
         if let Some(winner_team) = winner_team {
             return Some(RoundOutcome {
@@ -36,12 +43,22 @@ impl CombatRuntime {
         }
 
         let selected_action = self.scheduler.select_action(&mut self.world, &mut self.entities, &mut self.rng);
+        let ice_release_events = self.scheduler.take_ice_release_events();
+        if !CAPTURE_UPDATES && selected_action.is_none() && ice_release_events.is_empty() {
+            RunUpdates::skip_empty_batch();
+            self.round += 1;
+            return Some(RoundOutcome {
+                action: None,
+                frame: None,
+                winner_team: None,
+            });
+        }
         let mut updates = if CAPTURE_UPDATES {
             RunUpdates::new()
         } else {
             RunUpdates::new_no_capture()
         };
-        for target in self.scheduler.take_ice_release_events() {
+        for target in ice_release_events {
             updates.add_newline();
             updates.add(RuntimeFrame::replay_update(
                 target.0 as usize,
@@ -453,7 +470,7 @@ impl CombatRuntime {
         if let Some(forced_skill) = pre_action.forced_skill {
             return Some(PreparedPlainAction::BuiltinSkill(forced_skill));
         }
-        if !pre_action.clear_forced_action && self.has_plain_berserk_state(actor) {
+        if berserk_forced {
             let target = self.select_plain_berserk_forced_attack_target(smart)?;
             let amount = self
                 .entities
@@ -707,6 +724,9 @@ impl CombatRuntime {
     ///
     /// 幻影 / 使魔 / 丧尸属于召唤物，仍由引擎自动行动。
     fn is_controlled_actor(&self, actor: EntityIdx) -> bool {
+        if self.control.controlled_teams().is_empty() {
+            return false;
+        }
         let Some(entity) = self.entities.get(actor) else {
             return false;
         };

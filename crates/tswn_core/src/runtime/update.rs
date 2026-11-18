@@ -273,6 +273,10 @@ impl RunUpdates {
     /// 创建不缓存详细事件帧的批次（仍可判断是否发生过事件）。
     pub fn new_no_capture() -> RunUpdates { Self::new_with_capture(false) }
 
+    /// 批量调度没有产生行动或事件，推进批次编号即可。
+    #[inline]
+    pub(crate) fn skip_empty_batch() { next_run_updates_id(); }
+
     /// 清理批次内容，复用分配。
     pub fn reset(&mut self) {
         self.id = next_run_updates_id();

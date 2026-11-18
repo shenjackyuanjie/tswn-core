@@ -45,6 +45,14 @@ impl CombatRuntime {
             self.entities.get(target).unwrap();
             return Some(target);
         }
+        #[cfg(feature = "no_debug")]
+        if let Some([left, right]) = enemy_skip_indices.two_remaining_indices(all_alive.len()) {
+            let candidates = [all_alive[left], all_alive[right]];
+            if self.world.alive_group_count() <= 2 && candidates[0] != candidates[1] {
+                let select_count = if smart { 3 } else { 2 };
+                return Some(self.rank_two_plain_enemy_targets(candidates, smart, select_count).0);
+            }
+        }
         let select_count = if smart { 3 } else { 2 };
         let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
         let mut duplicate_count = 0usize;
@@ -68,19 +76,7 @@ impl CombatRuntime {
         for target in selected {
             let target_entity = self.entities.get(target).unwrap();
             let score = if smart {
-                let hp = if target_entity.runtime.hp < 20 {
-                    30.0
-                } else if target_entity.runtime.hp > 300 {
-                    300.0
-                } else {
-                    target_entity.runtime.hp as f64
-                };
-                let alive_group_len = self.world.alive_group_len_containing(target) as f64;
-                if self.world.alive_group_count() > 2 {
-                    hp * alive_group_len * target_entity.runtime.attract()
-                } else {
-                    (1.0 / hp) * target_entity.runtime.atk_sum as f64 * target_entity.runtime.attract()
-                }
+                Self::plain_smart_attack_score(&self.world, target, &target_entity.runtime)
             } else {
                 self.rng.rFFFF() as f64 + target_entity.runtime.attract()
             };
@@ -114,6 +110,68 @@ impl CombatRuntime {
         scored.first().map(|(target, _)| *target)
     }
 
+    pub(super) fn plain_smart_attack_score(world: &WorldArena, target: EntityIdx, runtime: &PlayerRuntime) -> f64 {
+        let hp = match runtime.hp {
+            ..=19 => 30.0,
+            301.. => 300.0,
+            hp => hp as f64,
+        };
+        if world.alive_group_count() > 2 {
+            hp * world.alive_group_len_containing(target) as f64 * runtime.attract()
+        } else {
+            (1.0 / hp) * runtime.atk_sum as f64 * runtime.attract()
+        }
+    }
+
+    #[cfg(feature = "no_debug")]
+    pub(super) fn rank_two_plain_enemy_targets(
+        &mut self,
+        candidates: [EntityIdx; 2],
+        smart: bool,
+        select_count: usize,
+    ) -> (EntityIdx, Option<EntityIdx>) {
+        debug_assert!(select_count >= 2);
+        // 上界为 2 的抽样消费两字节，取末字节最低位等同于求余。
+        let first = (self.rng.rFFFF() & 1) as usize;
+        let duplicate_limit = select_count + 1;
+        for duplicates in 0..duplicate_limit {
+            if (self.rng.rFFFF() & 1) as usize != first {
+                // 两个位置都已入选，配额超过两名时，剩余抽样一定是重复项。
+                if select_count > 2 {
+                    for _ in duplicates..duplicate_limit {
+                        self.rng.discard_bytes::<2>();
+                    }
+                }
+                let left = candidates[first];
+                let right = candidates[first ^ 1];
+                let left_runtime = &self.entities.get(left).unwrap().runtime;
+                let right_runtime = &self.entities.get(right).unwrap().runtime;
+                let (left_score, right_score) = if smart {
+                    (
+                        Self::plain_smart_attack_score(&self.world, left, left_runtime),
+                        Self::plain_smart_attack_score(&self.world, right, right_runtime),
+                    )
+                } else {
+                    (
+                        self.rng.rFFFF() as f64 + left_runtime.attract(),
+                        self.rng.rFFFF() as f64 + right_runtime.attract(),
+                    )
+                };
+                return if right_score > left_score {
+                    (right, Some(left))
+                } else {
+                    (left, Some(right))
+                };
+            }
+        }
+        let target = candidates[first];
+        self.entities.get(target).unwrap();
+        if !smart {
+            self.rng.discard_bytes::<2>();
+        }
+        (target, None)
+    }
+
     pub fn drain_plain_default_attack_into(
         &mut self,
         actor: EntityIdx,
@@ -131,12 +189,7 @@ impl CombatRuntime {
             self.set_lazy_boss_at_boost(actor, at_boost + 0.5);
             return;
         }
-        updates.add(RuntimeFrame::replay_update(
-            actor.0 as usize,
-            target.0 as usize,
-            "[0]发起攻击",
-            0,
-        ));
+        updates.add_with(|| RuntimeFrame::replay_update(actor.0 as usize, target.0 as usize, "[0]发起攻击", 0));
         #[cfg(not(feature = "no_debug"))]
         if debug_attack {
             eprintln!(
@@ -400,6 +453,11 @@ impl CombatRuntime {
     fn plain_dodge_values(&self, actor: EntityIdx, target: EntityIdx, use_magic: bool) -> (i32, i32, bool) {
         let actor_runtime = &self.entities.get(actor).unwrap().runtime;
         let target_entity = self.entities.get(target).unwrap();
+        Self::plain_dodge_values_for(actor_runtime, target_entity, use_magic)
+    }
+
+    #[inline]
+    fn plain_dodge_values_for(actor_runtime: &PlayerRuntime, target_entity: &EntityRecord, use_magic: bool) -> (i32, i32, bool) {
         let target_runtime = &target_entity.runtime;
         (
             if use_magic {
@@ -433,9 +491,54 @@ impl CombatRuntime {
         on_damage: PlainAttackOnDamage,
         updates: &mut RunUpdates,
     ) -> i32 {
-        let batch_id = self.control.begin_damage_batch(actor.0 as PlrId, target.0 as PlrId);
+        let passive_decisions = self.control.passive_decision_mode();
+        let batch_id = if cfg!(feature = "no_debug") && !updates.capture_updates && !passive_decisions {
+            // 自动结算不会读取伤害决策栈，只推进编号以便后续交互沿用相同批次号。
+            self.control.advance_damage_batch_id();
+            None
+        } else {
+            Some(self.control.begin_damage_batch(actor.0 as PlrId, target.0 as PlrId))
+        };
+        #[cfg(feature = "no_debug")]
+        if !updates.capture_updates
+            && !passive_decisions
+            && let Some(defender) = self.entities.get(target)
+            && !defender.runtime.flags.contains(PlayerKindFlags::BOSS)
+            && defender.runtime.shield <= 0
+            && (defender.runtime.protect_from.is_empty() || defender.runtime.protect_pre_defend_skill_count.is_none())
+            && !defender.states.hook_mask().intersects(ProcMask::PRE_DEFEND | ProcMask::POST_DEFEND)
+            && !defender
+                .template
+                .skills
+                .may_have_enabled_hook(ProcMask::PRE_DEFEND | ProcMask::POST_DEFEND)
+        {
+            // 两个防御阶段均为空，可从同一个目标记录读取闪避与基础防御。命中后沿用正式伤害链。
+            let amount = if atp == 0.0 {
+                0
+            } else {
+                let actor_runtime = &self.entities.get(actor).unwrap().runtime;
+                let (accuracy, dodge, active) = Self::plain_dodge_values_for(actor_runtime, defender, use_magic);
+                if active && PlayerRuntime::dodge(accuracy, dodge, &mut self.rng) {
+                    updates.add_with(|| RuntimeFrame::replay_update(target.0 as usize, actor.0 as usize, "[0][回避]了攻击", 20));
+                    0
+                } else {
+                    let defense = if use_magic {
+                        defender.runtime.resistance
+                    } else {
+                        defender.runtime.defense
+                    } + 64;
+                    let amount = (atp / defense as f64).ceil() as i32;
+                    self.settle_plain_attack_damage_into(actor, target, amount, covid_source, on_damage, updates);
+                    amount
+                }
+            };
+            if let Some(batch_id) = batch_id {
+                self.control.finish_damage_batch(batch_id);
+            }
+            return amount;
+        }
         // 回避预演必须在 PRE_DEFEND 之前询问（被动决策协议），且只在决策模式下需要判定口径。
-        if self.control.passive_decision_mode() {
+        if passive_decisions {
             let (accuracy, dodge_value, target_active) = self.plain_dodge_values(actor, target, use_magic);
             if target_active {
                 self.prepare_plain_dodge(target, accuracy, dodge_value, false, updates);
@@ -469,7 +572,9 @@ impl CombatRuntime {
             );
         }
         if atp == 0.0 {
-            self.control.finish_damage_batch(batch_id);
+            if let Some(batch_id) = batch_id {
+                self.control.finish_damage_batch(batch_id);
+            }
             return 0;
         }
         // 实际判定沿用 PRE_DEFEND 之后的状态：反弹/守护钩子可能改变目标存活或攻防敏，
@@ -491,20 +596,19 @@ impl CombatRuntime {
             );
         }
         if dodged {
-            updates.add(RuntimeFrame::replay_update(
-                target.0 as usize,
-                actor.0 as usize,
-                "[0][回避]了攻击",
-                20,
-            ));
-            self.control.finish_damage_batch(batch_id);
+            updates.add_with(|| RuntimeFrame::replay_update(target.0 as usize, actor.0 as usize, "[0][回避]了攻击", 20));
+            if let Some(batch_id) = batch_id {
+                self.control.finish_damage_batch(batch_id);
+            }
             return 0;
         }
 
         // 伤害链本身可能嵌套别的攻击（反弹/反击），批次由外层释放。
         let damage =
             self.drain_plain_attack_after_dodge_into(actor, target, use_magic, atp, kind, covid_source, on_damage, updates);
-        self.control.finish_damage_batch(batch_id);
+        if let Some(batch_id) = batch_id {
+            self.control.finish_damage_batch(batch_id);
+        }
         damage
     }
 
@@ -584,10 +688,22 @@ impl CombatRuntime {
                 actor.0, target.0, amount, self.rng.i, self.rng.j,
             );
         }
+        self.settle_plain_attack_damage_into(actor, target, amount, covid_source, on_damage, updates);
+        amount
+    }
+
+    fn settle_plain_attack_damage_into(
+        &mut self,
+        actor: EntityIdx,
+        target: EntityIdx,
+        amount: i32,
+        covid_source: Option<(EntityIdx, i32)>,
+        on_damage: PlainAttackOnDamage,
+        updates: &mut RunUpdates,
+    ) {
         if self.apply_plain_attack_damage_with_covid_and_on_damage_into(actor, target, amount, covid_source, on_damage, updates) {
             self.drain_plain_lethal_damage_into(actor, target, updates);
         }
-        amount
     }
 
     pub fn apply_plain_attack_damage_into(
@@ -640,7 +756,7 @@ impl CombatRuntime {
             .unwrap_or_else(|| panic!("unknown runtime default attack target: {}", target.0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
-        updates.add(RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         if amount == 0 {
             return false;
         }

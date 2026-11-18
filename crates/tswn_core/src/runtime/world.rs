@@ -158,24 +158,24 @@ impl WorldArena {
     }
 
     pub fn next_actor(&mut self, entities: &EntityArena) -> Option<EntityIdx> {
-        if self.round_order.is_empty() {
-            return None;
-        }
+        self.next_round_actor_with(|actor| entities.get(actor).filter(|entity| entity.runtime.alive).map(|_| actor))
+    }
 
-        for _ in 0..self.round_order.len() {
-            let len = self.round_order.len() as i32;
+    /// 沿行动序列访问第一个可以推进的实体，跳过空槽和已死亡的实体。
+    #[inline]
+    pub(crate) fn next_round_actor_with<T>(&mut self, mut visit: impl FnMut(EntityIdx) -> Option<T>) -> Option<T> {
+        let len = self.round_order.len() as i32;
+        for _ in 0..len {
             let next = self.round_pos + 1;
-            self.round_pos = if next >= len {
-                let wrapped = next - len;
-                if wrapped < len { wrapped } else { next.rem_euclid(len) }
-            } else if next < 0 {
-                let wrapped = next + len;
-                if wrapped >= 0 { wrapped } else { next.rem_euclid(len) }
-            } else {
+            self.round_pos = if (0..len).contains(&next) {
                 next
+            } else if next == len {
+                0
+            } else {
+                next.rem_euclid(len)
             };
             let actor = self.round_order[self.round_pos as usize];
-            if entities.get(actor).is_some_and(|entity| entity.runtime.alive) {
+            if let Some(result) = visit(actor) {
                 #[cfg(not(feature = "no_debug"))]
                 if crate::debug::debug_tick_order().is_some() {
                     eprintln!(
@@ -185,7 +185,7 @@ impl WorldArena {
                         self.round_order.iter().map(|idx| idx.0).collect::<Vec<_>>()
                     );
                 }
-                return Some(actor);
+                return Some(result);
             }
         }
         None

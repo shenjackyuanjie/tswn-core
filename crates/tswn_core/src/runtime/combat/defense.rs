@@ -645,7 +645,7 @@ impl CombatRuntime {
             .unwrap_or_else(|| panic!("unknown runtime plain legacy damage target entity: {}", target.0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
-        updates.add(RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         was_alive
             && self
@@ -692,7 +692,7 @@ impl CombatRuntime {
             .unwrap_or_else(|| panic!("unknown runtime poison target entity: {}", target.0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
-        updates.add(RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         was_alive
             && self
@@ -717,7 +717,7 @@ impl CombatRuntime {
         };
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
-        updates.add(RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         if amount > 0 {
             self.apply_disperse_hit_into(caster, target, updates);
         }

@@ -53,15 +53,7 @@ impl PreparedBattleSeed {
             });
         }
 
-        let shadow_blueprint_slot = runtime
-            .registry
-            .entity_slot_id_by_export_name(DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT);
-        let summon_blueprint_slot = runtime
-            .registry
-            .entity_slot_id_by_export_name(DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT);
-        let zombie_blueprint_slot = runtime
-            .registry
-            .entity_slot_id_by_export_name(DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT);
+        let blueprint_slots = runtime.registry.seed_blueprint_slots();
         for (index, (&team, &speed_points)) in teams.iter().zip(speed_points).enumerate() {
             let entity_idx = PreparedBattleInit::entity_idx(index);
             let entity = runtime
@@ -75,10 +67,7 @@ impl PreparedBattleSeed {
             }
             entity.template.move_state.speed_points = speed_points;
             entity.runtime.move_state.speed_points = speed_points;
-            for slot in [shadow_blueprint_slot, summon_blueprint_slot, zombie_blueprint_slot]
-                .into_iter()
-                .flatten()
-            {
+            for slot in blueprint_slots.into_iter().flatten() {
                 entity.slots.update_player_template_team(slot, team);
             }
         }
@@ -107,6 +96,16 @@ impl PreparedBattleSeed {
 
     /// 将 seed 状态应用到已复位的 runtime，同时保留本对象和 world 内部向量的容量。
     pub fn apply_reusing(&self, runtime: &mut CombatRuntime) -> Result<(), RuntimeBattleInitError> {
+        self.apply_reusing_with_restored_scheduler(runtime)?;
+        runtime.scheduler.reset_action_mode_from_entities(&runtime.entities);
+        Ok(())
+    }
+
+    /// 复用 runner 已恢复 prototype 的调度器；队伍和初始行动点不改变调度模式。
+    pub(crate) fn apply_reusing_with_restored_scheduler(
+        &self,
+        runtime: &mut CombatRuntime,
+    ) -> Result<(), RuntimeBattleInitError> {
         self.apply_entities(runtime)?;
         runtime.world.sync_initial_views_reusing(
             &runtime.entities,
@@ -116,7 +115,6 @@ impl PreparedBattleSeed {
             &self.flat_alive,
         );
         runtime.rng.clone_from(&self.rng);
-        runtime.scheduler.reset_action_mode_from_entities(&runtime.entities);
         Ok(())
     }
 }

@@ -22,7 +22,16 @@ impl CombatRuntime {
         updates.had_updates().then_some(RuntimeFrame { updates })
     }
 
+    /// 钩子结束后经常没有效果入队，在调用点直接检查队列。
+    #[inline]
     pub fn drain_effects_into(&mut self, updates: &mut RunUpdates) {
+        if !self.effects.is_empty() {
+            self.drain_pending_effects_into(updates);
+        }
+    }
+
+    #[inline(never)]
+    fn drain_pending_effects_into(&mut self, updates: &mut RunUpdates) {
         while let Some(effect) = self.effects.pop_next() {
             match effect {
                 QueuedEffect::Damage { caster, target, amount } => {
