@@ -37,6 +37,8 @@ mod combat;
 pub mod control;
 mod cqp;
 pub mod effect;
+#[cfg(feature = "effective-skill-stats")]
+pub mod effective_skill_stats;
 pub mod entity;
 pub mod extension;
 pub mod forced_action;

@@ -320,6 +320,8 @@ fn run_prepared_range<const TIMED: bool>(
     let mut summary = RuntimeBatchSummary::default();
     let mut seed = String::with_capacity(24);
     let mut runner = prepared.new_reusable_runner();
+    #[cfg(feature = "effective-skill-stats")]
+    super::effective_skill_stats::set_first_group(prepared.input_groups().first().map_or(&[], Vec::as_slice));
     for round in start..end {
         run_prepared_round::<TIMED>(prepared, &mut runner, profile_seed_for_round(&mut seed, round), &mut summary)?;
     }
@@ -393,6 +395,8 @@ fn run_score_range<const TIMED: bool>(
     let mut summary = RuntimeBatchSummary::default();
     let mut match_groups = ScoreMatchGroups::new(target_group, modifier);
     let mut runner = prepared.new_reusable_runner();
+    #[cfg(feature = "effective-skill-stats")]
+    super::effective_skill_stats::set_first_group(prepared.input_groups().first().map_or(&[], Vec::as_slice));
     for round in start..end {
         run_score_round::<TIMED>(round, eval_rq, prepared, &mut runner, &mut match_groups, &mut summary);
     }

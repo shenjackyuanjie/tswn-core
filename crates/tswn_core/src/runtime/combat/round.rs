@@ -1193,6 +1193,8 @@ impl CombatRuntime {
                 None => (skills.active_order().len(), None),
             }
         };
+        #[cfg(feature = "effective-skill-stats")]
+        let mut scan = super::super::effective_skill_stats::Scan::new(self, actor, smart);
         for active_index in 0..scan_len {
             let (fixed_lane, builtin_skill, level) = if let Some((cache, levels, levels_len)) = cached_scan {
                 // SAFETY: 两个指针来自 actor 当前 SkillLoadout。扫描失败路径只推进 RNG，
@@ -1229,16 +1231,38 @@ impl CombatRuntime {
             if level == 0 {
                 continue;
             }
+            #[cfg(feature = "effective-skill-stats")]
+            let allowed = !scan.enabled() || self.plain_action_skill_allowed(actor, builtin_skill, level, smart);
             if self.plain_action_skill_probability(actor, builtin_skill, level, smart) {
                 let selected = SelectedBuiltinSkill {
                     skill: builtin_skill,
                     fixed_lane,
                 };
                 if let Some(action) = self.prepare_plain_builtin_skill_action(actor, smart, selected) {
+                    #[cfg(feature = "effective-skill-stats")]
+                    {
+                        use super::super::effective_skill_stats::ScanResult;
+                        scan.record(builtin_skill, level, ScanResult::Committed);
+                        scan.finish(true);
+                    }
                     return Some(action);
+                }
+                #[cfg(feature = "effective-skill-stats")]
+                scan.record(builtin_skill, level, super::super::effective_skill_stats::ScanResult::NoTarget);
+            } else {
+                #[cfg(feature = "effective-skill-stats")]
+                {
+                    use super::super::effective_skill_stats::ScanResult;
+                    scan.record(
+                        builtin_skill,
+                        level,
+                        if allowed { ScanResult::Miss } else { ScanResult::GateFailed },
+                    );
                 }
             }
         }
+        #[cfg(feature = "effective-skill-stats")]
+        scan.finish(false);
         None
     }
 
