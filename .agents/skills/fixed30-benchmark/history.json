@@ -1,0 +1,145 @@
+{
+  "note": "fixed30 单线程分组中位数（µs/场）。数据来自 docs/perf 下的历史报告；新增条目时追加到末尾，脚本据此生成趋势表。",
+  "entries": [
+    {
+      "label": "0.3.8 留档（version 字段 0.3.7）",
+      "version": "0.3.7",
+      "date": "2026-05-21",
+      "commit": null,
+      "tool": "track_perf_cases",
+      "single": {
+        "overall": 76.7,
+        "core_1v1_2v2": 39.5,
+        "one_v_one": 25.6,
+        "two_v_two": 65.2,
+        "stress_multi": 155.8
+      },
+      "auto": null,
+      "report": "docs/perf/fixed_cases_30_results/perf_cases_0.3.8.md"
+    },
+    {
+      "label": "0.3.10",
+      "version": "0.3.10",
+      "date": "2026-06-04",
+      "commit": null,
+      "tool": "track_perf_cases",
+      "single": {
+        "overall": 69,
+        "core_1v1_2v2": 35.4,
+        "one_v_one": 22.5,
+        "two_v_two": 58.9,
+        "stress_multi": 141.2
+      },
+      "auto": null,
+      "report": "docs/perf/fixed_cases_30_results/perf_cases_0.3.10.md"
+    },
+    {
+      "label": "0.4.0",
+      "version": "0.4.0",
+      "date": "2026-07-14",
+      "commit": "0c5ac9c",
+      "tool": "track_perf_cases",
+      "single": {
+        "overall": 46.729,
+        "core_1v1_2v2": 23.087,
+        "one_v_one": 15.105,
+        "two_v_two": 37.682,
+        "stress_multi": 97.614
+      },
+      "auto": {
+        "overall": 5.872
+      },
+      "report": "docs/perf/reports/runtime-0.4.0-baseline.md"
+    },
+    {
+      "label": "0.4.2 d813e5f",
+      "version": "0.4.2",
+      "date": "2026-07-15",
+      "commit": "d813e5f",
+      "tool": "track_perf_cases",
+      "single": {
+        "overall": 32.105,
+        "core_1v1_2v2": 15.884,
+        "one_v_one": 10.364,
+        "two_v_two": 26.003,
+        "stress_multi": 66.34
+      },
+      "auto": {
+        "overall": 4.644
+      },
+      "report": "docs/perf/reports/runtime-0.4.2-d813e5f-snapshot.md"
+    },
+    {
+      "label": "0.4.2 1ed1258（mimalloc）",
+      "version": "0.4.2",
+      "date": "2026-07-16",
+      "commit": "1ed1258",
+      "tool": "track_perf_cases",
+      "single": {
+        "overall": 31.307,
+        "core_1v1_2v2": 15.282,
+        "one_v_one": 9.728,
+        "two_v_two": 25.465,
+        "stress_multi": 65.044
+      },
+      "auto": {
+        "overall": 3.895
+      },
+      "report": "docs/perf/reports/runtime-0.4.2-1ed1258-allocator-snapshot.md"
+    },
+    {
+      "label": "0.4.3 9d3a3b9",
+      "version": "0.4.3",
+      "date": "2026-07-18",
+      "commit": "9d3a3b9",
+      "tool": "track_perf_cases",
+      "single": {
+        "overall": 28.257,
+        "core_1v1_2v2": 13.838,
+        "one_v_one": 9.055,
+        "two_v_two": 22.588,
+        "stress_multi": 58.209
+      },
+      "auto": {
+        "overall": 3.632
+      },
+      "report": "docs/perf/reports/runtime-0.4.3-9d3a3b9-release-benchmark.md"
+    },
+    {
+      "label": "0.5.0 749fcd1",
+      "version": "0.5.0",
+      "date": "2026-07-18",
+      "commit": "749fcd1",
+      "tool": "临时 harness",
+      "single": {
+        "overall": 28.596,
+        "core_1v1_2v2": 13.874,
+        "one_v_one": 8.96,
+        "two_v_two": 22.799,
+        "stress_multi": 59.568
+      },
+      "auto": {
+        "overall": 3.567
+      },
+      "report": "docs/perf/reports/runtime-0.5.0-749fcd1-release-benchmark.md"
+    },
+    {
+      "label": "0.7.0 9888bebc",
+      "version": "0.7.0",
+      "date": "2026-11-18",
+      "commit": "9888bebc",
+      "tool": "perf_runtime",
+      "single": {
+        "overall": 28.623,
+        "core_1v1_2v2": 14.067,
+        "one_v_one": 8.961,
+        "two_v_two": 23.37,
+        "stress_multi": 59.482
+      },
+      "auto": {
+        "overall": 3.65
+      },
+      "report": "docs/perf/reports/runtime-0.7.0-9888bebc-fixed30-benchmark.md"
+    }
+  ]
+}
