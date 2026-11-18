@@ -231,6 +231,16 @@ impl PickSkipRange {
         }
         self.len += 1;
     }
+
+    #[inline]
+    fn offset_sample(self, sample: usize) -> usize { if sample >= self.first { sample + self.len } else { sample } }
+
+    /// 返回这一排除区间恰好剩下一个候选时的下标，不推进随机流。
+    #[cfg(feature = "no_debug")]
+    #[inline]
+    pub(crate) fn single_remaining_index(self, list_len: usize) -> Option<usize> {
+        (list_len.checked_sub(self.len) == Some(1)).then(|| self.offset_sample(0))
+    }
 }
 
 impl FromIterator<usize> for PickSkipRange {
@@ -485,6 +495,15 @@ impl RC4 {
             self.i = u32::from(i);
             self.j = u32::from(j);
             *state.add(si.wrapping_add(sj) as usize)
+        }
+    }
+
+    /// 仅推进随机状态，适用于没有调用点探针且调用方无需这些输出字节的路径。
+    #[cfg(feature = "no_debug")]
+    #[inline]
+    pub(crate) fn discard_bytes<const N: usize>(&mut self) {
+        for _ in 0..N {
+            self.next_u8_untracked();
         }
     }
 
@@ -945,11 +964,9 @@ impl RC4 {
         if skips.len == 0 {
             return self.pick(list);
         }
-        let first = skips.first;
-        let skip_len = skips.len;
-        if list.len() > skip_len {
-            let n = self.next_i32((list.len() - skip_len) as i32) as usize;
-            if n >= first { Some(n + skip_len) } else { Some(n) }
+        if list.len() > skips.len {
+            let n = self.next_i32((list.len() - skips.len) as i32) as usize;
+            Some(skips.offset_sample(n))
         } else {
             None
         }

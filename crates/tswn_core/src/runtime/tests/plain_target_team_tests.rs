@@ -22,6 +22,54 @@ fn fixture() -> CombatRuntime {
     runtime
 }
 
+#[cfg(feature = "no_debug")]
+#[test]
+fn single_candidate_default_attack_preserves_target_and_rng() {
+    for (teams, actor, dead, target) in [
+        (&[0, 1][..], 0, None, 1),
+        (&[0, 1][..], 1, None, 0),
+        (&[0, 0, 1, 1][..], 0, Some(2), 3),
+        (&[0, 1][..], 0, Some(0), 1),
+    ] {
+        let players = teams
+            .iter()
+            .enumerate()
+            .map(|(id, &team)| PlayerTemplate::new(id, format!("player-{id}"), team, 1000, 3))
+            .collect();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(players));
+        if let Some(dead) = dead {
+            let dead_idx = EntityIdx(dead as u32);
+            let entity = runtime.entities.get_mut(dead_idx).unwrap();
+            entity.runtime.alive = false;
+            entity.runtime.hp = 0;
+            assert!(runtime.world.mark_dead(dead_idx, teams[dead]));
+        }
+        runtime.rng = RC4::new(b"single-candidate-default-attack", 1);
+        let alive = runtime.world.flat_alive().to_vec();
+        let skips = alive
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entity)| (teams[entity.0 as usize] == teams[actor]).then_some(index))
+            .collect::<Vec<_>>();
+        let target = EntityIdx(target);
+        let mut reference = runtime.rng.clone();
+        for smart in [false, true].into_iter().cycle().take(512) {
+            for _ in 0..if smart { 5 } else { 4 } {
+                let picked = reference.pick_skip_range(&alive, &skips).unwrap();
+                assert_eq!(alive[picked], target);
+            }
+            if !smart {
+                reference.rFFFF();
+            }
+            assert_eq!(
+                runtime.select_plain_default_attack_target(EntityIdx(actor as u32), smart),
+                Some(target)
+            );
+            assert_rng_state_eq(&runtime.rng, &reference);
+        }
+    }
+}
+
 #[test]
 fn targeted_preview_restores_world_rng_and_matches_duel_selection() {
     for skill in [

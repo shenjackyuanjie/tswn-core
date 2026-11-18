@@ -32,6 +32,19 @@ impl CombatRuntime {
                     .then_some(index)
             })
             .collect::<crate::rc4::PickSkipRange>();
+        #[cfg(feature = "no_debug")]
+        if let Some(index) = enemy_skip_indices.single_remaining_index(all_alive.len()) {
+            if all_alive.len() > 1 {
+                // 排除队友后每次抽样消耗两字节。聪明时抽五次，普通时抽四次再取两字节评分。
+                self.rng.discard_bytes::<10>();
+            } else if !smart {
+                // 无排除项的单元素列表抽样不消耗字节，只有普通评分推进两字节。
+                self.rng.discard_bytes::<2>();
+            }
+            let target = all_alive[index];
+            self.entities.get(target).unwrap();
+            return Some(target);
+        }
         let select_count = if smart { 3 } else { 2 };
         let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
         let mut duplicate_count = 0usize;
