@@ -2,6 +2,11 @@
 
 本文件记录跨 crate 的维护与兼容性变更；各 crate 的版本发布历史仍以对应 CHANGELOG 为准。
 
+## 未发布 · 2026-11-19 Boss 行为复核
+
+- 修复生命之轮同名误触发、Boss 诅咒免疫、斑鸠智慧、一拳超人退场与行动值、新冠肺炎回血和懒癌持续发作。新增灭霸响指与史莱姆分裂的组合随机流回归。
+- 覆盖全部 14 个已注册角色；核对范围、未对齐的口罩与回放载荷见 [Boss 行为复核](docs/reviews/2026-11-19-boss-behavior-audit.md)，细节见 [核心更新日志](crates/tswn_core/CHANGELOG.md#boss-行为复核)。
+
 ## Openbox 0.5.3 · 2026-11-19
 
 - Pair 按完整队伍计算组队加成，ToDIY 导出使用 `++` 分隔成员。其余变更见 [Openbox 更新日志](crates/tswn_openbox/CHANGELOG.md#053---2026-11-19) 和 [后端更新日志](crates/tswn_openbox_backend/CHANGELOG.md#053---2026-11-19)。
