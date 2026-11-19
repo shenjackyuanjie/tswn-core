@@ -88,6 +88,64 @@ fn snapshot(runtime: &CombatRuntime) -> Vec<String> {
         .collect()
 }
 
+#[test]
+fn thanos_snap_interleaves_slime_split_with_the_next_draw() {
+    let registry = default_custom_runtime_import_config().unwrap().registry;
+    let boss_kind = registry.player_kind_id_by_export_name(DEFAULT_CORE_BOSS_KIND_EXPORT).unwrap();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::with_kind(1, "thanos", boss_kind, 0, 1000, 3),
+            PlayerTemplate::with_kind(2, "slime", boss_kind, 1, 1000, 3),
+            PlayerTemplate::new(3, "enemy-a", 1, 100, 3),
+            PlayerTemplate::new(4, "enemy-b", 1, 100, 3),
+            PlayerTemplate::new(5, "enemy-c", 1, 100, 3),
+        ],
+        registry,
+    ));
+    let (thanos, slime) = (EntityIdx(0), EntityIdx(1));
+    let enemy_pool: Vec<_> = runtime.world.flat_alive().iter().copied().filter(|&id| id != thanos).collect();
+    let mut reference = runtime.rng.clone();
+    let mut immediate_second = None;
+    let mut expected_second = None;
+    // 找一个“首抽史莱姆，且分裂确实改变次抽”的初始随机位置。
+    for _ in 0..4096 {
+        reference = runtime.rng.clone();
+        let mut pool = enemy_pool.clone();
+        let first = pool.remove(reference.next_i32(pool.len() as i32) as usize);
+        if first == slime {
+            let early = reference.clone().next_i32(pool.len() as i32) as usize;
+            reference.r255();
+            reference.r255();
+            let after_split = reference.next_i32(pool.len() as i32) as usize;
+            if early != after_split {
+                immediate_second = Some(pool[early]);
+                expected_second = Some(pool[after_split]);
+                break;
+            }
+        }
+        runtime.rng.next_u8();
+    }
+    let expected_second = expected_second.expect("必须找到分裂会改变次抽的随机位置");
+    let targets = runtime.select_plain_thanos_snap_targets(thanos).expect("敌方四人应触发响指");
+    let mut updates = RunUpdates::new();
+    runtime.drain_plain_thanos_snap_into(thanos, targets, &mut updates);
+
+    let victims: Vec<_> = updates
+        .updates
+        .iter()
+        .filter(|update| update.message == get_lang(keys::SKL_THANOS_DUST))
+        .map(|update| EntityIdx(update.target as u32))
+        .collect();
+    assert_eq!(victims, [slime, expected_second]);
+    assert!(runtime.entities.get(immediate_second.unwrap()).unwrap().runtime.alive);
+    let children = children_of(&runtime, 1);
+    assert_eq!(children.len(), 2);
+    assert!(children.iter().all(|child| runtime.world.flat_alive().contains(child)));
+    assert!(!runtime.world.flat_alive().contains(&slime));
+    assert_eq!(runtime.world.alive_group_count(), 2);
+    assert_rng_state_eq(&runtime.rng, &reference);
+}
+
 /// 分裂只到第二代：0 代 Boss → 1 代子体 → 2 代孙体，之后任何死亡都不再产生新实体。
 #[test]
 fn slime_split_recursion_depth_is_capped_at_two_generations() {
