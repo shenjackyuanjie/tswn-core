@@ -41,7 +41,7 @@ fn manual_heal_uses_the_same_candidates_and_scores_as_automatic_heal() {
                     magic_cost: Some(0),
                     potion: 0,
                 });
-                actual.control.set_action_target_teams(&[None], Some(&[true]));
+                actual.control.set_action_target_teams(&[None], Some(&[true]), None);
                 let prepared = actual.prepare_plain_action(actor, smart, Default::default());
                 if targets.is_empty() {
                     assert!(prepared.is_none());

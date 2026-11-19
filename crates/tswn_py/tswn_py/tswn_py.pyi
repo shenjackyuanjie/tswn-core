@@ -306,11 +306,12 @@ class BattleSession:
     def drain_frames(self, start_frame: int = 0) -> tuple[int, list[BattleReplayFrame]]:
         """推进到暂停/终局，返回累计帧数及编号不小于 start_frame 的后续帧。"""
         ...
-    def set_action_target_teams(self, teams: list[int | None], turn_wisdom: list[bool] | None = None) -> None:
-        """首次推进前设置与 actions 等长的输入席位列表。"""
+    def set_action_target_teams(self, teams: list[int | None], turn_wisdom: list[bool] | None = None,
+                               *, include_followups: list[bool] | None = None) -> None:
+        """首次推进前按行动设置目标席位与智慧规则。旧记录可用 include_followups=False 的对应项重放首目标智慧。"""
         ...
     def preview_targets_for_team(self, actor: int, skill: str, team: int, use_turn_wisdom: bool = False) -> list[int]:
-        """按输入席位预览首段目标，不消费随机数。"""
+        """首目标按输入席位预览，地裂与连击的后续候选从全场取样并沿用同一次智慧。预览不消耗随机数。"""
         ...
     def queue_actions(self, actions: list[tuple[int, str, int | None]]) -> None: ...
     def evade_result(self, decision_index: int) -> bool | None:

@@ -204,6 +204,16 @@ impl BattleSession {
         teams: &[Option<usize>],
         turn_wisdom: Option<&[bool]>,
     ) -> CliApiResult<()> {
+        self.set_action_target_teams_with_followups(teams, turn_wisdom, None)
+    }
+
+    /// 多段默认沿用当回合的智慧。回放旧指令可逐条指定仅首目标使用智慧。
+    pub fn set_action_target_teams_with_followups(
+        &mut self,
+        teams: &[Option<usize>],
+        turn_wisdom: Option<&[bool]>,
+        include_followups: Option<&[bool]>,
+    ) -> CliApiResult<()> {
         if self.rounds_advanced() != 0
             || self.frames_emitted() != 0
             || self.paused.is_some()
@@ -212,6 +222,7 @@ impl BattleSession {
             || self.is_failed()
             || teams.len() != self.driver.runner.runtime().planned_actions_pending()
             || turn_wisdom.is_some_and(|flags| flags.len() != teams.len())
+            || include_followups.is_some_and(|flags| flags.len() != teams.len())
         {
             return Err(crate::cli_api::CliApiError::InvalidArgument(
                 "target teams require an unstarted, matching action script".into(),
@@ -221,7 +232,11 @@ impl BattleSession {
             .iter()
             .map(|team| team.map(|t| self.target_runtime_team(t)).transpose())
             .collect::<CliApiResult<Vec<_>>>()?;
-        self.driver.runner.runtime_mut().control.set_action_target_teams(&mapped, turn_wisdom);
+        self.driver
+            .runner
+            .runtime_mut()
+            .control
+            .set_action_target_teams(&mapped, turn_wisdom, include_followups);
         Ok(())
     }
 

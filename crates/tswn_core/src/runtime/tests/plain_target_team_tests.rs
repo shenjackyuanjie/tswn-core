@@ -1,6 +1,6 @@
 use super::*;
 
-fn fixture(with_third_team: bool) -> CombatRuntime {
+fn fixture(third_team_size: usize) -> CombatRuntime {
     let config = default_custom_runtime_import_config().unwrap();
     let skills = [BuiltinActiveSkill::Fire, BuiltinActiveSkill::Quake, BuiltinActiveSkill::Rapid]
         .map(|skill| (config.registry.skill_id_by_export_name(skill.export_name()).unwrap(), 128));
@@ -12,9 +12,8 @@ fn fixture(with_third_team: bool) -> CombatRuntime {
         PlayerTemplate::new(3, "chosen-a", 1, 50, 3).with_target_score_stats(100, 100, 1.0),
         PlayerTemplate::new(4, "chosen-b", 1, 200, 3).with_target_score_stats(100, 100, 1.0),
     ];
-    if with_third_team {
-        players.push(PlayerTemplate::new(5, "other-a", 2, 1000, 3));
-        players.push(PlayerTemplate::new(6, "other-b", 2, 1000, 3));
+    for i in 0..third_team_size {
+        players.push(PlayerTemplate::new(5 + i, format!("other-{i}"), 2, 1000, 3));
     }
     let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(players, config.registry));
     for binding in config.skill_handlers {
@@ -225,8 +224,8 @@ fn half_skill_short_selection_preserves_invalid_draw_budget() {
 
 #[test]
 fn targeted_preview_restores_world_rng_and_matches_duel_selection() {
-    let field = fixture(true);
-    let pair = fixture(false);
+    let field = fixture(2);
+    let pair = fixture(0);
     for skill in [
         PlannedSkill::BasicAttack,
         PlannedSkill::MagicAttack,
@@ -281,7 +280,7 @@ fn targeted_execution_matches_preview_and_does_not_scope_real_world() {
         PlannedSkill::Builtin(BuiltinActiveSkill::Rapid),
     ] {
         for smart in [false, true] {
-            let mut runtime = fixture(true);
+            let mut runtime = fixture(2);
             let world = runtime.world.clone();
             runtime.control.set_awaiting_forced_action(0, None, smart);
             let preview = runtime.preview_current_action_targets(EntityIdx(0), skill, Some(1), true).unwrap();
@@ -317,7 +316,7 @@ fn targeted_execution_matches_preview_and_does_not_scope_real_world() {
 
 #[test]
 fn invalid_target_team_cannot_fall_back_to_other_players() {
-    let mut runtime = fixture(true);
+    let mut runtime = fixture(2);
     for team in [0, 99] {
         let result = runtime.preview_targeted_planned_targets(EntityIdx(0), PlannedSkill::BasicAttack, false, Some(team));
         assert!(result.is_err());
@@ -327,4 +326,74 @@ fn invalid_target_team_cannot_fall_back_to_other_players() {
             .preview_targeted_planned_targets(EntityIdx(0), PlannedSkill::Builtin(BuiltinActiveSkill::Heal), false, Some(1))
             .is_err()
     );
+}
+
+fn automatic_multihit_pool(runtime: &mut CombatRuntime, skill: BuiltinActiveSkill, smart: bool) -> Vec<EntityIdx> {
+    let actor = EntityIdx(0);
+    match skill {
+        BuiltinActiveSkill::Quake => {
+            runtime.select_plain_default_enemy_targets_with_count(actor, smart, if smart { 6 } else { 5 })
+        }
+        BuiltinActiveSkill::Rapid => runtime.select_plain_rapid_targets(actor, smart),
+        _ => unreachable!(),
+    }
+    .into_vec()
+}
+
+#[test]
+fn multihit_followups_use_the_turn_wisdom_over_the_whole_field() {
+    let field = fixture(9);
+    let duel = fixture(0);
+    for skill in [BuiltinActiveSkill::Quake, BuiltinActiveSkill::Rapid] {
+        for smart in [false, true] {
+            for seed in 0..32 {
+                let actor = EntityIdx(0);
+                let planned = PlannedSkill::Builtin(skill);
+                let mut pair = duel.clone();
+                let rng = RC4::new(&[seed], 1);
+                pair.rng = rng.clone();
+                let first = automatic_multihit_pool(&mut pair, skill, smart)[0];
+
+                for include_followups in [false, true] {
+                    let mut full = field.clone();
+                    full.rng = pair.rng.clone();
+                    let global = automatic_multihit_pool(&mut full, skill, smart && include_followups);
+                    let expected: Vec<_> = std::iter::once(first)
+                        .chain(global.iter().copied().filter(|id| *id != first))
+                        .take(global.len())
+                        .collect();
+
+                    let mut actual = field.clone();
+                    actual.rng = rng.clone();
+                    actual.control.set_awaiting_forced_action(0, None, smart);
+                    if include_followups {
+                        let preview = actual.preview_current_action_targets(actor, planned, Some(1), true).unwrap();
+                        assert_eq!(
+                            preview,
+                            expected.iter().map(|id| id.0 as usize).collect::<Vec<_>>(),
+                            "{skill:?} smart={smart} seed={seed}"
+                        );
+                        assert_rng_state_eq(&actual.rng, &rng);
+                    }
+                    actual.queue_planned_action(PlannedAction {
+                        actor: 0,
+                        skill: planned,
+                        target_team: Some(1),
+                        magic_cost: Some(0),
+                        potion: 0,
+                    });
+                    actual
+                        .control
+                        .set_action_target_teams(&[Some(1)], Some(&[true]), Some(&[include_followups]));
+                    let Some(PreparedPlainAction::BuiltinSkill(executed)) =
+                        actual.prepare_plain_action(actor, smart, Default::default())
+                    else {
+                        panic!("应执行选定的群攻")
+                    };
+                    assert_eq!(executed.targets.as_slice(), expected.as_slice());
+                    assert_rng_state_eq(&actual.rng, &full.rng);
+                }
+            }
+        }
+    }
 }

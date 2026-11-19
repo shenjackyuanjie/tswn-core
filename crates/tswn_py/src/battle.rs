@@ -151,10 +151,15 @@ impl PyBattleSession {
         Ok(Self { inner })
     }
     /// 为完整脚本附加输入席位选择；必须在首次推进前调用，None 保留原规则。
-    #[pyo3(signature = (teams, turn_wisdom=None))]
-    fn set_action_target_teams(&mut self, teams: Vec<Option<usize>>, turn_wisdom: Option<Vec<bool>>) -> PyResult<()> {
+    #[pyo3(signature = (teams, turn_wisdom=None, *, include_followups=None))]
+    fn set_action_target_teams(
+        &mut self,
+        teams: Vec<Option<usize>>,
+        turn_wisdom: Option<Vec<bool>>,
+        include_followups: Option<Vec<bool>>,
+    ) -> PyResult<()> {
         self.inner
-            .set_action_target_teams_with_wisdom(&teams, turn_wisdom.as_deref())
+            .set_action_target_teams_with_followups(&teams, turn_wisdom.as_deref(), include_followups.as_deref())
             .map_err(map_cli_error)
     }
 

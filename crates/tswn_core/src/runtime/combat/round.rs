@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime::control::TargetWisdom;
 use crate::runtime::forced_action::ForcedFallback;
 
 /// 卡牌兼容模式的降级战报；前端按这句话判断「点名的技能没生效」。
@@ -15,14 +16,17 @@ fn round_outcome(action: Option<ActionPlan>, frame: Option<RuntimeFrame>, winner
 #[derive(Clone, Copy)]
 struct PlannedTargeting {
     smart: bool,
+    followup_smart: bool,
     retry_without_wisdom: bool,
 }
 
 impl PlannedTargeting {
-    fn for_action(skill: PlannedSkill, team: Option<usize>, use_turn_wisdom: bool, smart: bool) -> Self {
-        let automatic = use_turn_wisdom && (team.is_some() || skill == PlannedSkill::Builtin(BuiltinActiveSkill::Heal));
+    fn for_action(skill: PlannedSkill, team: Option<usize>, wisdom: TargetWisdom, smart: bool) -> Self {
+        let automatic =
+            wisdom != TargetWisdom::Off && (team.is_some() || skill == PlannedSkill::Builtin(BuiltinActiveSkill::Heal));
         Self {
             smart: automatic && smart,
+            followup_smart: smart && wisdom == TargetWisdom::WholeAction,
             retry_without_wisdom: !automatic,
         }
     }
@@ -948,10 +952,10 @@ impl CombatRuntime {
         team: Option<usize>,
         targeting: PlannedTargeting,
     ) -> PreparedTargetList {
-        let targets = self.select_targeted_planned_targets(actor, skill, targeting.smart, team);
+        let targets = self.select_targeted_planned_targets(actor, skill, team, targeting.smart, targeting.followup_smart);
         if targets.is_empty() && targeting.retry_without_wisdom {
             // 旧指令保留第二次取样，确保已有战报的随机流可重演。
-            return self.select_targeted_planned_targets(actor, skill, false, team);
+            return self.select_targeted_planned_targets(actor, skill, team, false, false);
         }
         targets
     }
@@ -960,8 +964,9 @@ impl CombatRuntime {
         &mut self,
         actor: EntityIdx,
         skill: BuiltinActiveSkill,
-        smart: bool,
         team: Option<usize>,
+        smart: bool,
+        followup_smart: bool,
     ) -> PreparedTargetList {
         let Some(team) = team else {
             return self.select_planned_targets(actor, skill, smart);
@@ -979,8 +984,8 @@ impl CombatRuntime {
             return selected;
         };
         if matches!(skill, BuiltinActiveSkill::Quake | BuiltinActiveSkill::Rapid) {
-            // 只锁首段；后续候选仍由全场原算法抽取，不限于指定队伍。
-            let mut rest = self.select_planned_targets(actor, skill, false);
+            // 首目标已确定；用全场队伍计算后续候选，智慧结果仍属于同一次行动。
+            let mut rest = self.select_planned_targets(actor, skill, followup_smart);
             let count = rest.len().max(1);
             rest.retain(|id| *id != first);
             rest.insert(0, first);
@@ -1071,6 +1076,7 @@ impl CombatRuntime {
             target_team,
             PlannedTargeting {
                 smart,
+                followup_smart: smart,
                 retry_without_wisdom: true,
             },
         )
@@ -1083,7 +1089,12 @@ impl CombatRuntime {
         team: Option<usize>,
         use_turn_wisdom: bool,
     ) -> Result<Vec<PlrId>, PlannedActionError> {
-        let targeting = PlannedTargeting::for_action(skill, team, use_turn_wisdom, self.control.awaiting_smart(actor.0 as PlrId));
+        let targeting = PlannedTargeting::for_action(
+            skill,
+            team,
+            TargetWisdom::for_action(use_turn_wisdom, true),
+            self.control.awaiting_smart(actor.0 as PlrId),
+        );
         self.preview_action_targets(actor, skill, team, targeting)
     }
 

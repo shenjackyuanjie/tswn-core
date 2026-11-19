@@ -31,6 +31,24 @@ pub enum PlannedSkill {
     MagicAttack,
 }
 
+/// 按行动保存索敌口径。旧版自选席位只把该回合的智慧用于首目标。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TargetWisdom {
+    Off,
+    FirstOnly,
+    WholeAction,
+}
+
+impl TargetWisdom {
+    pub(crate) fn for_action(use_turn_wisdom: bool, include_followups: bool) -> Self {
+        match (use_turn_wisdom, include_followups) {
+            (false, _) => Self::Off,
+            (true, false) => Self::FirstOnly,
+            (true, true) => Self::WholeAction,
+        }
+    }
+}
+
 /// 缺少外部指令的暂停边界上，引擎仍将接管的行动类型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ForcedAction {
@@ -286,7 +304,7 @@ pub fn decode_actions(actions: &[u32]) -> Result<Vec<PlannedAction>, &'static st
 pub struct BattleControl {
     controlled_teams: Vec<usize>,
     /// 每条指令单独记录索敌方式，以便同一局重放升级前后的行动。
-    queue: Vec<(PlannedAction, bool)>,
+    queue: Vec<(PlannedAction, TargetWisdom)>,
     awaiting: Option<(PlrId, Option<ForcedAction>, bool)>,
     error: Option<PlannedActionError>,
     passive_decisions: Vec<PassiveDecision>,
@@ -343,7 +361,9 @@ impl BattleControl {
             .iter()
             .any(|controlled| *controlled == Self::CONTROLLED_ALL_TEAMS || *controlled == team)
     }
-    pub fn queue(&mut self, action: PlannedAction) { self.queue.push((action, action.target_team.is_some())); }
+    pub fn queue(&mut self, action: PlannedAction) {
+        self.queue.push((action, TargetWisdom::for_action(action.target_team.is_some(), true)));
+    }
 
     pub fn queue_all(&mut self, actions: impl IntoIterator<Item = PlannedAction>) {
         for action in actions {
@@ -359,7 +379,7 @@ impl BattleControl {
         self.take_for_with_wisdom(actor).map(|(action, _)| action)
     }
 
-    pub(crate) fn take_for_with_wisdom(&mut self, actor: PlrId) -> Option<(PlannedAction, bool)> {
+    pub(crate) fn take_for_with_wisdom(&mut self, actor: PlrId) -> Option<(PlannedAction, TargetWisdom)> {
         let index = self.queue.iter().position(|(action, _)| action.actor == actor)?;
         // 诊断计数：绑定层据此确认脚本确实被消费，而不是靠回放外观推断。
         crate::runtime::forced_action::note_taken();
@@ -367,10 +387,18 @@ impl BattleControl {
     }
 
     /// 按原始脚本顺序附加席位选择；在首次推进前设置。
-    pub(crate) fn set_action_target_teams(&mut self, teams: &[Option<usize>], turn_wisdom: Option<&[bool]>) {
+    pub(crate) fn set_action_target_teams(
+        &mut self,
+        teams: &[Option<usize>],
+        turn_wisdom: Option<&[bool]>,
+        include_followups: Option<&[bool]>,
+    ) {
         for (index, ((action, use_wisdom), team)) in self.queue.iter_mut().zip(teams).enumerate() {
             action.target_team = *team;
-            *use_wisdom = turn_wisdom.is_some_and(|flags| flags[index]);
+            *use_wisdom = TargetWisdom::for_action(
+                turn_wisdom.is_some_and(|flags| flags[index]),
+                include_followups.is_none_or(|flags| flags[index]),
+            );
         }
     }
 
