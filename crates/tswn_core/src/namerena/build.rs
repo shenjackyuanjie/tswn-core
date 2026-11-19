@@ -810,6 +810,21 @@ mod tests {
         assert_eq!(roster.players[2].clan_name, "solo");
     }
 
+    #[test]
+    fn ikaruga_wisdom_and_initial_mp_include_the_boss_bonus() {
+        let input = NamerenaInput::parse("ikaruga@!").unwrap();
+        let roster = PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
+        let boss = &roster.players[0];
+        // 名字底数的最后一组三元组是智慧，斑鸠额外加 0x21。
+        let mut triplet = [boss.name_base[28], boss.name_base[29], boss.name_base[30]];
+        triplet.sort_unstable();
+        let raw_wisdom = u32::from(triplet[1]) + 33;
+        let wisdom = (f64::from(raw_wisdom) * (1.0 - boss.name_factor / 80.0)).round() as i32;
+        assert_eq!(boss.attrs[6], raw_wisdom);
+        assert_eq!(boss.status.wisdom, wisdom);
+        assert_eq!(boss.status.magic_point, wisdom >> 1);
+    }
+
     fn skill_entry(player: &PreparedPlayer, key: usize) -> Option<&crate::namerena::SkillEntrySpec> {
         player.skills.entries.iter().find(|entry| entry.key == key)
     }

@@ -39,7 +39,7 @@ pub fn boss_display_name(name: &str) -> &str {
     }
 }
 
-/// 与 0.5.5 中各 Boss 的 `gan()` 返回值一一对应。
+/// 各 Boss 的八围加成，与原版 `appendAttr`（0.5.5 中为 `gan()`）对应。
 pub fn boss_append_attr(name: &str) -> [i32; 8] {
     match name {
         "covid" => [10, 9, 0, 12, 0, 12, 0, 60],
@@ -50,7 +50,7 @@ pub fn boss_append_attr(name: &str) -> [i32; 8] {
         "mosquito" => [-3, 24, 29, 729, 5, 7, 12, -35],
         "yuri" => [26, 31, 46, 9, 40, 5, 32, 24],
         "slime" => [6, 21, 5, 19, 38, 21, 12, 62],
-        "ikaruga" => [48, 28, 21, 45, 10, 19, 16, 150],
+        "ikaruga" => [48, 28, 21, 45, 10, 19, 33, 150],
         "conan" => [0, 48, -16, 20, 0, 41, 30, 22],
         "aokiji" => [40, 30, 40, 10, 35, 4, 40, 96],
         "testsubject" => [0; 8],
@@ -215,7 +215,7 @@ mod tests {
         assert_eq!(boss_append_attr("mosquito"), [-3, 24, 29, 729, 5, 7, 12, -35]);
         assert_eq!(boss_append_attr("yuri"), [26, 31, 46, 9, 40, 5, 32, 24]);
         assert_eq!(boss_append_attr("slime"), [6, 21, 5, 19, 38, 21, 12, 62]);
-        assert_eq!(boss_append_attr("ikaruga"), [48, 28, 21, 45, 10, 19, 16, 150]);
+        assert_eq!(boss_append_attr("ikaruga"), [48, 28, 21, 45, 10, 19, 33, 150]);
         assert_eq!(boss_append_attr("conan"), [0, 48, -16, 20, 0, 41, 30, 22]);
         assert_eq!(boss_append_attr("aokiji"), [40, 30, 40, 10, 35, 4, 40, 96]);
         assert_eq!(boss_append_attr("lazy"), [0, 88, 10, -20, 0, 50, 0, 120]);
