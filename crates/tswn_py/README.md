@@ -226,10 +226,10 @@ python scripts/verify_py_cli_api.py
 
 创建 `BattleSession` 并传入完整 `actions` 后，可在首次推进前调用
 `set_action_target_teams(teams, turn_wisdom)`。两个列表均按指令顺序排列。席位为从 0 开始的输入组编号，
-治愈传 `None`。对选定席位的攻击和治愈，将该指令的智慧标志设为 `True`，沿用行动开始时的智慧判定。
+治愈、加速和苏生的席位传 `None`。对这三种友方技能和已选定席位的攻击，将该指令的智慧标志设为 `True`，沿用行动开始时的智慧判定。
 没有使用智慧的旧指令可省略智慧列表，或将对应标志设为 `False`。
 暂停后用 `preview_targets_for_team(actor, skill, team, use_turn_wisdom=True)` 预览选定席位的攻击，
-用 `preview_targets(actor, "core.skill.heal", use_turn_wisdom=True)` 预览治愈。预览使用同一判定并恢复随机流。
+用 `preview_targets(actor, skill, use_turn_wisdom=True)` 预览友方目标，其中 `skill` 为 `core.skill.heal`、`core.skill.haste` 或 `core.skill.revive`。预览使用同一判定并恢复随机流。
 
 首目标在指定双队视图下按原技能和嘲讽评分选出。地裂、连击的后续候选从全场敌方抽取，
 使用同一次智慧结果及全场的队伍数评分。智慧成功／失败时，地裂最多抽 6／5 人，连击最多抽 5／3 人。

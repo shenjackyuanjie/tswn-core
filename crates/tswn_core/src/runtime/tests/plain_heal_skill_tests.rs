@@ -1,57 +1,85 @@
 use super::*;
 
 #[test]
-fn manual_heal_uses_the_same_candidates_and_scores_as_automatic_heal() {
+fn manual_ally_skills_use_the_same_targets_and_rng_as_automatic_skills() {
     let config = default_custom_runtime_import_config().unwrap();
-    let heal = config.registry.skill_id_by_export_name("core.skill.heal").unwrap();
+    let skills = [BuiltinActiveSkill::Heal, BuiltinActiveSkill::Haste, BuiltinActiveSkill::Revive];
+    let loadout = skills.map(|skill| (config.registry.skill_id_by_export_name(skill.export_name()).unwrap(), 128));
     let original = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
         vec![
             PlayerTemplate::new(1, "healer", 0, 300, 3)
                 .with_magic_point(100)
-                .with_skill_loadout(SkillLoadout::from_skill_levels([(heal, 128)])),
-            PlayerTemplate::new(2, "ally-a", 0, 300, 3),
-            PlayerTemplate::new(3, "ally-b", 0, 300, 3),
-            PlayerTemplate::new(4, "enemy", 1, 300, 3),
+                .with_skill_loadout(SkillLoadout::from_skill_levels(loadout)),
+            PlayerTemplate::new(2, "ally-a", 0, 300, 3).with_target_score_stats(40, 20, 1.0),
+            PlayerTemplate::new(3, "ally-b", 0, 300, 3).with_target_score_stats(90, 30, 1.0),
+            PlayerTemplate::new(4, "ally-c", 0, 300, 3).with_target_score_stats(70, 10, 1.0),
+            PlayerTemplate::new(5, "enemy", 1, 300, 3),
         ],
         config.registry,
     ));
     let actor = EntityIdx(0);
-    let skill = PlannedSkill::Builtin(BuiltinActiveSkill::Heal);
-    for smart in [false, true] {
-        for lost in [[0, 0, 0], [0, 1, 80], [0, 80, 81], [90, 170, 200]] {
-            for seed in 0..8 {
-                let mut expected = original.clone();
-                expected.rng = RC4::new(&[seed], 1);
-                for (index, loss) in lost.into_iter().enumerate() {
-                    expected.entities.get_mut(EntityIdx(index as u32)).unwrap().runtime.hp = 300 - loss;
-                }
-                let mut actual = expected.clone();
-                let targets = expected.select_plain_heal_targets(actor, smart);
-                actual.control.set_awaiting_forced_action(0, None, smart);
-                let preview = actual.preview_current_action_targets(actor, skill, None, true).unwrap();
-                assert_eq!(preview, targets.iter().map(|id| id.0 as usize).collect::<Vec<_>>());
-                assert_rng_state_eq(&actual.rng, &RC4::new(&[seed], 1));
-                if smart && lost.iter().all(|loss| *loss <= 80) {
-                    assert!(preview.is_empty());
-                }
-                actual.queue_planned_action(PlannedAction {
-                    actor: 0,
-                    skill,
-                    target_team: None,
-                    magic_cost: Some(0),
-                    potion: 0,
-                });
-                actual.control.set_action_target_teams(&[None], Some(&[true]), None);
-                let prepared = actual.prepare_plain_action(actor, smart, Default::default());
-                if targets.is_empty() {
-                    assert!(prepared.is_none());
-                } else {
-                    let Some(PreparedPlainAction::BuiltinSkill(action)) = prepared else {
-                        panic!("应执行治愈")
+    // 覆盖治愈的损血 80/81，加速的 HP 59/60，以及苏生的零个或多个可复活队友。
+    for hp in [
+        [300, 300, 300, 300],
+        [300, 299, 220, 300],
+        [300, 220, 219, 300],
+        [210, 130, 100, 75],
+        [59, 60, 59, 0],
+        [59, 0, 0, 0],
+    ] {
+        let mut field = original.clone();
+        for (index, health) in hp.into_iter().enumerate() {
+            let id = EntityIdx(index as u32);
+            let entity = field.entities.get_mut(id).unwrap();
+            entity.runtime.hp = health;
+            if health == 0 {
+                entity.runtime.alive = false;
+                assert!(field.world.mark_dead(id, 0));
+            }
+        }
+        for builtin in skills {
+            let skill = PlannedSkill::Builtin(builtin);
+            for smart in [false, true] {
+                for seed in 0..8 {
+                    let mut expected = field.clone();
+                    expected.rng = RC4::new(&[seed], 1);
+                    let mut actual = expected.clone();
+                    let targets = match builtin {
+                        BuiltinActiveSkill::Heal => expected.select_plain_heal_targets(actor, smart),
+                        BuiltinActiveSkill::Haste => expected.select_plain_haste_targets(actor, smart),
+                        BuiltinActiveSkill::Revive => expected.select_plain_revive_targets(actor, smart),
+                        _ => unreachable!(),
                     };
-                    assert_eq!(action.targets, targets);
+                    actual.control.set_awaiting_forced_action(0, None, smart);
+                    let preview = actual.preview_current_action_targets(actor, skill, None, true).unwrap();
+                    assert_eq!(
+                        preview,
+                        targets.iter().map(|id| id.0 as usize).collect::<Vec<_>>(),
+                        "{builtin:?} smart={smart} hp={hp:?} seed={seed}"
+                    );
+                    assert_rng_state_eq(&actual.rng, &RC4::new(&[seed], 1));
+                    if builtin == BuiltinActiveSkill::Heal && smart && hp.iter().all(|v| *v >= 220) {
+                        assert!(preview.is_empty());
+                    }
+                    actual.queue_planned_action(PlannedAction {
+                        actor: 0,
+                        skill,
+                        target_team: None,
+                        magic_cost: Some(0),
+                        potion: 0,
+                    });
+                    actual.control.set_action_target_teams(&[None], Some(&[true]), None);
+                    let prepared = actual.prepare_plain_action(actor, smart, Default::default());
+                    if targets.is_empty() {
+                        assert!(prepared.is_none());
+                    } else {
+                        let Some(PreparedPlainAction::BuiltinSkill(action)) = prepared else {
+                            panic!("应执行 {builtin:?}")
+                        };
+                        assert_eq!(action.targets, targets);
+                    }
+                    assert_rng_state_eq(&actual.rng, &expected.rng);
                 }
-                assert_rng_state_eq(&actual.rng, &expected.rng);
             }
         }
     }

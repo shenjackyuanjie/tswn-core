@@ -22,8 +22,11 @@ struct PlannedTargeting {
 
 impl PlannedTargeting {
     fn for_action(skill: PlannedSkill, team: Option<usize>, wisdom: TargetWisdom, smart: bool) -> Self {
-        let automatic =
-            wisdom != TargetWisdom::Off && (team.is_some() || skill == PlannedSkill::Builtin(BuiltinActiveSkill::Heal));
+        let ally_skill = matches!(
+            skill,
+            PlannedSkill::Builtin(BuiltinActiveSkill::Heal | BuiltinActiveSkill::Haste | BuiltinActiveSkill::Revive)
+        );
+        let automatic = wisdom != TargetWisdom::Off && (team.is_some() || ally_skill);
         Self {
             smart: automatic && smart,
             followup_smart: smart && wisdom == TargetWisdom::WholeAction,
