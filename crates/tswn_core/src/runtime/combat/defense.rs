@@ -335,6 +335,7 @@ impl CombatRuntime {
                 let redirected_damage = redirected_damage_value
                     .damage()
                     .expect("runtime protect post-defend hooks must leave a damage value");
+                self.apply_wheel_post_defend_spsum(link.owner, redirected_damage);
                 if self.apply_plain_attack_damage_with_covid_and_on_damage_into(
                     caster,
                     link.owner,

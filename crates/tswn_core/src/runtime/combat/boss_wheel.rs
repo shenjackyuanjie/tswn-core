@@ -252,4 +252,104 @@ mod tests {
         assert!(action_skills().is_empty());
         assert_eq!(default_skill_levels(), &[(30, 48)]);
     }
+
+    /// 生命之轮（队伍 0，体力 100）加两名敌方英雄；队伍 0 另有一名高体力队友专门验证排除。
+    fn wheel_runtime() -> CombatRuntime {
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, ID, 0, 1000, 3),
+                PlayerTemplate::new(2, "hero-a", 1, 2000, 3),
+                PlayerTemplate::new(3, "hero-b", 1, 300, 3),
+                PlayerTemplate::new(4, "mate", 0, 5000, 3),
+            ],
+            ExtensionRegistryBuilder::default().build(),
+        ));
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.hp = 100;
+        runtime
+    }
+
+    fn messages_of(updates: &RunUpdates) -> Vec<String> {
+        updates.updates.iter().map(|update| update.message.to_string()).collect()
+    }
+
+    #[test]
+    fn wheel_select_skips_own_team_and_takes_highest_valid_hp() {
+        let mut runtime = wheel_runtime();
+        // hero-a 2000 体力最高且合格；队友 mate 的 5000 必须被排除。
+        assert_eq!(runtime.select_plain_wheel_exchange_target(EntityIdx(0)), Some(EntityIdx(1)));
+        // 门槛是 hp 差 >= 64：两名敌人都是 163（差 63）时全不合格。
+        runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.hp = 163;
+        runtime.entities.get_mut(EntityIdx(2)).unwrap().runtime.hp = 163;
+        assert_eq!(runtime.select_plain_wheel_exchange_target(EntityIdx(0)), None);
+        // 差 64 恰好合格。
+        runtime.entities.get_mut(EntityIdx(2)).unwrap().runtime.hp = 164;
+        assert_eq!(runtime.select_plain_wheel_exchange_target(EntityIdx(0)), Some(EntityIdx(2)));
+    }
+
+    #[test]
+    fn wheel_select_keeps_first_candidate_on_tied_hp() {
+        let mut runtime = wheel_runtime();
+        runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.hp = 900;
+        runtime.entities.get_mut(EntityIdx(2)).unwrap().runtime.hp = 900;
+        assert_eq!(runtime.select_plain_wheel_exchange_target(EntityIdx(0)), Some(EntityIdx(1)));
+    }
+
+    #[test]
+    fn wheel_exchange_swaps_hp_clamps_owner_and_spends_no_rng() {
+        let mut runtime = wheel_runtime();
+        let before = (runtime.rng.i, runtime.rng.j);
+        let mut updates = RunUpdates::new();
+        runtime.drain_plain_wheel_exchange_into(EntityIdx(0), EntityIdx(1), &mut updates);
+        assert_eq!((runtime.rng.i, runtime.rng.j), before);
+        // 施法者截断到自身最大体力 1000，目标拿到施法者交换前的 100。
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 1000);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 100);
+        assert_eq!(messages_of(&updates), vec!["[0]使用[生命之轮]", "[1]的体力值与[0]互换"]);
+        assert_eq!(updates.updates[0].score, 1);
+        // 分值为体力差的两倍：(2000 - 100) * 2。
+        assert_eq!(updates.updates[1].score, 3800);
+    }
+
+    #[test]
+    fn wheel_exchange_steals_move_points_when_charged() {
+        let mut runtime = wheel_runtime();
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.charge.active = true;
+        runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.move_state.speed_points = 0x500;
+        runtime.drain_plain_wheel_exchange_into(EntityIdx(0), EntityIdx(1), &mut RunUpdates::new());
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points,
+            0x500
+        );
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.move_state.speed_points, 0);
+    }
+
+    #[test]
+    fn wheel_exchange_skips_charge_steal_when_not_charged() {
+        let mut runtime = wheel_runtime();
+        runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.move_state.speed_points = 0x500;
+        runtime.drain_plain_wheel_exchange_into(EntityIdx(0), EntityIdx(1), &mut RunUpdates::new());
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points, 0);
+        assert_eq!(
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.move_state.speed_points,
+            0x500
+        );
+    }
+
+    #[test]
+    fn wheel_post_defend_only_advances_the_boss_itself() {
+        let mut runtime = wheel_runtime();
+        runtime.apply_wheel_post_defend_spsum(EntityIdx(0), 12);
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points,
+            0x500
+        );
+        runtime.apply_wheel_post_defend_spsum(EntityIdx(0), 0);
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points,
+            0x500
+        );
+        // 非生命之轮实体不推进。
+        runtime.apply_wheel_post_defend_spsum(EntityIdx(1), 12);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.move_state.speed_points, 0);
+    }
 }

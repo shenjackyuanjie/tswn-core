@@ -91,6 +91,8 @@ pub enum PreparedPlainAction {
     Conan {
         targets: PreparedTargetList,
     },
+    /// 灭霸响指：`targets` 恒为空标记（返回 `None` 表示本次不响指），
+    /// 实际目标在结算阶段按原版顺序与死亡链交错抽取。
     ThanosSnap {
         targets: PreparedTargetList,
     },

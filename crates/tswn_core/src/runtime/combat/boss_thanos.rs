@@ -1,26 +1,48 @@
 //! 灭霸（thanos）Boss 实现。
 //!
 //! 语义来自线上新版 ?lang=zh 构建（assets/fight-369rVhWe.js）的反混淆产物
-//! .tmp_namerena_diff/fight.deobf.js 中的 _0xab7917 类：
+//! .tmp_namerena_diff/fight.deobf.js 中的 `_0xab7917 类与默认行动类 `_0x5057e0：
 //!
-//! - get appendAttr() 返回 [0x27,0x24,0xc,0x10,0x0,0x25,0x14,0x71]，见 [`APPEND_ATTR`]；
-//! - 该类没有覆盖 immuned / immunedx，免疫列表写在默认行动类 _0x5057e0 的
-//!   get immuned() 上，见 [`IMMUNE`]；
+//! - get appendAttr() 返回 [0x27,0x24,0xc,0x10,0x0,0x25,0x14,0x71]，见 [`APPEND_ATTR]；
+//! - `_0xab7917 只覆盖 appendAttr 与 createSkills，**没有**覆盖 immuned / immunedx，
+//!   所以它的免疫表就是 Boss 基类 `_0x3340e3 的默认 8 键（阈值 192），见 [`IMMUNE]。
+//!   默认行动类 `_0x5057e0 上那份 5 键的 `get immuned() 在整份 bundle 里没有任何
+//!   读取点（只有实体自己的 immune() 读 this.immuned），属于死代码，不能当作灭霸的免疫表；
 //! - createSkills() 只做两件事：先 this.dftAct = new _0x5057e0(this)，再 push 一个
 //!   level = 0x50（80）的 _0x1ebbfe。_0x1ebbfe extends _0x3a6405（被动技能基类），
-//!   它的 addToProcs() 把自己挂到 owner.preactions，preAction 在
-//!   level >= shield.shield 时按 nextInt(1 + trunc(level * 3 / 4)) + 1 追加护盾
-//!   （护盾对象 _0x423eea 就是带 shield 字段的 postDefends 条目）。
-//!   这与 run_shield_pre_action_skill（core.skill.shield）逐行一致，因此映射为
-//!   护盾（技能键 29，等级 80）；它不继承 _0x2d7e12（ActionSkill 基类），
-//!   而 addSkillsToProc() 只把 _0x2d7e12 实例收进 actions，所以灭霸的 k4 为空，
-//!   见 [`action_skills`] 与 [`default_skill_levels`]；
+//!   它的 addToProcs() 把自己挂到 owner.preactions，preAction 在 level >= shield.shield
+//!   时按 nextInt(1 + trunc(level * 3 / 4)) + 1 追加护盾（护盾对象 _0x423eea 就是带
+//!   shield 字段的 postDefends 条目）。这与 run_shield_pre_action_skill
+//!   （core.skill.shield）逐行一致，因此映射为护盾（技能键 29，等级 80）；它不继承
+//!   _0x2d7e12（ActionSkill 基类），而 addSkillsToProc() 只把 _0x2d7e12 实例收进
+//!   actions，所以灭霸的 k4 为空，见 [`action_skills] 与 [`default_skill_levels]；
 //! - 默认行动 _0x5057e0.act：敌方存活人数 > 己方存活人数时先报「响指」，再随机让
-//!   floor(敌方存活 / 2) 个敌人 hp = 0 并走 onDie；否则普通攻击，见
-//!   [`should_snap`] / [`snap_target_count`] / [`dust_delay`]。
+//!   floor(敌方存活 / 2) 个敌人 hp = 0 并逐个走 onDie；否则普通攻击。见
+//!   [`should_snap] 与 [`snap_target_count]。
 //!
-//! 本模块只放灭霸专属的数值与纯函数；注册项（名字表、加成表、免疫表、默认技能等级、
-//! 文案 key、行动分派）由运行时集成方维护，因此这些公开项在集成落地前只有单测引用。
+//! # onDie 的自定义文案参数是 score，不是延迟
+//!
+//! `_0x31379c.onDie(hp0, owner, rng, updates, [_0x3018a2('ysFN'), hp0 + 0x32]) 的第五参
+//! 被 onDie 解构成 `[text, score] 并传给
+//! `new _0x411ef0(text, attacker, dieTarget, null, null, score)；`_0x411ef0 的第 6 个
+//! 形参是 score（delay0 在第 7 位、默认 0x3e8，delay1 在第 8 位、默认 0x64）。默认死亡文案
+//! 走的正是同一个坑位 `[getDieMessage(), 0x32]，与 Rust 侧通用死亡帧
+//! emit_plain_lethal_replay_into 里写死的 score = 50 一致；前端只在 score > 0 时把它加给
+//! 施法者的战斗分（players.get(caster).addScore(score)）。因此灰烬帧的正确取值是
+//! **score = 死者原体力 + 50、delay 保持默认 1000/100**，见 [`dust_score]。
+//!
+//! # 随机流：抽取必须与死亡链交错
+//!
+//! JS 的循环体是「splice(nextInt(len)) → onDie(...)」，每次抽取后立刻结算死亡，而 onDie
+//! 内部的 dies 回调（护身符复活、史莱姆分裂、马里奥复活等）同样消费随机字节。因此 Rust
+//! 侧不能在 select 阶段一次抽完：抽取与死亡链都在
+//! [`CombatRuntime::drain_plain_thanos_snap_into] 里交错进行，
+//! [`CombatRuntime::select_plain_thanos_snap_targets] 只返回空列表作为「本次为响指」的标记。
+//! 抽取直接用 next_i32(len) 对齐 JS 的 nextInt(len)（长度 1 也消费两个字节，与
+//! RC4::pick 的单元素短路不同）；命中后按 remove 保序删除，对齐 JS 的 splice。
+//!
+//! 本模块只放灭霸专属的数值与行为；注册项（名字表、加成表、免疫表、默认技能等级、
+//! 文案 key、行动分派）由运行时集成方维护，因此部分公开项只有单测引用。
 #![allow(dead_code)]
 
 use crate::namerena::BossActionSkill;
@@ -31,25 +53,15 @@ pub const ID: &str = "thanos";
 /// 8 维加成，对应 JS get appendAttr() 的 [0x27,0x24,0xc,0x10,0x0,0x25,0x14,0x71]。
 pub const APPEND_ATTR: [i32; 8] = [39, 36, 12, 16, 0, 37, 20, 113];
 
-/// 默认行动类 _0x5057e0.get immuned() 列出的状态键。
+/// Boss 基类 `_0x3340e3.get immuned() 的 8 个状态键，阈值 192（`rng.c75）。
 ///
-/// 键名沿用 boss_immune_threshold 的写法；这 5 个键也在 Boss 基类的默认 8 键免疫表内，
-/// 阈值同为 192。
-pub const IMMUNE: [&str; 5] = ["assassinate", "half", "curse", "exchange", "charm"];
+/// 灭霸没有覆盖 immuned，也没有覆盖 immunedx（= 空，`rng.c94 永不生效），因此未列出的
+/// 键（含 fire/poison/disperse）走 `rng.c33（阈值 84）。行动类
+/// `_0x5057e0.get immuned() 里的 5 键列表无人读取，不参与判定。
+pub const IMMUNE: [&str; 8] = ["assassinate", "charm", "berserk", "half", "curse", "exchange", "slow", "ice"];
 
-/// 响指文案键，对应 lang/zh.json 的 sklThanosSnap = 「[0]打了个[响指]」。
-///
-/// JS 里写作 `_0x3018a2('fqtA')`；用同一份 4 字符哈希反解可得
-/// hash4("sklThanosSnap") == "fqtA"，与文案表逐字对应。
-pub const SNAP_TEXT_KEY: &str = "sklThanosSnap";
-
-/// 灰烬文案键，对应 lang/zh.json 的 sklThanosDust = 「[1]化成了灰烬」。
-///
-/// JS 里写作 `_0x3018a2('ysFN')`，同样由 hash4("sklThanosDust") == "ysFN" 反解确认。
-pub const DUST_TEXT_KEY: &str = "sklThanosDust";
-
-/// onDie 未指定自定义文案时的默认 update 延迟（JS 0x32）。
-pub const DEFAULT_DIE_DELAY: i32 = 50;
+/// 通用死亡文案自带的战斗分（JS 0x32）。
+pub const DEFAULT_DIE_SCORE: i32 = 50;
 
 /// 灭霸 push 的护盾技能等级（JS 0x50）。
 pub const SHIELD_LEVEL: u32 = 80;
@@ -60,27 +72,38 @@ pub const SHIELD_SKILL_KEY: usize = 29;
 /// 显示名，对应 lang/zh.json 的 bossName_thanos。
 pub fn display_name() -> &'static str { "灭霸" }
 
+/// 响指文案键，对应 lang/zh.json 的 sklThanosSnap = 「[0]打了个[响指]」。
+///
+/// JS 里写作 `_0x3018a2('fqtA')；用同一份 4 字符哈希反解可得
+/// hash4("sklThanosSnap") == "fqtA"，与文案表逐字对应。
+pub const SNAP_TEXT_KEY: &str = "sklThanosSnap";
+
+/// 灰烬文案键，对应 lang/zh.json 的 sklThanosDust = 「[1]化成了灰烬」。
+///
+/// JS 里写作 `_0x3018a2('ysFN')，同样由 hash4("sklThanosDust") == "ysFN" 反解确认。
+pub const DUST_TEXT_KEY: &str = "sklThanosDust";
+
 /// 默认行动是否改为「响指」。
 ///
-/// JS 里 alives 是全场存活者，enemies 过滤掉自己和 allyGroup 同队者，
-/// 己方人数用 alives.length - enemies.length 得到，因此**包含灭霸自己**。
-/// 原判定是 enemies.length <= allies 时普通攻击，所以响指条件是严格大于。
+/// JS 里 alives 是全场存活者，enemies 过滤掉自己与 owner.allyGroup 同队者，己方人数用
+/// alives.length - enemies.length 得到，因此**包含灭霸自己**（自己既被排除出敌方，也必然
+/// 计入己方）。原判定是 enemies.length <= allies 时普通攻击，所以响指条件是严格大于。
 pub fn should_snap(enemy_alive: usize, ally_alive: usize) -> bool { enemy_alive > ally_alive }
 
 /// 响指随机消灭的目标数：JS Math.floor(enemies.length / 2)。
 ///
-/// 每次循环从局部副本里 splice 掉一个随机敌人，因此每个敌人最多被处理一次；
-/// 1 个敌人时取到 0（实际也进不了响指分支，因为 1 <= 己方人数）。
+/// 每次循环从局部副本里 splice 掉一个随机敌人，因此每个敌人最多被处理一次；1 个敌人时
+/// 取到 0（实际也进不了响指分支，因为 1 <= 己方人数）。
 pub fn snap_target_count(alive: usize) -> usize { alive / 2 }
 
-/// 灰烬 update 的延迟：JS 里 onDie 的第五参是 [_0x3018a2('ysFN'), hp + 0x32]，
-/// 其中第二项是 update 延迟（不是消息参数），按死者原体力再加 50。
-pub fn dust_delay(hp_before: i32) -> i32 { hp_before + DEFAULT_DIE_DELAY }
+/// 灰烬帧的战斗分：JS 里 onDie 的第五参是 [_0x3018a2('ysFN'), hp + 0x32]，其中第二项进入
+/// 消息的 score 字段（不是 delay0），因此等于死者原体力 + 50。
+pub fn dust_score(hp_before: i32) -> u32 { (hp_before + DEFAULT_DIE_SCORE).max(0) as u32 }
 
 /// k4（Boss 主动技能扫描）条目；灭霸为空。
 ///
-/// JS addSkillsToProc() 只把 _0x2d7e12（ActionSkill）实例收进 actions，
-/// 灭霸唯一的技能 _0x1ebbfe 是 preaction 护盾，因此 k4 没有任何条目。
+/// JS addSkillsToProc() 只把 _0x2d7e12（ActionSkill）实例收进 actions，灭霸唯一的技能
+/// _0x1ebbfe 是 preaction 护盾，因此 k4 没有任何条目。
 pub const ACTION_SKILLS: [(BossActionSkill, u32); 0] = [];
 
 /// 返回灭霸的 k4 条目（空表），供 boss_action_skills 直接引用。
@@ -95,58 +118,131 @@ use super::*;
 use crate::runtime::lang::keys;
 
 impl CombatRuntime {
-    /// 灭霸的响指目标：敌方存活严格多于己方存活时，随机抽取 floor(敌方/2) 个敌人。
+    /// 敌方存活列表：全场存活者里排除自己、排除与自己有效队伍同队者。
     ///
-    /// 己方口径与 JS 一致：全场存活者里与自己同队（`plain_effective_team`）的个数，包含灭霸自己。
-    pub fn select_plain_thanos_snap_targets(&mut self, actor: EntityIdx) -> Option<PreparedTargetList> {
+    /// 对齐 JS 的 `alives.filter(e => e !== owner && e.group !== owner.allyGroup)：
+    /// 自己被显式排除（被迷惑时也不会把自己算成敌人），队伍口径用有效队伍（迷惑会改写
+    /// allyGroup），召唤物沿用 owner 的队伍对象因此算同队。
+    fn plain_thanos_snap_enemies(&self, actor: EntityIdx) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
-        let mut enemies = smallvec::SmallVec::<[EntityIdx; 8]>::new();
-        let mut allies = 0usize;
-        for &idx in all_alive {
-            if self.entities.get(idx).is_some_and(|entity| entity.runtime.team == actor_team) {
-                allies += 1;
-            } else {
+        let mut enemies = PreparedTargetList::new();
+        for &idx in self.world.flat_alive() {
+            if idx == actor {
+                continue;
+            }
+            if self.entities.get(idx).is_some_and(|entity| entity.runtime.team != actor_team) {
                 enemies.push(idx);
             }
         }
-        if !should_snap(enemies.len(), allies) {
-            return None;
-        }
-        let count = snap_target_count(enemies.len());
-        let mut targets = PreparedTargetList::new();
-        for _ in 0..count {
-            let picked = self.rng.pick(&enemies)?;
-            targets.push(enemies.swap_remove(picked));
-        }
-        Some(targets)
+        enemies
     }
 
-    /// 结算响指：先报「打了个响指」，再逐个把目标 hp 置 0 并走死亡链。
+    /// 判断本次默认行动是否为「响指」，是则返回空列表作为行动标记。
     ///
-    /// 灰烬帧的延迟沿用 JS onDie 第五参的 `hp + 0x32`，见 [`dust_delay`]。
-    pub fn drain_plain_thanos_snap_into(&mut self, actor: EntityIdx, targets: PreparedTargetList, updates: &mut RunUpdates) {
+    /// 己方人数取 `alives.length - enemies.length（含灭霸自己），与 JS 完全一致。不在这里
+    /// 抽取目标：JS 的抽取与逐个 onDie 交错，抽取必须留到
+    /// [`Self::drain_plain_thanos_snap_into] 里做，否则死亡回调消耗的随机字节会让后续
+    /// 抽取偏移。返回空列表时装配方只把它当作「响指」分支标记。
+    pub fn select_plain_thanos_snap_targets(&self, actor: EntityIdx) -> Option<PreparedTargetList> {
+        let enemies = self.plain_thanos_snap_enemies(actor);
+        let allies = self.world.flat_alive().len() - enemies.len();
+        should_snap(enemies.len(), allies).then(PreparedTargetList::new)
+    }
+
+    /// 结算响指：先报「打了个响指」，再随机让 floor(敌方存活 / 2) 个敌人化为灰烬。
+    ///
+    /// 循环体与 JS 一致：`splice(nextInt(len), 1) 保序删除后立刻走该目标的 onDie。
+    /// `targets 是 select 阶段返回的标记（空列表），真正目标在这里抽取。
+    pub fn drain_plain_thanos_snap_into(&mut self, actor: EntityIdx, _targets: PreparedTargetList, updates: &mut RunUpdates) {
         updates.add(RunUpdate::new_lang(
             keys::SKL_THANOS_SNAP,
             actor.0 as usize,
             actor.0 as usize,
             0,
         ));
-        for target in targets {
-            let hp_before = self.entities.get(target).map(|entity| entity.runtime.hp).unwrap_or(0);
-            updates.add_newline();
-            let killed = self.kill_entity_without_damage_into(target, updates);
-            if killed {
-                let mut frame = RunUpdate::new_lang(keys::SKL_THANOS_DUST, actor.0 as usize, target.0 as usize, 0);
-                frame.delay0 = dust_delay(hp_before);
-                updates.add(frame);
+        let mut enemies = self.plain_thanos_snap_enemies(actor);
+        let count = snap_target_count(enemies.len());
+        for _ in 0..count {
+            if enemies.is_empty() {
+                break;
             }
+            let index = self.rng.next_i32(enemies.len() as i32) as usize;
+            let target = enemies.remove(index);
+            self.drain_plain_thanos_dust_into(actor, target, updates);
+        }
+    }
+
+    /// 单个目标的响指死亡链，对应 JS 的
+    /// `onDie(hp0, owner, rng, updates, [dust, hp0 + 0x32])。
+    ///
+    /// 顺序照抄 legacy：换行 → 灰烬文案（caster = 灭霸，target = 死者，score = hp + 50）
+    /// → dies 回调（护身符复活、史莱姆分裂、马里奥复活等）→ 被救回则中止 → 移出队伍与战场
+    /// （连带清理使魔）→ 击杀者的 kills 回调。
+    fn drain_plain_thanos_dust_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
+        let Some(hp_before) = self.entities.get(target).map(|entity| entity.runtime.hp) else {
+            return;
+        };
+        // JS `if (!_0x31379c["alive"]) continue;：抽到已经没体力者只跳过，不补抽。
+        if hp_before <= 0 {
+            return;
+        }
+        updates.add_newline();
+        updates.add(RunUpdate::new_lang(
+            keys::SKL_THANOS_DUST,
+            actor.0 as usize,
+            target.0 as usize,
+            dust_score(hp_before),
+        ));
+        self.entities.get_mut(target).expect("runtime thanos snap target disappeared").runtime.hp = 0;
+        self.drain_die_hooks_into(target, updates);
+        let (hp, team) = self
+            .entities
+            .get(target)
+            .map(|entity| (entity.runtime.hp, entity.runtime.team))
+            .expect("runtime thanos snap target disappeared after die hooks");
+        if hp > 0 {
+            // 灰烬文案已经报出，但死者被复活：不标记死亡，也不走击杀链。
+            return;
+        }
+        self.entities
+            .get_mut(target)
+            .expect("runtime thanos snap target disappeared")
+            .runtime
+            .alive = false;
+        self.mark_dead_with_linked_minions_into(target, team, updates);
+        if self.should_run_kill_hooks(actor, target) {
+            self.drain_kill_hooks_into(actor, target, updates);
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime::lang::get_lang;
+
+    /// Boss 与英雄都来自手写模板，没有技能与状态，死亡链不消费随机字节。
+    fn thanos_runtime(heroes: usize, hero_hp: i32) -> CombatRuntime {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let boss_kind = builder
+            .register_player_kind_with_policies(
+                "core",
+                "boss",
+                "core.boss",
+                PlayerKindFlags::BOSS,
+                PlayerKindPolicies::default(),
+            )
+            .expect("boss kind should register");
+        let mut templates = vec![PlayerTemplate::with_kind(1, "thanos", boss_kind, 0, 1000, 3)];
+        for index in 0..heroes {
+            templates.push(PlayerTemplate::new(2 + index, format!("hero-{index}"), 1, hero_hp, 3));
+        }
+        CombatRuntime::from_template(PreparedCombatTemplate::with_registry(templates, builder.build()))
+    }
+
+    fn messages_of(updates: &RunUpdates) -> Vec<String> {
+        updates.updates.iter().map(|update| update.message.to_string()).collect()
+    }
 
     #[test]
     fn append_attr_matches_js_hex_table() {
@@ -160,11 +256,23 @@ mod tests {
         assert_eq!(display_name(), "灭霸");
         assert_eq!(SNAP_TEXT_KEY, "sklThanosSnap");
         assert_eq!(DUST_TEXT_KEY, "sklThanosDust");
+        assert_eq!(get_lang(SNAP_TEXT_KEY), "[0]打了个[响指]", "文案必须与 JS 的 fqtA 一致");
+        assert_eq!(get_lang(DUST_TEXT_KEY), "[1]化成了灰烬");
     }
 
     #[test]
-    fn immune_lists_the_five_act_keys() {
-        assert_eq!(IMMUNE, ["assassinate", "half", "curse", "exchange", "charm"]);
+    fn immune_is_the_boss_base_eight_key_list() {
+        // _0x5057e0.get immuned() 的 5 键列表无人读取，真正生效的是 Boss 基类表。
+        assert_eq!(
+            IMMUNE,
+            ["assassinate", "charm", "berserk", "half", "curse", "exchange", "slow", "ice"]
+        );
+        for key in IMMUNE {
+            assert_eq!(crate::namerena::boss_immune_threshold(ID, key), 192, "{key} 应走 Boss 基类阈值");
+        }
+        for key in ["fire", "poison", "disperse"] {
+            assert_eq!(crate::namerena::boss_immune_threshold(ID, key), 84);
+        }
     }
 
     #[test]
@@ -197,8 +305,11 @@ mod tests {
     }
 
     #[test]
-    fn single_enemy_never_loses_anything() {
-        assert_eq!(snap_target_count(1), 0);
+    fn dust_score_is_hp_plus_fifty_not_a_delay() {
+        assert_eq!(dust_score(0), 50);
+        assert_eq!(dust_score(1234), 1284);
+        assert_eq!(dust_score(-10), 40);
+        assert_eq!(DEFAULT_DIE_SCORE, 0x32);
     }
 
     #[test]
@@ -219,9 +330,82 @@ mod tests {
     }
 
     #[test]
-    fn dust_delay_offsets_the_hp_by_fifty() {
-        assert_eq!(dust_delay(0), 50);
-        assert_eq!(dust_delay(1234), 1284);
-        assert_eq!(DEFAULT_DIE_DELAY, 0x32);
+    fn snap_routes_only_when_enemies_outnumber_allies() {
+        let runtime = thanos_runtime(3, 100);
+        assert_eq!(
+            runtime.select_plain_thanos_snap_targets(EntityIdx(0)),
+            Some(PreparedTargetList::new())
+        );
+
+        // 1 个敌人 vs 己方 1 人（灭霸自己）→ 普通攻击。
+        let even = thanos_runtime(1, 100);
+        assert_eq!(even.select_plain_thanos_snap_targets(EntityIdx(0)), None);
+
+        // 2 个敌人 vs 1 人 → 响指。
+        let odd = thanos_runtime(2, 100);
+        assert_eq!(
+            odd.select_plain_thanos_snap_targets(EntityIdx(0)),
+            Some(PreparedTargetList::new())
+        );
+    }
+
+    #[test]
+    fn snap_kills_half_of_enemies_with_newline_and_dust_score() {
+        let mut runtime = thanos_runtime(4, 100);
+        let mut updates = RunUpdates::new();
+
+        runtime.drain_plain_thanos_snap_into(EntityIdx(0), PreparedTargetList::new(), &mut updates);
+
+        let messages = messages_of(&updates);
+        assert_eq!(messages[0], get_lang(keys::SKL_THANOS_SNAP));
+        assert_eq!(updates.updates[0].caster, 0);
+        assert_eq!(updates.updates[0].score, 0, "响指文案不带分数");
+        assert_eq!(updates.updates[0].delay0, crate::runtime::update::DEFAULT_DELAY0_MS);
+        assert_eq!(messages[1], "\n");
+        assert_eq!(messages[2], get_lang(keys::SKL_THANOS_DUST));
+        assert_eq!(messages[3], "\n");
+        assert_eq!(messages[4], get_lang(keys::SKL_THANOS_DUST));
+
+        let dust_0 = &updates.updates[2];
+        let dust_1 = &updates.updates[4];
+        assert_eq!(dust_0.score, 150, "灰烬帧 score = 死者原体力 + 50");
+        assert_eq!(dust_1.score, 150);
+        assert_eq!(dust_0.delay0, crate::runtime::update::DEFAULT_DELAY0_MS, "灰烬帧延迟保持默认");
+        assert_eq!(dust_1.delay0, crate::runtime::update::DEFAULT_DELAY0_MS);
+        assert_eq!(dust_0.caster, 0, "[0] 是灭霸");
+        assert_ne!(dust_0.target, dust_1.target, "两个目标不能重复");
+
+        let dead = [EntityIdx(dust_0.target as u32), EntityIdx(dust_1.target as u32)];
+        for target in dead {
+            let entity = runtime.entities.get(target).unwrap();
+            assert_eq!(entity.runtime.hp, 0);
+            assert!(!entity.runtime.alive);
+        }
+        assert_eq!(runtime.world.flat_alive().len(), 3, "4 敌 1 我 → 只剩 2 敌 + 灭霸");
+    }
+
+    #[test]
+    fn snap_picks_with_next_int_and_removes_in_order() {
+        let mut runtime = thanos_runtime(5, 100);
+        let mut reference = runtime.rng.clone();
+        let mut pool: Vec<EntityIdx> = runtime.world.flat_alive().iter().copied().filter(|idx| *idx != EntityIdx(0)).collect();
+        let mut expected = Vec::new();
+        for _ in 0..snap_target_count(pool.len()) {
+            let index = reference.next_i32(pool.len() as i32) as usize;
+            expected.push(pool.remove(index));
+        }
+
+        let mut updates = RunUpdates::new();
+        runtime.drain_plain_thanos_snap_into(EntityIdx(0), PreparedTargetList::new(), &mut updates);
+
+        let victims: Vec<EntityIdx> = updates
+            .updates
+            .iter()
+            .filter(|update| update.message == get_lang(keys::SKL_THANOS_DUST))
+            .map(|update| EntityIdx(update.target as u32))
+            .collect();
+        assert_eq!(victims, expected, "抽取必须等价于 nextInt(len) + 保序 splice");
+        assert_eq!(runtime.rng.i, reference.i);
+        assert_eq!(runtime.rng.j, reference.j);
     }
 }
