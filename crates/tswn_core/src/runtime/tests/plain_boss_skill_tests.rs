@@ -172,6 +172,94 @@ fn boss_scan_saitama_only_burns_one_probe_byte() {
 }
 
 #[test]
+fn saitama_hunger_preserves_fractional_damage_and_minion_weight() {
+    for (damages, has_minion, leaves) in [(510, false, false), (511, false, true), (520, true, false)] {
+        let mut runner = RuntimeRunner::new_from_namerena_raw(
+            "saitama@!
+
+enemy-a
+
+enemy-b"
+                .to_owned(),
+        )
+        .unwrap();
+        let actor = runner.input_groups[0][0];
+        let enemy = runner.input_groups[1][0];
+        let runtime = &mut runner.runtime;
+        let entry = runtime
+            .entities
+            .get_mut(actor)
+            .unwrap()
+            .states
+            .entry_mut(PLAIN_SAITAMA_BOSS_STATE_KEY)
+            .unwrap();
+        entry.payload = StatePayload::SaitamaBoss {
+            turns: 0,
+            damages,
+            hitters: smallvec::smallvec![enemy],
+            minions: if has_minion {
+                smallvec::smallvec![EntityIdx(99)]
+            } else {
+                Default::default()
+            },
+        };
+        let mut updates = RunUpdates::new();
+        runtime.drain_plain_saitama_action_into(actor, Some(enemy), &mut updates);
+
+        assert_eq!(
+            runtime.world.flat_alive().contains(&actor),
+            !leaves,
+            "damage={damages} minion={has_minion}"
+        );
+        assert_eq!(runtime.entities.get(actor).unwrap().runtime.hp > 0, !leaves);
+        assert_eq!(runtime.saitama_boss_state(actor).unwrap().0, if leaves { 0 } else { 1 });
+    }
+}
+
+#[test]
+fn saitama_punch_resets_speed_points_of_all_living_teams() {
+    let mut runner = RuntimeRunner::new_from_namerena_raw(
+        "saitama@!
+friend
+
+enemy-a
+
+enemy-b"
+            .to_owned(),
+    )
+    .unwrap();
+    let enemy = runner.input_groups[1][0];
+    let runtime = &mut runner.runtime;
+    let actor = runtime.entities.iter().find(|(_, entity)| entity.template.name == "saitama").unwrap().0;
+    let alive = runtime.world.flat_alive().to_vec();
+    assert_eq!(alive.len(), 4);
+    for &id in &alive {
+        runtime.entities.get_mut(id).unwrap().runtime.move_state.speed_points = 999;
+    }
+    runtime.entities.get_mut(enemy).unwrap().runtime.hp = 100_000;
+    let mut updates = RunUpdates::new();
+    for _ in 0..10 {
+        runtime.drain_plain_saitama_action_into(actor, Some(enemy), &mut updates);
+    }
+    assert!(updates.updates.is_empty());
+    assert_eq!(runtime.entities.get(enemy).unwrap().runtime.move_state.speed_points, 999);
+
+    runtime.drain_plain_saitama_action_into(actor, Some(enemy), &mut updates);
+
+    assert_eq!(runtime.world.flat_alive(), alive);
+    assert_eq!(updates.updates[0].message, "[0]发起攻击");
+    for id in alive {
+        let entity = runtime.entities.get(id).unwrap();
+        assert_eq!(
+            entity.runtime.move_state.speed_points,
+            if id == actor { 1700 } else { 0 },
+            "{}",
+            entity.template.name
+        );
+    }
+}
+
+#[test]
 fn boss_scan_prefers_ice_age_and_uses_selected_target_count() {
     let mut runtime = boss_runtime("aokiji");
     advance_until_r127_below(&mut runtime, 70);

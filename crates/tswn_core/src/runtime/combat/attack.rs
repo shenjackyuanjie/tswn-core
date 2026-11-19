@@ -391,8 +391,9 @@ impl CombatRuntime {
         let (turns, damages, hitter_count, minion_count) = self
             .saitama_boss_state(actor)
             .unwrap_or_else(|| panic!("runtime saitama actor lacks saitama state: {}", actor.0));
-        let hunger_denominator = hitter_count as i32 + minion_count as i32 / 3 + 1;
-        if damages / hunger_denominator.max(1) > 255 {
+        // 原版把每只召唤物计作 1/3，比较前也不截断平均伤害。
+        let hunger_denominator = hitter_count as f64 + minion_count as f64 / 3.0 + 1.0;
+        if f64::from(damages) / hunger_denominator > 255.0 {
             let display_name = self
                 .entities
                 .get(actor)
@@ -464,24 +465,9 @@ impl CombatRuntime {
         ));
         self.drain_plain_attack_with_atp_into(actor, target, false, atp, updates);
 
-        let actor_team = self
-            .entities
-            .get(actor)
-            .unwrap_or_else(|| panic!("runtime saitama actor disappeared: {}", actor.0))
-            .runtime
-            .team;
-        let team_members = self
-            .entities
-            .iter()
-            .filter_map(|(member, entity)| (entity.runtime.team == actor_team).then_some(member))
-            .collect::<Vec<_>>();
-        for member in team_members {
-            self.entities
-                .get_mut(member)
-                .expect("runtime saitama team member disappeared")
-                .runtime
-                .move_state
-                .speed_points = 0;
+        // 原版出拳完成后清空全场存活者的行动值，再给一拳超人自己留下 1700。
+        for &member in self.world.flat_alive() {
+            self.entities.get_mut(member).unwrap().runtime.move_state.speed_points = 0;
         }
         self.entities
             .get_mut(actor)
