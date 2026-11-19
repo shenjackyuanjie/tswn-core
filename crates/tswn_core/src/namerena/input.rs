@@ -214,7 +214,7 @@ pub(crate) fn raw_namerena_to_id_name_into(raw: &str, output: &mut String) {
 }
 
 fn classify(name: &str, team: Option<&str>) -> PlayerClass {
-    const BOSS_NAMES: [&str; 12] = [
+    const BOSS_NAMES: [&str; 14] = [
         "mario",
         "sonic",
         "mosquito",
@@ -227,6 +227,8 @@ fn classify(name: &str, team: Option<&str>) -> PlayerClass {
         "covid",
         "saitama",
         "testsubject",
+        "thanos",
+        "wheel",
     ];
     const BOOST_NAMES: [&str; 3] = ["云剑狄卡敢", "云剑穸跄祇", "田一人"];
     match team {

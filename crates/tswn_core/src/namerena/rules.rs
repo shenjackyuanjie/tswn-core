@@ -1,6 +1,6 @@
 //! 名竞内置角色与数值规则。
 
-pub const BOSS_NAMES: [&str; 12] = [
+pub const BOSS_NAMES: [&str; 14] = [
     "mario",
     "sonic",
     "mosquito",
@@ -13,6 +13,8 @@ pub const BOSS_NAMES: [&str; 12] = [
     "covid",
     "saitama",
     "testsubject",
+    "thanos",
+    "wheel",
 ];
 
 pub const BOOST_NAMES: [&str; 3] = ["云剑狄卡敢", "云剑穸跄祇", "田一人"];
@@ -31,6 +33,8 @@ pub fn boss_display_name(name: &str) -> &str {
         "covid" => "新冠病毒",
         "saitama" => "一拳超人",
         "testsubject" => "实验体 #C8",
+        "thanos" => "灭霸",
+        "wheel" => "生命之轮",
         _ => name,
     }
 }
@@ -50,6 +54,8 @@ pub fn boss_append_attr(name: &str) -> [i32; 8] {
         "conan" => [0, 48, -16, 20, 0, 41, 30, 22],
         "aokiji" => [40, 30, 40, 10, 35, 4, 40, 96],
         "testsubject" => [0; 8],
+        "thanos" => [39, 36, 12, 16, 0, 37, 20, 113],
+        "wheel" => [23, 135, 0, 19, 27, 89, 10, 39],
         _ => [0; 8],
     }
 }
@@ -65,6 +71,8 @@ pub fn boss_default_skill_levels(name: &str) -> &'static [(usize, u32)] {
         "mosquito" => &[(4, 100)],
         "sonic" => &[(6, 48), (7, 48), (30, 48)],
         "yuri" => &[(25, 48), (27, 48)],
+        "thanos" => &[(29, 80)],
+        "wheel" => &[(30, 48)],
         _ => &[],
     }
 }
@@ -213,6 +221,8 @@ mod tests {
         assert_eq!(boss_append_attr("covid"), [10, 9, 0, 12, 0, 12, 0, 60]);
         assert_eq!(boss_append_attr("saitama"), [72, 39, 69, 76, 67, 66, 0, 84]);
         assert_eq!(boss_append_attr("testsubject"), [0; 8]);
+        assert_eq!(boss_append_attr("thanos"), [39, 36, 12, 16, 0, 37, 20, 113]);
+        assert_eq!(boss_append_attr("wheel"), [23, 135, 0, 19, 27, 89, 10, 39]);
         assert_eq!(boss_append_attr("unknown"), [0; 8]);
     }
 
@@ -222,6 +232,8 @@ mod tests {
         assert_eq!(boss_default_skill_levels("mosquito"), &[(4, 100)]);
         assert_eq!(boss_default_skill_levels("sonic"), &[(6, 48), (7, 48), (30, 48)]);
         assert_eq!(boss_default_skill_levels("yuri"), &[(25, 48), (27, 48)]);
+        assert_eq!(boss_default_skill_levels("thanos"), &[(29, 80)]);
+        assert_eq!(boss_default_skill_levels("wheel"), &[(30, 48)]);
         for name in [
             "mario",
             "slime",
@@ -255,7 +267,7 @@ mod tests {
             &[(BossActionSkill::Rapid, 48), (BossActionSkill::Critical, 48)]
         );
         assert_eq!(boss_action_skills("yuri"), &[(BossActionSkill::YuriControl, 256)]);
-        for name in ["conan", "covid", "lazy", "slime", "testsubject", "unknown"] {
+        for name in ["conan", "covid", "lazy", "slime", "testsubject", "thanos", "wheel", "unknown"] {
             assert!(boss_action_skills(name).is_empty(), "{name} 的 k4 应为空");
         }
     }

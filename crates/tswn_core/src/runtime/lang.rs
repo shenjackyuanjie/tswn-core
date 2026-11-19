@@ -195,6 +195,12 @@ const LANG_DATA: &[(&str, &str)] = &[
     ("sklYuriControl", "[0]使用[心灵控制]"),
     // ── Boss：实验体 #C8 ────────────────────────────────────────────────────────
     ("bossName_testsubject", "实验体 #C8"),
+    // ── Boss：灭霸 ────────────────────────────────────────────────────────
+    ("bossName_thanos", "灭霸"),
+    ("sklThanosSnap", "[0]打了个[响指]"),
+    ("sklThanosDust", "[1]化成了灰烬"),
+    // ── Boss：生命之轮 ────────────────────────────────────────────────────
+    ("bossName_wheel", "生命之轮"),
     // ── 武器 ─────────────────────────────────────────────────────────────
     ("weaponDeathNoteAtk", "[0]在[死亡笔记]写下[1]的名字"),
     ("weaponRModifierUse", "[0]使用[属性修改器]"),
@@ -456,6 +462,14 @@ pub mod keys {
 
     // ── Boss：尤里 ────────────────────────────────────────────────────────
     pub const SKL_YURI_CONTROL: &str = "sklYuriControl";
+
+    // ── Boss：灭霸 ────────────────────────────────────────────────────────
+    pub const BOSS_NAME_THANOS: &str = "bossName_thanos";
+    pub const SKL_THANOS_SNAP: &str = "sklThanosSnap";
+    pub const SKL_THANOS_DUST: &str = "sklThanosDust";
+
+    // ── Boss：生命之轮 ────────────────────────────────────────────────────
+    pub const BOSS_NAME_WHEEL: &str = "bossName_wheel";
 
     // ── 武器 ──────────────────────────────────────────────────────────────
     pub const WEAPON_DEATH_NOTE_ATK: &str = "weaponDeathNoteAtk";
