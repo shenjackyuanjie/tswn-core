@@ -346,20 +346,17 @@ impl CombatRuntime {
             self.drain_plain_lethal_damage_into(boss, owner, updates);
         }
 
-        let boss_hp_full = {
-            let boss_entity = self.entities.get(boss).unwrap();
-            boss_entity.runtime.hp >= boss_entity.template.max_hp
-        };
-        let heal_amount = if boss_hp_full {
+        let boss_entity = self.entities.get_mut(boss).unwrap();
+        if !boss_entity.runtime.alive || boss_entity.runtime.hp <= 0 || actual_damage <= 0 {
+            return;
+        }
+        let heal_amount = if boss_entity.runtime.hp >= boss_entity.template.max_hp {
             ((damage >> 3) + 1).min(actual_damage)
         } else {
             (damage >> 1).min(actual_damage)
         };
-        if heal_amount <= 0 {
-            return;
-        }
-        let boss_entity = self.entities.get_mut(boss).unwrap();
-        boss_entity.runtime.hp = (boss_entity.runtime.hp + heal_amount).min(boss_entity.template.max_hp);
+        // 肺炎回血不是普通治疗：满血时使用较小的恢复量，但允许溢出体力上限。
+        boss_entity.runtime.hp = boss_entity.runtime.hp.saturating_add(heal_amount);
         let boss_display = boss_entity.template.display_name.clone();
         updates.add_with(|| {
             crate::runtime::update::RunUpdate::new(
@@ -372,9 +369,7 @@ impl CombatRuntime {
     }
 
     pub fn drain_lazy_flare_into(&mut self, owner: EntityIdx, boss: EntityIdx, updates: &mut RunUpdates) {
-        if !self.entities.get(owner).is_some_and(|entity| entity.runtime.alive)
-            || !self.entities.get(boss).is_some_and(|entity| entity.runtime.alive)
-        {
+        if !self.entities.get(owner).is_some_and(|entity| entity.runtime.alive) {
             return;
         }
         let boss_atp = self.entities.get(boss).unwrap().runtime.get_at(true, &mut self.rng);
@@ -393,7 +388,8 @@ impl CombatRuntime {
                 0,
             )
         });
-        if self.apply_plain_attack_damage_with_covid_into(boss, owner, damage, None, updates) {
+        // 发作是感染者身上的直接伤害，不是来源的新普攻，不重置来源的攻击倍率。
+        if self.apply_plain_legacy_damage_into(boss, owner, damage, updates) {
             self.drain_plain_lethal_damage_into(boss, owner, updates);
         }
     }

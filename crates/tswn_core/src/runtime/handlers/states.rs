@@ -433,8 +433,8 @@ pub fn run_lazy_infection_state(context: &mut StateContext<'_>, entry: &StateHoo
         return;
     }
 
-    if context.hook().intersects(ProcMask::POST_ACTION) && context.entity(boss).is_ok_and(|boss_entity| boss_entity.runtime.alive)
-    {
+    // 感染状态跟随目标，来源退场不会解除已有感染。
+    if context.hook().intersects(ProcMask::POST_ACTION) {
         context.push(QueuedEffect::LazyFlare {
             owner: context.owner_idx(),
             boss,

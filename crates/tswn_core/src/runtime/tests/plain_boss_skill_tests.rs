@@ -260,6 +260,66 @@ enemy-b"
 }
 
 #[test]
+fn covid_pneumonia_can_heal_above_max_hp_but_not_a_dead_source() {
+    for source_alive in [true, false] {
+        let mut runtime = boss_runtime("covid");
+        let boss = EntityIdx(0);
+        let target = EntityIdx(1);
+        let initial_boss_hp = if source_alive {
+            1000
+        } else {
+            assert!(runtime.kill_entity_without_damage_into(boss, &mut RunUpdates::new()));
+            0
+        };
+        runtime.entities.get_mut(target).unwrap().runtime.hp = 1000;
+        let mut updates = RunUpdates::new();
+        runtime.drain_covid_pneumonia_into(target, boss, 40, &mut updates);
+
+        let damage = 1000 - runtime.entities.get(target).unwrap().runtime.hp;
+        assert!((1..1000).contains(&damage));
+        let expected_heal = if source_alive { (damage >> 3) + 1 } else { 0 };
+        let source = runtime.entities.get(boss).unwrap();
+        assert_eq!(source.runtime.hp, initial_boss_hp + expected_heal);
+        assert_eq!(source.runtime.alive, source_alive);
+        assert_eq!(
+            messages_of(&updates).iter().any(|message| message.contains("回复体力")),
+            source_alive
+        );
+    }
+}
+
+#[test]
+fn lazy_flare_keeps_running_after_its_source_is_defeated() {
+    for source_alive in [true, false] {
+        let mut runner = RuntimeRunner::new_from_namerena_raw(
+            "lazy@!
+
+enemy-a
+
+enemy-b"
+                .to_owned(),
+        )
+        .unwrap();
+        let boss = runner.input_groups[0][0];
+        let target = runner.input_groups[1][0];
+        let runtime = &mut runner.runtime;
+        runtime.entities.get_mut(target).unwrap().runtime.hp = 10_000;
+        assert!(runtime.infect_with_lazy_into(boss, target, &mut RunUpdates::new()));
+        runtime.set_lazy_boss_at_boost(boss, 2.0);
+        if !source_alive {
+            runtime.entities.get_mut(boss).unwrap().runtime.hp = 0;
+            runtime.drain_plain_lethal_damage_into(runner.input_groups[2][0], boss, &mut RunUpdates::new());
+            assert_eq!(runtime.world.alive_group_count(), 2);
+        }
+
+        let frame = runtime.run_state_hooks(target, ProcMask::POST_ACTION).expect("感染者仍会在行动后发作");
+        assert!(messages_of(&frame.updates).iter().any(|message| message.contains("懒癌发作")));
+        assert!(runtime.entities.get(target).unwrap().runtime.hp < 10_000);
+        assert_eq!(runtime.lazy_boss_at_boost(boss), Some(2.0), "发作并非懒癌的当前普攻");
+    }
+}
+
+#[test]
 fn boss_scan_prefers_ice_age_and_uses_selected_target_count() {
     let mut runtime = boss_runtime("aokiji");
     advance_until_r127_below(&mut runtime, 70);
