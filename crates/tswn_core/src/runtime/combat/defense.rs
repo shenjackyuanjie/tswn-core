@@ -914,7 +914,7 @@ impl CombatRuntime {
         };
         if target_entity.runtime.flags.contains(PlayerKindFlags::BOSS) {
             let threshold = crate::namerena::boss_immune_threshold(&target_entity.template.name, status);
-            return (self.rng.next_u8() as i32) < threshold;
+            return threshold > 0 && i32::from(self.rng.next_u8()) < threshold;
         }
         if target_entity.runtime.flags.contains(PlayerKindFlags::BOOST) {
             return self.rng.r127() < crate::namerena::boost_value(&target_entity.template.name);

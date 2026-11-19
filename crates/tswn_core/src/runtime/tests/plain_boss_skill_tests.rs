@@ -24,6 +24,15 @@ fn boss_test_registry() -> (PlayerKindId, ExtensionRegistry) {
             SkillPriority(210),
         )
         .expect("charm state should register");
+    builder
+        .register_state(
+            "core",
+            "curse",
+            DEFAULT_CORE_CURSE_STATE_EXPORT,
+            ProcMask::POST_DEFEND,
+            SkillPriority(10_000),
+        )
+        .expect("curse state should register");
     (boss_kind, builder.build())
 }
 
@@ -38,6 +47,49 @@ fn boss_runtime(name: &str) -> CombatRuntime {
         ],
         registry,
     ))
+}
+
+#[test]
+fn curse_damage_checks_boss_immunity_before_applying_the_state() {
+    for (name, roll, damage, immune_roll, cursed) in [
+        ("ikaruga", 0, 1, false, true),
+        ("aokiji", 191, 1, true, false),
+        ("aokiji", 192, 1, true, true),
+        ("aokiji", 192, 0, false, false),
+        ("aokiji", 192, 1000, false, false),
+    ] {
+        let mut runtime = boss_runtime(name);
+        for _ in 0..4096 {
+            if runtime.rng.clone().next_u8() == roll {
+                break;
+            }
+            runtime.rng.next_u8();
+        }
+        let mut expected_rng = runtime.rng.clone();
+        assert_eq!(expected_rng.clone().next_u8(), roll);
+        if immune_roll {
+            expected_rng.next_u8();
+        }
+        let mut updates = RunUpdates::new();
+        runtime.apply_plain_attack_damage_with_covid_and_on_damage_into(
+            EntityIdx(1),
+            EntityIdx(0),
+            damage,
+            None,
+            PlainAttackOnDamage::Curse,
+            &mut updates,
+        );
+
+        let boss = runtime.entities.get(EntityIdx(0)).unwrap();
+        assert_eq!(boss.runtime.hp, 1000 - damage);
+        assert_eq!(
+            boss.states.entry(PLAIN_CURSE_STATE_KEY).map(|entry| entry.payload.clone()),
+            cursed.then_some(StatePayload::Curse { prob: 42, multiply: 2 }),
+            "{name} roll={roll} damage={damage}"
+        );
+        assert_eq!(messages_of(&updates).iter().any(|message| message == "[1]被[诅咒]了"), cursed);
+        assert_rng_state_eq(&runtime.rng, &expected_rng);
+    }
 }
 
 /// 尤里队伍外有两组目标：四人组验证层数取初始人数，单人组验证下限 3。

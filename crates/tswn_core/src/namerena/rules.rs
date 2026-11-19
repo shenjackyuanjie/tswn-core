@@ -131,8 +131,8 @@ pub fn boss_action_prob_count(name: &str) -> usize {
     }
 }
 
-/// 阈值来自 0.5.5 中各 Boss 覆盖的 `gaS()`（240）与 `gaG()`（192），未列出者 84。
-/// `piston` 是毒状态在 0.5.5 中的键名。
+/// 阈值来自各 Boss 的强免疫（240）、普通免疫（192）和兜底档（84）。
+/// 返回 0 表示恒不免疫且不抽样；`piston` 是毒状态在 0.5.5 中的键名。
 pub fn boss_immune_threshold(name: &str, key: &str) -> i32 {
     match name {
         "saitama" => match key {
@@ -154,6 +154,7 @@ pub fn boss_immune_threshold(name: &str, key: &str) -> i32 {
             _ => 84,
         },
         "ikaruga" => match key {
+            "curse" => 0, // 原版 Ikaruga 对诅咒恒不免疫，且不抽取随机数。
             "assassinate" | "half" | "exchange" | "piston" | "slow" | "ice" => 192,
             _ => 84,
         },

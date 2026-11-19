@@ -997,18 +997,13 @@ impl CombatRuntime {
         if damage <= 0 {
             return;
         }
-        let (target_hp, target_flags, existing) = {
-            let target_entity = self
-                .entities
-                .get(target)
-                .unwrap_or_else(|| panic!("unknown runtime curse target: {}", target.0));
-            let existing = target_entity.states.entry(PLAIN_CURSE_STATE_KEY).map(|entry| match entry.payload {
-                StatePayload::Curse { prob, multiply } => (prob, multiply),
-                _ => panic!("runtime curse state key is occupied by another payload"),
-            });
-            (target_entity.runtime.hp, target_entity.runtime.flags, existing)
-        };
-        if target_hp <= 0 || target_flags.intersects(PlayerKindFlags::BOSS | PlayerKindFlags::BOOST) {
+        let target_hp = self
+            .entities
+            .get(target)
+            .unwrap_or_else(|| panic!("unknown runtime curse target: {}", target.0))
+            .runtime
+            .hp;
+        if target_hp <= 0 || self.status_immune(target, "curse") {
             return;
         }
         // 默认沿用上游口径：读目标的蓄力状态。
@@ -1028,7 +1023,10 @@ impl CombatRuntime {
             .unwrap_or_else(|| panic!("unknown runtime curse target: {}", target.0));
         let charge_prob = if charge_active { 10 } else { 0 };
         let charge_multiply = if charge_active { 1 } else { 0 };
-        if let Some((prob, multiply)) = existing {
+        if let Some(entry) = target_entity.states.entry(PLAIN_CURSE_STATE_KEY) {
+            let StatePayload::Curse { prob, multiply } = entry.payload else {
+                panic!("runtime curse state key is occupied by another payload");
+            };
             assert!(
                 target_entity.states.set_payload(
                     PLAIN_CURSE_STATE_KEY,
