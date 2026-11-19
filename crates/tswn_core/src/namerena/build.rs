@@ -659,7 +659,7 @@ fn name_rng(team: &str, name: &str) -> RC4 {
     rng
 }
 
-fn status_from_attrs(attrs: [u32; 8], name_factor: f64, alive: bool) -> PlayerStats {
+pub(crate) fn status_from_attrs(attrs: [u32; 8], name_factor: f64, alive: bool) -> PlayerStats {
     let scale = |value: i32, factor: i32| (value as f64 * (1.0 - name_factor / factor as f64)).round() as i32;
     let attr_sum = attrs[..7].iter().sum();
     let atk_sum = (attrs[0] as i32 - attrs[1] as i32 + attrs[2] as i32 + attrs[4] as i32 - attrs[5] as i32) * 2

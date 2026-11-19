@@ -6,7 +6,7 @@ use crate::runtime::lang::{get_lang, keys};
 ///
 /// 第一代子体把名字头固定为 16 并给前 50 项或上 16；第二代固定为 -5 并或上 32。
 /// legacy 的 `t` 是普通 JS 数字数组，负值会保留下来参与体力求和，因此这里用 `i32`。
-fn slime_child_attrs(name_base: &[u8; 128], generation: u32) -> [u32; 8] {
+pub(crate) fn slime_child_attrs(name_base: &[u8; 128], generation: u32) -> [u32; 8] {
     let mut base = [0i32; 128];
     for (slot, &value) in base.iter_mut().zip(name_base) {
         *slot = i32::from(value);
@@ -51,8 +51,8 @@ impl CombatRuntime {
         if generation >= 2 || entity.runtime.hp > 0 {
             return false;
         }
-        // 分裂只能发生一次；继续留在死亡链里的是普通尸体。
-        entity.runtime.slime_split_generation = None;
+        // 分裂钩子常驻：原版 revive() 只恢复血量、不把技能从 dies 列表里摘掉，
+        // 因此复活后再次死亡会再分裂一对（代数由子体自身的 generation 控制）。
         entity.states.register_compressed_legacy_state(CompressedLegacyState::Corpse);
         entity.runtime.corpse = RuntimeCorpseKind::Slime;
 
@@ -95,11 +95,16 @@ impl CombatRuntime {
         root_owner: EntityIdx,
         generation: u32,
     ) -> EntityIdx {
-        let (name_base, _) = PreparedBattleInit::plain_minion_name_base(clan_name, name);
+        let (name_base, mut name_rand) = PreparedBattleInit::plain_minion_name_base(clan_name, name);
         let attrs = slime_child_attrs(&name_base, generation);
-        // legacy 会按名字系数缩放子体八围，但该系数属于构造期数据，运行期模板无法还原；
-        // 与普通召唤物保持一致，按系数 0 直接换算。
-        let status = PreparedBattleInit::plain_minion_status(attrs);
+        // legacy 在 updateStates() 里按 nameDens 缩放子体七围（体力不缩放）：
+        // nameDens = max(evalStr(baseName), evalStr(clanName) - 6)，与主名单的 name_factor 同源。
+        let name_dens =
+            crate::namerena::eval_name::eval_str_common_with_rq(name, true, crate::namerena::eval_name::DEFAULT_EVAL_RQ).max(
+                crate::namerena::eval_name::eval_str_common_with_rq(clan_name, true, crate::namerena::eval_name::DEFAULT_EVAL_RQ)
+                    - 6.0,
+            );
+        let status = PreparedBattleInit::plain_minion_status_with_factor(attrs, name_dens);
         let allocated = self.allocate_plain_minion_name(root_owner);
         let id_key_name = if clan_name.is_empty() {
             allocated
@@ -115,7 +120,15 @@ impl CombatRuntime {
                 .registry
                 .skill_id_by_export_name(BuiltinActiveSkill::Heal.export_name())
                 .expect("default runtime profile must register core heal skill");
-            SkillLoadout::from_skill_levels([(half, 32), (heal, 32)])
+            // 原版 build() 的 initSkills 会用名字底数第 64 项起的两组 4 字节
+            // 覆盖写死的等级：level = min(ss[64+4k..+4]) - 10，槽位顺序由名字 RC4 的 sortList 决定。
+            let levels: [u32; 2] = std::array::from_fn(|slot| {
+                let offset = 64 + slot * 4;
+                u32::from(name_base[offset..offset + 4].iter().copied().min().unwrap_or(0).saturating_sub(10))
+            });
+            let mut order = [0usize, 1];
+            name_rand.sort_list(&mut order);
+            SkillLoadout::from_skill_levels([(half, levels[order[0]]), (heal, levels[order[1]])])
         } else {
             SkillLoadout::default()
         };

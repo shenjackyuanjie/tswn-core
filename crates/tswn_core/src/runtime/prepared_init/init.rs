@@ -476,6 +476,14 @@ impl PreparedBattleInit {
         attrs
     }
 
+    /// 按名字密度缩放后的召唤物状态；`name_factor` 与主名单的 nameDens 同源。
+    ///
+    /// 原版在 `updateStates()` 里对七围做 `round(v * (1 - nameDens / 128))`，
+    /// 智力额外用 `/80`；体力不缩放。
+    pub(crate) fn plain_minion_status_with_factor(attrs: [u32; 8], name_factor: f64) -> PlayerStats {
+        crate::namerena::status_from_attrs(attrs, name_factor, true)
+    }
+
     pub(crate) fn plain_minion_status(attrs: [u32; 8]) -> PlayerStats {
         let attack = attrs[0] as i32;
         let defense = attrs[1] as i32;

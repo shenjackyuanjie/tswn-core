@@ -123,7 +123,7 @@
 | `HideRuntime`（R:80） | `level`、`attract_bits`、`agility`、`defense`、`resistance` | presence `entity_bool[7]`；`entity_num[19..23]`，`attract_bits` 另存旁路 |
 | `AssassinateRuntime`（R:89） | `target`、`break_on_damage`、`fixed_lane` | `entity_ref[4]`、`entity_bool[9]`、presence `entity_bool[8]`、X 的 lane 引用 |
 | `ProtectLinkRuntime`（R:74） | `owner`、`level` | `list(protect_from)` 的 target；X num（ordinal 为列表下标） |
-| `RuntimeCorpseKind`（R:103） | `None`／`Merge`／`Zombie` | `entity_cat[1]`，词表 1／2／3 |
+| `RuntimeCorpseKind`（R:103） | `None`／`Merge`／`Zombie`／`Slime` | `entity_cat[1]`，词表 1／2／3／4 |
 | `PlayerPolicyOverrides`（R:38） | 三个枚举、`inherit_owner_def_res` | `template_cat[2..4]`、`template_bool[3]`；四路 presence 进 `template_override_present` |
 | `ModelTemplate.clone_build`（M:462） | `Option<CloneBuildData>` 整体 | `template_bool[4]`；None 时所有后代 presence=0，数组清零，后代 X 记录不存在 |
 | `CloneBuildData`（C:70） | `attrs`、`weapon_attr_bonus` | `template_clone_attr`、`template_clone_weapon_bonus`；均由 `template_bool[4]` 控制整体 presence |

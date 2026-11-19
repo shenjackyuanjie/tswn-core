@@ -17,29 +17,40 @@ fn slime_runtime() -> CombatRuntime {
     ))
 }
 
+pub(super) fn expected_slime_child_skill_levels() -> (u32, u32) {
+    let (name_base, mut rand) = PreparedBattleInit::plain_minion_name_base("slime", "slime");
+    let levels: [u32; 2] = std::array::from_fn(|slot| {
+        let offset = 64 + slot * 4;
+        u32::from(name_base[offset..offset + 4].iter().copied().min().unwrap_or(0).saturating_sub(10))
+    });
+    let mut order = [0usize, 1];
+    rand.sort_list(&mut order);
+    (levels[order[0]], levels[order[1]])
+}
+
 fn messages_of(updates: &RunUpdates) -> Vec<String> { updates.updates.iter().map(|update| update.message.to_string()).collect() }
 
 fn kill(runtime: &mut CombatRuntime, target: EntityIdx) { runtime.entities.get_mut(target).unwrap().runtime.hp = 0; }
 
-/// 0.5.5 `eV` 会给子体八围或上固定的位：第一代 16、第二代 32。
-fn assert_slime_child_bit(child: &EntityRecord, bit: i32, max_hp: i32) {
+/// 子体八围来自 `eV` 位改写后的名字底数，再按 nameDens 缩放（体力不缩放）。
+fn assert_slime_child_scaled(child: &EntityRecord, generation: u32, max_hp: i32) {
+    let (name_base, _) = PreparedBattleInit::plain_minion_name_base("slime", "slime");
+    let attrs = crate::runtime::plain_slime::slime_child_attrs(&name_base, generation);
+    let factor = crate::namerena::eval_name::eval_str_common_with_rq("slime", true, crate::namerena::eval_name::DEFAULT_EVAL_RQ)
+        .max(
+            crate::namerena::eval_name::eval_str_common_with_rq("slime", true, crate::namerena::eval_name::DEFAULT_EVAL_RQ) - 6.0,
+        );
+    let expected = PreparedBattleInit::plain_minion_status_with_factor(attrs, factor);
     assert_eq!(child.template.max_hp, max_hp);
     assert_eq!(child.runtime.hp, max_hp);
-    let attrs = [
-        child.runtime.attack,
-        child.runtime.defense,
-        child.runtime.magic,
-        child.runtime.resistance,
-        child.runtime.agility,
-        child.runtime.wisdom,
-    ];
-    for attr in attrs {
-        assert_eq!(attr & bit, bit, "史莱姆子体属性必须带 eV 位: {attrs:?}");
-        assert!((0..64).contains(&attr), "史莱姆子体属性必须来自名字底数: {attrs:?}");
-    }
-    assert_eq!(child.runtime.magic_point, child.runtime.wisdom >> 1);
-    let speed_attr = child.runtime.speed - 160;
-    assert_eq!(speed_attr & bit, bit, "史莱姆子体速度必须带 eV 位");
+    assert_eq!(child.runtime.attack, expected.attack);
+    assert_eq!(child.runtime.defense, expected.defense);
+    assert_eq!(child.runtime.magic, expected.magic);
+    assert_eq!(child.runtime.resistance, expected.resistance);
+    assert_eq!(child.runtime.agility, expected.agility);
+    assert_eq!(child.runtime.wisdom, expected.wisdom);
+    assert_eq!(child.runtime.speed, expected.speed);
+    assert_eq!(child.runtime.magic_point, expected.magic_point);
 }
 
 #[test]
@@ -57,7 +68,7 @@ fn slime_split_spawns_two_first_generation_children() {
     assert_eq!(runtime.entities.len(), 4);
 
     let parent = runtime.entities.get(EntityIdx(0)).unwrap();
-    assert_eq!(parent.runtime.slime_split_generation, None);
+    assert_eq!(parent.runtime.slime_split_generation, Some(0));
     assert_eq!(parent.runtime.corpse, RuntimeCorpseKind::Slime);
     assert_eq!(parent.runtime.hp, 0);
     // 分裂发生在死亡链内，本体由外层流程标记死亡。
@@ -74,7 +85,7 @@ fn slime_split_spawns_two_first_generation_children() {
         assert!(!child.runtime.is_combat_minion());
         assert!(child.template.skills.skills().is_empty());
         assert_eq!(child.runtime.move_state.speed_points, speed);
-        assert_slime_child_bit(child, 16, 218);
+        assert_slime_child_scaled(child, 1, 218);
     }
     assert_eq!(
         runtime.entities.get(EntityIdx(2)).unwrap().template.id_key_name,
@@ -112,7 +123,7 @@ fn slime_first_generation_splits_into_second_generation_with_half_and_heal() {
     assert_eq!(runtime.entities.len(), 6);
 
     let parent = runtime.entities.get(EntityIdx(2)).unwrap();
-    assert_eq!(parent.runtime.slime_split_generation, None);
+    assert_eq!(parent.runtime.slime_split_generation, Some(1));
     assert_eq!(parent.runtime.corpse, RuntimeCorpseKind::Slime);
 
     let half = runtime
@@ -128,10 +139,12 @@ fn slime_first_generation_splits_into_second_generation_with_half_and_heal() {
         assert_eq!(child.runtime.slime_split_generation, Some(2));
         assert_eq!(child.template.max_hp, 134);
         assert_eq!(child.runtime.move_state.speed_points, speed);
-        assert_slime_child_bit(child, 32, 134);
+        assert_slime_child_scaled(child, 2, 134);
         assert_eq!(child.template.skills.skills(), [half, heal]);
-        assert_eq!(child.template.skills.level_at(0), Some(32));
-        assert_eq!(child.template.skills.level_at(1), Some(32));
+        // 原版 initSkills 用名字底数第 64 项起的两组覆盖等级，槽位顺序由 sortList 决定。
+        let (half_level, heal_level) = expected_slime_child_skill_levels();
+        assert_eq!(child.template.skills.level_at(0), Some(half_level));
+        assert_eq!(child.template.skills.level_at(1), Some(heal_level));
     }
     assert_eq!(
         runtime.entities.get(EntityIdx(4)).unwrap().template.id_key_name,
@@ -182,7 +195,7 @@ fn slime_lethal_chain_splits_after_death_message() {
     let parent = runtime.entities.get(EntityIdx(0)).unwrap();
     assert!(!parent.runtime.alive);
     assert_eq!(parent.runtime.corpse, RuntimeCorpseKind::Slime);
-    assert_eq!(parent.runtime.slime_split_generation, None);
+    assert_eq!(parent.runtime.slime_split_generation, Some(0));
     for idx in [EntityIdx(2), EntityIdx(3)] {
         let child = runtime.entities.get(idx).unwrap();
         assert!(child.runtime.alive);

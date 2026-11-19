@@ -48,6 +48,7 @@ mod stats;
 mod weapon;
 
 pub(crate) use build::score_profile_team_rng;
+pub(crate) use build::status_from_attrs;
 pub use build::{MinionKind, PreparedMinionBlueprint, PreparedPlayer, PreparedRinickData, PreparedRoster, PreparedRosterError};
 pub use input::{
     NAME_MAX_LEN, NamerenaInput, PlayerClass, PlayerSpec, PlayerSpecError, SEED_PREFIX, TEAM_MAX_LEN, is_seed_line,

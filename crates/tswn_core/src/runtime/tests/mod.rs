@@ -39,6 +39,7 @@ mod plain_reflect_skill_tests;
 mod plain_reraise_auto_tests;
 mod plain_revive_lifecycle_tests;
 mod plain_slime_skill_tests;
+mod plain_slime_split_tests;
 mod plain_status_skill_tests;
 mod plain_summon_share_damage_tests;
 mod plain_summon_skill_tests;
