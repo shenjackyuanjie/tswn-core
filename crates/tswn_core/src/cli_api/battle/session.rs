@@ -195,6 +195,15 @@ impl BattleSession {
 
     /// 首次推进前设置每条脚本的目标席位；长度必须与待执行脚本完全相同。
     pub fn set_action_target_teams(&mut self, teams: &[Option<usize>]) -> CliApiResult<()> {
+        self.set_action_target_teams_with_wisdom(teams, None)
+    }
+
+    /// 智慧规则与每条指令绑定。旧脚本省略标志时使用原来的非智慧索敌。
+    pub fn set_action_target_teams_with_wisdom(
+        &mut self,
+        teams: &[Option<usize>],
+        turn_wisdom: Option<&[bool]>,
+    ) -> CliApiResult<()> {
         if self.rounds_advanced() != 0
             || self.frames_emitted() != 0
             || self.paused.is_some()
@@ -202,6 +211,7 @@ impl BattleSession {
             || self.is_done()
             || self.is_failed()
             || teams.len() != self.driver.runner.runtime().planned_actions_pending()
+            || turn_wisdom.is_some_and(|flags| flags.len() != teams.len())
         {
             return Err(crate::cli_api::CliApiError::InvalidArgument(
                 "target teams require an unstarted, matching action script".into(),
@@ -211,17 +221,27 @@ impl BattleSession {
             .iter()
             .map(|team| team.map(|t| self.target_runtime_team(t)).transpose())
             .collect::<CliApiResult<Vec<_>>>()?;
-        self.driver.runner.runtime_mut().control.set_action_target_teams(&mapped);
+        self.driver.runner.runtime_mut().control.set_action_target_teams(&mapped, turn_wisdom);
         Ok(())
     }
 
     /// 在当前暂停点按指定输入席位预览首段，保持真实战场与随机流不变。
     pub fn preview_targets_for_team(&mut self, actor: PlrId, skill: PlannedSkill, input_team: usize) -> CliApiResult<Vec<PlrId>> {
-        let team = self.target_runtime_team(input_team)?;
-        self.driver
-            .observed_runner_mut()
-            .runtime_mut()
-            .preview_targeted_planned_targets(EntityIdx(actor as u32), skill, false, Some(team))
+        self.preview_action_targets(actor, skill, Some(input_team), false)
+    }
+
+    /// 在暂停视图中读取本次行动已有的智慧判定，重复预览不重掷。
+    pub fn preview_action_targets(
+        &mut self,
+        actor: PlrId,
+        skill: PlannedSkill,
+        input_team: Option<usize>,
+        use_turn_wisdom: bool,
+    ) -> CliApiResult<Vec<PlrId>> {
+        let team = input_team.map(|index| self.target_runtime_team(index)).transpose()?;
+        let runtime = self.driver.observed_runner_mut().runtime_mut();
+        runtime
+            .preview_current_action_targets(EntityIdx(actor as u32), skill, team, use_turn_wisdom)
             .map_err(|e| crate::cli_api::CliApiError::InvalidArgument(e.to_string()))
     }
 
@@ -343,11 +363,7 @@ impl BattleSession {
     ///
     /// 仅用于 UI 提示；真正执行仍走外部行动脚本，执行时会重新按同一口径选择目标。
     pub fn preview_targets(&mut self, actor: PlrId, skill: PlannedSkill) -> CliApiResult<Vec<PlrId>> {
-        self.driver
-            .observed_runner_mut()
-            .runtime_mut()
-            .preview_planned_targets(EntityIdx(actor as u32), skill, false)
-            .map_err(|error| crate::cli_api::CliApiError::InvalidArgument(error.to_string()))
+        self.preview_action_targets(actor, skill, None, false)
     }
 
     /// 仅用于测试：破坏 skill handlers，让下一次推进经过真实 Runtime validation 失败。

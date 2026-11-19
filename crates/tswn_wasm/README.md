@@ -132,13 +132,13 @@ try {
 | `GroupWinRateResult` | 批量胜率结果：`opponent`, `result`                                                                                                                     |
 | `Cli*Result`         | 与 `tswn-cli` / `tswn_py` 高层 helper 对齐的一组结果类型                                                                                                |
 
-角色名称统一显示为 `原名#全局实体id`，从 `0` 开始。本体、clone、summon、shadow、zombie
+角色名称统一显示为 `#全局实体id 原名`，从 `0` 开始。本体、clone、summon、shadow、zombie
 均使用独立实体 ID，不按可见列表重排；不再追加 `display_index` 的局部分身序号，也不再
-在名字旁重复显示另一份对象编号。例如 `A#0` / `B#2` 的分身分别可以是 `A#4` / `B#7`。
+在名字旁重复显示另一份对象编号。例如 `#0 A` 和 `#2 B` 的分身可以是 `#4 A` 和 `#7 B`。
 
 `display_index` 保留在机制 DTO 中用于兼容，但 UI 不再以它命名。若适配器已经格式化名称，
-应传显式 `display_label`；工具直接使用它，避免重复追加。原名 `A#23` 不会被正则剥尾，
-角色 4 显示 `A#23#4`。ID 0、缺省快照的 fallback ID 和有空洞的 ID 都保持稳定。角色表、
+应传显式 `display_label`。工具根据实体 ID 转换旧的后缀标签。原名 `A#23` 的
+角色 4 显示为 `#4 A#23`。ID 0、缺省快照的 fallback ID 和有空洞的 ID 都保持稳定。角色表、
 消息 player token、详情、胜者和结算统一调用同一规则；`id_name` 仍是未改写的技术身份键。
 
 左侧玩家列表按输入顺序排列：分组与 `Team N` 标签都用 `BattlePlayerState.input_team_index`（输入里第几组，空行或 `@队名` 决定），组内按对象 id（也就是输入行序）排列；运行时 `team_index` 由对局内部分配、可能与输入相反，只参与胜负判定，不参与展示排序。召唤单位紧跟其主人，缺 `input_team_index` 的旧数据退回运行时分队号。

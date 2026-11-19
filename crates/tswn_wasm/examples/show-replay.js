@@ -5,8 +5,8 @@
  * playReplay 主循环因需要频繁读写全局状态（playbackToken 等），保留在 show.js 中。
  */
 
-import { renderPlayers, buildFrameRows } from './show-render.js?v=20261103-global-id-1';
-import { actorHpMetrics, escapeHtml, replayDisplayName, renderIconSprite } from './show-utils.js?v=20261103-global-id-1';
+import { renderPlayers, buildFrameRows } from './show-render.js?v=20261119-id-prefix';
+import { actorHpMetrics, escapeHtml, replayDisplayName, renderIconSprite } from './show-utils.js?v=20261119-id-prefix';
 
 /** 显示计划随收到的规范帧增长。现有块保持不变。 */
 export function createReplayPlan(initialStates) {

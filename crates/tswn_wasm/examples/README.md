@@ -45,7 +45,7 @@
 - 支持通过 URL 参数直接传入对局输入并自动播放：`index.html?input=<url-safe-base64>`。参数值按 UTF-8 解码，Base64 使用 URL-safe 字符集（`+`→`-`、`/`→`_`，可省略末尾 `=`）。`replay` 和 `data` 可作为输入参数兼容别名；参数为空、Base64 非法或 UTF-8 解码失败时会停留在输入面板并显示错误。
 - 页面按需拉取公共 `BattleSession` 的 canonical replay view；历史 `engine` / `runtime` 参数会从分享链接中清理，不再提供 `FightSession` fallback。
 - 支持在右下角控制栏复制当前对局的分享链接，链接会使用同一套 `input` 参数格式。
-- 全部角色使用 `原名#全局实体id`（从0开始），clone / summon / shadow / zombie 也使用自己的独立编号，不显示局部 `display_index`，名字旁不再重复另一份 `#playerId`。过滤和排序不重新编号；已格式化的适配器标签通过 `display_label` 明确传入，原名中的 `#数字` 不剥除。
+- 全部角色使用 `#全局实体id 原名`（从 0 开始）。分身和召唤物使用自己的编号，同一实体在不同视角和排序下保留原编号。适配器通过 `display_label` 传入已格式化的标签，原名中的 `#数字` 原样保留。
 - 左侧玩家列表按**输入顺序**排列：分组用输入的队伍序号（`input_team_index`，即空行/`@队名` 分出的第几组），组内按对象 id 排列，`Team N` 标签也对应输入的第 N 组。运行时分队号由对局内部分配（可能与输入相反），只用于胜负判定，不再影响列表顺序；召唤单位仍紧跟其主人，缺输入序号的旧数据退回运行时分队号。
 - 只消费 `BattleReplayFrame.rows[].clips[]` 结构化 replay view，由 WASM 提供延迟、文本片段、血条变化、死亡特效和侧栏快照信息；战斗正文不再从 `message_template` / `message_rendered` / `hp_delta` 反推展示语义。
 - normal 播放模式下，对战结束后等待 `1500ms` 再显示底部结算表；fast / turbo / 单步跳转保持即时显示。左侧玩家 HP 条变化使用较慢动画，方便观察血量变化。

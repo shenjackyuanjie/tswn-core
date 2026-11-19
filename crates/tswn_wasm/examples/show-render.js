@@ -39,7 +39,7 @@ import {
   buildStateMap,
   replayDisplayName,
   renderIconSprite,
-} from "./show-utils.js?v=20261103-global-id-1";
+} from "./show-utils.js?v=20261119-id-prefix";
 
 function playerIconClassId(player) {
   return player?.icon_class_id ?? player?.id;
@@ -101,7 +101,7 @@ export function actorToken(player, state, previousState, update, { showHp = true
 
 /**
  * 从状态里补出一个可渲染的玩家对象。
- * 优先使用 WASM 提供的真实名字，避免把 clone/shadow/summon 一律退化成“幻影#id”。
+ * 优先使用 WASM 提供的真实名字，避免把 clone/shadow/summon 一律退化成“#id 幻影”。
  * @param {number} playerId
  * @param {FightState|undefined} state
  * @param {Map<number, FightPlayer>} playersById

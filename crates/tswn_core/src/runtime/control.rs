@@ -285,8 +285,9 @@ pub fn decode_actions(actions: &[u32]) -> Result<Vec<PlannedAction>, &'static st
 #[derive(Debug, Clone, Default)]
 pub struct BattleControl {
     controlled_teams: Vec<usize>,
-    queue: Vec<PlannedAction>,
-    awaiting: Option<(PlrId, Option<ForcedAction>)>,
+    /// 每条指令单独记录索敌方式，以便同一局重放升级前后的行动。
+    queue: Vec<(PlannedAction, bool)>,
+    awaiting: Option<(PlrId, Option<ForcedAction>, bool)>,
     error: Option<PlannedActionError>,
     passive_decisions: Vec<PassiveDecision>,
     passive_cursor: usize,
@@ -342,25 +343,34 @@ impl BattleControl {
             .iter()
             .any(|controlled| *controlled == Self::CONTROLLED_ALL_TEAMS || *controlled == team)
     }
-    pub fn queue(&mut self, action: PlannedAction) { self.queue.push(action); }
+    pub fn queue(&mut self, action: PlannedAction) { self.queue.push((action, action.target_team.is_some())); }
 
-    pub fn queue_all(&mut self, actions: impl IntoIterator<Item = PlannedAction>) { self.queue.extend(actions); }
+    pub fn queue_all(&mut self, actions: impl IntoIterator<Item = PlannedAction>) {
+        for action in actions {
+            self.queue(action);
+        }
+    }
 
     /// 尚未消费的指令条数。
     pub fn pending(&self) -> usize { self.queue.len() }
 
     /// 取走属于 `actor` 的第一条指令。
     pub fn take_for(&mut self, actor: PlrId) -> Option<PlannedAction> {
-        let index = self.queue.iter().position(|action| action.actor == actor)?;
+        self.take_for_with_wisdom(actor).map(|(action, _)| action)
+    }
+
+    pub(crate) fn take_for_with_wisdom(&mut self, actor: PlrId) -> Option<(PlannedAction, bool)> {
+        let index = self.queue.iter().position(|(action, _)| action.actor == actor)?;
         // 诊断计数：绑定层据此确认脚本确实被消费，而不是靠回放外观推断。
         crate::runtime::forced_action::note_taken();
         Some(self.queue.remove(index))
     }
 
     /// 按原始脚本顺序附加席位选择；在首次推进前设置。
-    pub(crate) fn set_action_target_teams(&mut self, teams: &[Option<usize>]) {
-        for (action, team) in self.queue.iter_mut().zip(teams) {
+    pub(crate) fn set_action_target_teams(&mut self, teams: &[Option<usize>], turn_wisdom: Option<&[bool]>) {
+        for (index, ((action, use_wisdom), team)) in self.queue.iter_mut().zip(teams).enumerate() {
             action.target_team = *team;
+            *use_wisdom = turn_wisdom.is_some_and(|flags| flags[index]);
         }
     }
 
@@ -370,19 +380,21 @@ impl BattleControl {
     pub fn reset(&mut self) { *self = Self::default(); }
 
     /// 记录“这个单位在等玩家指令”。
-    pub fn set_awaiting(&mut self, actor: PlrId) { self.set_awaiting_forced_action(actor, None); }
+    pub fn set_awaiting(&mut self, actor: PlrId) { self.set_awaiting_forced_action(actor, None, false); }
 
     /// 仅在实际缺指令暂停的位置写入，不能用角色状态标签推测。
-    pub(crate) fn set_awaiting_forced_action(&mut self, actor: PlrId, forced_action: Option<ForcedAction>) {
-        self.awaiting = Some((actor, forced_action));
+    pub(crate) fn set_awaiting_forced_action(&mut self, actor: PlrId, forced_action: Option<ForcedAction>, smart: bool) {
+        self.awaiting = Some((actor, forced_action, smart));
     }
 
-    pub fn awaiting(&self) -> Option<PlrId> { self.awaiting.map(|(actor, _)| actor) }
+    pub fn awaiting(&self) -> Option<PlrId> { self.awaiting.map(|(actor, _, _)| actor) }
 
-    pub fn awaiting_forced_action(&self) -> Option<ForcedAction> { self.awaiting.and_then(|(_, forced)| forced) }
+    pub fn awaiting_forced_action(&self) -> Option<ForcedAction> { self.awaiting.and_then(|(_, forced, _)| forced) }
+
+    pub(crate) fn awaiting_smart(&self, actor: PlrId) -> bool { matches!(self.awaiting, Some((id, _, true)) if id == actor) }
 
     /// 取走暂停标记及附属元数据；会话层每个边界只读一次，避免残留到下一场战斗。
-    pub fn take_awaiting(&mut self) -> Option<PlrId> { self.awaiting.take().map(|(actor, _)| actor) }
+    pub fn take_awaiting(&mut self) -> Option<PlrId> { self.awaiting.take().map(|(actor, _, _)| actor) }
 
     /// 设置本次回放可消费的被动决策脚本，按触发顺序消费。
     pub fn set_passive_decisions(&mut self, decisions: impl IntoIterator<Item = PassiveDecision>) {
@@ -587,13 +599,13 @@ mod tests {
     #[test]
     fn awaiting_forced_metadata_is_bound_to_the_active_pause() {
         let mut control = BattleControl::default();
-        control.set_awaiting_forced_action(3, Some(ForcedAction::Berserk));
+        control.set_awaiting_forced_action(3, Some(ForcedAction::Berserk), true);
         assert_eq!(control.awaiting(), Some(3));
         assert_eq!(control.awaiting_forced_action(), Some(ForcedAction::Berserk));
         assert_eq!(control.take_awaiting(), Some(3));
         assert_eq!(control.awaiting_forced_action(), None);
         for reset in 0..4 {
-            control.set_awaiting_forced_action(3, Some(ForcedAction::Berserk));
+            control.set_awaiting_forced_action(3, Some(ForcedAction::Berserk), true);
             match reset {
                 0 => control.set_awaiting(4),
                 1 => control.set_controlled_team(None),

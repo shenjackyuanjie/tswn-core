@@ -1,5 +1,5 @@
 /** 角色详情的纯渲染函数，读取当前可见快照。 */
-import { escapeHtml, formatGlobalPlayerName, playerStatusLabels, replayDisplayName } from "./show-utils.js?v=20261103-global-id-1";
+import { escapeHtml, formatGlobalPlayerName, playerStatusLabels, replayDisplayName } from "./show-utils.js?v=20261119-id-prefix";
 
 function detailValue(value, fallback = "-") {
   if (value == null || value === "") {

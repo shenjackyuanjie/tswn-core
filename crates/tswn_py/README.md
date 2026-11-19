@@ -225,10 +225,11 @@ python scripts/verify_py_cli_api.py
 ### 即时对战按玩家席位索敌
 
 创建 `BattleSession` 并传入完整 `actions` 后，可在首次推进前调用
-`set_action_target_teams([None, 2, ...])`。列表长度必须等于脚本长度，每项是输入组编号
-（0开始），`None` 保持旧全场索敌。绑定内部映射输入组到机制队伍。
-暂停后调用 `preview_targets_for_team(actor, skill, team)` 获取相同口径的目标，预览不消费
-随机数或改变真实战场；重新模拟时须恢复完整席位列表。辅助技能、自身动作不接受敌方席位。
+`set_action_target_teams(teams, turn_wisdom)`。两个列表均按指令顺序排列。席位为从 0 开始的输入组编号，
+治愈传 `None`。对选定席位的攻击和治愈，将该指令的智慧标志设为 `True`，沿用行动开始时的智慧判定。
+旧记录可省略智慧列表，或将对应标志设为 `False`。
+暂停后用 `preview_targets_for_team(actor, skill, team, use_turn_wisdom=True)` 预览选定席位的攻击，
+用 `preview_targets(actor, "core.skill.heal", use_turn_wisdom=True)` 预览治愈。预览使用同一判定并恢复随机流。
 
 首段复用指定双队视图下原技能索敌，包含原有嘲讽评分。地裂、连击仅将首目标固定到指定
 席位，全场后续候选合并、去重后保持原目标池大小；后续段次、随机跳转、死亡及零伤害
