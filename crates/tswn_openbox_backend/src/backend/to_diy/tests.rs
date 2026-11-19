@@ -15,13 +15,14 @@ fn expected_group_blocks(raw: &str) -> String {
 }
 
 /// 多行输入的全部输出：每行之间空一行，行内是导出行 + 该行每个成员的详情块。
-fn expected_multiline_output(raw: &str, old: bool) -> String {
+fn expected_multiline_output(raw: &str) -> String {
     let mut out = String::new();
     for name in super::parse_line_list(raw) {
         if !out.is_empty() {
             out.push('\n');
         }
-        out.push_str(&tswn_core::cli_api::to_diy(&name, old, false).expect("export should work"));
+        let export = tswn_core::cli_api::to_diy(&name, false, false).expect("export should work");
+        out.push_str(&export.replace("}+2@team", "}++2@team"));
         out.push('\n');
         out.push_str(&expected_group_blocks(&name));
     }
@@ -66,7 +67,7 @@ fn to_diy_details_match_panel_layout() {
     let raw = "1@team+2@team\ntest";
     let output = run_to_diy(raw, false, false, true, None, &cancel).unwrap();
 
-    assert_eq!(output, expected_multiline_output(raw, false));
+    assert_eq!(output, expected_multiline_output(raw));
 }
 
 /// 多行输入之间必须空行分隔，详情块不能和下一行的导出行贴在一起。
@@ -135,7 +136,7 @@ fn to_diy_details_reproduce_reported_example() {
     // 组队行导出后，紧跟该队两个玩家的详情块。
     assert!(lines[0].starts_with("1@team+ol:{\"attrs\":[78,78,58,64,72,60,77,245]"));
     assert!(lines[0].contains("\"sklprotect\":19"));
-    assert!(lines[0].contains("+2@team+ol:{\"attrs\":[81,83,59,70,71,61,61,271]"));
+    assert!(lines[0].contains("}++2@team+ol:{\"attrs\":[81,83,59,70,71,61,61,271]"));
     assert!(lines[0].contains("\"sklassassinate\":\"2*17\""));
     assert_eq!(lines[1], "");
     assert_eq!(lines[2], "=== 原始信息 ===");
@@ -221,13 +222,15 @@ fn to_diy_details_never_reach_the_output_file() {
     let path = std::env::temp_dir().join(format!("tswn_openbox_to_diy_details_{}_{seq}.txt", std::process::id()));
     let cancel = AtomicBool::new(false);
 
-    let summary = run_to_diy("mario@team", true, false, true, Some(path.clone()), &cancel).expect("export should succeed");
+    let raw = "mario@team+luigi@team";
+    let summary = run_to_diy(raw, true, false, true, Some(path.clone()), &cancel).expect("export should succeed");
     let written = std::fs::read_to_string(&path).expect("output file should exist");
     let _ = std::fs::remove_file(&path);
 
     assert!(summary.starts_with("完成，结果已写入"));
     assert!(!written.contains("=== 原始信息 ==="));
-    assert_eq!(written, run_to_diy("mario@team", true, false, false, None, &cancel).unwrap());
+    assert!(written.contains("}++luigi@team+diy["));
+    assert_eq!(written, run_to_diy(raw, true, false, false, None, &cancel).unwrap());
 }
 
 #[test]
@@ -269,5 +272,5 @@ fn to_diy_plus_line_exports_team_group() {
     assert!(lines[2].starts_with("2@a+diy["));
     assert_eq!(lines[3], "");
     assert!(lines[4].starts_with("1@a+diy["));
-    assert!(lines[4].contains("+2@a+diy["));
+    assert!(lines[4].contains("}++2@a+diy["));
 }

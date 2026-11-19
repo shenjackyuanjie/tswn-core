@@ -637,6 +637,11 @@ pub fn pair_rate_factored(
 
 pub fn to_diy(name: &str, old: bool, minions: bool) -> CliApiResult<String> { parse::export_player(name, old, minions) }
 
+/// 导出 DIY，使用指定的分隔符连接同一输出行的成员。
+pub fn to_diy_with_group_separator(name: &str, old: bool, minions: bool, separator: &str) -> CliApiResult<String> {
+    parse::export_player_with_separator(name, old, minions, separator)
+}
+
 /// 导出已构建的角色，保留其属性和技能，不重新解析名字或构建队伍。
 ///
 /// 与 [`to_diy`] 一样，旧版 DIY 格式（`old`）不能同时导出召唤物（`minions`）。

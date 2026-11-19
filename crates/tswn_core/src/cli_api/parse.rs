@@ -7,6 +7,10 @@ use crate::namerena::{
 use super::CliApiResult;
 
 pub(super) fn export_player(raw: &str, old: bool, minions: bool) -> CliApiResult<String> {
+    export_player_with_separator(raw, old, minions, "+")
+}
+
+pub(super) fn export_player_with_separator(raw: &str, old: bool, minions: bool, separator: &str) -> CliApiResult<String> {
     if old && minions {
         return Err(super::invalid_input("old and minions are mutually exclusive"));
     }
@@ -16,7 +20,7 @@ pub(super) fn export_player(raw: &str, old: bool, minions: bool) -> CliApiResult
     }
     groups
         .iter()
-        .map(|group| export_group(group, old, minions))
+        .map(|group| export_group(group, old, minions, separator))
         .collect::<CliApiResult<Vec<_>>>()
         .map(|lines| lines.join("\n"))
 }
@@ -62,7 +66,7 @@ fn has_double_plus_outside_quotes(raw: &str) -> bool {
     false
 }
 
-fn export_group(group: &[String], old: bool, minions: bool) -> CliApiResult<String> {
+fn export_group(group: &[String], old: bool, minions: bool, separator: &str) -> CliApiResult<String> {
     if group.is_empty() {
         return Err(super::invalid_input("to_diy group is empty"));
     }
@@ -77,7 +81,7 @@ fn export_group(group: &[String], old: bool, minions: bool) -> CliApiResult<Stri
         .iter()
         .map(|player| export_built_player(player, old, minions))
         .collect::<Vec<_>>()
-        .join("+"))
+        .join(separator))
 }
 
 pub(super) fn export_built_player(player: &PreparedPlayer, old: bool, minions: bool) -> String {

@@ -1,6 +1,6 @@
 # 更新日志
 
-## [Unreleased] - 0.5.3
+## [0.5.3] - 2026-11-19
 
 ### 新增
 
@@ -30,6 +30,11 @@
 
 - GUI 私有 `app` 模块及其子模块内的 `pub(crate)` 统一为 `pub`；外层模块仍私有，crate 对外 API 与运行行为保持原状。
 
+### 修复
+
+- Pair 将选手和队友合成完整队伍，按 CQP 的规则计算同公会组队加成。队友权重仍用于 Pair 的排名与计分。
+- ToDIY 的多人导出用 `++` 连接成员。导出行可直接交给 Pair 的「DIY选手」或 `openbox-cli pair --player-double-plus`。
+
 ### 验证
 
 - 徽章渲染回归覆盖：组合标签按成员拆徽章并跳过 overlay / diy 段、同名复用同一纹理、空标签不产生徽章、
@@ -39,8 +44,9 @@
   `file_mode_reads_whole_lines_until_csv_is_enabled` 断言 CSV 关闭时仍按整行读取、启用后按列取并去掉 BOM；
   `namer_pf_unfiltered_only_when_nothing_is_selected` 断言只有五项与技能榜都不选才回退为不过滤。
 - 截图校验新增 `--capture-csv`，生成 `csv.png` 供人工核对高级选项窗口的列选择、行筛选与结果预览。
-- 复跑结果：`cargo test -p tswn_openbox --features ui_capture`（56 通过）、CLI 20 项通过、`cargo +nightly fmt --check` 无输出。
-  `cargo clippy -p tswn_openbox --all-targets --features ui_capture --no-deps -- -D warnings` 与截图验收未在本轮复跑，结果沿用上游 `0cbfc020` / `3f462297` 的记录。
+- 三人组靶子每组运行 1,000 场。直接 CQP 为 `48.690`，普通名字与 ToDIY 导出行在无刺评 Pair 中均为 `48.225`。
+- 版本验证中，GUI 57 项、CLI 28 项、后端 50 项测试通过，`cargo +nightly fmt --check` 通过。
+  Windows 受限环境跳过一项需要在仓库内创建临时目录的旧版技能榜测试。`ui_capture` 与 Clippy 的此前验证记录见 `0cbfc020` / `3f462297`。
 
 ## [0.5.2] - 2026-10-21
 

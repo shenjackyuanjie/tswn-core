@@ -1,6 +1,7 @@
 //! 名字导出与属性、技能详情。
 //!
 //! 同步逐行转换，每行按组合构队后导出；详情只供日志，文件仅包含导出行。
+//! 导出时用 `++` 连接同一组的成员，可直接用于 Pair 的 DIY 输入。
 //! 错误直接返回 Result；取消在每行开始检查，已发送的增量仍有效，但未完成的
 //! 汇总不会写入最终文件。观察者接收自有文本，不借用输入或构建中的玩家。
 
@@ -64,7 +65,8 @@ pub fn run_to_diy_observed(
         let update = observer.map(|_| ResultUpdate::new_with_legacy(index, name, ResultKind::Diy, 0));
         // 当前行只格式化一次；无 observer 时也不会额外生成一份兼容文本。
         let mut legacy = String::new();
-        let export = cli_api::to_diy(name, old, minions).map_err(|err| format!("导出 DIY 失败: {name}: {err}"))?;
+        let export = cli_api::to_diy_with_group_separator(name, old, minions, "++")
+            .map_err(|err| format!("导出 DIY 失败: {name}: {err}"))?;
         let _ = writeln!(legacy, "{export}");
 
         if details {

@@ -2,6 +2,10 @@
 
 本文件记录跨 crate 的维护与兼容性变更；各 crate 的版本发布历史仍以对应 CHANGELOG 为准。
 
+## Openbox 0.5.3 · 2026-11-19
+
+- Pair 按完整队伍计算组队加成，ToDIY 导出使用 `++` 分隔成员。其余变更见 [Openbox 更新日志](crates/tswn_openbox/CHANGELOG.md#053---2026-11-19) 和 [后端更新日志](crates/tswn_openbox_backend/CHANGELOG.md#053---2026-11-19)。
+
 ## 未发布 · 2026-11-19 固定阵容胜率加速
 
 - 批量胜率复用 profile seed 的密钥缓冲、小队身份串和场前状态。免回放战斗在存活队伍变动时才重新判胜。
@@ -59,8 +63,8 @@
 | `tswn_capi` | 0.6.3 | [更新日志](crates/tswn_capi/CHANGELOG.md) |
 | `tswn_py` | 0.5.4 | [更新日志](crates/tswn_py/CHANGELOG.md) |
 | `tswn_wasm` | 0.5.12 | [更新日志](crates/tswn_wasm/CHANGELOG.md) |
-| `tswn_openbox` | 0.5.2 | [更新日志](crates/tswn_openbox/CHANGELOG.md) |
-| `tswn_openbox_backend` | 0.5.2 | [更新日志](crates/tswn_openbox_backend/CHANGELOG.md) |
+| `tswn_openbox` | 0.5.3 | [更新日志](crates/tswn_openbox/CHANGELOG.md) |
+| `tswn_openbox_backend` | 0.5.3 | [更新日志](crates/tswn_openbox_backend/CHANGELOG.md) |
 | `tswn_lane_ranker` | 0.1.0 | [更新日志](crates/tswn_lane_ranker/CHANGELOG.md) |
 | `tswn_name_ranker` | 0.1.0 | [更新日志](crates/tswn_name_ranker/CHANGELOG.md) |
 | `tswn_ladder` | 0.2.0 | [更新日志](crates/tswn_ladder/CHANGELOG.md) |
