@@ -134,7 +134,7 @@ impl CombatRuntime {
         let Some(entity) = self.entities.get_mut(target) else {
             return;
         };
-        if entity.template.name != ID {
+        if entity.template.name != ID || !entity.runtime.flags.contains(PlayerKindFlags::BOSS) {
             return;
         }
         let current = entity.runtime.move_state.speed_points;
@@ -255,14 +255,24 @@ mod tests {
 
     /// 生命之轮（队伍 0，体力 100）加两名敌方英雄；队伍 0 另有一名高体力队友专门验证排除。
     fn wheel_runtime() -> CombatRuntime {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let boss_kind = builder
+            .register_player_kind_with_policies(
+                "core",
+                "boss",
+                "core.boss",
+                PlayerKindFlags::BOSS,
+                PlayerKindPolicies::default(),
+            )
+            .expect("boss kind should register");
         let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
             vec![
-                PlayerTemplate::new(1, ID, 0, 1000, 3),
-                PlayerTemplate::new(2, "hero-a", 1, 2000, 3),
+                PlayerTemplate::with_kind(1, ID, boss_kind, 0, 1000, 3),
+                PlayerTemplate::new(2, ID, 1, 2000, 3),
                 PlayerTemplate::new(3, "hero-b", 1, 300, 3),
                 PlayerTemplate::new(4, "mate", 0, 5000, 3),
             ],
-            ExtensionRegistryBuilder::default().build(),
+            builder.build(),
         ));
         runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.hp = 100;
         runtime
@@ -275,7 +285,7 @@ mod tests {
     #[test]
     fn wheel_select_skips_own_team_and_takes_highest_valid_hp() {
         let mut runtime = wheel_runtime();
-        // hero-a 2000 体力最高且合格；队友 mate 的 5000 必须被排除。
+        // 普通角色 wheel 的 2000 体力最高且合格；队友 mate 的 5000 必须被排除。
         assert_eq!(runtime.select_plain_wheel_exchange_target(EntityIdx(0)), Some(EntityIdx(1)));
         // 门槛是 hp 差 >= 64：两名敌人都是 163（差 63）时全不合格。
         runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.hp = 163;
@@ -338,6 +348,7 @@ mod tests {
     #[test]
     fn wheel_post_defend_only_advances_the_boss_itself() {
         let mut runtime = wheel_runtime();
+        assert!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.flags.contains(PlayerKindFlags::BOSS));
         runtime.apply_wheel_post_defend_spsum(EntityIdx(0), 12);
         assert_eq!(
             runtime.entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points,
@@ -348,8 +359,28 @@ mod tests {
             runtime.entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points,
             0x500
         );
-        // 非生命之轮实体不推进。
-        runtime.apply_wheel_post_defend_spsum(EntityIdx(1), 12);
-        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.move_state.speed_points, 0);
+    }
+
+    #[test]
+    fn wheel_post_defend_distinguishes_a_real_boss_from_an_ordinary_namesake() {
+        let mut runtime = wheel_runtime();
+        for (attacker, target, initial_hp, expected_points) in
+            [(EntityIdx(2), EntityIdx(0), 100, 0x500), (EntityIdx(3), EntityIdx(1), 2000, 0)]
+        {
+            let damage = runtime.drain_plain_attack_after_dodge_into(
+                attacker,
+                target,
+                false,
+                64.0,
+                DamageKind::Default,
+                None,
+                PlainAttackOnDamage::None,
+                &mut RunUpdates::new(),
+            );
+            let entity = runtime.entities.get(target).unwrap();
+            assert!(damage > 0);
+            assert_eq!(entity.runtime.hp, initial_hp - damage);
+            assert_eq!(entity.runtime.move_state.speed_points, expected_points);
+        }
     }
 }
