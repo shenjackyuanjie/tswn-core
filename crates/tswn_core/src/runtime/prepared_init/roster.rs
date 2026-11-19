@@ -256,6 +256,7 @@ impl PreparedBattleRoster {
             input_groups,
             base_names_sorted,
             profile_seed_rc4_prefix: None,
+            small_team_identity_keys: None,
             id_key_names,
             sorted_by_id_name,
             recycle_score_buffers: true,
@@ -336,12 +337,14 @@ impl PreparedBattleRoster {
         let players = players.into_iter().map(Some).collect();
         let base_names_sorted = PreparedBattleInit::base_names_sorted(raw_groups);
         let profile_seed_rc4_prefix = PreparedBattleInit::profile_seed_rc4_prefix(&base_names_sorted);
+        let small_team_identity_keys = Self::small_team_identity_keys(&input_groups, &id_key_names);
         Ok(Self {
             players,
             player_alive,
             input_groups,
             base_names_sorted,
             profile_seed_rc4_prefix,
+            small_team_identity_keys,
             id_key_names,
             sorted_by_id_name,
             recycle_score_buffers: false,
@@ -368,6 +371,7 @@ impl PreparedBattleRoster {
             input_groups,
             base_names_sorted,
             profile_seed_rc4_prefix: _,
+            small_team_identity_keys: _,
             id_key_names,
             sorted_by_id_name,
             recycle_score_buffers,
@@ -421,11 +425,53 @@ impl PreparedBattleRoster {
         PreparedBattleInit::refill_rc4_key_with_seed(&self.base_names_sorted, seed, key);
     }
 
-    pub(in crate::runtime) fn prepare_seed_rngs<const N: usize>(&self, keys: &[String; N]) -> [RC4; N] {
-        let key_bytes = std::array::from_fn(|i| keys[i].as_bytes());
-        let mut rngs = RC4::new_interleaved_with_key_schedule_prefix(key_bytes, self.profile_seed_rc4_prefix.as_ref());
-        RC4::mix_key_bytes_interleaved(&mut rngs, key_bytes);
+    /// 预拼八位 profile 编号的密钥模板，并返回数字起始下标。
+    /// 同名或同前缀的固定名字可能改变 seed 的位置，交给逐局排序。
+    pub(in crate::runtime) fn profile_seed_key_template(&self) -> Option<(usize, Vec<u8>)> {
+        const MARKER: &str = "seed:00000000@!";
+        if self.base_names_sorted.iter().any(|name| name.starts_with("seed:")) {
+            return None;
+        }
+        let name_count = self.base_names_sorted.partition_point(|name| name.as_str() < "seed:");
+        let digit_start = self.base_names_sorted[..name_count].iter().map(|name| name.len() + 1).sum::<usize>() + "seed:".len();
+        let mut key = String::new();
+        self.refill_seed_key(&[MARKER.to_owned()], &mut key);
+        Some((digit_start, key.into_bytes()))
+    }
+
+    pub(in crate::runtime) fn prepare_seed_rngs<const N: usize>(&self, keys: [&[u8]; N]) -> [RC4; N] {
+        let mut rngs = RC4::new_interleaved_with_key_schedule_prefix(keys, self.profile_seed_rc4_prefix.as_ref());
+        RC4::mix_key_bytes_interleaved(&mut rngs, keys);
         rngs
+    }
+
+    /// 两支小队的身份字节只取决于队伍交换和各队成员交换，可在阵容准备时拼接。
+    fn small_team_identity_keys(groups: &[Vec<PlrId>], names: &[String]) -> Option<Box<[String]>> {
+        let [left, right] = groups else { return None };
+        if left.len() != right.len() || !(1..=2).contains(&left.len()) {
+            return None;
+        }
+        let orders = if left.len() == 1 { 2 } else { 8 };
+        Some(
+            (0..orders)
+                .map(|order| {
+                    let mut key = String::new();
+                    for team in [order & 1, (order & 1) ^ 1] {
+                        let group = &groups[team];
+                        if order & (2 << team) != 0 {
+                            key.push_str(&names[group[1]]);
+                            key.push_str(&names[group[0]]);
+                        } else {
+                            for &id in group {
+                                key.push_str(&names[id]);
+                            }
+                        }
+                        key.push('\0');
+                    }
+                    key
+                })
+                .collect(),
+        )
     }
 
     /// 复用已完成密钥调度和密钥混入的随机状态，继续计算排序和初始移动点。
@@ -439,21 +485,22 @@ impl PreparedBattleRoster {
         let compare = |left, right| PreparedBattleInit::cmp_player_keys(&state.sort_ints, &self.id_key_names, left, right);
         state.battle_groups.clone_from(&self.input_groups);
         state.round_order.clear();
-        if let [left, right] = state.battle_groups.as_mut_slice()
+        let identity_order = if let [left, right] = state.battle_groups.as_mut_slice()
             && left.len() == right.len()
             && (1..=2).contains(&left.len())
         {
             // 两队各至多两人，先为输入组排序，再归并两段已有序的行动名单。
-            if left.len() == 2 {
-                if compare(left[0], left[1]).is_gt() {
-                    left.swap(0, 1);
-                }
-                if compare(right[0], right[1]).is_gt() {
-                    right.swap(0, 1);
-                }
+            let swap_left = left.len() == 2 && compare(left[0], left[1]).is_gt();
+            let swap_right = right.len() == 2 && compare(right[0], right[1]).is_gt();
+            if swap_left {
+                left.swap(0, 1);
+            }
+            if swap_right {
+                right.swap(0, 1);
             }
             Self::refill_entity_groups(&mut state.input_groups, &state.battle_groups);
-            if compare(state.battle_groups[0][0], state.battle_groups[1][0]).is_gt() {
+            let swap_teams = compare(state.battle_groups[0][0], state.battle_groups[1][0]).is_gt();
+            if swap_teams {
                 state.battle_groups.swap(0, 1);
             }
             let left = &state.battle_groups[0];
@@ -468,6 +515,7 @@ impl PreparedBattleRoster {
             state
                 .round_order
                 .extend(order[..left.len() * 2].iter().copied().map(PreparedBattleInit::entity_idx));
+            usize::from(swap_teams) | usize::from(swap_left) << 1 | usize::from(swap_right) << 2
         } else {
             for group in &mut state.battle_groups {
                 group.sort_by(|&left, &right| compare(left, right));
@@ -483,13 +531,18 @@ impl PreparedBattleRoster {
                 .round_order
                 .extend(state.battle_groups.iter().flatten().copied().map(PreparedBattleInit::entity_idx));
             state.round_order.sort_by(|left, right| compare(left.0 as usize, right.0 as usize));
-        }
+            0
+        };
 
-        for group in &state.battle_groups {
-            for player in group {
-                rng.encrypt_bytes_no_change(&self.id_key_names[*player]);
+        if let Some(keys) = &self.small_team_identity_keys {
+            rng.encrypt_bytes_no_change(&keys[identity_order]);
+        } else {
+            for group in &state.battle_groups {
+                for player in group {
+                    rng.encrypt_bytes_no_change(&self.id_key_names[*player]);
+                }
+                rng.encrypt_bytes(&mut [0]);
             }
-            rng.encrypt_bytes(&mut [0]);
         }
 
         state.teams.clear();

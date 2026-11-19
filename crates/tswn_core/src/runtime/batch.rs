@@ -21,6 +21,7 @@ use std::fmt::Write as _;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use crate::rc4::RC4;
 use crate::time::Stopwatch;
 use crate::win_rate::{WinRateTiming, resolve_win_rate_workers};
 
@@ -33,10 +34,70 @@ const BATCH_PARALLEL_THRESHOLD: usize = 100;
 const BATCH_MAX_ROUNDS: usize = 100_000;
 const WIN_RATE_SEED_BATCH: usize = 4;
 
-#[derive(Default)]
 struct WinRateSeedScratch {
     seed: String,
     keys: [String; WIN_RATE_SEED_BATCH],
+    profile_keys: Option<ProfileSeedKeys>,
+}
+
+impl WinRateSeedScratch {
+    fn new(prepared: &PreparedRuntimeRunner, rounds: usize) -> Self {
+        let profile_keys = if rounds >= WIN_RATE_SEED_BATCH {
+            prepared
+                .battle_roster
+                .profile_seed_key_template()
+                .map(|(digit_start, template)| ProfileSeedKeys {
+                    digit_start,
+                    keys: std::array::from_fn(|_| template.clone()),
+                })
+        } else {
+            None
+        };
+        Self {
+            seed: String::new(),
+            keys: Default::default(),
+            profile_keys,
+        }
+    }
+
+    fn prepare_rngs(&mut self, prepared: &PreparedRuntimeRunner, start: usize) -> [RC4; WIN_RATE_SEED_BATCH] {
+        let roster = &prepared.battle_roster;
+        if let Some(keys) = &mut self.profile_keys
+            && let Some(keys) = keys.refill(start)
+        {
+            return roster.prepare_seed_rngs(keys);
+        }
+
+        for (key, round) in self.keys.iter_mut().zip(start..) {
+            roster.refill_seed_key(profile_seed_for_round(&mut self.seed, round), key);
+        }
+        roster.prepare_seed_rngs(self.keys.each_ref().map(|key| key.as_bytes()))
+    }
+}
+
+/// 每个 worker 复用完整的密钥字节；常见的八位编号只覆盖数字槽位。
+struct ProfileSeedKeys {
+    digit_start: usize,
+    keys: [Vec<u8>; WIN_RATE_SEED_BATCH],
+}
+
+impl ProfileSeedKeys {
+    fn refill(&mut self, start: usize) -> Option<[&[u8]; WIN_RATE_SEED_BATCH]> {
+        let first = crate::runtime::PROFILE_START.checked_add(u32::try_from(start).ok()?)?;
+        if start == 0 || first > 100_000_000 - WIN_RATE_SEED_BATCH as u32 {
+            return None;
+        }
+
+        let digit_range = self.digit_start..self.digit_start + 8;
+        for (key, id) in self.keys.iter_mut().zip(first..) {
+            let digits = &mut key[digit_range.clone()];
+            let pairs = [id / 1_000_000, id / 10_000 % 100, id / 100 % 100, id % 100];
+            for (bytes, pair) in digits.as_chunks_mut::<2>().0.iter_mut().zip(pairs) {
+                *bytes = [b'0' + (pair / 10) as u8, b'0' + (pair % 10) as u8];
+            }
+        }
+        Some(self.keys.each_ref().map(Vec::as_slice))
+    }
 }
 
 enum WinRateSeed<'a> {
@@ -331,7 +392,7 @@ fn run_prepared_range<const TIMED: bool>(
     end: usize,
 ) -> Result<RuntimeBatchSummary, CustomRuntimeImportError> {
     let mut summary = RuntimeBatchSummary::default();
-    let mut seed_scratch = WinRateSeedScratch::default();
+    let mut seed_scratch = WinRateSeedScratch::new(prepared, end.saturating_sub(start));
     let mut runner = prepared.new_reusable_runner();
     #[cfg(feature = "effective-skill-stats")]
     super::effective_skill_stats::set_first_group(prepared.input_groups().first().map_or(&[], Vec::as_slice));
@@ -346,7 +407,7 @@ fn run_prepared_worker<const TIMED: bool>(
     chunk_size: usize,
 ) -> Result<RuntimeBatchSummary, RuntimeBatchError> {
     let mut summary = RuntimeBatchSummary::default();
-    let mut seed_scratch = WinRateSeedScratch::default();
+    let mut seed_scratch = WinRateSeedScratch::new(prepared, chunk_size);
     let mut runner = prepared.new_reusable_runner();
     loop {
         let start = next.fetch_add(chunk_size, Ordering::Relaxed);
@@ -368,11 +429,8 @@ fn run_prepared_chunk<const TIMED: bool>(
 ) -> Result<(), CustomRuntimeImportError> {
     while rounds.len() >= WIN_RATE_SEED_BATCH {
         let init_started = TIMED.then(Stopwatch::now);
-        for (key, round) in seed_scratch.keys.iter_mut().zip(rounds.by_ref()) {
-            let seed = profile_seed_for_round(&mut seed_scratch.seed, round);
-            prepared.battle_roster.refill_seed_key(seed, key);
-        }
-        let rngs = prepared.battle_roster.prepare_seed_rngs(&seed_scratch.keys);
+        let rngs = seed_scratch.prepare_rngs(prepared, rounds.start);
+        rounds.start += WIN_RATE_SEED_BATCH;
         if let Some(init_started) = init_started {
             summary.timing.init_nanos += init_started.elapsed_nanos();
         }
@@ -792,16 +850,10 @@ mod chunk_regressions {
         let mut scalar = prepared.new_reusable_runner();
         let mut batched = prepared.new_reusable_runner();
         let mut seed = String::new();
+        let mut seed_scratch = WinRateSeedScratch::new(&prepared, WIN_RATE_SEED_BATCH);
         let carry = 100_000_000 - crate::runtime::PROFILE_START as usize;
-        for start in [0, 1, carry - 1] {
-            let keys = std::array::from_fn::<_, WIN_RATE_SEED_BATCH, _>(|offset| {
-                let mut key = String::new();
-                prepared
-                    .battle_roster
-                    .refill_seed_key(profile_seed_for_round(&mut seed, start + offset), &mut key);
-                key
-            });
-            let mut rngs = prepared.battle_roster.prepare_seed_rngs(&keys).into_iter();
+        for start in [0, 1, 7, carry - WIN_RATE_SEED_BATCH, carry - 1, carry] {
+            let mut rngs = seed_scratch.prepare_rngs(&prepared, start).into_iter();
             let end = start + WIN_RATE_SEED_BATCH + 3;
             let mut expected = RuntimeBatchSummary::default();
             for round in start..end {
@@ -824,6 +876,13 @@ mod chunk_regressions {
                 if let Some(batched_result) = batched_result {
                     assert_eq!(batched_result, result, "round={round}");
                     assert_eq!(batched.input_group_won(0), scalar.input_group_won(0), "round={round}");
+                    let expected_rng = &scalar.runtime().rng;
+                    let actual_rng = &batched.runtime().rng;
+                    assert_eq!(
+                        (actual_rng.i, actual_rng.j, actual_rng.main_val),
+                        (expected_rng.i, expected_rng.j, expected_rng.main_val),
+                        "round={round}"
+                    );
                 }
             }
             let actual = prepared_runtime_win_rate_range(&prepared, start, end).unwrap();

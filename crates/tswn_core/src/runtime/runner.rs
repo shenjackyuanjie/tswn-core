@@ -719,13 +719,11 @@ impl PreparedRuntimeRunner {
         refill: impl FnOnce(&PreparedBattleRoster, &mut PreparedBattleSeed),
     ) -> Result<(), CustomRuntimeImportError> {
         self.reset_mutable_battle_state(runner);
-        let mut seed_state = runner.prepared_seed.take().unwrap_or_else(|| self.battle_roster.new_seed_state());
-        refill(&self.battle_roster, &mut seed_state);
+        let seed_state = runner.prepared_seed.get_or_insert_with(|| self.battle_roster.new_seed_state());
+        refill(&self.battle_roster, seed_state);
 
         seed_state.swap_input_groups(&mut runner.input_groups);
-        let result = seed_state.apply_swapping_views(&mut runner.runtime).map_err(Into::into);
-        runner.prepared_seed = Some(seed_state);
-        result
+        seed_state.apply_swapping_views(&mut runner.runtime).map_err(Into::into)
     }
 
     /// 复用同一 runtime/registry 形状，以一份新 roster 构造对局。

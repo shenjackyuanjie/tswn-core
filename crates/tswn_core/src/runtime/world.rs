@@ -19,6 +19,8 @@ pub struct WorldArena {
     alive_group_count: usize,
     round_pos: i32,
     winner_team: Option<usize>,
+    // 实体扫描保存的胜者可能与存活视图不同，此时也需要重算。
+    winner_views_dirty: bool,
 }
 
 impl PartialEq for WorldArena {
@@ -74,6 +76,7 @@ impl WorldArena {
             alive_group_count,
             round_pos: -1,
             winner_team: None,
+            winner_views_dirty: alive_group_count == 1,
         };
         world.rebuild_alive_team_cache(entities.len());
         world
@@ -160,6 +163,8 @@ impl WorldArena {
         self.roster_count = self.team_roster.iter().map(Vec::len).sum();
         self.round_pos = -1;
         self.winner_team = None;
+        // 场前刚按视图统计过存活队，只有恰好一队时需要下次同步补上胜者。
+        self.winner_views_dirty = self.alive_group_count == 1;
     }
 
     fn clone_slice_reusing<T: Copy>(target: &mut Vec<T>, source: &[T]) {
@@ -296,6 +301,7 @@ impl WorldArena {
         }
         view.flat_alive.retain(|id| view.team_alive.iter().any(|team| team.contains(id)));
         view.alive_group_count = view.team_alive.iter().filter(|team| !team.is_empty()).count();
+        view.winner_views_dirty = true;
         view
     }
 
@@ -356,6 +362,7 @@ impl WorldArena {
             .iter()
             .rev()
             .find_map(|idx| self.flat_alive.iter().position(|alive| alive == idx));
+        self.winner_views_dirty |= self.team_alive[team].is_empty();
         self.team_alive[team].push(actor);
         self.cache_revived_actor(actor, team);
         if let Some(pos) = last_teammate_pos {
@@ -379,6 +386,7 @@ impl WorldArena {
             let was_team_alive = team_alive.contains(&actor);
             team_alive.retain(|idx| *idx != actor);
             if was_team_alive && team_alive.is_empty() {
+                self.winner_views_dirty = true;
                 self.alive_group_count = self.alive_group_count.saturating_sub(1);
             }
         }
@@ -396,6 +404,7 @@ impl WorldArena {
     }
 
     pub fn sync_winner(&mut self, entities: &EntityArena) -> Option<usize> {
+        self.winner_views_dirty = true;
         let mut alive_team = None;
         for (_, entity) in entities.iter() {
             if !entity.runtime.alive {
@@ -423,19 +432,18 @@ impl WorldArena {
     /// legacy 语义，队伍被清空后复活不会把计数加回来（见 [`Self::revive_alive`]），
     /// 直接用它判胜会把“某队被清空又被复活”的残局误判为已经分出胜负。
     pub(crate) fn sync_winner_from_alive_views(&mut self) -> Option<usize> {
-        let mut winner = None;
-        let mut alive_groups = 0usize;
-        for (team, alive) in self.team_alive.iter().enumerate() {
-            if alive.is_empty() {
-                continue;
-            }
-            alive_groups += 1;
-            if alive_groups == 1 {
-                winner = Some(team);
-            }
+        if self.winner_views_dirty {
+            self.recompute_winner_from_alive_views();
         }
-        self.winner_team = if alive_groups == 1 { winner } else { None };
         self.winner_team
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn recompute_winner_from_alive_views(&mut self) {
+        let mut alive_teams = self.team_alive.iter().enumerate().filter(|(_, alive)| !alive.is_empty());
+        self.winner_team = alive_teams.next().and_then(|(first, _)| alive_teams.next().is_none().then_some(first));
+        self.winner_views_dirty = false;
     }
 
     pub fn winner_team(&self) -> Option<usize> { self.winner_team }
@@ -445,6 +453,25 @@ impl WorldArena {
 mod tests {
     use super::*;
     use crate::runtime::{EntityArena, PlayerTemplate};
+
+    #[test]
+    fn entity_winner_scan_does_not_replace_alive_view_result() {
+        let mut entities = EntityArena::from_templates(vec![
+            PlayerTemplate::new(1, "left", 0, 10, 3),
+            PlayerTemplate::new(2, "right", 1, 10, 3),
+        ]);
+        let mut world = WorldArena::from_entities(&entities);
+        assert_eq!(world.sync_winner_from_alive_views(), None);
+
+        entities.get_mut(EntityIdx(0)).unwrap().runtime.alive = false;
+        assert_eq!(world.sync_winner(&entities), Some(1));
+        assert_eq!(world.sync_winner_from_alive_views(), None);
+
+        world.remove_alive(EntityIdx(0), 0);
+        assert_eq!(world.sync_winner_from_alive_views(), Some(1));
+        world.revive_alive(EntityIdx(0), 0);
+        assert_eq!(world.sync_winner_from_alive_views(), None);
+    }
 
     #[test]
     fn world_initializes_alive_views_in_team_order() {

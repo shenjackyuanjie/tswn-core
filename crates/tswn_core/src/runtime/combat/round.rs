@@ -17,11 +17,13 @@ impl CombatRuntime {
 
     #[cfg(test)]
     pub(crate) fn run_minimal_round_no_capture(&mut self) -> RoundOutcome {
-        self.world.sync_winner_from_alive_views();
+        if let Some(winner) = self.world.sync_winner_from_alive_views() {
+            return round_outcome(None, None, Some(winner));
+        }
         self.run_minimal_round_with_capture::<false, _>(round_outcome)
     }
 
-    /// 调用方已按存活视图判胜；批量循环只接收本回合的胜者编号。
+    /// 调用方已确认当前没有胜者；批量循环只接收本回合的胜者编号。
     pub(crate) fn run_active_round_no_capture(&mut self) -> Option<usize> {
         self.run_minimal_round_with_capture::<false, _>(|_, _, winner| winner)
     }
@@ -34,6 +36,9 @@ impl CombatRuntime {
             if let Some(outcome) = self.run_minimal_round_once_with_capture::<CAPTURE_UPDATES, _>(&build) {
                 return outcome;
             }
+            if !CAPTURE_UPDATES && let Some(winner) = self.world.winner_team() {
+                return build(None, None, Some(winner));
+            }
         }
     }
 
@@ -45,13 +50,8 @@ impl CombatRuntime {
         &mut self,
         build: impl FnOnce(Option<ActionPlan>, Option<RuntimeFrame>, Option<usize>) -> O,
     ) -> Option<O> {
-        let winner_team = if CAPTURE_UPDATES {
-            self.world.sync_winner(&self.entities)
-        } else {
-            self.world.winner_team()
-        };
-        if let Some(winner_team) = winner_team {
-            return Some(build(None, None, Some(winner_team)));
+        if CAPTURE_UPDATES && let Some(winner) = self.world.sync_winner(&self.entities) {
+            return Some(build(None, None, Some(winner)));
         }
 
         let selected_action = self.scheduler.select_action(&mut self.world, &mut self.entities, &mut self.rng);

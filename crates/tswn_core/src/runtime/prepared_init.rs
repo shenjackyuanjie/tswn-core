@@ -389,6 +389,7 @@ pub struct PreparedBattleRoster {
     input_groups: Vec<Vec<PlrId>>,
     base_names_sorted: Vec<String>,
     profile_seed_rc4_prefix: Option<Rc4KeySchedulePrefix>,
+    small_team_identity_keys: Option<Box<[String]>>,
     id_key_names: Vec<String>,
     sorted_by_id_name: Vec<PlrId>,
     recycle_score_buffers: bool,
