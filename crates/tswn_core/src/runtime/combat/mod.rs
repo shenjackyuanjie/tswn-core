@@ -10,6 +10,8 @@ use super::*;
 #[cfg(feature = "cards")]
 mod abilities;
 mod attack;
+mod boss_thanos;
+mod boss_wheel;
 mod defense;
 mod effects;
 mod infection;
@@ -88,6 +90,12 @@ pub enum PreparedPlainAction {
     },
     Conan {
         targets: PreparedTargetList,
+    },
+    ThanosSnap {
+        targets: PreparedTargetList,
+    },
+    WheelExchange {
+        target: EntityIdx,
     },
     BuiltinSkill(PreparedBuiltinSkillAction),
     BossSkill(PreparedBossSkillAction),

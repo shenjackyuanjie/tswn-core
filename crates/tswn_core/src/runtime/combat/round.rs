@@ -184,6 +184,14 @@ impl CombatRuntime {
                         action.target = targets.first().copied().unwrap_or(action.actor);
                         action.amount = 0;
                     }
+                    PreparedPlainAction::ThanosSnap { targets } => {
+                        action.target = targets.first().copied().unwrap_or(action.actor);
+                        action.amount = 0;
+                    }
+                    PreparedPlainAction::WheelExchange { target } => {
+                        action.target = *target;
+                        action.amount = 0;
+                    }
                     PreparedPlainAction::BuiltinSkill(prepared) => {
                         if forced_pre_action_skill {
                             action.target = action.actor;
@@ -246,6 +254,12 @@ impl CombatRuntime {
                 }
                 Some(PreparedPlainAction::Conan { targets }) => {
                     self.drain_plain_conan_action_into(action.actor, targets, &mut updates);
+                }
+                Some(PreparedPlainAction::ThanosSnap { targets }) => {
+                    self.drain_plain_thanos_snap_into(action.actor, targets, &mut updates);
+                }
+                Some(PreparedPlainAction::WheelExchange { target }) => {
+                    self.drain_plain_wheel_exchange_into(action.actor, target, &mut updates);
                 }
                 Some(PreparedPlainAction::BuiltinSkill(_)) => {
                     unreachable!("builtin skill actions are handled before the default action branch")
@@ -636,6 +650,16 @@ impl CombatRuntime {
                     return None;
                 }
                 return Some(PreparedPlainAction::Conan { targets });
+            }
+            if boss_name == super::boss_thanos::ID {
+                if let Some(targets) = self.select_plain_thanos_snap_targets(actor) {
+                    return Some(PreparedPlainAction::ThanosSnap { targets });
+                }
+            }
+            if boss_name == super::boss_wheel::ID {
+                if let Some(target) = self.select_plain_wheel_exchange_target(actor) {
+                    return Some(PreparedPlainAction::WheelExchange { target });
+                }
             }
             let target = self.select_plain_default_attack_target(actor, smart)?;
             // SklAttack 在 smart、魔法高于攻击且扫描技能后蓝量足够时改走魔法攻击。

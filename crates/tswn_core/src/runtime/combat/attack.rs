@@ -813,6 +813,7 @@ impl CombatRuntime {
         let Some(amount) = defend_value.damage() else {
             panic!("runtime POST_DEFEND hooks must leave a damage value");
         };
+        self.apply_wheel_post_defend_spsum(target, amount);
         #[cfg(not(feature = "no_debug"))]
         if debug_attack {
             eprintln!(

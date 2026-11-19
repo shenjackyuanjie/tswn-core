@@ -51,6 +51,7 @@ impl CombatRuntime {
             let Some(amount) = defend_value.damage() else {
                 panic!("runtime POST_DEFEND hooks must leave a damage value");
             };
+            self.apply_wheel_post_defend_spsum(target, amount);
             if self.apply_plain_legacy_damage_into(caster, target, amount, updates) {
                 self.drain_plain_lethal_damage_into(caster, target, updates);
             } else if amount > 0 {
@@ -209,6 +210,7 @@ impl CombatRuntime {
                         let Some(amount) = defend_value.damage() else {
                             panic!("runtime POST_DEFEND hooks must leave a damage value");
                         };
+                        self.apply_wheel_post_defend_spsum(target, amount);
                         if self.apply_plain_legacy_damage_into(caster, target, amount, updates) {
                             self.drain_plain_lethal_damage_into(caster, target, updates);
                         } else if amount > 0 {
@@ -267,6 +269,7 @@ impl CombatRuntime {
                     let Some(amount) = defend_value.damage() else {
                         panic!("runtime POST_DEFEND hooks must leave a damage value");
                     };
+                    self.apply_wheel_post_defend_spsum(target, amount);
                     if self.apply_disperse_attack_damage_into(caster, target, amount, updates) {
                         self.drain_plain_lethal_damage_into(caster, target, updates);
                     }
