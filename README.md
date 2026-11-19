@@ -7,6 +7,7 @@
 ## 当前状态
 
 - 核心 crate 当前版本为 `tswn_core 0.7.1`。本版加快普通 1v1、2v2 批量胜率计算，并保持逐 seed 战斗结果一致。版本明细见 [核心更新日志](crates/tswn_core/CHANGELOG.md#071---2026-11-19)。
+- 主分支继续减少固定阵容胜率计算的 seed 准备与判胜开销。普通 1v1、2v2 继续逐 seed 对齐，详见 [未发布的胜率优化](crates/tswn_core/CHANGELOG.md#固定阵容胜率)。
 - CLI 已覆盖普通对战、JSONL 流式日志、runtime diff 输出、benchmark、图标导出、DIY/OL overlay 导出等常用入口。
 - 仓库内同时维护 Python、WASM、C ABI、Openbox GUI/CLI，以及 `ds4` 数据处理与 `tswn-pwp` 胜率数据集/特征编码工具。
 - 当前仍处在“行为兼容 + 差分追踪 + 性能整理”的开发状态，不是只提供稳定 SDK 的纯发布仓库。

@@ -65,9 +65,10 @@ echo '<your raw input>' | ./target/release/tswn-cli fight
 ```
 
 `teams.txt` 每行一队，队内默认用 `+` 分隔，例如第一行写 `mario+luigi`，第二行写
-`peach+toad`。固定同一阵容和 `-n` 时，用
-`--single-thread` 或 `--thread 8` 计算的是同一批 seed，胜率按实际完成的对局计数。
-直接对比总耗时可使用上面的命令，查看初始化和战斗阶段耗时可加 `--perf`。
+`peach+toad`。固定同一阵容和 `-n` 时，`--single-thread` 和 `--thread 8` 使用
+同一批 seed，输出胜场数、计入统计的局数和胜率。对比不同构建的总耗时，使用同一份输入、
+场数和固定线程数。需要拆分初始化和战斗耗时时，再用 `--perf` 单独采集。
+批量路径的逐 seed 验证与测速口径见 [核心更新日志](CHANGELOG.md#固定阵容胜率)。
 
 `fight --jsonl` 逐行输出 initial/frame/result 并立即 flush；评分和胜率使用明确的 `bench` 子命令。CLI 不再提供 `--runtime` 执行器选择器或 `runtime parity`。
 
