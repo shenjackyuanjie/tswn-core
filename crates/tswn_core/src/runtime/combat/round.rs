@@ -1,4 +1,5 @@
 use super::*;
+mod search;
 use crate::runtime::control::TargetWisdom;
 use crate::runtime::forced_action::ForcedFallback;
 
@@ -38,7 +39,6 @@ impl PlannedTargeting {
 impl CombatRuntime {
     pub fn run_minimal_round(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture::<true, _>(round_outcome) }
 
-    #[cfg(test)]
     pub(crate) fn run_minimal_round_no_capture(&mut self) -> RoundOutcome {
         if let Some(winner) = self.world.sync_winner_from_alive_views() {
             return round_outcome(None, None, Some(winner));
@@ -533,6 +533,9 @@ impl CombatRuntime {
             });
         }
 
+        if self.scratch.search_turn.is_some() {
+            return self.prepare_search_action(actor, smart);
+        }
         #[cfg(not(feature = "no_debug"))]
         let rng_before = (self.rng.i, self.rng.j);
         let req_mp_byte = self.rng.next_u8();

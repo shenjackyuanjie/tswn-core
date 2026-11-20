@@ -151,6 +151,10 @@ export async function createBattleStreamSource(rawInput, versionInfo, coreVersio
         }
     }
     try {
+        if (options.strategy === "search") {
+            if (typeof session.set_search !== "function") throw new Error("当前引擎未提供 Clever 搜索，请刷新页面加载新版。");
+            session.set_search(16, 128, 4, 1);
+        }
         const initialStates = session.initial_states();
         captureResult();
         options.metrics?.sessionCreated(performance.now() - createStart);

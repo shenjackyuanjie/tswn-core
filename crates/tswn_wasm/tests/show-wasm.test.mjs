@@ -143,3 +143,22 @@ test("canonical clips preserve multi-target recovery, death, delay and dynamic e
   assert.equal(players.get(3).minion_kind, "summon");
   assert.deepEqual(buildFrameRows({ states, updates: frame.updates }, 0, [], new Map()), []);
 });
+
+test("search strategy configures the session before reading initial state", async () => {
+  const fake = streamApi();
+  fake.api.BattleSession.prototype.set_search = function (...budget) {
+    fake.calls.budget = budget;
+    assert.equal(fake.calls.pulls, 0);
+  };
+  const source = await createBattleStreamSource("alpha", null, null, null, { api: fake.api, strategy: "search" });
+  assert.deepEqual(fake.calls.budget, [16, 128, 4, 1]);
+  assert.equal(fake.calls.pulls, 0);
+  source.dispose();
+  assert.equal(fake.calls.frees, 1);
+});
+
+test("search refuses stale WASM and releases its session", async () => {
+  const fake = streamApi();
+  await assert.rejects(createBattleStreamSource("alpha", null, null, null, { api: fake.api, strategy: "search" }), /Clever/);
+  assert.equal(fake.calls.frees, 1);
+});

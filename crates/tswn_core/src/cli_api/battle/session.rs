@@ -50,6 +50,22 @@ pub struct BattleSession {
 }
 
 impl BattleSession {
+    /// 在推进前选择搜索预算；受控对局不能同时交给搜索策略。
+    pub fn set_search(&mut self, config: crate::runtime::search::SearchConfig) -> CliApiResult<()> {
+        if self.driver.rounds_advanced != 0 || !self.driver.runner.runtime().control.controlled_teams().is_empty() {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "search requires an unstarted automatic battle".into(),
+            ));
+        }
+        if !(1..=32).contains(&config.samples) || !(1..=256).contains(&config.horizon) || !(1..=8).contains(&config.shortlist) {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "search budget: samples 1..32, horizon 1..256, shortlist 1..8".into(),
+            ));
+        }
+        self.driver.search = Some(config);
+        Ok(())
+    }
+
     /// 解析并初始化对局，不推进回合；空输入、零上限或非有限 eval_rq 返回错误。
     ///
     /// 未启用 `png_render` 时，请求 `include_icons=true` 返回 `UnsupportedOption`，
@@ -1891,5 +1907,78 @@ right@blue+ol:{"skills":{"heal":50},"name_factor_enabled":false}"#;
             )
             .is_err()
         );
+    }
+}
+
+#[cfg(test)]
+mod clever_search_tests {
+    use super::*;
+    use crate::runtime::search::SearchConfig;
+    const RAW: &str = "alpha@red\n\nbeta@blue\nseed:clever-check@!";
+
+    #[test]
+    fn search_session_matches_cpu_runtime_and_keeps_round_budget() {
+        let config = SearchConfig {
+            samples: 2,
+            horizon: 8,
+            ..SearchConfig::default()
+        };
+        let mut session = BattleSession::new(
+            RAW,
+            BattleOptions {
+                max_rounds: 12,
+                ..BattleOptions::default()
+            },
+        )
+        .unwrap();
+        let mut cpu = session.driver.runner.clone();
+        session.set_search(config).unwrap();
+        while session.next_frame().unwrap().is_some() {}
+        for _ in 0..session.driver.rounds_advanced {
+            cpu.runtime_mut().run_search_round(config);
+        }
+        assert_eq!(session.driver.runner.model_state().unwrap(), cpu.model_state().unwrap());
+        assert!(session.driver.rounds_advanced <= 12);
+        assert!(session.result().is_some());
+    }
+
+    #[test]
+    fn search_rejects_invalid_budget_and_late_configuration() {
+        let mut session = BattleSession::new(RAW, BattleOptions::default()).unwrap();
+        assert!(
+            session
+                .set_search(SearchConfig {
+                    samples: 0,
+                    ..SearchConfig::default()
+                })
+                .is_err()
+        );
+        assert!(
+            session
+                .set_search(SearchConfig {
+                    horizon: 257,
+                    ..SearchConfig::default()
+                })
+                .is_err()
+        );
+        assert!(
+            session
+                .set_search(SearchConfig {
+                    shortlist: 9,
+                    ..SearchConfig::default()
+                })
+                .is_err()
+        );
+        session.next_frame().unwrap();
+        assert!(session.set_search(SearchConfig::default()).is_err());
+        let mut controlled = BattleSession::new(
+            RAW,
+            BattleOptions {
+                controlled_team: Some(0),
+                ..BattleOptions::default()
+            },
+        )
+        .unwrap();
+        assert!(controlled.set_search(SearchConfig::default()).is_err());
     }
 }

@@ -51,3 +51,7 @@ git push gitea <branch>
 main 与 tag 同理（例如 `git push github main; git push gitea main`）。只推一边会让两个远端分叉，
 之后 fetch 会出现“本地看起来落后或领先”的假象，也会让 clone 来源不同的人看到不同历史。
 推送后可用 `git ls-remote github <ref>` 与 `git ls-remote gitea <ref>` 核对两边指向同一个 commit。
+
+## Clever 独立发布约定
+
+本工作目录的 Clever 引擎和前端以这里发布到 KODU16/tswn-core-clever main 的修改为准，不自动跟随或合并上游主仓库。功能修改完成后验证并发布 Clever main，前端与 WASM 必须由同一提交构建。前端地址及同步机制见 docs/clever-search.md。本 fork 仅发布 origin，不推送 shenjackyuanjie 的 github/gitea remote；上文双 remote 规则适用于上游仓库。

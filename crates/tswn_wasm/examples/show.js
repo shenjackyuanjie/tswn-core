@@ -84,6 +84,9 @@ const coreVersionInfo = document.querySelector("#coreVersionInfo");
 /** @type {HTMLElement} */
 const modulePathInfo = document.querySelector("#modulePathInfo");
 /** @type {HTMLButtonElement} */
+const strategySelect = document.querySelector("#strategySelect");
+strategySelect.value = new URLSearchParams(window.location.search).get("strategy") === "legacy" ? "legacy" : "search";
+/** @type {HTMLButtonElement} */
 const startBtn = document.querySelector("#startBtn");
 /** @type {HTMLButtonElement} */
 const sampleBtn = document.querySelector("#sampleBtn");
@@ -357,6 +360,7 @@ function setInputStatus(message, isError = false) {
  */
 function setLoading(loading) {
   startBtn.disabled = loading;
+  strategySelect.disabled = loading;
   sampleBtn.disabled = loading;
 }
 
@@ -430,6 +434,7 @@ function showShareToast(message = "分享链接已复制") {
 function buildShareUrl(rawInput) {
   return buildShowShareUrl(rawInput, {
     href: window.location.href,
+    strategy: currentBattle?.strategy ?? strategySelect.value,
   });
 }
 
@@ -632,10 +637,10 @@ async function startBattle({ persistInput = true } = {}) {
 
   let source = null;
   try {
-    source = await createBattleStreamSource(rawInput, versionInfo, coreVersionInfo, modulePathInfo, { metrics: battleMetrics });
+    source = await createBattleStreamSource(rawInput, versionInfo, coreVersionInfo, modulePathInfo, { metrics: battleMetrics, strategy: strategySelect.value });
     if (generation !== battleGenerationToken) { source.dispose(); return; }
     currentBattle = {
-      raw_input: source.raw_input, seed_line: source.seed_line,
+      raw_input: source.raw_input, seed_line: source.seed_line, strategy: strategySelect.value,
       players: source.players, initial_states: source.initial_states,
       frames: [], result: null, source_done: false,
       winner_ids: [], final_states: source.initial_states,

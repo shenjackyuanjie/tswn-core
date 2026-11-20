@@ -53,7 +53,7 @@ export function encodeBase64UrlUtf8(input) {
  * @param {{ href: string }} options
  * @returns {string}
  */
-export function buildShowShareUrl(rawInput, { href }) {
+export function buildShowShareUrl(rawInput, { href, strategy }) {
   const url = new URL(href);
   for (const paramName of STATIC_INPUT_PARAM_NAMES) {
     url.searchParams.delete(paramName);
@@ -62,6 +62,7 @@ export function buildShowShareUrl(rawInput, { href }) {
     url.searchParams.delete(paramName);
   }
   url.searchParams.set("input", encodeBase64UrlUtf8(rawInput));
+  if (strategy) url.searchParams.set("strategy", strategy);
   url.hash = "";
   return url.href;
 }
