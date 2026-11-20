@@ -95,7 +95,7 @@ impl CombatRuntime {
         root_owner: EntityIdx,
         generation: u32,
     ) -> EntityIdx {
-        let (name_base, mut name_rand) = PreparedBattleInit::plain_minion_name_base(clan_name, name);
+        let (name_base, _) = PreparedBattleInit::plain_minion_name_base(clan_name, name);
         let attrs = slime_child_attrs(&name_base, generation);
         // legacy 在 updateStates() 里按 nameDens 缩放子体七围（体力不缩放）：
         // nameDens = max(evalStr(baseName), evalStr(clanName) - 6)，与主名单的 name_factor 同源。
@@ -120,15 +120,9 @@ impl CombatRuntime {
                 .registry
                 .skill_id_by_export_name(BuiltinActiveSkill::Heal.export_name())
                 .expect("default runtime profile must register core heal skill");
-            // 原版 build() 的 initSkills 会用名字底数第 64 项起的两组 4 字节
-            // 覆盖写死的等级：level = min(ss[64+4k..+4]) - 10，槽位顺序由名字 RC4 的 sortList 决定。
-            let levels: [u32; 2] = std::array::from_fn(|slot| {
-                let offset = 64 + slot * 4;
-                u32::from(name_base[offset..offset + 4].iter().copied().min().unwrap_or(0).saturating_sub(10))
-            });
-            let mut order = [0usize, 1];
-            name_rand.sort_list(&mut order);
-            SkillLoadout::from_skill_levels([(half, levels[order[0]]), (heal, levels[order[1]])])
+            // 子体沿用原版 Boss 的技能初始化和注册，不使用名字底数推导等级。
+            // 两项技能固定为 32 级，按半血、治疗的创建顺序扫描。
+            SkillLoadout::from_skill_levels([(half, 32), (heal, 32)])
         } else {
             SkillLoadout::default()
         };

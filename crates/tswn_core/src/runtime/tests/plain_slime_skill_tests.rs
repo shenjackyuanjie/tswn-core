@@ -17,17 +17,6 @@ fn slime_runtime() -> CombatRuntime {
     ))
 }
 
-pub(super) fn expected_slime_child_skill_levels() -> (u32, u32) {
-    let (name_base, mut rand) = PreparedBattleInit::plain_minion_name_base("slime", "slime");
-    let levels: [u32; 2] = std::array::from_fn(|slot| {
-        let offset = 64 + slot * 4;
-        u32::from(name_base[offset..offset + 4].iter().copied().min().unwrap_or(0).saturating_sub(10))
-    });
-    let mut order = [0usize, 1];
-    rand.sort_list(&mut order);
-    (levels[order[0]], levels[order[1]])
-}
-
 fn messages_of(updates: &RunUpdates) -> Vec<String> { updates.updates.iter().map(|update| update.message.to_string()).collect() }
 
 fn kill(runtime: &mut CombatRuntime, target: EntityIdx) { runtime.entities.get_mut(target).unwrap().runtime.hp = 0; }
@@ -141,10 +130,8 @@ fn slime_first_generation_splits_into_second_generation_with_half_and_heal() {
         assert_eq!(child.runtime.move_state.speed_points, speed);
         assert_slime_child_scaled(child, 2, 134);
         assert_eq!(child.template.skills.skills(), [half, heal]);
-        // 原版 initSkills 用名字底数第 64 项起的两组覆盖等级，槽位顺序由 sortList 决定。
-        let (half_level, heal_level) = expected_slime_child_skill_levels();
-        assert_eq!(child.template.skills.level_at(0), Some(half_level));
-        assert_eq!(child.template.skills.level_at(1), Some(heal_level));
+        assert_eq!(child.template.skills.level_at(0), Some(32));
+        assert_eq!(child.template.skills.level_at(1), Some(32));
     }
     assert_eq!(
         runtime.entities.get(EntityIdx(4)).unwrap().template.id_key_name,

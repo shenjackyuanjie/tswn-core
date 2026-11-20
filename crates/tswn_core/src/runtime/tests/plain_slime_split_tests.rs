@@ -229,9 +229,8 @@ fn slime_child_lethal_death_resplits_and_grandchildren_stop() {
         let entity = runtime.entities.get(child).unwrap();
         assert_eq!(entity.runtime.slime_split_generation, Some(2));
         assert_eq!(entity.template.skills.skills(), [half, heal]);
-        let (half_level, heal_level) = crate::runtime::tests::plain_slime_skill_tests::expected_slime_child_skill_levels();
-        assert_eq!(entity.template.skills.level_at(0), Some(half_level));
-        assert_eq!(entity.template.skills.level_at(1), Some(heal_level));
+        assert_eq!(entity.template.skills.level_at(0), Some(32));
+        assert_eq!(entity.template.skills.level_at(1), Some(32));
         assert_eq!(entity.template.max_hp, 134);
         assert!(entity.runtime.alive && entity.runtime.active());
     }
@@ -274,6 +273,96 @@ fn slime_split_ignores_live_and_foreign_entities() {
     kill(&mut runtime, EntityIdx(0));
     assert!(runtime.drain_plain_slime_split_into(EntityIdx(0), &mut updates));
     assert_eq!(runtime.entities.len(), 4);
+}
+
+#[test]
+fn slime_public_duel_uses_second_generation_skill_rng() {
+    let config = default_custom_runtime_import_config().unwrap();
+    let mut runner = RuntimeRunner::from_custom_mixed_namerena_raw("slime@!\n\nmario@!".to_owned(), config).unwrap();
+    let mut seen = 0;
+    for _ in 0..256 {
+        let Some(frame) = runner.run_round().frame else {
+            continue;
+        };
+        seen += 1;
+        let (caster, damage, expected_rng) = match seen {
+            // 原版第 16 批是二代子体跳过两项主动技能后的普攻，仍消耗技能概率随机数。
+            16 => ("slime?2@!", 61, (174, 137)),
+            17 => ("slime?0@!", 59, (204, 222)),
+            _ => continue,
+        };
+        let runtime = runner.runtime();
+        let attack = &frame.updates.updates[0];
+        assert_eq!(
+            runtime.entities.get(EntityIdx(attack.caster as u32)).unwrap().template.id_key_name,
+            caster
+        );
+        assert_eq!(frame.updates.updates[1].score, damage);
+        assert_eq!((runtime.rng.i, runtime.rng.j), expected_rng, "第 {seen} 个可见批次");
+        if seen == 17 {
+            break;
+        }
+    }
+    assert_eq!(seen, 17);
+}
+
+/// 奇数伤害由使魔向下取整分担；正好致死时先分裂，再由护身符复活。
+#[test]
+fn slime_summon_shared_damage_splits_before_reraise() {
+    let config = default_custom_runtime_import_config().unwrap();
+    let mut runner = RuntimeRunner::from_custom_mixed_namerena_raw("slime@!\n\nhero".to_owned(), config).unwrap();
+    let runtime = runner.runtime_mut();
+    let (slime, hero) = (EntityIdx(0), EntityIdx(1));
+    let reraise = runtime.registry.skill_id_by_export_name(DEFAULT_CORE_RERAISE_SKILL_EXPORT).unwrap();
+    runtime.entities.get_mut(slime).unwrap().template.skills = SkillLoadout::from_skill_levels([(reraise, 128)]);
+    runtime.drain_plain_summon_skill_into(slime, &mut RunUpdates::new());
+    let (summon, _) = runtime
+        .entities
+        .iter()
+        .find(|(_, entity)| entity.runtime.owner == slime && entity.runtime.flags.contains(PlayerKindFlags::SUMMON))
+        .expect("史莱姆的使魔应进入战场");
+    runtime.entities.get_mut(slime).unwrap().runtime.hp = 5;
+    runtime.entities.get_mut(summon).unwrap().runtime.hp = 20;
+    let before_order = runtime.world.round_order().to_vec();
+    let mut reference = runtime.rng.clone();
+    let child_speed = [reference.r255() as i32 * 4, reference.r255() as i32 * 4];
+    reference.r127(); // 护身符成功骰在两个子体之后消耗。
+    let revive_hp = reference.r16() as i32;
+
+    let mut updates = RunUpdates::new();
+    assert!(!runtime.apply_plain_attack_damage_into(hero, summon, 11, &mut updates));
+
+    assert_eq!((updates.updates[0].target, updates.updates[0].score), (summon.0 as usize, 11));
+    assert_eq!((updates.updates[1].target, updates.updates[1].score), (slime.0 as usize, 5));
+    let messages = messages_of(&updates);
+    assert_eq!(
+        &messages[2..8],
+        [
+            "\n",
+            "[1]被击倒了",
+            "\n",
+            get_lang(keys::SKL_SLIME_SPAWN),
+            get_lang(keys::SKL_SLIME_SPAWNED),
+            "[0]使用[护身符]抵挡了一次死亡",
+        ]
+    );
+    let boss = runtime.entities.get(slime).unwrap();
+    assert!(boss.runtime.alive);
+    assert_eq!((boss.runtime.hp, revive_hp), (11, 11));
+    assert_eq!(boss.runtime.corpse, RuntimeCorpseKind::Slime);
+    let summon = &runtime.entities.get(summon).unwrap().runtime;
+    assert!(summon.alive);
+    assert_eq!(summon.hp, 9);
+    let children = children_of(runtime, 1);
+    assert_eq!(children.len(), 2);
+    assert_eq!(child_speed, [192, 276]);
+    for (&child, speed) in children.iter().zip(child_speed) {
+        let child = &runtime.entities.get(child).unwrap().runtime;
+        assert_eq!((child.hp, child.move_state.speed_points), (218, speed));
+    }
+    assert_eq!(runtime.world.round_order(), [&before_order[..], &children].concat());
+    assert_eq!(runtime.world.alive_group_count(), 2);
+    assert_rng_state_eq(&runtime.rng, &reference);
 }
 
 /// 护身符复活不会摘掉分裂钩子：第二次死亡会再分裂一对。
