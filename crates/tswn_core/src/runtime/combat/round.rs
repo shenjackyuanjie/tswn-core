@@ -251,7 +251,7 @@ impl CombatRuntime {
         );
         let terminal_plain_action = if state_intercepted_action {
             // PRE_ACTION 状态钩子接管本次行动后，legacy 仍会继续执行恢复和完整的行动后链。
-            legacy_plain_action && !self.has_alive_enemy_or_pending_spawn(action.actor)
+            legacy_plain_action && self.plain_battle_has_ended()
         } else if builtin_plain_action {
             match prepared_plain_action.take() {
                 Some(PreparedPlainAction::BuiltinSkill(prepared)) => {
@@ -262,7 +262,7 @@ impl CombatRuntime {
                 }
                 _ => unreachable!("builtin action marker must retain the prepared action"),
             }
-            legacy_plain_action && !self.has_alive_enemy_or_pending_spawn(action.actor)
+            legacy_plain_action && self.plain_battle_has_ended()
         } else {
             self.drain_action_damage_phase_into(action.actor, ProcMask::PRE_DAMAGE, &mut updates);
             match prepared_plain_action.take() {
@@ -303,8 +303,10 @@ impl CombatRuntime {
                     self.drain_effects_into(&mut updates);
                 }
             }
-            let terminal_plain_action = legacy_plain_action && !self.has_alive_enemy_or_pending_spawn(action.actor);
-            self.drain_action_damage_phase_into(action.actor, ProcMask::POST_DAMAGE, &mut updates);
+            let terminal_plain_action = legacy_plain_action && self.plain_battle_has_ended();
+            if !terminal_plain_action {
+                self.drain_action_damage_phase_into(action.actor, ProcMask::POST_DAMAGE, &mut updates);
+            }
             terminal_plain_action
         };
         if !terminal_plain_action {
@@ -318,8 +320,10 @@ impl CombatRuntime {
                 updates.add_newline();
             }
             self.drain_post_action_chain_into(action.actor, &mut updates);
+            if !legacy_plain_action || !self.plain_battle_has_ended() {
+                self.drain_plain_update_end_into(&mut updates);
+            }
         }
-        self.drain_plain_update_end_into(&mut updates);
         #[cfg(not(feature = "no_debug"))]
         if debug_tick {
             let actor = self

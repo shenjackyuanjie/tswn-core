@@ -211,7 +211,9 @@ enemy-b"
             !leaves,
             "damage={damages} minion={has_minion}"
         );
-        assert_eq!(runtime.entities.get(actor).unwrap().runtime.hp > 0, !leaves);
+        let actor_runtime = &runtime.entities.get(actor).unwrap().runtime;
+        assert!(actor_runtime.hp > 0);
+        assert_eq!(actor_runtime.alive, !leaves);
         assert_eq!(runtime.saitama_boss_state(actor).unwrap().0, if leaves { 0 } else { 1 });
     }
 }

@@ -790,13 +790,135 @@ impl CombatRuntime {
                     if round == 0.0 { 0 } else { 1 },
                 ));
                 let damage = self.drain_plain_attack_with_atp_into(actor, target, false, atp, updates);
-                if damage <= 0 {
+                // 原版 group.die 判胜时直接退出连击，不追加换行、也不抽取下一目标。
+                if damage <= 0 || self.plain_battle_has_ended() {
                     return;
                 }
                 updates.add_newline();
             }
             position = (position + self.rng.r3() as usize) % targets.len();
             round += 1.0;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn next_visible_batch(runner: &mut RuntimeRunner) -> (RuntimeFrame, Option<usize>) {
+        (0..128)
+            .filter_map(|_| {
+                let outcome = runner.run_round();
+                outcome.frame.map(|frame| (frame, outcome.winner_team))
+            })
+            .find(|(frame, _)| frame.updates.updates.iter().any(|update| !update.message.trim().is_empty()))
+            .expect("应在跳过纯空帧后产生下一可见批次")
+    }
+
+    fn visible_events(frame: &RuntimeFrame) -> Vec<(&str, u32)> {
+        frame
+            .updates
+            .updates
+            .iter()
+            .filter(|update| !update.message.trim().is_empty())
+            .map(|update| (update.message.as_ref(), update.score))
+            .collect()
+    }
+
+    fn assert_rapid_rng(runner: &RuntimeRunner, cursor: (u32, u32), expected_permutation: u64, context: &str) {
+        let rng = &runner.runtime().rng;
+        assert_eq!((rng.i, rng.j), cursor, "{context}");
+        let permutation = rng.main_val.iter().fold(0xcbf2_9ce4_8422_2325_u64, |digest, &byte| {
+            (digest ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+        });
+        assert_eq!(permutation, expected_permutation, "{context}");
+    }
+
+    #[test]
+    fn rapid_stops_on_the_winning_hit_before_drawing_next_target() {
+        // 原版 group.die 判胜时直接离开 Rapid.act，连带使魔消失后也一样。
+        for (raw, batch, damage, cursor, permutation, sonic_state, linked_summon) in [
+            (
+                "sonic@!\n\nalice",
+                2,
+                115,
+                (108, 17),
+                0x1371_d5ff_5e3a_a133,
+                (256, 977, 14),
+                false,
+            ),
+            (
+                "sonic@!\n\nBob",
+                4,
+                94,
+                (137, 72),
+                0x389e_6c08_1d26_0b4f,
+                (299, 4295, 33),
+                false,
+            ),
+            (
+                "saitama@!\n\nsonic@!\n\nalice",
+                22,
+                90,
+                (225, 42),
+                0xa6c2_0d32_1117_7029,
+                (299, 3645, 29),
+                true,
+            ),
+        ] {
+            let mut runner = RuntimeRunner::new_from_namerena_raw(raw.to_owned()).unwrap();
+            for _ in 1..batch {
+                let (_, winner) = next_visible_batch(&mut runner);
+                assert_eq!(winner, None, "{raw}");
+            }
+            let (frame, winner) = next_visible_batch(&mut runner);
+            let players = runner.player_snapshots();
+            let sonic = players.iter().find(|player| player.id_key_name == "sonic@!").unwrap();
+            assert_eq!(winner, Some(sonic.team_index), "{raw}");
+            assert_eq!(runner.alive_player_ids(), [sonic.id], "{raw}");
+            assert_eq!((sonic.hp, sonic.move_point, sonic.magic_point), sonic_state, "{raw}");
+
+            let mut events = vec![("[0]发起攻击", 0), ("[1]受到[2]点伤害", damage), ("[1]被击倒了", 50)];
+            if linked_summon {
+                events.push(("[1]消失了", 50));
+                let summon = players.iter().find(|player| player.id_key_name == "alice?0@alice").unwrap();
+                assert_eq!((summon.alive, summon.hp), (false, 0), "{raw}");
+            }
+            assert_eq!(visible_events(&frame), events, "{raw}");
+            assert_rapid_rng(&runner, cursor, permutation, raw);
+            assert_eq!(
+                frame.updates.updates.last().unwrap().message.as_ref(),
+                events.last().unwrap().0,
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn rapid_continues_after_a_nonterminal_knockout_or_revive() {
+        let mut runner = RuntimeRunner::new_from_namerena_raw("sonic@!\n\nAlice\n\nmario@!".to_owned()).unwrap();
+        for batch in 1..=19 {
+            let (frame, winner) = next_visible_batch(&mut runner);
+            assert_eq!(winner, None);
+            let (damage, hp, cursor, permutation) = match batch {
+                12 => (30, 356, (177, 119), 0x5aa7_4049_efc3_9355),
+                19 => (17, 369, (124, 235), 0x5efc_7fa0_31e9_aa5d),
+                _ => continue,
+            };
+            let events = visible_events(&frame);
+            let last_hit = [("[0][连击]", 1), ("[1]受到[2]点伤害", damage)];
+            let (earlier, last) = events.split_at(events.len() - last_hit.len());
+            assert!(earlier.contains(&("[1]被击倒了", 50)));
+            assert_eq!(earlier.contains(&("[0]满血复活", 0)), batch == 19);
+            assert_eq!(last, last_hit);
+            let mario = runner
+                .player_snapshots()
+                .into_iter()
+                .find(|player| player.id_key_name == "mario@!")
+                .unwrap();
+            assert_eq!((mario.alive, mario.hp), (true, hp));
+            assert_rapid_rng(&runner, cursor, permutation, "非终局连击");
         }
     }
 }

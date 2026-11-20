@@ -56,6 +56,10 @@ impl CombatRuntime {
             return true;
         }
 
+        self.has_pending_spawn_outside_team(caster_team)
+    }
+
+    fn has_pending_spawn_outside_team(&self, team: usize) -> bool {
         self.effects.iter().any(|effect| {
             let owner = match effect {
                 QueuedEffect::Spawn { caster, .. }
@@ -63,8 +67,15 @@ impl CombatRuntime {
                 | QueuedEffect::SpawnWithMessage { caster, .. } => *caster,
                 _ => return false,
             };
-            self.entities.get(owner).is_some_and(|entity| entity.runtime.team != caster_team)
+            self.entities.get(owner).is_some_and(|entity| entity.runtime.team != team)
         })
+    }
+
+    /// 判胜按真实存活队伍；被魅惑者也可能清空自己的原队。
+    pub(super) fn plain_battle_has_ended(&mut self) -> bool {
+        self.world
+            .sync_winner_from_alive_views()
+            .is_some_and(|winner| !self.has_pending_spawn_outside_team(winner))
     }
 
     pub fn should_run_kill_hooks(&self, caster: EntityIdx, killed_target: EntityIdx) -> bool {
