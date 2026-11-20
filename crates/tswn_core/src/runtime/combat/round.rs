@@ -669,7 +669,7 @@ impl CombatRuntime {
                 .name
                 .clone();
             if boss_name == "conan" {
-                let targets = self.select_plain_conan_targets(actor);
+                let targets = self.select_plain_conan_action_targets(actor, smart);
                 if targets.is_empty() {
                     return None;
                 }

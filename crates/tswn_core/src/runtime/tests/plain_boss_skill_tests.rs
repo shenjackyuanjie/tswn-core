@@ -618,6 +618,112 @@ fn conan_runtime(heroes: usize, minions: usize) -> CombatRuntime {
     CombatRuntime::from_template(PreparedCombatTemplate::with_registry(templates, builder.build()))
 }
 
+fn next_conan_duel_frame(runner: &mut RuntimeRunner) -> RoundOutcome {
+    (0..64)
+        .map(|_| runner.run_round())
+        .find(|outcome| outcome.frame.is_some())
+        .expect("应产生可见回合")
+}
+
+#[test]
+fn boss_conan_public_duel_can_target_a_clone() {
+    let config = default_custom_runtime_import_config().unwrap();
+    let mut runner = RuntimeRunner::from_custom_mixed_namerena_raw("conan@!\n\nfighter22".to_owned(), config).unwrap();
+    next_conan_duel_frame(&mut runner);
+    next_conan_duel_frame(&mut runner);
+    let runtime = runner.runtime();
+    let (clone, _) = runtime
+        .entities
+        .iter()
+        .find(|(_, entity)| entity.template.id_key_name == "fighter22?0@fighter22")
+        .unwrap();
+    assert_eq!((runtime.rng.i, runtime.rng.j), (91, 202));
+
+    let frame = next_conan_duel_frame(&mut runner).frame.unwrap();
+    let hit = &frame.updates.updates[0];
+    assert_eq!(hit.message, get_lang(keys::SKL_CONAN_KILL));
+    assert_eq!(hit.target, clone.0 as usize);
+    let runtime = runner.runtime();
+    assert!(!runtime.entities.get(clone).unwrap().runtime.alive);
+    assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 141);
+    assert_eq!((runtime.rng.i, runtime.rng.j), (120, 209));
+    assert_eq!(
+        runtime.entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points,
+        1035
+    );
+    assert!(runner.run_until_winner(64).winner_team.is_some());
+    assert!(runner.input_group_won(0));
+}
+
+#[test]
+fn boss_conan_retries_smart_after_empty_ordinary_sample() {
+    let config = default_custom_runtime_import_config().unwrap();
+    let mut runner = RuntimeRunner::from_custom_mixed_namerena_raw("conan@!\n\nhero".to_owned(), config).unwrap();
+    let runtime = runner.runtime_mut();
+    let (conan, hero) = (EntityIdx(0), EntityIdx(1));
+    let summon_kind = runtime.registry.player_kind_id_by_export_name(DEFAULT_CORE_SUMMON_KIND_EXPORT).unwrap();
+    let team = runtime.entities.get(hero).unwrap().runtime.team;
+    // 与原版受控战斗相同：敌队先生成八只使魔，再推进四字节。
+    for idx in 0..8 {
+        let speed_points = runtime.rng.r255() as i32 * 4;
+        let summon = runtime.entities.spawn_from_template_with_owner(
+            PlayerTemplate::with_kind(0, format!("hero?{idx}"), summon_kind, team, 20, 1).with_speed_points(speed_points),
+            &runtime.registry,
+            Some(hero),
+            Some(hero),
+        );
+        runtime.world.add_spawned_alive(summon, team);
+    }
+    for _ in 0..4 {
+        runtime.rng.r255();
+    }
+    assert_eq!((runtime.rng.i, runtime.rng.j), (45, 3));
+
+    // 原版普通样本只抽到使魔，智能重抽才抽到 hero。
+    assert_eq!(runtime.select_plain_conan_action_targets(conan, false).as_slice(), &[hero]);
+    assert_eq!((runtime.rng.i, runtime.rng.j), (79, 45));
+}
+
+#[test]
+fn conan_public_duel_counts_mario_after_reraise() {
+    let config = default_custom_runtime_import_config().unwrap();
+    let mut runner = RuntimeRunner::from_custom_mixed_namerena_raw("conan@!\n\nmario@!".to_owned(), config).unwrap();
+    let (conan, mario) = (EntityIdx(0), EntityIdx(1));
+
+    // 原版公开对局：马里奥先吃蘑菇，柯南在首次受击之前累计了五份速度。
+    next_conan_duel_frame(&mut runner);
+    let runtime = runner.runtime();
+    assert_eq!(runtime.entities.get(conan).unwrap().runtime.move_state.speed_points, 1083);
+    assert_eq!((runtime.rng.i, runtime.rng.j), (50, 125));
+
+    // 初始速度过高会让柯南在马里奥第二次普通攻击前开始推理，并改变整个后续随机流。
+    for hp in [152, 91] {
+        assert_eq!(next_conan_duel_frame(&mut runner).action.unwrap().actor, mario);
+        assert_eq!(runner.runtime().entities.get(conan).unwrap().runtime.hp, hp);
+    }
+    assert_eq!(next_conan_duel_frame(&mut runner).action.unwrap().actor, conan);
+    let growth = next_conan_duel_frame(&mut runner).frame.unwrap();
+    assert_eq!(growth.updates.updates[0].caster, mario.0 as usize);
+    assert_eq!(growth.updates.updates[0].message, get_lang(keys::BOSS_MARIO_GROW_20));
+
+    let outcome = next_conan_duel_frame(&mut runner);
+    assert_eq!(outcome.action.unwrap().actor, conan);
+    let messages = messages_of(&outcome.frame.unwrap().updates);
+    assert!(
+        messages
+            .windows(3)
+            .any(|window| window == ["[1]被击倒了", "[0]满血复活", "[0]还剩[2]条命"])
+    );
+    let runtime = runner.runtime();
+    let revived = &runtime.entities.get(mario).unwrap().runtime;
+    assert_eq!((revived.hp, revived.mario_reraise_lives), (386, Some(2)));
+    assert_eq!(revived.move_state.speed_points, 2109);
+    assert_eq!(runtime.entities.get(conan).unwrap().runtime.move_state.speed_points, 1083);
+    assert_eq!((runtime.rng.i, runtime.rng.j), (147, 29));
+    assert!(next_conan_duel_frame(&mut runner).winner_team.is_some());
+    assert!(runner.input_group_won(1));
+}
+
 #[test]
 fn boss_conan_kills_first_multi_target_and_charges_speed_by_group_size() {
     let mut runtime = conan_runtime(2, 0);

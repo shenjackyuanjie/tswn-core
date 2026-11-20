@@ -215,12 +215,34 @@ impl CombatRuntime {
         }
     }
 
-    /// `SklConan` 的目标选择：`gb8()` 让 smart 路径抽样 4 个目标，并排除召唤物。
-    ///
-    /// 抽到召唤物只计入无效次数，与 0.5.5 的 `as()` 过滤一致；
-    /// 重复或无效次数超过上限时提前返回当前结果。
+    /// 使用柯南的智能模式尝试抽取一组目标。
     pub fn select_plain_conan_targets(&mut self, actor: EntityIdx) -> PreparedTargetList {
-        let select_count = 4usize;
+        self.select_plain_conan_targets_in_mode(actor, true)
+    }
+
+    pub(in crate::runtime) fn select_plain_conan_action_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
+        let mut targets = self.select_plain_conan_targets_in_mode(actor, smart);
+        if targets.is_empty() {
+            let team = self.plain_effective_team(actor);
+            // 原版只在初次选敌返回空时转为智能重抽。扩展玩法可以只剩战斗使魔，
+            // 这种情况下没有合法目标，返回空以免一直重试。
+            if self.world.flat_alive().iter().any(|&enemy| {
+                self.entities
+                    .get(enemy)
+                    .is_some_and(|entity| entity.runtime.team != team && !entity.runtime.is_combat_minion())
+            }) {
+                while targets.is_empty() {
+                    targets = self.select_plain_conan_targets_in_mode(actor, true);
+                }
+            }
+        }
+        targets
+    }
+
+    /// 普通模式抽样 3 个目标并掷评分，智能模式抽样 4 个目标。
+    /// 抽到战斗使魔只计入无效次数，分身仍是合法目标。
+    fn select_plain_conan_targets_in_mode(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
+        let select_count = if smart { 4 } else { 3 };
         let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
@@ -249,7 +271,7 @@ impl CombatRuntime {
                 return PreparedTargetList::new();
             };
             let target = all_alive[picked];
-            if self.entities.get(target).is_some_and(|entity| entity.runtime.is_minion()) {
+            if self.entities.get(target).is_some_and(|entity| entity.runtime.is_combat_minion()) {
                 invalid_count += 1;
                 continue;
             }
@@ -267,7 +289,7 @@ impl CombatRuntime {
         }
         let mut scored = selected
             .into_iter()
-            .map(|target| (target, self.score_plain_default_enemy_target(target, true)))
+            .map(|target| (target, self.score_plain_default_enemy_target(target, smart)))
             .collect::<smallvec::SmallVec<[(EntityIdx, f64); 8]>>();
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.into_iter().map(|(target, _)| target).collect()
