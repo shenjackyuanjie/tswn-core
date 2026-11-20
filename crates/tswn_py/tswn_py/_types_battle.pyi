@@ -79,6 +79,9 @@ class BattleReplayFrame(TypedDict):
     states: list[BattlePlayerState]
     total_delay: int
 
+class BattleDamageParam(TypedDict):
+    damage: int
+
 class BattleUpdate(TypedDict):
     update_type: str
     tone: str
@@ -87,7 +90,9 @@ class BattleUpdate(TypedDict):
     caster_id: int | None
     target_id: int | None
     target_ids: list[int]
+    animation_target_ids: NotRequired[list[int]]
     param: int | None
+    param_payload: NotRequired[BattleDamageParam]
     score: int
     delay0: int
     delay1: int
