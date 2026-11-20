@@ -184,19 +184,8 @@ impl WeaponBuild {
 
     pub(crate) fn pre_upgrade(&mut self, raw_name_base: &[u8; 128], name_base: &mut [u8; 128]) {
         if self.kind == WeaponKind::BossEx {
-            // 0.5.5 `BossWeapon.cB`：与增益后的名字比较，差值不足 `32` 时补 `32`。
-            for offset in 7..10 {
-                let weapon = self.seed[offset] as i32;
-                let name = name_base[offset] as i32;
-                let delta = weapon - name;
-                name_base[offset] = if delta > 0 {
-                    (name + delta) as u8
-                } else if name < 32 {
-                    (name + 32) as u8
-                } else {
-                    name as u8
-                };
-            }
+            // BossEx 还强化 HP 名字三元组，但这组三槽不计入技能因子。
+            self.adjust_name_triplet(raw_name_base, name_base, 7);
         }
         if !self.kind.adjusts_name_triplets() {
             return;
@@ -212,13 +201,20 @@ impl WeaponBuild {
         let left = self.seed[offset] as i32 - raw_name_base[offset] as i32;
         let middle = self.seed[offset + 1] as i32 - raw_name_base[offset + 1] as i32;
         let right = self.seed[offset + 2] as i32 - raw_name_base[offset + 2] as i32;
-        if left > 0 && middle > 0 && right > 0 {
-            let target = offset + ((left + middle + right + 999) / 3) as usize;
-            if target < name_base.len() && target < self.seed.len() {
-                let delta = (self.seed[target] as i32 - name_base[target] as i32) / 2 + 1;
-                if delta > 0 {
-                    name_base[target] = (name_base[target] as i32 + delta) as u8;
+        if self.kind == WeaponKind::BossEx {
+            for (slot, &weapon) in name_base[offset..offset + 3].iter_mut().zip(&self.seed[offset..offset + 3]) {
+                if weapon > *slot {
+                    *slot = weapon;
+                } else if *slot < 32 {
+                    *slot += 32;
                 }
+            }
+        } else if left > 0 && middle > 0 && right > 0 {
+            // 原版用差值之和对 3 取余，在三元组内选一槽强化。
+            let target = offset + ((left + middle + right) % 3) as usize;
+            let delta = (self.seed[target] as i32 - name_base[target] as i32) / 2 + 1;
+            if delta > 0 {
+                name_base[target] = (name_base[target] as i32 + delta) as u8;
             }
         }
         left.abs() + middle.abs() + right.abs()

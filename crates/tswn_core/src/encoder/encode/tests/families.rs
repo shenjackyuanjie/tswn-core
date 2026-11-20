@@ -400,6 +400,8 @@ fn skill_bearing_battles_encode_end_to_end() {
         "e@red+protect\nf@red+upgrade\n\ng@blue+reflect\nh@blue+iron\nseed:s3",
         "i@red+clone\nj@red+shadow\n\nk@blue+summon\nl@blue+revive\nseed:s4",
         "m@red+charge\nn@red+accumulate\n\no@blue+hide\np@blue+assassinate\nseed:s5",
+        // 武器修正会使部分对局提前收尾，另加一局实际包含分身的普通对局保留覆盖。
+        "Charlie\nJohnny\n\nAlice\nBob",
     ];
     let encoder = encoder();
     let mut frames = 0;
