@@ -124,6 +124,7 @@ impl CombatRuntime {
         })
     }
 
+    /// Boss 的主动和被击传播检查感染历史，而非当前活跃株。
     pub fn has_covid_infection(&self, target: EntityIdx) -> bool {
         self.entities.get(target).is_some_and(|entity| {
             entity.states.may_contain(StatePayloadKind::CovidInfection)
@@ -275,16 +276,6 @@ impl CombatRuntime {
         mutation: i32,
         updates: &mut RunUpdates,
     ) -> bool {
-        if target == boss {
-            return false;
-        }
-        let boss_display = self
-            .entities
-            .get(boss)
-            .unwrap_or_else(|| panic!("unknown runtime covid boss entity: {}", boss.0))
-            .template
-            .display_name
-            .clone();
         let infection_state = self
             .registry
             .state_id_by_export_name(DEFAULT_CORE_COVID_INFECTION_STATE_EXPORT)
@@ -304,10 +295,10 @@ impl CombatRuntime {
                 else {
                     panic!("runtime covid infection key is occupied by a different state");
                 };
+                // 首次康复后永久接纳此前未见的新株，即使已有其他活跃株。
                 if !*recovered || mutation_set.contains(&mutation) {
                     false
                 } else {
-                    *recovered = false;
                     entries.push(CovidInfectionEntry { boss, mutation, days: 0 });
                     mutation_set.push(mutation);
                     true
@@ -326,9 +317,8 @@ impl CombatRuntime {
             return false;
         }
 
-        updates.add_with(|| {
-            crate::runtime::update::RunUpdate::new(format!("[1]感染了{boss_display}"), boss.0 as usize, target.0 as usize, 0)
-        });
+        self.entities.get_mut(target).unwrap().refresh_runtime_stats_from_template();
+        updates.add_with(|| RunUpdate::new_lang(lang::keys::SKL_COVID_HIT, boss.0 as usize, target.0 as usize, 0));
         let all_alive = self.world.flat_alive().to_vec();
         for entity_idx in all_alive {
             let delta = if entity_idx == target { 2048 } else { -256 };
@@ -342,48 +332,101 @@ impl CombatRuntime {
         true
     }
 
-    pub fn drain_covid_pneumonia_into(&mut self, owner: EntityIdx, boss: EntityIdx, mutation: i32, updates: &mut RunUpdates) {
-        if !self.entities.get(owner).is_some_and(|entity| entity.runtime.alive) {
-            return;
+    pub(super) fn drain_covid_strains_into(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
+        let mut index = 0;
+        loop {
+            let StatePayload::CovidInfection { entries, .. } = &self
+                .entities
+                .get(owner)
+                .unwrap()
+                .states
+                .entry(PLAIN_COVID_INFECTION_STATE_KEY)
+                .expect("runtime covid state must still exist")
+                .payload
+            else {
+                unreachable!("runtime covid infection key has an unexpected payload");
+            };
+            let Some(infection) = entries.get(index).copied() else {
+                return;
+            };
+            if infection.days > 1 && self.drain_covid_pneumonia_into(owner, infection.boss, infection.mutation, updates) {
+                // group.die 在终局中止原版回调，连当前株的康复解绑也不执行。
+                return;
+            }
+            if infection.days > 6 {
+                let target = self.entities.get_mut(owner).unwrap();
+                let StatePayload::CovidInfection { entries, recovered, .. } = &mut target
+                    .states
+                    .entry_mut(PLAIN_COVID_INFECTION_STATE_KEY)
+                    .expect("runtime covid state must still exist")
+                    .payload
+                else {
+                    unreachable!("runtime covid infection key has an unexpected payload");
+                };
+                entries.remove(index);
+                *recovered = true;
+                target.refresh_runtime_stats_from_template();
+            } else {
+                index += 1;
+            }
         }
-        let owner_name = self.entities.get(owner).unwrap().template.display_name.clone();
-        let atp = self.entities.get(owner).unwrap().runtime.get_at(true, &mut self.rng);
-        let defense = self.entities.get(owner).unwrap().runtime.magic_defense();
+    }
+
+    /// 返回肺炎是否导致战斗结束；非终局死亡仍允许逐株解绑。
+    pub fn drain_covid_pneumonia_into(
+        &mut self,
+        owner: EntityIdx,
+        boss: EntityIdx,
+        mutation: i32,
+        updates: &mut RunUpdates,
+    ) -> bool {
+        let target = self.entities.get(owner).unwrap();
+        let old_hp = target.runtime.hp;
+        if !target.runtime.alive || old_hp <= 0 {
+            return false;
+        }
+        let atp = target.runtime.get_at(true, &mut self.rng);
+        let defense = target.runtime.magic_defense();
         let damage = ((atp + f64::from(mutation * 80)) / f64::from(defense)).ceil() as i32;
         if damage <= 0 {
-            return;
+            return false;
         }
 
-        updates.add_with(|| {
-            crate::runtime::update::RunUpdate::new(format!(" {owner_name}肺炎发作"), boss.0 as usize, owner.0 as usize, 0)
-        });
-        let old_hp = self.entities.get(owner).unwrap().runtime.hp;
+        updates.add_with(|| RunUpdate::new_lang(lang::keys::SKL_COVID_DAMAGE, boss.0 as usize, owner.0 as usize, 0));
         let killed = self.apply_plain_attack_damage_with_covid_into(boss, owner, damage, None, updates);
-        let actual_damage = if killed { old_hp } else { damage };
         if killed {
             self.drain_plain_lethal_damage_into(boss, owner, updates);
+            if self.plain_battle_has_ended() {
+                return true;
+            }
         }
 
         let boss_entity = self.entities.get_mut(boss).unwrap();
-        if !boss_entity.runtime.alive || boss_entity.runtime.hp <= 0 || actual_damage <= 0 {
-            return;
+        if !boss_entity.runtime.alive || boss_entity.runtime.hp <= 0 {
+            return false;
         }
         let heal_amount = if boss_entity.runtime.hp >= boss_entity.template.max_hp {
-            ((damage >> 3) + 1).min(actual_damage)
+            (damage >> 3) + 1
         } else {
-            (damage >> 1).min(actual_damage)
-        };
-        // 肺炎回血不是普通治疗：满血时使用较小的恢复量，但允许溢出体力上限。
-        boss_entity.runtime.hp = boss_entity.runtime.hp.saturating_add(heal_amount);
-        let boss_display = boss_entity.template.display_name.clone();
+            damage >> 1
+        }
+        .min(old_hp);
+        // 满血时使用较小的恢复量，但允许溢出体力上限。
+        let before = boss_entity.runtime.hp;
+        let after = before.saturating_add(heal_amount);
+        boss_entity.runtime.hp = after;
         updates.add_with(|| {
-            crate::runtime::update::RunUpdate::new(
-                format!("{boss_display}回复体力{heal_amount}点"),
-                boss.0 as usize,
-                boss.0 as usize,
-                0,
-            )
+            let id = boss.0 as usize;
+            let mut update =
+                RunUpdate::new("[1]回复体力[2]点", id, id, 0).with_hp_changes([crate::runtime::update::RunUpdateHp {
+                    player: id,
+                    before,
+                    after,
+                }]);
+            update.param = Some(heal_amount as u32);
+            update
         });
+        false
     }
 
     pub fn drain_lazy_flare_into(&mut self, owner: EntityIdx, boss: EntityIdx, updates: &mut RunUpdates) {
@@ -489,6 +532,283 @@ mod tests {
     fn assert_rng(runtime: &CombatRuntime, expected: &crate::rc4::RC4) {
         assert_eq!((runtime.rng.i, runtime.rng.j), (expected.i, expected.j));
         assert_eq!(runtime.rng.main_val, expected.main_val);
+    }
+
+    #[test]
+    fn public_plant_recovers_then_accepts_two_strains_and_uses_the_latest() {
+        let names = (0..12).map(|index| format!("plant4x{index}")).collect::<Vec<_>>().join("\n");
+        let mut runner = RuntimeRunner::new_from_namerena_raw(format!("covid@!\n\n{names}")).unwrap();
+        let target = by_name(&runner.runtime, "plant4x11");
+        for number in 1..=40 {
+            let frame = next_visible(&mut runner);
+            if number < 39 {
+                continue;
+            }
+            let entity = runner.runtime.entities.get(target).unwrap();
+            let state = entity.states.entry(PLAIN_COVID_INFECTION_STATE_KEY).unwrap();
+            let StatePayload::CovidInfection {
+                entries,
+                mutation_set,
+                recovered,
+            } = &state.payload
+            else {
+                panic!("应有新冠状态");
+            };
+            assert!(*recovered);
+            assert_eq!(mutation_set.as_slice(), &[40, 29, 57]);
+            let active: Vec<_> = entries.iter().map(|strain| (strain.mutation, strain.days)).collect();
+            assert_eq!(active, [(29, 0), (57, i32::from(number == 40))]);
+            if number == 39 {
+                assert_eq!((runner.runtime.rng.i, runner.runtime.rng.j), (33, 11));
+                assert_eq!(entity.runtime.move_state.speed_points, 3606);
+                assert!(
+                    frame
+                        .updates
+                        .updates
+                        .iter()
+                        .any(|update| update.message.contains("感染了") && update.target == target.0 as usize)
+                );
+            } else {
+                assert_eq!((runner.runtime.rng.i, runner.runtime.rng.j), (57, 113));
+                assert_eq!(
+                    (
+                        entity.runtime.hp,
+                        entity.runtime.move_state.speed_points,
+                        entity.runtime.magic_point
+                    ),
+                    (57, 1558, 54)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn public_infection_action_skips_frozen_carriers_and_samples_the_sources_effective_team() {
+        let raw = "covid@!\n\nyuri@!\ncharm5x0\n\ncharm5x1\ncharm5x2\ncharm5x3\ncharm5x4\ncharm5x5\ncharm5x6\ncharm5x7\ncharm5x8";
+        let mut runner = RuntimeRunner::new_from_namerena_raw(raw.to_owned()).unwrap();
+        let carrier = by_name(&runner.runtime, "charm5x0");
+        let contact = by_name(&runner.runtime, "charm5x7");
+        for number in 1..=40 {
+            let frame = next_visible(&mut runner);
+            if number == 14 {
+                assert_eq!((runner.runtime.rng.i, runner.runtime.rng.j), (205, 23));
+                assert!(
+                    frame
+                        .updates
+                        .updates
+                        .iter()
+                        .any(|update| update.message.contains("感染了") && update.target == contact.0 as usize)
+                );
+            } else if number == 40 {
+                assert_eq!((runner.runtime.rng.i, runner.runtime.rng.j), (228, 130));
+                let entity = runner.runtime.entities.get(carrier).unwrap();
+                assert_eq!(
+                    (
+                        entity.runtime.hp,
+                        entity.runtime.move_state.speed_points,
+                        entity.runtime.magic_point
+                    ),
+                    (97, 136, 71)
+                );
+                assert!(
+                    frame
+                        .updates
+                        .updates
+                        .iter()
+                        .any(|update| update.message.contains("重症监护室") && update.target == carrier.0 as usize)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn public_charmed_covid_can_infect_itself() {
+        let mut runner = RuntimeRunner::new_from_namerena_raw("yuri@!\n\ncovid@!".to_owned()).unwrap();
+        let boss = runner.input_groups[1][0];
+        next_visible(&mut runner);
+        let frame = next_visible(&mut runner);
+        assert_eq!((runner.runtime.rng.i, runner.runtime.rng.j), (83, 30));
+        assert_eq!(runner.runtime.entities.get(boss).unwrap().runtime.hp, 255);
+        assert!(runner.runtime.has_covid_infection(boss));
+        assert!(
+            frame
+                .updates
+                .updates
+                .iter()
+                .any(|update| update.message.contains("感染了") && update.target == boss.0 as usize)
+        );
+    }
+
+    #[test]
+    fn public_terminal_pneumonia_stops_before_heal_and_recovery() {
+        let mut runner = RuntimeRunner::new_from_namerena_raw("covid@!\n\nd".to_owned()).unwrap();
+        let (boss, target) = (runner.input_groups[0][0], runner.input_groups[1][0]);
+        let frame = (0..4).map(|_| next_visible(&mut runner)).last().unwrap();
+        assert_eq!((runner.runtime.rng.i, runner.runtime.rng.j), (162, 194));
+        assert_eq!(runner.runtime.entities.get(boss).unwrap().runtime.hp, 355);
+        assert!(!frame.updates.updates.iter().any(|update| update.message.contains("回复体力")));
+        let state = runner
+            .runtime
+            .entities
+            .get(target)
+            .unwrap()
+            .states
+            .entry(PLAIN_COVID_INFECTION_STATE_KEY)
+            .unwrap();
+        let StatePayload::CovidInfection { entries, recovered, .. } = &state.payload else {
+            panic!("应有新冠状态");
+        };
+        assert!(!recovered);
+        assert_eq!(entries[0].days, 11);
+    }
+
+    #[test]
+    fn strain_recovery_preserves_history_and_ticks_in_registration_order() {
+        for (raw, dying, recovery_hp, recovery_rng, tick_hp, tick_rng, scores) in [
+            (
+                "covid@!\n\na",
+                false,
+                (9885, 382),
+                (32, 102),
+                (9707, 406),
+                (42, 158),
+                &[80, 98][..],
+            ),
+            ("covid@!\n\na\nb", true, (9915, 367), (39, 218), (0, 368), (44, 203), &[85][..]),
+        ] {
+            let mut runner = RuntimeRunner::new_from_namerena_raw(raw.to_owned()).unwrap();
+            let runtime = &mut runner.runtime;
+            let (boss, target) = (by_name(runtime, "covid@!"), by_name(runtime, "a"));
+            let mut updates = RunUpdates::new();
+            assert!(!runtime.apply_plain_legacy_damage_into(target, boss, 1, &mut updates));
+            runtime.entities.get_mut(target).unwrap().runtime.hp = 10_000;
+            assert!(
+                !runtime.infect_with_covid_into(boss, target, 41, &mut updates),
+                "首次康复前拒绝不同株"
+            );
+            set_strain_days(runtime, target, &[7]);
+            covid_post_action(runtime, target);
+            assert_eq!((hp(runtime, target), hp(runtime, boss)), recovery_hp);
+            assert_eq!((runtime.rng.i, runtime.rng.j), recovery_rng);
+            assert!(
+                !runtime.infect_with_covid_into(boss, target, 40, &mut updates),
+                "康复后仍拒绝见过的株"
+            );
+            assert!(runtime.infect_with_covid_into(boss, target, 41, &mut updates));
+            assert!(runtime.infect_with_covid_into(boss, target, 42, &mut updates));
+            assert!(!runtime.infect_with_covid_into(boss, target, 42, &mut updates));
+            set_strain_days(runtime, target, &[7, if dying { 7 } else { 2 }]);
+            if dying {
+                runtime.entities.get_mut(target).unwrap().runtime.hp = 1;
+            }
+            let updates = covid_post_action(runtime, target);
+            let damage: Vec<_> = updates.updates.iter().filter(|u| u.message.contains("点伤害")).map(|u| u.score).collect();
+            assert_eq!(damage, scores);
+            assert_eq!((hp(runtime, target), hp(runtime, boss)), tick_hp);
+            assert_eq!((runtime.rng.i, runtime.rng.j), tick_rng);
+            let state = runtime
+                .entities
+                .get(target)
+                .unwrap()
+                .states
+                .entry(PLAIN_COVID_INFECTION_STATE_KEY)
+                .unwrap();
+            let StatePayload::CovidInfection {
+                entries,
+                mutation_set,
+                recovered,
+            } = &state.payload
+            else {
+                panic!("应有新冠状态");
+            };
+            assert!(*recovered);
+            assert_eq!(mutation_set.as_slice(), &[40, 41, 42]);
+            let remaining: Vec<_> = entries.iter().map(|strain| (strain.mutation, strain.days)).collect();
+            // 非终局死亡会跳过第二次伤害及抽样，但照常注销两条过期钩子。
+            assert_eq!(remaining, if dying { &[][..] } else { &[(42, 2)][..] });
+        }
+    }
+
+    #[test]
+    fn charmed_carrier_spreads_by_original_team_not_effective_team() {
+        for (raw, same_team, message, candidate_hp, rng) in [
+            ("covid@!\n\ncarrier\ncandidate2", true, "[0]和[1]近距离接触", 265, (81, 129)),
+            ("covid@!\n\ncarrier\n\ncandidate2", false, "[0]发起攻击", 228, (88, 184)),
+        ] {
+            let mut runner = RuntimeRunner::new_from_namerena_raw(raw.to_owned()).unwrap();
+            let runtime = &mut runner.runtime;
+            let (boss, carrier, candidate) = (
+                by_name(runtime, "covid@!"),
+                by_name(runtime, "carrier"),
+                by_name(runtime, "candidate2"),
+            );
+            let mut updates = RunUpdates::new();
+            assert!(!runtime.apply_plain_legacy_damage_into(carrier, boss, 1, &mut updates));
+            let charm_source = if same_team { boss } else { candidate };
+            let effective = runtime.entities.get(charm_source).unwrap().runtime.team;
+            let charm = runtime.registry.state_id_by_export_name(DEFAULT_CORE_CHARM_STATE_EXPORT).unwrap();
+            assert!(runtime.entities.get_mut(carrier).unwrap().states.add_entry(StateEntry::charm(
+                PLAIN_CHARM_STATE_KEY,
+                charm,
+                charm_source.0 as usize,
+                Some(effective),
+                Some(effective),
+                Some(carrier.0),
+                2,
+                SkillPriority(100),
+            )));
+            let plan = runtime.scheduler.state_hook_plan(&runtime.entities, carrier, ProcMask::PRE_ACTION);
+            let mut updates = RunUpdates::new();
+            assert!(runtime.drain_state_hook_plan_with_action_smart_into(&plan, &mut updates, Some(true)));
+            let first = &updates.updates[0];
+            assert_eq!(
+                (first.message.as_ref(), first.caster, first.target),
+                (message, carrier.0 as usize, candidate.0 as usize)
+            );
+            assert_eq!(hp(runtime, candidate), candidate_hp);
+            assert_eq!((runtime.rng.i, runtime.rng.j), rng);
+        }
+    }
+
+    fn by_name(runtime: &CombatRuntime, name: &str) -> EntityIdx {
+        runtime.entities.iter().find(|(_, entity)| entity.template.id_key_name == name).unwrap().0
+    }
+
+    fn hp(runtime: &CombatRuntime, owner: EntityIdx) -> i32 { runtime.entities.get(owner).unwrap().runtime.hp }
+
+    fn set_strain_days(runtime: &mut CombatRuntime, owner: EntityIdx, days: &[i32]) {
+        let state = runtime
+            .entities
+            .get_mut(owner)
+            .unwrap()
+            .states
+            .entry_mut(PLAIN_COVID_INFECTION_STATE_KEY)
+            .unwrap();
+        let StatePayload::CovidInfection { entries, .. } = &mut state.payload else {
+            panic!("应有新冠状态");
+        };
+        assert_eq!(entries.len(), days.len());
+        for (strain, &days) in entries.iter_mut().zip(days) {
+            strain.days = days;
+        }
+    }
+
+    fn covid_post_action(runtime: &mut CombatRuntime, owner: EntityIdx) -> RunUpdates {
+        let plan = runtime.scheduler.state_hook_plan(&runtime.entities, owner, ProcMask::POST_ACTION);
+        let mut updates = RunUpdates::new();
+        runtime.drain_state_hook_plan_into(&plan, &mut updates);
+        updates
+    }
+
+    fn next_visible(runner: &mut RuntimeRunner) -> RuntimeFrame {
+        (0..512)
+            .find_map(|_| {
+                runner
+                    .run_round()
+                    .frame
+                    .filter(|frame| frame.updates.updates.iter().any(|update| !update.message.trim().is_empty()))
+            })
+            .expect("应有下一场战斗可见帧")
     }
 
     #[test]

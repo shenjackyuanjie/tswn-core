@@ -181,7 +181,7 @@ pub fn run_covid_infection_state(context: &mut StateContext<'_>, entry: &StateHo
     let Some(StatePayload::CovidInfection {
         mut entries,
         mut mutation_set,
-        mut recovered,
+        recovered,
     }) = context.owner_state_payload(entry.legacy_order_key)
     else {
         return;
@@ -204,13 +204,28 @@ pub fn run_covid_infection_state(context: &mut StateContext<'_>, entry: &StateHo
             }
         }
 
+        // 冻结检查在变异前钩子之后、选敌和替代动作之前。
+        if context.owner().is_some_and(|owner| owner.states.is_frozen()) {
+            context
+                .set_owner_state_payload_without_refresh(
+                    entry.legacy_order_key,
+                    StatePayload::CovidInfection {
+                        entries,
+                        mutation_set,
+                        recovered,
+                    },
+                )
+                .expect("runtime covid state payload must still exist");
+            return;
+        }
+
         let last_idx = entries.len() - 1;
         let boss = entries[last_idx].boss;
         let mutation = entries[last_idx].mutation;
         let days = entries[last_idx].days;
         let all_alive = context.flat_alive().expect("runtime covid state must read the complete alive list");
 
-        let boss_team = context.entity(boss).expect("runtime covid boss must exist").runtime.team;
+        let boss_team = context.effective_team(boss).expect("runtime covid boss must exist");
         let skip_indices = all_alive
             .iter()
             .enumerate()
@@ -222,8 +237,7 @@ pub fn run_covid_infection_state(context: &mut StateContext<'_>, entry: &StateHo
         let select_count = if smart { 3 } else { 2 };
         let mut selected = Vec::with_capacity(select_count);
         let mut duplicate_count = 0usize;
-        let invalid_count = -(select_count as i32);
-        while duplicate_count <= select_count && invalid_count <= select_count as i32 {
+        while duplicate_count <= select_count {
             let picked = if skip_indices.is_empty() {
                 context.rng_pick_entity(&all_alive)
             } else {
@@ -293,7 +307,7 @@ pub fn run_covid_infection_state(context: &mut StateContext<'_>, entry: &StateHo
                     }
                 };
                 context
-                    .set_owner_state_payload(
+                    .set_owner_state_payload_without_refresh(
                         entry.legacy_order_key,
                         StatePayload::CovidInfection {
                             entries,
@@ -310,18 +324,18 @@ pub fn run_covid_infection_state(context: &mut StateContext<'_>, entry: &StateHo
 
         entries[last_idx].days += i32::from(context.rng_next_u8() & 3);
         let message = if entries[last_idx].days > 2 {
-            "[1]在重症监护室无法行动"
+            crate::runtime::lang::keys::SKL_COVID_ICU
         } else {
-            "[1]在家中自我隔离"
+            crate::runtime::lang::keys::SKL_COVID_STAY_HOME
         };
-        context.add_update(crate::runtime::update::RunUpdate::new(
+        context.add_update(crate::runtime::update::RunUpdate::new_lang(
             message,
             boss.0 as usize,
             owner.0 as usize,
             0,
         ));
         context
-            .set_owner_state_payload(
+            .set_owner_state_payload_without_refresh(
                 entry.legacy_order_key,
                 StatePayload::CovidInfection {
                     entries,
@@ -335,31 +349,9 @@ pub fn run_covid_infection_state(context: &mut StateContext<'_>, entry: &StateHo
     }
 
     if context.hook().intersects(ProcMask::POST_ACTION) {
-        let owner = context.owner_idx();
-        let alive = context.owner().is_some_and(|entity| entity.runtime.alive);
-        for infection in &entries {
-            if alive && infection.days > 1 {
-                context.push(QueuedEffect::CovidPneumonia {
-                    owner,
-                    boss: infection.boss,
-                    mutation: infection.mutation,
-                });
-            }
-        }
-        entries.retain(|infection| infection.days <= 6);
-        if entries.is_empty() && !recovered {
-            recovered = true;
-        }
-        context
-            .set_owner_state_payload(
-                entry.legacy_order_key,
-                StatePayload::CovidInfection {
-                    entries,
-                    mutation_set,
-                    recovered,
-                },
-            )
-            .expect("runtime covid state payload must still exist");
+        context.push(QueuedEffect::CovidPneumonia {
+            owner: context.owner_idx(),
+        });
     }
 }
 

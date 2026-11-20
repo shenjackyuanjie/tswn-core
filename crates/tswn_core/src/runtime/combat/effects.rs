@@ -296,9 +296,7 @@ impl CombatRuntime {
                     self.ensure_effect_entity("covid-contact", "owner", owner);
                     self.ensure_effect_entity("covid-contact", "candidate", candidate);
                     self.ensure_effect_entity("covid-contact", "boss", boss);
-                    let owner_name = self.entities.get(owner).unwrap().template.display_name.clone();
                     let candidate_entity = self.entities.get(candidate).unwrap();
-                    let candidate_name = candidate_entity.template.display_name.clone();
                     let wisdom = candidate_entity.runtime.wisdom;
                     let threshold = if candidate_entity.template.covid_mask {
                         wisdom.saturating_add(192)
@@ -306,21 +304,11 @@ impl CombatRuntime {
                         wisdom >> 1
                     };
                     updates.add_with(|| {
-                        crate::runtime::update::RunUpdate::new(
-                            format!("{owner_name}和{candidate_name}近距离接触"),
-                            owner.0 as usize,
-                            candidate.0 as usize,
-                            0,
-                        )
+                        RunUpdate::new_lang(lang::keys::SKL_COVID_INFECT, owner.0 as usize, candidate.0 as usize, 0)
                     });
                     if i32::from(self.rng.next_u8()) < threshold {
                         updates.add_with(|| {
-                            crate::runtime::update::RunUpdate::new(
-                                format!("但{candidate_name}没被感染"),
-                                owner.0 as usize,
-                                candidate.0 as usize,
-                                0,
-                            )
+                            RunUpdate::new_lang(lang::keys::SKL_COVID_PREVENT, owner.0 as usize, candidate.0 as usize, 0)
                         });
                     } else {
                         self.infect_with_covid_into(boss, candidate, mutation, updates);
@@ -353,10 +341,9 @@ impl CombatRuntime {
                         updates,
                     );
                 }
-                QueuedEffect::CovidPneumonia { owner, boss, mutation } => {
+                QueuedEffect::CovidPneumonia { owner } => {
                     self.ensure_effect_entity("covid-pneumonia", "owner", owner);
-                    self.ensure_effect_entity("covid-pneumonia", "boss", boss);
-                    self.drain_covid_pneumonia_into(owner, boss, mutation, updates);
+                    self.drain_covid_strains_into(owner, updates);
                 }
                 QueuedEffect::LazyFlare { owner, boss } => {
                     self.ensure_effect_entity("lazy-flare", "owner", owner);
