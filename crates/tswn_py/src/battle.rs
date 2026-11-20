@@ -151,14 +151,36 @@ impl PyBattleSession {
         Ok(Self { inner })
     }
     /// 为完整脚本附加输入席位选择；必须在首次推进前调用，None 保留原规则。
-    fn set_action_target_teams(&mut self, teams: Vec<Option<usize>>) -> PyResult<()> {
-        self.inner.set_action_target_teams(&teams).map_err(map_cli_error)
+    #[pyo3(signature = (teams, turn_wisdom=None, *, include_followups=None))]
+    fn set_action_target_teams(
+        &mut self,
+        teams: Vec<Option<usize>>,
+        turn_wisdom: Option<Vec<bool>>,
+        include_followups: Option<Vec<bool>>,
+    ) -> PyResult<()> {
+        self.inner
+            .set_action_target_teams_with_followups(&teams, turn_wisdom.as_deref(), include_followups.as_deref())
+            .map_err(map_cli_error)
     }
 
-    /// 指定玩家席位的目标预览，不改变随机流或真实战场。
-    fn preview_targets_for_team(&mut self, actor: usize, skill: &str, team: usize) -> PyResult<Vec<usize>> {
+    /// 指定玩家席位的目标预览，不改变随机流或真实战场。旧指令可以让智慧只影响首目标。
+    #[pyo3(signature = (actor, skill, team, use_turn_wisdom=false, *, include_followups=true))]
+    fn preview_targets_for_team(
+        &mut self,
+        actor: usize,
+        skill: &str,
+        team: usize,
+        use_turn_wisdom: bool,
+        include_followups: bool,
+    ) -> PyResult<Vec<usize>> {
         self.inner
-            .preview_targets_for_team(actor, parse_planned_skill(skill)?, team)
+            .preview_action_targets_with_followups(
+                actor,
+                parse_planned_skill(skill)?,
+                Some(team),
+                use_turn_wisdom,
+                include_followups,
+            )
             .map_err(map_cli_error)
     }
 
@@ -217,9 +239,12 @@ impl PyBattleSession {
     fn evade_result(&self, decision_index: usize) -> Option<bool> { self.inner.evade_result(decision_index) }
 
     /// 预览指定实体使用某个技能会选中的目标 ID；不推进随机数。
-    fn preview_targets(&mut self, actor: usize, skill: &str) -> PyResult<Vec<usize>> {
+    #[pyo3(signature = (actor, skill, use_turn_wisdom=false))]
+    fn preview_targets(&mut self, actor: usize, skill: &str, use_turn_wisdom: bool) -> PyResult<Vec<usize>> {
         let skill = parse_planned_skill(skill)?;
-        self.inner.preview_targets(actor, skill).map_err(map_cli_error)
+        self.inner
+            .preview_action_targets(actor, skill, None, use_turn_wisdom)
+            .map_err(map_cli_error)
     }
     /// 返回创建时快照的新副本；修改 Python 结果不会修改会话。
     fn initial_states(&self, py: Python<'_>) -> PyResult<Py<PyAny>> { dto_to_python(py, self.inner.initial_states()) }

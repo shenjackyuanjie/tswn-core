@@ -1,4 +1,4 @@
-import { formatGlobalPlayerName, replayDisplayName } from "./show-utils.js?v=20261103-global-id-1";
+import { formatGlobalPlayerName, replayDisplayName } from "./show-utils.js?v=20261119-id-prefix";
 
 /** 显示装饰绝不修改规范状态、片段、组成部分或结果。 */
 export class BattleDisplay {

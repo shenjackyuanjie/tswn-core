@@ -438,7 +438,7 @@ export function buildStateMap(states) {
  */
 export function formatGlobalPlayerName(rawName, playerId, fallback = "角色") {
   const name = rawName == null || rawName === "" ? fallback : String(rawName);
-  return playerId == null ? name : `${name}#${playerId}`;
+  return playerId == null ? name : `#${playerId} ${name}`;
 }
 
 /** 为缺少状态的日志实体保留原始 ID，包括 0。 */
@@ -448,10 +448,17 @@ export function phantomDisplayName(playerId) {
 
 /** 所有本体、分身、召唤物使用同一套全局实体编号，过滤/分组不重新编号。 */
 export function replayDisplayName(state, fallbackPlayerId) {
-  if (state?.display_label != null && state.display_label !== "") {
-    return String(state.display_label);
-  }
   const playerId = state?.id ?? fallbackPlayerId;
+  if (state?.display_label != null && state.display_label !== "") {
+    const label = String(state.display_label);
+    const number = `#${playerId}`;
+    // 仅转换旧适配器明确提供的编号标签，保留原名里的 #数字。
+    if (playerId != null && label.endsWith(number) &&
+        (!label.startsWith(number + " ") || label === state.display_name + number)) {
+      return formatGlobalPlayerName(label.slice(0, -number.length), playerId);
+    }
+    return label;
+  }
   if (!state) {
     return playerId == null ? "未知角色" : phantomDisplayName(playerId);
   }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime::control::TargetWisdom;
 use crate::runtime::forced_action::ForcedFallback;
 
 /// 卡牌兼容模式的降级战报；前端按这句话判断「点名的技能没生效」。
@@ -9,6 +10,28 @@ fn round_outcome(action: Option<ActionPlan>, frame: Option<RuntimeFrame>, winner
         action,
         frame,
         winner_team,
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PlannedTargeting {
+    smart: bool,
+    followup_smart: bool,
+    retry_without_wisdom: bool,
+}
+
+impl PlannedTargeting {
+    fn for_action(skill: PlannedSkill, team: Option<usize>, wisdom: TargetWisdom, smart: bool) -> Self {
+        let ally_skill = matches!(
+            skill,
+            PlannedSkill::Builtin(BuiltinActiveSkill::Heal | BuiltinActiveSkill::Haste | BuiltinActiveSkill::Revive)
+        );
+        let automatic = wisdom != TargetWisdom::Off && (team.is_some() || ally_skill);
+        Self {
+            smart: automatic && smart,
+            followup_smart: smart && wisdom == TargetWisdom::WholeAction,
+            retry_without_wisdom: !automatic,
+        }
     }
 }
 
@@ -466,7 +489,7 @@ impl CombatRuntime {
         let engine_forced = pre_action.forced_skill.is_some();
         let berserk_forced = !pre_action.clear_forced_action && self.has_plain_berserk_state(actor);
         let mut script_consumed = false;
-        if !engine_forced && let Some(planned) = self.control.take_for(actor.0 as PlrId) {
+        if !engine_forced && let Some((planned, use_turn_wisdom)) = self.control.take_for_with_wisdom(actor.0 as PlrId) {
             // 药水不占行动：先结算这一手附带的药水，再决定用哪个技能。
             if planned.potion > 0 {
                 self.apply_potion(actor, planned.potion);
@@ -475,7 +498,8 @@ impl CombatRuntime {
                 // 狂暴期间由引擎接管：这一手只用来推进节奏，真正动作仍按 tswn 规则。
                 script_consumed = true;
             } else {
-                match self.prepare_planned_action(actor, planned, false) {
+                let targeting = PlannedTargeting::for_action(planned.skill, planned.target_team, use_turn_wisdom, smart);
+                match self.prepare_planned_action(actor, planned, targeting) {
                     Ok(prepared) => return Some(prepared),
                     // 严格模式把失败原样交给调用方；兼容模式按失败类型降级。
                     Err(error) => return self.resolve_planned_action_failure(actor, error, smart),
@@ -485,7 +509,7 @@ impl CombatRuntime {
         // 受控单位没有排好的指令就停下来等玩家，绝不代替玩家行动。
         if !engine_forced && !script_consumed && self.is_controlled_actor(actor) {
             let forced_action = berserk_forced.then_some(ForcedAction::Berserk);
-            self.control.set_awaiting_forced_action(actor.0 as PlrId, forced_action);
+            self.control.set_awaiting_forced_action(actor.0 as PlrId, forced_action, smart);
             return None;
         }
         if let Some(forced_skill) = pre_action.forced_skill {
@@ -724,7 +748,7 @@ impl CombatRuntime {
             return None;
         }
         if let PlannedActionError::NoValidTarget { .. } = error {
-            self.control.set_awaiting_forced_action(actor.0 as PlrId, None);
+            self.control.set_awaiting_forced_action(actor.0 as PlrId, None, smart);
             return None;
         }
         self.prepare_fallback_plain_attack(actor, smart)
@@ -739,7 +763,7 @@ impl CombatRuntime {
             .select_plain_default_attack_target(actor, smart)
             .or_else(|| self.select_plain_default_attack_target(actor, false));
         let Some(target) = target else {
-            self.control.set_awaiting_forced_action(actor.0 as PlrId, None);
+            self.control.set_awaiting_forced_action(actor.0 as PlrId, None, smart);
             return None;
         };
         crate::runtime::forced_action::record_fallback(actor.0, FORCED_FALLBACK_MESSAGE);
@@ -781,7 +805,7 @@ impl CombatRuntime {
         &mut self,
         actor: EntityIdx,
         planned: PlannedAction,
-        smart: bool,
+        targeting: PlannedTargeting,
     ) -> Result<PreparedPlainAction, PlannedActionError> {
         let actor_id = actor.0 as PlrId;
         if planned.target_team.is_some() && !Self::supports_target_team(planned.skill) {
@@ -792,12 +816,12 @@ impl CombatRuntime {
         }
         match planned.skill {
             PlannedSkill::BasicAttack => {
-                let target = self
-                    .select_targeted_basic(actor, planned.target_team)
-                    .ok_or(PlannedActionError::NoValidTarget {
+                let target = self.select_targeted_basic(actor, targeting.smart, planned.target_team).ok_or(
+                    PlannedActionError::NoValidTarget {
                         actor: actor_id,
                         skill: planned.skill,
-                    })?;
+                    },
+                )?;
                 let amount = self
                     .entities
                     .get(actor)
@@ -811,12 +835,12 @@ impl CombatRuntime {
                 })
             }
             PlannedSkill::MagicAttack => {
-                let target = self
-                    .select_targeted_basic(actor, planned.target_team)
-                    .ok_or(PlannedActionError::NoValidTarget {
+                let target = self.select_targeted_basic(actor, targeting.smart, planned.target_team).ok_or(
+                    PlannedActionError::NoValidTarget {
                         actor: actor_id,
                         skill: planned.skill,
-                    })?;
+                    },
+                )?;
                 let entity = self
                     .entities
                     .get(actor)
@@ -871,12 +895,7 @@ impl CombatRuntime {
                         available,
                     });
                 }
-                // 目标口径与自动选择一致；smart 口径选不出目标时退到宽松口径，
-                // 避免玩家点名的技能因为 AI 过滤而变成失败。
-                let mut targets = self.select_targeted_planned_targets(actor, skill, smart, planned.target_team);
-                if targets.is_empty() {
-                    targets = self.select_targeted_planned_targets(actor, skill, false, planned.target_team);
-                }
+                let targets = self.planned_builtin_targets(actor, skill, planned.target_team, targeting);
                 let allows_empty_targets = skill == BuiltinActiveSkill::Assassinate
                     && self.entities.get(actor).is_some_and(|entity| entity.runtime.assassinate.is_some());
                 if targets.is_empty() && !allows_empty_targets {
@@ -914,7 +933,7 @@ impl CombatRuntime {
         )
     }
 
-    fn select_targeted_basic(&mut self, actor: EntityIdx, team: Option<usize>) -> Option<EntityIdx> {
+    fn select_targeted_basic(&mut self, actor: EntityIdx, smart: bool, team: Option<usize>) -> Option<EntityIdx> {
         let Some(team) = team else {
             return self.select_plain_default_attack_target(actor, false);
         };
@@ -924,17 +943,33 @@ impl CombatRuntime {
         }
         let view = self.world.targeting_duel(actor_team, team);
         let original = std::mem::replace(&mut self.world, view);
-        let selected = self.select_plain_default_attack_target(actor, false);
+        let selected = self.select_plain_default_attack_target(actor, smart);
         self.world = original;
         selected.filter(|id| self.entities.get(*id).is_some_and(|e| e.runtime.team == team))
+    }
+
+    fn planned_builtin_targets(
+        &mut self,
+        actor: EntityIdx,
+        skill: BuiltinActiveSkill,
+        team: Option<usize>,
+        targeting: PlannedTargeting,
+    ) -> PreparedTargetList {
+        let targets = self.select_targeted_planned_targets(actor, skill, team, targeting.smart, targeting.followup_smart);
+        if targets.is_empty() && targeting.retry_without_wisdom {
+            // 旧指令保留第二次取样，确保已有战报的随机流可重演。
+            return self.select_targeted_planned_targets(actor, skill, team, false, false);
+        }
+        targets
     }
 
     fn select_targeted_planned_targets(
         &mut self,
         actor: EntityIdx,
         skill: BuiltinActiveSkill,
-        smart: bool,
         team: Option<usize>,
+        smart: bool,
+        followup_smart: bool,
     ) -> PreparedTargetList {
         let Some(team) = team else {
             return self.select_planned_targets(actor, skill, smart);
@@ -952,8 +987,8 @@ impl CombatRuntime {
             return selected;
         };
         if matches!(skill, BuiltinActiveSkill::Quake | BuiltinActiveSkill::Rapid) {
-            // 只锁首段；后续候选仍由全场原算法抽取，不限于指定队伍。
-            let mut rest = self.select_planned_targets(actor, skill, smart);
+            // 首目标已确定；用全场队伍计算后续候选，智慧结果仍属于同一次行动。
+            let mut rest = self.select_planned_targets(actor, skill, followup_smart);
             let count = rest.len().max(1);
             rest.retain(|id| *id != first);
             rest.insert(0, first);
@@ -1038,6 +1073,36 @@ impl CombatRuntime {
         smart: bool,
         target_team: Option<usize>,
     ) -> Result<Vec<PlrId>, PlannedActionError> {
+        self.preview_action_targets(
+            actor,
+            skill,
+            target_team,
+            PlannedTargeting {
+                smart,
+                followup_smart: smart,
+                retry_without_wisdom: true,
+            },
+        )
+    }
+
+    pub(crate) fn preview_current_action_targets(
+        &mut self,
+        actor: EntityIdx,
+        skill: PlannedSkill,
+        team: Option<usize>,
+        wisdom: TargetWisdom,
+    ) -> Result<Vec<PlrId>, PlannedActionError> {
+        let targeting = PlannedTargeting::for_action(skill, team, wisdom, self.control.awaiting_smart(actor.0 as PlrId));
+        self.preview_action_targets(actor, skill, team, targeting)
+    }
+
+    fn preview_action_targets(
+        &mut self,
+        actor: EntityIdx,
+        skill: PlannedSkill,
+        target_team: Option<usize>,
+        targeting: PlannedTargeting,
+    ) -> Result<Vec<PlrId>, PlannedActionError> {
         let actor_id = actor.0 as PlrId;
         if self.entities.get(actor).is_none() || (target_team.is_some() && !Self::supports_target_team(skill)) {
             return Err(PlannedActionError::NoValidTarget { actor: actor_id, skill });
@@ -1045,7 +1110,7 @@ impl CombatRuntime {
         let rng = self.rng.clone();
         let result = match skill {
             PlannedSkill::BasicAttack | PlannedSkill::MagicAttack => self
-                .select_targeted_basic(actor, target_team)
+                .select_targeted_basic(actor, targeting.smart, target_team)
                 .map(|target| vec![target.0 as PlrId])
                 .ok_or(PlannedActionError::NoValidTarget { actor: actor_id, skill }),
             PlannedSkill::Builtin(builtin) => {
@@ -1055,10 +1120,7 @@ impl CombatRuntime {
                         skill: builtin,
                     })
                 } else {
-                    let mut targets = self.select_targeted_planned_targets(actor, builtin, smart, target_team);
-                    if targets.is_empty() {
-                        targets = self.select_targeted_planned_targets(actor, builtin, false, target_team);
-                    }
+                    let targets = self.planned_builtin_targets(actor, builtin, target_team, targeting);
                     Ok(targets.iter().map(|target| target.0 as PlrId).collect())
                 }
             }
