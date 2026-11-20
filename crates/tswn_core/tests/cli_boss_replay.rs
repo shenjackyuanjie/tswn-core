@@ -159,12 +159,19 @@ fn boss_self_announcements_do_not_claim_a_target() {
             assert_eq!(clip["target_ids"], serde_json::json!([]));
         }
     }
-    let ikaruga = frames("ikaruga@!\n\na\nb");
-    let (absorb, clip) = event(&ikaruga[2], "[0][吸收]所有奇数伤害");
-    assert_eq!(state(&ikaruga[2], &absorb["caster_id"])["id_key_name"], "ikaruga@!");
-    assert!(absorb["target_id"].is_null());
-    assert_eq!(absorb["score"], 35);
-    assert_eq!(clip["target_ids"], serde_json::json!([]));
+    for (raw, index, message, name, score) in [
+        ("ikaruga@!\n\na\nb", 2, "[0][吸收]所有奇数伤害", "ikaruga@!", 35),
+        ("yuri@!\n\naokiji@!", 1, "[0][吸收]所有冰冻伤害", "aokiji@!", 195),
+    ] {
+        let fight = frames(raw);
+        let frame = &fight[index];
+        let (absorb, clip) = event(frame, message);
+        assert_eq!(state(frame, &absorb["caster_id"])["id_key_name"], name);
+        assert!(absorb["target_id"].is_null());
+        assert_eq!(absorb["score"], score);
+        assert_eq!(clip["caster_ids"], serde_json::json!([absorb["caster_id"]]));
+        assert_eq!(clip["target_ids"], serde_json::json!([]));
+    }
 }
 
 #[test]

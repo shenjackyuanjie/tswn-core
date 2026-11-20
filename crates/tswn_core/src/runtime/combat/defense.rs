@@ -559,12 +559,15 @@ impl CombatRuntime {
         match boss {
             PlainBossDefend::Aokiji => match defend_value.kind() {
                 DamageKind::Ice => {
-                    updates.add(crate::runtime::update::RunUpdate::new_lang(
-                        crate::runtime::lang::keys::SKL_AOKIJI_DEFEND,
-                        target.0 as usize,
-                        target.0 as usize,
-                        damage as u32,
-                    ));
+                    updates.add(
+                        RunUpdate::new_lang(
+                            crate::runtime::lang::keys::SKL_AOKIJI_DEFEND,
+                            target.0 as usize,
+                            target.0 as usize,
+                            damage as u32,
+                        )
+                        .without_replay_target(),
+                    );
                     defend_value.set_damage(-damage);
                 }
                 DamageKind::Physical => defend_value.set_damage(0),
