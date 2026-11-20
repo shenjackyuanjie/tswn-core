@@ -87,6 +87,9 @@ const coreVersionInfo = document.querySelector("#coreVersionInfo");
 const modulePathInfo = document.querySelector("#modulePathInfo");
 /** @type {HTMLButtonElement} */
 const strategySelect = document.querySelector("#strategySelect");
+/** @type {HTMLInputElement} 评分验证需显式勾选，普通对局不读取此选项。 */
+const scoreLegacyOpponents = document.querySelector("#scoreLegacyOpponents");
+scoreLegacyOpponents.checked = false;
 strategySelect.value = new URLSearchParams(window.location.search).get("strategy") === "legacy" ? "legacy" : "search";
 /** @type {HTMLButtonElement} */
 const startBtn = document.querySelector("#startBtn");
@@ -620,8 +623,9 @@ function startScoreTest(input, { persistInput }) {
   stopPlaybackLoop();
   clearCurrentReplayView();
   const strategy = strategySelect.value;
+  const legacyOpponents = strategy === "search" && scoreLegacyOpponents.checked;
   // 始终展示模式和策略，避免把普通与强化、单挑与评分混淆。
-  const label = (strategy === "search" ? "Clever 搜索 · " : "原版策略 · ") + input.label;
+  const label = (strategy === "search" ? (legacyOpponents ? "己方 Clever / 对手原版 · " : "双方 Clever · ") : "全员原版 · ") + input.label;
   playerList.textContent = input.input;
   plistMeta.textContent = input.label + " · 固定 10000 场";
   headerMeta.textContent = label + " · 计算中，1000 / 10000 场各展示一次";
@@ -658,7 +662,7 @@ function startScoreTest(input, { persistInput }) {
     worker.onerror = event => {
       if (generation === battleGenerationToken && scoreWorker === worker) finish("评分失败：" + (event.message || "后台计算异常"), true);
     };
-    worker.postMessage({ input, strategy });
+    worker.postMessage({ input: { ...input, legacyOpponents }, strategy });
   } catch (error) {
     finish("评分启动失败：" + formatError(error), true);
   }

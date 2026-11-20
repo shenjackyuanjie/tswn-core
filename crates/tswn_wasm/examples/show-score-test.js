@@ -24,7 +24,8 @@ export async function runScoreTest(api, input, strategy, onCheckpoint, yieldCont
   if (typeof api.ScoreTestSession !== "function") throw new Error("评分引擎版本过旧，请刷新页面。");
   // 兼容直接传名字的调用方；页面与 Worker 传递包含强化标记的解析结果。
   const options = typeof input === "string" ? { input, enhanced: false } : input;
-  const session = new api.ScoreTestSession(options.input, strategy === "search", options.enhanced);
+  const session = new api.ScoreTestSession(options.input, strategy === "search", options.enhanced,
+    strategy === "search" && options.legacyOpponents === true);
   try {
     if (session.progress().total !== SCORE_TEST_TOTAL) throw new Error("评分场数不匹配，请刷新页面。");
     let yieldedAt = performance.now();

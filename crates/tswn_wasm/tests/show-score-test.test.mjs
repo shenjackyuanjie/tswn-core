@@ -18,19 +18,23 @@ test("four input modes pass the profile strength and duplicate names to the sess
       const input = parseScoreTestInput(`!test!\n${enhanced ? "!\n" : ""}\n${names}`);
       assert.equal(input.label, (enhanced ? "强化" : "普通") + (duel ? "单挑" : "评分"));
       for (const strategy of ["search", "legacy"]) {
+        // 未指定或未勾选时双方按当前策略，勾选只对 Clever 评分生效。
+        for (const legacyOpponents of [undefined, false, true]) {
         let calls = 0;
         const api = { ScoreTestSession: class {
-          constructor(raw, search, strength) {
+          constructor(raw, search, strength, opponents) {
             assert.equal(raw, names);
             assert.equal(search, strategy === "search");
             assert.equal(strength, enhanced);
+            assert.equal(opponents, strategy === "search" && legacyOpponents === true);
           }
           step() { calls++; }
           progress() { return { total: 10000, completed: calls, done: calls === 10000 }; }
           free() {}
         } };
-        await runScoreTest(api, input, strategy, () => {});
+        await runScoreTest(api, { ...input, legacyOpponents }, strategy, () => {});
         assert.equal(calls, 10000);
+        }
       }
     }
   }

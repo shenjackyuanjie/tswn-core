@@ -35,6 +35,7 @@ pub struct ScoreTestSession {
     groups: ScoreMatchGroups,
     subjects: Vec<usize>,
     search: Option<SearchConfig>,
+    legacy_opponents: bool,
     completed: usize,
     wins: usize,
     truncated: usize,
@@ -73,6 +74,7 @@ impl ScoreTestSession {
             groups,
             subjects,
             search,
+            legacy_opponents: false,
             completed: 0,
             wins: 0,
             truncated: 0,
@@ -80,6 +82,9 @@ impl ScoreTestSession {
             failure: None,
         })
     }
+
+    /// 默认双方采用所选策略；仅显式勾选验证模式时把搜索限制在被测侧及队友。
+    pub fn set_legacy_opponents(&mut self, enabled: bool) { self.legacy_opponents = enabled; }
 
     pub fn progress(&self) -> ScoreTestProgress {
         ScoreTestProgress {
@@ -133,7 +138,11 @@ impl ScoreTestSession {
                 break;
             }
             // 仅处理正式返回的帧，搜索分支内部的探测、候选试算与续局均不计数。
-            let outcome = if let Some(config) = self.search {
+            let outcome = if let Some(mut config) = self.search {
+                // 勾选验证时仅接管固定目标前缀所在队伍；默认接管双方。
+                config.team = self
+                    .legacy_opponents
+                    .then(|| self.runner.runtime().entities.get(crate::runtime::EntityIdx(0)).unwrap().runtime.team);
                 self.runner.runtime_mut().run_search_round(config).outcome
             } else {
                 self.runner.runtime_mut().run_minimal_round()
@@ -192,46 +201,56 @@ mod tests {
 
     #[test]
     fn search_counts_only_real_frames_and_matches_direct_cpu_search() {
-        // 四种模式均与同配置的直接搜索对局比较，统计只归属被测本体。
-        for enhanced in [false, true] {
-            for raw in ["alpha", "alpha\nalpha"] {
-                let config = SearchConfig {
-                    samples: 2,
-                    horizon: 8,
-                    ..SearchConfig::default()
-                };
-                let mut session = ScoreTestSession::new_with_mode(raw, Some(config), enhanced).unwrap();
-                let mut cpu = session.prepared.new_reusable_runner();
-                let mut counts = BTreeMap::<String, u64>::new();
-                while !cpu.have_winner() {
-                    let result = cpu.runtime_mut().run_search_round(config);
-                    if let Some(frame) = result.outcome.frame {
-                        for update in frame.updates.updates {
-                            if update.caster == 0
-                                && update.score > 0
-                                && update.message.contains("[0]")
-                                && !update.message.contains("[s_dmg0]")
-                            {
-                                *counts.entry(update.message.into_owned()).or_default() += 1;
+        // 两种接管范围、四种模式均比较实际战斗，统计只归属被测本体。
+        for legacy_opponents in [false, true] {
+            for enhanced in [false, true] {
+                for raw in ["alpha", "alpha\nalpha"] {
+                    let config = SearchConfig {
+                        samples: 2,
+                        horizon: 8,
+                        ..SearchConfig::default()
+                    };
+                    let mut session = ScoreTestSession::new_with_mode(raw, Some(config), enhanced).unwrap();
+                    if legacy_opponents {
+                        session.set_legacy_opponents(true);
+                    }
+                    let mut cpu = session.prepared.new_reusable_runner();
+                    let config = SearchConfig {
+                        team: legacy_opponents
+                            .then(|| cpu.runtime().entities.get(crate::runtime::EntityIdx(0)).unwrap().runtime.team),
+                        ..config
+                    };
+                    let mut counts = BTreeMap::<String, u64>::new();
+                    while !cpu.have_winner() {
+                        let result = cpu.runtime_mut().run_search_round(config);
+                        if let Some(frame) = result.outcome.frame {
+                            for update in frame.updates.updates {
+                                if update.caster == 0
+                                    && update.score > 0
+                                    && update.message.contains("[0]")
+                                    && !update.message.contains("[s_dmg0]")
+                                {
+                                    *counts.entry(update.message.into_owned()).or_default() += 1;
+                                }
                             }
                         }
                     }
+                    session.step().unwrap();
+                    assert_eq!(
+                        session
+                            .runner
+                            .runtime()
+                            .entities
+                            .get(super::super::super::EntityIdx(0))
+                            .unwrap()
+                            .template
+                            .name,
+                        "alpha"
+                    );
+                    assert_eq!(session.skills, counts);
+                    assert_eq!(session.wins, usize::from(cpu.input_group_won(0)));
+                    assert_eq!(session.runner.player_snapshots(), cpu.player_snapshots());
                 }
-                session.step().unwrap();
-                assert_eq!(
-                    session
-                        .runner
-                        .runtime()
-                        .entities
-                        .get(super::super::super::EntityIdx(0))
-                        .unwrap()
-                        .template
-                        .name,
-                    "alpha"
-                );
-                assert_eq!(session.skills, counts);
-                assert_eq!(session.wins, usize::from(cpu.input_group_won(0)));
-                assert_eq!(session.runner.player_snapshots(), cpu.player_snapshots());
             }
         }
     }
