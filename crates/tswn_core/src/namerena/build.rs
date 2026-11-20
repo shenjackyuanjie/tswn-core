@@ -31,6 +31,7 @@ pub struct PreparedPlayer {
     pub skills: SkillLoadoutSpec,
     /// 0.5.5 桂月奖杯注入的常驻 `charge` 标记：存在但不提供攻击倍率、也无法解除。
     pub permanent_charge: bool,
+    pub(crate) covid_mask: bool,
     pub name_factor: f64,
     pub weapon_attr_bonus: [i32; 8],
     pub name_base: [u8; 128],
@@ -89,6 +90,7 @@ struct PlayerBuild {
     action_order: [u32; 40],
     name_factor: f64,
     weapon: Option<WeaponBuild>,
+    covid_mask: bool,
     overlay: Option<PlayerOverlay>,
 }
 
@@ -321,6 +323,8 @@ impl PlayerBuild {
         let weapon = (!has_diy)
             .then(|| weapon_name.and_then(|name| WeaponBuild::parse(name, &clan_name, &id_key_name)))
             .flatten();
+        // 原版从武器名判断口罩，不要求命中特殊武器表。
+        let covid_mask = weapon.is_some() && weapon_name.is_some_and(|name| name.ends_with("mask") || name.ends_with("口罩"));
         Self {
             id,
             name: spec.name.clone(),
@@ -334,6 +338,7 @@ impl PlayerBuild {
             action_order,
             name_factor,
             weapon,
+            covid_mask,
             overlay: spec.overlay.clone(),
         }
     }
@@ -541,6 +546,7 @@ impl PlayerBuild {
             status,
             skills,
             permanent_charge,
+            covid_mask: self.covid_mask,
             name_factor: self.name_factor,
             weapon_attr_bonus,
             name_base: self.name_base,

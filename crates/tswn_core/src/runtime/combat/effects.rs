@@ -289,7 +289,12 @@ impl CombatRuntime {
                     let owner_name = self.entities.get(owner).unwrap().template.display_name.clone();
                     let candidate_entity = self.entities.get(candidate).unwrap();
                     let candidate_name = candidate_entity.template.display_name.clone();
-                    let threshold = candidate_entity.runtime.wisdom >> 1;
+                    let wisdom = candidate_entity.runtime.wisdom;
+                    let threshold = if candidate_entity.template.covid_mask {
+                        wisdom.saturating_add(192)
+                    } else {
+                        wisdom >> 1
+                    };
                     updates.add_with(|| {
                         crate::runtime::update::RunUpdate::new(
                             format!("{owner_name}和{candidate_name}近距离接触"),
@@ -327,12 +332,14 @@ impl CombatRuntime {
                         0,
                     ));
                     let atp = self.entities.get(owner).unwrap().runtime.get_at(false, &mut self.rng);
-                    self.drain_plain_attack_with_atp_and_covid_into(
-                        owner,
+                    // 感染者提供攻击力和起手，实际命中及受击链以病毒来源为施法者。
+                    self.drain_plain_attack_with_atp_covid_and_on_damage_into(
+                        boss,
                         candidate,
                         false,
                         atp,
-                        Some((boss, mutation)),
+                        None,
+                        PlainAttackOnDamage::CovidSpread { boss, mutation },
                         updates,
                     );
                 }

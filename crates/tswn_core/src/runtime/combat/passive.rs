@@ -128,7 +128,10 @@ impl CombatRuntime {
                 );
             }
         }
-        if damage > 0 && self.lazy_boss_at_boost(target).is_some() {
+        if let Some(mutation) = self.covid_boss_mutation(target) {
+            self.try_covid_spread_to_attacker_into(target, caster, mutation, updates);
+        }
+        if self.lazy_boss_at_boost(target).is_some() {
             self.infect_with_lazy_into(target, caster, updates);
         }
     }

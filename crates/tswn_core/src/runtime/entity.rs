@@ -291,6 +291,8 @@ pub struct PlayerTemplate {
     pub rinick: Option<Box<RinickTemplateData>>,
     /// 桂月奖杯注入的常驻 `charge` 标记；存在但不提供攻击倍率、也无法解除。
     pub permanent_charge: bool,
+    /// 防止新冠接触传播的武器后缀标记，不改变武器原有数值。
+    pub(crate) covid_mask: bool,
     /// 使魔复活重施时是否沿用死亡对象上的当前技能表。
     pub reuse_skills_on_recast: bool,
     /// 使魔复活重施时是否沿用死亡对象上的持久属性。
@@ -339,6 +341,7 @@ impl PlayerTemplate {
             clone_build: None,
             rinick: None,
             permanent_charge: false,
+            covid_mask: false,
             reuse_skills_on_recast: false,
             reuse_stats_on_recast: false,
             inherit_owner_def_res: false,
@@ -388,6 +391,7 @@ impl PlayerTemplate {
             clone_build: Some(clone_build),
             rinick: None,
             permanent_charge: false,
+            covid_mask: false,
             reuse_skills_on_recast: false,
             reuse_stats_on_recast: false,
             inherit_owner_def_res: false,

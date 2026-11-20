@@ -232,6 +232,7 @@ impl CombatRuntime {
             owner_team,
             owner_hp,
             owner_magic,
+            covid_mask,
             mut clone_skills,
             clone_build,
             shadow_blueprint,
@@ -282,6 +283,7 @@ impl CombatRuntime {
                 owner.runtime.team,
                 owner.runtime.hp,
                 owner.runtime.magic,
+                owner.template.covid_mask,
                 clone_skills,
                 clone_build,
                 shadow_blueprint,
@@ -360,6 +362,7 @@ impl CombatRuntime {
         .with_speed_points(clone_move_points)
         .with_skill_loadout(clone_skills);
         clone_template.clone_build = Some(clone_build);
+        clone_template.covid_mask = covid_mask;
         let clone_idx = EntityIdx(next_entity.try_into().expect("runtime clone entity index overflow"));
 
         updates.add(crate::runtime::update::RunUpdate::new(

@@ -250,6 +250,24 @@ impl CombatRuntime {
         }
     }
 
+    /// Boss 受击后的被动传播：裸脸直接感染，仅口罩需要抽一次 c75。
+    pub(super) fn try_covid_spread_to_attacker_into(
+        &mut self,
+        boss: EntityIdx,
+        attacker: EntityIdx,
+        mutation: i32,
+        updates: &mut RunUpdates,
+    ) {
+        if self.has_covid_infection(attacker) {
+            return;
+        }
+        let attacker_entity = self.entities.get(attacker).expect("runtime covid attacker must exist");
+        if attacker_entity.template.covid_mask && self.rng.next_u8() < 192 {
+            return;
+        }
+        self.infect_with_covid_into(boss, attacker, mutation, updates);
+    }
+
     pub fn infect_with_covid_into(
         &mut self,
         boss: EntityIdx,
@@ -451,5 +469,142 @@ impl CombatRuntime {
             self.entities.get_mut(actor).unwrap().runtime.magic_point += 16;
         }
         updates.add_newline();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn set_next_roll(runtime: &mut CombatRuntime, roll: u8) {
+        for _ in 0..4096 {
+            if runtime.rng.peek_next_u8() == roll {
+                return;
+            }
+            runtime.rng.next_u8();
+        }
+        panic!("未找到预期随机字节 {roll}");
+    }
+
+    fn assert_rng(runtime: &CombatRuntime, expected: &crate::rc4::RC4) {
+        assert_eq!((runtime.rng.i, runtime.rng.j), (expected.i, expected.j));
+        assert_eq!(runtime.rng.main_val, expected.main_val);
+    }
+
+    #[test]
+    fn first_public_hit_infects_the_unmasked_attacker_but_not_either_mask_suffix() {
+        // 同为实际命中；原版首帧只感染裸脸 a，两种口罩武器名都阻挡。
+        for (attacker_input, damage, infected) in [("a", 54, true), ("a+mask", 54, false), ("a+防尘口罩", 31, false)] {
+            let mut runner = RuntimeRunner::new_from_namerena_raw(format!("covid@!\n\n{attacker_input}")).unwrap();
+            let boss = runner.input_groups[0][0];
+            let attacker = runner.input_groups[1][0];
+            let first = (0..32).find_map(|_| runner.run_round().frame).expect("应有可见战斗帧");
+            assert_eq!(runner.runtime.entities.get(boss).unwrap().runtime.hp, 326 - damage);
+            assert_eq!(runner.runtime.has_covid_infection(attacker), infected, "{attacker_input}");
+            assert_eq!(
+                first.updates.updates.iter().any(|update| update.message.contains("感染了")),
+                infected
+            );
+        }
+    }
+
+    #[test]
+    fn public_clone_keeps_its_owners_mask_when_hitting_the_boss() {
+        let mut runner = RuntimeRunner::new_from_namerena_raw("covid@!\n\nmasked67+mask".to_owned()).unwrap();
+        let sixth = (0..96).filter_map(|_| runner.run_round().frame).nth(5).expect("应产生第六个可见帧");
+        let hit = sixth
+            .updates
+            .updates
+            .iter()
+            .find(|update| update.score == 77 && update.message.contains("点伤害"))
+            .unwrap();
+        let clone = EntityIdx(hit.caster as u32);
+        let entity = runner.runtime.entities.get(clone).unwrap();
+        assert_eq!(entity.template.id_key_name, "masked67?0@masked67");
+        assert!(!runner.runtime.has_covid_infection(clone));
+        assert_eq!(entity.runtime.move_state.speed_points, 351);
+    }
+
+    #[test]
+    fn contact_mask_uses_wisdom_plus_192_and_always_draws_one_byte() {
+        for (candidate_input, roll, infected) in [
+            ("candidate", 19, false),
+            ("candidate", 20, true),
+            ("candidate+防尘口罩", 231, false),
+            ("candidate+防尘口罩", 232, true),
+            ("candidate+fabricmask", 231, false),
+            ("candidate+MASK", 20, true),
+            ("candidate+口罩夹", 20, true),
+            ("mask", 20, true),
+        ] {
+            let raw = format!("covid@!\n\ncarrier\n{candidate_input}");
+            let mut runner = RuntimeRunner::new_from_namerena_raw(raw).unwrap();
+            let boss = runner.input_groups[0][0];
+            let (owner, candidate) = (EntityIdx(1), EntityIdx(2));
+            let runtime = &mut runner.runtime;
+            runtime.entities.get_mut(candidate).unwrap().runtime.wisdom = 40;
+            set_next_roll(runtime, roll);
+            let mut expected = runtime.rng.clone();
+            expected.next_u8();
+            runtime.effects.push(QueuedEffect::CovidContact {
+                owner,
+                candidate,
+                boss,
+                mutation: 40,
+            });
+            let frame = runtime.flush_effects().expect("应有接触回放");
+            assert!(frame.updates.updates[0].message.contains("近距离接触"));
+            assert_eq!(runtime.has_covid_infection(candidate), infected, "{candidate_input} / {roll}");
+            assert_eq!(frame.updates.updates[1].message.contains("没被感染"), !infected);
+            assert_rng(runtime, &expected);
+        }
+    }
+
+    #[test]
+    fn infected_cross_team_attack_uses_boss_damage_source_without_the_boss_attack_roll() {
+        // 原版第 9 帧：a 发起攻击，新冠给 c 造成 59 伤害并感染，随后 a 肺炎 63。
+        let mut runner = RuntimeRunner::new_from_namerena_raw("covid@!\n\na\nb\n\nc".to_owned()).unwrap();
+        let boss = runner.input_groups[0][0];
+        let carrier = EntityIdx(1);
+        let target = runner.input_groups[2][0];
+        let cross_team = (0..64).filter_map(|_| runner.run_round().frame).nth(8).expect("应出现跨队攻击帧");
+        let events = &cross_team.updates.updates;
+        assert_eq!((events[0].caster, events[0].target), (carrier.0 as usize, target.0 as usize));
+        let damage: Vec<_> = events.iter().filter(|update| update.message.contains("点伤害")).collect();
+        assert_eq!((damage[0].caster, damage[0].score), (boss.0 as usize, 59));
+        assert_eq!(damage[1].score, 63, "跨队传播命中后不抽 Boss 主动攻击的 r64");
+        assert!(runner.runtime.has_covid_infection(target));
+    }
+
+    #[test]
+    fn only_a_masked_attacker_draws_the_c75_roll_when_hitting_the_boss() {
+        for (input, roll, damage, already_infected, draws, infected) in [
+            ("a", 191, 1, false, false, true),
+            ("a+mask", 191, 1, false, true, false),
+            ("a+口罩", 192, 1, false, true, true),
+            ("a+mask", 192, 0, false, false, false),
+            ("a+mask", 192, 1, true, false, true),
+        ] {
+            let mut runner = RuntimeRunner::new_from_namerena_raw(format!("covid@!\n\n{input}")).unwrap();
+            let (boss, attacker) = (runner.input_groups[0][0], runner.input_groups[1][0]);
+            let runtime = &mut runner.runtime;
+            let mut updates = RunUpdates::new();
+            if already_infected {
+                assert!(runtime.infect_with_covid_into(boss, attacker, 40, &mut updates));
+                updates = RunUpdates::new();
+            }
+            set_next_roll(runtime, roll);
+            let mut expected = runtime.rng.clone();
+            if draws {
+                expected.next_u8();
+            }
+            assert!(!runtime.apply_plain_legacy_damage_into(attacker, boss, damage, &mut updates));
+            assert_eq!(runtime.has_covid_infection(attacker), infected, "{input} / {roll} / {damage}");
+            assert_eq!(
+                updates.updates.iter().any(|update| update.message.contains("感染了")),
+                infected && !already_infected
+            );
+            assert_rng(runtime, &expected);
+        }
     }
 }

@@ -907,6 +907,9 @@ impl CombatRuntime {
             PlainAttackOnDamage::Ice if amount > 0 => self.apply_ice_on_damage(caster, target, updates),
             PlainAttackOnDamage::Ice => {}
             PlainAttackOnDamage::Poison => self.apply_poison_on_damage(caster, target, amount, updates),
+            PlainAttackOnDamage::CovidSpread { boss, mutation } => {
+                self.infect_with_covid_into(boss, target, mutation, updates);
+            }
         }
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         was_alive

@@ -149,6 +149,7 @@ impl PreparedBattleInit {
             entity.template.skills = prepared_template.skills;
             entity.template.skills.prepare_hook_cache(&runtime.registry);
             entity.template.clone_build = prepared_template.clone_build;
+            entity.template.covid_mask = prepared_template.covid_mask;
             if score_profile_reset {
                 entity
                     .runtime
@@ -419,7 +420,7 @@ impl PreparedBattleInit {
         skills: SkillLoadout,
     ) -> PlayerTemplate {
         let status = &player.status;
-        PlayerTemplate::new(id, player.name.clone(), team, status.max_hp, status.attack)
+        let mut template = PlayerTemplate::new(id, player.name.clone(), team, status.max_hp, status.attack)
             .with_identity_names(player.id_key_name.clone(), player.clan_name.clone())
             .with_display_name(player.display_name.clone())
             .with_magic(status.magic)
@@ -432,7 +433,9 @@ impl PreparedBattleInit {
             .with_target_score_stats(status.attr_sum, status.atk_sum, status.attract)
             .with_speed_points(status.move_point)
             .with_skill_loadout(skills)
-            .with_permanent_charge(player.permanent_charge)
+            .with_permanent_charge(player.permanent_charge);
+        template.covid_mask = player.covid_mask;
+        template
     }
 
     /// 生成普通召唤物名字对应的 RC4 状态和 128 项名字底数。

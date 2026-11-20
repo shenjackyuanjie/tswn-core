@@ -72,6 +72,7 @@ pub enum PlainAttackOnDamage {
     Fire(u32),
     Ice,
     Poison,
+    CovidSpread { boss: EntityIdx, mutation: i32 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

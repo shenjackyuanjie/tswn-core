@@ -327,7 +327,7 @@ impl CombatRuntime {
             .expect("default runtime profile must register core minion counter slot");
 
         let owner_move_points = self.rng.r255() as i32 * 4 + 1024;
-        let (owner_name, owner_display_name, clone_build, clone_skills) = {
+        let (owner_name, owner_display_name, clone_build, clone_skills, covid_mask) = {
             let entity = self
                 .entities
                 .get_mut(owner)
@@ -349,6 +349,7 @@ impl CombatRuntime {
                 entity.template.display_name.clone(),
                 clone_build,
                 clone_skills,
+                entity.template.covid_mask,
             )
         };
 
@@ -402,6 +403,7 @@ impl CombatRuntime {
             .with_speed_points(clone_move_points)
             .with_skill_loadout(clone_skills.clone());
             template.clone_build = Some(clone_build);
+            template.covid_mask = covid_mask;
             updates.add_newline();
             self.effects.push(QueuedEffect::SpawnWithMessage {
                 caster: owner,
