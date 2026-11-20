@@ -182,3 +182,17 @@ fn wheel_hp_exchange_exposes_inline_emoji_without_html() {
     let part = clip["parts"].as_array().unwrap().iter().find(|part| part["text"] == "互换").unwrap();
     assert_eq!(part["emoji"], "s_exchange");
 }
+
+#[test]
+fn boss_reflection_that_ends_battle_keeps_caster_move_points() {
+    let fight = frames("lazy@!\n\nyuri@!\nrecheck22a\n\nrecheck22b");
+    assert_eq!(fight.len(), 28);
+    let last = fight.last().unwrap();
+    assert_eq!(last["finished"], true);
+    let (reflection, _) = event(last, "[0]使用[伤害反弹]");
+    let yuri = state(last, &reflection["caster_id"]);
+    assert_eq!(yuri["id_key_name"], "yuri@!");
+    assert_eq!(yuri["move_point"], 1539);
+    let (knockout, _) = event(last, "[1]被击倒了");
+    assert_eq!(state(last, &knockout["target_id"])["id_key_name"], "recheck22b");
+}

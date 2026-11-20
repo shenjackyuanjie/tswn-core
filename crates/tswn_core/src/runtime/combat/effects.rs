@@ -125,12 +125,17 @@ impl CombatRuntime {
                         on_damage,
                         updates,
                     );
-                    self.entities
-                        .get_mut(caster)
-                        .expect("runtime reflected attack caster disappeared")
-                        .runtime
-                        .move_state
-                        .speed_points -= 480;
+                    // Vite 判胜会从反弹伤害中直接返回，不再扣除反弹者的行动点。
+                    // 仅对首领施法者修正终局快照，普通反弹保留原来的兼容行为。
+                    let boss = self.entities.get(caster).unwrap().runtime.flags.contains(PlayerKindFlags::BOSS);
+                    if !boss || !self.plain_battle_has_ended() {
+                        self.entities
+                            .get_mut(caster)
+                            .expect("runtime reflected attack caster disappeared")
+                            .runtime
+                            .move_state
+                            .speed_points -= 480;
+                    }
                 }
                 QueuedEffect::PoisonTick { caster, target, amount } => {
                     self.ensure_effect_entity("poison tick", "caster", caster);
