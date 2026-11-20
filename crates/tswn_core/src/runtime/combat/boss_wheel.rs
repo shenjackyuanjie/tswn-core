@@ -544,6 +544,100 @@ mod tests {
         );
     }
 
+    fn next_visible_batch(runner: &mut RuntimeRunner) -> Vec<RunUpdate> {
+        for _ in 0..100 {
+            let Some(frame) = runner.run_round().frame else { continue };
+            let updates = frame
+                .updates
+                .updates
+                .into_iter()
+                .filter(|update| !update.message.trim().is_empty())
+                .collect::<Vec<_>>();
+            if !updates.is_empty() {
+                return updates;
+            }
+        }
+        panic!("100 步内没有可见批次");
+    }
+
+    fn wheel_checkpoint(runner: &RuntimeRunner, wheel: EntityIdx) -> ((i32, i32, i32), (u32, u32)) {
+        let runtime = runner.runtime();
+        let state = &runtime.entities.get(wheel).unwrap().runtime;
+        (
+            (state.hp, state.move_state.speed_points, state.magic_point),
+            (runtime.rng.i, runtime.rng.j),
+        )
+    }
+
+    #[test]
+    fn wheel_public_rotation_after_disperse() {
+        let mut runner = RuntimeRunner::new_from_namerena_raw("wheel@!\n\naudit11\nCharlie\nJohnny".into()).unwrap();
+        let wheel = runner.input_groups()[0][0];
+        let named_enemy = |name| {
+            runner.input_groups()[1]
+                .iter()
+                .copied()
+                .find(|&idx| runner.runtime().entities.get(idx).unwrap().template.name == name)
+                .unwrap()
+        };
+        let (audit, charlie, johnny) = (named_enemy("audit11"), named_enemy("Charlie"), named_enemy("Johnny"));
+        let expected = [
+            (johnny, wheel, "[0]发起攻击", 55, (304, 2048, 19), (124, 162)),
+            (wheel, audit, "[0]发起攻击", 86, (304, 366, 19), (142, 129)),
+            (audit, wheel, "[0]使用[净化]", 52, (252, 1646, -13), (182, 176)),
+            (wheel, audit, "[0]发起攻击", 65, (252, 147, 3), (199, 254)),
+        ];
+        for (index, (caster, target, attack, damage, state, rc4)) in expected.into_iter().enumerate() {
+            let actual = next_visible_batch(&mut runner);
+            assert_eq!(actual.len(), 2);
+            assert_eq!((actual[0].caster, actual[0].message.as_ref()), (caster.0 as usize, attack));
+            assert_eq!((actual[1].target, actual[1].score), (target.0 as usize, damage));
+            assert_eq!(wheel_checkpoint(&runner, wheel), (state, rc4), "第 {} 批", index + 1);
+        }
+
+        // 第 8 批换血，第 9 批在地裂命中后同批反击；反击不是额外的轮转动作。
+        for _ in 5..=7 {
+            next_visible_batch(&mut runner);
+        }
+        let exchanged = next_visible_batch(&mut runner);
+        assert_eq!(exchanged[0].message, "[0]使用[生命之轮]");
+        assert_eq!((exchanged[1].target, exchanged[1].score), (johnny.0 as usize, 230));
+        assert_eq!(wheel_checkpoint(&runner, wheel), ((260, 366, 19), (48, 99)));
+        let countered = next_visible_batch(&mut runner);
+        assert_eq!(countered.len(), 4);
+        assert_eq!(countered[0].message, "[0]使用[地裂术]");
+        assert_eq!(countered[1].score, 48);
+        assert!(countered[2].message.starts_with("[0]发起[反击]"));
+        assert_eq!(
+            (countered[2].caster, countered[3].target, countered[3].score),
+            (wheel.0 as usize, charlie.0 as usize, 132)
+        );
+        assert_eq!(wheel_checkpoint(&runner, wheel), ((212, 1829, 17), (95, 99)));
+    }
+
+    #[test]
+    fn wheel_public_immunity_to_disperse_preserves_hp_and_mp() {
+        let mut runner = RuntimeRunner::new_from_namerena_raw("wheel@!\n\nwheel-audit13\naudit11".into()).unwrap();
+        let wheel = runner.input_groups()[0][0];
+        next_visible_batch(&mut runner);
+
+        // 第 2 批的净化被免疫：不扣血、不扣 MP、不触发 postDefend 的加条或反击。
+        let immune = next_visible_batch(&mut runner);
+        assert_eq!(immune.len(), 2);
+        assert_eq!(immune[0].message, "[0]使用[净化]");
+        assert_eq!(immune[0].target, wheel.0 as usize);
+        assert_eq!(immune[1].message, "[0][回避]了攻击");
+        assert_eq!(
+            (immune[1].caster, immune[1].target, immune[1].score),
+            (wheel.0 as usize, immune[0].caster, 20)
+        );
+        assert_eq!(wheel_checkpoint(&runner, wheel), ((359, 1298, 19), (148, 215)));
+
+        let following = next_visible_batch(&mut runner);
+        assert_eq!((following[0].caster, following[1].score), (wheel.0 as usize, 84));
+        assert_eq!(wheel_checkpoint(&runner, wheel), ((359, 165, 21), (171, 58)));
+    }
+
     #[test]
     fn wheel_post_defend_only_advances_the_boss_itself() {
         let mut runtime = wheel_runtime();

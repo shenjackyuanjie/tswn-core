@@ -230,6 +230,16 @@ impl CombatRuntime {
                         "[0]使用[净化]",
                         20,
                     ));
+                    // 不掷普通闪避，但 Boss 或强化目标仍可免疫净化。免疫不进入 POST_DEFEND。
+                    if self.status_immune(target, "disperse") {
+                        updates.add(RuntimeFrame::replay_update(
+                            target.0 as usize,
+                            caster.0 as usize,
+                            "[0][回避]了攻击",
+                            20,
+                        ));
+                        continue;
+                    }
                     if self.control.passive_decision_mode() {
                         let Some(_decision) = self.control.next_passive_decision() else {
                             let request = PassiveRequest {

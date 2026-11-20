@@ -160,6 +160,7 @@ pub fn boss_immune_threshold(name: &str, key: &str) -> i32 {
         },
         "mario" => match key {
             "assassinate" => 192,
+            "disperse" => 0, // 原版马里奥对净化恒不免疫，也不抽随机数。
             _ => 84,
         },
         "mosquito" => match key {
