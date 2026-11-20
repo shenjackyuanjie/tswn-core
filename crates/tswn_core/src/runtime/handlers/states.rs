@@ -489,8 +489,13 @@ fn run_timed_release_post_action_state(
     context
         .defer_owner_state_clear(entry.legacy_order_key)
         .expect("timed state payload should still exist");
-    let alive = context.owner().map(|owner| owner.runtime.alive).unwrap_or(false);
-    if alive {
+    let should_emit_release = context.owner().is_some_and(|owner| {
+        // 一拳超人饥饿时只移出场上名单，原版仍按正体力判断自然解除能否发帧。
+        // 终局退场不会进入行动后链，这里只补非终局退场的发帧。
+        owner.runtime.alive
+            || (owner.runtime.hp > 0 && owner.runtime.flags.contains(PlayerKindFlags::BOSS) && owner.template.name == "saitama")
+    });
+    if should_emit_release {
         context.add_newline();
         context.add_update(crate::runtime::update::RunUpdate::new(
             release_message,
@@ -587,4 +592,142 @@ fn run_iron_post_action_state(context: &mut StateContext<'_>, entry: &StateHookP
         context.owner_idx().0 as usize,
         0,
     ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lazy_boss_flare_and_timed_releases_follow_application_order() {
+        for (raw, batch, expected) in [
+            (
+                "yuri@!\n\nlazy@!",
+                6,
+                &[
+                    "[0]刷起了[抖音]",
+                    "这回合什么也没做",
+                    "[1]从[魅惑]中解除",
+                    "[1][懒癌]发作",
+                    "[1]受到[2]点伤害",
+                ][..],
+            ),
+            (
+                "yuri@!\n\nlazy@!",
+                12,
+                &[
+                    "[0]发起攻击",
+                    "[1]受到[2]点伤害",
+                    "[1][懒癌]发作",
+                    "[1]受到[2]点伤害",
+                    "[1]被击倒了",
+                ],
+            ),
+            (
+                "lazy@!\n\nparity17a\nparity17b\n\nparity17c",
+                12,
+                &[
+                    "[0]去[无畏契约]打排位了",
+                    "这回合什么也没做",
+                    "[1][懒癌]发作",
+                    "[1]受到[2]点伤害",
+                    "[1]从[疾走]中解除",
+                ],
+            ),
+            (
+                "yuri@!\n\nparity4a\n\nparity4b\n\nlazy@!\nparity4c",
+                25,
+                &[
+                    "[0]使用[减速术]",
+                    "[1]进入[迟缓]状态",
+                    "[1][懒癌]发作",
+                    "[1]受到[2]点伤害",
+                    "[1]被击倒了",
+                ],
+            ),
+            (
+                "yuri@!\n\nparity4a\n\nparity4b\n\nlazy@!\nparity4c",
+                32,
+                &[
+                    "[0]发起攻击",
+                    "[0][回避]了攻击",
+                    "[1][懒癌]发作",
+                    "[1]受到[2]点伤害",
+                    "[1]从[迟缓]中解除",
+                ],
+            ),
+        ] {
+            let mut runner = RuntimeRunner::new_from_namerena_raw(raw.to_owned()).unwrap();
+            let frame = (0..2048)
+                .filter_map(|_| runner.run_round().frame)
+                .filter(|frame| frame.updates.updates.iter().any(|update| !update.message.trim().is_empty()))
+                .nth(batch - 1)
+                .expect("应有原版可见批次");
+            let messages = frame
+                .updates
+                .updates
+                .iter()
+                .map(|update| update.message.as_ref())
+                .filter(|message| !message.trim().is_empty())
+                .collect::<Vec<_>>();
+            assert_eq!(messages, expected, "{raw:?} 第 {batch} 批");
+        }
+    }
+
+    #[test]
+    fn saitama_releases_charm_after_nonterminal_hunger_retirement() {
+        let mut runner = RuntimeRunner::new_from_namerena_raw("yuri@!\n\nsaitama@!\nparity18a\nparity18b".to_owned()).unwrap();
+        let saitama = runner.input_groups[1][0].0 as usize;
+        let (outcome, frame) = (0..2048)
+            .map(|_| runner.run_round())
+            .filter_map(|mut outcome| outcome.frame.take().map(|frame| (outcome, frame)))
+            .nth(37)
+            .expect("原版第 38 批应出现一拳超人退场");
+        let messages = frame
+            .updates
+            .updates
+            .iter()
+            .filter(|update| !update.message.trim().is_empty())
+            .map(|update| update.message.as_ref())
+            .collect::<Vec<_>>();
+        assert_eq!(messages, ["[0]觉得有点饿", "[0]离开了战场", "[1]从[魅惑]中解除"]);
+        assert!(outcome.winner_team.is_none());
+        let boss = runner.player_snapshot(saitama).unwrap();
+        assert_eq!(boss.hp, 389);
+        assert!(!boss.alive);
+        let rng = &runner.runtime.rng;
+        let digest = rng.main_val.iter().fold(2_166_136_261u32, |hash, &byte| {
+            (hash ^ u32::from(byte)).wrapping_mul(16_777_619)
+        });
+        assert_eq!((rng.i, rng.j, digest), (30, 152, 817_248_267));
+    }
+
+    #[test]
+    fn lazy_state_from_an_ordinary_player_preserves_legacy_release_order() {
+        let mut runner = RuntimeRunner::new_from_namerena_raw("lazy\n\ncarrier".to_owned()).unwrap();
+        let source = runner.input_groups[0][0];
+        let carrier = runner.input_groups[1][0];
+        let runtime = &mut runner.runtime;
+        let mut updates = RunUpdates::new();
+        // 扩展可由普通同名角色直接施加懒癌载荷，仍应使用旧顺序。
+        assert!(runtime.infect_with_lazy_into(source, carrier, &mut updates));
+        let haste = runtime.registry.state_id_by_export_name(DEFAULT_CORE_HASTE_STATE_EXPORT).unwrap();
+        assert!(runtime.entities.get_mut(carrier).unwrap().states.add_entry(StateEntry::haste(
+            PLAIN_HASTE_STATE_KEY,
+            haste,
+            2,
+            1,
+            SkillPriority(100),
+        )));
+        let plan = runtime.scheduler.state_hook_plan(&runtime.entities, carrier, ProcMask::POST_ACTION);
+        let mut updates = RunUpdates::new();
+        runtime.drain_state_hook_plan_into(&plan, &mut updates);
+        let messages = updates
+            .updates
+            .iter()
+            .map(|update| update.message.as_ref())
+            .filter(|message| !message.trim().is_empty())
+            .collect::<Vec<_>>();
+        assert_eq!(&messages[..2], &["[1]从[疾走]中解除", "[1][懒癌]发作"]);
+    }
 }
