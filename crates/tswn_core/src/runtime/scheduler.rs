@@ -491,7 +491,7 @@ impl PhaseScheduler {
                 owner,
                 state_id: entry.extension_state_id,
                 legacy_order_key: entry.legacy_order_key,
-                priority: entry.priority_for_hook(hook),
+                priority: entry.plan_priority_for_hook(hook, entities),
                 registration_order: entry.registration_order,
                 runtime_registration_order,
             });

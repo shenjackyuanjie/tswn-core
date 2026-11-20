@@ -570,6 +570,21 @@ impl StateEntry {
         }
     }
 
+    pub(crate) fn plan_priority_for_hook(&self, hook: ProcMask, entities: &EntityArena) -> SkillPriority {
+        if hook.intersects(ProcMask::POST_ACTION)
+            && self.legacy_order_key == crate::runtime::profile::PLAIN_LAZY_INFECTION_STATE_KEY
+            && let StatePayload::LazyInfection { boss } = self.payload
+            && entities
+                .get(boss)
+                .is_some_and(|source| source.runtime.flags.contains(PlayerKindFlags::BOSS) && source.template.name == "lazy")
+        {
+            // Vite 的懒癌与定时状态同属默认行动后优先级，按登记顺序执行。
+            // 只有实际懒癌 Boss 的感染使用该顺序；前置接管与扩展载荷保持原优先级。
+            return SkillPriority(210);
+        }
+        self.priority_for_hook(hook)
+    }
+
     pub fn positive_clear_message(&self, owner_alive: bool) -> Option<(i32, &'static str)> {
         match &self.payload {
             StatePayload::Haste { .. } if owner_alive => Some((300, "[1]从[疾走]中解除")),
