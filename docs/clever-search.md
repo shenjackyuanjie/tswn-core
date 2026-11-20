@@ -48,6 +48,17 @@ cargo build --release -p tswn_core --bin clever-search --features 'no_debug,mima
 alpha
 ```
 
+四种模式沿用参考站的 `!` 和重名输入约定；`!` 必须单独成行，放在 `!test!` 后、被测名字前：
+
+| 模式 | 输入（`\n` 表示换行） | tswn 对应 |
+| --- | --- | --- |
+| 普通单挑 | `!test!\n\nalpha\nalpha` | pd，普通 profile，1 对 1 |
+| 普通评分 | `!test!\n\nalpha` | pp，普通 profile，2 对 2 |
+| 强化单挑 | `!test!\n!\n\nalpha\nalpha` | qd，强化 profile，1 对 1 |
+| 强化评分 | `!test!\n!\n\nalpha` | qp，强化 profile，2 对 2 |
+
+普通 profile 使用 `\u0002` 修饰符，强化 profile 使用 `!` 修饰符；只切换陪测 profile 的构造，不改写被测名字。单名评分由被测名字与一个 profile 组队，对战两个 profile；相同名字两行只保留一个被测实体，对战一个 profile。多名字队伍继续沿用现有评分分组规则。页面标题显示模式与出招策略。
+
 输入面板的策略决定全部 10000 场 profile 对局的战斗方式：Clever 使用与回放一致的 run_search_round 和 16/128/4 预算；原版使用原有策略。只在累计 1000 场（10%）和 10000 场（100%）展示结果，随后永久停止该会话。Profile 名单、空战斗 seed 和 WIN_RATE_EVAL_RQ 沿用现有评分接口；旧 score() API 仍为原版评分。
 
 技能／动作频率沿用参考站口径：被测本体产生的正 score、含 [0] 的真实消息次数，除以已完成场数再乘 100。不计 profile、召唤物、搜索试算及兼容层的 [s_dmg0] 伤害消息。这是每百局发生次数，不是每次出手的发动概率，可以超过 100%。Worker 支持立即取消正在计算的对局。

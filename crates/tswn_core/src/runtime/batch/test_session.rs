@@ -43,7 +43,10 @@ pub struct ScoreTestSession {
 }
 
 impl ScoreTestSession {
-    pub fn new(raw: &str, search: Option<SearchConfig>) -> CliApiResult<Self> {
+    pub fn new(raw: &str, search: Option<SearchConfig>) -> CliApiResult<Self> { Self::new_with_mode(raw, search, false) }
+
+    /// 普通与强化只改变陪测 profile 修饰符；重复名字仍由原评分规则识别为单挑。
+    pub fn new_with_mode(raw: &str, search: Option<SearchConfig>, enhanced: bool) -> CliApiResult<Self> {
         // 保留 !test! 与名字队伍间的空行，让标准解析器把连续名字视为同一队。
         let (groups, _) = RuntimeRunner::split_namerena_into_groups(format!("!test!\n\n{raw}"));
         if groups.len() != 2 || groups[1].is_empty() {
@@ -52,7 +55,7 @@ impl ScoreTestSession {
             ));
         }
         let target = &groups[1];
-        let groups = ScoreMatchGroups::new(target, "!");
+        let groups = ScoreMatchGroups::new(target, if enhanced { "!" } else { "\u{0002}" });
         let config = default_custom_runtime_import_config().map_err(|e| CliApiError::RunnerInit(format!("{e:?}")))?;
         let prepared = PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(
             &groups.groups,
@@ -164,7 +167,14 @@ mod tests {
         for n in 1..=SCORE_TEST_TOTAL {
             session.step().unwrap();
             if n == 1000 || n == SCORE_TEST_TOTAL {
-                let baseline = runtime_score(&["alpha".into()], "!", n, crate::namerena::eval_name::WIN_RATE_EVAL_RQ, 1).unwrap();
+                let baseline = runtime_score(
+                    &["alpha".into()],
+                    "\u{0002}",
+                    n,
+                    crate::namerena::eval_name::WIN_RATE_EVAL_RQ,
+                    1,
+                )
+                .unwrap();
                 let progress = session.progress();
                 assert_eq!(progress.completed, n);
                 assert_eq!(progress.score, baseline.score_10000());
@@ -182,43 +192,77 @@ mod tests {
 
     #[test]
     fn search_counts_only_real_frames_and_matches_direct_cpu_search() {
-        let config = SearchConfig {
-            samples: 2,
-            horizon: 8,
-            ..SearchConfig::default()
-        };
-        let mut session = ScoreTestSession::new("alpha", Some(config)).unwrap();
-        let mut cpu = session.prepared.new_reusable_runner();
-        let mut counts = BTreeMap::<String, u64>::new();
-        while !cpu.have_winner() {
-            let result = cpu.runtime_mut().run_search_round(config);
-            if let Some(frame) = result.outcome.frame {
-                for update in frame.updates.updates {
-                    if update.caster == 0
-                        && update.score > 0
-                        && update.message.contains("[0]")
-                        && !update.message.contains("[s_dmg0]")
-                    {
-                        *counts.entry(update.message.into_owned()).or_default() += 1;
+        // 四种模式均与同配置的直接搜索对局比较，统计只归属被测本体。
+        for enhanced in [false, true] {
+            for raw in ["alpha", "alpha\nalpha"] {
+                let config = SearchConfig {
+                    samples: 2,
+                    horizon: 8,
+                    ..SearchConfig::default()
+                };
+                let mut session = ScoreTestSession::new_with_mode(raw, Some(config), enhanced).unwrap();
+                let mut cpu = session.prepared.new_reusable_runner();
+                let mut counts = BTreeMap::<String, u64>::new();
+                while !cpu.have_winner() {
+                    let result = cpu.runtime_mut().run_search_round(config);
+                    if let Some(frame) = result.outcome.frame {
+                        for update in frame.updates.updates {
+                            if update.caster == 0
+                                && update.score > 0
+                                && update.message.contains("[0]")
+                                && !update.message.contains("[s_dmg0]")
+                            {
+                                *counts.entry(update.message.into_owned()).or_default() += 1;
+                            }
+                        }
                     }
                 }
+                session.step().unwrap();
+                assert_eq!(
+                    session
+                        .runner
+                        .runtime()
+                        .entities
+                        .get(super::super::super::EntityIdx(0))
+                        .unwrap()
+                        .template
+                        .name,
+                    "alpha"
+                );
+                assert_eq!(session.skills, counts);
+                assert_eq!(session.wins, usize::from(cpu.input_group_won(0)));
+                assert_eq!(session.runner.player_snapshots(), cpu.player_snapshots());
             }
         }
-        session.step().unwrap();
-        assert_eq!(
-            session
-                .runner
-                .runtime()
-                .entities
-                .get(super::super::super::EntityIdx(0))
-                .unwrap()
-                .template
-                .name,
-            "alpha"
-        );
-        assert_eq!(session.skills, counts);
-        assert_eq!(session.wins, usize::from(cpu.input_group_won(0)));
-        assert_eq!(session.runner.player_snapshots(), cpu.player_snapshots());
+    }
+
+    #[test]
+    fn four_modes_match_original_score_rosters_and_results() {
+        // 对照旧评分的普通/强化修饰符和单名/重名分组，验证实际战斗结果。
+        for enhanced in [false, true] {
+            for duel in [false, true] {
+                let target = vec!["alpha".to_owned(); if duel { 2 } else { 1 }];
+                let modifier = if enhanced { "!" } else { "\u{0002}" };
+                let mut session = ScoreTestSession::new_with_mode(&target.join("\n"), None, enhanced).unwrap();
+                assert_eq!(session.subjects, vec![0]);
+                assert_eq!(
+                    session.groups.groups.iter().map(Vec::len).collect::<Vec<_>>(),
+                    if duel { vec![1, 1] } else { vec![2, 2] }
+                );
+                for _ in 0..64 {
+                    session.step().unwrap();
+                }
+                let baseline = runtime_score(&target, modifier, 64, crate::namerena::eval_name::WIN_RATE_EVAL_RQ, 1).unwrap();
+                assert_eq!(session.progress().score, baseline.score_10000());
+                assert!(
+                    session
+                        .groups
+                        .profile_slots
+                        .iter()
+                        .all(|&(group, player)| session.groups.groups[group][player].ends_with(&format!("@{modifier}")))
+                );
+            }
+        }
     }
 
     #[test]
@@ -233,7 +277,7 @@ mod tests {
         session.step().unwrap();
         let baseline = runtime_score(
             &["alpha".into(), "alpha".into()],
-            "!",
+            "\u{0002}",
             1,
             crate::namerena::eval_name::WIN_RATE_EVAL_RQ,
             1,

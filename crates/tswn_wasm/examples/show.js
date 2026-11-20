@@ -620,10 +620,11 @@ function startScoreTest(input, { persistInput }) {
   stopPlaybackLoop();
   clearCurrentReplayView();
   const strategy = strategySelect.value;
-  const label = strategy === "search" ? "Clever 搜索" : "原版策略";
-  playerList.textContent = input;
-  plistMeta.textContent = "评分 · 固定 10000 场";
-  headerMeta.textContent = label + "评分中，1000 / 10000 场各展示一次";
+  // 始终展示模式和策略，避免把普通与强化、单挑与评分混淆。
+  const label = (strategy === "search" ? "Clever 搜索 · " : "原版策略 · ") + input.label;
+  playerList.textContent = input.input;
+  plistMeta.textContent = input.label + " · 固定 10000 场";
+  headerMeta.textContent = label + " · 计算中，1000 / 10000 场各展示一次";
   battleRows.innerHTML = "";
   const cancel = document.createElement("button");
   cancel.textContent = "停止测试";
@@ -647,9 +648,9 @@ function startScoreTest(input, { persistInput }) {
       if (generation !== battleGenerationToken || scoreWorker !== worker) return;
       if (data.type === "checkpoint") {
         battleRows.insertAdjacentHTML("beforeend", scoreCheckpointHtml(data.progress));
-        headerMeta.textContent = label + (data.progress.done ? "评分完成" : "已完成 10%，继续测试至 10000 场");
+        headerMeta.textContent = label + (data.progress.done ? " · 已完成" : " · 已完成 10%，继续测试至 10000 场");
       } else if (data.type === "done") {
-        finish(label + "评分完成：10000 场，已停止。");
+        finish(label + " · 已完成 10000 场，已停止。");
       } else if (data.type === "error") {
         finish("评分失败：" + data.message, true);
       }
@@ -674,7 +675,7 @@ async function startBattle({ persistInput = true } = {}) {
   let scoreInput;
   try { scoreInput = parseScoreTestInput(rawInput); }
   catch (error) { setInputStatus(formatError(error), true); openInputEditor(); return; }
-  const inputError = validateReplayInput(scoreInput ?? rawInput);
+  const inputError = validateReplayInput(scoreInput?.input ?? rawInput);
   if (inputError) {
     setInputStatus(inputError, true);
     openInputEditor();

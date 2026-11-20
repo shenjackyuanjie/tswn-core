@@ -14,10 +14,12 @@ pub struct ScoreTestSession {
 #[wasm_bindgen]
 impl ScoreTestSession {
     #[wasm_bindgen(constructor)]
-    pub fn new(raw_input: String, search: bool) -> WasmResult<Self> {
+    /// 第三个参数选择强化 profile，省略时使用普通评分。
+    pub fn new(raw_input: String, search: bool, enhanced: Option<bool>) -> WasmResult<Self> {
         crate::install_panic_hook();
         Ok(Self {
-            inner: CoreSession::new(&raw_input, search.then(SearchConfig::default)).map_err(cli_api_error)?,
+            inner: CoreSession::new_with_mode(&raw_input, search.then(SearchConfig::default), enhanced.unwrap_or(false))
+                .map_err(cli_api_error)?,
         })
     }
 

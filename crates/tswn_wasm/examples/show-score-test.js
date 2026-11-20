@@ -7,17 +7,24 @@ export const SCORE_TEST_CHECKPOINTS = [1000, 10000];
 export function parseScoreTestInput(raw) {
   const lines = raw.trim().replace(/\r\n?/g, "\n").split("\n");
   if (lines[0].trim() !== "!test!") return null;
-  const input = lines.slice(1).join("\n").trim();
+  const body = lines.slice(1).join("\n").trim();
+  // 单独的 ! 是强化指令，不作为被测名字；同名两行沿用引擎的单挑规则。
+  const enhanced = body.split("\n")[0].trim() === "!";
+  const input = (enhanced ? body.split("\n").slice(1).join("\n") : body).trim();
   if (!input || input.split(/\n\s*\n/).length !== 1 || input.split("\n").some(line => line.trim() === "!test!")) {
     throw new Error("!test! 后请输入一个名字或同一队伍的名字，名字之间不要用空行分队。");
   }
-  return input;
+  const names = input.split("\n").map(line => line.trim()).filter(Boolean);
+  const duel = names.length === 2 && names[0] === names[1];
+  return { input, enhanced, label: (enhanced ? "强化" : "普通") + (duel ? "单挑" : "评分") };
 }
 
 /** 仅输出两个累计检查点；每次 step 的一场都由所选策略执行。 */
 export async function runScoreTest(api, input, strategy, onCheckpoint, yieldControl = () => new Promise(resolve => setTimeout(resolve, 0))) {
   if (typeof api.ScoreTestSession !== "function") throw new Error("评分引擎版本过旧，请刷新页面。");
-  const session = new api.ScoreTestSession(input, strategy === "search");
+  // 兼容直接传名字的调用方；页面与 Worker 传递包含强化标记的解析结果。
+  const options = typeof input === "string" ? { input, enhanced: false } : input;
+  const session = new api.ScoreTestSession(options.input, strategy === "search", options.enhanced);
   try {
     if (session.progress().total !== SCORE_TEST_TOTAL) throw new Error("评分场数不匹配，请刷新页面。");
     let yieldedAt = performance.now();
