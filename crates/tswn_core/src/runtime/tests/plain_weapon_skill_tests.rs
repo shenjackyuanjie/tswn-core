@@ -81,6 +81,80 @@ fn clone_build_with_attrs(attrs: [u32; 8]) -> CloneBuildData {
     }
 }
 
+fn public_weapon_duel(weapon: &str) -> RuntimeRunner {
+    let config = default_custom_runtime_import_config().unwrap();
+    RuntimeRunner::from_custom_mixed_namerena_raw(format!("b\n\na+{weapon}"), config).unwrap()
+}
+
+fn next_weapon_duel_frame(runner: &mut RuntimeRunner) -> RoundOutcome {
+    (0..64)
+        .map(|_| runner.run_round())
+        .find(|outcome| outcome.frame.is_some())
+        .expect("应产生可见回合")
+}
+
+fn weapon_duel_rng(runner: &RuntimeRunner) -> (u32, u32, u8) {
+    let rng = &runner.runtime().rng;
+    (rng.i, rng.j, rng.peek_next_u8())
+}
+
+#[test]
+fn public_generic_weapon_triplet_changes_defense_and_damage() {
+    for (weapon, speed, points) in [("防尘口罩", 212, 660), ("A", 218, 750)] {
+        let mut runner = public_weapon_duel(weapon);
+        let wearer = EntityIdx(1);
+        let defense = runner.runtime().entities.get(wearer).unwrap().runtime.defense;
+        assert_eq!(weapon_duel_rng(&runner), (15, 91, 219));
+        next_weapon_duel_frame(&mut runner);
+        next_weapon_duel_frame(&mut runner);
+
+        // 中文口罩和无口罩后缀的英文武器在原版都将防御提升到 54。
+        let frame = next_weapon_duel_frame(&mut runner).frame.unwrap();
+        let hit = &frame.updates.updates[1];
+        assert_eq!((hit.target, hit.score), (wearer.0 as usize, 55), "{weapon}");
+        assert_eq!(weapon_duel_rng(&runner), (115, 116, 28));
+        let state = &runner.runtime().entities.get(wearer).unwrap().runtime;
+        assert_eq!(
+            (defense, state.hp, state.speed, state.move_state.speed_points, state.magic_point),
+            (54, 205, speed, points, 18)
+        );
+    }
+}
+
+#[test]
+fn public_generic_mask_controls_keep_their_own_weapon_stats() {
+    for (weapon, hp, defense, damage) in [("mask", 276, 57, 48), ("fabricmask", 279, 48, 52), ("saber", 260, 48, 52)] {
+        let mut runner = public_weapon_duel(weapon);
+        let state = &runner.runtime().entities.get(EntityIdx(1)).unwrap().runtime;
+        assert_eq!((state.hp, state.defense), (hp, defense), "{weapon}");
+        next_weapon_duel_frame(&mut runner);
+        let frame = next_weapon_duel_frame(&mut runner).frame.unwrap();
+        assert_eq!(frame.updates.updates[1].score, damage, "{weapon}");
+        let state = &runner.runtime().entities.get(EntityIdx(1)).unwrap().runtime;
+        assert_eq!(state.hp, hp - damage as i32, "{weapon}");
+    }
+}
+
+#[test]
+fn public_boss_ex_weapon_upgrades_the_full_attribute_triplets() {
+    let mut runner = public_weapon_duel("saber!");
+    let state = &runner.runtime().entities.get(EntityIdx(1)).unwrap().runtime;
+    let panel = (
+        state.hp,
+        state.speed,
+        state.defense,
+        state.agility,
+        state.wisdom,
+        state.magic_point,
+    );
+    assert_eq!(weapon_duel_rng(&runner), (15, 91, 219));
+
+    let frame = next_weapon_duel_frame(&mut runner).frame.unwrap();
+    assert_eq!(frame.updates.updates[1].score, 49);
+    assert_eq!(weapon_duel_rng(&runner), (51, 125, 18));
+    assert_eq!(panel, (293, 207, 59, 61, 48, 24));
+}
+
 #[test]
 fn weapon_s11_loadout_initializes_runtime_state_and_selects_empty_targets() {
     let (registry, s11, _, _) = weapon_registry();
