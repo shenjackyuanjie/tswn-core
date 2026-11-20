@@ -343,12 +343,17 @@ impl CombatRuntime {
                 actor.0, target.0, atp, self.rng.i, self.rng.j,
             );
         }
-        // 0.5.5 中青雉与斑鸠的默认攻击来自 `SklAttack.v`，物理分支传入 `T.oH()`；
-        // 其他 Boss 与玩家来自 `SklSimpleAttack`/普攻，使用默认伤害类型。
+        // 青雉只免疫 SklAttack 的物理回调；普通玩家、青雉和斑鸠使用它，
+        // 其他 Boss 的 SklSimpleAttack 与物理技能都不使用该回调。
         let kind = if !use_magic
             && self.entities.get(actor).is_some_and(|entity| {
-                entity.runtime.flags.contains(PlayerKindFlags::BOSS)
-                    && crate::namerena::boss_uses_skill_attack(&entity.template.name)
+                if entity.runtime.flags.contains(PlayerKindFlags::BOSS) {
+                    crate::namerena::boss_uses_skill_attack(&entity.template.name)
+                } else {
+                    self.entities.get(target).is_some_and(|target| {
+                        target.runtime.flags.contains(PlayerKindFlags::BOSS) && target.template.name == "aokiji"
+                    })
+                }
             }) {
             DamageKind::Physical
         } else {
@@ -464,8 +469,12 @@ impl CombatRuntime {
             0,
         ));
         self.drain_plain_attack_with_atp_into(actor, target, false, atp, updates);
+        // 原版在最后一组对手退场时直接结束本次动作，不执行后面的清条。
+        if self.world.sync_winner_from_alive_views().is_some() {
+            return;
+        }
 
-        // 原版出拳完成后清空全场存活者的行动值，再给一拳超人自己留下 1700。
+        // 非终局出拳清空全场存活者的行动值，再给一拳超人自己留下 1700。
         for &member in self.world.flat_alive() {
             self.entities.get_mut(member).unwrap().runtime.move_state.speed_points = 0;
         }
@@ -1045,5 +1054,71 @@ impl CombatRuntime {
             target.0 as usize,
             60,
         ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::runtime::RuntimeRunner;
+
+    #[test]
+    fn aokiji_only_nullifies_the_physical_default_attack_callback() {
+        // 原版首回合：d 的物理普攻命中但清零，alice 的魔法普攻和索尼克连击实伤。
+        for (opponent, expected_hp, expected_move_point, expected_mp) in
+            [("d", 394, 1618, 31), ("alice", 368, 1116, 35), ("sonic@!", 326, 815, 10)]
+        {
+            let mut runner = RuntimeRunner::new_from_namerena_raw(format!("aokiji@!\n\n{opponent}")).unwrap();
+            let aokiji = runner.input_groups[0][0];
+            let attacker = runner.input_groups[1][0];
+            let outcome = (0..32)
+                .map(|_| runner.run_round())
+                .find(|outcome| outcome.frame.is_some())
+                .expect("应产生首次可见的对战帧");
+            let action = outcome.action.expect("对手应完成首次行动");
+            assert_eq!(action.actor, attacker, "{opponent}");
+            let frame = outcome.frame.unwrap();
+            let zero_damage = frame
+                .updates
+                .updates
+                .iter()
+                .any(|update| update.target == aokiji.0 as usize && update.message == "[0]受到[2]点伤害[s_dmg0]");
+            assert_eq!(zero_damage, opponent == "d", "{opponent}");
+
+            let boss = &runner.runtime.entities.get(aokiji).unwrap().runtime;
+            assert_eq!(
+                (boss.hp, boss.move_state.speed_points),
+                (expected_hp, expected_move_point),
+                "{opponent}"
+            );
+            let player = &runner.runtime.entities.get(attacker).unwrap().runtime;
+            assert_eq!(player.magic_point, expected_mp, "{opponent}");
+        }
+    }
+
+    #[test]
+    fn saitama_only_resets_speed_points_when_his_punch_does_not_end_the_battle() {
+        // 原版最后一组敌人退场时直接结束动作；马里奥前两次复活仍会触发清条。
+        for (opponents, expected) in [("Bob\nAlice", &[1700, 164][..]), ("mario@!", &[1700, 1700, 420][..])] {
+            let mut runner = RuntimeRunner::new_from_namerena_raw(format!("saitama@!\n\n{opponents}")).unwrap();
+            let actor = runner.input_groups[0][0];
+            let mut points = Vec::new();
+            for _ in 0..300 {
+                let outcome = runner.run_round();
+                if outcome.frame.is_some_and(|frame| {
+                    frame
+                        .updates
+                        .updates
+                        .iter()
+                        .any(|update| update.caster == actor.0 as usize && update.message == "[0]发起攻击")
+                }) {
+                    let boss = &runner.runtime.entities.get(actor).unwrap().runtime;
+                    points.push(boss.move_state.speed_points);
+                }
+                if outcome.winner_team.is_some() {
+                    break;
+                }
+            }
+            assert_eq!(points, expected, "{opponents}");
+        }
     }
 }
