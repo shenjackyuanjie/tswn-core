@@ -7,6 +7,7 @@ use crate::replay_view::{
     ReplayClip, ReplayEventView, ReplayRow, ReplayTextPart, ReplayTextPartKind, ReplayTone, build_replay_view_frame,
     hp_delta_for_tone, is_percent_hp_damage_update, render_update_message,
 };
+use crate::runtime::control::TargetWisdom;
 use crate::runtime::update::{RunUpdates, UpdateType};
 use crate::runtime::{
     EntityIdx, ForcedAction, PassivePause, PlannedAction, PlannedSkill, PlrId, RuntimeMinionKind, RuntimePlayerSnapshot,
@@ -253,10 +254,23 @@ impl BattleSession {
         input_team: Option<usize>,
         use_turn_wisdom: bool,
     ) -> CliApiResult<Vec<PlrId>> {
+        self.preview_action_targets_with_followups(actor, skill, input_team, use_turn_wisdom, true)
+    }
+
+    /// 预览旧地裂、连击指令时，可指定本回合智慧只用于首目标。
+    pub fn preview_action_targets_with_followups(
+        &mut self,
+        actor: PlrId,
+        skill: PlannedSkill,
+        input_team: Option<usize>,
+        use_turn_wisdom: bool,
+        include_followups: bool,
+    ) -> CliApiResult<Vec<PlrId>> {
         let team = input_team.map(|index| self.target_runtime_team(index)).transpose()?;
+        let wisdom = TargetWisdom::for_action(use_turn_wisdom, include_followups);
         let runtime = self.driver.observed_runner_mut().runtime_mut();
         runtime
-            .preview_current_action_targets(EntityIdx(actor as u32), skill, team, use_turn_wisdom)
+            .preview_current_action_targets(EntityIdx(actor as u32), skill, team, wisdom)
             .map_err(|e| crate::cli_api::CliApiError::InvalidArgument(e.to_string()))
     }
 

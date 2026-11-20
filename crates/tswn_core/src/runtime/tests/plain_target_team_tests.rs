@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime::control::TargetWisdom;
 
 fn fixture(third_team_size: usize) -> CombatRuntime {
     let config = default_custom_runtime_import_config().unwrap();
@@ -240,7 +241,9 @@ fn targeted_preview_restores_world_rng_and_matches_duel_selection() {
                 duel.rng = rng.clone();
                 let actor = EntityIdx(0);
                 runtime.control.set_awaiting_forced_action(0, None, smart);
-                let actual = runtime.preview_current_action_targets(actor, skill, Some(1), true).unwrap();
+                let actual = runtime
+                    .preview_current_action_targets(actor, skill, Some(1), TargetWisdom::WholeAction)
+                    .unwrap();
                 // 独立建立实际 2 对 2 对局，用自动行动的选择器作对照。
                 let expected: Vec<_> = match skill {
                     PlannedSkill::BasicAttack | PlannedSkill::MagicAttack => {
@@ -283,7 +286,9 @@ fn targeted_execution_matches_preview_and_does_not_scope_real_world() {
             let mut runtime = fixture(2);
             let world = runtime.world.clone();
             runtime.control.set_awaiting_forced_action(0, None, smart);
-            let preview = runtime.preview_current_action_targets(EntityIdx(0), skill, Some(1), true).unwrap();
+            let preview = runtime
+                .preview_current_action_targets(EntityIdx(0), skill, Some(1), TargetWisdom::WholeAction)
+                .unwrap();
             runtime.queue_planned_action(PlannedAction {
                 potion: 0,
                 actor: 0,
@@ -366,15 +371,14 @@ fn multihit_followups_use_the_turn_wisdom_over_the_whole_field() {
                     let mut actual = field.clone();
                     actual.rng = rng.clone();
                     actual.control.set_awaiting_forced_action(0, None, smart);
-                    if include_followups {
-                        let preview = actual.preview_current_action_targets(actor, planned, Some(1), true).unwrap();
-                        assert_eq!(
-                            preview,
-                            expected.iter().map(|id| id.0 as usize).collect::<Vec<_>>(),
-                            "{skill:?} smart={smart} seed={seed}"
-                        );
-                        assert_rng_state_eq(&actual.rng, &rng);
-                    }
+                    let wisdom = TargetWisdom::for_action(true, include_followups);
+                    let preview = actual.preview_current_action_targets(actor, planned, Some(1), wisdom).unwrap();
+                    assert_eq!(
+                        preview,
+                        expected.iter().map(|id| id.0 as usize).collect::<Vec<_>>(),
+                        "{skill:?} smart={smart} include_followups={include_followups} seed={seed}"
+                    );
+                    assert_rng_state_eq(&actual.rng, &rng);
                     actual.queue_planned_action(PlannedAction {
                         actor: 0,
                         skill: planned,

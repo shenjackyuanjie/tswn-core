@@ -238,3 +238,5 @@ python scripts/verify_py_cli_api.py
 
 重放曾经只在首目标使用智慧的地裂或连击时，传入与脚本等长的关键字参数 `include_followups`，
 把对应项设为 `False`。新行动的对应项设为 `True`。整份脚本都用新规则时可省略该列表。
+预览这类旧指令时，调用 `preview_targets_for_team(actor, skill, team, use_turn_wisdom=True, include_followups=False)`。
+省略预览的 `include_followups` 时，地裂和连击的后续候选沿用本回合智慧。

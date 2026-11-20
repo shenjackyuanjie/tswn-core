@@ -310,8 +310,9 @@ class BattleSession:
                                *, include_followups: list[bool] | None = None) -> None:
         """首次推进前按行动设置目标席位与智慧规则。旧记录可用 include_followups=False 的对应项重放首目标智慧。"""
         ...
-    def preview_targets_for_team(self, actor: int, skill: str, team: int, use_turn_wisdom: bool = False) -> list[int]:
-        """首目标按输入席位预览，地裂与连击的后续候选从全场取样并沿用同一次智慧。预览不消耗随机数。"""
+    def preview_targets_for_team(self, actor: int, skill: str, team: int, use_turn_wisdom: bool = False,
+                                 *, include_followups: bool = True) -> list[int]:
+        """首目标按输入席位预览。旧地裂与连击可用 include_followups=False 让智慧只影响首目标。预览不消耗随机数。"""
         ...
     def queue_actions(self, actions: list[tuple[int, str, int | None]]) -> None: ...
     def evade_result(self, decision_index: int) -> bool | None:

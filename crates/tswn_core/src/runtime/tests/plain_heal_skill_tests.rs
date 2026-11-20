@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime::control::TargetWisdom;
 
 #[test]
 fn manual_ally_skills_use_the_same_targets_and_rng_as_automatic_skills() {
@@ -51,7 +52,9 @@ fn manual_ally_skills_use_the_same_targets_and_rng_as_automatic_skills() {
                         _ => unreachable!(),
                     };
                     actual.control.set_awaiting_forced_action(0, None, smart);
-                    let preview = actual.preview_current_action_targets(actor, skill, None, true).unwrap();
+                    let preview = actual
+                        .preview_current_action_targets(actor, skill, None, TargetWisdom::WholeAction)
+                        .unwrap();
                     assert_eq!(
                         preview,
                         targets.iter().map(|id| id.0 as usize).collect::<Vec<_>>(),

@@ -1090,14 +1090,9 @@ impl CombatRuntime {
         actor: EntityIdx,
         skill: PlannedSkill,
         team: Option<usize>,
-        use_turn_wisdom: bool,
+        wisdom: TargetWisdom,
     ) -> Result<Vec<PlrId>, PlannedActionError> {
-        let targeting = PlannedTargeting::for_action(
-            skill,
-            team,
-            TargetWisdom::for_action(use_turn_wisdom, true),
-            self.control.awaiting_smart(actor.0 as PlrId),
-        );
+        let targeting = PlannedTargeting::for_action(skill, team, wisdom, self.control.awaiting_smart(actor.0 as PlrId));
         self.preview_action_targets(actor, skill, team, targeting)
     }
 

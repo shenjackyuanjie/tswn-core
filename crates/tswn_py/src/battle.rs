@@ -163,17 +163,24 @@ impl PyBattleSession {
             .map_err(map_cli_error)
     }
 
-    /// 指定玩家席位的目标预览，不改变随机流或真实战场。
-    #[pyo3(signature = (actor, skill, team, use_turn_wisdom=false))]
+    /// 指定玩家席位的目标预览，不改变随机流或真实战场。旧指令可以让智慧只影响首目标。
+    #[pyo3(signature = (actor, skill, team, use_turn_wisdom=false, *, include_followups=true))]
     fn preview_targets_for_team(
         &mut self,
         actor: usize,
         skill: &str,
         team: usize,
         use_turn_wisdom: bool,
+        include_followups: bool,
     ) -> PyResult<Vec<usize>> {
         self.inner
-            .preview_action_targets(actor, parse_planned_skill(skill)?, Some(team), use_turn_wisdom)
+            .preview_action_targets_with_followups(
+                actor,
+                parse_planned_skill(skill)?,
+                Some(team),
+                use_turn_wisdom,
+                include_followups,
+            )
             .map_err(map_cli_error)
     }
 
