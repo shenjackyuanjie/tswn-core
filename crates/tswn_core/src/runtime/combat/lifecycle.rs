@@ -590,6 +590,12 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
         action_smart: Option<bool>,
     ) -> bool {
+        let mixed_boss_infections = action_smart.is_some()
+            && plan.hook == ProcMask::PRE_ACTION
+            && plan.entries.len() >= 2
+            && self.scheduler.uses_legacy_step_scheduler()
+            && self.has_mixed_boss_infection_pre_actions(plan);
+        let mut proposed_infection_action = None;
         let mut action_intercepted = false;
         let mut rebuilt_entries = None::<SmallVec<[StateHookPlanEntry; 2]>>;
         let mut store_generation = plan.store_generation;
@@ -650,8 +656,20 @@ impl CombatRuntime {
                 } else {
                     context
                 };
-                handler(&mut context, &entry);
-                action_intercepted |= context.action_intercepted();
+                if mixed_boss_infections
+                    && matches!(
+                        entry.legacy_order_key,
+                        PLAIN_COVID_INFECTION_STATE_KEY | PLAIN_LAZY_INFECTION_STATE_KEY
+                    )
+                {
+                    // 原版把两个前置钩子的结果依次折叠，前一提案不能跳过后一抽样。
+                    if let Some(execute) = propose_boss_infection_pre_action(&mut context, &entry) {
+                        proposed_infection_action = Some((entry, execute));
+                    }
+                } else {
+                    handler(&mut context, &entry);
+                    action_intercepted |= context.action_intercepted();
+                }
             }
             executed_legacy_keys.push(entry.legacy_order_key);
             self.drain_effects_into(updates);
@@ -668,7 +686,47 @@ impl CombatRuntime {
                     .unwrap_or_else(|| rebuilt_entries.as_ref().expect("刚重建的状态计划必须存在").len());
             }
         }
+        if let Some((entry, execute)) = proposed_infection_action {
+            // 只有最终提案才选敌并行动；冻结仍阻止行动，但不退回已做完的前置抽样。
+            if self.entities.get(entry.owner).is_some_and(|owner| !owner.states.is_frozen()) {
+                let mut context = StateContext::new(
+                    &mut self.entities,
+                    &mut self.world,
+                    &self.template_slots,
+                    &mut self.slots,
+                    &mut self.effects,
+                    updates,
+                    &mut self.rng,
+                    entry,
+                    plan.hook,
+                    READ_ALLIES_AND_ENEMIES_CAPABILITIES,
+                )
+                .with_action_smart(action_smart.expect("mixed boss infections require the action smart roll"));
+                execute(&mut context, &entry);
+                action_intercepted |= context.action_intercepted();
+                self.drain_effects_into(updates);
+            }
+        }
         action_intercepted
+    }
+
+    fn has_mixed_boss_infection_pre_actions(&self, plan: &StateHookPlan) -> bool {
+        [
+            (PLAIN_COVID_INFECTION_STATE_KEY, DEFAULT_CORE_COVID_INFECTION_STATE_EXPORT),
+            (PLAIN_LAZY_INFECTION_STATE_KEY, DEFAULT_CORE_LAZY_INFECTION_STATE_EXPORT),
+        ]
+        .into_iter()
+        .all(|(key, export)| {
+            plan.entries.iter().find(|entry| entry.legacy_order_key == key).is_some_and(|entry| {
+                entry.state_id.is_some()
+                    && entry.state_id == self.registry.state_id_by_export_name(export)
+                    && self
+                        .entities
+                        .get(entry.owner)
+                        .and_then(|owner| owner.states.entry(key))
+                        .is_some_and(|state| state.is_boss_infection(&self.entities))
+            })
+        })
     }
 
     pub fn drain_state_hook_entry_with_defend_value_into(
