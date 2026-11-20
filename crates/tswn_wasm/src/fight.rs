@@ -69,7 +69,8 @@ fn update_from_core(update: BattleUpdate) -> UpdateView {
         delay0: update.delay0,
         delay1: update.delay1,
         caster_id: update.caster_id.unwrap_or(0),
-        target_id: update.target_id.unwrap_or(0),
+        // 旧 Fight API 的 target_id 是数字；这些无目标起手历史上填的是自身 ID。
+        target_id: update.target_id.or(update.caster_id).unwrap_or(0),
         target_ids: update.target_ids,
         update_type: match update.update_type {
             "win" => UpdateTypeView::Win,

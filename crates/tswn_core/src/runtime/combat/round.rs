@@ -213,7 +213,7 @@ impl CombatRuntime {
                     }
                     PreparedPlainAction::WheelExchange { target } => {
                         action.target = *target;
-                        action.amount = 0;
+                        action.amount = self.plain_wheel_action_amount(action.actor, *target);
                     }
                     PreparedPlainAction::BuiltinSkill(prepared) => {
                         if forced_pre_action_skill {
@@ -282,6 +282,10 @@ impl CombatRuntime {
                     self.drain_plain_thanos_snap_into(action.actor, targets, &mut updates);
                 }
                 Some(PreparedPlainAction::WheelExchange { target }) => {
+                    // 追踪保留选敌时的决策；公开回合的基础威力对应 PRE_DAMAGE 之后实际执行的招式。
+                    if CAPTURE_UPDATES || cfg!(not(feature = "no_debug")) {
+                        action.amount = self.plain_wheel_action_amount(action.actor, target);
+                    }
                     self.drain_plain_wheel_exchange_into(action.actor, target, &mut updates);
                 }
                 Some(PreparedPlainAction::BuiltinSkill(_)) => {
@@ -681,9 +685,11 @@ impl CombatRuntime {
                 }
             }
             if boss_name == super::boss_wheel::ID {
-                if let Some(target) = self.select_plain_wheel_exchange_target(actor) {
-                    return Some(PreparedPlainAction::WheelExchange { target });
-                }
+                // 两种选敌方式都交给生命之轮的默认行动，执行时按当时体力决定是互换还是普攻。
+                let target = self
+                    .select_plain_wheel_exchange_target(actor)
+                    .or_else(|| self.select_plain_default_attack_target(actor, smart))?;
+                return Some(PreparedPlainAction::WheelExchange { target });
             }
             let target = self.select_plain_default_attack_target(actor, smart)?;
             // SklAttack 在 smart、魔法高于攻击且扫描技能后蓝量足够时改走魔法攻击。

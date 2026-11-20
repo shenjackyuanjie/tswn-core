@@ -1,6 +1,7 @@
 use super::*;
 
 use crate::runtime::lang::{get_lang, keys};
+use crate::runtime::update::RunUpdateHp;
 
 /// 0.5.5 `BossSlime2.eV` 对名字底数的改写。
 ///
@@ -68,22 +69,23 @@ impl CombatRuntime {
         let child_generation = generation + 1;
 
         updates.add_newline();
-        updates.add(crate::runtime::update::RunUpdate::new_lang(
-            keys::SKL_SLIME_SPAWN,
-            target.0 as usize,
-            target.0 as usize,
-            0,
-        ));
+        updates.add_with(|| RunUpdate::new_lang(keys::SKL_SLIME_SPAWN, target.0 as usize, target.0 as usize, 0).without_target());
 
         let first = self.spawn_plain_slime_child(&name, &clan_name, team, root_owner, child_generation);
         let second = self.spawn_plain_slime_child(&name, &clan_name, team, root_owner, child_generation);
 
-        updates.add(crate::runtime::update::RunUpdate::new_lang(
-            keys::SKL_SLIME_SPAWNED,
-            first.0 as usize,
-            second.0 as usize,
-            0,
-        ));
+        updates.add_with(|| {
+            RunUpdate::new_lang(keys::SKL_SLIME_SPAWNED, first.0 as usize, second.0 as usize, 0).with_hp_changes(
+                [first, second].map(|child| {
+                    let hp = self.entities.get(child).expect("刚创建的史莱姆子体").runtime.hp;
+                    RunUpdateHp {
+                        player: child.0 as usize,
+                        before: hp,
+                        after: hp,
+                    }
+                }),
+            )
+        });
         true
     }
 

@@ -2,6 +2,7 @@ use super::*;
 
 use crate::namerena::BossActionSkill;
 use crate::runtime::lang::keys;
+use crate::runtime::update::RunUpdateHp;
 
 impl CombatRuntime {
     /// 0.5.5 Boss `k4` 扫描：按插入顺序尝试各主动技能的概率与目标。
@@ -522,9 +523,17 @@ impl CombatRuntime {
         entity.states.clear_legacy_key(PLAIN_MARIO_BOSS_STATE_KEY);
         entity.refresh_runtime_stats_from_template();
 
-        let mut revive_update = RunUpdate::new_lang(keys::BOSS_MARIO_REVIVE, target.0 as usize, target.0 as usize, 0);
-        revive_update.delay0 = 3000;
-        updates.add(revive_update);
+        updates.add_with(|| {
+            let mut revive_update = RunUpdate::new_lang(keys::BOSS_MARIO_REVIVE, target.0 as usize, target.0 as usize, 0)
+                .without_target()
+                .with_hp_changes([RunUpdateHp {
+                    player: target.0 as usize,
+                    before: 0,
+                    after: entity.runtime.hp,
+                }]);
+            revive_update.delay0 = 3000;
+            revive_update
+        });
         let mut life_update = RunUpdate::new_lang(keys::BOSS_MARIO_LIFE, target.0 as usize, target.0 as usize, 0);
         life_update.param = Some(remaining);
         updates.add(life_update);

@@ -116,6 +116,7 @@ pub fn default_skill_levels() -> &'static [(usize, u32)] { &[(SHIELD_SKILL_KEY, 
 
 use super::*;
 use crate::runtime::lang::keys;
+use crate::runtime::update::RunUpdateHp;
 
 impl CombatRuntime {
     /// 敌方存活列表：全场存活者里排除自己、排除与自己有效队伍同队者。
@@ -154,12 +155,7 @@ impl CombatRuntime {
     /// 循环体与 JS 一致：`splice(nextInt(len), 1) 保序删除后立刻走该目标的 onDie。
     /// `targets 是 select 阶段返回的标记（空列表），真正目标在这里抽取。
     pub fn drain_plain_thanos_snap_into(&mut self, actor: EntityIdx, _targets: PreparedTargetList, updates: &mut RunUpdates) {
-        updates.add(RunUpdate::new_lang(
-            keys::SKL_THANOS_SNAP,
-            actor.0 as usize,
-            actor.0 as usize,
-            0,
-        ));
+        updates.add_with(|| RunUpdate::new_lang(keys::SKL_THANOS_SNAP, actor.0 as usize, actor.0 as usize, 0).without_target());
         let mut enemies = self.plain_thanos_snap_enemies(actor);
         let count = snap_target_count(enemies.len());
         for _ in 0..count {
@@ -168,7 +164,9 @@ impl CombatRuntime {
             }
             let index = self.rng.next_i32(enemies.len() as i32) as usize;
             let target = enemies.remove(index);
-            self.drain_plain_thanos_dust_into(actor, target, updates);
+            if self.drain_plain_thanos_dust_into(actor, target, updates) {
+                break;
+            }
         }
     }
 
@@ -178,21 +176,28 @@ impl CombatRuntime {
     /// 顺序照抄 legacy：换行 → 灰烬文案（caster = 灭霸，target = 死者，score = hp + 50）
     /// → dies 回调（护身符复活、史莱姆分裂、马里奥复活等）→ 被救回则中止 → 移出队伍与战场
     /// （连带清理使魔）→ 击杀者的 kills 回调。
-    fn drain_plain_thanos_dust_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
+    fn drain_plain_thanos_dust_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) -> bool {
         let Some(hp_before) = self.entities.get(target).map(|entity| entity.runtime.hp) else {
-            return;
+            return false;
         };
-        // JS `if (!_0x31379c["alive"]) continue;：抽到已经没体力者只跳过，不补抽。
+        // JS `if (!_0x31379c["alive"]) continue;`：抽到已经没体力者只跳过，不补抽。
         if hp_before <= 0 {
-            return;
+            return false;
         }
         updates.add_newline();
-        updates.add(RunUpdate::new_lang(
-            keys::SKL_THANOS_DUST,
-            actor.0 as usize,
-            target.0 as usize,
-            dust_score(hp_before),
-        ));
+        updates.add_with(|| {
+            RunUpdate::new_lang(
+                keys::SKL_THANOS_DUST,
+                actor.0 as usize,
+                target.0 as usize,
+                dust_score(hp_before),
+            )
+            .with_hp_changes([RunUpdateHp {
+                player: target.0 as usize,
+                before: hp_before,
+                after: 0,
+            }])
+        });
         self.entities.get_mut(target).expect("runtime thanos snap target disappeared").runtime.hp = 0;
         self.drain_die_hooks_into(target, updates);
         let (hp, team) = self
@@ -202,7 +207,7 @@ impl CombatRuntime {
             .expect("runtime thanos snap target disappeared after die hooks");
         if hp > 0 {
             // 灰烬文案已经报出，但死者被复活：不标记死亡，也不走击杀链。
-            return;
+            return false;
         }
         self.entities
             .get_mut(target)
@@ -210,9 +215,14 @@ impl CombatRuntime {
             .runtime
             .alive = false;
         self.mark_dead_with_linked_minions_into(target, team, updates);
-        if self.should_run_kill_hooks(actor, target) {
+        // 原版清空最后一支敌队时由 checkWin 中止 onDie：不走击杀回调，也不再抽签。
+        if !self.has_alive_enemy_or_pending_spawn(actor) {
+            return true;
+        }
+        if self.entities.get(actor).is_some_and(|entity| entity.runtime.hp > 0) {
             self.drain_kill_hooks_into(actor, target, updates);
         }
+        false
     }
 }
 
@@ -382,6 +392,152 @@ mod tests {
             assert!(!entity.runtime.alive);
         }
         assert_eq!(runtime.world.flat_alive().len(), 3, "4 敌 1 我 → 只剩 2 敌 + 灭霸");
+    }
+
+    fn record_snap_kill(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
+        let target = context.selected_target().unwrap();
+        let roll = context.rng_next_u8();
+        context.add_update(RunUpdate::new(
+            "击杀回调",
+            entry.owner.0 as usize,
+            target.0 as usize,
+            u32::from(roll),
+        ));
+    }
+
+    fn thanos_against_linked_summons(other_enemies: usize, summons: usize) -> (CombatRuntime, EntityIdx) {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let boss = builder
+            .register_player_kind_with_policies(
+                "core",
+                "boss",
+                "core.boss",
+                PlayerKindFlags::BOSS,
+                PlayerKindPolicies::default(),
+            )
+            .unwrap();
+        let summon = builder
+            .register_player_kind_with_policies(
+                "core",
+                "summon",
+                "core.kind.summon",
+                PlayerKindFlags::SUMMON | PlayerKindFlags::MINION | PlayerKindFlags::COMBAT_MINION,
+                PlayerKindPolicies::default(),
+            )
+            .unwrap();
+        let kill = builder
+            .register_skill_with_hooks(
+                "test",
+                "record-kill",
+                "test.record-kill",
+                ProcMask::KILL,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .unwrap();
+        let mut thanos = PlayerTemplate::with_kind(1, ID, boss, 0, 1000, 3).with_speed(1).with_speed_points(2049);
+        if other_enemies == 0 {
+            thanos = thanos.with_skills([kill]);
+        }
+        let mut players = vec![thanos, PlayerTemplate::new(2, "summoner", 1, 100, 3)];
+        for i in 0..other_enemies {
+            players.push(PlayerTemplate::new(3 + i, format!("enemy-{i}"), 1, 100, 3));
+        }
+        let summon_idx = EntityIdx(players.len() as u32);
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(players, builder.build()));
+        runtime.set_skill_handler(kill, record_snap_kill);
+        for i in 0..summons {
+            runtime.effects.push(QueuedEffect::SpawnSilent {
+                caster: EntityIdx(1),
+                template: PlayerTemplate::with_kind(5 + i, format!("linked-summon-{i}"), summon, 1, 100, 3),
+            });
+        }
+        runtime.flush_effects();
+        (runtime, summon_idx)
+    }
+
+    #[test]
+    fn snap_skips_a_drawn_summon_that_died_with_its_owner_without_redrawing() {
+        let (mut runtime, summon) = thanos_against_linked_summons(2, 1);
+        let (thanos, summoner) = (EntityIdx(0), EntityIdx(1));
+        assert_eq!(
+            runtime.world.flat_alive(),
+            &[thanos, summoner, EntityIdx(2), EntityIdx(3), summon]
+        );
+        for _ in 0..5 {
+            runtime.rng.next_u8();
+        }
+        let mut expected_rng = runtime.rng.clone();
+        // 原版 sigils RC4：先过步长、smart、MP 门槛，再从四人取下标 0、从余下三人取下标 2。
+        for _ in 0..3 {
+            expected_rng.next_u8();
+        }
+        assert_eq!(expected_rng.next_i32(4), 0);
+        assert_eq!(expected_rng.next_i32(3), 2);
+        assert_eq!((expected_rng.i, expected_rng.j), (12, 60));
+        expected_rng.r127(); // 双方还有存活者，本回合正常恢复。
+
+        let round = runtime.run_minimal_round();
+        assert_eq!(round.action.unwrap().actor, thanos);
+        assert_eq!(round.winner_team, None);
+        let frame = round.frame.unwrap();
+        let events: Vec<_> = frame
+            .updates
+            .updates
+            .iter()
+            .filter(|u| u.message != "\n")
+            .map(|u| (u.message.as_ref(), u.target, u.score))
+            .collect();
+        assert_eq!((events[0].0, events[0].2), (get_lang(keys::SKL_THANOS_SNAP), 0));
+        assert_eq!(
+            &events[1..],
+            &[
+                (get_lang(keys::SKL_THANOS_DUST), summoner.0 as usize, 150),
+                ("[1]消失了", summon.0 as usize, 50)
+            ]
+        );
+        for dead in [summoner, summon] {
+            let entity = runtime.entities.get(dead).unwrap();
+            assert_eq!(entity.runtime.hp, 0);
+            assert!(!entity.runtime.alive);
+        }
+        assert_eq!(runtime.world.flat_alive(), &[thanos, EntityIdx(2), EntityIdx(3)]);
+        assert_eq!((runtime.rng.i, runtime.rng.j), (13, 73));
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
+    }
+
+    #[test]
+    fn snap_end_skips_kill_hook_and_remaining_draws_after_linked_deaths() {
+        for (summons, initial_skip) in [(1, 3), (3, 5)] {
+            let (mut runtime, _) = thanos_against_linked_summons(0, summons);
+            let (thanos, summoner) = (EntityIdx(0), EntityIdx(1));
+            assert_eq!(runtime.world.flat_alive().len(), 2 + summons);
+            for _ in 0..initial_skip {
+                runtime.rng.next_u8();
+            }
+            let mut expected_rng = runtime.rng.clone();
+            for _ in 0..3 {
+                expected_rng.next_u8();
+            }
+            assert_eq!(expected_rng.next_i32((1 + summons) as i32), 0);
+
+            let round = runtime.run_minimal_round();
+            assert_eq!(round.action.unwrap().actor, thanos);
+            assert_eq!(round.winner_team, Some(0));
+            assert_eq!(runtime.world.flat_alive(), &[thanos]);
+            let frame = round.frame.unwrap();
+            let events: Vec<_> = frame.updates.updates.iter().filter(|u| u.message != "\n").collect();
+            assert_eq!(events[0].message, get_lang(keys::SKL_THANOS_SNAP));
+            assert_eq!(events[1].message, get_lang(keys::SKL_THANOS_DUST));
+            assert_eq!(events[1].target, summoner.0 as usize);
+            assert_eq!(events.len(), 2 + summons);
+            assert!(events[2..].iter().all(|event| event.message == "[1]消失了"));
+            // 原版即使候选池仍含已连带亡故的使魔也直接终局，不消耗下一抽或击杀回调的字节。
+            assert_eq!(
+                (runtime.rng.i, runtime.rng.j, runtime.rng.main_val),
+                (expected_rng.i, expected_rng.j, expected_rng.main_val)
+            );
+        }
     }
 
     #[test]

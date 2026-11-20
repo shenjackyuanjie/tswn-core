@@ -10,6 +10,7 @@
 //!   - `validTarget`：`target.hp - owner.hp >= 0x40`；
 //!   - `isAvoidedBy` 恒为 false：交换既不掷回避，也不做交换免疫判定（不消耗这两处随机数）；
 //!   - `select`：在敌方存活者里取 hp 最高且合格者，没有合格目标时回退普通攻击的目标选择。
+//!   - `act`：对已选目标重验体力差；未达 64 时攻击同一目标，不重新抽选。
 //!   因此合格目标会执行「体力互换」（文案 `sklExchange` 在新版被改名为 `[0]使用[生命之轮]`，
 //!   与本 Boss 同名），`select` 返回 `None` 时走普通攻击（可被回避）。
 //! - 技能：`createSkills` 只 push 一个 `_0xed8723` 实例并置 `level = 0x30`。
@@ -75,8 +76,7 @@ pub fn is_valid_target(owner_hp: i32, target_hp: i32) -> bool {
 /// 因此并列最高时保留最先出现的候选；没有合格目标时返回 `None`，
 /// 由调用方回退普通攻击的目标选择。
 ///
-/// 返回值同时是行动判据：`Some` 时对选中者执行体力互换（跳过回避与交换免疫），
-/// `None` 时执行普通攻击。
+/// 返回 `None` 时按普通攻击方式选敌；实际执行前会对已选目标重验体力差。
 pub fn select_target<T: Copy>(owner_hp: i32, candidates: &[(T, i32)]) -> Option<T> {
     let mut best: Option<(T, i32)> = None;
     for &(index, hp) in candidates {
@@ -99,6 +99,7 @@ pub fn default_skill_levels() -> &'static [(usize, u32)] { &[(COUNTER_SKILL_KEY,
 
 use super::*;
 use crate::runtime::lang::keys;
+use crate::runtime::update::RunUpdateHp;
 
 impl CombatRuntime {
     /// 生命之轮的交换目标：敌方存活者里 hp 比自己高 ≥ [`TARGET_HP_GAP`] 的最高血量者。
@@ -140,7 +141,18 @@ impl CombatRuntime {
         let current = entity.runtime.move_state.speed_points;
         entity.runtime.move_state.speed_points = spsum_after_defend(current, damage);
     }
-    /// 结算生命之轮：体力互换，但不掷回避、不做 exchange 免疫判定、不折半技能等级。
+
+    pub(super) fn plain_wheel_action_amount(&self, actor: EntityIdx, target: EntityIdx) -> i32 {
+        let owner = &self.entities.get(actor).unwrap().runtime;
+        let enemy = &self.entities.get(target).unwrap().runtime;
+        if is_valid_target(owner.hp, enemy.hp) {
+            0
+        } else {
+            owner.attack
+        }
+    }
+
+    /// 结算生命之轮的默认行动。差值不足时物理普攻；互换不掷回避或免疫。
     ///
     /// 其余与通用交换技能一致：蓄力时夺取对方行动值、互换后按自身 max_hp 截断、
     /// 报 `sklExchange`/`sklExchanged` 并走 post_damage 与致死链。
@@ -148,19 +160,17 @@ impl CombatRuntime {
         let (charge_active, owner_hp, owner_max_hp) = self
             .entities
             .get(actor)
-            .map(|owner| {
-                (
-                    owner.runtime.charge.active || owner.runtime.at_boost_millionths >= 3_000_000,
-                    owner.runtime.hp,
-                    owner.template.max_hp,
-                )
-            })
+            .map(|owner| (owner.runtime.charge.active, owner.runtime.hp, owner.template.max_hp))
             .unwrap_or_else(|| panic!("unknown runtime wheel actor: {}", actor.0));
         let target_hp = self
             .entities
             .get(target)
             .map(|entity| entity.runtime.hp)
             .unwrap_or_else(|| panic!("unknown runtime wheel target: {}", target.0));
+        if !is_valid_target(owner_hp, target_hp) {
+            self.drain_plain_default_attack_into(actor, target, false, updates);
+            return;
+        }
         updates.add(RunUpdate::new_lang(keys::SKL_EXCHANGE, actor.0 as usize, target.0 as usize, 1));
         if charge_active {
             let target_move_points = self
@@ -171,14 +181,29 @@ impl CombatRuntime {
             self.entities.get_mut(actor).unwrap().runtime.move_state.speed_points += target_move_points;
             self.entities.get_mut(target).unwrap().runtime.move_state.speed_points = 0;
         }
-        self.entities.get_mut(actor).unwrap().runtime.hp = target_hp.min(owner_max_hp);
+        let owner_new_hp = target_hp.min(owner_max_hp);
+        self.entities.get_mut(actor).unwrap().runtime.hp = owner_new_hp;
         self.entities.get_mut(target).unwrap().runtime.hp = owner_hp;
-        updates.add(RunUpdate::new_lang(
-            keys::SKL_EXCHANGED,
-            actor.0 as usize,
-            target.0 as usize,
-            ((target_hp - owner_hp) * 2).max(0) as u32,
-        ));
+        updates.add_with(|| {
+            RunUpdate::new_lang(
+                keys::SKL_EXCHANGED,
+                actor.0 as usize,
+                target.0 as usize,
+                ((target_hp - owner_hp) * 2).max(0) as u32,
+            )
+            .with_hp_changes([
+                RunUpdateHp {
+                    player: actor.0 as usize,
+                    before: owner_hp,
+                    after: owner_new_hp,
+                },
+                RunUpdateHp {
+                    player: target.0 as usize,
+                    before: target_hp,
+                    after: owner_hp,
+                },
+            ])
+        });
         if target_hp > owner_hp {
             self.drain_plain_post_damage_skill_chain_into(target, target_hp - owner_hp, actor, updates);
             let needs_lethal = self
@@ -342,6 +367,180 @@ mod tests {
         assert_eq!(
             runtime.entities.get(EntityIdx(1)).unwrap().runtime.move_state.speed_points,
             0x500
+        );
+    }
+
+    fn wheel_turn_runtime(
+        target_hp: i32,
+        another_enemy: bool,
+        at_boost: f64,
+        before_attack: Option<SkillHandlerFn>,
+    ) -> CombatRuntime {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let boss_kind = builder
+            .register_player_kind_with_policies(
+                "core",
+                "boss",
+                "core.boss",
+                PlayerKindFlags::BOSS,
+                PlayerKindPolicies::default(),
+            )
+            .unwrap();
+        let mut wheel = PlayerTemplate::with_kind(1, ID, boss_kind, 0, 100, 30)
+            .with_speed(1)
+            .with_speed_points(2049)
+            .with_at_boost(at_boost);
+        let before_attack = before_attack.map(|handler| {
+            let skill = builder
+                .register_skill_with_hooks(
+                    "test",
+                    "before-action-damage",
+                    "test.before-action-damage",
+                    ProcMask::PRE_DAMAGE,
+                    TargetPolicy::None,
+                    SkillPriority(0),
+                )
+                .unwrap();
+            (skill, handler)
+        });
+        if let Some((skill, _)) = before_attack {
+            wheel = wheel.with_skills([skill]);
+        }
+        let mut players = vec![wheel, PlayerTemplate::new(2, "enemy", 1, 164, 3).with_speed_points(0x500)];
+        if another_enemy {
+            players.push(PlayerTemplate::new(3, "other-enemy", 1, 164, 3));
+        }
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(players, builder.build()));
+        runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.hp = target_hp;
+        if let Some((skill, handler)) = before_attack {
+            runtime.set_skill_handler(skill, handler);
+        }
+        runtime
+    }
+
+    fn lower_first_target_hp(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
+        context.push_nested(QueuedEffect::Damage {
+            caster: entry.owner,
+            target: EntityIdx(1),
+            amount: 1,
+        });
+    }
+
+    fn raise_first_target_hp(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
+        context.push_nested(QueuedEffect::Heal {
+            caster: entry.owner,
+            target: EntityIdx(1),
+            amount: 1,
+        });
+    }
+
+    #[test]
+    fn wheel_rechecks_hp_at_execution_and_uses_the_same_target_for_fallback() {
+        // 两个敌人本来都合格，先选第一人；钩子只把第一人的差值改成 63。
+        let mut runtime = wheel_turn_runtime(164, true, 1.0, Some(lower_first_target_hp));
+        let (wheel, target) = (EntityIdx(0), EntityIdx(1));
+        let mut expected = runtime.clone();
+        for _ in 0..3 {
+            // 步长、smart、技能 MP 门槛。原版换血选敌和重验失败时都不重抽。
+            expected.rng.next_u8();
+        }
+        expected.entities.get_mut(target).unwrap().runtime.hp = 163;
+        expected.drain_plain_default_attack_into(wheel, target, false, &mut RunUpdates::new());
+        expected.rng.r127(); // 行动后 MP 恢复。
+
+        let round = runtime.run_minimal_round();
+        let action = round.action.unwrap();
+        assert_eq!((action.actor, action.target), (wheel, target));
+        assert_eq!(action.amount, runtime.entities.get(wheel).unwrap().runtime.attack);
+        let updates = round.frame.unwrap().updates;
+        assert!(!updates.updates.iter().any(|u| u.message == "[0]使用[生命之轮]"));
+        assert!(updates.updates.iter().any(|u| u.message == "[0]发起攻击" && u.target == 1));
+        assert_eq!(runtime.entities.get(wheel).unwrap().runtime.hp, 100);
+        assert_eq!(
+            runtime.entities.get(target).unwrap().runtime.hp,
+            expected.entities.get(target).unwrap().runtime.hp
+        );
+        assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp, 164);
+        assert_eq!(
+            (runtime.rng.i, runtime.rng.j, runtime.rng.main_val),
+            (expected.rng.i, expected.rng.j, expected.rng.main_val)
+        );
+    }
+
+    #[test]
+    fn wheel_rechecks_the_fallback_target_and_exchanges_at_gap_64() {
+        let mut runtime = wheel_turn_runtime(163, false, 1.0, Some(raise_first_target_hp));
+        let round = runtime.run_minimal_round();
+        let action = round.action.unwrap();
+        assert_eq!((action.target, action.amount), (EntityIdx(1), 0));
+        let updates = round.frame.unwrap().updates;
+        assert!(!updates.updates.iter().any(|u| u.message == "[0]发起攻击"));
+        assert!(
+            updates
+                .updates
+                .iter()
+                .any(|u| u.message == "[1]的体力值与[0]互换" && u.target == 1 && u.score == 128)
+        );
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 100);
+    }
+
+    #[test]
+    fn wheel_exchange_only_steals_move_points_for_real_charge() {
+        for charged in [false, true] {
+            let mut runtime = wheel_turn_runtime(164, false, if charged { 1.0 } else { 3.0 }, None);
+            let owner = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+            if charged {
+                owner.activate_charge_runtime();
+            }
+            assert_eq!(owner.runtime.charge.active, charged);
+            assert_eq!(owner.runtime.at_boost(), 3.0);
+            let mut expected_rng = runtime.rng.clone();
+            let points_after_step = 1 + i32::from(expected_rng.next_u8() & 3);
+            // smart、技能 MP 门槛、行动后 MP 恢复。互换本身不掷回避或免疫。
+            for _ in 0..3 {
+                expected_rng.next_u8();
+            }
+            let round = runtime.run_minimal_round();
+            assert_eq!(round.action.unwrap().target, EntityIdx(1));
+            assert!(round.frame.unwrap().updates.updates.iter().any(|u| u.message == "[0]使用[生命之轮]"));
+            let owner = &runtime.entities.get(EntityIdx(0)).unwrap().runtime;
+            let target = &runtime.entities.get(EntityIdx(1)).unwrap().runtime;
+            assert_eq!(target.move_state.speed_points, if charged { 0 } else { 0x500 });
+            assert_eq!(
+                owner.move_state.speed_points,
+                points_after_step + if charged { 0x500 } else { 0 }
+            );
+            assert_eq!(
+                (runtime.rng.i, runtime.rng.j, runtime.rng.main_val),
+                (expected_rng.i, expected_rng.j, expected_rng.main_val)
+            );
+        }
+    }
+
+    #[cfg(feature = "cards")]
+    #[test]
+    fn wheel_exchange_does_not_steal_from_a_scoped_attack_multiplier() {
+        use crate::runtime::forced_action::{attack_multiplier, scope_ability};
+
+        let mut normal = wheel_turn_runtime(164, false, 1.0, None);
+        let mut boosted = normal.clone();
+        normal.run_minimal_round();
+        let _ability = scope_ability(0, 3.0, 0);
+        assert_eq!(attack_multiplier(0), 3.0);
+        boosted.run_minimal_round();
+        for idx in [EntityIdx(0), EntityIdx(1)] {
+            let normal = &normal.entities.get(idx).unwrap().runtime;
+            let boosted = &boosted.entities.get(idx).unwrap().runtime;
+            assert!(!boosted.charge.active);
+            assert_eq!((boosted.hp, boosted.move_state), (normal.hp, normal.move_state));
+        }
+        assert_eq!(
+            boosted.entities.get(EntityIdx(1)).unwrap().runtime.move_state.speed_points,
+            0x500
+        );
+        assert_eq!(
+            (boosted.rng.i, boosted.rng.j, boosted.rng.main_val),
+            (normal.rng.i, normal.rng.j, normal.rng.main_val)
         );
     }
 

@@ -87,6 +87,14 @@ pub struct LegacyActionBoundary {
     pub amount: i32,
 }
 
+/// 单个事件精确记录的 HP 前后值；展示回放不必从整批快照逆推。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RunUpdateHp {
+    pub player: PlrId,
+    pub before: i32,
+    pub after: i32,
+}
+
 /// 单条战斗事件消息帧。
 ///
 /// 对应 JS 产物中的 `RunUpdate` 对象，携带：
@@ -114,6 +122,10 @@ pub struct RunUpdate {
     pub targets: smallvec::SmallVec<[PlrId; 2]>,
     /// 事件类型标记。
     pub update_type: UpdateType,
+    /// 起手等无单体目标的事件通过 `target_id()` 投影为 None。
+    pub has_target: bool,
+    /// 只对需要精确裁切的展示事件取值；普通事件仍按现有规则投影。
+    pub hp_changes: Option<Box<[RunUpdateHp]>>,
 }
 
 impl RunUpdate {
@@ -129,6 +141,8 @@ impl RunUpdate {
             target: 0,
             targets: smallvec::SmallVec::new(),
             update_type: UpdateType::None,
+            has_target: true,
+            hp_changes: None,
         }
     }
 
@@ -146,6 +160,8 @@ impl RunUpdate {
             target: 0,
             targets: smallvec::SmallVec::new(),
             update_type: UpdateType::NextLine,
+            has_target: false,
+            hp_changes: None,
         }
     }
 
@@ -167,6 +183,8 @@ impl RunUpdate {
             target,
             targets: smallvec::SmallVec::new(),
             update_type: UpdateType::None,
+            has_target: true,
+            hp_changes: None,
         }
     }
 
@@ -192,6 +210,19 @@ impl RunUpdate {
     /// ```
     pub fn new_lang(key: &str, caster: PlrId, target: PlrId, score: u32) -> Self {
         Self::new(crate::runtime::lang::get_lang(key), caster, target, score)
+    }
+
+    /// 回放中的真实单体目标；旧消费者仍可读取 `target`。
+    pub fn target_id(&self) -> Option<PlrId> { self.has_target.then_some(self.target) }
+
+    pub(crate) fn without_target(mut self) -> Self {
+        self.has_target = false;
+        self
+    }
+
+    pub(crate) fn with_hp_changes<const N: usize>(mut self, changes: [RunUpdateHp; N]) -> Self {
+        self.hp_changes = Some(Box::new(changes));
+        self
     }
 
     /// 将消息模板中的占位符替换为实际值，返回最终显示字符串。

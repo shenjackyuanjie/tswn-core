@@ -9,6 +9,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::runtime::PlrId;
+use crate::runtime::lang::{get_lang, keys};
 use crate::runtime::update::{RunUpdate, UpdateType};
 
 pub const WIN_UPDATE_DELAY0_MS: i32 = 3000;
@@ -211,24 +212,36 @@ pub fn build_replay_view_frame<S: ReplayState>(
             quick_area_skill_active = true;
         }
 
-        if is_revive_update(update) {
+        if update.hp_changes.is_none() && is_revive_update(update) {
             apply_death_update(&mut running, update.target);
         }
-        let before = running.clone();
-        if should_sync_reappeared_participants(update, event.tone) {
-            sync_reappeared_participants(update, &mut running, &frame_state_map);
-        }
-        if let Some(hp_delta) = hp_delta_for_tone(event.tone, update) {
-            apply_hp_delta(&mut running, update.target, hp_delta);
-            for target_id in &update.targets {
-                apply_hp_delta(&mut running, *target_id, hp_delta);
+        let mut before = running.clone();
+        if let Some(changes) = &update.hp_changes {
+            for &change in changes.iter() {
+                if let Some(state) = before.get(&change.player) {
+                    before.insert(change.player, state.with_hp_alive(change.before, change.before > 0));
+                }
+                // 分裂子体可能只存在于帧末快照，或在同一批中再次死亡；出场体力以事件为准。
+                if let Some(state) = running.get(&change.player).or_else(|| frame_state_map.get(&change.player)) {
+                    running.insert(change.player, state.with_hp_alive(change.after, change.after > 0));
+                }
             }
-        }
-        if is_hp_swap_update(update) {
-            apply_hp_swap(&mut running, update.caster, update.target);
-        }
-        if is_death_effect_update(update) {
-            apply_death_update(&mut running, update.target);
+        } else {
+            if should_sync_reappeared_participants(update, event.tone) {
+                sync_reappeared_participants(update, &mut running, &frame_state_map);
+            }
+            if let Some(hp_delta) = hp_delta_for_tone(event.tone, update) {
+                apply_hp_delta(&mut running, update.target, hp_delta);
+                for target_id in &update.targets {
+                    apply_hp_delta(&mut running, *target_id, hp_delta);
+                }
+            }
+            if is_hp_swap_update(update) {
+                apply_hp_swap(&mut running, update.caster, update.target);
+            }
+            if is_death_effect_update(update) {
+                apply_death_update(&mut running, update.target);
+            }
         }
         let parts = build_clip_parts(update, &before, &running, player_names);
         sync_visible_shields(&parts, &mut running, &frame_state_map);
@@ -316,7 +329,9 @@ fn states_from_map<S: ReplayState>(running: &HashMap<PlrId, S>, state_order: &[P
 fn update_participant_ids(update: &RunUpdate) -> Vec<PlrId> {
     let mut ids = Vec::new();
     push_unique_id(&mut ids, update.caster);
-    push_unique_id(&mut ids, update.target);
+    if let Some(target) = update.target_id() {
+        push_unique_id(&mut ids, target);
+    }
     for id in &update.targets {
         push_unique_id(&mut ids, *id);
     }
@@ -370,7 +385,10 @@ fn sync_visible_shields<S: ReplayState>(
 }
 
 fn should_sync_reappeared_participants(update: &RunUpdate, tone: ReplayTone) -> bool {
-    !matches!(tone, ReplayTone::Knockout | ReplayTone::Recover) && !is_reraise_update(update) && !is_revive_update(update)
+    !matches!(tone, ReplayTone::Knockout | ReplayTone::Recover)
+        && !is_reraise_update(update)
+        && !is_revive_update(update)
+        && update.message != get_lang(keys::SKL_SLIME_SPAWN)
 }
 
 fn is_reraise_update(update: &RunUpdate) -> bool {
@@ -490,7 +508,7 @@ fn push_player_part<S: ReplayState>(
 ) {
     let (hp_before, hp_after, hp_changed) = hp_pair(player_id, before, after);
     let death_effect = death_effect_allowed && hp_after == 0;
-    let show_hp = (hp_changed || force_show_hp) && !death_effect;
+    let show_hp = force_show_hp || (hp_changed && !death_effect);
     parts.push(ReplayTextPart {
         kind: ReplayTextPartKind::Player,
         text: render_name(player_id, player_names),
@@ -507,8 +525,12 @@ fn push_data_part(parts: &mut Vec<ReplayTextPart>, value: &str) {
     parts.push(text_part(ReplayTextPartKind::Data, value.to_string()));
 }
 
+pub(crate) fn is_thanos_dust_update(update: &RunUpdate) -> bool { update.message == get_lang(keys::SKL_THANOS_DUST) }
+
 fn is_death_effect_update(update: &RunUpdate) -> bool {
-    update.message.contains("\u{88ab}\u{51fb}\u{5012}") || update.message.contains("\u{6d88}\u{5931}")
+    is_thanos_dust_update(update)
+        || update.message.contains("\u{88ab}\u{51fb}\u{5012}")
+        || update.message.contains("\u{6d88}\u{5931}")
 }
 
 fn is_hp_marker_update(update: &RunUpdate) -> bool { update.message == "[0]还剩[2]点血" }
@@ -529,7 +551,13 @@ fn build_clip_parts<S: ReplayState>(
     let data = data_for_update(update, player_names);
     let death_effect_allowed = is_death_effect_update(update);
     let force_hp_marker = is_hp_marker_update(update);
-    let force_show_hp = is_hp_swap_update(update);
+    let force_show_hp = |id| {
+        is_hp_swap_update(update)
+            || update
+                .hp_changes
+                .as_deref()
+                .is_some_and(|changes| changes.iter().any(|change| change.player == id))
+    };
     let entity_conversion = is_entity_conversion_update(update);
 
     let mut rest = update.message.as_ref();
@@ -551,7 +579,7 @@ fn build_clip_parts<S: ReplayState>(
                     after,
                     player_names,
                     death_effect_allowed,
-                    force_hp_marker || force_show_hp,
+                    force_hp_marker || force_show_hp(update.caster),
                 );
             }
             "1" => {
@@ -562,7 +590,7 @@ fn build_clip_parts<S: ReplayState>(
                     after,
                     player_names,
                     death_effect_allowed,
-                    force_show_hp,
+                    force_show_hp(update.target),
                 );
             }
             "2" if entity_conversion => {

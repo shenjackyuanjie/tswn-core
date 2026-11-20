@@ -18,6 +18,7 @@ use tswn_core::{
         render_update_message as core_render_update_message,
     },
     runtime::PlrId,
+    runtime::lang::{get_lang, keys},
     runtime::update::{RunUpdates, UpdateType},
     runtime::{BINDING_COMPLETION_MAX_ROUNDS, RuntimePlayerSnapshot as CorePlayerSnapshot},
 };
@@ -68,6 +69,7 @@ impl ReplayState for PlayerSnapshot {
         Self {
             hp,
             alive,
+            active: alive && hp > 0 && !self.frozen,
             ..self.clone()
         }
     }
@@ -186,6 +188,7 @@ fn classify_message_tone(update: &RunUpdate, rendered: &str) -> &'static str {
         || rendered.contains("被击倒")
         || template.contains("消失了")
         || rendered.contains("消失了")
+        || template == get_lang(keys::SKL_THANOS_DUST)
     {
         "knockout"
     } else if template.contains("回避") || rendered.contains("回避") {
@@ -284,7 +287,7 @@ pub fn update_to_dto(update: &RunUpdate, names: &HashMap<PlrId, String>) -> Even
         message_template: update.message.to_string(),
         message_rendered,
         caster_id: (!matches!(update.update_type, UpdateType::NextLine)).then_some(update.caster),
-        target_id: (!matches!(update.update_type, UpdateType::NextLine)).then_some(update.target),
+        target_id: update.target_id(),
         target_ids: update.targets.iter().copied().collect(),
         param: update.param,
         score: Some(update.score),

@@ -191,6 +191,7 @@ impl ReplayState for BattlePlayerState {
         Self {
             hp,
             alive,
+            active: alive && hp > 0 && !self.frozen,
             shield: if alive { self.shield } else { 0 },
             ..self.clone()
         }

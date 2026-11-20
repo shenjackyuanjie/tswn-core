@@ -762,7 +762,7 @@ fn update_from_runtime(update: &crate::RunUpdate, names: &HashMap<PlrId, String>
         message_template: update.message.to_string(),
         message_rendered: render_update_message(update, names),
         caster_id: (!is_next_line).then_some(update.caster),
-        target_id: (!is_next_line).then_some(update.target),
+        target_id: update.target_id(),
         target_ids: update.targets.iter().copied().collect(),
         param: update.param,
         score: update.score,
@@ -781,7 +781,8 @@ fn classify_tone(update: &crate::RunUpdate) -> ReplayTone {
     let message = update.message.as_ref();
     if message.contains("回复体力") {
         ReplayTone::Recover
-    } else if message.contains("被击倒") || message.contains("消失了") {
+    } else if message.contains("被击倒") || message.contains("消失了") || crate::replay_view::is_thanos_dust_update(update)
+    {
         ReplayTone::Knockout
     } else if message.contains("点伤害") || is_percent_hp_damage_update(update) {
         ReplayTone::Damage

@@ -82,6 +82,103 @@ fn jsonl_streams_initial_frames_and_result() {
 }
 
 #[test]
+fn boss_replay_projects_ash_before_revive_and_keeps_snap_targetless() {
+    // 原版 Vite 的第七个可见批次先把 327 HP 的马里奥化为灰烬，再满血复活为 386 HP。
+    let output = run(&["fight", "--jsonl"], Some("thanos@!\naaa\nbbb\nccc\nmario@!"));
+    assert!(output.status.success(), "{}", stderr(&output));
+    let frames: Vec<serde_json::Value> = stdout(&output)
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .filter(|event: &serde_json::Value| event["type"] == "frame")
+        .collect();
+    let frame = frames
+        .iter()
+        .map(|entry| &entry["data"])
+        .find(|frame| {
+            frame["updates"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|update| update["message_template"] == "[1]化成了灰烬" && update["score"] == 377)
+        })
+        .expect("应打出 327 HP 的马里奥灰烬事件");
+    let updates = frame["updates"].as_array().unwrap();
+    let snap = updates.iter().find(|update| update["message_template"] == "[0]打了个[响指]").unwrap();
+    assert!(snap["target_id"].is_null(), "响指起手没有单体目标");
+    let clips: Vec<_> = frame["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|row| row["clips"].as_array().unwrap())
+        .collect();
+    let ash = clips
+        .iter()
+        .position(|clip| {
+            clip["parts"].as_array().unwrap().iter().any(|part| part["text"] == "化成了灰烬")
+                && clip["parts"].as_array().unwrap().iter().any(|part| part["text"] == "马里奥")
+        })
+        .unwrap();
+    let ash_part = &clips[ash]["parts"][0];
+    let revived = &clips[ash + 1]["parts"][0];
+    assert_eq!(ash_part["text"], "马里奥");
+    assert_eq!(
+        (ash_part["hp_before"].as_i64(), ash_part["hp_after"].as_i64()),
+        (Some(327), Some(0))
+    );
+    assert_eq!(ash_part["show_hp"], true);
+    assert_eq!(ash_part["death_effect"], true);
+    assert_eq!(revived["player_id"], ash_part["player_id"]);
+    assert_eq!(
+        (revived["hp_before"].as_i64(), revived["hp_after"].as_i64()),
+        (Some(0), Some(386))
+    );
+    assert_eq!(revived["show_hp"], true);
+    assert_eq!(revived["death_effect"], false);
+    for (index, alive) in [(ash, false), (ash + 1, true)] {
+        let states = clips[index]["sidebar_states"].as_array().unwrap();
+        let mario = states.iter().find(|state| state["id"] == ash_part["player_id"]).unwrap();
+        assert_eq!(mario["alive"], alive);
+        assert_eq!(mario["active"], alive);
+    }
+}
+
+#[test]
+fn boss_replay_projects_split_children_and_both_sides_of_exchange() {
+    let output = run(&["fight", "--jsonl"], Some("wheel@!\nslime@!"));
+    assert!(output.status.success(), "{}", stderr(&output));
+    let frames: Vec<serde_json::Value> = stdout(&output)
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .filter(|event: &serde_json::Value| event["type"] == "frame")
+        .collect();
+    let updates = || frames.iter().flat_map(|entry| entry["data"]["updates"].as_array().unwrap());
+    let split = updates().find(|update| update["message_template"] == "[0][分裂]").unwrap();
+    assert!(split["target_id"].is_null(), "分裂起手不是对自己的伤害");
+    let clips = || {
+        frames
+            .iter()
+            .flat_map(|entry| entry["data"]["rows"].as_array().unwrap())
+            .flat_map(|row| row["clips"].as_array().unwrap())
+    };
+    let find_clip = |text| {
+        clips()
+            .find(|clip| clip["parts"].as_array().unwrap().iter().any(|part| part["text"] == text))
+            .unwrap()
+    };
+    let pairs = |clip: &serde_json::Value| {
+        clip["parts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|part| part["show_hp"] == true)
+            .map(|part| (part["hp_before"].as_i64().unwrap(), part["hp_after"].as_i64().unwrap()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(pairs(find_clip("分成了")), [(218, 218), (218, 218)]);
+    assert_eq!(pairs(find_clip("互换")), [(218, 117), (117, 218)]);
+}
+
+#[test]
 fn invalid_fight_inputs_fail_on_stderr_only() {
     let cases: [&[&str]; 2] = [
         &["fight", "--jsonl", "--max-rounds", "0", "-r", "a\\n\\nb"],
