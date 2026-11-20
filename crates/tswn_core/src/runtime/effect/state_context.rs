@@ -92,6 +92,23 @@ impl<'a> StateContext<'a> {
         Ok(observed)
     }
 
+    /// 选敌按魅惑指定的队伍取样，被魅惑者自身仍属于原队。
+    pub fn effective_team(&self, entity: EntityIdx) -> Result<usize, EffectContextError> {
+        let entity = self.entity(entity)?;
+        Ok(entity
+            .states
+            .entries()
+            .iter()
+            .find_map(|entry| {
+                let (group_id, effective_team, _, _, _) = entry.charm_value()?;
+                effective_team.or_else(|| {
+                    let group_entity = EntityIdx(u32::try_from(group_id).ok()?);
+                    self.entities.get(group_entity).map(|member| member.runtime.team)
+                })
+            })
+            .unwrap_or(entity.runtime.team))
+    }
+
     pub fn battle_slot(&self, id: crate::runtime::BattleSlotId) -> Result<Option<&SlotValue>, EffectContextError> {
         self.require(ExtensionCapability::ReadBattleSlots)?;
         Ok(self.slots.get(id))
