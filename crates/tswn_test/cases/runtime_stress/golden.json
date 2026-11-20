@@ -931,8 +931,8 @@
       "rounds": 95,
       "total_score": 7659,
       "final_rc4": {
-        "i": 6,
-        "j": 39
+        "i": 5,
+        "j": 20
       },
       "round_digests": [
         "43bad7e2dfaeca537887c6727da44002078de2acdc2eda9a8335a9f1e72d7fc5",
@@ -1029,7 +1029,7 @@
         "2011200c7567714109919b5b8575ce491de6e59df699f91c941d4948416f0f9a",
         "e9821e8e378addb0c5ddd00087fb8dc7fc7f9dffce208aa6655c3990f09438f1",
         "43ae181fad42fdcea7a0d891a156f75212b49bea3f3872fb8ae873c45045affe",
-        "ee9b8f0e155725777cbf31ec3e61fb38c51dbd4029a28a31e510e2ef37f4d3b5"
+        "b88f10c5122437e5dd1eb0989be2458259f21cfcc30cebb9f4c967cf63396cf0"
       ]
     },
     {
@@ -1531,8 +1531,8 @@
       "rounds": 53,
       "total_score": 4287,
       "final_rc4": {
-        "i": 107,
-        "j": 64
+        "i": 104,
+        "j": 77
       },
       "round_digests": [
         "a0c3f5a4aa916c4073e2b8855030168357ab0ef83bbd08704ad5435cfb347835",
@@ -1587,7 +1587,7 @@
         "93f2d8876d9631fb90927467cb102d2b36ed61bc4dd9504da9bc100bb6bddf5a",
         "3969bfffa6191396a8c8a39d8e11774d8ab90af1d3ed006a60689bbbc69cfcf9",
         "3e0867cad5053d671919ddc92a93754f3b0ccd46944718f82722bf03e277c5ee",
-        "95d9e19980357432011f05ea316304d5c0d77bade98cead7f8771f44a65e4905"
+        "c62753f8be58911d3f54cd4a2d7ad5d5cdfdd24caf0c89dfb6b9456fc0c03169"
       ]
     },
     {
@@ -2605,8 +2605,8 @@
       "rounds": 25,
       "total_score": 1976,
       "final_rc4": {
-        "i": 55,
-        "j": 98
+        "i": 54,
+        "j": 188
       },
       "round_digests": [
         "456d131bd9b38e194e1812ef7e6eb6ca37f4b09d5fe73dd43eee587496f3faf8",
@@ -2633,7 +2633,7 @@
         "657158ddc3a1505bc94fc1eae14c65c79d052b44a77c4cfb52063d5c2d29da77",
         "b5999f10a93e949a0def7fce769db2be5e28611f6ac7bc42c9fcab5ca45dda30",
         "cd40190e74f45ccd5215807ca797ef2a6d5f3f95c31324b91103e5ff74cc36b8",
-        "87e6907dd9de1899c69678f5737fbb0ca1a0e9055a84114996fd40c592f3887f"
+        "660dcc4d2ea77548ebd8b2ee19b573c18b1b74d0914c78f11f232ca0ae9e2d49"
       ]
     }
   ]

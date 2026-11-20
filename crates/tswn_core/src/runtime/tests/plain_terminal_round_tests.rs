@@ -1,6 +1,21 @@
 use super::*;
 
 #[test]
+fn terminal_charmed_self_kill_stops_before_recovery_and_batch_end() {
+    for (raw, expected_rng) in [
+        ("yuri@!\n\nd", (223, 80)),
+        ("yuri@!\n\nconan@!", (142, 114)),
+        ("mosquito@!\n\nyuri@!", (151, 2)),
+    ] {
+        let mut runner = RuntimeRunner::new_from_namerena_raw(raw.to_owned()).unwrap();
+        let terminal = (0..128).map(|_| runner.run_round()).find(|r| r.winner_team.is_some()).unwrap();
+        let actor = terminal.action.unwrap().actor;
+        assert_eq!(runner.runtime.entities.get(actor).unwrap().runtime.hp, 0, "{raw}");
+        assert_eq!((runner.runtime.rng.i, runner.runtime.rng.j), expected_rng, "{raw}");
+    }
+}
+
+#[test]
 fn terminal_plain_action_skips_recover_newline_and_post_action_chain() {
     let mut builder = ExtensionRegistryBuilder::default();
     let post_action_state = builder

@@ -129,8 +129,11 @@ impl CombatRuntime {
                 .entities
                 .get_mut(owner)
                 .unwrap_or_else(|| panic!("runtime summon share owner disappeared: {}", owner.0));
+            // 饥饿退场的一拳不在名单里，但对象仍存活，血祭分摊仍可真正击倒他。
+            let object_alive = owner_entity.runtime.alive
+                || (owner_entity.runtime.hp > 0 && owner_entity.states.entry(PLAIN_SAITAMA_BOSS_STATE_KEY).is_some());
             owner_entity.runtime.hp = (owner_entity.runtime.hp - shared_damage).max(0);
-            owner_entity.runtime.hp == 0 && owner_entity.runtime.alive
+            owner_entity.runtime.hp == 0 && object_alive
         };
         updates.add(RuntimeFrame::legacy_damage_update(
             caster.0 as usize,
