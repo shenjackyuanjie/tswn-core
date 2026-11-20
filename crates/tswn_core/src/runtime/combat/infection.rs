@@ -177,7 +177,7 @@ impl CombatRuntime {
     }
 
     pub fn infect_with_lazy_into(&mut self, boss: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) -> bool {
-        if target == boss || self.has_lazy_infection(target) {
+        if self.has_lazy_infection(target) {
             return false;
         }
         let state_id = self
@@ -196,43 +196,17 @@ impl CombatRuntime {
         )) {
             return false;
         }
-        let boss_display = self
-            .entities
-            .get(boss)
-            .unwrap_or_else(|| panic!("unknown runtime lazy boss entity: {}", boss.0))
-            .template
-            .display_name
-            .clone();
-        updates.add_with(|| {
-            crate::runtime::update::RunUpdate::new(format!("[1]感染了{boss_display}"), boss.0 as usize, target.0 as usize, 0)
-        });
+        updates.add_with(|| RunUpdate::new_lang(crate::runtime::lang::keys::SKL_LAZY_HIT, boss.0 as usize, target.0 as usize, 0));
         true
     }
 
     pub fn emit_lazy_activity_into(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
-        let activity = match self.rng.next_u8() {
-            0..=49 => "Steam",
-            50..=99 => "守望先锋",
-            100..=149 => "文明6",
-            150..=189 => "英雄联盟",
-            190..=229 => "微博",
-            _ => "朋友圈",
-        };
-        let owner_name = self
-            .entities
-            .get(owner)
-            .unwrap_or_else(|| panic!("unknown runtime lazy activity owner: {}", owner.0))
-            .template
-            .display_name
-            .clone();
-        updates.add_with(|| {
-            crate::runtime::update::RunUpdate::new(
-                format!("{owner_name}打开了{activity}, 这回合什么也没做"),
-                owner.0 as usize,
-                owner.0 as usize,
-                0,
-            )
-        });
+        use crate::runtime::lang::{keys, lazy_activity_key};
+        let activity = lazy_activity_key(self.rng.next_u8());
+        let owner = owner.0 as usize;
+        for key in [activity, keys::SKL_LAZY_SKIP_TURN_0] {
+            updates.add_with(|| RunUpdate::new_lang(key, owner, owner, 0).without_target());
+        }
     }
 
     pub fn try_covid_spread_on_damage_into(
@@ -439,11 +413,9 @@ impl CombatRuntime {
         if damage <= 0 {
             return;
         }
-        let boss_display = self.entities.get(boss).unwrap().template.display_name.clone();
-        let owner_name = self.entities.get(owner).unwrap().template.display_name.clone();
         updates.add_with(|| {
-            crate::runtime::update::RunUpdate::new(
-                format!(" {owner_name}{boss_display}发作"),
+            RunUpdate::new_lang(
+                crate::runtime::lang::keys::SKL_LAZY_DAMAGE,
                 boss.0 as usize,
                 owner.0 as usize,
                 0,

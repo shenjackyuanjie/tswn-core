@@ -870,7 +870,10 @@ impl CombatRuntime {
             self.try_covid_spread_on_damage_into(boss, target, mutation, amount, updates);
         }
         if self.lazy_boss_at_boost(caster).is_some() {
-            self.infect_with_lazy_into(caster, target, updates);
+            // 主动命中不感染懒癌本体；被魅惑打中自己时，由受击被动感染。
+            if self.lazy_boss_at_boost(target).is_none() {
+                self.infect_with_lazy_into(caster, target, updates);
+            }
             if amount > 0 {
                 self.set_lazy_boss_at_boost(caster, 1.0);
             }

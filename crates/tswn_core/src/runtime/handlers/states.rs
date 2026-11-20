@@ -360,14 +360,14 @@ pub fn run_lazy_infection_state(context: &mut StateContext<'_>, entry: &StateHoo
         return;
     };
     if context.hook().intersects(ProcMask::PRE_ACTION) {
-        if context.rng_next_u8() >= 128 {
+        if context.rng_next_u8() >= 128 || context.owner().is_none_or(|owner| !owner.is_active()) {
             return;
         }
         let smart = context
             .action_smart()
             .expect("runtime lazy PRE_ACTION state must receive the action smart roll");
         let all_alive = context.flat_alive().expect("runtime lazy state must read the complete alive list");
-        let boss_team = context.entity(boss).expect("runtime lazy boss must exist").runtime.team;
+        let boss_team = context.effective_team(boss).expect("runtime lazy boss must exist");
         let skip_indices = all_alive
             .iter()
             .enumerate()
@@ -405,22 +405,12 @@ pub fn run_lazy_infection_state(context: &mut StateContext<'_>, entry: &StateHoo
                 let _ = context.rng_r_ffff();
             }
         }
-        let activity = match context.rng_next_u8() {
-            0..=49 => "Steam",
-            50..=99 => "守望先锋",
-            100..=149 => "文明6",
-            150..=189 => "英雄联盟",
-            190..=229 => "微博",
-            _ => "朋友圈",
-        };
-        let owner = context.owner_idx();
-        let owner_name = context.owner().expect("runtime lazy owner must exist").template.display_name.clone();
-        context.add_update(crate::runtime::update::RunUpdate::new(
-            format!("{owner_name}打开了{activity}, 这回合什么也没做"),
-            owner.0 as usize,
-            owner.0 as usize,
-            0,
-        ));
+        use crate::runtime::lang::{keys, lazy_activity_key};
+        let activity = lazy_activity_key(context.rng_next_u8());
+        let owner = context.owner_idx().0 as usize;
+        for key in [activity, keys::SKL_LAZY_SKIP_TURN_0] {
+            context.add_update(crate::runtime::update::RunUpdate::new_lang(key, owner, owner, 0).without_target());
+        }
         context.intercept_action();
         return;
     }
