@@ -291,6 +291,81 @@ fn covid_pneumonia_can_heal_above_max_hp_but_not_a_dead_source() {
 }
 
 #[test]
+fn lazy_public_fight_keeps_vite_templates_and_separate_skip_updates() {
+    use crate::cli_api::battle::{BattleOptions, battle_replay};
+
+    let replay = battle_replay("lazy@!\n\nBob\nAlice", BattleOptions::default()).unwrap();
+    let first = &replay.frames[0];
+    let infection = first.updates.iter().find(|update| update.message_template == "[1]感染了[懒癌]").unwrap();
+    let flare = first.updates.iter().find(|update| update.message_template == "[1][懒癌]发作").unwrap();
+    assert_eq!(infection.target_id, flare.target_id);
+    assert_eq!(infection.caster_id, flare.caster_id);
+    assert_eq!(flare.message_rendered, "Alice[懒癌]发作");
+    assert!(
+        first
+            .updates
+            .iter()
+            .any(|update| update.hp_delta == Some(-63) && update.target_id == flare.target_id)
+    );
+
+    let skip = replay
+        .frames
+        .iter()
+        .find(|frame| frame.updates.iter().any(|u| u.message_template == "这回合什么也没做"))
+        .unwrap();
+    let visible = skip.updates.iter().filter(|update| !update.is_next_line).collect::<Vec<_>>();
+    assert_eq!(visible.len(), 2);
+    assert_eq!(visible[0].message_template, "[0]去[无畏契约]打排位了");
+    assert_eq!(visible[1].message_template, "这回合什么也没做");
+    for update in visible {
+        assert_eq!(update.caster_id, infection.caster_id);
+        assert_eq!(update.target_id, None);
+        assert_eq!((update.score, update.delay0, update.delay1), (0, 1000, 100));
+    }
+}
+
+#[test]
+fn charmed_laziness_can_infect_itself_through_being_hit() {
+    use crate::cli_api::battle::{BattleOptions, battle_replay};
+
+    let replay = battle_replay("yuri@!\n\nlazy@!", BattleOptions::default()).unwrap();
+    let frame = &replay.frames[3];
+    let lazy = frame.states.iter().find(|state| state.id_key_name == "lazy@!").unwrap();
+    let kind_and_score: Vec<_> = frame
+        .updates
+        .iter()
+        .filter(|update| !update.is_next_line)
+        .map(|update| (update.message_template.as_str(), update.score))
+        .collect();
+    assert_eq!(
+        kind_and_score,
+        [
+            ("[0]发起攻击", 0),
+            ("[1]受到[2]点伤害", 54),
+            ("[1]感染了[懒癌]", 0),
+            ("[1][懒癌]发作", 0),
+            ("[1]受到[2]点伤害", 60),
+        ]
+    );
+    assert_eq!((lazy.hp, lazy.move_point, lazy.magic_point), (210, 161, 29));
+    let yuri = replay.initial_states.iter().find(|state| state.id_key_name == "yuri@!").unwrap();
+    assert_eq!(replay.winner_ids, [yuri.id]);
+}
+
+#[test]
+fn lazy_skip_samples_the_charmed_sources_effective_team() {
+    let raw = "yuri@!\n\nparity4a\n\nparity4b\n\nlazy@!\nparity4c";
+    let mut runner = RuntimeRunner::new_from_namerena_raw(raw.to_owned()).unwrap();
+    let seventh = (0..64).filter_map(|_| runner.run_round().frame).nth(6).expect("应到达感染者的跳回合帧");
+    let events: Vec<_> = seventh.updates.updates.iter().filter(|u| u.message != "\n").collect();
+    assert_eq!(events[0].message, "[0]刷起了[抖音]");
+    assert_eq!(events[1].message, "这回合什么也没做");
+    assert_eq!(events[2].message, "[1][懒癌]发作");
+    assert_eq!(events[3].score, 57);
+    assert_eq!((runner.runtime.rng.i, runner.runtime.rng.j), (27, 83));
+}
+
+#[test]
 fn lazy_flare_keeps_running_after_its_source_is_defeated() {
     for source_alive in [true, false] {
         let mut runner = RuntimeRunner::new_from_namerena_raw(
@@ -315,7 +390,7 @@ enemy-b"
         }
 
         let frame = runtime.run_state_hooks(target, ProcMask::POST_ACTION).expect("感染者仍会在行动后发作");
-        assert!(messages_of(&frame.updates).iter().any(|message| message.contains("懒癌发作")));
+        assert!(messages_of(&frame.updates).contains(&"[1][懒癌]发作".to_owned()));
         assert!(runtime.entities.get(target).unwrap().runtime.hp < 10_000);
         assert_eq!(runtime.lazy_boss_at_boost(boss), Some(2.0), "发作并非懒癌的当前普攻");
     }

@@ -163,12 +163,12 @@ const LANG_DATA: &[(&str, &str)] = &[
     ("sklLazyDamage", "[1][懒癌]发作"),
     ("sklLazyHit", "[1]感染了[懒癌]"),
     ("sklLazySkipTurn0", "这回合什么也没做"),
-    ("sklLazySkipTurn1", "[0]打开了[Steam]"),
-    ("sklLazySkipTurn2", "[0]打开了[守望先锋]"),
-    ("sklLazySkipTurn3", "[0]打开了[文明6]"),
-    ("sklLazySkipTurn4", "[0]打开了[英雄联盟]"),
-    ("sklLazySkipTurn5", "[0]打开了[微博]"),
-    ("sklLazySkipTurn6", "[0]打开了[朋友圈]"),
+    ("sklLazySkipTurn1", "[0]刷起了[哔哩哔哩]"),
+    ("sklLazySkipTurn2", "[0]去[无畏契约]打排位了"),
+    ("sklLazySkipTurn3", "[0]跑去[三角洲行动]摸金了"),
+    ("sklLazySkipTurn4", "[0]开了一局[王者荣耀]"),
+    ("sklLazySkipTurn5", "[0]刷起了[抖音]"),
+    ("sklLazySkipTurn6", "[0]逛起了[小红书]"),
     // ── Boss：马里奥 ──────────────────────────────────────────────────────
     ("bossName_mario", "马里奥"),
     ("bossMarioGrow10", "[0]得到[蘑菇]"),
@@ -282,6 +282,18 @@ fn lang_map() -> &'static FastHashMap<&'static str, &'static str> {
 /// ```
 #[inline]
 pub fn get_lang(key: &str) -> &'static str { lang_map().get(key).copied().unwrap_or("") }
+
+/// 懒癌本体与感染者的跳回合活动共用同一个原版字节分档。
+pub(crate) fn lazy_activity_key(roll: u8) -> &'static str {
+    match roll {
+        0..=49 => keys::SKL_LAZY_SKIP_TURN_1,
+        50..=99 => keys::SKL_LAZY_SKIP_TURN_2,
+        100..=149 => keys::SKL_LAZY_SKIP_TURN_3,
+        150..=189 => keys::SKL_LAZY_SKIP_TURN_4,
+        190..=229 => keys::SKL_LAZY_SKIP_TURN_5,
+        _ => keys::SKL_LAZY_SKIP_TURN_6,
+    }
+}
 
 /// 查询语言键并将 `[0]`/`[1]`/`[2]` 占位符替换为给定的字符串。
 ///
