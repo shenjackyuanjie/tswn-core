@@ -196,3 +196,61 @@ fn boss_reflection_that_ends_battle_keeps_caster_move_points() {
     let (knockout, _) = event(last, "[1]被击倒了");
     assert_eq!(state(last, &knockout["target_id"])["id_key_name"], "recheck22b");
 }
+
+#[test]
+fn both_boss_infections_resolve_post_action_in_application_order() {
+    let fight = frames("covid@!\nlazy@!\n\ndual307a\ndual307b\n\ndual307c\nyuri@!");
+    let frame = &fight[14];
+    let events = events(frame)
+        .map(|(update, _)| {
+            let template = update["message_template"].as_str().unwrap();
+            template.split_once("[s_").map_or(template, |(text, _)| text)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        events,
+        [
+            "[0]和[1]近距离接触",
+            "[1][肺炎]发作",
+            "[1]受到[2]点伤害",
+            "[1]回复体力[2]点",
+            "[1][懒癌]发作",
+            "[1]受到[2]点伤害",
+            "[1]被击倒了",
+        ],
+    );
+}
+
+#[test]
+fn covid_boss_attack_does_not_spread_when_roll_equals_damage() {
+    let fight = frames("lazy@!\nrecheck20a\n\ncovid@!\nrecheck20b");
+    let frame = &fight[7];
+    let events = events(frame)
+        .map(|(update, _)| (update["message_template"].as_str().unwrap(), update["score"].as_u64().unwrap()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        events,
+        [
+            ("[0]发起攻击", 0),
+            ("[1]受到[2]点伤害", 49),
+            ("[1]感染了[懒癌]", 0),
+            ("[1][懒癌]发作", 0),
+            ("[1]受到[2]点伤害", 68),
+            ("[1]感染了[新冠病毒]", 0),
+        ],
+    );
+}
+
+#[test]
+fn charge_registered_before_covid_expires_before_pneumonia_damage() {
+    let fight = frames("lazy@!\nrecheck19a\n\ncovid@!\nrecheck19b");
+    let frame = &fight[3];
+    let (damage, _) = events(frame).find(|(update, _)| update["tone"] == "damage").unwrap();
+    assert_eq!(damage["score"], 206);
+    let carrier = state(frame, &damage["target_id"]);
+    assert_eq!(carrier["id_key_name"], "recheck19a");
+    assert_eq!(carrier["hp"], 61);
+    assert_eq!(carrier["alive"], true);
+    let (recover, _) = event(frame, "[1]回复体力[2]点");
+    assert_eq!(recover["param"], 26);
+}

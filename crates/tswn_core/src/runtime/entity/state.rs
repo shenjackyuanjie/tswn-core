@@ -570,17 +570,46 @@ impl StateEntry {
         }
     }
 
-    pub(crate) fn plan_priority_for_hook(&self, hook: ProcMask, entities: &EntityArena) -> SkillPriority {
-        if hook.intersects(ProcMask::POST_ACTION)
-            && self.legacy_order_key == crate::runtime::profile::PLAIN_LAZY_INFECTION_STATE_KEY
-            && let StatePayload::LazyInfection { boss } = self.payload
-            && entities
-                .get(boss)
-                .is_some_and(|source| source.runtime.flags.contains(PlayerKindFlags::BOSS) && source.template.name == "lazy")
-        {
-            // Vite 的懒癌与定时状态同属默认行动后优先级，按登记顺序执行。
-            // 只有实际懒癌 Boss 的感染使用该顺序；前置接管与扩展载荷保持原优先级。
-            return SkillPriority(210);
+    pub(crate) fn is_boss_infection(&self, entities: &EntityArena) -> bool {
+        use crate::runtime::profile::{PLAIN_COVID_INFECTION_STATE_KEY, PLAIN_LAZY_INFECTION_STATE_KEY};
+
+        let from_boss = |source, name| {
+            entities
+                .get(source)
+                .is_some_and(|source| source.runtime.flags.contains(PlayerKindFlags::BOSS) && source.template.name == name)
+        };
+        match (&self.payload, self.legacy_order_key) {
+            (StatePayload::LazyInfection { boss }, PLAIN_LAZY_INFECTION_STATE_KEY) => from_boss(*boss, "lazy"),
+            (StatePayload::CovidInfection { entries, .. }, PLAIN_COVID_INFECTION_STATE_KEY) => {
+                !entries.is_empty() && entries.iter().all(|strain| from_boss(strain.boss, "covid"))
+            }
+            _ => false,
+        }
+    }
+
+    pub(crate) fn plan_priority_for_hook(
+        &self,
+        hook: ProcMask,
+        entities: &EntityArena,
+        owner_states: &StateStore,
+    ) -> SkillPriority {
+        use crate::runtime::profile::{PLAIN_COVID_INFECTION_STATE_KEY, PLAIN_LAZY_INFECTION_STATE_KEY};
+
+        if hook.intersects(ProcMask::POST_ACTION) {
+            let same_timed_queue = match self.legacy_order_key {
+                PLAIN_LAZY_INFECTION_STATE_KEY => self.is_boss_infection(entities),
+                PLAIN_COVID_INFECTION_STATE_KEY => {
+                    self.is_boss_infection(entities)
+                        && owner_states
+                            .entry(PLAIN_LAZY_INFECTION_STATE_KEY)
+                            .is_some_and(|lazy| lazy.is_boss_infection(entities))
+                }
+                _ => false,
+            };
+            if same_timed_queue {
+                // 同一载体的两种 Boss 感染属于同一个行动后队列，不能用优先级打乱登记顺序。
+                return SkillPriority(210);
+            }
         }
         self.priority_for_hook(hook)
     }

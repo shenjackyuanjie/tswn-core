@@ -220,7 +220,13 @@ impl CombatRuntime {
         if self.has_covid_infection(target) {
             return;
         }
-        if i32::from(self.rng.next_u8() & 63) < damage {
+        let from_covid_boss = self
+            .entities
+            .get(boss)
+            .is_some_and(|source| source.runtime.flags.contains(PlayerKindFlags::BOSS) && source.template.name == "covid");
+        // Vite 的主动传播使用 1..=64；扩展来源沿用旧的零基阈值。两者都只抽一个字节。
+        let roll = self.rng.r64() as i32 - i32::from(!from_covid_boss);
+        if roll < damage {
             self.infect_with_covid_into(boss, target, mutation, updates);
         }
     }

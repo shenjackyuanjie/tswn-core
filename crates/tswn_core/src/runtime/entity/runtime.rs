@@ -586,6 +586,9 @@ impl EntityRecord {
     }
 
     pub fn activate_charge_runtime(&mut self) {
+        if !self.runtime.charge.post_action_active {
+            self.states.register_charge_post_action();
+        }
         self.runtime.charge.step += 2;
         self.runtime.charge.active = true;
         self.runtime.charge.post_action_active = true;
