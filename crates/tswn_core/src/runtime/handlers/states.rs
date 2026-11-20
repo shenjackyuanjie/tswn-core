@@ -177,7 +177,69 @@ pub fn run_slow_post_action_state(context: &mut StateContext<'_>, entry: &StateH
     run_timed_release_post_action_state(context, entry, StatePayload::Slow { step: step - 1 }, step, "[1]从[迟缓]中解除");
 }
 
+/// 原版的变异抽样属于前置钩子，即使这次最终由懒癌接管也照常执行。
+fn roll_covid_mutations(
+    context: &mut StateContext<'_>,
+    entries: &mut [CovidInfectionEntry],
+    mutation_set: &mut smallvec::SmallVec<[i32; 4]>,
+) -> bool {
+    let mut changed = false;
+    for infection in entries {
+        if context.rng_next_u8() < 64 {
+            let mutation = context.rng_r127() as i32;
+            changed |= infection.mutation != mutation;
+            infection.mutation = mutation;
+            if !mutation_set.contains(&mutation) {
+                mutation_set.push(mutation);
+                changed = true;
+            }
+        }
+    }
+    changed
+}
+
+pub(crate) fn propose_boss_infection_pre_action(
+    context: &mut StateContext<'_>,
+    entry: &StateHookPlanEntry,
+) -> Option<StateHandlerFn> {
+    match context.owner_state_payload(entry.legacy_order_key)? {
+        StatePayload::CovidInfection {
+            mut entries,
+            mut mutation_set,
+            recovered,
+        } if !entries.is_empty() => {
+            if roll_covid_mutations(context, &mut entries, &mut mutation_set) {
+                context
+                    .set_owner_state_payload_without_refresh(
+                        entry.legacy_order_key,
+                        StatePayload::CovidInfection {
+                            entries,
+                            mutation_set,
+                            recovered,
+                        },
+                    )
+                    .expect("runtime covid state payload must still exist");
+            }
+            Some(execute_proposed_covid_pre_action)
+        }
+        StatePayload::LazyInfection { .. } if roll_lazy_pre_action(context) => Some(execute_proposed_lazy_pre_action),
+        _ => None,
+    }
+}
+
+fn execute_proposed_covid_pre_action(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+    run_covid_infection_state_impl(context, entry, true);
+}
+
+fn execute_proposed_lazy_pre_action(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+    run_lazy_infection_state_impl(context, entry, true);
+}
+
 pub fn run_covid_infection_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+    run_covid_infection_state_impl(context, entry, false);
+}
+
+fn run_covid_infection_state_impl(context: &mut StateContext<'_>, entry: &StateHookPlanEntry, proposed: bool) {
     let Some(StatePayload::CovidInfection {
         mut entries,
         mut mutation_set,
@@ -194,14 +256,8 @@ pub fn run_covid_infection_state(context: &mut StateContext<'_>, entry: &StateHo
         let smart = context
             .action_smart()
             .expect("runtime covid PRE_ACTION state must receive the action smart roll");
-        for infection in &mut entries {
-            if context.rng_next_u8() < 64 {
-                let mutation = context.rng_r127() as i32;
-                infection.mutation = mutation;
-                if !mutation_set.contains(&mutation) {
-                    mutation_set.push(mutation);
-                }
-            }
+        if !proposed {
+            roll_covid_mutations(context, &mut entries, &mut mutation_set);
         }
 
         // 冻结检查在变异前钩子之后、选敌和替代动作之前。
@@ -355,12 +411,20 @@ pub fn run_covid_infection_state(context: &mut StateContext<'_>, entry: &StateHo
     }
 }
 
+fn roll_lazy_pre_action(context: &mut StateContext<'_>) -> bool {
+    context.rng_next_u8() < 128 && context.owner().is_some_and(|owner| owner.is_active())
+}
+
 pub fn run_lazy_infection_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+    run_lazy_infection_state_impl(context, entry, false);
+}
+
+fn run_lazy_infection_state_impl(context: &mut StateContext<'_>, entry: &StateHookPlanEntry, proposed: bool) {
     let Some(StatePayload::LazyInfection { boss }) = context.owner_state_payload(entry.legacy_order_key) else {
         return;
     };
     if context.hook().intersects(ProcMask::PRE_ACTION) {
-        if context.rng_next_u8() >= 128 || context.owner().is_none_or(|owner| !owner.is_active()) {
+        if !proposed && !roll_lazy_pre_action(context) {
             return;
         }
         let smart = context
@@ -729,5 +793,43 @@ mod tests {
             .filter(|message| !message.trim().is_empty())
             .collect::<Vec<_>>();
         assert_eq!(&messages[..2], &["[1]从[疾走]中解除", "[1][懒癌]发作"]);
+    }
+
+    #[test]
+    fn mixed_boss_infection_pre_action_executes_only_the_last_proposal() {
+        use crate::cli_api::battle::{BattleOptions, battle_replay};
+
+        for (raw, expected) in [
+            (
+                "lazy@!\nrecheck0a\n\ncovid@!\nrecheck0b",
+                &[
+                    ("[1]在家中自我隔离", 0),
+                    ("[1][懒癌]发作", 0),
+                    ("[1]受到[2]点伤害[s_dmg120]", 135),
+                    ("[1][肺炎]发作", 0),
+                    ("[1]受到[2]点伤害", 117),
+                    ("[1]被击倒了", 50),
+                    ("[1]回复体力[2]点", 0),
+                ][..],
+            ),
+            (
+                "lazy@!\nrecheck4a\n\ncovid@!\nrecheck4b",
+                &[
+                    ("[0]去[无畏契约]打排位了", 0),
+                    ("这回合什么也没做", 0),
+                    ("[1][懒癌]发作", 0),
+                    ("[1]受到[2]点伤害", 51),
+                ][..],
+            ),
+        ] {
+            let replay = battle_replay(raw, BattleOptions::default()).unwrap();
+            let visible: Vec<_> = replay.frames[9]
+                .updates
+                .iter()
+                .filter(|update| !update.is_next_line)
+                .map(|update| (update.message_template.as_str(), update.score))
+                .collect();
+            assert_eq!(visible, expected, "{raw:?}");
+        }
     }
 }
