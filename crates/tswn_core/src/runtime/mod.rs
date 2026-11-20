@@ -102,6 +102,7 @@ pub use slot::{BattleSlotStorage, EntitySlotStorage, SlotError, SlotValue, Templ
 pub use trace::{RngCheckpoint, RuntimeTrace, TraceAction, TraceFrame};
 pub use world::WorldArena;
 
+pub use batch::test_session::{ScoreTestProgress, ScoreTestSession, TestSkillFrequency};
 pub use batch::{
     RuntimeBatchError, RuntimeBatchSummary, prepared_runtime_win_rate, prepared_runtime_win_rate_range,
     prepared_runtime_win_rate_range_timed, prepared_runtime_win_rate_timed, runtime_groups_win_rate,

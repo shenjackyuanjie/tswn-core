@@ -27,6 +27,8 @@ import {
 } from "./show-routing.js";
 import { ensureApi, createBattleStreamSource } from "./show-wasm.js";
 
+import { parseScoreTestInput, scoreCheckpointHtml } from "./show-score-test.js";
+
 import { BattleStreamController } from "./show-stream.js";
 import { BattleDisplay } from "./show-display.js";
 import { BattleMetrics } from "./show-metrics.js";
@@ -174,6 +176,8 @@ stepForwardFrameBtn.setAttribute("aria-keyshortcuts", "ArrowDown");
 /** @type {FightReplay|null} 当前已生成的回放数据 */
 let currentBattle = null;
 let streamController = null;
+let scoreWorker = null;
+window.addEventListener("pagehide", () => scoreWorker?.terminate());
 let battleDisplay = null;
 let battleMetrics = null;
 let metricsReported = false;
@@ -365,6 +369,8 @@ function setLoading(loading) {
 }
 
 function clearCurrentReplayView() {
+  scoreWorker?.terminate();
+  scoreWorker = null;
   clearPlayerHighlight();
   streamController?.dispose();
   streamController = null;
@@ -608,6 +614,55 @@ function clearCurrentNickname() {
  * @param {{ persistInput?: boolean }} [options]
  * @returns {Promise<void>}
  */
+function startScoreTest(input, { persistInput }) {
+  if (persistInput) persistInputValue();
+  const generation = ++battleGenerationToken;
+  stopPlaybackLoop();
+  clearCurrentReplayView();
+  const strategy = strategySelect.value;
+  const label = strategy === "search" ? "Clever 搜索" : "原版策略";
+  playerList.textContent = input;
+  plistMeta.textContent = "评分 · 固定 10000 场";
+  headerMeta.textContent = label + "评分中，1000 / 10000 场各展示一次";
+  battleRows.innerHTML = "";
+  const cancel = document.createElement("button");
+  cancel.textContent = "停止测试";
+  cancel.className = "goBtn";
+  battleRows.append(cancel);
+  closePanel(inputPanel);
+  setInputStatus("正在后台评分，仅展示 10% 和 100% 结果。");
+  let worker;
+  function finish(message, failed = false) {
+    worker?.terminate();
+    if (scoreWorker === worker) scoreWorker = null;
+    cancel.disabled = true;
+    headerMeta.textContent = message;
+    setInputStatus(message, failed);
+  }
+  try {
+    worker = new Worker(new URL("./show-score-worker.js", import.meta.url), { type: "module" });
+    scoreWorker = worker;
+    cancel.onclick = () => finish("评分已停止；保留已完成的检查点。");
+    worker.onmessage = ({ data }) => {
+      if (generation !== battleGenerationToken || scoreWorker !== worker) return;
+      if (data.type === "checkpoint") {
+        battleRows.insertAdjacentHTML("beforeend", scoreCheckpointHtml(data.progress));
+        headerMeta.textContent = label + (data.progress.done ? "评分完成" : "已完成 10%，继续测试至 10000 场");
+      } else if (data.type === "done") {
+        finish(label + "评分完成：10000 场，已停止。");
+      } else if (data.type === "error") {
+        finish("评分失败：" + data.message, true);
+      }
+    };
+    worker.onerror = event => {
+      if (generation === battleGenerationToken && scoreWorker === worker) finish("评分失败：" + (event.message || "后台计算异常"), true);
+    };
+    worker.postMessage({ input, strategy });
+  } catch (error) {
+    finish("评分启动失败：" + formatError(error), true);
+  }
+}
+
 async function startBattle({ persistInput = true } = {}) {
   const clickStartedAt = performance.now();
   const rawInput = inputName.value.trim();
@@ -616,10 +671,18 @@ async function startBattle({ persistInput = true } = {}) {
     openInputEditor();
     return;
   }
-  const inputError = validateReplayInput(rawInput);
+  let scoreInput;
+  try { scoreInput = parseScoreTestInput(rawInput); }
+  catch (error) { setInputStatus(formatError(error), true); openInputEditor(); return; }
+  const inputError = validateReplayInput(scoreInput ?? rawInput);
   if (inputError) {
     setInputStatus(inputError, true);
     openInputEditor();
+    return;
+  }
+
+  if (scoreInput != null) {
+    startScoreTest(scoreInput, { persistInput });
     return;
   }
 

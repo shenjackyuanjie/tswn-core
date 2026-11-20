@@ -39,3 +39,17 @@ cargo build --release -p tswn_core --bin clever-search --features 'no_debug,mima
 - 网页通过 WASM BattleSession.set_search 接入同一 run_search_round，每次只推进真实回合，试算不计入回放或回合上限。搜索耗时随阵容增长，尚未验证策略整体胜率优于原版。
 - 发布源固定为本项目 KODU16/tswn-core-clever 的 main；不自动拉取或合并 shenjackyuanjie/tswn-core。后续修改应从这里验证、提交并发布至 Clever main。
 - KODU16/kodu16.github.io 的 Pages 工作流每 5 分钟检查 Clever main，对比线上 build.json，只在版本变化时重建，WASM 和前端取同一提交。GitHub 定时任务可能延迟；手动运行主页部署工作流可立即同步。
+
+## !test! 有限评分测试
+
+```text
+!test!
+
+alpha
+```
+
+输入面板的策略决定全部 10000 场 profile 对局的战斗方式：Clever 使用与回放一致的 run_search_round 和 16/128/4 预算；原版使用原有策略。只在累计 1000 场（10%）和 10000 场（100%）展示结果，随后永久停止该会话。Profile 名单、空战斗 seed 和 WIN_RATE_EVAL_RQ 沿用现有评分接口；旧 score() API 仍为原版评分。
+
+技能／动作频率沿用参考站口径：被测本体产生的正 score、含 [0] 的真实消息次数，除以已完成场数再乘 100。不计 profile、召唤物、搜索试算及兼容层的 [s_dmg0] 伤害消息。这是每百局发生次数，不是每次出手的发动概率，可以超过 100%。Worker 支持立即取消正在计算的对局。
+
+参考：https://github.com/namerena/namerena.github.io/blob/master/md5.js 的 V.eQ 与 lang/zh.json。本实现按需求设置固定上限，不继续进入参考站的扩大样本循环。

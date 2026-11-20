@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light dark">
     <meta name="darkreader-lock">
     <title>tswn_wasm Show Demo</title>
-    <link rel="stylesheet" href="./show.css?v=20261120search1">
+    <link rel="stylesheet" href="./show.css?v=20261120test1">
     <script>
         (() => {
             try {
@@ -77,6 +77,7 @@
                     <select id="strategySelect"><option value="search">Clever 搜索（当前实验版）</option><option value="legacy">原版策略（对照）</option></select>
                     <div class="input-note">搜索双方均启用：16 次采样 / 128 回合 / 4 个候选。使用相同 seed 行比较对局；搜索耗时较长。</div>
                 </div>
+                <div class="input-note" style="padding: 0 16px">评分：首行输入 !test!，随后输入名字；使用所选出招策略测试 10000 场，仅展示 10% / 100% 评分及技能频率。</div>
                 <div id="textdiv">
                     <textarea id="input_name" placeholder="每行输入一个名字&#10;&#10;组队对战时用空行隔开组队"></textarea>
                 </div>
@@ -181,7 +182,7 @@
 
     </div>
 
-    <script type="module" src="./show-theme-compat.js?v=20261120search1"></script>
-    <script type="module" src="./show.js?v=20261120search1"></script>
+    <script type="module" src="./show-theme-compat.js?v=20261120test1"></script>
+    <script type="module" src="./show.js?v=20261120test1"></script>
 </body>
 </html>

@@ -56,6 +56,7 @@ mod error;
 mod fight;
 mod model;
 mod render;
+mod score_test;
 mod win_rate;
 
 use std::sync::Once;
@@ -72,6 +73,7 @@ use model::{
     CliScoreResult, CliWinRateResult, FightOptions, FightReplay, FightSummary, GroupWinRateResult, RuntimeNormalizedRunView,
     WinRateOptions, WinRateResult,
 };
+pub use score_test::ScoreTestSession;
 use wasm_bindgen::prelude::*;
 pub use win_rate::WinRateSession;
 

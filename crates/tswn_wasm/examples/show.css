@@ -67,3 +67,9 @@ body.highlight-active [data-player-id].hl-active .summary-actor-name {
 body.highlight-active [data-player-id].hl-active.player-row .name {
     color: var(--damage);
 }
+
+.score-test-result { margin: 16px 0; padding: 16px; border: 1px solid currentColor; border-radius: 8px; overflow-wrap: anywhere; }
+.score-test-result table { width: 100%; border-collapse: collapse; }
+.score-test-result th, .score-test-result td { padding: 8px 4px; border-bottom: 1px solid #8886; text-align: right; }
+.score-test-result th:first-child, .score-test-result td:first-child { text-align: left; }
+.score-test-result .input-note { line-height: 1.6; }
