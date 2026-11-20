@@ -96,6 +96,8 @@ pub struct StateStore {
     /// 与 `entries` 同下标保存运行期注册顺序，常见状态数不超过内联容量。
     runtime_registration_orders: SmallVec<[u64; 8]>,
     next_runtime_registration_order: u64,
+    /// 蓄力本次入列时的游标；蓄力保存在专用字段，不占普通状态登记槽。
+    charge_post_action_cursor: u64,
     compressed_legacy_states: u8,
     /// 调度器只关心冻结和速度类状态；无对应位时可跳过完整 entries 扫描。
     scheduler_state_flags: u8,
@@ -110,6 +112,7 @@ impl PartialEq for StateStore {
             && self.generation == other.generation
             && self.runtime_registration_orders == other.runtime_registration_orders
             && self.next_runtime_registration_order == other.next_runtime_registration_order
+            && self.charge_post_action_cursor == other.charge_post_action_cursor
             && self.compressed_legacy_states == other.compressed_legacy_states
     }
 }
@@ -130,6 +133,7 @@ impl StateStore {
         self.runtime_registration_orders.clear();
         self.runtime_registration_orders.extend_from_slice(&prepared.runtime_registration_orders);
         self.next_runtime_registration_order = prepared.next_runtime_registration_order;
+        self.charge_post_action_cursor = prepared.charge_post_action_cursor;
         self.compressed_legacy_states = prepared.compressed_legacy_states;
         self.scheduler_state_flags = prepared.scheduler_state_flags;
         self.payload_kinds = prepared.payload_kinds;
@@ -144,6 +148,7 @@ impl StateStore {
             self.runtime_registration_orders.clear();
         }
         self.next_runtime_registration_order = 0;
+        self.charge_post_action_cursor = 0;
         self.compressed_legacy_states = 0;
         self.scheduler_state_flags = 0;
         self.payload_kinds = 0;
@@ -160,6 +165,12 @@ impl StateStore {
     pub fn generation(&self) -> u32 { self.generation }
 
     pub fn post_action_registration_cursor(&self) -> u64 { self.next_runtime_registration_order }
+
+    pub(in crate::runtime::entity) fn register_charge_post_action(&mut self) {
+        self.charge_post_action_cursor = self.next_runtime_registration_order;
+    }
+
+    pub(crate) fn charge_post_action_cursor(&self) -> u64 { self.charge_post_action_cursor }
 
     pub fn runtime_registration_order(&self, legacy_order_key: u32) -> Option<u64> {
         let index = self.entries.iter().position(|entry| entry.legacy_order_key == legacy_order_key)?;

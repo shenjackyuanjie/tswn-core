@@ -393,6 +393,23 @@ impl CombatRuntime {
         }
 
         let state_plan = self.scheduler.state_hook_plan(&self.entities, owner, ProcMask::POST_ACTION);
+        let owner_entity = self.entities.get(owner).expect("runtime post-action owner missing");
+        // 蓄力早于真实新冠感染登记时，先撤销到期倍率，再按原版结算肺炎。
+        // 只把已核实的蓄力/肺炎组合移入状态链；其余晚阶段和普通局不变。
+        let covid_key = crate::runtime::profile::PLAIN_COVID_INFECTION_STATE_KEY;
+        let charge_before_covid = if owner_entity.runtime.charge.post_action_active
+            && owner_entity
+                .states
+                .entry(covid_key)
+                .is_some_and(|entry| entry.is_boss_infection(&self.entities))
+        {
+            self.registry
+                .skill_id_by_export_name(BuiltinActiveSkill::Charge.export_name())
+                .map(|charge| (owner_entity.states.charge_post_action_cursor(), charge))
+        } else {
+            None
+        };
+        let mut charge_ran = None;
         let deferred_entries = &skill_plans.deferred;
         let mut deferred_idx = 0usize;
         let mut deferred_owner_state_clears = Vec::new();
@@ -410,6 +427,15 @@ impl CombatRuntime {
             let owner_alive = self.entities.get(owner).is_some_and(|entity| entity.runtime.alive);
             if !owner_alive && self.world.alive_group_count() <= 1 {
                 break;
+            }
+            if state_entry.legacy_order_key == covid_key
+                && let Some((cursor, charge)) = charge_before_covid
+                && cursor <= state_entry.runtime_registration_order
+            {
+                for entry in skill_plans.late.iter().filter(|entry| entry.skill_id == charge) {
+                    self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, std::slice::from_ref(entry), updates);
+                    charge_ran = Some(charge);
+                }
             }
             self.drain_state_hook_entry_with_deferred_clears_into(
                 ProcMask::POST_ACTION,
@@ -434,6 +460,9 @@ impl CombatRuntime {
             .skills;
         if skills_after_states.hook_generation() != skill_plans.generation {
             skill_plans = self.scheduler.skill_post_action_plans(skills_after_states, &self.registry, owner);
+        }
+        if let Some(charge) = charge_ran {
+            skill_plans.late.retain(|entry| entry.skill_id != charge);
         }
         self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, &skill_plans.late, updates);
     }
