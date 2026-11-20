@@ -40,6 +40,68 @@ fn assert_slime_child_scaled(child: &EntityRecord, generation: u32, max_hp: i32)
     assert_eq!(child.runtime.wisdom, expected.wisdom);
     assert_eq!(child.runtime.speed, expected.speed);
     assert_eq!(child.runtime.magic_point, expected.magic_point);
+    assert_eq!(child.template.clone_build.as_ref().unwrap().attrs(), attrs);
+}
+
+const SLIME_MERGE_INPUT: &str = "slime@!\n\nlazy@!\nparity3a\nparity3b";
+
+#[test]
+fn slime_merge_takes_raw_attrs_and_skill_levels_by_position() {
+    let mut runner = RuntimeRunner::new_from_namerena_raw(SLIME_MERGE_INPUT.to_owned()).unwrap();
+    let runtime = runner.runtime_mut();
+    let find =
+        |runtime: &CombatRuntime, name: &str| runtime.entities.iter().find(|(_, p)| p.template.id_key_name == name).unwrap().0;
+    let caster = find(runtime, "parity3a");
+    let boss = find(runtime, "slime@!");
+    kill(runtime, boss);
+    assert!(runtime.drain_plain_slime_split_into(boss, &mut RunUpdates::new()));
+    let first = find(runtime, "slime?0@!");
+    kill(runtime, first);
+    assert!(runtime.drain_plain_slime_split_into(first, &mut RunUpdates::new()));
+    let second = find(runtime, "slime?2@!");
+    let same = find(runtime, "slime?3@!");
+
+    // 原版第一代分裂技能为 0 级；第二代的半血/治疗会分别抬高吞噬者的第 0/1 槽，
+    // 即使吞噬者这两个槽的技能类型不同。第三次只有资源转移，不产生吞噬战报。
+    let rng_before = runtime.rng.clone();
+    for (target, attrs, levels, changed) in [
+        (first, [49, 53, 48, 30, 22, 47, 50, 354], [0, 0, 0], true),
+        (second, [49, 53, 48, 46, 38, 52, 50, 354], [32, 32, 0], true),
+        (same, [49, 53, 48, 46, 38, 52, 50, 354], [32, 32, 0], false),
+    ] {
+        let owner = &mut runtime.entities.get_mut(caster).unwrap().runtime;
+        owner.magic_point = 5;
+        owner.move_state.speed_points = 100;
+        let source = &mut runtime.entities.get_mut(target).unwrap().runtime;
+        source.hp = 0;
+        source.magic_point = 58;
+        source.move_state.speed_points = 1000;
+        let mut updates = RunUpdates::new();
+        assert_eq!(runtime.apply_plain_merge_into(caster, target, &mut updates), changed);
+
+        let owner = runtime.entities.get(caster).unwrap();
+        assert_eq!(owner.template.clone_build.as_ref().unwrap().attrs(), attrs);
+        assert_eq!((owner.runtime.hp, owner.runtime.attack, owner.runtime.speed), (354, 49, 208));
+        let skills = &owner.template.skills;
+        assert_eq!(
+            skills.merge_lane_order()[..3]
+                .iter()
+                .map(|&lane| skills.level_at(lane).unwrap())
+                .collect::<Vec<_>>(),
+            levels
+        );
+        assert_eq!((owner.runtime.magic_point, owner.runtime.move_state.speed_points), (58, 1100));
+        let source = &runtime.entities.get(target).unwrap().runtime;
+        assert_eq!((source.magic_point, source.move_state.speed_points), (0, 0));
+        if changed {
+            assert_eq!(source.corpse, RuntimeCorpseKind::Merge);
+            assert_eq!(messages_of(&updates), ["\n", "[0][吞噬]了[1]", "[0]属性上升"]);
+        } else {
+            assert_eq!(source.corpse, RuntimeCorpseKind::None);
+            assert!(updates.updates.is_empty());
+        }
+    }
+    assert_rng_state_eq(&runtime.rng, &rng_before);
 }
 
 #[test]

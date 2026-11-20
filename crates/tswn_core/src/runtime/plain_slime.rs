@@ -128,7 +128,7 @@ impl CombatRuntime {
         } else {
             SkillLoadout::default()
         };
-        let template = PlayerTemplate::new(0, name.to_owned(), team, status.max_hp, status.attack)
+        let mut template = PlayerTemplate::new(0, name.to_owned(), team, status.max_hp, status.attack)
             .with_identity_names(id_key_name, clan_name.to_owned())
             .with_display_name(get_lang(keys::BOSS_NAME_SLIME))
             .with_magic(status.magic)
@@ -141,6 +141,8 @@ impl CombatRuntime {
             .with_target_score_stats(status.attr_sum, status.atk_sum, status.attract)
             .with_speed_points(self.rng.r255() as i32 * 4)
             .with_skill_loadout(skills);
+        // 吞噬比较原始八围，而不是子体已经按名字系数缩放的战斗属性。
+        template.clone_build = Some(CloneBuildData::from_legacy(attrs, [0; 8], name_dens, &status));
         // 子体不属于任何战斗召唤物，owner 停在自身；root owner 仍指向原始史莱姆，
         // 供模型输入映射与以后可能的命名计数使用。
         let child = self
