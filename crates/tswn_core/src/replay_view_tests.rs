@@ -264,6 +264,31 @@ fn new_entity_uses_current_hp_as_before_hp() {
 }
 
 #[test]
+fn exact_hp_for_new_entity_does_not_invent_a_sidebar_before_state() {
+    // 受控同批出场边界：旧快照没有新实体，帧末快照也已不是该事件时的体力。
+    let update = RunUpdate::new("[1]出现了", 0, 1, 0).with_hp_changes([crate::runtime::update::RunUpdateHp {
+        player: 1,
+        before: 17,
+        after: 60,
+    }]);
+    let events = [ReplayEventView {
+        update: &update,
+        tone: ReplayTone::Normal,
+        message_rendered: "target出现了",
+    }];
+    let view = build_replay_view_frame(&events, &[state(0, 100)], &[state(0, 100), state(1, 0)], &names(), false, &[]);
+    let clip = &view.rows[0].clips[0];
+    let part = player_part(clip);
+    assert_eq!((part.hp_before, part.hp_after, part.show_hp), (17, 60, true));
+    assert_eq!(
+        clip.sidebar_previous_states.iter().map(|state| state.id).collect::<Vec<_>>(),
+        [0]
+    );
+    assert_eq!(clip.sidebar_states[1].hp, 60);
+    assert!(clip.sidebar_states[1].alive);
+}
+
+#[test]
 fn hp_swap_shows_hp_for_both_players() {
     let update = RunUpdate::new("[1]\u{7684}\u{4f53}\u{529b}\u{503c}\u{4e0e}[0]\u{4e92}\u{6362}", 0, 1, 100);
     let events = [ReplayEventView {

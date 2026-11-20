@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::runtime::PlrId;
 use crate::runtime::lang::{get_lang, keys};
-use crate::runtime::update::{RunUpdate, UpdateType};
+use crate::runtime::update::{RunUpdate, RunUpdateHp, UpdateType};
 
 pub const WIN_UPDATE_DELAY0_MS: i32 = 3000;
 pub const DEFAULT_TEXT_COLOR: &str = "0077BB";
@@ -187,6 +187,7 @@ pub fn build_replay_view_frame<S: ReplayState>(
     let frame_state_map = state_map(frame_states);
     let state_order = frame_states.iter().map(ReplayState::id).collect::<Vec<_>>();
     let mut total_delay = 0;
+    let mut next_boss_delay = 0;
     let mut quick_area_skill_active = false;
     let mut frame_has_visible_clip = false;
     let mut current_row_has_visible_clip = false;
@@ -247,23 +248,41 @@ pub fn build_replay_view_frame<S: ReplayState>(
         sync_visible_shields(&parts, &mut running, &frame_state_map);
         let after = running.clone();
         let show_hp = parts.iter().any(|part| part.show_hp);
-        let delay = clip_delay(
+        let mut delay = clip_delay(
             frame_has_visible_clip,
             current_row_has_visible_clip,
             quick_area_skill_active,
             show_hp,
-        );
+        )
+        .max(next_boss_delay);
+        // 只有原版的这两处 Boss 演出等待覆盖片段节奏：真相台词停在下一条之前，复活等待在本条之前。
+        next_boss_delay = if update.message == get_lang(keys::SKL_CONAN_THINKING_FINISH2) {
+            update.delay1
+        } else {
+            0
+        };
+        if update.message == get_lang(keys::BOSS_MARIO_REVIVE) && update.hp_changes.is_some() {
+            delay = delay.max(update.delay0);
+        }
         total_delay += delay;
         frame_has_visible_clip = true;
         current_row_has_visible_clip = true;
 
+        let caster = update.caster_id();
+        let mut target_ids = update_participant_ids(update);
+        if let Some(animation_targets) = &update.animation_targets {
+            for &id in animation_targets.iter() {
+                push_unique_id(&mut target_ids, id);
+            }
+        }
+        target_ids.retain(|id| Some(*id) != caster);
         current_row.clips.push(ReplayClip {
             delay,
             color: replay_tone_color(event.tone).to_string(),
             tone: event.tone,
             parts,
-            caster_ids: vec![update.caster],
-            target_ids: update_participant_ids(update).into_iter().filter(|id| *id != update.caster).collect(),
+            caster_ids: caster.into_iter().collect(),
+            target_ids,
             sidebar_states: states_from_map(&after, &state_order),
             sidebar_previous_states: states_from_map(&before, &state_order),
             winner: false,
@@ -328,8 +347,10 @@ fn states_from_map<S: ReplayState>(running: &HashMap<PlrId, S>, state_order: &[P
 
 fn update_participant_ids(update: &RunUpdate) -> Vec<PlrId> {
     let mut ids = Vec::new();
-    push_unique_id(&mut ids, update.caster);
-    if let Some(target) = update.target_id() {
+    if let Some(caster) = update.caster_id() {
+        push_unique_id(&mut ids, caster);
+    }
+    if let Some(target) = update.replay_target_id() {
         push_unique_id(&mut ids, target);
     }
     for id in &update.targets {
@@ -497,19 +518,23 @@ fn push_plain_and_highlight_parts(parts: &mut Vec<ReplayTextPart>, text: &str) {
     }
 }
 
-fn push_player_part<S: ReplayState>(
-    parts: &mut Vec<ReplayTextPart>,
+fn build_player_part<S: ReplayState>(
     player_id: PlrId,
     before: &HashMap<PlrId, S>,
     after: &HashMap<PlrId, S>,
     player_names: &HashMap<PlrId, String>,
     death_effect_allowed: bool,
     force_show_hp: bool,
-) {
-    let (hp_before, hp_after, hp_changed) = hp_pair(player_id, before, after);
+    exact: Option<&RunUpdateHp>,
+) -> ReplayTextPart {
+    // 刚出现的精确载荷可能没有旧 sidebar 状态；玩家文字仍使用实际记录的前后值。
+    let (hp_before, hp_after, hp_changed) = match exact {
+        Some(change) => (change.before, change.after, change.before != change.after),
+        None => hp_pair(player_id, before, after),
+    };
     let death_effect = death_effect_allowed && hp_after == 0;
-    let show_hp = force_show_hp || (hp_changed && !death_effect);
-    parts.push(ReplayTextPart {
+    let show_hp = force_show_hp || exact.is_some() || (hp_changed && !death_effect);
+    ReplayTextPart {
         kind: ReplayTextPartKind::Player,
         text: render_name(player_id, player_names),
         player_id: Some(player_id),
@@ -518,7 +543,7 @@ fn push_player_part<S: ReplayState>(
         hp_after,
         death_effect,
         emoji: None,
-    });
+    }
 }
 
 fn push_data_part(parts: &mut Vec<ReplayTextPart>, value: &str) {
@@ -551,13 +576,8 @@ fn build_clip_parts<S: ReplayState>(
     let data = data_for_update(update, player_names);
     let death_effect_allowed = is_death_effect_update(update);
     let force_hp_marker = is_hp_marker_update(update);
-    let force_show_hp = |id| {
-        is_hp_swap_update(update)
-            || update
-                .hp_changes
-                .as_deref()
-                .is_some_and(|changes| changes.iter().any(|change| change.player == id))
-    };
+    let hp_swap = is_hp_swap_update(update);
+    let exact_hp = |id| update.hp_changes.as_deref()?.iter().find(|change| change.player == id);
     let entity_conversion = is_entity_conversion_update(update);
 
     let mut rest = update.message.as_ref();
@@ -572,33 +592,41 @@ fn build_clip_parts<S: ReplayState>(
         let token = &after_open[..end];
         match token {
             "0" => {
-                push_player_part(
-                    &mut parts,
+                parts.push(build_player_part(
                     update.caster,
                     before,
                     after,
                     player_names,
                     death_effect_allowed,
-                    force_hp_marker || force_show_hp(update.caster),
-                );
+                    force_hp_marker || hp_swap,
+                    exact_hp(update.caster),
+                ));
             }
             "1" => {
-                push_player_part(
-                    &mut parts,
+                parts.push(build_player_part(
                     update.target,
                     before,
                     after,
                     player_names,
                     death_effect_allowed,
-                    force_show_hp(update.target),
-                );
+                    hp_swap,
+                    exact_hp(update.target),
+                ));
             }
             "2" if entity_conversion => {
                 for (index, player_id) in update.targets.iter().enumerate() {
                     if index > 0 {
                         parts.push(text_part(ReplayTextPartKind::Text, ",".to_string()));
                     }
-                    push_player_part(&mut parts, *player_id, before, after, player_names, false, false);
+                    parts.push(build_player_part(
+                        *player_id,
+                        before,
+                        after,
+                        player_names,
+                        false,
+                        false,
+                        exact_hp(*player_id),
+                    ));
                 }
             }
             "2" => push_data_part(&mut parts, &data),
@@ -609,6 +637,13 @@ fn build_clip_parts<S: ReplayState>(
         rest = &after_open[end + 1..];
     }
     push_plain_and_highlight_parts(&mut parts, rest);
+    // 生命之轮的精确换血带原版表情令牌，正文保持纯文本。
+    if update.message == get_lang(keys::SKL_EXCHANGED)
+        && update.hp_changes.is_some()
+        && let Some(part) = parts.last_mut()
+    {
+        part.emoji = Some("s_exchange".to_string());
+    }
 
     parts
 }

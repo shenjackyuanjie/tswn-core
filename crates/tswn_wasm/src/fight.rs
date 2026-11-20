@@ -64,13 +64,14 @@ fn tone(value: &str) -> MessageTone {
     }
 }
 fn update_from_core(update: BattleUpdate) -> UpdateView {
+    let (caster_id, target_id) = update.legacy_ids();
+    let hp_delta = update.legacy_hp_delta();
     UpdateView {
         score: update.score,
         delay0: update.delay0,
         delay1: update.delay1,
-        caster_id: update.caster_id.unwrap_or(0),
-        // 旧 Fight API 的 target_id 是数字；这些无目标起手历史上填的是自身 ID。
-        target_id: update.target_id.or(update.caster_id).unwrap_or(0),
+        caster_id,
+        target_id,
         target_ids: update.target_ids,
         update_type: match update.update_type {
             "win" => UpdateTypeView::Win,
@@ -81,7 +82,7 @@ fn update_from_core(update: BattleUpdate) -> UpdateView {
         message_template: update.message_template,
         message_rendered: update.message_rendered,
         param: update.param,
-        hp_delta: update.hp_delta,
+        hp_delta,
         tone: tone(update.tone),
     }
 }
@@ -476,6 +477,29 @@ seed:7@!"#;
         assert!(legacy.is_done() && legacy.is_finished());
         assert!(legacy.step_internal().unwrap().updates.is_empty());
         assert_eq!(legacy.session.result(), canonical.result());
+    }
+
+    #[test]
+    fn boss_replay_additions_preserve_legacy_update_fields() {
+        for (raw, message, raw_caster, raw_target, raw_delay0, raw_delay1) in [
+            ("thanos@!\n\nfighter25", "[1]消失了", 1, 3, 1000, 100),
+            ("aokiji@!\n\na\nb", "[0]使用[冰河时代]", 0, 2, 1000, 100),
+            ("conan@!\n\nmario@!", "[1]", 0, 1, 1000, 100),
+            ("conan@!\n\nmario@!", "真相只有一个", 0, 0, 1000, 2000),
+            ("conan@!\n\nmario@!", "[0]满血复活", 1, 1, 3000, 100),
+        ] {
+            let replay = fight_impl(raw.to_owned(), FightOptions::default()).unwrap();
+            let update = replay
+                .frames
+                .iter()
+                .flat_map(|frame| &frame.updates)
+                .find(|update| update.message_template == message)
+                .unwrap();
+            assert_eq!((update.caster_id, update.target_id), (raw_caster, raw_target), "{message}");
+            assert_eq!((update.delay0, update.delay1), (raw_delay0, raw_delay1), "{message}");
+            assert!(update.target_ids.is_empty());
+            assert_eq!((update.param, update.hp_delta), (None, None), "{message}");
+        }
     }
 
     #[test]

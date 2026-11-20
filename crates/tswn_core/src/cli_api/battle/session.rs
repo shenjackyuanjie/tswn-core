@@ -772,21 +772,29 @@ fn player_names(states: &[BattlePlayerState]) -> HashMap<PlrId, String> {
 fn update_from_runtime(update: &crate::RunUpdate, names: &HashMap<PlrId, String>) -> BattleUpdate {
     let tone = classify_tone(update);
     let is_next_line = matches!(update.update_type, UpdateType::NextLine);
+    let legacy_caster = (!is_next_line).then_some(update.caster);
+    let legacy_target = update.target_id().or(legacy_caster);
+    let legacy_hp_delta = hp_delta_for_tone(tone, update);
+    let damage = update.damage_param();
     BattleUpdate {
         update_type: update_type_name(update.update_type),
         tone: tone_name(tone),
         message_template: update.message.to_string(),
         message_rendered: render_update_message(update, names),
-        caster_id: (!is_next_line).then_some(update.caster),
-        target_id: update.target_id(),
+        caster_id: update.caster_id(),
+        target_id: update.replay_target_id(),
         target_ids: update.targets.iter().copied().collect(),
+        animation_target_ids: update.animation_targets.as_deref().map(<[_]>::to_vec),
         param: update.param,
+        param_payload: damage.map(|damage| BattleUpdateParamPayload::Damage { damage }),
         score: update.score,
         delay0: update.delay0,
         delay1: update.delay1,
-        hp_delta: hp_delta_for_tone(tone, update),
+        hp_delta: damage.map(|damage| -(damage as i32)).or(legacy_hp_delta),
         is_win: matches!(update.update_type, UpdateType::Win),
         is_next_line,
+        legacy_ids: (legacy_caster.unwrap_or(0), legacy_target.unwrap_or(0)),
+        legacy_hp_delta,
     }
 }
 

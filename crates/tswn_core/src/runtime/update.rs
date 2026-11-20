@@ -122,10 +122,18 @@ pub struct RunUpdate {
     pub targets: smallvec::SmallVec<[PlrId; 2]>,
     /// 事件类型标记。
     pub update_type: UpdateType,
-    /// 起手等无单体目标的事件通过 `target_id()` 投影为 None。
+    /// 原版无施法者的事件保留旧 `caster` 数值，但在规范回放中投影为 None。
+    pub has_caster: bool,
+    /// 旧兼容投影是否携带单体目标。
     pub has_target: bool,
+    /// 在规范回放中隐藏旧兼容投影仍需要的目标占位值。
+    pub hide_replay_target: bool,
+    /// 原版群体动画目标（Vite `targets2`），不用于替换占位符 `[2]`。
+    pub animation_targets: Option<Box<[PlrId]>>,
     /// 只对需要精确裁切的展示事件取值；普通事件仍按现有规则投影。
     pub hp_changes: Option<Box<[RunUpdateHp]>>,
+    /// 是否将目标的精确 HP 变化同时投影为原版的对象形伤害参数。
+    pub has_damage_param: bool,
 }
 
 impl RunUpdate {
@@ -141,8 +149,12 @@ impl RunUpdate {
             target: 0,
             targets: smallvec::SmallVec::new(),
             update_type: UpdateType::None,
+            has_caster: true,
             has_target: true,
+            hide_replay_target: false,
+            animation_targets: None,
             hp_changes: None,
+            has_damage_param: false,
         }
     }
 
@@ -160,8 +172,12 @@ impl RunUpdate {
             target: 0,
             targets: smallvec::SmallVec::new(),
             update_type: UpdateType::NextLine,
+            has_caster: false,
             has_target: false,
+            hide_replay_target: false,
+            animation_targets: None,
             hp_changes: None,
+            has_damage_param: false,
         }
     }
 
@@ -183,8 +199,12 @@ impl RunUpdate {
             target,
             targets: smallvec::SmallVec::new(),
             update_type: UpdateType::None,
+            has_caster: true,
             has_target: true,
+            hide_replay_target: false,
+            animation_targets: None,
             hp_changes: None,
+            has_damage_param: false,
         }
     }
 
@@ -212,8 +232,49 @@ impl RunUpdate {
         Self::new(crate::runtime::lang::get_lang(key), caster, target, score)
     }
 
-    /// 回放中的真实单体目标；旧消费者仍可读取 `target`。
+    /// 回放中的真实施法者；旧消费者仍可读取 `caster`。
+    pub fn caster_id(&self) -> Option<PlrId> {
+        (self.has_caster && self.update_type != UpdateType::NextLine).then_some(self.caster)
+    }
+
+    /// 旧兼容投影的可空目标；规范回放使用 `replay_target_id`。
     pub fn target_id(&self) -> Option<PlrId> { self.has_target.then_some(self.target) }
+
+    /// 规范回放中的真实单体目标。
+    pub fn replay_target_id(&self) -> Option<PlrId> { (self.has_target && !self.hide_replay_target).then_some(self.target) }
+
+    pub(crate) fn without_replay_target(mut self) -> Self {
+        self.hide_replay_target = true;
+        self
+    }
+
+    pub(crate) fn without_caster(mut self) -> Self {
+        self.has_caster = false;
+        self
+    }
+
+    pub(crate) fn with_animation_targets(mut self, targets: impl ExactSizeIterator<Item = PlrId>) -> Self {
+        self.animation_targets = Some(targets.collect());
+        self.without_replay_target()
+    }
+
+    pub(crate) fn with_execution_damage(mut self, before: i32) -> Self {
+        self.has_damage_param = true;
+        let player = self.target;
+        self.with_hp_changes([RunUpdateHp {
+            player,
+            before,
+            after: 0,
+        }])
+    }
+
+    pub(crate) fn damage_param(&self) -> Option<u32> {
+        if !self.has_damage_param {
+            return None;
+        }
+        let hp = self.hp_changes.as_deref()?.iter().find(|change| change.player == self.target)?;
+        Some(hp.before.saturating_sub(hp.after).max(0) as u32)
+    }
 
     pub(crate) fn without_target(mut self) -> Self {
         self.has_target = false;

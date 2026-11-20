@@ -561,12 +561,15 @@ impl CombatRuntime {
             },
             PlainBossDefend::Ikaruga => {
                 if damage & 1 == 1 {
-                    updates.add(crate::runtime::update::RunUpdate::new_lang(
-                        crate::runtime::lang::keys::SKL_IKARUGA_DEFEND,
-                        target.0 as usize,
-                        target.0 as usize,
-                        damage as u32,
-                    ));
+                    updates.add_with(|| {
+                        RunUpdate::new_lang(
+                            crate::runtime::lang::keys::SKL_IKARUGA_DEFEND,
+                            target.0 as usize,
+                            target.0 as usize,
+                            damage as u32,
+                        )
+                        .without_replay_target()
+                    });
                     defend_value.set_damage(-damage);
                 }
             }
@@ -1054,12 +1057,8 @@ impl CombatRuntime {
             let team = minion_entity.runtime.team;
             self.world.mark_dead(minion, team);
             updates.add_newline();
-            updates.add(crate::runtime::update::RunUpdate::new(
-                "[1]消失了",
-                owner.0 as usize,
-                minion.0 as usize,
-                50,
-            ));
+            // 属主死亡连带的消失没有施法者；旧更新仍保留属主 ID。
+            updates.add_with(|| RunUpdate::new("[1]消失了", owner.0 as usize, minion.0 as usize, 50).without_caster());
         }
     }
 

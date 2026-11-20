@@ -96,7 +96,9 @@ export interface BattleUpdate {
     caster_id: number | null;
     target_id: number | null;
     target_ids: Array<number>;
+    animation_target_ids?: Array<number>;
     param: number | null;
+    param_payload?: { damage: number };
     score: number;
     delay0: number;
     delay1: number;
