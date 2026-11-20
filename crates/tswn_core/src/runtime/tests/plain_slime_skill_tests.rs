@@ -46,6 +46,32 @@ fn assert_slime_child_scaled(child: &EntityRecord, generation: u32, max_hp: i32)
 const SLIME_MERGE_INPUT: &str = "slime@!\n\nlazy@!\nparity3a\nparity3b";
 
 #[test]
+fn slime_public_merge_keeps_the_original_battle_trajectory() {
+    let mut runner = RuntimeRunner::new_from_namerena_raw(SLIME_MERGE_INPUT.to_owned()).unwrap();
+    let mut batch = 0;
+    for _ in 0..128 {
+        let round = runner.run_round();
+        if let Some(frame) = round.frame {
+            batch += 1;
+            let updates = &frame.updates.updates;
+            match batch {
+                38 => assert!(updates.iter().any(|event| event.message == "[0][吞噬]了[1]")),
+                39 => assert!(updates.iter().any(|event| event.message.contains("点伤害") && event.score == 90)),
+                41 => assert_eq!((runner.runtime().rng.i, runner.runtime().rng.j), (218, 19)),
+                _ => {}
+            }
+        }
+        if round.winner_team.is_some() {
+            assert_eq!(batch, 45);
+            assert!(runner.input_group_won(1));
+            assert_eq!((runner.runtime().rng.i, runner.runtime().rng.j), (61, 27));
+            return;
+        }
+    }
+    panic!("对局应在预算内结束");
+}
+
+#[test]
 fn slime_merge_takes_raw_attrs_and_skill_levels_by_position() {
     let mut runner = RuntimeRunner::new_from_namerena_raw(SLIME_MERGE_INPUT.to_owned()).unwrap();
     let runtime = runner.runtime_mut();
