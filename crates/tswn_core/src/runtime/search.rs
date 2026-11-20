@@ -197,7 +197,7 @@ mod tests {
     }
 
     #[test]
-    fn staged_search_records_actual_samples_and_uses_bounded_budget() {
+    fn shortlisted_candidates_receive_equal_samples_before_selection() {
         let mut field = tactical_field();
         let result = field.run_search_round(SearchConfig {
             samples: 16,
@@ -207,8 +207,7 @@ mod tests {
         });
         assert!(result.estimates.len() >= 3);
         assert_eq!(result.estimates[0].samples, 16);
-        assert!(result.estimates.iter().any(|estimate| estimate.samples == 4));
-        assert!(result.estimates.iter().map(|estimate| estimate.samples).sum::<usize>() < result.estimates.len() * 16);
+        assert!(result.estimates.iter().all(|estimate| estimate.samples == 16));
         for estimate in &result.estimates {
             assert!(estimate.wins <= estimate.completed && estimate.completed <= estimate.samples);
         }
@@ -230,7 +229,7 @@ mod tests {
         // 等待真正的出手机会；不把调度空轮当成策略已作决定。
         let mut winner = None;
         for _ in 0..200 {
-            winner = field.run_tactical_rollout_round(7, None).winner_team;
+            winner = field.run_tactical_rollout_round(7, None).0.winner_team;
             assert!(field.scratch.search_turn.is_none());
             if winner.is_some() {
                 break;
@@ -274,6 +273,65 @@ mod tests {
     }
 
     #[test]
+    fn tactical_continuation_reaches_late_allied_decision_instead_of_wasting_empty_slots() {
+        // 队友在第 24 轮之后才行动；原版会持续治疗，战术续局应看见可立即终结的攻击。
+        let config = default_custom_runtime_import_config().unwrap();
+        let heal = config.registry.skill_id_by_export_name(BuiltinActiveSkill::Heal.export_name()).unwrap();
+        let mut field = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "starter", 0, 1000, 1)
+                    .with_speed(1)
+                    .with_speed_points(MOVE_POINT_THRESHOLD + 1),
+                PlayerTemplate::new(2, "delayed-ally", 0, 1000, 1000)
+                    .with_speed(1)
+                    .with_speed_points(1800)
+                    .with_wisdom(128)
+                    .with_magic_point(128)
+                    .with_skill_loadout(SkillLoadout::from_skill_levels([(heal, 128)])),
+                PlayerTemplate::new(3, "enemy", 1, 100, 1).with_speed(1).with_def_res(100, 100),
+            ],
+            config.registry,
+        ));
+        field.entities.get_mut(EntityIdx(1)).unwrap().runtime.hp = 500;
+        assert_eq!(field.search_turn_preview().actor, Some(EntityIdx(0)));
+        let (_, legacy_winner) = field.evaluate_search_candidate(0, 0, 91, 128, false, Some(0));
+        let (_, tactical_winner) = field.evaluate_search_candidate(0, 0, 91, 128, true, Some(0));
+        assert_eq!(legacy_winner, None);
+        assert_eq!(tactical_winner, Some(0));
+    }
+
+    #[test]
+    fn tactical_continuation_values_delayed_backstab_through_forced_resolution() {
+        // 潜行起手没有即时伤害；必须比较强制背刺兑现后的结果，不能只奖励眼前的普攻。
+        let config = default_custom_runtime_import_config().unwrap();
+        let skill = config
+            .registry
+            .skill_id_by_export_name(BuiltinActiveSkill::Assassinate.export_name())
+            .unwrap();
+        let mut field = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "attacker", 0, 300, 100)
+                    .with_magic(100)
+                    .with_speed(200)
+                    .with_speed_points(MOVE_POINT_THRESHOLD + 1)
+                    .with_magic_point(100)
+                    .with_skill_loadout(SkillLoadout::from_skill_levels([(skill, 128)])),
+                PlayerTemplate::new(2, "victim", 1, 200, 0).with_speed(1).with_def_res(128, 128),
+            ],
+            config.registry,
+        ));
+        let (_, used) = field.run_tactical_rollout_round(7, Some(0));
+        assert!(used);
+        assert!(field.entities.get(EntityIdx(0)).unwrap().runtime.assassinate.is_some());
+        for _ in 0..32 {
+            if field.run_minimal_round_no_capture().winner_team.is_some() {
+                break;
+            }
+        }
+        assert!(!field.entities.get(EntityIdx(1)).unwrap().runtime.alive);
+    }
+
+    #[test]
     fn tactical_rollout_keeps_uncontrolled_opponents_on_exact_legacy_path() {
         // 相同 RNG 下对手的实体结果和随机流均应与原版完全一致。
         let mut field = tactical_field();
@@ -283,6 +341,54 @@ mod tests {
         assert_eq!(format!("{field:?}"), format!("{legacy:?}"));
         for _ in 0..64 {
             assert_eq!(field.rng.next_u8(), legacy.rng.next_u8());
+        }
+    }
+
+    #[test]
+    fn iron_and_backstab_simulation_matches_captured_resolution() {
+        // 同一铁壁起手和 seed 必须在试算、正式帧中得到相同状态，并真实兑现后续背刺。
+        let config = default_custom_runtime_import_config().unwrap();
+        let skills = [BuiltinActiveSkill::Iron, BuiltinActiveSkill::Assassinate]
+            .map(|skill| (config.registry.skill_id_by_export_name(skill.export_name()).unwrap(), 128));
+        let mut captured = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "attacker", 0, 1000, 100)
+                    .with_magic(100)
+                    .with_magic_point(128)
+                    .with_speed(220)
+                    .with_speed_points(MOVE_POINT_THRESHOLD + 1)
+                    .with_def_res(128, 128)
+                    .with_skill_loadout(SkillLoadout::from_skill_levels(skills)),
+                PlayerTemplate::new(2, "victim", 1, 1_000_000, 10).with_speed(10).with_def_res(128, 128),
+            ],
+            config.registry,
+        ));
+        let turn = captured.search_turn_preview();
+        let iron = turn
+            .candidates
+            .iter()
+            .position(|c| matches!(&c.action,PreparedPlainAction::BuiltinSkill(a) if a.selected.skill==BuiltinActiveSkill::Iron))
+            .unwrap();
+        let mut simulated = captured.clone();
+        captured.scratch.search_turn = Some(SearchTurn::new(Some(iron), Some(42)));
+        simulated.scratch.search_turn = Some(SearchTurn::new(Some(iron), Some(42)));
+        let mut saw_iron = false;
+        let mut saw_backstab = false;
+        for _ in 0..128 {
+            let a = captured.run_minimal_round();
+            let b = simulated.run_minimal_round_no_capture();
+            captured.scratch.search_turn = None;
+            simulated.scratch.search_turn = None;
+            assert_eq!(a.winner_team, b.winner_team);
+            assert_eq!(format!("{:?}", captured.entities), format!("{:?}", simulated.entities));
+            if let Some(frame) = a.frame {
+                saw_iron |= frame.updates.updates.iter().any(|u| u.caster == 0 && u.message == "[0]发动[铁壁]");
+                saw_backstab |= frame.updates.updates.iter().any(|u| u.caster == 0 && u.message == "[0]发动[背刺]");
+            }
+        }
+        assert!(saw_iron && saw_backstab);
+        for _ in 0..64 {
+            assert_eq!(captured.rng.next_u8(), simulated.rng.next_u8());
         }
     }
 
@@ -582,23 +688,36 @@ impl CombatRuntime {
         }
     }
 
-    /// 轻量续局只做一层即时比较，禁止调用 run_search_round，因此不会递归扩张。
-    fn run_tactical_rollout_round(&mut self, seed: u64, controlled_team: Option<usize>) -> RoundOutcome {
+    /// 轻量续局只做一层动作比较；潜行需等强制背刺兑现或被打断，禁止递归搜索。
+    fn run_tactical_rollout_round(&mut self, seed: u64, controlled_team: Option<usize>) -> (RoundOutcome, bool) {
         let turn = self.search_turn_preview();
         // 单方评分的对手在模拟中也必须保持原版；普通双方搜索则允许双方使用战术续局。
         if controlled_team
             .is_some_and(|selected| turn.actor.is_none_or(|actor| self.entities.get(actor).unwrap().runtime.team != selected))
         {
-            return self.run_minimal_round_no_capture();
+            return (self.run_minimal_round_no_capture(), false);
         }
         let Some(team) = turn.team else {
-            return self.run_minimal_round_no_capture();
+            return (self.run_minimal_round_no_capture(), false);
         };
+        if turn.candidates.is_empty() {
+            return (self.run_minimal_round_no_capture(), false);
+        }
+        let actor = turn.actor.unwrap();
         let mut best = None;
         for index in 0..turn.candidates.len() {
             let mut trial = self.clone();
             trial.scratch.search_turn = Some(SearchTurn::new(Some(index), Some(seed)));
-            let winner = trial.run_minimal_round_no_capture().winner_team;
+            let mut winner = trial.run_minimal_round_no_capture().winner_team;
+            trial.scratch.search_turn = None;
+            // 潜行与背刺是一次延迟动作；不提前结算虚构伤害，直接让正式引擎处理打断、强制出手。
+            // 只跟进当前起手的 pending，最多 32 个调度轮，其他单位仍走原版，不再枚举新动作。
+            for _ in 0..32 {
+                if winner.is_some() || trial.entities.get(actor).is_none_or(|entity| entity.runtime.assassinate.is_none()) {
+                    break;
+                }
+                winner = trial.run_minimal_round_no_capture().winner_team;
+            }
             let score = trial.search_reward(winner, team);
             if best.is_none_or(|(_, value)| score > value) {
                 best = Some((index, score));
@@ -607,7 +726,7 @@ impl CombatRuntime {
         self.scratch.search_turn = Some(SearchTurn::new(best.map(|(index, _)| index), None));
         let outcome = self.run_minimal_round_no_capture();
         self.scratch.search_turn = None;
-        outcome
+        (outcome, true)
     }
 
     fn evaluate_search_candidate(
@@ -623,19 +742,19 @@ impl CombatRuntime {
         trial.scratch.search_turn = Some(SearchTurn::new(Some(index), Some(seed)));
         let mut winner = trial.run_minimal_round_no_capture().winner_team;
         trial.scratch.search_turn = None;
+        let mut tactical_decisions = 0;
         for round in 0..horizon {
             if winner.is_some() {
                 break;
             }
-            // 一半样本维持原版对手模型；另一半在前三个窗口采用一层战术续局。
-            // 每条分支最多三次，且使用独立搜索 seed，不读取正式对局的未来随机流。
-            winner = if tactical && round < 24 && round % 8 == 0 {
-                trial
-                    .run_tactical_rollout_round(
-                        seed.wrapping_add(round as u64).wrapping_add(0xd1b54a32d192ed03),
-                        controlled_team,
-                    )
-                    .winner_team
+            // 预算按真实可决策机会计数，不让空调度轮或原版对手耗尽三个续局名额。
+            winner = if tactical && tactical_decisions < 3 {
+                let (outcome, used) = trial.run_tactical_rollout_round(
+                    seed.wrapping_add(round as u64).wrapping_add(0xd1b54a32d192ed03),
+                    controlled_team,
+                );
+                tactical_decisions += usize::from(used);
+                outcome.winner_team
             } else {
                 trial.run_minimal_round_no_capture().winner_team
             };
@@ -643,7 +762,7 @@ impl CombatRuntime {
         (trial.search_reward(winner, team), winner)
     }
 
-    /// 多样本短续局筛选后分阶段追加预算；最终只在同样本数的决赛候选间选优。
+    /// 多样本短续局筛选后给所有入围动作相同预算，避免用四次偶然结果淘汰组合起手。
     pub fn run_search_round(&mut self, config: SearchConfig) -> SearchRound {
         let turn = self.search_turn_preview();
         let Some(actor) = turn.actor else {
@@ -677,35 +796,17 @@ impl CombatRuntime {
         let mut active = diverse_shortlist(&ranked, &turn.candidates, config.shortlist);
         let mut stats: Vec<CandidateStats> = (0..turn.candidates.len()).map(|_| CandidateStats::default()).collect();
         let mut evaluated = active.clone();
-        // 预算足够时先各跑四次，再把剩余预算留给领先的一半，至少保留两名决赛候选。
-        let first_stage = if samples >= 8 { 4 } else { samples };
+        // 每个入围动作都完成同一组独立样本，不能凭前四次的偶然结果提前淘汰。
         for &index in &active {
-            for sample in 0..first_stage {
+            for sample in 0..samples {
                 let (score, winner) =
                     self.evaluate_search_candidate(index, team, seed_at(sample), config.horizon, sample % 2 == 1, config.team);
                 stats[index].add(score, winner, team);
             }
         }
         active.sort_by(|&a, &b| stats[b].mean().total_cmp(&stats[a].mean()).then(a.cmp(&b)));
-        if first_stage < samples {
-            active.truncate(active.len().div_ceil(2).max(2));
-            for &index in &active {
-                for sample in first_stage..samples {
-                    let (score, winner) = self.evaluate_search_candidate(
-                        index,
-                        team,
-                        seed_at(sample),
-                        config.horizon,
-                        sample % 2 == 1,
-                        config.team,
-                    );
-                    stats[index].add(score, winner, team);
-                }
-            }
-            active.sort_by(|&a, &b| stats[b].mean().total_cmp(&stats[a].mean()).then(a.cmp(&b)));
-        }
         let chosen = active[0];
-        // 输出按最终选择优先排列；被淘汰候选保留其实际样本数供审计。
+        // 输出按最终选择优先排列，保留各候选实际样本数供审计。
         evaluated.sort_by(|&a, &b| (a != chosen).cmp(&(b != chosen)).then(a.cmp(&b)));
         let estimates = evaluated
             .into_iter()

@@ -1,5 +1,7 @@
 # Clever 配对评分验证（2026-11-20）
 
+本文记录 e3facd9 的历史基线；后续修复及验证见 [铁壁与背刺延迟收益修复](clever-iron-backstab-fix.md)。
+
 两种预先选定的名字各运行 pp/pd/qp/qd 四种模式，每项固定 10000 场。被测本体及其 profile 队友使用本次 Clever 搜索，对手使用原版；对照组全员原版。两组使用相同 profile 顺序、空战斗 seed、WIN_RATE_EVAL_RQ。搜索预算为 samples=16、horizon=128、shortlist=4、seed=1，筛选试算另外计费。全部 80000 对配对结果均无回合上限截断。
 
 | 名字 | 模式 | 原版评分 | 单方 Clever 评分 | 提升分数 | 差值近似 95% 区间 | Holm 校正 p | 结果 |

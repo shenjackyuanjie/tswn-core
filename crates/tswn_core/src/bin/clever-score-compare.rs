@@ -13,6 +13,9 @@ struct Args {
     /// 被测名字，可多次传入；完整名字作为一个参数，单挑由程序重复输入。
     #[arg(long, required = true)]
     name: Vec<String>,
+    /// 只运行指定评分模式；省略则运行全部四种，可重复传入。
+    #[arg(long, value_parser = ["pp", "pd", "qp", "qd"])]
+    mode: Vec<String>,
     #[arg(long, default_value_t = 10000, value_parser = clap::value_parser!(u32).range(1..=10000))]
     rounds: u32,
     #[arg(long, default_value_t = 1)]
@@ -39,6 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ]
                 .map(|(enhanced, duel, mode)| (name.clone(), enhanced, duel, mode))
             })
+            .filter(|(_, _, _, mode)| args.mode.is_empty() || args.mode.iter().any(|selected| selected == mode))
             .collect::<Vec<_>>(),
     );
     let next = Arc::new(AtomicUsize::new(0));
