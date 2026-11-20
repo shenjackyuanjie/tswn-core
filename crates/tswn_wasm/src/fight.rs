@@ -64,6 +64,7 @@ fn tone(value: &str) -> MessageTone {
     }
 }
 fn update_from_core(update: BattleUpdate) -> UpdateView {
+    let update = update.into_legacy_display();
     let (caster_id, target_id) = update.legacy_ids();
     let hp_delta = update.legacy_hp_delta();
     UpdateView {
@@ -487,6 +488,15 @@ seed:7@!"#;
             ("conan@!\n\nmario@!", "[1]", 0, 1, 1000, 100),
             ("conan@!\n\nmario@!", "真相只有一个", 0, 0, 1000, 2000),
             ("conan@!\n\nmario@!", "[0]满血复活", 1, 1, 3000, 100),
+            ("slime@!\n\nAlice", "[0]攻击力上升", 1, 1, 1000, 100),
+            (
+                "mario@!\n\nparity17a\nparity17b\n\nparity17c",
+                "[1]从[铁壁]中解除",
+                3,
+                3,
+                1000,
+                100,
+            ),
         ] {
             let replay = fight_impl(raw.to_owned(), FightOptions::default()).unwrap();
             let update = replay

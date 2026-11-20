@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::replay_view::ReplayState;
 use crate::runtime::{BINDING_COMPLETION_MAX_ROUNDS, PassiveDecision, PlrId};
 use serde::Serialize;
@@ -241,6 +243,8 @@ pub struct BattleUpdate {
     pub(super) legacy_ids: (usize, usize),
     #[serde(skip)]
     pub(super) legacy_hp_delta: Option<i32>,
+    #[serde(skip)]
+    pub(super) legacy_display: Option<(Cow<'static, str>, i32)>,
 }
 
 impl BattleUpdate {
@@ -249,6 +253,15 @@ impl BattleUpdate {
 
     /// 兼容旧 WASM 的文本语气 HP 差值，不混入原版对象形参数。
     pub fn legacy_hp_delta(&self) -> Option<i32> { self.legacy_hp_delta }
+
+    /// 恢复旧 WASM 的消息模板和等待时间，不改变已经渲染的文字。
+    pub fn into_legacy_display(mut self) -> Self {
+        if let Some((template, delay1)) = self.legacy_display.take() {
+            self.message_template = template.into_owned();
+            self.delay1 = delay1;
+        }
+        self
+    }
 }
 
 /// 原版对象形参数的已精确采样部分。

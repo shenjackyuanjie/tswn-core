@@ -8,10 +8,11 @@ use crate::replay_view::{
     hp_delta_for_tone, is_percent_hp_damage_update, render_update_message,
 };
 use crate::runtime::control::TargetWisdom;
-use crate::runtime::update::{RunUpdates, UpdateType};
+use crate::runtime::lang::{get_lang, keys};
+use crate::runtime::update::{RunUpdate, RunUpdates, UpdateType};
 use crate::runtime::{
-    EntityIdx, ForcedAction, PassivePause, PlannedAction, PlannedSkill, PlrId, RuntimeMinionKind, RuntimePlayerSnapshot,
-    RuntimeRunner,
+    EntityIdx, ForcedAction, PassivePause, PlannedAction, PlannedSkill, PlayerKindFlags, PlrId, RuntimeMinionKind,
+    RuntimePlayerSnapshot, RuntimeRunner,
 };
 
 use super::dto::*;
@@ -37,6 +38,8 @@ pub struct BattleSession {
     driver: super::driver::BattleDriver,
     options: BattleOptions,
     initial_states: Vec<BattlePlayerState>,
+    /// 以开局已解析的实体类型决定展示口径，不受名称或退场影响。
+    has_initial_boss: bool,
     current_states: Vec<BattlePlayerState>,
     /// 主动暂停的面板投影；内部帧仍以前一已提交边界为起点，避免续行与整场重演不同。
     paused_states: Option<Vec<BattlePlayerState>>,
@@ -145,12 +148,19 @@ impl BattleSession {
         }
         driver.runner.runtime_mut().control.set_skill_multiplier(options.skill_multiplier);
         let initial_states = states_from_runner(&driver.runner, options.include_icons, options.include_skills, &mut icon_cache);
+        let has_initial_boss = driver
+            .runner
+            .runtime()
+            .entities
+            .iter()
+            .any(|(_, entity)| entity.runtime.flags.contains(PlayerKindFlags::BOSS));
         Ok(Self {
             driver,
             options,
             current_states: initial_states.clone(),
             paused_states: None,
             initial_states,
+            has_initial_boss,
             icon_cache,
             paused: None,
             paused_forced_action: None,
@@ -477,7 +487,13 @@ impl BattleSession {
                             self.current_states = states;
                             return Ok(None);
                         };
-                        let mut frame = build_frame(&updates, &self.current_states, &states, &self.driver.runner);
+                        let mut frame = build_frame(
+                            &updates,
+                            &self.current_states,
+                            &states,
+                            &self.driver.runner,
+                            self.has_initial_boss,
+                        );
                         frame.frame_index = self.driver.frames_emitted;
                         frame.round_index = self.driver.rounds_advanced;
                         self.driver.frames_emitted += 1;
@@ -520,7 +536,13 @@ impl BattleSession {
                 &mut self.icon_cache,
             );
             let frame = visible.then(|| {
-                let mut frame = build_frame(&updates, &self.current_states, &states, &self.driver.runner);
+                let mut frame = build_frame(
+                    &updates,
+                    &self.current_states,
+                    &states,
+                    &self.driver.runner,
+                    self.has_initial_boss,
+                );
                 frame.frame_index = step.frame_index.unwrap();
                 frame.round_index = round_index;
                 frame
@@ -708,12 +730,22 @@ pub(super) fn build_frame(
     previous_states: &[BattlePlayerState],
     states: &[BattlePlayerState],
     runner: &RuntimeRunner,
+    has_initial_boss: bool,
 ) -> BattleReplayFrame {
     let names = player_names(states);
+    let mut previous = None;
     let converted = updates
         .updates
         .iter()
-        .map(|update| update_from_runtime(update, &names))
+        .map(|update| {
+            let display = if has_initial_boss {
+                boss_self_status_display(update, previous)
+            } else {
+                None
+            };
+            previous = Some(update);
+            update_from_runtime(update, &names, display)
+        })
         .collect::<Vec<_>>();
     let events = updates
         .updates
@@ -753,7 +785,28 @@ fn player_names(states: &[BattlePlayerState]) -> HashMap<PlrId, String> {
         .collect()
 }
 
-fn update_from_runtime(update: &crate::RunUpdate, names: &HashMap<PlrId, String>) -> BattleUpdate {
+// 两个事件的 [0] 与 [1] 都指向同一人；仅校正规范模板，沿用原有文本渲染和片段。
+fn boss_self_status_display(update: &RunUpdate, previous: Option<&RunUpdate>) -> Option<(&'static str, i32)> {
+    if update.caster != update.target || update.caster_id().is_none() || update.replay_target_id().is_none() {
+        return None;
+    }
+    match update.message.as_ref() {
+        // 马力欧成长的文案相同，只在同一角色刚开始聚气时替换。
+        "[0]攻击力上升"
+            if previous.is_some_and(|previous| {
+                previous.message == get_lang(keys::SKL_ACCUMULATE)
+                    && previous.caster == update.caster
+                    && previous.target == update.target
+            }) =>
+        {
+            Some((get_lang(keys::SKL_ACCUMULATED), update.delay1))
+        }
+        "[1]从[铁壁]中解除" => Some((get_lang(keys::SKL_IRON_END), 500)),
+        _ => None,
+    }
+}
+
+fn update_from_runtime(update: &RunUpdate, names: &HashMap<PlrId, String>, display: Option<(&'static str, i32)>) -> BattleUpdate {
     let tone = classify_tone(update);
     let is_next_line = matches!(update.update_type, UpdateType::NextLine);
     let legacy_caster = (!is_next_line).then_some(update.caster);
@@ -763,7 +816,7 @@ fn update_from_runtime(update: &crate::RunUpdate, names: &HashMap<PlrId, String>
     BattleUpdate {
         update_type: update_type_name(update.update_type),
         tone: tone_name(tone),
-        message_template: update.message.to_string(),
+        message_template: display.map_or(update.message.as_ref(), |(template, _)| template).to_owned(),
         message_rendered: render_update_message(update, names),
         caster_id: update.caster_id(),
         target_id: update.replay_target_id(),
@@ -773,12 +826,13 @@ fn update_from_runtime(update: &crate::RunUpdate, names: &HashMap<PlrId, String>
         param_payload: damage.map(|damage| BattleUpdateParamPayload::Damage { damage }),
         score: update.score,
         delay0: update.delay0,
-        delay1: update.delay1,
+        delay1: display.map_or(update.delay1, |(_, delay1)| delay1),
         hp_delta: damage.map(|damage| -(damage as i32)).or(legacy_hp_delta),
         is_win: matches!(update.update_type, UpdateType::Win),
         is_next_line,
         legacy_ids: (legacy_caster.unwrap_or(0), legacy_target.unwrap_or(0)),
         legacy_hp_delta,
+        legacy_display: display.map(|_| (update.message.clone(), update.delay1)),
     }
 }
 
@@ -1179,7 +1233,7 @@ seed:kill-pause-snapshot@!"#;
         updates.add(crate::RunUpdate::new("[0]发起攻击", 0, 1, 0));
         updates.add(crate::RunUpdate::new("[1]受到[2]点伤害", 0, 1, 0));
         updates.add(crate::RunUpdate::new("[1]挡住攻击", 0, 1, 0));
-        let frame = build_frame(&updates, &previous, &states, &session.driver.runner);
+        let frame = build_frame(&updates, &previous, &states, &session.driver.runner, session.has_initial_boss);
         let frame_json = serde_json::to_value(&frame).unwrap();
         assert_eq!(frame_json["states"][1]["shield"], 25);
         assert_eq!(frame_json["states"][1]["max_shield"], max_shield);
@@ -1226,7 +1280,7 @@ seed:kill-pause-snapshot@!"#;
             .runtime_mut()
             .drain_plain_half_skill_into(EntityIdx(0), EntityIdx(1), &mut updates);
         let states = states_from_runner(&session.driver.runner, false, false, &mut session.icon_cache);
-        let frame = build_frame(&updates, &previous, &states, &session.driver.runner);
+        let frame = build_frame(&updates, &previous, &states, &session.driver.runner, session.has_initial_boss);
         assert_eq!(frame.updates[0].message_template, "[0]使用[瘟疫]");
         assert_eq!(frame.updates[1].message_template, "[1]体力减少[2]%");
         assert_eq!(frame.updates[1].tone, "damage");
