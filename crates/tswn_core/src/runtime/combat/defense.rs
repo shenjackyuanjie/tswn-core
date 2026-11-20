@@ -636,6 +636,17 @@ impl CombatRuntime {
         amount: i32,
         updates: &mut RunUpdates,
     ) -> bool {
+        self.apply_plain_legacy_damage_with_fire_into(caster, target, amount, None, updates)
+    }
+
+    pub(super) fn apply_plain_legacy_damage_with_fire_into(
+        &mut self,
+        caster: EntityIdx,
+        target: EntityIdx,
+        amount: i32,
+        fire_state_key: Option<u32>,
+        updates: &mut RunUpdates,
+    ) -> bool {
         if amount < 0 {
             self.apply_plain_absorb_heal_into(caster, target, amount.saturating_neg(), updates);
             return false;
@@ -647,6 +658,12 @@ impl CombatRuntime {
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        // 原版 damage 先调用命中回调（含火球免疫随机数），再由 onDamaged 登记反击。
+        if amount > 0
+            && let Some(key) = fire_state_key
+        {
+            self.apply_fire_on_damage(target, key);
+        }
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         was_alive
             && self

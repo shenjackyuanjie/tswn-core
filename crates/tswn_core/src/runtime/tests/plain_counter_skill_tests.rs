@@ -1,5 +1,29 @@
 use super::*;
 
+#[test]
+fn fire_immunity_precedes_wheel_counter_in_public_battle() {
+    use crate::cli_api::battle::{BattleOptions, battle_replay};
+
+    let replay = battle_replay("wheel@!\n\nmario@!\nCharlie\nJohnny", BattleOptions::default()).unwrap();
+    let frame = replay
+        .frames
+        .iter()
+        .find(|frame| frame.updates.iter().any(|update| update.score == 223 && update.hp_delta == Some(-223)))
+        .expect("马里奥应先打出 223 点火球伤害");
+    let position = |is_match: fn(&crate::cli_api::battle::BattleUpdate) -> bool| {
+        frame.updates.iter().position(is_match).expect("同帧应产生该事件")
+    };
+    let fire_damage = position(|update| update.hp_delta == Some(-223));
+    let counter = position(|update| update.message_template.contains("[反击]"));
+    let counter_damage = position(|update| update.hp_delta == Some(-112));
+    let revive = position(|update| update.message_template == "[0]满血复活");
+    assert!(fire_damage < counter && counter < counter_damage && counter_damage < revive);
+    assert_eq!(
+        frame.states.iter().find(|state| state.id_key_name == "mario@!").unwrap().hp,
+        386
+    );
+}
+
 fn counter_runtime(level: u32) -> CombatRuntime {
     let mut builder = ExtensionRegistryBuilder::default();
     let counter = builder

@@ -52,10 +52,8 @@ impl CombatRuntime {
                 panic!("runtime POST_DEFEND hooks must leave a damage value");
             };
             self.apply_wheel_post_defend_spsum(target, amount);
-            if self.apply_plain_legacy_damage_into(caster, target, amount, updates) {
+            if self.apply_plain_legacy_damage_with_fire_into(caster, target, amount, Some(fire_state_key), updates) {
                 self.drain_plain_lethal_damage_into(caster, target, updates);
-            } else if amount > 0 {
-                self.apply_fire_on_damage(target, fire_state_key);
             }
         }
     }
@@ -211,10 +209,8 @@ impl CombatRuntime {
                             panic!("runtime POST_DEFEND hooks must leave a damage value");
                         };
                         self.apply_wheel_post_defend_spsum(target, amount);
-                        if self.apply_plain_legacy_damage_into(caster, target, amount, updates) {
+                        if self.apply_plain_legacy_damage_with_fire_into(caster, target, amount, Some(fire_state_key), updates) {
                             self.drain_plain_lethal_damage_into(caster, target, updates);
-                        } else if amount > 0 {
-                            self.apply_fire_on_damage(target, fire_state_key);
                         }
                     }
                     if killed_caster {
