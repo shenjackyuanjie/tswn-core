@@ -849,6 +849,11 @@ impl PreparedRuntimeRunner {
         fixed_count: usize,
         roster_buffers: &mut ScoreRosterBuffers,
     ) -> Result<(), CustomRuntimeImportError> {
+        // 完整 roster 回退不清理实体的动态状态和槽位，须先恢复原型，
+        // 避免保留已被截掉的召唤物 ID，以及同局状态和蓝图。
+        if !init.has_score_reuse_buffers() {
+            return self.reset_with_init(runner, init);
+        }
         runner
             .runtime
             .entities
