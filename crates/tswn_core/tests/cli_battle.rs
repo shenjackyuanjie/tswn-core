@@ -12,13 +12,15 @@ use std::{
 
 fn fixture(name: &str) -> PathBuf { Path::new(env!("CARGO_MANIFEST_DIR")).join("../tswn_test/cases/runtime_stress").join(name) }
 
-fn run(args: &[&str], raw: Option<&str>) -> Output {
+fn run(args: &[&str], raw: Option<&str>) -> Output { run_bytes(args, raw.map(str::as_bytes)) }
+
+fn run_bytes(args: &[&str], raw: Option<&[u8]>) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_tswn-cli"));
     command.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
     if let Some(raw) = raw {
         command.stdin(Stdio::piped());
         let mut child = command.spawn().expect("启动 CLI");
-        child.stdin.as_mut().expect("stdin 管道").write_all(raw.as_bytes()).expect("写入 stdin");
+        child.stdin.as_mut().expect("stdin 管道").write_all(raw).expect("写入 stdin");
         child.wait_with_output().expect("等待 CLI")
     } else {
         command.output().expect("运行 CLI")
@@ -28,6 +30,28 @@ fn run(args: &[&str], raw: Option<&str>) -> Output {
 fn stdout(output: &Output) -> String { String::from_utf8_lossy(&output.stdout).into_owned() }
 
 fn stderr(output: &Output) -> String { String::from_utf8_lossy(&output.stderr).into_owned() }
+
+#[test]
+fn fight_skips_invalid_utf8_lines_from_file_and_stdin() {
+    let clean = "马里奥\r\n\r\n路易基";
+    let mut mixed = b"\xef\xbb\xbf".to_vec();
+    mixed.extend_from_slice(clean.as_bytes());
+    mixed.extend_from_slice(b"\r\nbad\xff\nlast\xed");
+    let path = std::env::temp_dir().join(format!("tswn_cli_{}_mixed.txt", std::process::id()));
+    std::fs::write(&path, &mixed).unwrap();
+    let args = ["fight", "--jsonl", "--max-rounds", "1"];
+    let from_stdin = run_bytes(&args, Some(&mixed));
+    let from_file = run(&[&args[..], &["-f", path.to_str().unwrap()]].concat(), None);
+    std::fs::remove_file(path).unwrap();
+
+    let expected = run(&args, Some(clean));
+    assert!(expected.status.success(), "{}", stderr(&expected));
+    for output in [from_stdin, from_file] {
+        assert!(output.status.success(), "{}", stderr(&output));
+        assert_eq!(output.stdout, expected.stdout);
+        assert!(stderr(&output).contains("已跳过 2 行非 UTF-8"));
+    }
+}
 
 #[test]
 fn jsonl_streams_initial_frames_and_result() {
