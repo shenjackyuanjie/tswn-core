@@ -33,6 +33,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
+use tswn_core::text_input::read_text_file;
 use tswn_openbox::backend::{CommonBenchOptions, OutputMode, PairDetailMode, PairInput, ProgressEvent, run_pair};
 
 const USAGE: &str = "\
@@ -117,7 +118,7 @@ impl Args {
 }
 
 fn read_all(path: &Path) -> Result<String, String> {
-    std::fs::read_to_string(path).map_err(|err| format!("读取失败 {}: {err}", path.display()))
+    read_text_file(path).map_err(|err| format!("读取失败 {}: {err}", path.display()))
 }
 
 /// 按输入文件的“组”数估算矩阵规模。

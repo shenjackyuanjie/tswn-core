@@ -195,9 +195,7 @@ fn pair_observed_legacy_matches_top_every_and_thresholds() {
 
 #[test]
 fn scores_observed_legacy_matches_metrics_thresholds_and_skill_board() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("target")
-        .join(format!("openbox-legacy-skill-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("openbox-legacy-skill-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     let config = root.join("score.toml");
     for skill_threshold in [0, u64::MAX] {
@@ -209,7 +207,9 @@ fn scores_observed_legacy_matches_metrics_thresholds_and_skill_board() {
                 tswn_core::namerena::skill_name_for_export(id)
             ));
         }
-        std::fs::write(&config, text).unwrap();
+        let mut bytes = b"bad\xff\n".to_vec();
+        bytes.extend_from_slice(text.as_bytes());
+        std::fs::write(&config, bytes).unwrap();
         for skill_screen in [false, true] {
             for min_screen in [None, Some(0.0), Some(f64::MAX)] {
                 let input = NamerPfInput {

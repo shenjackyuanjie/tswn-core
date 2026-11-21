@@ -1,10 +1,10 @@
 use std::collections::HashMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use tswn_core::cli_api;
 use tswn_core::namerena::skill_name_to_id;
+use tswn_core::text_input::read_text_file;
 
 use super::format::SKILL_CN_NAMES;
 use super::score::NamerPfScores;
@@ -45,7 +45,7 @@ impl SkillBoardConfig {
     ///
     /// 读失败 / 解析失败都返回 `Err`，由调用方决定如何呈现。
     pub fn load(path: &Path) -> Result<Self, String> {
-        let raw = fs::read_to_string(path).map_err(|err| format!("读取技能榜配置失败: {}: {err}", path.display()))?;
+        let raw = read_text_file(path).map_err(|err| format!("读取技能榜配置失败: {}: {err}", path.display()))?;
         let entries = toml::from_str::<HashMap<String, SkillBoardThreshold>>(&raw)
             .map_err(|err| format!("解析技能榜配置失败: {}: {err}", path.display()))?;
         Ok(Self { entries })
