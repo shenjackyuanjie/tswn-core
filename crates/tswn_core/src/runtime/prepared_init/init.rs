@@ -77,6 +77,8 @@ impl PreparedBattleInit {
 
     pub fn input_groups(&self) -> &[Vec<EntityIdx>] { &self.input_groups }
 
+    pub(crate) fn has_score_reuse_buffers(&self) -> bool { self.score_buffers.is_some() }
+
     pub fn apply(self, runtime: &mut CombatRuntime) -> Result<(), RuntimeBattleInitError> {
         self.apply_and_recover_seed(runtime).map(drop)
     }

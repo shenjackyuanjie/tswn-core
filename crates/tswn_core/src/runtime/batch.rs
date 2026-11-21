@@ -792,6 +792,17 @@ mod tests {
     }
 
     #[test]
+    fn same_clan_score_fallback_resets_dynamic_battle_state() {
+        let target = ["wheel@!".to_owned()];
+        let rq = crate::namerena::eval_name::WIN_RATE_EVAL_RQ;
+        let full = runtime_score(&target, "!", 4, rq, 1).unwrap();
+        let mut split = runtime_score_range(&target, "!", 0, 3, rq).unwrap();
+        split.merge(runtime_score_range(&target, "!", 3, 4, rq).unwrap());
+        assert_eq!((full.total, full.errors, full.guard_exhausted), (4, 0, 0));
+        assert_eq!(full.wins, split.wins);
+    }
+
+    #[test]
     fn score_round_596_matches_legacy_clone_battle_outcome() {
         assert!(score_round_target_won("艾泽莉娅 #IAPBVEKLIO@无惨", 596));
     }
