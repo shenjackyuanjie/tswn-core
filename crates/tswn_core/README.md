@@ -64,6 +64,8 @@ echo '<your raw input>' | ./target/release/tswn-cli fight
 ./target/release/tswn-cli bench pair -l targets.txt -p players.txt --teammate-list weighted-mates.toml --teammate-factored --head 4 --detail top
 ```
 
+`tswn-cli` 读取文本文件或 stdin 时，默认整行跳过无法按 UTF-8 解码的内容，并在 stderr 报告跳过的行数。合法行保留原文和换行。
+
 `teams.txt` 每行一队，队内默认用 `+` 分隔，例如第一行写 `mario+luigi`，第二行写
 `peach+toad`。固定同一阵容和 `-n` 时，`--single-thread` 和 `--thread 8` 使用
 同一批 seed，输出胜场数、计入统计的局数和胜率。对比不同构建的总耗时，使用同一份输入、

@@ -14,6 +14,7 @@ use std::time::Duration;
 
 use tswn_core::cli_api;
 use tswn_core::namerena::raw_namerena_to_id_name;
+use tswn_core::text_input::read_text_file;
 use tswn_core::win_rate::WinRateTiming;
 
 /// 打印 total/init/fight 的耗时拆分。
@@ -284,7 +285,7 @@ pub(super) fn sort_score_output_file(path: &Path, jsonl: bool, pure: bool) -> io
     if pure {
         return Ok(());
     }
-    let content = fs::read_to_string(path)?;
+    let content = read_text_file(path)?;
     let mut lines = content.lines().filter(|line| !line.trim().is_empty()).collect::<Vec<_>>();
     lines.sort_by(|left, right| compare_score_output_lines(left, right, jsonl));
     let mut sorted = lines.join("\n");
