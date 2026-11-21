@@ -1,6 +1,6 @@
 # tswn_core
 
-名字竞技场的 Rust 核心引擎。当前版本为 [0.7.1](CHANGELOG.md#071---2026-11-19)。
+名字竞技场的 Rust 核心引擎。当前版本为 [0.7.2](CHANGELOG.md#072---2026-11-21)。
 
 熟悉 namerena 的读者可以从 [项目与 core 原理指南](../../docs/core-guide/README.md) 开始，
 按角色构建、Runtime、战斗流程、hook 与交互层理解实现。Rust API 可通过
@@ -71,6 +71,18 @@ echo '<your raw input>' | ./target/release/tswn-cli fight
 同一批 seed，输出胜场数、计入统计的局数和胜率。对比不同构建的总耗时，使用同一份输入、
 场数和固定线程数。需要拆分初始化和战斗耗时时，再用 `--perf` 单独采集。
 批量路径的逐 seed 验证与测速口径见 [核心更新日志](CHANGELOG.md#固定阵容胜率)。
+
+### 单挑 Rinick
+
+`Rinick属性修改器@!` 与 `Rinick+属性修改器` 使用相同的战斗身份。批量胜率命令默认用 `+` 拆分队内成员，可用下面的别名直接测试。若使用带武器的写法，则加 `--double-plus`。
+
+```powershell
+cargo run -p tswn_core --bin tswn-cli -- bench win-rate -s -n 1000 -r 'Stupefy #mlMUWL12@Shabby_fish\nRinick属性修改器@!'
+```
+
+该命令按原版胜率模式使用 `rq=6`，名字一方胜率为 4.6%。加 `--keep-rq` 使用 `rq=4`，结果为 4.5%。Openbox 的「不低估短号」对应 `--keep-rq`，与 10% 档的 1,000 场样本量独立。更多实测见 [Rinick 胜率口径](../../docs/reviews/2026-11-21-boss-win-rate-parity.md#rinick-胜率口径)。
+
+### 战报与批量入口
 
 `fight --jsonl` 逐行输出 initial/frame/result 并立即 flush；评分和胜率使用明确的 `bench` 子命令。CLI 不再提供 `--runtime` 执行器选择器或 `runtime parity`。
 
