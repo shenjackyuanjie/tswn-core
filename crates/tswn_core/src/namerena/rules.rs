@@ -1,6 +1,8 @@
 //! 名竞内置角色与数值规则。
 
-pub const BOSS_NAMES: [&str; 14] = [
+pub(crate) const SAITAMA_RETIREMENT_WINNER: &str = "SAITAMA";
+
+pub const BOSS_NAMES: [&str; 15] = [
     "mario",
     "sonic",
     "mosquito",
@@ -15,9 +17,24 @@ pub const BOSS_NAMES: [&str; 14] = [
     "testsubject",
     "thanos",
     "wheel",
+    SAITAMA_RETIREMENT_WINNER,
 ];
 
 pub const BOOST_NAMES: [&str; 3] = ["云剑狄卡敢", "云剑穸跄祇", "田一人"];
+
+pub(crate) fn boss_combat_name(name: &str) -> &str {
+    match name {
+        SAITAMA_RETIREMENT_WINNER => "saitama",
+        _ => name,
+    }
+}
+
+pub(crate) fn boss_combat_identity_override(identity: &str) -> Option<&'static str> {
+    match identity {
+        "SAITAMA@!" => Some("saitama@!"),
+        _ => None,
+    }
+}
 
 pub fn boss_display_name(name: &str) -> &str {
     match name {
@@ -41,7 +58,7 @@ pub fn boss_display_name(name: &str) -> &str {
 
 /// 各 Boss 的八围加成，与原版 `appendAttr`（0.5.5 中为 `gan()`）对应。
 pub fn boss_append_attr(name: &str) -> [i32; 8] {
-    match name {
+    match boss_combat_name(name) {
         "covid" => [10, 9, 0, 12, 0, 12, 0, 60],
         "lazy" => [0, 88, 10, -20, 0, 50, 0, 120],
         "saitama" => [72, 39, 69, 76, 67, 66, 0, 84],
@@ -66,7 +83,7 @@ pub fn boss_append_attr(name: &str) -> [i32; 8] {
 /// （如 `SklAokijiIceAge`、`SklConan`）由各自机制处理。这些等级不参与
 /// 名字推导，也不触发暴击式翻倍。
 pub fn boss_default_skill_levels(name: &str) -> &'static [(usize, u32)] {
-    match name {
+    match boss_combat_name(name) {
         "aokiji" => &[(1, 80)],
         "mosquito" => &[(4, 100)],
         "sonic" => &[(6, 48), (7, 48), (30, 48)],
@@ -100,7 +117,7 @@ pub enum BossActionSkill {
 /// `k4` 只收集 `ActionSkill` 实例，所以防御、反射等被动不会出现在这里；
 /// 马里奥的火球术初始等级为 0，吃到火焰花后由状态载荷改写为 120。
 pub fn boss_action_skills(name: &str) -> &'static [(BossActionSkill, u32)] {
-    match name {
+    match boss_combat_name(name) {
         "aokiji" => &[(BossActionSkill::IceAge, 70), (BossActionSkill::Ice, 80)],
         "ikaruga" => &[(BossActionSkill::IkarugaAttack, 48)],
         "mario" => &[(BossActionSkill::MarioGet, 63), (BossActionSkill::Fire, 0)],
@@ -122,10 +139,10 @@ pub fn boost_value(name: &str) -> u32 {
 }
 
 /// 0.5.5 中 `k3` 使用 `SklAttack` 的 Boss；它们的默认攻击可以走魔法分支。
-pub fn boss_uses_skill_attack(name: &str) -> bool { matches!(name, "aokiji" | "ikaruga") }
+pub fn boss_uses_skill_attack(name: &str) -> bool { matches!(boss_combat_name(name), "aokiji" | "ikaruga") }
 
 pub fn boss_action_prob_count(name: &str) -> usize {
-    match name {
+    match boss_combat_name(name) {
         "covid" | "lazy" | "testsubject" => 0,
         _ => 1,
     }
@@ -134,7 +151,7 @@ pub fn boss_action_prob_count(name: &str) -> usize {
 /// 阈值来自各 Boss 的强免疫（240）、普通免疫（192）和兜底档（84）。
 /// 返回 0 表示恒不免疫且不抽样；`piston` 是毒状态在 0.5.5 中的键名。
 pub fn boss_immune_threshold(name: &str, key: &str) -> i32 {
-    match name {
+    match boss_combat_name(name) {
         "saitama" => match key {
             "half" | "exchange" => 240,
             "berserk" | "slow" | "ice" => 192,

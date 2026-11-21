@@ -127,7 +127,9 @@ impl PreparedBattleRoster {
         scratch.name_lengths.clear();
         for (index, &(team_index, player_index, _)) in scratch.dynamic_inputs.iter().enumerate() {
             let raw = &raw_groups[team_index][player_index];
-            let Some((name, _)) = raw.split_once('@').filter(|(_, team)| *team == profile_team && !team.contains('+')) else {
+            let Some((name, _)) = raw.split_once('@').filter(|(name, team)| {
+                *team == profile_team && !team.contains('+') && !(*team == "!" && *name == SAITAMA_RETIREMENT_WINNER)
+            }) else {
                 return Self::from_groups_with_eval_rq_and_skill_import_selected(
                     raw_groups,
                     eval_rq,
@@ -310,7 +312,15 @@ impl PreparedBattleRoster {
         };
         let player_count = prepared.players.len();
         let input_groups = prepared.groups;
-        let id_key_names = prepared.players.iter().map(|player| player.id_key_name.clone()).collect::<Vec<_>>();
+        let id_key_names = prepared
+            .players
+            .iter()
+            .map(|player| {
+                boss_combat_identity_override(&player.id_key_name)
+                    .unwrap_or(&player.id_key_name)
+                    .to_owned()
+            })
+            .collect::<Vec<_>>();
         let mut sorted_by_id_name = (0..player_count).collect::<Vec<_>>();
         sorted_by_id_name.sort_by(|left, right| id_key_names[*left].cmp(&id_key_names[*right]));
         let mut team_by_player = vec![0; player_count];

@@ -349,7 +349,7 @@ impl PreparedBattleInit {
                     child_clone_name_factor,
                 ))
             });
-        let boss_state = match player.name.as_str() {
+        let boss_state = match player.combat_name() {
             "covid" if player.class == crate::namerena::PlayerClass::Boss => PreparedBossState::Covid,
             "lazy" if player.class == crate::namerena::PlayerClass::Boss => PreparedBossState::Lazy,
             "saitama" if player.class == crate::namerena::PlayerClass::Boss => PreparedBossState::Saitama,
@@ -408,7 +408,7 @@ impl PreparedBattleInit {
     }
 
     fn namerena_child_clone_name_factor(player: &crate::namerena::PreparedPlayer, eval_rq: f64) -> f64 {
-        let factor_name = crate::namerena::eval_name::eval_str_common_with_rq(&player.name, true, eval_rq);
+        let factor_name = crate::namerena::eval_name::eval_str_common_with_rq(player.combat_name(), true, eval_rq);
         let factor_team = crate::namerena::eval_name::eval_str_common_with_rq(&player.clan_name, true, eval_rq);
         factor_name.max(factor_team - 6.0)
     }
@@ -613,14 +613,8 @@ impl PreparedBattleInit {
     }
 
     pub(super) fn base_names_sorted(raw_groups: &[Vec<String>]) -> Vec<String> {
-        let mut names = raw_groups
-            .iter()
-            .flatten()
-            .filter(|raw| !is_seed_line(raw))
-            .map(|raw| raw_namerena_to_id_name(raw))
-            .collect::<Vec<_>>();
-        names.sort();
-        names.dedup();
+        let mut names = Vec::new();
+        Self::refill_base_names_sorted(raw_groups, &mut names);
         names
     }
 
@@ -629,7 +623,11 @@ impl PreparedBattleInit {
         names.resize_with(player_count, String::new);
         let mut index = 0usize;
         for raw in raw_groups.iter().flatten().filter(|raw| !is_seed_line(raw)) {
-            raw_namerena_to_id_name_into(raw, &mut names[index]);
+            let name = &mut names[index];
+            raw_namerena_to_id_name_into(raw, name);
+            if let Some(combat_identity) = boss_combat_identity_override(name) {
+                name.replace_range(.., combat_identity);
+            }
             index += 1;
         }
         names.truncate(index);

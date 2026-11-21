@@ -1,6 +1,6 @@
 use std::fmt;
 
-use super::PlayerOverlay;
+use super::{BOOST_NAMES, BOSS_NAMES, PlayerOverlay};
 
 pub const NAME_MAX_LEN: usize = 256;
 pub const TEAM_MAX_LEN: usize = 256;
@@ -214,23 +214,6 @@ pub(crate) fn raw_namerena_to_id_name_into(raw: &str, output: &mut String) {
 }
 
 fn classify(name: &str, team: Option<&str>) -> PlayerClass {
-    const BOSS_NAMES: [&str; 14] = [
-        "mario",
-        "sonic",
-        "mosquito",
-        "yuri",
-        "slime",
-        "ikaruga",
-        "conan",
-        "aokiji",
-        "lazy",
-        "covid",
-        "saitama",
-        "testsubject",
-        "thanos",
-        "wheel",
-    ];
-    const BOOST_NAMES: [&str; 3] = ["云剑狄卡敢", "云剑穸跄祇", "田一人"];
     match team {
         Some("!") if BOSS_NAMES.contains(&name) => PlayerClass::Boss,
         Some("!") if BOOST_NAMES.contains(&name) => PlayerClass::Boost,

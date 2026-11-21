@@ -19,6 +19,7 @@ pub struct WorldArena {
     alive_group_count: usize,
     round_pos: i32,
     winner_team: Option<usize>,
+    winner_declared: bool,
     // 实体扫描保存的胜者可能与存活视图不同，此时也需要重算。
     winner_views_dirty: bool,
 }
@@ -32,6 +33,7 @@ impl PartialEq for WorldArena {
             && self.alive_group_count == other.alive_group_count
             && self.round_pos == other.round_pos
             && self.winner_team == other.winner_team
+            && self.winner_declared == other.winner_declared
     }
 }
 
@@ -76,6 +78,7 @@ impl WorldArena {
             alive_group_count,
             round_pos: -1,
             winner_team: None,
+            winner_declared: false,
             winner_views_dirty: alive_group_count == 1,
         };
         world.rebuild_alive_team_cache(entities.len());
@@ -163,6 +166,7 @@ impl WorldArena {
         self.roster_count = self.team_roster.iter().map(Vec::len).sum();
         self.round_pos = -1;
         self.winner_team = None;
+        self.winner_declared = false;
         // 场前刚按视图统计过存活队，只有恰好一队时需要下次同步补上胜者。
         self.winner_views_dirty = self.alive_group_count == 1;
     }
@@ -404,6 +408,9 @@ impl WorldArena {
     }
 
     pub fn sync_winner(&mut self, entities: &EntityArena) -> Option<usize> {
+        if self.winner_declared {
+            return self.winner_team;
+        }
         self.winner_views_dirty = true;
         let mut alive_team = None;
         for (_, entity) in entities.iter() {
@@ -432,7 +439,7 @@ impl WorldArena {
     /// legacy 语义，队伍被清空后复活不会把计数加回来（见 [`Self::revive_alive`]），
     /// 直接用它判胜会把“某队被清空又被复活”的残局误判为已经分出胜负。
     pub(crate) fn sync_winner_from_alive_views(&mut self) -> Option<usize> {
-        if self.winner_views_dirty {
+        if self.winner_views_dirty && !self.winner_declared {
             self.recompute_winner_from_alive_views();
         }
         self.winner_team
@@ -447,6 +454,13 @@ impl WorldArena {
     }
 
     pub fn winner_team(&self) -> Option<usize> { self.winner_team }
+
+    pub(crate) fn declare_winner(&mut self, team: usize) {
+        self.winner_team = Some(team);
+        self.winner_declared = true;
+    }
+
+    pub(crate) fn has_declared_winner(&self) -> bool { self.winner_declared }
 }
 
 #[cfg(test)]
