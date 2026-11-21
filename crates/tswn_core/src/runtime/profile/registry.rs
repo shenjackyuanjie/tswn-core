@@ -270,10 +270,15 @@ pub fn default_custom_runtime_import_config() -> Result<CustomRuntimeImportConfi
         BuiltinActiveSkill::RinickIceAge,
         BuiltinActiveSkill::RinickYuriControl,
     ] {
-        builder.register_skill(
+        let hooks = match builtin_skill {
+            BuiltinActiveSkill::RinickIceAge | BuiltinActiveSkill::RinickYuriControl => ProcMask::NONE,
+            _ => ProcMask::PRE_ACTION,
+        };
+        builder.register_skill_with_hooks(
             "core",
             builtin_skill.local_name(),
             builtin_skill.export_name(),
+            hooks,
             builtin_skill.target_policy(),
             SkillPriority(builtin_skill.legacy_key() as i32),
         )?;

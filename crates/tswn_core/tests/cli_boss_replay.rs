@@ -62,6 +62,51 @@ fn verify_clip_hp(clip: &Value, id: &Value, before: i32, after: i32, show_hp: bo
 }
 
 #[test]
+fn rinick_modifier_public_fight_matches_vite() {
+    let frames = frames("Rinick+属性修改器\n\nalice");
+    let (first_hit, clip) = event(&frames[0], "[1]受到[2]点伤害");
+    assert_eq!(state(&frames[0], &first_hit["caster_id"])["hp"], 324);
+    verify_clip_hp(clip, &first_hit["target_id"], 237, 148, true, false);
+    let last = frames.last().unwrap();
+    let (knockout, _) = event(last, "[1]被击倒了");
+    assert_eq!(state(last, &knockout["target_id"])["id_key_name"], "alice");
+}
+
+#[test]
+fn rinick_modifier_clears_charm_and_revives_in_public_fights() {
+    let yuri = frames("Rinick+属性修改器\n\nyuri@!");
+    let cleanse = &yuri[1];
+    let (modifier, _) = event(cleanse, "[0]使用[属性修改器]");
+    assert!(modifier["target_id"].is_null());
+    let (release, _) = event(cleanse, "[1]从[魅惑]中解除");
+    assert_eq!(release["target_id"], modifier["caster_id"]);
+    let (attack, _) = event(cleanse, "[0]发起攻击");
+    assert_eq!(state(cleanse, &attack["target_id"])["id_key_name"], "yuri@!");
+
+    let sonic = frames("Rinick+属性修改器\n\nsonic@!");
+    let revive = &sonic[5];
+    let (update, clip) = event(revive, "[0]满血复活");
+    verify_clip_hp(clip, &update["caster_id"], 0, 279, true, false);
+    let (lives, _) = event(revive, "[0]还剩[2]条命");
+    assert_eq!(lives["param"], 1);
+}
+
+#[test]
+fn rinick_modifier_boss_alias_has_identical_replay() {
+    for opponents in [
+        "\n\nalice",
+        "\n\nyuri@!\n\nsonic@!",
+        "\n\nmario@!\nsonic@!\nyuri@!\nconan@!",
+        "\nBob@Rinick\n\nalice\nCharlie\nJohnny\nseed:42@!",
+    ] {
+        assert_eq!(
+            frames(&format!("Rinick属性修改器@!{opponents}")),
+            frames(&format!("Rinick+属性修改器{opponents}")),
+        );
+    }
+}
+
+#[test]
 fn conan_public_executions_show_hp_before_knockout_and_revive() {
     let clone_fight = frames("conan@!\n\nfighter22");
     let mario_fight = frames("conan@!\n\nmario@!");

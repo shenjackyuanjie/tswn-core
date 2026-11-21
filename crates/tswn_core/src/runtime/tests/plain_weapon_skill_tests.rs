@@ -909,8 +909,8 @@ fn rinick_reraise_rebuilds_floored_attrs_and_consumes_one_life() {
     assert_eq!(entity.template.wisdom, 80);
     assert_eq!(entity.template.magic_point, 40);
     assert_eq!(entity.runtime.magic_point, 40);
-    assert_eq!(entity.runtime.attr_sum, 63 * 5 + 70 + 80);
-    assert_eq!(entity.runtime.atk_sum, (63 - 63 + 63 + 63 - 70) * 2 + 63 + 80);
+    assert_eq!(entity.runtime.attr_sum, raw[..7].iter().sum::<u32>());
+    assert_eq!(entity.runtime.atk_sum, (20 - 30 + 40 + 60 - 70) * 2 + 50 + 80);
     assert_eq!(entity.states.entry(PLAIN_ICE_STATE_KEY), None);
     // 两人局不存在人数劣势，不会召唤分身。
     assert_eq!(runtime.entities.len(), 2);
@@ -987,8 +987,8 @@ fn rinick_reraise_spawns_clones_when_outnumbered() {
     assert_eq!(clone_entity.runtime.move_state.speed_points, clone_move_points);
     assert_eq!(clone_entity.runtime.hp, 400);
     assert_eq!(clone_entity.template.max_hp, 400);
-    assert_eq!(clone_entity.template.wisdom, 80);
-    assert_eq!(clone_entity.template.magic_point, 40);
+    assert_eq!(clone_entity.template.wisdom, 63);
+    assert_eq!(clone_entity.template.magic_point, 31);
     assert_eq!(
         updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
         vec![
@@ -1000,6 +1000,33 @@ fn rinick_reraise_spawns_clones_when_outnumbered() {
             get_lang(keys::SKL_CLONED),
         ]
     );
+}
+
+#[test]
+fn rinick_boss_alias_and_weapon_input_share_seed_and_battle_state() {
+    let opponents = "\n\nra0x0\nra0x1\nra0x2\nra0x3\nra0x4\nra0x5\nseed:42@!";
+    let mut original = RuntimeRunner::new_from_namerena_raw(format!("Rinick+属性修改器{opponents}")).unwrap();
+    let mut boss = RuntimeRunner::new_from_namerena_raw(format!("Rinick属性修改器@!{opponents}")).unwrap();
+    for _ in 0..20_000 {
+        assert_rng_state_eq(&boss.runtime.rng, &original.runtime.rng);
+        assert_eq!(boss.runtime.world.flat_alive(), original.runtime.world.flat_alive());
+        for &index in boss.runtime.world.flat_alive() {
+            let left = boss.runtime.entities.get(index).unwrap();
+            let right = original.runtime.entities.get(index).unwrap();
+            assert_eq!(left.template, right.template);
+            assert_eq!(left.runtime.hp, right.runtime.hp);
+            assert_eq!(left.runtime.magic_point, right.runtime.magic_point);
+            assert_eq!(left.runtime.move_state, right.runtime.move_state);
+            assert_eq!(left.runtime.rinick_reraise_lives, right.runtime.rinick_reraise_lives);
+        }
+        if original.have_winner() {
+            assert_eq!(boss.runtime.world.winner_team(), original.runtime.world.winner_team());
+            return;
+        }
+        boss.main_round();
+        original.main_round();
+    }
+    panic!("属性修改器别名对局未能在回合上限内结束");
 }
 
 #[test]

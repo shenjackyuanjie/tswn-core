@@ -434,13 +434,17 @@ impl PlayerBuild {
         if let Some(weapon) = &self.weapon {
             if rinick_identity {
                 rinick_revive_attrs = Some(attrs);
-                // 分身 `az()` 会重新解析武器并走非身份分支的 `b6()`（0 级抬到 4、其余折半），
+                // 分身 `az()` 会重新解析武器并走非身份分支的 `b6()`（0 级抬到 4、其余翻倍），
                 // 但它的 `E` 列表为空，`bs()` 里所有强化标记都视为未强化；随后才做末位翻倍
                 // 与槽位强化。这里按同一顺序生成快照。
                 let mut clone_levels = levels;
                 for &key in &self.action_order {
                     let key = key as usize;
-                    clone_levels[key] = if clone_levels[key] == 0 { 4 } else { clone_levels[key] / 2 };
+                    clone_levels[key] = if clone_levels[key] == 0 {
+                        4
+                    } else {
+                        clone_levels[key].saturating_mul(2)
+                    };
                 }
                 let mut clone_boosted = [false; 40];
                 let mut clone_boosts: [Option<SkillBoost>; 40] = std::array::from_fn(|_| None);

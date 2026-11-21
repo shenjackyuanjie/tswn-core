@@ -54,7 +54,7 @@ pub use input::{
     NAME_MAX_LEN, NamerenaInput, PlayerClass, PlayerSpec, PlayerSpecError, SEED_PREFIX, TEAM_MAX_LEN, is_seed_line,
     raw_namerena_to_id_name,
 };
-pub(crate) use input::{raw_namerena_to_id_name_into, trim_js_line_end};
+pub(crate) use input::{RINICK_MODIFIER_BOSS_ALIAS, raw_namerena_to_id_name_into, trim_js_line_end};
 pub use overlay::{EffectiveSkillWeight, MinionOverlay, PlayerOverlay};
 pub use rules::{
     BOOST_NAMES, BOSS_NAMES, BossActionSkill, boost_value, boss_action_prob_count, boss_action_skills, boss_append_attr,

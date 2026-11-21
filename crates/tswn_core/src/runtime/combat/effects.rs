@@ -126,9 +126,11 @@ impl CombatRuntime {
                         updates,
                     );
                     // Vite 判胜会从反弹伤害中直接返回，不再扣除反弹者的行动点。
-                    // 仅对首领施法者修正终局快照，普通反弹保留原来的兼容行为。
-                    let boss = self.entities.get(caster).unwrap().runtime.flags.contains(PlayerKindFlags::BOSS);
-                    if !boss || !self.plain_battle_has_ended() {
+                    // 仅对首领和属性修改器修正终局快照，普通反弹保留原来的兼容行为。
+                    let reflector = self.entities.get(caster).unwrap();
+                    let preserve_terminal_points =
+                        reflector.runtime.flags.contains(PlayerKindFlags::BOSS) || reflector.template.rinick.is_some();
+                    if !preserve_terminal_points || !self.plain_battle_has_ended() {
                         self.entities
                             .get_mut(caster)
                             .expect("runtime reflected attack caster disappeared")

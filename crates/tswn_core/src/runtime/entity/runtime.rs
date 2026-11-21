@@ -492,10 +492,21 @@ impl EntityRecord {
 
     pub fn apply_derived_stats(&mut self, stats: CloneDerivedStats) {
         self.template.apply_derived_stats(stats);
-        self.refresh_runtime_stats_from_template();
+        self.apply_runtime_stats_from_template();
     }
 
     pub fn refresh_runtime_stats_from_template(&mut self) {
+        if self.template.rinick.is_some()
+            && let Some(build) = &mut self.template.clone_build
+        {
+            let name_factor = build.name_factor();
+            let stats = CloneBuildData::derive_rinick_floor(&mut build.attrs, name_factor);
+            self.template.apply_derived_stats(stats);
+        }
+        self.apply_runtime_stats_from_template();
+    }
+
+    fn apply_runtime_stats_from_template(&mut self) {
         #[cfg(not(feature = "no_debug"))]
         let probe_pending_haste = crate::debug::probe_refresh()
             .filter(|needle| self.template.name.contains(needle))
@@ -683,8 +694,11 @@ impl EntityRecord {
         let emit_state_cancel = self.runtime.alive && self.runtime.hp > 0;
         self.runtime.shield = 0;
         self.states.clear_compressed_legacy_state(CompressedLegacyState::Shield);
+        let generation = self.states.generation();
         let messages = self.states.clear_positive_states_with_ordered_messages(emit_state_cancel);
-        self.refresh_runtime_stats_from_template();
+        if self.template.rinick.is_none() || generation != self.states.generation() {
+            self.refresh_runtime_stats_from_template();
+        }
         messages
     }
 
