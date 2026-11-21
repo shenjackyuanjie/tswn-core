@@ -408,9 +408,13 @@ impl CombatRuntime {
             updates.add_newline();
             updates.add_with(|| RunUpdate::new_lang(lang::keys::SAITAMA_LEAVE, id, id, 0).without_target());
             // 原版只调用 group.die 移出在场名单，不扣体力，也不走死亡链或解除使魔链接。
-            let runtime = &mut self.entities.get_mut(actor).unwrap().runtime;
-            runtime.alive = false;
-            self.world.mark_dead(actor, runtime.team);
+            let entity = self.entities.get_mut(actor).unwrap();
+            entity.runtime.alive = false;
+            let team = entity.runtime.team;
+            self.world.mark_dead(actor, team);
+            if entity.template.name == crate::namerena::SAITAMA_RETIREMENT_WINNER {
+                self.world.declare_winner(team);
+            }
             return;
         }
 
@@ -1159,6 +1163,82 @@ mod tests {
             });
             assert_eq!(digest, permutation, "{raw}");
         }
+    }
+
+    #[test]
+    fn uppercase_saitama_wins_on_hunger_retirement_in_both_execution_paths() {
+        let raw = "SAITAMA@!\n\nsonic@!\n\nalice";
+        let (groups, seed) = RuntimeRunner::split_namerena_into_groups(raw.to_owned());
+        let prepared = RuntimeRunner::prepare_groups(&groups).unwrap();
+        let mut batch = prepared.new_with_seed(&seed).unwrap();
+        let mut captured = prepared.new_with_seed(&seed).unwrap();
+        let mut original = RuntimeRunner::new_from_namerena_raw(raw.replace("SAITAMA", "saitama")).unwrap();
+        let actor = captured.input_groups[0][0].0 as usize;
+        let initial = captured.player_snapshot(actor).unwrap();
+        assert_eq!(initial.id_key_name, "SAITAMA@!");
+        assert_eq!(initial.display_name, "SAITAMA");
+        assert_eq!(initial.player_type, "Boss");
+
+        let mut retired = false;
+        for _ in 0..160 {
+            let expected = original.run_round();
+            let outcome = captured.run_round();
+            assert_eq!(outcome.action, expected.action);
+            let normal = original.player_snapshot(actor).unwrap();
+            let variant = captured.player_snapshot(actor).unwrap();
+            assert_eq!(variant.hp, normal.hp);
+            assert_eq!(variant.alive, normal.alive);
+            if variant.alive {
+                assert_eq!(outcome.winner_team, None);
+                assert_eq!(variant.move_point, normal.move_point);
+                assert_eq!(variant.magic_point, normal.magic_point);
+                continue;
+            }
+
+            let frame = outcome.frame.unwrap();
+            let messages = frame.updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>();
+            assert_eq!(messages, ["[0]觉得有点饿", "\n", "[0]离开了战场"]);
+            assert_eq!(expected.winner_team, None);
+            assert_eq!(outcome.winner_team, Some(variant.team_index));
+            assert!(variant.hp > 0 && !variant.active);
+            assert_eq!(captured.alive_player_ids(), original.alive_player_ids());
+            assert!(captured.runtime.world.team_alive(variant.team_index).unwrap().is_empty());
+            retired = true;
+            break;
+        }
+        assert!(retired);
+        assert_eq!(captured.winner_team_index(), Some(0));
+        assert_eq!(captured.winner_ids(), [actor]);
+        assert!(captured.run_round().action.is_none());
+        assert_eq!(captured.winner_team_index(), Some(0));
+
+        let result = batch.run_to_completion(160);
+        assert_eq!(result.winner_team, captured.runtime.world.winner_team());
+        assert_eq!(batch.winner_ids(), [actor]);
+        assert_eq!(batch.alive_player_ids(), captured.alive_player_ids());
+        prepared.reset_with_seed(&mut batch, &seed).unwrap();
+        assert!(!batch.have_winner());
+        assert!(batch.player_snapshot(actor).unwrap().alive);
+    }
+
+    #[test]
+    fn uppercase_saitama_does_not_win_on_death() {
+        let mut runner = RuntimeRunner::new_from_namerena_raw("SAITAMA@!\n\nsonic@!".to_owned()).unwrap();
+        let actor = runner.input_groups[0][0];
+        let opponent = runner.input_groups[1][0];
+        runner.runtime.effects.push(QueuedEffect::Damage {
+            caster: opponent,
+            target: actor,
+            amount: 10_000,
+        });
+        runner.runtime.flush_effects().unwrap();
+
+        runner.run_until_winner(0);
+
+        let boss = runner.player_snapshot(actor.0 as usize).unwrap();
+        assert!(!boss.alive);
+        assert_eq!(boss.hp, 0);
+        assert_eq!(runner.winner_team_index(), Some(1));
     }
 
     #[test]

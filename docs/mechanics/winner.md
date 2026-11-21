@@ -3,12 +3,13 @@
 [返回机制索引](README.md)
 
 本文固定“一场对局何时分出胜负”的语义，以及 `alive_group_count` 在这个问题上的边界。
-结论同时适用于 Rust 主 Runtime 与 legacy `md5.js`，并给出两者的对照证据。
+除下述新增 Boss 的特例外，结论同时适用于 Rust 主 Runtime 与 legacy `md5.js`，并给出两者的对照证据。
 
 结论先行：
 
-- 只有**恰好一个队伍仍有存活实体**才算分出胜负；两个及以上队伍存活、或全部阵亡，都是“尚无胜者”。
-- Rust 在行动开始前和回合结束时同步判胜；legacy 只在**某队最后一个成员离场**时检查。两者的判据都是精确的“存活者是否同属一队”，与 `alive_group_count` 无关。
+- 常规判胜要求**恰好一个队伍仍有存活实体**；两个及以上队伍存活、或全部阵亡，都是“尚无胜者”。
+- Rust 的大写 Boss `SAITAMA@!` 在饥饿离场时立即判其所在队获胜，即使该队已无人留场或还有多个敌队存活。离场仍保留 HP，不走死亡流程；普通阵亡不触发此胜利条件，小写 `saitama@!` 也不受影响。
+- Rust 在行动开始前和回合结束时同步判胜；legacy 只在**某队最后一个成员离场**时检查。两者的常规判据都是精确的“存活者是否同属一队”，与 `alive_group_count` 无关。
 - `alive_group_count`（legacy `Engine.y.a.Q`）是**粘性计数**：队伍被清空后复活不会补回。它参与 `> 2` 的智能选目标，以及死亡行动者的 post-action 提前退出，
   **不能用于判胜**。批量热路径曾误用它，当前已改为存活视图判胜。
 
@@ -20,6 +21,9 @@
 
 ```rust
 pub fn sync_winner(&mut self, entities: &EntityArena) -> Option<usize> {
+    if self.winner_declared {
+        return self.winner_team;
+    }
     let mut alive_team = None;
     for (_, entity) in entities.iter() {
         if !entity.runtime.alive {
@@ -41,6 +45,7 @@ pub fn sync_winner(&mut self, entities: &EntityArena) -> Option<usize> {
 
 - 恰好一个队伍存活 → 该队伍编号；出现第二个队伍 → `None`；一个存活实体都没有 → `None`。
 - 判胜结果落在 `WorldArena.winner_team`。`RuntimeRunner` 的 `winner_team_index()`、`winner_team_indices()` 与 `input_group_won()` 把 runtime 队伍映射回输入分组；正式 `BattleResult.winner_team_indices` 也使用此映射。一个 runtime 队伍可能对应多个输入分组，数据集生成器要求标签胜者唯一。
+- 两条路径均优先保留机制已直接判定的胜者，不以剩余存活队伍覆盖。
 
 两条调用路径：
 

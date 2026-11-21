@@ -1,6 +1,7 @@
 use super::*;
 use crate::namerena::{
-    NAME_MAX_LEN, PlayerStats, is_seed_line, raw_namerena_to_id_name, raw_namerena_to_id_name_into, trim_js_line_end,
+    NAME_MAX_LEN, PlayerStats, SAITAMA_RETIREMENT_WINNER, boss_combat_identity_override, is_seed_line,
+    raw_namerena_to_id_name_into, trim_js_line_end,
 };
 use crate::rc4::Rc4KeySchedulePrefix;
 use crate::runtime::entity::ScoreCloneSkillBoostPlan;

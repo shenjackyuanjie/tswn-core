@@ -60,6 +60,7 @@ pub use rules::{
     BOOST_NAMES, BOSS_NAMES, BossActionSkill, boost_value, boss_action_prob_count, boss_action_skills, boss_append_attr,
     boss_default_skill_levels, boss_display_name, boss_immune_threshold, boss_uses_skill_attack, median,
 };
+pub(crate) use rules::{SAITAMA_RETIREMENT_WINNER, boss_combat_identity_override, boss_combat_name};
 pub use skill::{
     BuiltinSkillRef, CLASSIFIED_SKILL_SLOT_COUNT, ClassifiedSkillRef, PHANTOM_POSSESS_SKILL_KEY, SUMMON_EXPLODE_SKILL_KEY,
     SUMMON_FIRE1_SKILL_KEY, SUMMON_FIRE2_SKILL_KEY, SUMMON_MINION_NORMAL_SKILL_KEY_BASE, SUMMON_SHARE_DAMAGE_SKILL_KEY,

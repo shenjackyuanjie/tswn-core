@@ -73,9 +73,11 @@ impl CombatRuntime {
 
     /// 判胜按真实存活队伍；被魅惑者也可能清空自己的原队。
     pub(super) fn plain_battle_has_ended(&mut self) -> bool {
-        self.world
-            .sync_winner_from_alive_views()
-            .is_some_and(|winner| !self.has_pending_spawn_outside_team(winner))
+        self.world.has_declared_winner()
+            || self
+                .world
+                .sync_winner_from_alive_views()
+                .is_some_and(|winner| !self.has_pending_spawn_outside_team(winner))
     }
 
     pub fn should_run_kill_hooks(&self, caster: EntityIdx, killed_target: EntityIdx) -> bool {

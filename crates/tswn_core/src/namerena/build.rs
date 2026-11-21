@@ -5,7 +5,7 @@ use crate::rc4::RC4;
 use super::weapon::{WeaponBuild, WeaponKind};
 use super::{
     NAME_MAX_LEN, NamerenaInput, PlayerClass, PlayerOverlay, PlayerSpec, PlayerStats, SkillBoost, SkillLoadoutSpec, TEAM_MAX_LEN,
-    boss_append_attr, boss_default_skill_levels, boss_display_name, median,
+    boss_append_attr, boss_combat_identity_override, boss_combat_name, boss_default_skill_levels, boss_display_name, median,
 };
 
 /// 属性修改器身份的冷数据；普通构建结果不分配此载荷。
@@ -138,13 +138,21 @@ impl PreparedRoster {
 }
 
 impl PreparedPlayer {
+    pub(crate) fn combat_name(&self) -> &str {
+        if self.class == PlayerClass::Boss {
+            boss_combat_name(&self.name)
+        } else {
+            &self.name
+        }
+    }
+
     pub fn minion_blueprint(&self, kind: MinionKind, eval_rq: f64) -> PreparedMinionBlueprint {
         let (suffix, display_name) = match kind {
             MinionKind::Shadow => ("shadow", "幻影"),
             MinionKind::Summon => ("summon", "使魔"),
             MinionKind::Zombie => ("zombie", "丧尸"),
         };
-        let name = format!("{}?{suffix}", self.name);
+        let name = format!("{}?{suffix}", self.combat_name());
         let spec = PlayerSpec {
             raw: format!("{name}@{}", self.clan_name),
             name: name.clone(),
@@ -246,12 +254,17 @@ impl PlayerBuild {
         debug_assert!(spec.name.len() <= NAME_MAX_LEN);
         debug_assert!(spec.team.as_ref().is_none_or(|team| team.len() <= TEAM_MAX_LEN));
         let clan_name = spec.team.clone().unwrap_or_else(|| spec.name.clone());
+        let combat_name = if spec.class == PlayerClass::Boss {
+            boss_combat_name(&spec.name)
+        } else {
+            &spec.name
+        };
         let mut name_key = [0u8; NAME_MAX_LEN + 1];
-        name_key[1..1 + spec.name.len()].copy_from_slice(spec.name.as_bytes());
+        name_key[1..1 + combat_name.len()].copy_from_slice(combat_name.as_bytes());
         let mut team_key = [0u8; TEAM_MAX_LEN + 1];
         team_key[1..1 + clan_name.len()].copy_from_slice(clan_name.as_bytes());
         let mut rand = RC4::new(&team_key[..1 + clan_name.len()], 1);
-        rand.update(&name_key[..1 + spec.name.len()], 2);
+        rand.update(&name_key[..1 + combat_name.len()], 2);
         let mut name_base = map_name_base(&rand);
         let normal_raw_name_base = name_base;
         let mut raw_name_base = name_base;
@@ -297,7 +310,7 @@ impl PlayerBuild {
             PlayerClass::Test1 | PlayerClass::Test2 | PlayerClass::TestEx => 0.0,
             _ if spec.overlay.as_ref().is_some_and(|overlay| !overlay.name_factor_enabled) => 0.0,
             _ => {
-                let name = crate::namerena::eval_name::eval_str_common_with_rq(&spec.name, true, eval_rq);
+                let name = crate::namerena::eval_name::eval_str_common_with_rq(combat_name, true, eval_rq);
                 let team = crate::namerena::eval_name::eval_str_common_with_rq(&clan_name, true, eval_rq);
                 name.max(team - 6.0)
             }
@@ -320,8 +333,9 @@ impl PlayerBuild {
             .weapon
             .as_deref()
             .or_else(|| spec.overlay.as_ref().and_then(|overlay| overlay.weapon.as_deref()));
+        let combat_identity = boss_combat_identity_override(&id_key_name).unwrap_or(&id_key_name);
         let weapon = (!has_diy)
-            .then(|| weapon_name.and_then(|name| WeaponBuild::parse(name, &clan_name, &id_key_name)))
+            .then(|| weapon_name.and_then(|name| WeaponBuild::parse(name, &clan_name, combat_identity)))
             .flatten();
         // 原版从武器名判断口罩，不要求命中特殊武器表。
         let covid_mask = weapon.is_some() && weapon_name.is_some_and(|name| name.ends_with("mask") || name.ends_with("口罩"));
@@ -628,7 +642,10 @@ fn apply_team_upgrades(players: &mut [PlayerBuild], groups: &mut [Vec<usize>], e
 }
 
 fn compare_builds(left: &PlayerBuild, right: &PlayerBuild) -> Ordering {
-    left.id_key_name.cmp(&right.id_key_name).then_with(|| left.id.cmp(&right.id))
+    boss_combat_identity_override(&left.id_key_name)
+        .unwrap_or(&left.id_key_name)
+        .cmp(boss_combat_identity_override(&right.id_key_name).unwrap_or(&right.id_key_name))
+        .then_with(|| left.id.cmp(&right.id))
 }
 
 fn two_mut(values: &mut [PlayerBuild], left: usize, right: usize) -> (&mut PlayerBuild, &mut PlayerBuild) {

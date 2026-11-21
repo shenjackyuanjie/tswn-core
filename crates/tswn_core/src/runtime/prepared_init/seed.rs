@@ -209,9 +209,8 @@ impl CombatRuntime {
             // JS 的 clone/minion 会把 `?N` 写到展示名，但内部名仍保留
             // `?shadow` / `?summon`。`id_key_name` 保存的是这份内部身份，
             // 这里继续拿它生成下一层蓝图，不能误用战报名。
-            let base_name = entity
-                .template
-                .id_key_name
+            let base_name = boss_combat_identity_override(&entity.template.id_key_name)
+                .unwrap_or(&entity.template.id_key_name)
                 .strip_suffix(&format!("@{}", entity.template.clan_name))
                 .unwrap_or(&entity.template.name)
                 .to_owned();
