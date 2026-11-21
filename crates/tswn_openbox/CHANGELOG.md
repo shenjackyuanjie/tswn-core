@@ -1,8 +1,20 @@
 # 更新日志
 
-## [Unreleased]
+## [0.5.4] - 2026-11-21
 
-- Openbox 文件读取、CSV 提取和 `openbox-cli` 默认整行跳过非 UTF-8 内容。`filter` 也使用这一默认行为，原开关已移除。
+### 修复
+
+- GUI 和 `openbox-cli` 读取文本文件时默认整行跳过无效 UTF-8，保留合法行的文本和换行。纯文本预览只解码完整行，CSV 在跳过坏行后计算起始行和交替行。GUI 在文件输入处显示跳过数量，CLI 将路径和数量写到 stderr。
+- 靶子与队友预设、技能榜阈值及 Openbox 中的 DS4 配置在解码后继续按各自格式解析。
+
+### 升级
+
+- `openbox-cli filter` 默认跳过坏行，原 `--skip-invalid-utf8` 参数已移除。旧脚本可直接删掉这个参数。
+
+### 验证
+
+- 回归覆盖 `filter` 和 `to-diy` 的混合编码名单、GUI 纯文本和 CSV 预览、DS4 配置及技能榜读取。
+- `cargo test --locked -p tswn_openbox -p tswn_openbox_backend -p tswn_core -- --test-threads=1` 通过。Openbox GUI 57 项、CLI 27 项、后端 51 项通过。`cargo +nightly fmt --check` 通过。
 
 ## [0.5.3] - 2026-11-19
 
