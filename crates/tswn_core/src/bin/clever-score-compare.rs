@@ -103,8 +103,8 @@ fn compare(raw: &str, enhanced: bool, rounds: usize, config: SearchConfig) -> Re
     for _ in 0..rounds {
         clever.step().map_err(|e| format!("{e:?}"))?;
         legacy.step().map_err(|e| format!("{e:?}"))?;
-        let c = clever.progress().wins;
-        let l = legacy.progress().wins;
+        let c = clever.wins();
+        let l = legacy.wins();
         match (c > clever_wins, l > legacy_wins) {
             (true, false) => gains += 1,
             (false, true) => losses += 1,

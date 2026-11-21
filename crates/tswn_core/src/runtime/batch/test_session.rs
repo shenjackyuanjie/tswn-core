@@ -86,6 +86,11 @@ impl ScoreTestSession {
     /// 默认双方采用所选策略；仅显式勾选验证模式时把搜索限制在被测侧及队友。
     pub fn set_legacy_opponents(&mut self, enabled: bool) { self.legacy_opponents = enabled; }
 
+    /// 热循环只读累计值，避免为每个场次重建技能频率和百分比统计。
+    pub const fn wins(&self) -> usize { self.wins }
+
+    pub const fn truncated(&self) -> usize { self.truncated }
+
     pub fn progress(&self) -> ScoreTestProgress {
         ScoreTestProgress {
             completed: self.completed,

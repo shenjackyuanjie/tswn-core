@@ -451,6 +451,368 @@ mod tests {
         }
         assert_eq!(a.model_state().unwrap(), b.model_state().unwrap());
     }
+
+    #[test]
+    fn every_ordinary_active_skill_is_settled_and_valued() {
+        fn assert_valued(field: &CombatRuntime, skill: BuiltinActiveSkill) {
+            let mut expected_rng = field.rng.clone();
+            let value = field.search_position_value(0);
+            assert!(value.is_finite() && (-1.0..=1.0).contains(&value), "{skill:?}: {value}");
+            assert_eq!(value, field.search_position_value(0), "{skill:?} must be deterministic");
+            let mut actual_rng = field.rng.clone();
+            for _ in 0..8 {
+                assert_eq!(actual_rng.next_u8(), expected_rng.next_u8(), "{skill:?} valuation advanced RNG");
+            }
+        }
+
+        fn settle(
+            field: &mut CombatRuntime,
+            actor: EntityIdx,
+            skill: BuiltinActiveSkill,
+            targets: PreparedTargetList,
+            updates: &mut RunUpdates,
+        ) {
+            field.drain_plain_builtin_skill_into(
+                actor,
+                PreparedBuiltinSkillAction {
+                    selected: SelectedBuiltinSkill { skill, fixed_lane: 0 },
+                    targets,
+                },
+                updates,
+            );
+        }
+
+        // 仅覆盖普通主动技能及召唤物动作；所有 +武器技能均不在本次评价范围。
+        for skill in BuiltinActiveSkill::CORE
+            .into_iter()
+            .chain([BuiltinActiveSkill::Possess, BuiltinActiveSkill::SummonExplode])
+        {
+            let mut field = tactical_field();
+            // 固定独立随机流覆盖成功施法；闪避/抵抗分支由对应技能测试单独验证。
+            field.rng = RC4::new(b"ordinary-skill-effects", 1);
+            {
+                let actor = field.entities.get_mut(EntityIdx(0)).unwrap();
+                actor.runtime.attack = 240;
+                actor.runtime.magic = 80;
+                actor.runtime.agility = 1000;
+                actor.runtime.hp = 80;
+            }
+            field.entities.get_mut(EntityIdx(1)).unwrap().runtime.hp = 250;
+            if skill == BuiltinActiveSkill::Revive {
+                let ally = field.entities.get_mut(EntityIdx(1)).unwrap();
+                ally.runtime.alive = false;
+                ally.runtime.hp = 0;
+                field.world.mark_dead(EntityIdx(1), 0);
+            }
+            if skill == BuiltinActiveSkill::Disperse {
+                field
+                    .entities
+                    .get_mut(EntityIdx(2))
+                    .unwrap()
+                    .states
+                    .add_entry(StateEntry::berserk(PLAIN_BERSERK_STATE_KEY, 2));
+            }
+            let mut updates = RunUpdates::new();
+            if matches!(
+                skill,
+                BuiltinActiveSkill::Summon
+                    | BuiltinActiveSkill::SummonExplode
+                    | BuiltinActiveSkill::Clone
+                    | BuiltinActiveSkill::Shadow
+            ) {
+                let config = default_custom_runtime_import_config().unwrap();
+                let raw = concat!(
+                    r#"owner@red+ol:{"attrs":[86,86,86,86,86,86,86,300],"skills":{"sklshadow":10,"sklsummon":10,"sklzombie":10}}"#,
+                    "\n",
+                    "target@blue",
+                );
+                let mut field = RuntimeRunner::from_custom_mixed_namerena_raw(raw.to_owned(), config)
+                    .expect("minion fixture should build")
+                    .runtime;
+                if matches!(skill, BuiltinActiveSkill::Clone | BuiltinActiveSkill::Shadow) {
+                    let targets = field.search_skill_targets(EntityIdx(0), skill, true).remove(0);
+                    settle(&mut field, EntityIdx(0), skill, targets, &mut updates);
+                    assert!(updates.had_updates(), "{skill:?} executor emitted no settlement");
+                    assert_valued(&field, skill);
+                    continue;
+                }
+                settle(
+                    &mut field,
+                    EntityIdx(0),
+                    BuiltinActiveSkill::Summon,
+                    smallvec::smallvec![EntityIdx(0)],
+                    &mut updates,
+                );
+                if skill == BuiltinActiveSkill::Summon {
+                    assert!(updates.had_updates(), "{skill:?} executor emitted no settlement");
+                    assert_valued(&field, skill);
+                    continue;
+                }
+                let summoned = field
+                    .entities
+                    .iter()
+                    .find(|(id, entity)| id.0 >= 2 && entity.runtime.is_combat_minion())
+                    .map(|(id, _)| id)
+                    .expect("summon must create a real minion before explosion");
+                let targets = field.search_skill_targets(summoned, skill, true).remove(0);
+                updates.reset();
+                settle(&mut field, summoned, skill, targets, &mut updates);
+                assert!(updates.had_updates(), "{skill:?} executor emitted no settlement");
+                assert_valued(&field, skill);
+                continue;
+            }
+            let targets = field
+                .search_skill_targets(EntityIdx(0), skill, true)
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| panic!("{skill:?} has no legal test target"));
+            settle(&mut field, EntityIdx(0), skill, targets, &mut updates);
+            assert!(updates.had_updates(), "{skill:?} executor emitted no settlement");
+            // 逐技能验证正式结算的可见结果，不能仅以“估值是有限数”冒充机制覆盖。
+            use BuiltinActiveSkill::*;
+            match skill {
+                Fire | Ice | Thunder | Quake | Absorb | Poison | Rapid | Critical | Half | Berserk | Curse | Disperse => {
+                    assert!(
+                        field.entities.get(EntityIdx(2)).unwrap().runtime.hp < 300,
+                        "{skill:?} must settle actual damage"
+                    );
+                }
+                Exchange => {
+                    assert_eq!(field.entities.get(EntityIdx(0)).unwrap().runtime.hp, 300);
+                    assert_eq!(field.entities.get(EntityIdx(2)).unwrap().runtime.hp, 80);
+                }
+                Heal => assert!(field.entities.get(EntityIdx(0)).unwrap().runtime.hp > 80),
+                Revive => assert!(field.entities.get(EntityIdx(1)).unwrap().runtime.active()),
+                Charm => assert!(field.entities.get(EntityIdx(2)).unwrap().states.entry(PLAIN_CHARM_STATE_KEY).is_some()),
+                Slow => assert!(field.entities.get(EntityIdx(2)).unwrap().states.entry(PLAIN_SLOW_STATE_KEY).is_some()),
+                Haste => assert!(field.entities.get(EntityIdx(0)).unwrap().states.entry(PLAIN_HASTE_STATE_KEY).is_some()),
+                Iron => assert!(field.entities.get(EntityIdx(0)).unwrap().states.entry(PLAIN_IRON_STATE_KEY).is_some()),
+                Charge => assert!(field.entities.get(EntityIdx(0)).unwrap().runtime.charge.active),
+                Accumulate => assert!(field.entities.get(EntityIdx(0)).unwrap().runtime.accumulate.active),
+                Assassinate => assert!(field.entities.get(EntityIdx(0)).unwrap().runtime.assassinate.is_some()),
+                Possess => {
+                    assert!(!field.entities.get(EntityIdx(0)).unwrap().runtime.alive);
+                    assert!(field.entities.get(EntityIdx(2)).unwrap().states.entry(PLAIN_BERSERK_STATE_KEY).is_some());
+                }
+                _ => unreachable!("普通召唤动作已在独立蓝图场景中验证"),
+            }
+            assert_valued(&field, skill);
+        }
+    }
+
+    #[test]
+    fn burn_and_curse_residuals_require_relevant_enemy_pressure() {
+        // 同一状态放在不同对手面前，必须按能否兑现评价，而非一律按最大 HP 扣分。
+        let penalty = |field: &CombatRuntime, payload: StatePayload| {
+            let mut changed = field.clone();
+            let mut entry = StateEntry::legacy(9001);
+            entry.payload = payload;
+            changed.entities.get_mut(EntityIdx(2)).unwrap().states.add_entry(entry);
+            field.search_position_value(0) - changed.search_position_value(0)
+        };
+        let mut field = tactical_field();
+        assert_eq!(penalty(&field, StatePayload::FireMagHalfSteps(4)), 0.0);
+        let fire = field.registry.skill_id_by_export_name(BuiltinActiveSkill::Fire.export_name()).unwrap();
+        field.entities.get_mut(EntityIdx(0)).unwrap().template.skills = SkillLoadout::from_skill_levels([(fire, 128)]);
+        field.entities.get_mut(EntityIdx(0)).unwrap().runtime.magic = 100;
+        assert!(penalty(&field, StatePayload::FireMagHalfSteps(4)) < 0.0);
+        field.entities.get_mut(EntityIdx(0)).unwrap().runtime.magic_point = 0;
+        assert_eq!(penalty(&field, StatePayload::FireMagHalfSteps(4)), 0.0);
+        for id in [EntityIdx(0), EntityIdx(1)] {
+            let r = &mut field.entities.get_mut(id).unwrap().runtime;
+            r.attack = 0;
+            r.magic = 0;
+        }
+        assert_eq!(penalty(&field, StatePayload::Curse { prob: 42, multiply: 3 }), 0.0);
+        field.entities.get_mut(EntityIdx(0)).unwrap().runtime.attack = 100;
+        assert!(penalty(&field, StatePayload::Curse { prob: 42, multiply: 3 }) < 0.0);
+    }
+
+    #[test]
+    fn poison_residual_accounts_for_magic_mitigation_and_total_reservoir() {
+        let penalty = |field: &CombatRuntime, atp: f64, count| {
+            let mut changed = field.clone();
+            let mut entry = StateEntry::legacy(PLAIN_POISON_STATE_KEY);
+            entry.payload = StatePayload::Poison {
+                caster: None,
+                target: None,
+                atp_bits: atp.to_bits(),
+                count,
+            };
+            changed.entities.get_mut(EntityIdx(2)).unwrap().states.add_entry(entry);
+            changed.search_position_value(0) - field.search_position_value(0)
+        };
+        let mut field = tactical_field();
+        let weak = penalty(&field, 6400.0, 1);
+        assert!(weak > 0.0);
+        assert!(penalty(&field, 12800.0, 1) > weak);
+        assert!(penalty(&field, 6400.0, 3) < weak);
+        field.entities.get_mut(EntityIdx(2)).unwrap().runtime.magic = 300;
+        assert!(penalty(&field, 6400.0, 1) < weak);
+        assert_eq!(penalty(&field, f64::NAN, 1), 0.0);
+        assert_eq!(penalty(&field, 6400.0, 0), 0.0);
+    }
+
+    #[test]
+    fn pending_backstab_values_resistance_interruptibility_and_live_target() {
+        let bonus = |field: &CombatRuntime, break_on_damage| {
+            let mut changed = field.clone();
+            changed.entities.get_mut(EntityIdx(0)).unwrap().runtime.assassinate = Some(AssassinateRuntime {
+                fixed_lane: 0,
+                target: EntityIdx(2),
+                break_on_damage,
+            });
+            changed.search_position_value(0) - field.search_position_value(0)
+        };
+        let mut field = tactical_field();
+        let safe = bonus(&field, false);
+        assert!(safe > bonus(&field, true));
+        field.entities.get_mut(EntityIdx(2)).unwrap().runtime.resistance = 1000;
+        assert!(bonus(&field, false) < safe);
+        let target = field.entities.get_mut(EntityIdx(2)).unwrap();
+        target.runtime.alive = false;
+        target.runtime.hp = 0;
+        field.world.mark_dead(EntityIdx(2), 1);
+        assert_eq!(bonus(&field, false), 0.0);
+    }
+
+    #[test]
+    fn charged_exchange_enumerates_and_settles_turn_bar_trade_without_healing() {
+        // 回血阈值不能屏蔽蓄力生命之轮夺取行动条的真实效果。
+        let mut field = tactical_field();
+        let skill = field
+            .registry
+            .skill_id_by_export_name(BuiltinActiveSkill::Exchange.export_name())
+            .unwrap();
+        field.entities.get_mut(EntityIdx(0)).unwrap().template.skills = SkillLoadout::from_skill_levels([(skill, 128)]);
+        field.entities.get_mut(EntityIdx(2)).unwrap().runtime.hp = 100;
+        assert!(field.search_skill_targets(EntityIdx(0), BuiltinActiveSkill::Exchange, true).is_empty());
+        field.entities.get_mut(EntityIdx(0)).unwrap().activate_charge_runtime();
+        field.entities.get_mut(EntityIdx(2)).unwrap().runtime.move_state.speed_points = 700;
+        let before = field.entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points;
+        let targets = field.search_skill_targets(EntityIdx(0), BuiltinActiveSkill::Exchange, true);
+        assert!(targets.contains(&smallvec::smallvec![EntityIdx(2)]));
+        field.drain_plain_builtin_skill_into(
+            EntityIdx(0),
+            PreparedBuiltinSkillAction {
+                selected: SelectedBuiltinSkill {
+                    skill: BuiltinActiveSkill::Exchange,
+                    fixed_lane: 0,
+                },
+                targets: smallvec::smallvec![EntityIdx(2)],
+            },
+            &mut RunUpdates::new(),
+        );
+        assert_eq!(field.entities.get(EntityIdx(0)).unwrap().runtime.hp, 100);
+        assert_eq!(field.entities.get(EntityIdx(2)).unwrap().runtime.hp, 300);
+        assert_eq!(
+            field.entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points,
+            before + 700
+        );
+        assert_eq!(field.entities.get(EntityIdx(2)).unwrap().runtime.move_state.speed_points, 0);
+    }
+
+    #[test]
+    fn charge_and_accumulate_stack_without_saturating_the_same_residual() {
+        // 用真实激活与属性刷新验证组合收益，不手工伪造倍率。
+        let mut charged = tactical_field();
+        let base = charged.search_position_value(0);
+        charged.entities.get_mut(EntityIdx(0)).unwrap().activate_charge_runtime();
+        let charge_value = charged.search_position_value(0);
+        assert!(charge_value > base);
+        charged.entities.get_mut(EntityIdx(0)).unwrap().activate_accumulate_runtime();
+        assert!(charged.search_position_value(0) > charge_value);
+    }
+
+    #[test]
+    fn ordinary_state_residuals_follow_mechanism_duration_and_pending_target() {
+        fn entry(key: u32, payload: StatePayload) -> StateEntry {
+            let mut entry = StateEntry::legacy(key);
+            entry.payload = payload;
+            entry
+        }
+
+        let field = tactical_field();
+        let base = field.search_position_value(0);
+        let with_state = |id, state| {
+            let mut changed = field.clone();
+            assert!(changed.entities.get_mut(id).unwrap().states.add_entry(state));
+            changed.search_position_value(0)
+        };
+        let poison = |count| {
+            entry(
+                9001,
+                StatePayload::Poison {
+                    caster: None,
+                    target: None,
+                    atp_bits: 6400.0f64.to_bits(),
+                    count,
+                },
+            )
+        };
+        let poison_one = with_state(EntityIdx(2), poison(1));
+        let poison_three = with_state(EntityIdx(2), poison(3));
+        // 相同总毒量分成更多跳，不应凭空产生更大的近期收益。
+        assert!(poison_three <= poison_one, "poison one={poison_one}, three={poison_three}");
+        assert!(
+            with_state(EntityIdx(2), entry(9002, StatePayload::FireMagHalfSteps(4)))
+                == with_state(EntityIdx(2), entry(9002, StatePayload::FireMagHalfSteps(1)))
+        );
+        let curse = |multiply| entry(9003, StatePayload::Curse { prob: 64, multiply });
+        assert!(with_state(EntityIdx(2), curse(4)) > with_state(EntityIdx(2), curse(1)));
+        assert!(
+            with_state(EntityIdx(2), entry(9004, StatePayload::Ice { frozen_step: 4 }))
+                > with_state(EntityIdx(2), entry(9004, StatePayload::Ice { frozen_step: 1 }))
+        );
+        assert!(
+            with_state(EntityIdx(2), entry(9005, StatePayload::Slow { step: 4 }))
+                > with_state(EntityIdx(2), entry(9005, StatePayload::Slow { step: 1 }))
+        );
+        let haste = |step| StatePayload::Haste {
+            faster: 64,
+            effective_faster: 64,
+            step,
+        };
+        assert!(with_state(EntityIdx(0), entry(9006, haste(4))) > with_state(EntityIdx(0), entry(9006, haste(1))));
+        assert!(
+            with_state(EntityIdx(0), entry(9007, StatePayload::Iron { protect: 100, step: 4 }))
+                > with_state(EntityIdx(0), entry(9007, StatePayload::Iron { protect: 100, step: 1 }))
+        );
+        assert!(with_state(EntityIdx(0), entry(9008, StatePayload::ShieldValue(200))) > base);
+
+        let charm = |step| StatePayload::Charm {
+            group_id: 0,
+            effective_team_idx: Some(0),
+            source_team_idx: None,
+            target: None,
+            step,
+        };
+        assert!(with_state(EntityIdx(2), entry(9009, charm(4))) > with_state(EntityIdx(2), entry(9009, charm(1))));
+
+        let mut magic_target = field.clone();
+        magic_target.entities.get_mut(EntityIdx(2)).unwrap().runtime.attack = 0;
+        magic_target.entities.get_mut(EntityIdx(2)).unwrap().runtime.magic = 300;
+        let magic_base = magic_target.search_position_value(0);
+        magic_target
+            .entities
+            .get_mut(EntityIdx(2))
+            .unwrap()
+            .states
+            .add_entry(StateEntry::berserk(PLAIN_BERSERK_STATE_KEY, 4));
+        assert!(magic_target.search_position_value(0) > magic_base);
+
+        let mut assassinate = field.clone();
+        assassinate.entities.get_mut(EntityIdx(0)).unwrap().runtime.assassinate = Some(AssassinateRuntime {
+            fixed_lane: 0,
+            target: EntityIdx(2),
+            break_on_damage: true,
+        });
+        assert!(assassinate.search_position_value(0) > base);
+        let mut counter = field.clone();
+        counter.entities.get_mut(EntityIdx(0)).unwrap().runtime.counter.pending = true;
+        counter.entities.get_mut(EntityIdx(0)).unwrap().runtime.counter.last_target = Some(EntityIdx(2));
+        assert!(counter.search_position_value(0) > base);
+    }
 }
 impl Default for SearchConfig {
     fn default() -> Self {
@@ -560,8 +922,34 @@ fn diverse_shortlist(ranked: &[usize], candidates: &[SearchCandidate], limit: us
 }
 
 impl CombatRuntime {
+    /// 仅统计可用的普通主动技能；不把武器或零级技能计入后续威胁。
+    fn search_has_skill(&self, entity: &EntityRecord, skill: BuiltinActiveSkill) -> bool {
+        entity.template.skills.active_order().iter().any(|&lane| {
+            entity.template.skills.level_at(lane).unwrap_or(0) > 0
+                && self.builtin_active_skill(entity.template.skills.skills()[lane]) == Some(skill)
+        })
+    }
+
     /// 有界机制评价，不读取名字、随机状态或未来结果，也不解释为校准胜率。
     pub fn search_position_value(&self, team: usize) -> f64 {
+        // 每次局面只收集一次施压能力；灼烧必须有后续火球/地裂，诅咒必须承受伤害才有残值。
+        let threats: Vec<_> = self
+            .entities
+            .iter()
+            .filter(|(_, entity)| entity.runtime.active())
+            .map(|(id, entity)| {
+                let power = f64::from(entity.runtime.attack.max(entity.runtime.magic).clamp(0, 4096));
+                let fire = if entity.runtime.magic_point >= 8
+                    && (self.search_has_skill(entity, BuiltinActiveSkill::Fire)
+                        || self.search_has_skill(entity, BuiltinActiveSkill::Quake))
+                {
+                    f64::from(entity.runtime.magic.clamp(0, 4096))
+                } else {
+                    0.0
+                };
+                (self.plain_effective_team(id), power, fire)
+            })
+            .collect();
         let can_revive: Vec<_> = self
             .entities
             .iter()
@@ -600,34 +988,126 @@ impl CombatRuntime {
             let mut readiness = 1.0;
             let mut damage = 0.0;
             let mut support = 0.0;
-            if entity.states.is_frozen() {
-                readiness *= 0.45;
-            }
+            let attack_boost = r.at_boost();
+            let attack_boost = if attack_boost.is_finite() {
+                attack_boost.clamp(0.0, 16.0)
+            } else {
+                1.0
+            };
+            // 攻击倍率已经参与真实动作结算；horizon 残值只保留有界影响，避免蓄积覆盖全部局面信息。
+            // 对数压缩仍能区分蓄力、聚气及二者叠加，避免两倍后全部饱和成同一个价值。
+            let boost_value = 1.0 + attack_boost.max(0.25).log2() * 0.15;
+            let mut action_power = power * boost_value;
+            let mut state_shield = 0.0;
+            let mut charm_steps = 0;
+            let (incoming, fire_threat) = threats
+                .iter()
+                .filter(|(source_team, _, _)| *source_team != r.team)
+                .fold((0.0_f64, 0.0_f64), |(damage, fire), (_, power, fire_power)| {
+                    (damage + power, fire + fire_power)
+                });
+            let duration = |step: i32| f64::from(step.clamp(0, 4)) / 4.0;
             for entry in entity.states.entries() {
                 match entry.payload {
+                    StatePayload::FireMagHalfSteps(half_steps) if half_steps > 0 => {
+                        // 实际机制是后续火系/震系增伤，不是降低自身魔法输出。
+                        damage += (fire_threat * f64::from(half_steps.clamp(0, 8)) * 0.04).min(hp * 0.25);
+                    }
+                    StatePayload::Ice { frozen_step } => {
+                        // frozen_step 是冻结行动进度，不是剩余回合数；归零后仍需到达解除动作点。
+                        let lost_actions = (f64::from(frozen_step.max(0)) / f64::from(MOVE_POINT_THRESHOLD)).min(2.0);
+                        readiness *= 0.75 - 0.25 * lost_actions;
+                    }
+                    StatePayload::ShieldValue(value) if value > 0 => {
+                        state_shield += f64::from(value).min(max_hp);
+                    }
+                    StatePayload::Curse { prob, multiply } if prob > 0 => {
+                        // 正式判定使用六位随机数；诅咒不妨碍自身行动，只放大受击伤害。
+                        let chance = f64::from(prob.clamp(0, 64)) / 64.0;
+                        damage += (incoming * chance * f64::from(multiply.saturating_sub(1).clamp(0, 8)) * 0.08).min(hp * 0.5);
+                    }
                     StatePayload::Poison { atp_bits, count, .. } if count > 0 => {
-                        // 只折算近期的一跳伤害，避免无限外推持续状态。
                         let atp = f64::from_bits(atp_bits);
                         if atp.is_finite() {
-                            damage += atp.max(0.0).min(hp) * 0.08;
+                            // atp 是待分摊总量，按正式递推折算最多三跳，再折扣较晚的伤害。
+                            let mut remaining = atp.max(0.0);
+                            let mut weight = 1.0;
+                            let mut expected = 0.0;
+                            for offset in 0..count.min(3) {
+                                let left = f64::from(count - offset);
+                                let tick = remaining * (1.0 + (left - 1.0) * 0.10000000149011612) / left;
+                                expected += (tick / (f64::from(r.magic) + 64.0).max(1.0)).ceil() * weight;
+                                remaining = (remaining - tick).max(0.0);
+                                weight *= 0.75;
+                            }
+                            damage += expected.min(hp) * 0.16;
                         }
                     }
-                    StatePayload::Curse { prob, .. } => readiness *= 1.0 - f64::from(prob.clamp(0, 128)) / 256.0,
-                    StatePayload::Iron { protect, step } if step > 0 => support += f64::from(protect.clamp(0, 256)) * 0.12,
-                    _ => {}
+                    StatePayload::Haste { step, .. } if step > 0 => {
+                        let remaining = duration(step);
+                        support += power * 0.02 * remaining;
+                        readiness *= 1.0 + 0.08 * remaining;
+                    }
+                    StatePayload::Berserk { step } if step > 0 => {
+                        let remaining = duration(step);
+                        let berserk_power = f64::from(r.attack.clamp(0, 4096)) * boost_value * 1.2;
+                        // 狂暴是 1.2 倍物理、随机目标且失去技能选择，不能按通用增益处理。
+                        action_power = action_power * (1.0 - remaining) + berserk_power * remaining;
+                        readiness *= 1.0 - 0.25 * remaining;
+                    }
+                    StatePayload::Charm { step, .. } => charm_steps = charm_steps.max(step),
+                    StatePayload::Slow { step } if step > 0 => {
+                        let remaining = duration(step);
+                        readiness *= 1.0 - 0.12 * remaining;
+                        damage += 4.0 * remaining;
+                    }
+                    StatePayload::Iron { protect, step } if step > 0 => {
+                        support += f64::from(protect.clamp(0, 256)) * 0.12 * (0.5 + 0.5 * duration(step));
+                    }
+                    // Boss 不进入 Clever 搜索，也不为其专属状态建立启发式估值。
+                    StatePayload::CovidBoss { .. }
+                    | StatePayload::CovidInfection { .. }
+                    | StatePayload::SaitamaBoss { .. }
+                    | StatePayload::LazyBoss { .. }
+                    | StatePayload::LazyInfection { .. }
+                    | StatePayload::MarioBoss { .. } => {}
+                    // 已处理分支的零值、负值或非有限值不贡献未来收益；保持穷举以便新增状态必须显式审查。
+                    StatePayload::None
+                    | StatePayload::FireMagHalfSteps(_)
+                    | StatePayload::ShieldValue(_)
+                    | StatePayload::Curse { .. }
+                    | StatePayload::Poison { .. }
+                    | StatePayload::Haste { .. }
+                    | StatePayload::Berserk { .. }
+                    | StatePayload::Slow { .. }
+                    | StatePayload::Iron { .. } => {}
                 }
             }
             if r.charge.active && !r.charge.permanent {
-                support += power * 0.12;
+                // 速度点及蓄积联动已分别进入 mobility/at_boost，这里只保留其他技能的蓄力联动残值。
+                support += power * 0.06;
             }
-            if r.accumulate.active {
-                support += power * 0.16;
+            if let Some(pending) = r.assassinate.as_ref() {
+                if let Some(target) = self.entities.get(pending.target).filter(|target| target.runtime.alive) {
+                    let target_hp = f64::from(target.runtime.hp.max(0));
+                    // 背刺是四倍魔法攻击，不是按目标 HP 必杀；脆弱潜行保留被打断的折扣。
+                    let nominal = (f64::from(r.magic.clamp(0, 127)) + 32.0) * 96.0 * attack_boost * 4.0;
+                    let expected_strike = nominal / (f64::from(target.runtime.resistance) + 64.0).max(1.0);
+                    let confidence = if pending.break_on_damage { 0.5 } else { 1.0 };
+                    support += expected_strike.min(target_hp).min(4096.0) * 0.08 * confidence;
+                }
             }
+            if r.counter.pending
+                && r.counter
+                    .last_target
+                    .is_some_and(|target| self.entities.get(target).is_some_and(|target| target.runtime.active()))
+            {
+                // 普通反击走物攻；无有效待反击目标时不保留虚假的攻击收益。
+                support += 8.0 + f64::from(r.attack.clamp(0, 4096)) * boost_value * 0.04;
+            }
+            // +武器只由正式续局结算，不添加专属残值或决策偏好。
             if r.hide.is_some() {
                 support += 12.0;
-            }
-            if r.assassinate.is_some() {
-                support += power * 0.10;
             }
             support += r
                 .protect_from
@@ -640,13 +1120,13 @@ impl CombatRuntime {
                 .count()
                 .min(3) as f64
                 * 6.0;
-            let shield = f64::from(r.shield.max(0)).min(max_hp) * 0.18;
+            let shield = (f64::from(r.shield.max(0)) + state_shield).min(max_hp) * 0.18;
             let mobility = f64::from(entity.effective_speed().clamp(0, 1024)) * 0.08
                 + f64::from(r.move_state.speed_points.clamp(0, MOVE_POINT_THRESHOLD)) * 0.01;
             let value = (35.0
                 + 90.0 * health
                 + hp.min(4096.0) * 0.16
-                + power * health.sqrt() * readiness * 0.55
+                + action_power * health.sqrt() * readiness * 0.55
                 + durability * health
                 + f64::from(r.magic_point.clamp(0, 128)) * 0.20
                 + mobility * readiness
@@ -654,12 +1134,13 @@ impl CombatRuntime {
                 + support
                 - damage)
                 .max(1.0);
-            // 魅惑只暂借行动权，给有效阵营 75% 价值，原阵营保留恢复后的剩余价值。
+            // 魅惑只暂借行动权；剩余步数越多，有效阵营获得的价值越高，原阵营保留恢复残值。
             let effective = self.plain_effective_team(id);
             let credit = if effective == r.team {
                 f64::from(r.team == team)
             } else {
-                0.75 * f64::from(effective == team) + 0.25 * f64::from(r.team == team)
+                let borrowed = 0.70 + 0.05 * f64::from(charm_steps.clamp(1, 4));
+                borrowed * f64::from(effective == team) + (1.0 - borrowed) * f64::from(r.team == team)
             };
             ally += value * credit;
             enemy += value * (1.0 - credit);
@@ -702,6 +1183,13 @@ impl CombatRuntime {
         };
         if turn.candidates.is_empty() {
             return (self.run_minimal_round_no_capture(), false);
+        }
+        // 单候选不存在比较，直接执行可避免一次完整克隆和重复动作。
+        if turn.candidates.len() == 1 {
+            self.scratch.search_turn = Some(SearchTurn::new(Some(0), None));
+            let outcome = self.run_minimal_round_no_capture();
+            self.scratch.search_turn = None;
+            return (outcome, true);
         }
         let actor = turn.actor.unwrap();
         let mut best = None;
@@ -776,6 +1264,17 @@ impl CombatRuntime {
         if config.team.is_some_and(|selected| selected != owner_team) || turn.candidates.is_empty() {
             return SearchRound {
                 outcome: self.run_minimal_round(),
+                estimates: Vec::new(),
+            };
+        }
+        // 只有一个合法动作时没有任何比较分支。直接执行可保留真实 RNG 和战斗结果，
+        // 避免为“选择”唯一候选重复运行整轮战场。
+        if turn.candidates.len() == 1 {
+            self.scratch.search_turn = Some(SearchTurn::new(Some(0), None));
+            let outcome = self.run_minimal_round();
+            self.scratch.search_turn = None;
+            return SearchRound {
+                outcome,
                 estimates: Vec::new(),
             };
         }

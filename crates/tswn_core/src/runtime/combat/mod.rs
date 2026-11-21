@@ -6,6 +6,7 @@
 //! 普通应用通过 [`super::RuntimeRunner`] 或规范 BattleSession 使用本执行器。
 
 use super::*;
+use std::sync::Arc;
 
 #[cfg(feature = "cards")]
 mod abilities;
@@ -111,15 +112,16 @@ pub struct CombatRuntime {
     pub world: WorldArena,
     pub scheduler: PhaseScheduler,
     pub effects: EffectQueue,
-    pub effect_handlers: EffectHandlers,
-    pub skill_handlers: SkillHandlers,
-    pub state_handlers: StateHandlers,
-    pub replay_renderers: ReplayRenderers,
-    pub show_renderers: ShowRenderers,
+    /// 注册表与 handler 在战斗试算中只读；克隆战场时共享，修改时写时复制。
+    pub effect_handlers: Arc<EffectHandlers>,
+    pub skill_handlers: Arc<SkillHandlers>,
+    pub state_handlers: Arc<StateHandlers>,
+    pub replay_renderers: Arc<ReplayRenderers>,
+    pub show_renderers: Arc<ShowRenderers>,
     pub scratch: BattleScratch,
     pub template_slots: TemplateSlotStorage,
     pub slots: BattleSlotStorage,
-    pub registry: ExtensionRegistry,
+    pub registry: Arc<ExtensionRegistry>,
     pub rng: RC4,
     /// 外部行动脚本与暂停标记；缺省时执行链与自动模式一致。
     pub(crate) control: BattleControl,

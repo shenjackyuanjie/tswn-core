@@ -32,15 +32,15 @@ impl CombatRuntime {
             world,
             scheduler,
             effects: EffectQueue::default(),
-            effect_handlers,
-            skill_handlers,
-            state_handlers,
-            replay_renderers,
-            show_renderers,
+            effect_handlers: Arc::new(effect_handlers),
+            skill_handlers: Arc::new(skill_handlers),
+            state_handlers: Arc::new(state_handlers),
+            replay_renderers: Arc::new(replay_renderers),
+            show_renderers: Arc::new(show_renderers),
             scratch: BattleScratch::default(),
             template_slots,
             slots,
-            registry,
+            registry: Arc::new(registry),
             rng: RC4::default(),
             control: BattleControl::default(),
             #[cfg(not(feature = "no_debug"))]
@@ -55,7 +55,9 @@ impl CombatRuntime {
     #[cfg(not(feature = "no_debug"))]
     pub fn trace(&self) -> Option<&RuntimeTrace> { self.trace.as_ref() }
 
-    pub fn set_effect_handler(&mut self, id: EffectHandlerId, handler: EffectHandlerFn) { self.effect_handlers.set(id, handler); }
+    pub fn set_effect_handler(&mut self, id: EffectHandlerId, handler: EffectHandlerFn) {
+        Arc::make_mut(&mut self.effect_handlers).set(id, handler);
+    }
 
     pub fn set_effect_handler_with_capabilities(
         &mut self,
@@ -63,10 +65,12 @@ impl CombatRuntime {
         handler: EffectHandlerFn,
         capabilities: &[ExtensionCapability],
     ) {
-        self.effect_handlers.set_with_capabilities(id, handler, capabilities);
+        Arc::make_mut(&mut self.effect_handlers).set_with_capabilities(id, handler, capabilities);
     }
 
-    pub fn set_skill_handler(&mut self, id: SkillId, handler: SkillHandlerFn) { self.skill_handlers.set(id, handler); }
+    pub fn set_skill_handler(&mut self, id: SkillId, handler: SkillHandlerFn) {
+        Arc::make_mut(&mut self.skill_handlers).set(id, handler);
+    }
 
     pub fn set_skill_handler_with_capabilities(
         &mut self,
@@ -74,10 +78,12 @@ impl CombatRuntime {
         handler: SkillHandlerFn,
         capabilities: &[ExtensionCapability],
     ) {
-        self.skill_handlers.set_with_capabilities(id, handler, capabilities);
+        Arc::make_mut(&mut self.skill_handlers).set_with_capabilities(id, handler, capabilities);
     }
 
-    pub fn set_state_handler(&mut self, id: StateId, handler: StateHandlerFn) { self.state_handlers.set(id, handler); }
+    pub fn set_state_handler(&mut self, id: StateId, handler: StateHandlerFn) {
+        Arc::make_mut(&mut self.state_handlers).set(id, handler);
+    }
 
     pub fn set_state_handler_with_capabilities(
         &mut self,
@@ -85,14 +91,16 @@ impl CombatRuntime {
         handler: StateHandlerFn,
         capabilities: &[ExtensionCapability],
     ) {
-        self.state_handlers.set_with_capabilities(id, handler, capabilities);
+        Arc::make_mut(&mut self.state_handlers).set_with_capabilities(id, handler, capabilities);
     }
 
     pub fn set_replay_renderer(&mut self, id: ReplayRendererId, renderer: ReplayRendererFn) {
-        self.replay_renderers.set(id, renderer);
+        Arc::make_mut(&mut self.replay_renderers).set(id, renderer);
     }
 
-    pub fn set_show_renderer(&mut self, id: ShowRendererId, renderer: ShowRendererFn) { self.show_renderers.set(id, renderer); }
+    pub fn set_show_renderer(&mut self, id: ShowRendererId, renderer: ShowRendererFn) {
+        Arc::make_mut(&mut self.show_renderers).set(id, renderer);
+    }
 
     pub fn validate_ready(&self) -> Result<(), RuntimeReadyError> {
         let mut missing_skill_handlers = Vec::new();

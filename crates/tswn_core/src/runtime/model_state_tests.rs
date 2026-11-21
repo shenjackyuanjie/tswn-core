@@ -187,6 +187,6 @@ fn unsupported_registry_and_invalid_blueprint_are_errors() {
         .set(blueprint, SlotValue::Text("unsupported".into()))
         .unwrap();
     assert!(runner.model_state().unwrap_err().to_string().contains("类型无效"));
-    runner.runtime.registry = ExtensionRegistry::default();
+    runner.runtime.registry = std::sync::Arc::new(ExtensionRegistry::default());
     assert!(runner.model_state().unwrap_err().to_string().contains("默认规则注册表"));
 }

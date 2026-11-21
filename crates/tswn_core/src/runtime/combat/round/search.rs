@@ -123,7 +123,8 @@ impl CombatRuntime {
                     match skill {
                         Heal => entity.runtime.team == team && entity.runtime.hp < entity.template.max_hp,
                         Haste => entity.runtime.team == team,
-                        Exchange => entity.runtime.team != team && entity.runtime.hp > actor_hp,
+                        // 蓄力的生命之轮还会夺取行动条，即使不回血也可能有战术价值。
+                        Exchange => entity.runtime.team != team && (entity.runtime.hp > actor_hp || actor_runtime.charge.active),
                         RinickYuriControl => entity.runtime.team != team && entity.states.entry(PLAIN_CHARM_STATE_KEY).is_none(),
                         _ => entity.runtime.team != team,
                     }
