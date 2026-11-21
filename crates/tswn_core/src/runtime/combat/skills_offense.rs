@@ -612,6 +612,7 @@ impl CombatRuntime {
                 "runtime haste state disappeared during extension"
             );
         } else {
+            target_entity.refresh_runtime_stats_from_template();
             assert!(
                 target_entity.states.add_entry(StateEntry::haste_with_effective_faster(
                     PLAIN_HASTE_STATE_KEY,

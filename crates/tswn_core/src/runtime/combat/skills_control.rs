@@ -191,6 +191,14 @@ impl CombatRuntime {
             .get(actor)
             .and_then(|entity| entity.template.skills.level_at(fixed_lane))
             .unwrap_or_else(|| panic!("runtime clone level missing for fixed lane {fixed_lane}"));
+        let owner = self.entities.get(actor).unwrap();
+        let rinick_clone_skills = owner.template.rinick.as_ref().and_then(|_| {
+            self.entities
+                .get(owner.runtime.root_owner)
+                .and_then(|root| root.template.rinick.as_ref())
+                .and_then(|rinick| rinick.clone_skills.clone())
+        });
+        let rinick_clone = rinick_clone_skills.is_some();
         // eager 路径已经有三类蓝图；score 的延迟路径必须在本体属性衰减前补齐，
         // 克隆体随后才能继承与旧初始化顺序完全相同的模板。
         self.ensure_plain_minion_blueprint(actor, crate::namerena::MinionKind::Shadow);
@@ -220,7 +228,12 @@ impl CombatRuntime {
                 .as_mut()
                 .unwrap_or_else(|| panic!("runtime clone build data missing for entity {}", actor.0));
             build.decay_owner();
-            let stats = build.derive_stats();
+            let stats = if rinick_clone {
+                let name_factor = build.name_factor();
+                CloneBuildData::derive_rinick_floor(&mut build.attrs, name_factor)
+            } else {
+                build.derive_stats()
+            };
             owner.apply_derived_stats(stats);
             owner.runtime.hp = next_hp;
         }
@@ -228,6 +241,7 @@ impl CombatRuntime {
         let (
             root_owner,
             root_name,
+            owner_clan_name,
             owner_display_name,
             owner_team,
             owner_hp,
@@ -256,11 +270,26 @@ impl CombatRuntime {
                 .clone_build
                 .as_ref()
                 .unwrap_or_else(|| panic!("runtime clone build data missing for entity {}", actor.0));
-            let clone_skills = clone_build_data.score_skill_boost_plan().map_or_else(
-                || owner.template.skills.rebuilt_for_clone(),
-                |plan| owner.template.skills.rebuilt_for_score_clone(plan),
-            );
-            let clone_build = clone_build_data.child();
+            let clone_skills = if let Some(mut skills) = rinick_clone_skills {
+                if actor != root_owner {
+                    for lane in 0..skills.len() {
+                        if let (Some(level), Some(parent_level)) = (skills.level_at(lane), owner.template.skills.level_at(lane)) {
+                            skills.set_level_at(lane, level.min(parent_level));
+                        }
+                    }
+                }
+                skills
+            } else {
+                clone_build_data.score_skill_boost_plan().map_or_else(
+                    || owner.template.skills.rebuilt_for_clone(),
+                    |plan| owner.template.skills.rebuilt_for_score_clone(plan),
+                )
+            };
+            let clone_build = if rinick_clone {
+                clone_build_data.rinick_child()
+            } else {
+                clone_build_data.child()
+            };
             let shadow_blueprint = shadow_blueprint_slot.and_then(|slot| match owner.slots.get(slot) {
                 Some(SlotValue::PlayerTemplate(template)) => Some(template.as_ref().clone()),
                 Some(_) => panic!("runtime core shadow blueprint slot has invalid value"),
@@ -279,6 +308,7 @@ impl CombatRuntime {
             (
                 root_owner,
                 root_name,
+                rinick_clone.then(|| owner.template.clan_name.clone()),
                 owner.template.display_name.clone(),
                 owner.runtime.team,
                 owner.runtime.hp,
@@ -338,9 +368,10 @@ impl CombatRuntime {
 
         let clone_stats = clone_build.derive_stats();
         let next_entity = self.entities.len();
+        let clone_name = format!("{root_name}?{next_minion_index}");
         let mut clone_template = PlayerTemplate::with_kind(
             next_entity + 1,
-            format!("{root_name}?{next_minion_index}"),
+            clone_name,
             clone_kind,
             owner_team,
             clone_stats.max_hp.max(1),
@@ -363,6 +394,11 @@ impl CombatRuntime {
         .with_skill_loadout(clone_skills);
         clone_template.clone_build = Some(clone_build);
         clone_template.covid_mask = covid_mask;
+        if let Some(clan_name) = owner_clan_name {
+            let identity = format!("{}@{clan_name}", clone_template.name);
+            clone_template = clone_template.with_identity_names(identity, clan_name);
+            clone_template.rinick = Some(Box::default());
+        }
         let clone_idx = EntityIdx(next_entity.try_into().expect("runtime clone entity index overflow"));
 
         updates.add(crate::runtime::update::RunUpdate::new(

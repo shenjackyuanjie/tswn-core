@@ -150,6 +150,7 @@ impl PreparedBattleInit {
             entity.template.skills.prepare_hook_cache(&runtime.registry);
             entity.template.clone_build = prepared_template.clone_build;
             entity.template.covid_mask = prepared_template.covid_mask;
+            entity.template.rinick = prepared_template.rinick;
             if score_profile_reset {
                 entity
                     .runtime
@@ -776,7 +777,6 @@ mod score_profile_tests {
                 revive_attrs,
                 clone_skills,
             }));
-            // 直接验证导入转换，不依赖尚未接通的特殊武器公开入口。
             let imported =
                 PreparedBattleInit::prepare_namerena_player(&player, 0, &config.registry, &skill_import, eval_rq, true);
             let payload = imported.template.rinick.as_ref().unwrap();

@@ -176,6 +176,38 @@ impl CloneBuildData {
         child
     }
 
+    pub(crate) fn rinick_child(&self) -> Self {
+        let mut child = self.clone();
+        child.attrs[..7].fill(63);
+        child.attrs[7] = child.attrs[7].max(324);
+        child.weapon_attr_bonus = [0; 8];
+        child.name_factor_bits = child.child_name_factor_bits;
+        child
+    }
+
+    pub(crate) fn derive_rinick_floor(attrs: &mut [u32; 8], name_factor: f64) -> CloneDerivedStats {
+        let mut stats = Self::derive_raw(*attrs, name_factor);
+        for (index, (attr, panel)) in attrs
+            .iter_mut()
+            .zip([
+                &mut stats.attack,
+                &mut stats.defense,
+                &mut stats.speed,
+                &mut stats.agility,
+                &mut stats.magic,
+                &mut stats.resistance,
+                &mut stats.wisdom,
+            ])
+            .enumerate()
+        {
+            if *attr < 63 {
+                *attr = 63;
+                *panel = if index == 2 { 223 } else { 63 };
+            }
+        }
+        stats
+    }
+
     pub fn merge_attrs_from(&mut self, source: &Self) -> bool {
         let mut changed = false;
         for (owner_attr, source_attr) in self.attrs.iter_mut().zip(source.attrs) {
@@ -250,12 +282,12 @@ impl CloneBuildData {
     }
 }
 
-/// 属性修改器身份的冷快照；复活属性和分身技能允许独立提供。
+/// 属性修改器的冷快照；复活属性和分身技能允许独立提供，子分身仅保留属性修正标记。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RinickTemplateData {
     /// 复活时重建八围的原始属性 `q[0..8]`。
     pub revive_attrs: Option<[u32; 8]>,
-    /// 复活后生成分身所用的独立技能表快照。
+    /// 生成分身所用的非身份技能表快照。
     pub clone_skills: Option<SkillLoadout>,
 }
 

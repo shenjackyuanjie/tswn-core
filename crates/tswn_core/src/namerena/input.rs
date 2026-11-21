@@ -5,6 +5,7 @@ use super::{BOOST_NAMES, BOSS_NAMES, PlayerOverlay};
 pub const NAME_MAX_LEN: usize = 256;
 pub const TEAM_MAX_LEN: usize = 256;
 pub const SEED_PREFIX: &str = "seed:";
+pub(crate) const RINICK_MODIFIER_BOSS_ALIAS: &str = "Rinick属性修改器@!";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlayerClass {
@@ -72,7 +73,8 @@ impl PlayerSpec {
     /// 对局级空输入检查由高层 API 负责。
     pub fn parse(raw: &str) -> Result<Self, PlayerSpecError> {
         let raw = trim_js_line_end(raw);
-        let (identity, suffix) = raw.split_once('+').map_or((raw, None), |(identity, suffix)| (identity, Some(suffix)));
+        let input = canonical_player_input(raw);
+        let (identity, suffix) = input.split_once('+').map_or((input, None), |(identity, suffix)| (identity, Some(suffix)));
         let (name, team) = identity
             .split_once('@')
             .map_or((identity, None), |(name, team)| (name, Some(trim_js_line_end(team))));
@@ -199,6 +201,7 @@ pub fn raw_namerena_to_id_name(raw: &str) -> String {
 
 pub(crate) fn raw_namerena_to_id_name_into(raw: &str, output: &mut String) {
     output.clear();
+    let raw = canonical_player_input(raw);
     let no_weapon = raw.split_once('+').map_or(raw, |(left, _)| left);
     let Some((name, team)) = no_weapon.split_once('@') else {
         output.push_str(no_weapon);
@@ -210,6 +213,13 @@ pub(crate) fn raw_namerena_to_id_name_into(raw: &str, output: &mut String) {
         output.push_str(name);
         output.push('@');
         output.push_str(team);
+    }
+}
+
+fn canonical_player_input(raw: &str) -> &str {
+    match raw {
+        RINICK_MODIFIER_BOSS_ALIAS => "Rinick+属性修改器",
+        _ => raw,
     }
 }
 

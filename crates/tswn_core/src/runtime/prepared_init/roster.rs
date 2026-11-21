@@ -128,7 +128,10 @@ impl PreparedBattleRoster {
         for (index, &(team_index, player_index, _)) in scratch.dynamic_inputs.iter().enumerate() {
             let raw = &raw_groups[team_index][player_index];
             let Some((name, _)) = raw.split_once('@').filter(|(name, team)| {
-                *team == profile_team && !team.contains('+') && !(*team == "!" && *name == SAITAMA_RETIREMENT_WINNER)
+                *team == profile_team
+                    && !team.contains('+')
+                    && !(*team == "!" && *name == SAITAMA_RETIREMENT_WINNER)
+                    && raw != RINICK_MODIFIER_BOSS_ALIAS
             }) else {
                 return Self::from_groups_with_eval_rq_and_skill_import_selected(
                     raw_groups,

@@ -174,6 +174,13 @@ impl CombatRuntime {
             None => {}
         }
 
+        if let Some(entity) = self.entities.get(actor)
+            && entity.template.rinick.is_some()
+            && entity.runtime.root_owner != actor
+        {
+            return self.preview_plain_minion_blueprint(entity.runtime.root_owner, kind);
+        }
+
         let lazy_slot = self
             .registry
             .entity_slot_id_by_export_name(DEFAULT_CORE_LAZY_BLUEPRINT_RQ_ENTITY_EXPORT)
