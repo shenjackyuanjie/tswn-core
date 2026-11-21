@@ -609,11 +609,15 @@ pub(super) fn states_from_runner(
     include_skills: bool,
     icon_cache: &mut HashMap<String, String>,
 ) -> Vec<BattlePlayerState> {
+    let special_group_icons = special_group_icons(runner);
     runner
         .player_snapshots()
         .into_iter()
         .map(|snapshot| {
             let mut state = state_from_snapshot(snapshot, false);
+            if let Some(key) = battle_icon_key(runner, &state, &special_group_icons) {
+                state.icon_key = key.to_owned();
+            }
             if include_skills {
                 state.skills = skill_snapshots(runner, state.id);
                 state.active_skills = active_skill_snapshots(runner, state.id);
@@ -631,6 +635,56 @@ pub(super) fn states_from_runner(
             state
         })
         .collect()
+}
+
+/// 含特殊身份的输入组，普通同伴使用原版首成员的徽章。
+fn special_group_icons(runner: &RuntimeRunner) -> Vec<Option<&str>> {
+    let entities = &runner.runtime().entities;
+    if !entities.iter().any(|(_, entity)| entity.template.clan_name == "!") {
+        return Vec::new();
+    }
+    runner
+        .input_groups
+        .iter()
+        .map(|group| {
+            if !group
+                .iter()
+                .filter_map(|&id| entities.get(id))
+                .any(|entity| entity.template.clan_name == "!")
+            {
+                return None;
+            }
+            // 场上顺序会按 seed 洗牌；初始实体 ID 按原始输入顺序分配。
+            let first = entities.get(*group.iter().min()?)?;
+            if first.template.clan_name == "!" && !first.runtime.flags.contains(PlayerKindFlags::BOSS) {
+                Some(first.template.name.as_str())
+            } else {
+                Some(first.template.id_key_name.as_str())
+            }
+        })
+        .collect()
+}
+
+fn battle_icon_key<'a>(runner: &'a RuntimeRunner, state: &BattlePlayerState, groups: &[Option<&'a str>]) -> Option<&'a str> {
+    if groups.is_empty() {
+        return None;
+    }
+    let entities = &runner.runtime().entities;
+    let entity = entities.get(EntityIdx(state.id.try_into().ok()?))?;
+    // 分裂子体不属于常规召唤物，但必须继承源史莱姆的固定徽章。
+    let root = if state.minion_kind.is_some() || entity.runtime.slime_split_generation.is_some_and(|generation| generation > 0) {
+        entities.get(entity.runtime.root_owner)?
+    } else {
+        entity
+    };
+    if root.template.clan_name == "!" {
+        return Some(if root.runtime.flags.contains(PlayerKindFlags::BOSS) {
+            &root.template.id_key_name
+        } else {
+            &root.template.name
+        });
+    }
+    state.input_team_index.and_then(|team| groups.get(team).copied().flatten())
 }
 
 /// 读取指定实体的技能熟练度投影。
@@ -1513,6 +1567,37 @@ seed:7@!"#;
         for (key, value) in initial_cache {
             assert_eq!(icons.icon_cache.get(&key), Some(&value));
         }
+    }
+
+    #[cfg(feature = "png_render")]
+    #[test]
+    fn special_battle_icon_keys_match_the_original_display_groups() {
+        let options = BattleOptions {
+            include_icons: true,
+            ..Default::default()
+        };
+        let session = BattleSession::new("mario@!\nAlice@plain\n\na@!\nb@!\nc@green\n\nmario", options.clone()).unwrap();
+        let by_name: HashMap<_, _> = session.initial_states().iter().map(|state| (state.id_key_name.as_str(), state)).collect();
+        for (name, icon) in [
+            ("mario@!", "mario@!"),
+            ("Alice@plain", "mario@!"),
+            ("a@!", "a"),
+            ("b@!", "b"),
+            ("c@green", "a"),
+            ("mario", "mario"),
+        ] {
+            let state = by_name[name];
+            assert_eq!(state.icon_key, icon, "{name}");
+            assert_eq!(state.icon_png_base64.as_ref(), Some(&render_icon_b64_from_name(icon)));
+        }
+        let mut slime = BattleSession::new("slime@!\n\nlazy@!\nparity3a\nparity3b", options).unwrap();
+        let child_has_boss_icon = std::iter::from_fn(|| slime.next_frame().unwrap()).any(|frame| {
+            frame
+                .states
+                .iter()
+                .any(|state| state.id_key_name.starts_with("slime?") && state.icon_key == "slime@!")
+        });
+        assert!(child_has_boss_icon);
     }
 
     #[cfg(feature = "png_render")]
