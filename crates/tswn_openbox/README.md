@@ -62,7 +62,7 @@ cargo run --release -p tswn_openbox --no-default-features --features "no_debug,m
 自动释放内嵌默认资源），技能榜阈值默认读 `./setting/score_now.toml`。
 数据行走 stdout，进度与状态走 stderr，方便管道与重定向。
 
-以下五个子命令与 GUI 除 `DS4` 外的五个工具页一一对应；DS4 保留独立的统一 `tswn_ds4` CLI 出口：
+`to-diy`、`namer-pf`、`cqd`（别名 `cqp`）、`pair` 和 `base` 对应 GUI 工具页。CLI 另有 [名字筛选 `filter`](#名字筛选)，DS4 使用独立的 `tswn_ds4` 命令。
 
 ```powershell
 # to-diy：-r 单号默认追加详情日志；--no-details 关闭；-f 批量不输出详情；--old / --minions 同 GUI
@@ -86,6 +86,9 @@ openbox-cli pair -l targets.txt -p players.txt --teammates mates.toml --detail t
 
 # base：单个原始名字的 128 字节 roll 与技能槽（不支持 +diy / +ol / 武器）
 openbox-cli base -r "mario@team"
+
+# filter：逐行筛选，同时设定火球熟练度和防御下限
+openbox-cli filter -f names.txt -o result.txt --skill-sklfire 60 --addr-def 90
 ```
 
 与 GUI 的刻意差异（均为 CLI 合理性考虑）：高亮颜色降级为普通行；
@@ -185,13 +188,13 @@ cargo run -p tswn_openbox --bin tswn_openbox --features ui_capture -- --capture-
 - 直接在面板中输入。
 - 勾选“从文件中读取”后选择文件。
 
-从文件读取时，界面最多展示前 10 行结果预览，运行时会读取完整文件。普通文本预览只读取文件开头；CSV 预览需要读取并解析完整文件。所有多行显示框不自动换行，内容过长时使用横向滚动。
+普通文本预览最多显示文件前 16 KiB 内的 10 条完整行。CSV 预览会读取并解析完整文件，展示前 10 行提取结果。运行任务时会重新读取完整文件。多行框支持横向滚动。
 
-Openbox 与 `openbox-cli` 默认整行跳过无法按 UTF-8 解码的内容，其余行保留原文。界面在文件输入处提示跳过的行数，`openbox-cli` 将文件路径和跳过的行数写到 stderr。
+Openbox 和 `openbox-cli` 读取文本时会去掉文件开头的 UTF-8 BOM，整行跳过包含无效 UTF-8 的内容。其余行保留原文和换行。界面在文件输入处显示本次预览或读取跳过的行数，`openbox-cli` 将文件路径和跳过的行数写到 stderr。靶子和队友预设也使用相同的读取规则。
 
 选好文件后可打开「高级选项」按 CSV 提取一列：`.csv` 扩展名（不区分大小写）会自动启用，其他文件默认关闭，也可手动切换。点表格列头/单元格或填写「取第几列」选列；「从第 N 行开始」按非空行计数，常见表头填 `2`；「包含第一行/第二行」相对于起始行每两行分组，可只取交替的数据行。关闭 CSV 时仍按整行输入。
 
-CSV 使用手写的逗号分隔、逐行解析，支持单行双引号字段及 `""` 转义，**不支持字段内换行或完整 RFC 4180 校验**。空行、空值和缺少所选列的行会被跳过；非空文件筛选后没有可用内容时提示错误。提取结果仍按每行一组名字交给后端。
+CSV 先跳过无效 UTF-8 行，再按剩余的非空行计算起始行与交替行筛选。解析支持单行双引号字段和 `""` 转义。空值及缺少所选列的行会被跳过，非空文件筛选后没有可用内容时提示错误。提取结果按每行一组名字交给后端。
 
 ## 输出
 
@@ -579,7 +582,7 @@ stdout 是该路径的日志行（可用于新旧输出哈希对账），stderr 
 
 `filter` 从 UTF-8 文件逐行读取单个名字，所有筛选条件同时满足时将名字写入指定文件；空行跳过，输出文件会覆盖。至少需要一个条件。
 
-与其他文件输入一样，`filter` 默认整行跳过非 UTF-8 内容，并在 stderr 报告跳过的行数。
+`filter` 默认整行跳过非 UTF-8 内容，并在 stderr 报告跳过的行数。升级时请从脚本里删掉原有的 `--skip-invalid-utf8` 参数。
 
 ```text
 openbox-cli filter -f names.txt -o result.txt --skill-sklfire 60 --addr-def 90
