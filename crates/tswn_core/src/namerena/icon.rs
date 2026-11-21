@@ -146,29 +146,23 @@ pub fn icon_from_name(name: &str) -> IconResult {
     icon_from_colors(&colors)
 }
 
-/// 从原始名称解析 sglname（用于生成 icon 的名称）。
-///
-/// 根据 JS 源码逻辑：
-/// - `name@team` → 返回 `team`
-/// - `name` → 返回 `name`
-///
-/// 这意味着同一队伍的玩家会有相同的 icon。
+/// 从独立的玩家名称解析程序徽章使用的键。
+/// 未登记的 `name@!` 是感叹号玩家，使用自己的基名；普通公会仍使用公会名。
 pub fn parse_sglname(raw_name: &str) -> &str {
-    if let Some((_, team)) = raw_name.split_once('@') {
-        team
+    if let Some((name, team)) = raw_name.split_once('@') {
+        if team.split(['@', '+']).next() == Some("!") {
+            name
+        } else {
+            team
+        }
     } else {
         raw_name
     }
 }
 
-/// 从原始名称生成图标颜色选择。
-///
-/// 会自动解析 `name@team` 格式，使用队伍名生成 icon。
-/// 如果没有队伍名，则使用玩家名。
-pub fn icon_from_raw_name(raw_name: &str) -> IconResult {
-    let sglname = parse_sglname(raw_name);
-    icon_from_name(sglname)
-}
+/// 仅生成程序徽章的调色板资料，不描述固定像素的 Boss 图标。
+/// 按名称实际渲染时请使用 [`crate::namerena::icon_render`] 的 `_from_name` 入口。
+pub fn icon_from_raw_name(raw_name: &str) -> IconResult { icon_from_name(parse_sglname(raw_name)) }
 
 /// 从转换后的颜色数组生成图标（复现 Sgl.create()）。
 fn icon_from_colors(colors: &[u8]) -> IconResult {

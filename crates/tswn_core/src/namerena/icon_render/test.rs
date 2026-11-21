@@ -35,6 +35,38 @@ fn test_icon_render_digits_0_to_9() {
     }
 }
 
+#[test]
+fn boss_png_and_rgba_match_the_original_gif_pixels() {
+    // 从浏览器实际解码 13 个原版 GIF，已归零透明像素的 RGB。
+    for (name, expected) in BOSS_ICONS.into_iter().zip([
+        0xcbd1a555, 0xdefb9cfd, 0xc087682d, 0xf8d7eaa8, 0x2d9539a9, 0xbf2868e5, 0x2fd47b9d, 0xdcbb40a9, 0x0270bf74, 0x9932e1a,
+        0x1341ec83, 0x9d86a9a1, 0x0472fcad,
+    ]) {
+        let key = format!("{name}@!");
+        let pixels = render_icon_vec_from_name(&key);
+        let fingerprint = pixels
+            .iter()
+            .fold(2166136261_u32, |hash, &b| (hash ^ u32::from(b)).wrapping_mul(16777619));
+        assert_eq!(fingerprint, expected, "{key}");
+        assert_eq!(png_to_rgba(&render_icon_png_from_name(&key)), pixels);
+        assert_ne!(render_icon_vec_from_name(name), pixels);
+    }
+}
+
+#[test]
+fn non_boss_ex_players_use_their_base_name_instead_of_the_bang_badge() {
+    for name in ["a", "b", "Mario", "田一人", "seed0", "ma!rio"] {
+        assert_eq!(render_icon_vec_from_name(&format!("{name}@!")), render_icon_vec_from_name(name));
+    }
+    assert_ne!(render_icon_vec_from_name("a@!"), render_icon_vec_from_name("b@!"));
+    assert_ne!(render_icon_vec_from_name("a@!"), render_icon_vec_from_name("!"));
+    assert!(!has_boss_icon("mario@!!"));
+    assert!(!has_boss_icon("mario!"));
+    assert!(!has_boss_icon("seed@!"), "原版种子不属于战斗角色");
+    assert_eq!(render_icon_vec_from_name("mario@!+x"), render_icon_vec_from_name("mario@!"));
+    assert_eq!(render_icon_vec_from_name("a@!x"), render_icon_vec_from_name("!x"));
+}
+
 // ── 预期像素数据 (16x16 RGBA, 从 Rust 渲染器输出捕获) ──
 
 #[rustfmt::skip]

@@ -7,10 +7,10 @@ use std::fs;
 use std::path::Path;
 
 use tswn_core::namerena::icon::icon_from_raw_name;
-use tswn_core::namerena::icon_render::render_icon_vec_from_name;
+use tswn_core::namerena::icon_render::{has_boss_icon, render_icon_vec_from_name};
 
 #[cfg(feature = "png_render")]
-use tswn_core::namerena::icon_render::{render_icon_b64_from_name, render_icon_png};
+use tswn_core::namerena::icon_render::{render_icon_b64_from_name, render_icon_png_from_name};
 
 pub fn print_icons(names: &[String]) {
     for name in names {
@@ -48,8 +48,7 @@ pub fn save_icons(dir: &Path, names: &[String]) -> Result<(), String> {
         fs::create_dir_all(dir).map_err(|err| format!("创建目录失败: {err}"))?;
         for name in names {
             let path = dir.join(format!("{name}.png"));
-            let icon = icon_from_raw_name(name);
-            let png = render_icon_png(&icon);
+            let png = render_icon_png_from_name(name);
             fs::write(&path, &png).map_err(|err| format!("写入 {} 失败: {err}", path.display()))?;
             println!("已保存: {}", path.display());
         }
@@ -67,6 +66,13 @@ pub fn save_icons(dir: &Path, names: &[String]) -> Result<(), String> {
 }
 
 fn print_icon(name: &str) {
+    if has_boss_icon(name) {
+        println!("=== Icon: {name} ===");
+        println!("原版 Boss 固定徽章");
+        render_pixels_to_terminal(&render_icon_vec_from_name(name));
+        println!();
+        return;
+    }
     let icon = icon_from_raw_name(name);
     let [br, bg, bb] = icon.bg_color;
 
