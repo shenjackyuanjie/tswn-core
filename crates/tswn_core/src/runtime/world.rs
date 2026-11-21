@@ -283,6 +283,13 @@ impl WorldArena {
         true
     }
 
+    pub(crate) fn repeat_round_actor_removal(&mut self) {
+        // 原版找不到行动者时用 -1 参与游标比较。
+        if self.round_pos < 0 {
+            self.round_pos -= 1;
+        }
+    }
+
     pub fn round_order(&self) -> &[EntityIdx] { &self.round_order }
 
     /// 返回 legacy `WorldState::all_plr_len()` 对应的世界 roster 实体数。

@@ -669,6 +669,91 @@ impl ScoreMatchGroups {
 mod tests {
     use super::*;
 
+    #[test]
+    fn boss_win_rate_matches_vite_for_each_of_the_first_thousand_seeds() {
+        let groups = [
+            ["aokiji@!", "conan@!", "ikaruga@!", "mario@!", "slime@!", "sonic@!", "yuri@!"].as_slice(),
+            ["mosquito@!", "lazy@!", "saitama@!", "covid@!", "thanos@!", "wheel@!"].as_slice(),
+        ]
+        .map(|group| group.iter().map(|name| (*name).to_owned()).collect());
+        let prepared =
+            crate::runtime::RuntimeRunner::prepare_groups_with_eval_rq(&groups, crate::namerena::eval_name::WIN_RATE_EVAL_RQ)
+                .unwrap();
+        let expected_wins = [
+            0, 2, 6, 10, 26, 28, 30, 45, 46, 47, 62, 69, 74, 78, 79, 80, 90, 99, 111, 133, 135, 136, 139, 142, 144, 150, 156,
+            160, 164, 175, 178, 179, 186, 191, 197, 199, 205, 206, 209, 222, 233, 240, 242, 245, 248, 256, 257, 286, 290, 297,
+            300, 310, 312, 313, 332, 335, 340, 356, 364, 365, 369, 376, 383, 389, 390, 392, 397, 411, 413, 429, 442, 454, 457,
+            458, 471, 473, 474, 476, 480, 483, 486, 488, 494, 505, 510, 512, 520, 530, 532, 535, 537, 539, 541, 542, 546, 547,
+            555, 557, 558, 559, 564, 578, 581, 590, 594, 599, 609, 613, 614, 618, 623, 624, 625, 629, 631, 635, 638, 645, 650,
+            660, 665, 680, 682, 683, 684, 689, 692, 697, 699, 700, 703, 706, 719, 723, 732, 738, 740, 756, 759, 768, 779, 781,
+            787, 791, 792, 793, 798, 799, 802, 811, 821, 825, 833, 843, 849, 850, 857, 861, 867, 870, 873, 875, 876, 877, 882,
+            885, 890, 891, 911, 914, 928, 930, 933, 936, 939, 943, 950, 953, 968, 974, 986, 995, 997,
+        ];
+        let mut runner = prepared.new_reusable_runner();
+        let mut seed_scratch = WinRateSeedScratch::new(&prepared, 1000);
+        for start in (0..1000).step_by(WIN_RATE_SEED_BATCH) {
+            for (round, rng) in (start..).zip(seed_scratch.prepare_rngs(&prepared, start)) {
+                prepared.reset_with_seed_rng(&mut runner, rng).unwrap();
+                let result = runner.run_to_completion_prevalidated(BATCH_MAX_ROUNDS);
+                assert!(result.winner_team.is_some(), "round={round}");
+                assert_eq!(
+                    runner.input_group_won(0),
+                    expected_wins.binary_search(&round).is_ok(),
+                    "round={round}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn boss_duel_regressions_match_vite_on_previously_divergent_seeds() {
+        for (name, boss, rounds) in [
+            ("致盲自燃巩固渐强伤口迂回@昀澤", "lazy@!", [84, 534, 547, 718]),
+            ("Felix CQACSVGRXSAT@nan", "saitama@!", [3, 6, 109, 164]),
+        ] {
+            let groups = [vec![name.to_owned()], vec![boss.to_owned()]];
+            let prepared =
+                RuntimeRunner::prepare_groups_with_eval_rq(&groups, crate::namerena::eval_name::WIN_RATE_EVAL_RQ).unwrap();
+            let mut runner = prepared.new_reusable_runner();
+            let mut seed_buffer = String::new();
+            for round in rounds {
+                let seed = profile_seed_for_round(&mut seed_buffer, round);
+                prepared.reset_with_seed(&mut runner, seed).unwrap();
+                let result = runner.run_to_completion_prevalidated(BATCH_MAX_ROUNDS);
+                assert!(
+                    result.winner_team.is_some() && runner.input_group_won(0),
+                    "{boss}, round={round}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sqp_duels_keep_vite_winners() {
+        let cases = [
+            ("Grey_Wolf #epkpZwWwb@Shabby_fish", "covid@!", 539, false),
+            ("Fearless #Zu1QPc0h9@Shabby_fish", "covid@!", 281, true),
+            ("Missing_You #L924fgIXG@Shabby_fish", "lazy@!", 2, true),
+            ("Unexpectedly #cYhEli0h0@Shabby_fish", "lazy@!", 754, true),
+            ("Queen_G #4jSoehwaO@Shabby_fish", "lazy@!", 266, false),
+            ("信浓号 #zmmBPO5n8@Shabby_fish", "lazy@!", 718, false),
+            ("男友、左腿，和未来 #ic74mYp6Q@Shabby_fish", "lazy@!", 44, true),
+            ("合成机油 #I8PDhrDAp@Shabby_fish", "Rinick+属性修改器", 651, true),
+            ("秋风扫落叶 #qz1qR7osY@Shabby_fish", "Rinick+属性修改器", 525, false),
+            ("至少你尝试了 #FurATar1i@Shabby_fish", "yuri@!", 347, false),
+        ];
+        for (name, boss, round, expected) in cases {
+            let groups = [vec![name.to_owned()], vec![boss.to_owned()]];
+            let prepared =
+                RuntimeRunner::prepare_groups_with_eval_rq(&groups, crate::namerena::eval_name::WIN_RATE_EVAL_RQ).unwrap();
+            let mut seed_buffer = String::new();
+            let mut runner = prepared.new_with_seed(profile_seed_for_round(&mut seed_buffer, round)).unwrap();
+            let result = runner.run_to_completion_prevalidated(BATCH_MAX_ROUNDS);
+            assert!(result.winner_team.is_some(), "{name} vs {boss}, round={round}");
+            assert_eq!(runner.input_group_won(0), expected, "{name} vs {boss}, round={round}");
+        }
+    }
+
     fn score_round_target_won(target: &str, round_number: usize) -> bool {
         let target_group = vec![target.to_owned()];
         let modifier = "!";

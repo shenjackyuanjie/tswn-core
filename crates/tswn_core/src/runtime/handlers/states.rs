@@ -198,6 +198,18 @@ fn roll_covid_mutations(
     changed
 }
 
+fn planned_covid_strain(
+    context: &StateContext<'_>,
+    entry: &StateHookPlanEntry,
+    entries: &[CovidInfectionEntry],
+) -> Option<usize> {
+    let owner = context.owner()?;
+    let original_order = owner.states.runtime_registration_order(entry.legacy_order_key)?;
+    entries
+        .iter()
+        .position(|strain| strain.registration_order.unwrap_or(original_order) == entry.runtime_registration_order)
+}
+
 pub(crate) fn propose_boss_infection_pre_action(
     context: &mut StateContext<'_>,
     entry: &StateHookPlanEntry,
@@ -208,7 +220,8 @@ pub(crate) fn propose_boss_infection_pre_action(
             mut mutation_set,
             recovered,
         } if !entries.is_empty() => {
-            if roll_covid_mutations(context, &mut entries, &mut mutation_set) {
+            let index = planned_covid_strain(context, entry, &entries)?;
+            if roll_covid_mutations(context, &mut entries[index..=index], &mut mutation_set) {
                 context
                     .set_owner_state_payload_without_refresh(
                         entry.legacy_order_key,
@@ -275,7 +288,11 @@ fn run_covid_infection_state_impl(context: &mut StateContext<'_>, entry: &StateH
             return;
         }
 
-        let last_idx = entries.len() - 1;
+        let last_idx = if proposed {
+            planned_covid_strain(context, entry, &entries).expect("runtime covid proposal must have a strain")
+        } else {
+            entries.len() - 1
+        };
         let boss = entries[last_idx].boss;
         let mutation = entries[last_idx].mutation;
         let days = entries[last_idx].days;
@@ -405,8 +422,12 @@ fn run_covid_infection_state_impl(context: &mut StateContext<'_>, entry: &StateH
     }
 
     if context.hook().intersects(ProcMask::POST_ACTION) {
+        let order = context
+            .owner_has_boss_infection(entry.legacy_order_key)
+            .then_some(entry.runtime_registration_order);
         context.push(QueuedEffect::CovidPneumonia {
             owner: context.owner_idx(),
+            order,
         });
     }
 }
@@ -511,7 +532,11 @@ pub fn run_saitama_boss_state(context: &mut StateContext<'_>, entry: &StateHookP
         if !minions.contains(&caster) {
             minions.push(caster);
         }
-        caster_entity.runtime.owner
+        if caster_entity.runtime.is_combat_minion() {
+            caster_entity.runtime.owner
+        } else {
+            caster_entity.runtime.root_owner
+        }
     } else {
         caster
     };
@@ -550,15 +575,22 @@ fn run_timed_release_post_action_state(
     context
         .set_owner_state_payload_without_refresh(entry.legacy_order_key, next_payload)
         .expect("timed state payload should still exist");
-    context
-        .defer_owner_state_clear(entry.legacy_order_key)
-        .expect("timed state payload should still exist");
     let should_emit_release = context.owner().is_some_and(|owner| {
         // 一拳超人饥饿时只移出场上名单，原版仍按正体力判断自然解除能否发帧。
         // 终局退场不会进入行动后链，这里只补非终局退场的发帧。
         owner.runtime.alive
             || (owner.runtime.hp > 0 && owner.runtime.flags.contains(PlayerKindFlags::BOSS) && owner.template.name == "saitama")
     });
+    if release_message == "[1]从[魅惑]中解除"
+        && (context.owner_has_boss_infection(PLAIN_COVID_INFECTION_STATE_KEY)
+            || context.owner_has_boss_infection(PLAIN_LAZY_INFECTION_STATE_KEY))
+    {
+        context.clear_owner_state(entry.legacy_order_key).expect("charm state should still exist");
+    } else {
+        context
+            .defer_owner_state_clear(entry.legacy_order_key)
+            .expect("timed state payload should still exist");
+    }
     if should_emit_release {
         context.add_newline();
         context.add_update(crate::runtime::update::RunUpdate::new(

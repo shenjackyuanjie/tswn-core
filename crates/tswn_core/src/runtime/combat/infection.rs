@@ -196,6 +196,7 @@ impl CombatRuntime {
         )) {
             return false;
         }
+        target_entity.refresh_runtime_stats_from_template();
         updates.add_with(|| RunUpdate::new_lang(crate::runtime::lang::keys::SKL_LAZY_HIT, boss.0 as usize, target.0 as usize, 0));
         true
     }
@@ -217,13 +218,26 @@ impl CombatRuntime {
         damage: i32,
         updates: &mut RunUpdates,
     ) {
+        self.try_covid_spread_on_damage_with_threshold_into(boss, target, mutation, damage, updates, false);
+    }
+
+    pub(super) fn try_covid_spread_on_damage_with_threshold_into(
+        &mut self,
+        boss: EntityIdx,
+        target: EntityIdx,
+        mutation: i32,
+        damage: i32,
+        updates: &mut RunUpdates,
+        legacy_callback: bool,
+    ) {
         if self.has_covid_infection(target) {
             return;
         }
-        let from_covid_boss = self
-            .entities
-            .get(boss)
-            .is_some_and(|source| source.runtime.flags.contains(PlayerKindFlags::BOSS) && source.template.name == "covid");
+        let from_covid_boss = legacy_callback
+            || self
+                .entities
+                .get(boss)
+                .is_some_and(|source| source.runtime.flags.contains(PlayerKindFlags::BOSS) && source.template.name == "covid");
         // Vite 的主动传播使用 1..=64；扩展来源沿用旧的零基阈值。两者都只抽一个字节。
         let roll = self.rng.r64() as i32 - i32::from(!from_covid_boss);
         if roll < damage {
@@ -266,12 +280,10 @@ impl CombatRuntime {
                 .entities
                 .get_mut(target)
                 .unwrap_or_else(|| panic!("unknown runtime covid target entity: {}", target.0));
-            if let Some(entry) = target_entity.states.entry_mut(PLAIN_COVID_INFECTION_STATE_KEY) {
+            if let Some(entry) = target_entity.states.entry(PLAIN_COVID_INFECTION_STATE_KEY) {
                 let StatePayload::CovidInfection {
-                    entries,
-                    mutation_set,
-                    recovered,
-                } = &mut entry.payload
+                    mutation_set, recovered, ..
+                } = &entry.payload
                 else {
                     panic!("runtime covid infection key is occupied by a different state");
                 };
@@ -279,7 +291,20 @@ impl CombatRuntime {
                 if !*recovered || mutation_set.contains(&mutation) {
                     false
                 } else {
-                    entries.push(CovidInfectionEntry { boss, mutation, days: 0 });
+                    let order = target_entity.states.reserve_runtime_registration_order();
+                    let entry = target_entity.states.entry_mut(PLAIN_COVID_INFECTION_STATE_KEY).unwrap();
+                    let StatePayload::CovidInfection {
+                        entries, mutation_set, ..
+                    } = &mut entry.payload
+                    else {
+                        unreachable!();
+                    };
+                    entries.push(CovidInfectionEntry {
+                        boss,
+                        mutation,
+                        days: 0,
+                        registration_order: Some(order),
+                    });
                     mutation_set.push(mutation);
                     true
                 }
@@ -312,7 +337,7 @@ impl CombatRuntime {
         true
     }
 
-    pub(super) fn drain_covid_strains_into(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
+    pub(super) fn drain_covid_strains_into(&mut self, owner: EntityIdx, order: Option<u64>, updates: &mut RunUpdates) {
         let mut index = 0;
         loop {
             let StatePayload::CovidInfection { entries, .. } = &self
@@ -329,6 +354,19 @@ impl CombatRuntime {
             let Some(infection) = entries.get(index).copied() else {
                 return;
             };
+            if let Some(order) = order {
+                let original_order = self
+                    .entities
+                    .get(owner)
+                    .unwrap()
+                    .states
+                    .runtime_registration_order(PLAIN_COVID_INFECTION_STATE_KEY)
+                    .unwrap();
+                if infection.registration_order.unwrap_or(original_order) != order {
+                    index += 1;
+                    continue;
+                }
+            }
             if infection.days > 1 && self.drain_covid_pneumonia_into(owner, infection.boss, infection.mutation, updates) {
                 // group.die 在终局中止原版回调，连当前株的康复解绑也不执行。
                 return;
@@ -348,6 +386,9 @@ impl CombatRuntime {
                 target.refresh_runtime_stats_from_template();
             } else {
                 index += 1;
+            }
+            if order.is_some() {
+                return;
             }
         }
     }

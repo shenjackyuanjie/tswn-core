@@ -54,6 +54,8 @@ impl PreparedBattleSeed {
         }
 
         let blueprint_slots = runtime.registry.seed_blueprint_slots();
+        let boss_kind = runtime.registry.player_kind_id_by_export_name(DEFAULT_CORE_BOSS_KIND_EXPORT);
+        let boost_kind = runtime.registry.player_kind_id_by_export_name(DEFAULT_CORE_BOOST_KIND_EXPORT);
         for (index, (&team, &speed_points)) in teams.iter().zip(speed_points).enumerate() {
             let entity_idx = PreparedBattleInit::entity_idx(index);
             let entity = runtime
@@ -62,7 +64,8 @@ impl PreparedBattleSeed {
                 .unwrap_or_else(|| panic!("runtime entity disappeared during seed reset: {}", entity_idx.0));
             entity.template.team = team;
             entity.runtime.team = team;
-            if entity.template.kind != PlayerTemplate::DEFAULT_KIND {
+            let kind = entity.template.kind;
+            if kind != PlayerTemplate::DEFAULT_KIND && Some(kind) != boss_kind && Some(kind) != boost_kind {
                 continue;
             }
             entity.template.move_state.speed_points = speed_points;

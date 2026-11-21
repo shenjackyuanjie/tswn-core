@@ -70,6 +70,7 @@ fn preserves_hidden_payloads_registration_order_and_compressed_states() {
         },
         StatePayload::CovidInfection {
             entries: vec![CovidInfectionEntry {
+                registration_order: None,
                 boss: EntityIdx(1),
                 mutation: 7,
                 days: 2,

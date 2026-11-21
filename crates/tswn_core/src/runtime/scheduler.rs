@@ -487,16 +487,27 @@ impl PhaseScheduler {
             if !entry.hook_mask.intersects(hook) {
                 continue;
             }
-            entries.push(StateHookPlanEntry {
+            let planned = StateHookPlanEntry {
                 owner,
                 state_id: entry.extension_state_id,
                 legacy_order_key: entry.legacy_order_key,
-                priority: entry.plan_priority_for_hook(hook, entities, &entity.states),
+                priority: entry.plan_priority_for_hook(hook, entities),
                 registration_order: entry.registration_order,
                 runtime_registration_order,
-            });
+            };
+            if matches!(hook, ProcMask::PRE_ACTION | ProcMask::POST_ACTION)
+                && entry.is_boss_infection(entities)
+                && let crate::runtime::StatePayload::CovidInfection { entries: strains, .. } = &entry.payload
+            {
+                entries.extend(strains.iter().map(|strain| StateHookPlanEntry {
+                    runtime_registration_order: strain.registration_order.unwrap_or(runtime_registration_order),
+                    ..planned
+                }));
+            } else {
+                entries.push(planned);
+            }
         }
-        entries.sort_by_key(|entry| (entry.priority, entry.registration_order));
+        entries.sort_by_key(|entry| (entry.priority, entry.registration_order, entry.runtime_registration_order));
         StateHookPlan {
             hook,
             store_generation: entity.states.generation(),

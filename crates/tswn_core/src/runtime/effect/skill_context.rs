@@ -258,7 +258,7 @@ impl<'a> SkillContext<'a> {
             "runtime reraise fixed lane disappeared: {}",
             entry.fixed_lane
         );
-        owner.runtime.hp = hp.max(1).min(owner.template.max_hp);
+        owner.runtime.hp = hp.max(1);
         owner.runtime.alive = true;
         Ok(())
     }
