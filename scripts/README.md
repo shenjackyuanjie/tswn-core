@@ -123,6 +123,15 @@ python scripts/pgo_build.py --kind cli --train-runs 8000
 
 **Openbox 状态**：脚本的训练靶子仍指向迁移前的 `crates/tswn_openbox/assets/targets/`，实际资源在 `crates/tswn_openbox_backend/assets/targets/`。适配前不要把 `--kind openbox` 或包含 Openbox 的 `build_all.py --pgo` 当作可直接使用的发布流程；普通 `--release` 构建不受此限制。历史收益与当前 A/B 验证要求见 [性能准则](../docs/perf/guides/performance.md#pgo-构建)。
 
+## serve_wasm.py
+
+复用 `build_wasm.py` 构建 release WASM，在 `127.0.0.1` 启动两个示例页面，并自动打开完整回放页。需要 Python 3.11 或更高版本及 [WASM 构建依赖](../crates/tswn_wasm/README.md#构建)。
+
+```powershell
+uv run scripts/serve_wasm.py
+uv run scripts/serve_wasm.py --port 8080 --no-open
+```
+
 ## build_wasm.py
 
 构建 `tswn_wasm`，并整理出浏览器可直接消费的分发目录。
