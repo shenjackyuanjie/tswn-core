@@ -300,29 +300,21 @@ fn filter_parses_multiple_signed_conditions() {
 }
 
 #[test]
-fn filter_can_explicitly_skip_invalid_utf8_lines() {
+fn filter_and_to_diy_skip_invalid_utf8_lines_by_default() {
     let path = temp_file("filter_mixed_encoding.txt", "");
     std::fs::write(&path, b"mario\r\nbad\xff\nluigi").unwrap();
-    let make_cli = |skip| {
-        let mut argv = vec![
-            "openbox-cli",
-            "filter",
-            "-f",
-            path.to_str().unwrap(),
-            "-o",
-            "out.txt",
-            "--skill-fi",
-            "0",
-        ];
-        if skip {
-            argv.push("--skip-invalid-utf8");
-        }
-        super::parse_from(argv).unwrap()
-    };
-    assert!(make_cli(false).plan().unwrap_err().to_string().contains("第 2 行"));
-    let Job::Filter(plan) = make_cli(true).plan().unwrap() else {
+    let file = path.to_str().unwrap();
+    let filter = super::parse_from(["openbox-cli", "filter", "-f", file, "-o", "out.txt", "--skill-fi", "0"]).unwrap();
+    let filter = filter.plan();
+    let to_diy = plan_of(&["to-diy", "-f", file]);
+    std::fs::remove_file(path).unwrap();
+
+    let Job::Filter(plan) = filter.unwrap() else {
         panic!("应为 filter")
     };
     assert_eq!(plan.raw, "mario\r\nluigi");
-    std::fs::remove_file(path).unwrap();
+    let Job::ToDiy(plan) = to_diy.unwrap() else {
+        panic!("应为 to-diy")
+    };
+    assert_eq!(plan.raw, "mario\r\nluigi");
 }

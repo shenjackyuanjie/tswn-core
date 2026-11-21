@@ -2,7 +2,7 @@
 //!
 //! load/reload 是同步文件操作：配置缺失时写出内置配置，已有配置也会补齐缺失的
 //! 默认资源，但不覆盖已有自定义文件。配置列表只记录路径，文本在选中后另行读取；
-//! 文件读取移除开头 BOM，I/O 与 TOML 错误保存到状态或以 Result 返回。
+//! 文件读取移除开头 BOM 并跳过非 UTF-8 行，I/O 与 TOML 错误保存到状态或以 Result 返回。
 //! 默认入口依赖进程当前目录并具有写文件副作用，不能当作无 I/O 的状态构造函数；
 //! 需要指定目录时使用显式 root 入口，不要为并行任务临时切换进程工作目录。
 
@@ -11,6 +11,7 @@ use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
+use tswn_core::text_input::read_text_file;
 
 const SETTING_DIR_NAME: &str = "setting";
 const SETTINGS_FILE_NAME: &str = "settings.toml";
@@ -197,8 +198,8 @@ pub fn load_selected_target_text(state: &TargetPresetState) -> Result<String, St
     load_target_preset_text(preset)
 }
 
-/// 同步读取指定靶子文件为自有 UTF-8 文本，去除开头 BOM；不自动解析普通/带权格式。
-/// 路径不存在、不可读或编码无效时返回含路径的错误，不改写原文件。
+/// 同步读取指定靶子文件，去除开头 BOM 并跳过非 UTF-8 行。
+/// 普通或带权格式由调用方解析。读取失败时返回含路径的错误。
 pub fn load_target_preset_text(preset: &TargetPreset) -> Result<String, String> { read_preset_text(&preset.path) }
 
 pub fn load_selected_teammate_text(state: &TeammatePresetState) -> Result<String, String> {
@@ -206,14 +207,11 @@ pub fn load_selected_teammate_text(state: &TeammatePresetState) -> Result<String
     load_teammate_preset_text(preset)
 }
 
-/// 同步读取指定队友文件为自有 UTF-8 文本，去除开头 BOM；格式由调用方根据预设解释。
-/// 不借用预设或文件句柄，读取错误直接返回，不改写原文件。
+/// 同步读取指定队友文件，去除开头 BOM 并跳过非 UTF-8 行。格式由调用方解析。
 pub fn load_teammate_preset_text(preset: &TeammatePreset) -> Result<String, String> { read_preset_text(&preset.path) }
 
 fn read_preset_text(path: &Path) -> Result<String, String> {
-    fs::read_to_string(path)
-        .map(|content| content.trim_start_matches('\u{feff}').to_string())
-        .map_err(|err| format!("读取预设失败: {}: {err}", path.display()))
+    read_text_file(path).map_err(|err| format!("读取预设失败: {}: {err}", path.display()))
 }
 
 fn load_target_presets(loaded: LoadedSettingFile) -> Vec<TargetPreset> {
@@ -263,20 +261,19 @@ fn load_setting_file_from_root(root: &Path) -> Result<LoadedSettingFile, String>
     let setting_dir = root.join(SETTING_DIR_NAME);
     let config_path = setting_dir.join(SETTINGS_FILE_NAME);
     let raw = read_or_create_setting_file(&setting_dir, &config_path)?;
-    let config = toml::from_str(raw.trim_start_matches('\u{feff}'))
-        .map_err(|err| format!("解析设置配置失败: {}: {err}", config_path.display()))?;
+    let config = toml::from_str(&raw).map_err(|err| format!("解析设置配置失败: {}: {err}", config_path.display()))?;
     Ok(LoadedSettingFile { setting_dir, config })
 }
 
 fn read_or_create_setting_file(setting_dir: &Path, config_path: &Path) -> Result<String, String> {
-    match fs::read_to_string(config_path) {
+    match read_text_file(config_path) {
         Ok(raw) => {
             ensure_default_setting_files(setting_dir)?;
             Ok(raw)
         }
         Err(err) if err.kind() == ErrorKind::NotFound => {
             write_default_setting_tree(setting_dir, config_path)?;
-            fs::read_to_string(config_path).map_err(|err| format!("读取设置配置失败: {}: {err}", config_path.display()))
+            read_text_file(config_path).map_err(|err| format!("读取设置配置失败: {}: {err}", config_path.display()))
         }
         Err(err) => Err(format!("读取设置配置失败: {}: {err}", config_path.display())),
     }

@@ -9,6 +9,8 @@ use std::fs::{self, File};
 use std::io::Write as _;
 use std::path::Path;
 
+use tswn_core::text_input::read_text_file;
+
 use super::types::OutputMode;
 
 /// 创建或截断输出文件，必要时创建父目录；目录路径和缺失文件名均返回错误。
@@ -42,7 +44,7 @@ fn sort_score_output_file(path: &Path, mode: OutputMode) -> Result<(), String> {
     if mode == OutputMode::Pure {
         return Ok(());
     }
-    let content = fs::read_to_string(path).map_err(|err| format!("读取输出文件失败: {}: {err}", path.display()))?;
+    let content = read_text_file(path).map_err(|err| format!("读取输出文件失败: {}: {err}", path.display()))?;
     let lines = sorted_score_lines(&content, mode);
     let file = create_output_file(path)?;
     let mut writer = std::io::BufWriter::new(file);

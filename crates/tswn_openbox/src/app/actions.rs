@@ -258,14 +258,17 @@ impl OpenboxApp {
                 return;
             }
         };
-        let teammate_text =
-            match read_teammate_text(&self.pair.teammates, &self.pair.teammate_presets, self.pair.manual_teammates) {
-                Ok(raw) => raw,
-                Err(err) => {
-                    self.fail_before_start(err);
-                    return;
-                }
-            };
+        let teammate_text = match read_teammate_text(
+            &mut self.pair.teammates,
+            &self.pair.teammate_presets,
+            self.pair.manual_teammates,
+        ) {
+            Ok(raw) => raw,
+            Err(err) => {
+                self.fail_before_start(err);
+                return;
+            }
+        };
         let head = if self.pair.manual_teammates {
             self.pair.head
         } else {
@@ -378,7 +381,7 @@ fn resolve_output_path(output: &OptionalFileOutput) -> Result<Option<std::path::
 }
 
 fn read_teammate_text(
-    manual_source: &super::source::TextSource,
+    manual_source: &mut super::source::TextSource,
     presets: &tswn_openbox::presets::TeammatePresetState,
     manual_teammates: bool,
 ) -> Result<String, String> {

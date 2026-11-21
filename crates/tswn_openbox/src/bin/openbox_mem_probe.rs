@@ -4,6 +4,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use tswn_core::text_input::read_text_file;
 use tswn_openbox::backend::{BatchRateInput, CommonBenchOptions, OutputMode, ProgressEvent, run_batch_rate};
 
 #[derive(Default)]
@@ -178,7 +179,7 @@ fn parse_optional_usize(raw: String) -> Option<usize> {
 }
 
 fn read_limited_lines(path: &PathBuf, limit: Option<usize>) -> String {
-    let content = std::fs::read_to_string(path).unwrap_or_else(|err| panic!("read failed {}: {err}", path.display()));
+    let content = read_text_file(path).unwrap_or_else(|err| panic!("read failed {}: {err}", path.display()));
     let mut out = content
         .lines()
         .filter(|line| !line.trim().is_empty())

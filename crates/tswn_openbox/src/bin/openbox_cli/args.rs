@@ -19,7 +19,7 @@ use tswn_openbox::presets::{TargetPresetState, TeammatePresetState};
 
 use super::input::{
     cli_error, decode_raw, parse_metric_spec, parse_non_negative_f64, parse_percent_0_100, parse_thread_count,
-    parse_wr_precision, read_file, read_filter_file,
+    parse_wr_precision, read_file,
 };
 use super::plan::{MetricSpec, SkillBoardPlan};
 
@@ -239,9 +239,6 @@ pub(super) struct FilterArgs {
     /// 每行一个名字的 UTF-8 文件。
     #[arg(short = 'f', long = "file")]
     file: PathBuf,
-    /// 跳过非 UTF-8 行并报告数量；默认遇到此类行时报告行号并退出。
-    #[arg(long)]
-    skip_invalid_utf8: bool,
     /// 输出文件，覆盖已有内容。
     #[arg(short = 'o', long = "output")]
     output: PathBuf,
@@ -828,7 +825,7 @@ impl Cli {
                     return Err(cli_error("filter 至少需要一个筛选条件"));
                 }
                 Job::Filter(super::filter::FilterPlan {
-                    raw: read_filter_file(&args.file, args.skip_invalid_utf8)?,
+                    raw: read_file(&args.file)?,
                     output: args.output,
                     conditions,
                 })

@@ -9,6 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
+use tswn_core::text_input::decode_utf8_lines;
 use tswn_ds4::{Config, RunStage};
 use tswn_openbox::backend::ProgressEvent;
 use tswn_openbox::backend::live::{ResultEntry, ResultFinish, ResultKind, ResultUpdate};
@@ -48,10 +49,20 @@ impl Ds4State {
     pub fn load(&mut self) -> Result<(), String> {
         let root = self.root_path()?;
         let path = root.join("config.json");
-        let document: Value = match fs::read_to_string(&path) {
-            Ok(raw) => serde_json::from_str(raw.trim_start_matches('\u{feff}')).map_err(|err| format!("配置格式错误：{err}"))?,
+        let (document, message): (Value, String) = match fs::read(&path) {
+            Ok(bytes) => {
+                let (raw, skipped) = decode_utf8_lines(bytes);
+                let document = serde_json::from_str(&raw).map_err(|err| format!("配置格式错误：{err}"))?;
+                let message = if skipped > 0 {
+                    format!("已读取工作目录配置，跳过 {skipped} 行非 UTF-8 文本。")
+                } else {
+                    "已读取工作目录配置。".into()
+                };
+                (document, message)
+            }
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                serde_json::from_str(tswn_ds4::DEFAULT_CONFIG_JSON).expect("内置 DS4 配置")
+                let document = serde_json::from_str(tswn_ds4::DEFAULT_CONFIG_JSON).expect("内置 DS4 配置");
+                (document, "新工作目录：已载入默认配置，请填写队伍名。".into())
             }
             Err(err) => return Err(format!("读取配置失败：{err}")),
         };
@@ -73,12 +84,7 @@ impl Ds4State {
         // 保留尚未填写队伍名的新配置，以及界面暂未识别的扩展字段。
         self.document = document;
         self.loaded_root = Some(root);
-        self.message = if path.is_file() {
-            "已读取工作目录配置。"
-        } else {
-            "新工作目录：已载入默认配置，请填写队伍名。"
-        }
-        .into();
+        self.message = message;
         Ok(())
     }
 
@@ -438,7 +444,10 @@ mod tests {
         };
         assert!(state.save().is_err());
         assert_eq!(fs::read_to_string(root.join("config.json")).unwrap(), raw);
+        let mixed = [b"{\ninvalid\xff\n".as_slice(), &raw.as_bytes()[1..]].concat();
+        fs::write(root.join("config.json"), mixed).unwrap();
         state.load().unwrap();
+        assert!(state.message.contains("跳过 1 行非 UTF-8"));
         state.document["thread_number"] = 4.into();
         let (_, config) = state.save().unwrap();
         assert_eq!(config.threads, 4);
