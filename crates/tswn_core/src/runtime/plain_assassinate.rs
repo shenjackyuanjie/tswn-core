@@ -181,6 +181,7 @@ impl CombatRuntime {
             break_on_damage: !charge_active,
         });
         owner.template.skills.ensure_pre_action_lane(fixed_lane);
+        owner.states.register_assassinate_pre_action();
         updates.add(RuntimeFrame::replay_update(
             actor.0 as usize,
             target.0 as usize,

@@ -359,17 +359,19 @@ impl CombatRuntime {
         } else {
             DamageKind::Default
         };
-        let covid_source = self.covid_boss_mutation(actor).map(|mutation| (actor, mutation));
-        self.drain_plain_attack_with_atp_covid_kind_and_on_damage_into(
-            actor,
-            target,
-            use_magic,
-            atp,
-            covid_source,
-            kind,
-            PlainAttackOnDamage::None,
-            updates,
+        let on_damage = if let Some(mutation) = self.covid_boss_mutation(actor) {
+            PlainAttackOnDamage::CovidDefaultSpread { mutation }
+        } else if self.lazy_boss_at_boost(actor).is_some() {
+            PlainAttackOnDamage::LazyDefaultSpread
+        } else {
+            PlainAttackOnDamage::None
+        };
+        let damage = self.drain_plain_attack_with_atp_covid_kind_and_on_damage_into(
+            actor, target, use_magic, atp, None, kind, on_damage, updates,
         );
+        if on_damage == PlainAttackOnDamage::LazyDefaultSpread && damage > 0 && !self.plain_battle_has_ended() {
+            self.set_lazy_boss_at_boost(actor, 1.0);
+        }
     }
 
     pub fn saitama_boss_state(&self, actor: EntityIdx) -> Option<(i32, i32, usize, usize)> {
@@ -873,15 +875,6 @@ impl CombatRuntime {
         if let Some((boss, mutation)) = covid_source {
             self.try_covid_spread_on_damage_into(boss, target, mutation, amount, updates);
         }
-        if self.lazy_boss_at_boost(caster).is_some() {
-            // 主动命中不感染懒癌本体；被魅惑打中自己时，由受击被动感染。
-            if self.lazy_boss_at_boost(target).is_none() {
-                self.infect_with_lazy_into(caster, target, updates);
-            }
-            if amount > 0 {
-                self.set_lazy_boss_at_boost(caster, 1.0);
-            }
-        }
         match on_damage {
             PlainAttackOnDamage::None => {}
             PlainAttackOnDamage::Absorb => self.apply_absorb_on_damage(caster, amount, updates),
@@ -892,8 +885,16 @@ impl CombatRuntime {
             PlainAttackOnDamage::Ice if amount > 0 => self.apply_ice_on_damage(caster, target, updates),
             PlainAttackOnDamage::Ice => {}
             PlainAttackOnDamage::Poison => self.apply_poison_on_damage(caster, target, amount, updates),
+            PlainAttackOnDamage::CovidDefaultSpread { mutation } => {
+                self.try_covid_spread_on_damage_with_threshold_into(caster, target, mutation, amount, updates, true);
+            }
             PlainAttackOnDamage::CovidSpread { boss, mutation } => {
                 self.infect_with_covid_into(boss, target, mutation, updates);
+            }
+            PlainAttackOnDamage::LazyDefaultSpread => {
+                if self.lazy_boss_at_boost(target).is_none() {
+                    self.infect_with_lazy_into(caster, target, updates);
+                }
             }
         }
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);

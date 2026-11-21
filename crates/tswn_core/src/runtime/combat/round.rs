@@ -163,7 +163,11 @@ impl CombatRuntime {
         let actor = self.entities.get(action.actor).expect("runtime pre-action state owner missing");
         let state_intercepted_action = actor.states.hook_mask().intersects(ProcMask::PRE_ACTION) && {
             let state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::PRE_ACTION);
-            self.drain_state_hook_plan_with_action_smart_into(&state_plan, &mut updates, Some(smart))
+            let forced_order = plain_skill_pre_action
+                .forced_skill
+                .as_ref()
+                .map(|_| actor.states.assassinate_pre_action_cursor());
+            self.drain_state_hook_plan_with_pre_action_order_into(&state_plan, &mut updates, Some(smart), forced_order)
         };
         let mut prepared_plain_action = None;
         if legacy_plain_action && !state_intercepted_action {
@@ -1282,7 +1286,7 @@ impl CombatRuntime {
             .runtime
             .get_at(false, &mut self.rng)
             * 1.2000000476837158;
-        self.drain_plain_attack_with_atp_into(actor, target, false, atp, updates);
+        self.drain_plain_attack_with_atp_and_covid_into(actor, target, false, atp, None, updates);
     }
 
     pub fn drain_plain_berserk_forced_action_state_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {

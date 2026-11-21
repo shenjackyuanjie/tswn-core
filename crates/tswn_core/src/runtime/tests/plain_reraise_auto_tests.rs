@@ -55,6 +55,22 @@ fn reraise_is_automatic_in_manual_battles_and_uses_core_rng() {
 }
 
 #[test]
+fn plain_reraise_restores_the_rolled_hp_even_above_max_hp() {
+    let mut runtime = reraise_runtime(128);
+    let owner = EntityIdx(1);
+    runtime.entities.get_mut(owner).unwrap().template.max_hp = 1;
+    let mut expected_rng = runtime.rng.clone();
+    expected_rng.r127();
+    let hp = expected_rng.r16() as i32;
+    assert!(hp > 1);
+
+    runtime.drain_die_hooks_into(owner, &mut RunUpdates::new());
+
+    assert_eq!(runtime.entities.get(owner).unwrap().runtime.hp, hp);
+    assert_rng_state_eq(&runtime.rng, &expected_rng);
+}
+
+#[test]
 fn reraise_replays_old_decisions_without_shifting_following_choices() {
     for success in [false, true] {
         let mut runtime = reraise_runtime(1);

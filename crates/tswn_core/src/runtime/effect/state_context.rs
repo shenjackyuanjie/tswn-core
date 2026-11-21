@@ -76,6 +76,12 @@ impl<'a> StateContext<'a> {
 
     pub fn owner(&self) -> Option<&EntityRecord> { self.entities.get(self.owner) }
 
+    pub(crate) fn owner_has_boss_infection(&self, key: u32) -> bool {
+        self.owner()
+            .and_then(|owner| owner.states.entry(key))
+            .is_some_and(|entry| entry.is_boss_infection(self.entities))
+    }
+
     pub fn entity(&self, entity: EntityIdx) -> Result<&EntityRecord, EffectContextError> {
         let observed = self.entities.get(entity).ok_or(EffectContextError::UnknownEntity(entity))?;
         if entity == self.owner {

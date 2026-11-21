@@ -57,13 +57,23 @@ impl CombatRuntime {
         entity.states.register_compressed_legacy_state(CompressedLegacyState::Corpse);
         entity.runtime.corpse = RuntimeCorpseKind::Slime;
 
-        let (name, clan_name, team, root_owner) = {
+        let (name, clan_name, team, root_owner, name_dens) = {
             let entity = self.entities.get(target).unwrap();
             (
                 entity.template.name.clone(),
                 entity.template.clan_name.clone(),
                 entity.runtime.team,
                 entity.runtime.root_owner,
+                entity
+                    .template
+                    .clone_build
+                    .as_ref()
+                    .map(CloneBuildData::child_name_factor)
+                    .unwrap_or_else(|| {
+                        use crate::namerena::eval_name::{DEFAULT_EVAL_RQ, eval_str_common_with_rq};
+                        eval_str_common_with_rq(&entity.template.name, true, DEFAULT_EVAL_RQ)
+                            .max(eval_str_common_with_rq(&entity.template.clan_name, true, DEFAULT_EVAL_RQ) - 6.0)
+                    }),
             )
         };
         let child_generation = generation + 1;
@@ -71,8 +81,8 @@ impl CombatRuntime {
         updates.add_newline();
         updates.add_with(|| RunUpdate::new_lang(keys::SKL_SLIME_SPAWN, target.0 as usize, target.0 as usize, 0).without_target());
 
-        let first = self.spawn_plain_slime_child(&name, &clan_name, team, root_owner, child_generation);
-        let second = self.spawn_plain_slime_child(&name, &clan_name, team, root_owner, child_generation);
+        let first = self.spawn_plain_slime_child(&name, &clan_name, team, root_owner, child_generation, name_dens);
+        let second = self.spawn_plain_slime_child(&name, &clan_name, team, root_owner, child_generation, name_dens);
 
         updates.add_with(|| {
             RunUpdate::new_lang(keys::SKL_SLIME_SPAWNED, first.0 as usize, second.0 as usize, 0).with_hp_changes(
@@ -96,16 +106,10 @@ impl CombatRuntime {
         team: usize,
         root_owner: EntityIdx,
         generation: u32,
+        name_dens: f64,
     ) -> EntityIdx {
         let (name_base, _) = PreparedBattleInit::plain_minion_name_base(clan_name, name);
         let attrs = slime_child_attrs(&name_base, generation);
-        // legacy 在 updateStates() 里按 nameDens 缩放子体七围（体力不缩放）：
-        // nameDens = max(evalStr(baseName), evalStr(clanName) - 6)，与主名单的 name_factor 同源。
-        let name_dens =
-            crate::namerena::eval_name::eval_str_common_with_rq(name, true, crate::namerena::eval_name::DEFAULT_EVAL_RQ).max(
-                crate::namerena::eval_name::eval_str_common_with_rq(clan_name, true, crate::namerena::eval_name::DEFAULT_EVAL_RQ)
-                    - 6.0,
-            );
         let status = PreparedBattleInit::plain_minion_status_with_factor(attrs, name_dens);
         let allocated = self.allocate_plain_minion_name(root_owner);
         let id_key_name = if clan_name.is_empty() {

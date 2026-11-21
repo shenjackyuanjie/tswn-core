@@ -26,6 +26,8 @@ pub struct CovidInfectionEntry {
     pub boss: EntityIdx,
     pub mutation: i32,
     pub days: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registration_order: Option<u64>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -286,7 +288,12 @@ impl StateEntry {
             priority,
             registration_order: RegistrationOrder::default(),
             payload: StatePayload::CovidInfection {
-                entries: SmallVec::from_slice(&[CovidInfectionEntry { boss, mutation, days: 0 }]),
+                entries: SmallVec::from_slice(&[CovidInfectionEntry {
+                    boss,
+                    mutation,
+                    days: 0,
+                    registration_order: None,
+                }]),
                 mutation_set: SmallVec::from_slice(&[mutation]),
                 recovered: false,
             },
@@ -581,29 +588,23 @@ impl StateEntry {
         match (&self.payload, self.legacy_order_key) {
             (StatePayload::LazyInfection { boss }, PLAIN_LAZY_INFECTION_STATE_KEY) => from_boss(*boss, "lazy"),
             (StatePayload::CovidInfection { entries, .. }, PLAIN_COVID_INFECTION_STATE_KEY) => {
-                !entries.is_empty() && entries.iter().all(|strain| from_boss(strain.boss, "covid"))
+                !entries.is_empty()
+                    && entries.iter().all(|strain| {
+                        entities
+                            .get(strain.boss)
+                            .is_some_and(|source| source.runtime.flags.contains(PlayerKindFlags::BOSS))
+                    })
             }
             _ => false,
         }
     }
 
-    pub(crate) fn plan_priority_for_hook(
-        &self,
-        hook: ProcMask,
-        entities: &EntityArena,
-        owner_states: &StateStore,
-    ) -> SkillPriority {
+    pub(crate) fn plan_priority_for_hook(&self, hook: ProcMask, entities: &EntityArena) -> SkillPriority {
         use crate::runtime::profile::{PLAIN_COVID_INFECTION_STATE_KEY, PLAIN_LAZY_INFECTION_STATE_KEY};
 
         if hook.intersects(ProcMask::POST_ACTION) {
             let same_timed_queue = match self.legacy_order_key {
-                PLAIN_LAZY_INFECTION_STATE_KEY => self.is_boss_infection(entities),
-                PLAIN_COVID_INFECTION_STATE_KEY => {
-                    self.is_boss_infection(entities)
-                        && owner_states
-                            .entry(PLAIN_LAZY_INFECTION_STATE_KEY)
-                            .is_some_and(|lazy| lazy.is_boss_infection(entities))
-                }
+                PLAIN_LAZY_INFECTION_STATE_KEY | PLAIN_COVID_INFECTION_STATE_KEY => self.is_boss_infection(entities),
                 _ => false,
             };
             if same_timed_queue {

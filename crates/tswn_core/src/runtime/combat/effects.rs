@@ -116,11 +116,12 @@ impl CombatRuntime {
                 } => {
                     self.ensure_effect_entity("reflected attack", "caster", caster);
                     self.ensure_effect_entity("reflected attack", "target", target);
-                    self.drain_plain_attack_with_atp_and_on_damage_into(
+                    self.drain_plain_attack_with_atp_covid_kind_and_on_damage_into(
                         caster,
                         target,
                         true,
                         f64::from_bits(atp_bits),
+                        None,
                         kind,
                         on_damage,
                         updates,
@@ -348,9 +349,9 @@ impl CombatRuntime {
                         updates,
                     );
                 }
-                QueuedEffect::CovidPneumonia { owner } => {
+                QueuedEffect::CovidPneumonia { owner, order } => {
                     self.ensure_effect_entity("covid-pneumonia", "owner", owner);
-                    self.drain_covid_strains_into(owner, updates);
+                    self.drain_covid_strains_into(owner, order, updates);
                 }
                 QueuedEffect::LazyFlare { owner, boss } => {
                     self.ensure_effect_entity("lazy-flare", "owner", owner);
@@ -673,10 +674,9 @@ impl CombatRuntime {
             .entities
             .get(caster)
             .unwrap_or_else(|| panic!("runtime summon explode caster disappeared: {}", caster.0));
-        // 自爆伤害可能先杀死 owner；owner 的死亡清理会同步移除仍处于
-        // mark-only 状态的使魔。legacy 此时只保留 owner 清理产生的一次“消失”，
-        // 不会再次执行使魔自己的死亡链。
+        // 自爆伤害反弹时，使魔可能在延迟自杀前就被移出。原版仍会第二次调整行动游标。
         if !caster_entity.runtime.alive {
+            self.world.repeat_round_actor_removal();
             return;
         }
         if caster_entity.runtime.is_combat_minion() {

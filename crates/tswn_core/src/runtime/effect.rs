@@ -92,6 +92,7 @@ pub enum QueuedEffect {
     },
     CovidPneumonia {
         owner: EntityIdx,
+        order: Option<u64>,
     },
     LazyFlare {
         owner: EntityIdx,

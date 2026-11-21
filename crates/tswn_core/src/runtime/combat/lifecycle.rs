@@ -590,22 +590,32 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
         action_smart: Option<bool>,
     ) -> bool {
-        let mixed_boss_infections = action_smart.is_some()
+        self.drain_state_hook_plan_with_pre_action_order_into(plan, updates, action_smart, None)
+    }
+
+    pub(super) fn drain_state_hook_plan_with_pre_action_order_into(
+        &mut self,
+        plan: &StateHookPlan,
+        updates: &mut RunUpdates,
+        action_smart: Option<bool>,
+        forced_order: Option<u64>,
+    ) -> bool {
+        let fold_boss_infections = action_smart.is_some()
             && plan.hook == ProcMask::PRE_ACTION
-            && plan.entries.len() >= 2
             && self.scheduler.uses_legacy_step_scheduler()
-            && self.has_mixed_boss_infection_pre_actions(plan);
+            && (forced_order.is_some() || self.has_boss_infection_pre_actions(plan));
         let mut proposed_infection_action = None;
         let mut action_intercepted = false;
         let mut rebuilt_entries = None::<SmallVec<[StateHookPlanEntry; 2]>>;
         let mut store_generation = plan.store_generation;
         let mut cursor = 0usize;
-        let mut executed_legacy_keys = SmallVec::<[u32; 8]>::new();
+        let mut executed = SmallVec::<[(u32, u64); 8]>::new();
+        let identity = |entry: &StateHookPlanEntry| (entry.legacy_order_key, entry.runtime_registration_order);
         loop {
             let entry = rebuilt_entries.as_ref().unwrap_or(&plan.entries).get(cursor).copied();
             let Some(entry) = entry else { break };
             cursor += 1;
-            if executed_legacy_keys.contains(&entry.legacy_order_key) {
+            if executed.contains(&identity(&entry)) {
                 continue;
             }
             if self
@@ -621,7 +631,7 @@ impl CombatRuntime {
                     .as_ref()
                     .expect("刚重建的状态计划必须存在")
                     .iter()
-                    .position(|candidate| !executed_legacy_keys.contains(&candidate.legacy_order_key))
+                    .position(|candidate| !executed.contains(&identity(candidate)))
                     .unwrap_or_else(|| rebuilt_entries.as_ref().expect("刚重建的状态计划必须存在").len());
                 continue;
             }
@@ -629,6 +639,7 @@ impl CombatRuntime {
             let Some(state_id) = entry.state_id else {
                 continue;
             };
+            let fold_infection = fold_boss_infections && self.is_builtin_infection_pre_action(&entry);
             let (handler, capabilities) = if let Some(static_handler) = self.builtin_static_state_handler(state_id) {
                 static_handler
             } else {
@@ -656,14 +667,11 @@ impl CombatRuntime {
                 } else {
                     context
                 };
-                if mixed_boss_infections
-                    && matches!(
-                        entry.legacy_order_key,
-                        PLAIN_COVID_INFECTION_STATE_KEY | PLAIN_LAZY_INFECTION_STATE_KEY
-                    )
-                {
-                    // 原版把两个前置钩子的结果依次折叠，前一提案不能跳过后一抽样。
-                    if let Some(execute) = propose_boss_infection_pre_action(&mut context, &entry) {
+                if fold_infection {
+                    // 原版按登记顺序折叠前置钩子，前一提案不能跳过后一抽样。
+                    if let Some(execute) = propose_boss_infection_pre_action(&mut context, &entry)
+                        && forced_order.is_none_or(|order| entry.runtime_registration_order > order)
+                    {
                         proposed_infection_action = Some((entry, execute));
                     }
                 } else {
@@ -671,7 +679,7 @@ impl CombatRuntime {
                     action_intercepted |= context.action_intercepted();
                 }
             }
-            executed_legacy_keys.push(entry.legacy_order_key);
+            executed.push(identity(&entry));
             self.drain_effects_into(updates);
             let current_generation = self.entities.get(entry.owner).map(|entity| entity.states.generation());
             if current_generation != Some(store_generation) {
@@ -682,7 +690,7 @@ impl CombatRuntime {
                     .as_ref()
                     .expect("刚重建的状态计划必须存在")
                     .iter()
-                    .position(|candidate| !executed_legacy_keys.contains(&candidate.legacy_order_key))
+                    .position(|candidate| !executed.contains(&identity(candidate)))
                     .unwrap_or_else(|| rebuilt_entries.as_ref().expect("刚重建的状态计划必须存在").len());
             }
         }
@@ -710,23 +718,25 @@ impl CombatRuntime {
         action_intercepted
     }
 
-    fn has_mixed_boss_infection_pre_actions(&self, plan: &StateHookPlan) -> bool {
-        [
-            (PLAIN_COVID_INFECTION_STATE_KEY, DEFAULT_CORE_COVID_INFECTION_STATE_EXPORT),
-            (PLAIN_LAZY_INFECTION_STATE_KEY, DEFAULT_CORE_LAZY_INFECTION_STATE_EXPORT),
-        ]
-        .into_iter()
-        .all(|(key, export)| {
-            plan.entries.iter().find(|entry| entry.legacy_order_key == key).is_some_and(|entry| {
-                entry.state_id.is_some()
-                    && entry.state_id == self.registry.state_id_by_export_name(export)
-                    && self
-                        .entities
-                        .get(entry.owner)
-                        .and_then(|owner| owner.states.entry(key))
-                        .is_some_and(|state| state.is_boss_infection(&self.entities))
-            })
-        })
+    fn has_boss_infection_pre_actions(&self, plan: &StateHookPlan) -> bool {
+        plan.entries
+            .iter()
+            .any(|entry| entry.legacy_order_key == PLAIN_COVID_INFECTION_STATE_KEY && self.is_builtin_infection_pre_action(entry))
+    }
+
+    fn is_builtin_infection_pre_action(&self, entry: &StateHookPlanEntry) -> bool {
+        let export = match entry.legacy_order_key {
+            PLAIN_COVID_INFECTION_STATE_KEY => DEFAULT_CORE_COVID_INFECTION_STATE_EXPORT,
+            PLAIN_LAZY_INFECTION_STATE_KEY => DEFAULT_CORE_LAZY_INFECTION_STATE_EXPORT,
+            _ => return false,
+        };
+        entry.state_id.is_some()
+            && entry.state_id == self.registry.state_id_by_export_name(export)
+            && self
+                .entities
+                .get(entry.owner)
+                .and_then(|owner| owner.states.entry(entry.legacy_order_key))
+                .is_some_and(|state| state.is_boss_infection(&self.entities))
     }
 
     pub fn drain_state_hook_entry_with_defend_value_into(

@@ -98,6 +98,7 @@ pub struct StateStore {
     next_runtime_registration_order: u64,
     /// 蓄力本次入列时的游标；蓄力保存在专用字段，不占普通状态登记槽。
     charge_post_action_cursor: u64,
+    assassinate_pre_action_cursor: u64,
     compressed_legacy_states: u8,
     /// 调度器只关心冻结和速度类状态；无对应位时可跳过完整 entries 扫描。
     scheduler_state_flags: u8,
@@ -113,6 +114,7 @@ impl PartialEq for StateStore {
             && self.runtime_registration_orders == other.runtime_registration_orders
             && self.next_runtime_registration_order == other.next_runtime_registration_order
             && self.charge_post_action_cursor == other.charge_post_action_cursor
+            && self.assassinate_pre_action_cursor == other.assassinate_pre_action_cursor
             && self.compressed_legacy_states == other.compressed_legacy_states
     }
 }
@@ -134,6 +136,7 @@ impl StateStore {
         self.runtime_registration_orders.extend_from_slice(&prepared.runtime_registration_orders);
         self.next_runtime_registration_order = prepared.next_runtime_registration_order;
         self.charge_post_action_cursor = prepared.charge_post_action_cursor;
+        self.assassinate_pre_action_cursor = prepared.assassinate_pre_action_cursor;
         self.compressed_legacy_states = prepared.compressed_legacy_states;
         self.scheduler_state_flags = prepared.scheduler_state_flags;
         self.payload_kinds = prepared.payload_kinds;
@@ -149,6 +152,7 @@ impl StateStore {
         }
         self.next_runtime_registration_order = 0;
         self.charge_post_action_cursor = 0;
+        self.assassinate_pre_action_cursor = 0;
         self.compressed_legacy_states = 0;
         self.scheduler_state_flags = 0;
         self.payload_kinds = 0;
@@ -166,11 +170,24 @@ impl StateStore {
 
     pub fn post_action_registration_cursor(&self) -> u64 { self.next_runtime_registration_order }
 
+    pub(crate) fn reserve_runtime_registration_order(&mut self) -> u64 {
+        let order = self.next_runtime_registration_order;
+        self.next_runtime_registration_order = order.wrapping_add(1);
+        self.generation = self.generation.wrapping_add(1);
+        order
+    }
+
     pub(in crate::runtime::entity) fn register_charge_post_action(&mut self) {
         self.charge_post_action_cursor = self.next_runtime_registration_order;
     }
 
     pub(crate) fn charge_post_action_cursor(&self) -> u64 { self.charge_post_action_cursor }
+
+    pub(crate) fn register_assassinate_pre_action(&mut self) {
+        self.assassinate_pre_action_cursor = self.reserve_runtime_registration_order();
+    }
+
+    pub(crate) fn assassinate_pre_action_cursor(&self) -> u64 { self.assassinate_pre_action_cursor }
 
     pub fn runtime_registration_order(&self, legacy_order_key: u32) -> Option<u64> {
         let index = self.entries.iter().position(|entry| entry.legacy_order_key == legacy_order_key)?;
@@ -214,13 +231,17 @@ impl StateStore {
             return base_speed;
         }
         let mut speed = base_speed;
+        let mut lazy_infections = 0;
         for entry in &self.entries {
             match &entry.payload {
                 StatePayload::Haste { effective_faster, .. } => speed *= *effective_faster,
                 StatePayload::Slow { .. } => speed /= 2,
-                StatePayload::LazyInfection { .. } => speed /= 2,
+                StatePayload::LazyInfection { .. } => lazy_infections += 1,
                 _ => {}
             }
+        }
+        for _ in 0..lazy_infections {
+            speed /= 2;
         }
         speed
     }
