@@ -299,3 +299,32 @@ fn charge_registered_before_covid_expires_before_pneumonia_damage() {
     let (recover, _) = event(frame, "[1]回复体力[2]点");
     assert_eq!(recover["param"], 26);
 }
+
+#[test]
+fn seeded_wheel_uses_the_current_battle_seed_in_cli() {
+    let fight = frames("wheel@!\n\nx\ny\nseed:o@!");
+    let last = fight.last().unwrap();
+    let winner = &last["winner_ids"][0];
+    assert_eq!(state(last, winner)["id_key_name"], "wheel@!");
+}
+
+#[test]
+fn covid_boss_attack_keeps_the_spread_callback_through_reflection() {
+    let fight = frames("covid@!\n\n天空没有极限 #fgI1unV6I@!");
+    let reflected = fight
+        .iter()
+        .find(|frame| events(frame).any(|(update, _)| update["message_template"] == "[0]使用[伤害反弹]"))
+        .unwrap();
+    let infections: Vec<_> = events(reflected)
+        .filter(|(update, _)| update["message_template"] == "[1]感染了[新冠病毒]")
+        .map(|(update, _)| (&update["caster_id"], &update["target_id"]))
+        .collect();
+    let [(player, covid), (source, target)] = infections.as_slice() else {
+        panic!("反弹批应有两次传播，实际为 {infections:?}");
+    };
+    assert_eq!((player, covid), (target, source));
+    assert_eq!(state(reflected, covid)["id_key_name"], "covid@!");
+    assert_eq!(state(reflected, covid)["move_point"], 1971);
+    assert_eq!(state(reflected, player)["move_point"], 1516);
+    assert_eq!(fight.last().unwrap()["winner_ids"], serde_json::json!([player]));
+}
