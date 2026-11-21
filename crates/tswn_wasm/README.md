@@ -231,15 +231,15 @@ show 页面右下角控制栏还支持 `C/P/F/T/I/R/S/D` 字母快捷键；字�
 | `show-render.js`                     | 玩家状态 / 头像渲染（CSS Sprite 方式，`renderIconSprite()`）                                                                       |
 | `show-replay.js`                     | 逐帧回放逻辑 + 结算表格（支持 HP 条显示）                                                                                          |
 
-```bash
-# 构建 wasm 分发目录后启动静态服务器
-cd crates/tswn_wasm/dist/wasm
-python -m http.server 8000
-# 打开 http://127.0.0.1:8000/examples/demo.html
-# 或   http://127.0.0.1:8000/examples/
+在仓库根目录执行以下命令。脚本会构建 WASM 并启动本地服务，默认打开 `http://127.0.0.1:8000/examples/` 的完整回放页。功能演示位于同一服务的 `/examples/demo.html`。
+
+```powershell
+uv run scripts/serve_wasm.py
 ```
 
-详细运行说明见 `examples/README.md`。
+也可以用 Python 3.11 或更高版本运行 `python scripts/serve_wasm.py`。首次运行前请准备下文的[构建依赖](#构建)。端口被占用时可传入 `--port 8080`，传入 `--no-open` 可跳过自动打开浏览器。按 `Ctrl+C` 停止服务。
+
+分发包的手动启动方式见[示例说明](examples/README.md#运行方式)。
 
 ### 测试
 

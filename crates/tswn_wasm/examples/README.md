@@ -84,7 +84,9 @@ const url = `index.html?input=${input}`;
 
 ## 运行方式
 
-推荐先构建 wasm 分发目录：
+在源码仓库根目录执行 `uv run scripts/serve_wasm.py` 即可构建并启动本地网页。已经拿到分发包时，可从下文的静态服务器步骤开始。
+
+如需单独生成分发目录，执行：
 
 ```powershell
 uv run scripts/build_wasm.py --release
@@ -99,11 +101,10 @@ crates/tswn_wasm/dist/wasm/
   examples/
 ```
 
-随后在输出目录下启动一个本地静态服务器，例如：
+进入包含 `pkg/` 和 `examples/` 的分发目录，启动本地静态服务器：
 
 ```powershell
-cd crates/tswn_wasm/dist/wasm
-python -m http.server 8000
+python -m http.server 8000 --bind 127.0.0.1
 ```
 
 然后在浏览器打开：
