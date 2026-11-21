@@ -7,6 +7,8 @@
 为网页前端提供 JS 友好的 wasm 封装，不暴露裸指针或 C ABI 字符串；会话对象需要显式 `free()` 释放。
 可直接支撑类似 `fast-namerena/index.html` 的静态页面。
 
+在仓库根目录运行 `uv run scripts/serve_wasm.py`，打开完整回放页即可体验 [`!test!` 交互评分](examples/README.md#test-交互评分)。
+
 ## 导出
 
 ### 顶层函数
@@ -63,6 +65,28 @@ try {
 完整方法与 DTO 见 [公共 API](../../docs/reference/public-api.md)。返回值为 plain JS object，缺省值为 null，TypeScript 类型随生成包导出。`max_rounds` 包含空 round；terminal next_frame 幂等。`battle_replay` 仅收集同一个 session。
 
 示例页面先显示 initial states，再逐帧拉取，最多预取 2 帧；昵称与图标只装饰显示层。`?perf=1` 输出性能统计，参见 [性能基线](../../docs/perf/reports/web-streaming-baseline.md)。
+
+### ScoreTestSession（交互评分）
+
+`new ScoreTestSession(names, enhanced?)` 接收同一队的名字文本，不含网页的 `!test!` / `!` 指令或 seed。同名两行表示单挑；`enhanced` 默认 `false`，设为 `true` 只强化陪测角色。
+
+`step(batch_size)` 同步推进最多指定场数，累计到 10,000 场后不再推进。用 `progress()` 读取独立快照：`completed`、`total`、`wins`、`score`、`truncated`、`done` 和 `skills`。截断场次计入 `completed`、不计胜场；`score` 为胜场比例乘 10,000；`skills[].frequency` 为本体产生该类消息的每百场次数，可超过 100%。
+
+长批次请在 Worker 中运行，并在结束或失败后释放会话：
+
+```js
+const session = new wasm.ScoreTestSession("alpha\nalpha", true);
+try {
+  session.step(1000);
+  postMessage(session.progress());
+  session.step(9000);
+  postMessage(session.progress());
+} finally {
+  session.free();
+}
+```
+
+事件采集仅在交互评分中启用；普通 `score()`、`namer_pf()` 继续使用原有无回放批量路径。
 
 ### FightSession（Advanced / Compatibility）
 

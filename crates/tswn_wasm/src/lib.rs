@@ -9,7 +9,7 @@
 //! | --- | --- | --- |
 //! | [`BattleSession`] | 规范的逐帧对局 | 按需 `next_frame`，返回 core DTO |
 //! | [`battle_replay`] | 完整回放 | 同步收集整场 |
-//! | [`WinRateSession`] | 大批胜率与进度 | 主动分批 step，调用方负责让出事件循环 |
+//! | [`WinRateSession`] / [`ScoreTestSession`] | 大批胜率或交互评分 | 主动分批 step，调用方负责调度 |
 //! | [`win_rate_sync`] | 小批同步胜率 | 调用完成前不让出事件循环 |
 //! | [`FightSession`] / [`fight()`] | 兼容旧页面的字段投影 | 保留已有页面使用的接口形状 |
 //! | [`name_to_png_bytes`] / [`to_diy`] | 图标及输入格式导出 | 同步 helper |
@@ -56,6 +56,7 @@ mod error;
 mod fight;
 mod model;
 mod render;
+mod score_test;
 mod win_rate;
 
 use std::sync::Once;
@@ -72,6 +73,7 @@ use model::{
     CliScoreResult, CliWinRateResult, FightOptions, FightReplay, FightSummary, GroupWinRateResult, RuntimeNormalizedRunView,
     WinRateOptions, WinRateResult,
 };
+pub use score_test::ScoreTestSession;
 use wasm_bindgen::prelude::*;
 pub use win_rate::WinRateSession;
 

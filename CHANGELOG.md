@@ -2,6 +2,11 @@
 
 本文件记录跨 crate 的维护与兼容性变更；各 crate 的版本发布历史仍以对应 CHANGELOG 为准。
 
+## tswn_wasm 0.5.13 · 2026-11-21
+
+- 完整回放页支持 `!test!` 普通／强化评分与单挑。Worker 在累计 1,000 和 10,000 场时展示评分及技能／动作频率，可随时停止。
+- WASM 导出可步进的 `ScoreTestSession`；事件采集仅在新会话中启用，现有普通批量评分和 CLI 不变。见 [WASM 更新日志](crates/tswn_wasm/CHANGELOG.md#0513---2026-11-21)。
+
 ## tswn_core 0.7.2 · 2026-11-21
 
 - 新增饥饿离场即获胜的 `SAITAMA@!`，补齐 Rinick 属性修改器及其隐藏 Boss 别名。灭霸、生命之轮、感染联动、反弹、状态解除和终局行动按原版复查。
@@ -69,7 +74,7 @@
 | `tswn_core` | 0.7.2 | [更新日志](crates/tswn_core/CHANGELOG.md) |
 | `tswn_capi` | 0.6.3 | [更新日志](crates/tswn_capi/CHANGELOG.md) |
 | `tswn_py` | 0.5.4 | [更新日志](crates/tswn_py/CHANGELOG.md) |
-| `tswn_wasm` | 0.5.12 | [更新日志](crates/tswn_wasm/CHANGELOG.md) |
+| `tswn_wasm` | 0.5.13 | [更新日志](crates/tswn_wasm/CHANGELOG.md) |
 | `tswn_openbox` | 0.5.4 | [更新日志](crates/tswn_openbox/CHANGELOG.md) |
 | `tswn_openbox_backend` | 0.5.4 | [更新日志](crates/tswn_openbox_backend/CHANGELOG.md) |
 | `tswn_lane_ranker` | 0.1.0 | [更新日志](crates/tswn_lane_ranker/CHANGELOG.md) |

@@ -26,6 +26,7 @@ import {
   readStaticReplayInputFromSearch,
 } from "./show-routing.js";
 import { ensureApi, createBattleStreamSource } from "./show-wasm.js";
+import { parseScoreTestInput, scoreCheckpointHtml, startScoreWorker } from "./show-score-test.js";
 
 import { BattleStreamController } from "./show-stream.js";
 import { BattleDisplay } from "./show-display.js";
@@ -72,6 +73,8 @@ const inputStatus = document.querySelector("#inputStatus");
 const plistMeta = document.querySelector("#plistMeta");
 /** @type {HTMLElement} */
 const headerMeta = document.querySelector("#headerMeta");
+const runtimeModeInfo = document.querySelector("#runtimeModeInfo");
+const replayModeText = runtimeModeInfo.textContent;
 /** @type {HTMLElement} */
 const detailContent = document.querySelector("#detailContent");
 /** @type {HTMLInputElement} */
@@ -176,6 +179,7 @@ let battleMetrics = null;
 let metricsReported = false;
 let streamError = null;
 let battleGenerationToken = 0;
+let stopScoreWorker = null;
 /** @type {FightState[]} 当前左侧面板对应的状态快照 */
 let currentVisibleStates = [];
 /** @type {number|null} 当前详情面板打开的 playerId */
@@ -361,6 +365,9 @@ function setLoading(loading) {
 }
 
 function clearCurrentReplayView() {
+  stopScoreWorker?.();
+  stopScoreWorker = null;
+  runtimeModeInfo.textContent = replayModeText;
   clearPlayerHighlight();
   streamController?.dispose();
   streamController = null;
@@ -598,11 +605,51 @@ function clearCurrentNickname() {
  * @param {FightReplay} replay
  * @returns {Promise<void>}
  */
-/**
- * 开始一场新战斗：校验输入 → 生成回放 → 自动播放。
- * @param {{ persistInput?: boolean }} [options]
- * @returns {Promise<void>}
- */
+function showScoreTest(scoreInput) {
+  const { input, label } = scoreInput;
+  const cancel = document.createElement("button");
+  cancel.className = "goBtn";
+  cancel.textContent = "停止测试";
+  const names = document.createElement("div");
+  names.className = "score-test-names";
+  names.textContent = input;
+  playerList.replaceChildren(names);
+  plistMeta.textContent = label + " · 固定 10000 场";
+  runtimeModeInfo.textContent = "使用 Worker 在后台评分。";
+  headerMeta.textContent = label + " · 计算中，累计 1000 场和 10000 场时显示结果。";
+  battleRows.replaceChildren(cancel);
+  closePanel(inputPanel);
+  setLoading(false);
+  setInputStatus("正在后台评分。");
+
+  function finish(message, isError = false) {
+    stopScoreWorker?.();
+    stopScoreWorker = null;
+    cancel.disabled = true;
+    headerMeta.textContent = message;
+    setInputStatus(message, isError);
+  }
+
+  cancel.onclick = () => finish(label + " · 已停止，保留已完成的结果。");
+  try {
+    stopScoreWorker = startScoreWorker(scoreInput, {
+      onCheckpoint(progress) {
+        battleRows.insertAdjacentHTML("beforeend", scoreCheckpointHtml(progress));
+        if (progress.done) {
+          finish(label + " · 完成 10000 场。");
+        } else {
+          headerMeta.textContent = label + " · 已完成 10%，继续计算。";
+        }
+      },
+      onError(message) {
+        finish("评分失败：" + message, true);
+      },
+    });
+  } catch (error) {
+    finish("评分启动失败：" + formatError(error), true);
+  }
+}
+
 async function startBattle({ persistInput = true } = {}) {
   const clickStartedAt = performance.now();
   const rawInput = inputName.value.trim();
@@ -611,20 +658,33 @@ async function startBattle({ persistInput = true } = {}) {
     openInputEditor();
     return;
   }
-  const inputError = validateReplayInput(rawInput);
+  let scoreInput;
+  try {
+    scoreInput = parseScoreTestInput(rawInput);
+  } catch (error) {
+    setInputStatus(error.message, true);
+    openInputEditor();
+    return;
+  }
+  const inputError = validateReplayInput(scoreInput?.input ?? rawInput);
   if (inputError) {
     setInputStatus(inputError, true);
     openInputEditor();
     return;
   }
 
-  speedMode = DEFAULT_SPEED_MODE;
+  if (!scoreInput) speedMode = DEFAULT_SPEED_MODE;
   if (persistInput) {
     persistInputValue();
   }
   const generation = ++battleGenerationToken;
   stopPlaybackLoop();
   clearCurrentReplayView();
+  if (scoreInput) {
+    showScoreTest(scoreInput);
+    return;
+  }
+
   battleMetrics = new BattleMetrics({ startedAt: clickStartedAt });
   metricsReported = false;
   setLoading(true);
@@ -694,6 +754,8 @@ function failStreaming(error) {
 window.addEventListener("pagehide", () => {
   battleGenerationToken += 1;
   stopPlaybackLoop();
+  stopScoreWorker?.();
+  stopScoreWorker = null;
   streamController?.dispose();
 });
 

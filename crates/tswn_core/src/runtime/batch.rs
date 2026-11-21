@@ -30,6 +30,9 @@ use super::{
     ScoreRosterBuffers, ScoreRoundScratch, SkillLoadout, default_custom_runtime_import_config,
 };
 
+mod score_test;
+pub use score_test::{SCORE_TEST_TOTAL, ScoreSkillFrequency, ScoreTestProgress, ScoreTestSession};
+
 const BATCH_PARALLEL_THRESHOLD: usize = 100;
 const BATCH_MAX_ROUNDS: usize = 100_000;
 const WIN_RATE_SEED_BATCH: usize = 4;

@@ -99,6 +99,7 @@ python scripts/check_runtime_release.py --corpus
 ## 重要入口
 
 - `tswn-cli`: 日常调试和用户入口。
+- WASM 完整回放和 `!test!` 评分：`uv run scripts/serve_wasm.py`，见 [网页示例](crates/tswn_wasm/examples/README.md#test-交互评分)。
 - Openbox GUI：`cargo run -p tswn_openbox --bin tswn_openbox`。
 - Openbox 无头 CLI：`cargo run -p tswn_openbox --no-default-features --features mimalloc_alloc --bin openbox-cli -- --help`。
 - `python track.py test`: 主 Runtime corpus 跟踪器的短命令转发入口。
