@@ -29,6 +29,8 @@ pub(super) struct RoundStep {
 }
 
 impl BattleDriver {
+    /// 从 namerena 文本构建驱动：校验输入非空、`max_rounds` 为正、`eval_rq` 有限，
+    /// 解析队伍与 seed 后构造 `RuntimeRunner`。
     pub fn from_raw(raw: &str, options: BattleOptions) -> CliApiResult<Self> {
         if raw.trim().is_empty() {
             return Err(invalid_input("raw_input is empty"));
@@ -45,6 +47,8 @@ impl BattleDriver {
         Self::new(runner, options.max_rounds)
     }
 
+    /// 用已构造的 `RuntimeRunner` 创建驱动；`max_rounds` 必须为正。
+    /// 构造时若对局已产生胜者，直接记 `Winner` 停止原因。
     pub fn new(runner: RuntimeRunner, max_rounds: usize) -> CliApiResult<Self> {
         if max_rounds == 0 {
             return Err(CliApiError::InvalidArgument("battle max_rounds must be positive".into()));
@@ -63,6 +67,7 @@ impl BattleDriver {
         })
     }
 
+    /// 取当前机制状态快照；已发生 sticky failure 时返回该错误而不是快照。
     pub fn model_state(&self) -> Result<BattleModelState, ModelStateError> {
         if let Some(error) = &self.failure {
             return Err(ModelStateError(error.to_string()));
@@ -70,8 +75,10 @@ impl BattleDriver {
         self.runner.model_state()
     }
 
+    /// 取当前供查询的 runner：主动暂停时返回行动前预览，否则返回真实 runner。
     pub fn observed_runner(&self) -> &RuntimeRunner { self.paused_view.as_ref().unwrap_or(&self.runner) }
 
+    /// [`observed_runner`](Self::observed_runner) 的可变版本，供调用方修改预览或真实 runner。
     pub fn observed_runner_mut(&mut self) -> &mut RuntimeRunner { self.paused_view.as_mut().unwrap_or(&mut self.runner) }
 
     /// 推进一个 Runtime 回合。

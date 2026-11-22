@@ -7,6 +7,7 @@
 use super::*;
 
 impl Db {
+    /// 写入 lane 的状态与分组数。
     pub fn set_lane_status(&self, lane_size: usize, status: &str, group_count: usize) -> anyhow::Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -17,6 +18,7 @@ impl Db {
         Ok(())
     }
 
+    /// 更新 lane 的运行进度（阶段、轮次、速率进度与消息）。
     pub fn set_lane_progress(
         &self,
         lane_size: usize,
@@ -47,6 +49,7 @@ impl Db {
         Ok(())
     }
 
+    /// 读取 lane 的运行进度；无记录返回 None。
     pub fn lane_progress(&self, lane_size: usize) -> anyhow::Result<Option<LaneProgress>> {
         let conn = self.conn.lock().unwrap();
         let progress = conn
@@ -71,6 +74,7 @@ impl Db {
         Ok(progress)
     }
 
+    /// 清空 lane 的结果与正确目标追踪权重。
     pub fn clear_lane_results(&self, lane_size: usize) -> anyhow::Result<()> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
@@ -87,6 +91,7 @@ impl Db {
         Ok(())
     }
 
+    /// 清空 lane 的正确目标追踪数据。
     pub fn clear_correct_target_trace(&self, lane_size: usize) -> anyhow::Result<()> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
@@ -102,6 +107,7 @@ impl Db {
         Ok(())
     }
 
+    /// 整体替换 lane 的正确目标追踪；版本与 score_mode 不能为空，metadata_json 必须是合法 JSON。
     pub fn replace_correct_target_trace(&self, lane_size: usize, trace: &CorrectTargetTrace) -> anyhow::Result<()> {
         if trace.trace_version.trim().is_empty() || trace.score_mode.trim().is_empty() {
             anyhow::bail!("correct target trace version and score mode must be non-empty");
@@ -192,6 +198,7 @@ impl Db {
         Ok(())
     }
 
+    /// 读取 lane 的正确目标追踪（元数据与权重行）。
     pub fn correct_target_trace(&self, lane_size: usize) -> anyhow::Result<Option<CorrectTargetTrace>> {
         let conn = self.conn.lock().unwrap();
         let meta = conn
@@ -240,6 +247,7 @@ impl Db {
         }))
     }
 
+    /// 在单个事务中替换 lane 的结果行。
     pub fn save_lane_results(&self, lane_size: usize, rows: &[LaneResultRow]) -> anyhow::Result<()> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
@@ -301,6 +309,7 @@ impl Db {
         Ok(())
     }
 
+    /// 读取所有 lane 的状态（按规模升序）。
     pub fn lane_statuses(&self) -> anyhow::Result<Vec<LaneStatus>> {
         let tuples = {
             let conn = self.conn.lock().unwrap();
@@ -333,6 +342,7 @@ impl Db {
         Ok(out)
     }
 
+    /// 按分数取前 limit 个分组 ID，可按最小平均 CQD 过滤。
     pub fn lane_top_score_group_ids(
         &self,
         lane_size: usize,
@@ -378,6 +388,7 @@ impl Db {
         Ok(ids)
     }
 
+    /// 读取 lane 的分组两两胜率映射。
     pub fn lane_rate_map(&self, lane_size: usize) -> anyhow::Result<HashMap<(GroupId, GroupId), f64>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
@@ -399,6 +410,7 @@ impl Db {
         Ok(out)
     }
 
+    /// 读取 lane 的结果行（含队伍合并信息）。
     pub fn lane_results(&self, lane_size: usize) -> anyhow::Result<Vec<LaneResultRow>> {
         let conn = self.conn.lock().unwrap();
 

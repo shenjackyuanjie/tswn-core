@@ -21,6 +21,7 @@ use tswn_core::{
     runtime::{PreparedRuntimeRunner, RuntimeRunner},
 };
 
+/// 生成数据集：校验次数、样本数、分片大小与轮数上限为正整数，逐对局写入分片。
 pub fn generate(args: &GenerateArgs) -> Result<()> {
     ensure!(
         args.games_per_matchup > 0 && args.samples_per_game > 0 && args.battles_per_shard > 0 && args.max_rounds > 0,

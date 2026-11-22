@@ -16,6 +16,7 @@ use crate::model::engine::{NameFeature, init_pos_tables};
 use rayon::ThreadPoolBuilder;
 use rayon::prelude::*;
 
+/// 一对候选的评分结果：分数与左右两侧名字。
 #[derive(Debug, Clone)]
 pub struct PairResult {
     pub score: i32,
@@ -23,6 +24,7 @@ pub struct PairResult {
     pub right: String,
 }
 
+/// 配对评分模式：wc 单一模型；fc 左 fz 右 bc；rh 左 fs 右 pj。
 #[derive(Debug, Clone, Copy)]
 pub enum PairScoreMode {
     Wc,
@@ -30,6 +32,7 @@ pub enum PairScoreMode {
     RhLeftFsRightPj,
 }
 
+/// 配对候选行：名字、特征、初始分与梯度，供评分与筛值复用。
 #[derive(Debug, Clone)]
 pub struct PairRow {
     pub name: String,
@@ -38,6 +41,7 @@ pub struct PairRow {
     pub dt: [f64; 46],
 }
 
+/// 以指定模式串行计算左右两侧候选的配对评分并按筛值过滤写出，返回写入行数。
 pub fn run_pair_mode(
     type_same_set: bool,
     left_file: &Path,
@@ -61,6 +65,7 @@ pub fn run_pair_mode(
     )
 }
 
+/// run_pair_mode 的并行版本：按 threads 并发计算配对评分，返回写入行数。
 pub fn run_pair_mode_with_threads(
     type_same_set: bool,
     left_file: &Path,

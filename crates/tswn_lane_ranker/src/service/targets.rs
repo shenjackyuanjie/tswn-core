@@ -7,6 +7,7 @@
 use super::*;
 
 impl AppService {
+    /// 为指定 lane 生成 Correct 靶子配置，返回汇总、配置文本与轨迹元数据。
     pub fn generate_lane_targets(&self, lane: usize, req: TargetGenerationRequest) -> anyhow::Result<TargetGenerationResponse> {
         #[cfg(any())]
         const SUPPORT_COUNT: usize = 50;

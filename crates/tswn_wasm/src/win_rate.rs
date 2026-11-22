@@ -65,6 +65,7 @@ impl WinRateSession {
         }
     }
 
+    /// 取当前胜率结果快照。
     pub fn result_value(&self) -> WinRateResult {
         let progress = self.progress_value();
         WinRateResult {
@@ -93,6 +94,7 @@ impl WinRateSession {
         Ok(self.progress_value())
     }
 
+    /// 内部构造：创建胜率会话并校验线程选项。
     pub fn new_internal(raw_input: String, total_rounds: usize, options: WinRateOptions) -> WasmResult<Self> {
         let eval_rq = options.resolved_eval_rq();
         let _thread = options.resolved_thread().map_err(unsupported_option)?;
@@ -109,6 +111,7 @@ impl WinRateSession {
     }
 }
 
+/// 同步跑完全部轮数并返回胜率结果。
 pub fn run_win_rate_sync(raw_input: String, total_rounds: usize, options: WinRateOptions) -> WasmResult<WinRateResult> {
     let mut session = WinRateSession::new_internal(raw_input, total_rounds, options)?;
     let _ = session.step_internal(total_rounds.max(1))?;
@@ -117,6 +120,7 @@ pub fn run_win_rate_sync(raw_input: String, total_rounds: usize, options: WinRat
 
 #[wasm_bindgen]
 impl WinRateSession {
+    /// JS 构造函数：创建胜率会话并安装 panic hook。
     #[wasm_bindgen(constructor)]
     pub fn new(raw_input: String, total_rounds: usize, options: Option<Ts<WinRateOptions>>) -> WasmResult<WinRateSession> {
         crate::install_panic_hook();
@@ -124,8 +128,10 @@ impl WinRateSession {
         Self::new_internal(raw_input, total_rounds, options)
     }
 
+    /// 是否已完成全部轮数。
     pub fn is_finished(&self) -> bool { self.next_round >= self.total_rounds }
 
+    /// 当前进度快照。
     pub fn progress(&self) -> WasmResult<Ts<WinRateProgress>> { ts_out(&self.progress_value()) }
 
     /// 同步执行至多 batch_size 次剩余试验；省略为 100，0 按 1 处理，完成后不再新增试验。
@@ -136,5 +142,6 @@ impl WinRateSession {
     /// 复制当前累计结果，不要求已完成；宿主应检查 done，percent 的分母是 rounds_done。
     pub fn result(&self) -> WasmResult<Ts<WinRateResult>> { ts_out(&self.result_value()) }
 
+    /// 会话使用的评估口径。
     pub fn eval_rq(&self) -> f64 { self.eval_rq }
 }

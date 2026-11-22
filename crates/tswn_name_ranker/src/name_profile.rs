@@ -54,6 +54,7 @@ mod tests {
     }
 }
 
+/// 根据玩家技能生成文字类型标签：取等效熟练度达标的中文技能名按降序拼接。
 pub fn player_text_type(player: &PreparedPlayer) -> String {
     const LABELS: [&str; 35] = [
         "火球", "冰冻", "雷击", "地裂", "吸血", "投毒", "连击", "会心", "瘟疫", "命轮", "狂暴", "魅惑", "加速", "减速", "诅咒",

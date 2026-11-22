@@ -31,6 +31,7 @@ const WIN_RATE_SAMPLES: usize = 10_000;
 const ARCHIVE_SCORE_THRESHOLD: f64 = 48.0;
 const TEXT_TYPE_VERSION: &str = "single_effective_skill_passive_85_v2";
 
+/// 名字排名服务：数据库、共享运行状态与校准器。
 #[derive(Clone)]
 pub struct Service {
     pub db: Db,
@@ -39,6 +40,7 @@ pub struct Service {
 }
 
 impl Service {
+    /// 构造服务：按需刷新文字类型，并加载内置校准器。
     pub fn new(db: Db) -> anyhow::Result<Self> {
         refresh_text_types_if_needed(&db)?;
         Ok(Self {
@@ -52,12 +54,15 @@ impl Service {
         Ok(self.calibrator.legal_pairs(&self.db.abcp_candidates()?))
     }
 
+    /// 导出排名结果文本。
     pub fn export_results(&self) -> anyhow::Result<String> { self.db.export_results(&self.legal_abcp_pairs()?) }
 
+    /// 读取排名结果明细。
     pub fn result_details(&self) -> anyhow::Result<Vec<crate::model::ResultDetailRow>> {
         self.db.result_details(&self.legal_abcp_pairs()?)
     }
 
+    /// 添加一批名字：解析、构建玩家并导出 DIY，返回新增数量。
     pub fn add_names(&self, text: &str) -> anyhow::Result<usize> {
         let mut count = 0;
         for raw in parser::parse_names(text)? {
@@ -71,6 +76,7 @@ impl Service {
         Ok(count)
     }
 
+    /// 导入靶子配置文本，返回导入行数。
     pub fn import_targets(&self, text: &str) -> anyhow::Result<usize> {
         let rows = parser::parse_targets(text)?;
         let count = rows.len();
@@ -78,6 +84,7 @@ impl Service {
         Ok(count)
     }
 
+    /// 按文本设置一批名字的展开标记，返回变更数。
     pub fn set_names_expanded(&self, text: &str, expanded: bool) -> anyhow::Result<usize> {
         let names = parser::parse_names(text)?;
         self.db.set_names_expanded(&names, expanded)
@@ -120,6 +127,7 @@ impl Service {
         Ok(count)
     }
 
+    /// 提交重算任务；已有任务正在运行时返回错误。
     pub fn queue(&self, req: RecomputeRequest) -> anyhow::Result<()> {
         {
             let mut status = self.status.lock().unwrap();

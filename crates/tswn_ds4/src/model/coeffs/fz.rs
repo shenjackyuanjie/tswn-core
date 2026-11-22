@@ -1,5 +1,6 @@
 //! MODEL_FZ 系数，保留原始字面量与顺序。
 
+/// fz 模式评分系数，长度 `MODEL_SIZE`，字面量与顺序同 C++ 实现。
 #[rustfmt::skip]
 pub const MODEL_FZ: [f64; super::MODEL_SIZE] = [
     6708.739248485841, -22.235879082924,

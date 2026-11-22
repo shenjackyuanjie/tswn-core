@@ -28,6 +28,9 @@ fn write_event(out: &mut impl Write, event: BattleEvent<'_>) -> OutputResult {
     Ok(())
 }
 
+/// 执行一场规范战斗：`jsonl` 为 true 时按 initial/frame/result 逐条输出 JSONL，
+/// 否则输出人类可读的玩家状态与战斗过程；序列化或 I/O 失败即停止，
+/// 对局错误在 stderr 报告并以退出码 1 终止。
 pub fn run(raw: String, jsonl: bool, max_rounds: usize) {
     let result = BattleSession::new(
         &raw,
@@ -44,6 +47,7 @@ pub fn run(raw: String, jsonl: bool, max_rounds: usize) {
     }
 }
 
+/// 运行 runtime diff 诊断：收集两条执行路径的消息文本差异并打印，无差异时不输出。
 pub fn run_diff(raw: String) { super::runtime::run_runtime_diff(raw); }
 
 fn write_battle(session: &mut BattleSession, out: &mut impl Write, jsonl: bool) -> OutputResult {

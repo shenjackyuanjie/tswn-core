@@ -51,6 +51,7 @@ fn parse_skill(skill: &str) -> Result<usize, String> {
 }
 
 impl Condition {
+    /// 解析 `字段=值` 形式的筛选条件；格式或字段非法时返回中文错误。
     pub fn parse(spec: &str) -> Result<Self, String> {
         let (name, value) = spec.split_once('=').ok_or_else(|| format!("无效筛选条件: {spec}"))?;
         let field = if let Some(skill) = name.strip_prefix("skill-") {

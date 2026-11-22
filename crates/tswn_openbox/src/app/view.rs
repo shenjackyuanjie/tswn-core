@@ -28,6 +28,7 @@ const NAMER_PF_HIGHLIGHT_WIDTH: f32 = 116.0;
 const NAMER_PF_ACTION_WIDTH: f32 = 112.0;
 
 impl OpenboxApp {
+    /// 绘制 to-diy 工具界面。
     pub fn show_diy_ui(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
         tool_header(ui, "to-diy", "名字转 DIY / 召唤物 DIY", Some(&mut self.more_settings_open));
@@ -47,6 +48,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 绘制 namer-pf 工具界面。
     pub fn namer_pf_ui(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
         tool_header(ui, "namer-pf", "批量评分并筛选名字", Some(&mut self.more_settings_open));
@@ -72,6 +74,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 绘制批量胜率（cqd/cqp）工具界面。
     pub fn batch_rate_ui(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
         tool_header(ui, "cqd/cqp", "计算选手对靶子的平均胜率", Some(&mut self.more_settings_open));
@@ -109,6 +112,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 绘制 pair 工具界面。
     pub fn pair_ui(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
         tool_header(ui, "pair", "计算选手与队友组合表现", Some(&mut self.more_settings_open));
@@ -143,6 +147,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 绘制 base 工具界面。
     pub fn base_ui(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
         // base 只有一个名字输入，没有可调的设置项，因此不给“更多设置”入口。
@@ -177,6 +182,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 绘制更多设置窗口；未打开时直接返回。
     pub fn more_settings_window(&mut self, ctx: &egui::Context) {
         if !self.more_settings_open {
             return;
@@ -373,6 +379,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 绘制当前工具页的日志与结果区。
     pub fn log_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         // 每页各自持有日志与结果；任务事件由 `task_tool` 决定写入哪一页。
         let page = self.tool as usize;

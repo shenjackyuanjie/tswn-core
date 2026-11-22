@@ -8,6 +8,9 @@
 use crate::rc4::RC4;
 use crate::runtime::{EntityIdx, NormalizedUpdateFrame, RuntimeFrame};
 
+/// [`RC4`] 随机流的游标快照：`i`/`j` 索引与已产出字节数。
+///
+/// 不含 S-box，不能单独恢复随机流。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RngCheckpoint {
     pub i: u32,
@@ -16,6 +19,7 @@ pub struct RngCheckpoint {
 }
 
 impl RngCheckpoint {
+    /// 从当前 [`RC4`] 状态复制游标与字节计数。
     pub fn from_rc4(rng: &RC4) -> Self {
         Self {
             i: rng.i,
@@ -25,6 +29,7 @@ impl RngCheckpoint {
     }
 }
 
+/// 一次已提交主体行动的诊断记录，含行动前后可选的 RNG 快照。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TraceAction {
     pub round: u64,
@@ -35,6 +40,7 @@ pub struct TraceAction {
     pub rng_after: Option<RngCheckpoint>,
 }
 
+/// 一个可见帧边界的诊断记录：归一化消息、累计分值与帧末 RNG 快照。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TraceFrame {
     pub round: u64,
@@ -44,6 +50,7 @@ pub struct TraceFrame {
     pub rng_after: Option<RngCheckpoint>,
 }
 
+/// 按记录顺序累积的行动与可见帧诊断轨迹，仅用于比较执行边界，不推进对局。
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct RuntimeTrace {
     pub actions: Vec<TraceAction>,
@@ -51,8 +58,10 @@ pub struct RuntimeTrace {
 }
 
 impl RuntimeTrace {
+    /// 追加一条行动记录到轨迹末尾。
     pub fn record_action(&mut self, action: TraceAction) { self.actions.push(action); }
 
+    /// 把一个 Runtime 帧归一化为消息序列后追加为可见帧记录，并汇总分值与胜者。
     pub fn record_frame(
         &mut self,
         round: u64,

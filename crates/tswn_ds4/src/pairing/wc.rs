@@ -10,6 +10,7 @@ use crate::error::Ds4Result;
 use super::common::{PairScoreMode, run_pair_mode, run_pair_mode_with_threads};
 use crate::model::coeffs::MODEL_WC;
 
+/// 以 wc 配对口径（Wc）串行运行配对评分，返回写入行数。
 pub fn run_wc(type_same_set: bool, left_file: &Path, right_file: &Path, output_file: &Path, sieve: i32) -> Ds4Result<usize> {
     run_pair_mode(
         type_same_set,
@@ -23,6 +24,7 @@ pub fn run_wc(type_same_set: bool, left_file: &Path, right_file: &Path, output_f
     )
 }
 
+/// wc 配对口径的并行版本：按 threads 并发运行，返回写入行数。
 pub fn run_wc_with_threads(
     type_same_set: bool,
     left_file: &Path,

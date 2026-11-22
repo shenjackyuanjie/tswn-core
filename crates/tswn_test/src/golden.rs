@@ -12,10 +12,15 @@ use tswn_core::runtime::{RuntimeRunner, default_custom_runtime_import_config};
 
 use crate::{EngineAdapter, EventSnapshot, RuntimeEngine, SnapshotKind};
 
+/// 冻结 stress 基线的 schema 版本。
 pub const STRESS_GOLDEN_SCHEMA_VERSION: u32 = 1;
+/// 逐轮精确追踪的 case 数：87。
 pub const EXACT_TRACE_CASE_COUNT: usize = 87;
+/// stress case 总数：37。
 pub const STRESS_CASE_COUNT: usize = 37;
+/// golden 比对允许的最大轮数：20000；超过即失败。
 pub const MAX_GOLDEN_ROUNDS: usize = 20_000;
+/// 逐轮摘要的规范化摘要格式（字段与顺序）。
 pub const CANONICAL_DIGEST_FORMAT: &str =
     "sha256-v1(round-index,event-kind,message,caster-name,score,post-round-rc4,winner-team)";
 
@@ -72,6 +77,7 @@ macro_rules! stress_case {
     };
 }
 
+/// 内嵌的 stress case 列表；输入在编译期嵌入。
 pub const STRESS_CASES: &[StressCaseSpec] = &[
     stress_case!("1v1-0f92cb76cc37fdc5.txt"),
     stress_case!("2v2-554f4128af707167.txt"),
@@ -112,12 +118,14 @@ pub const STRESS_CASES: &[StressCaseSpec] = &[
     stress_case!("score-mario-r11350.txt", unescape_x02),
 ];
 
+/// 冻结的 RC4 状态：i 与 j。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rc4Golden {
     pub i: u64,
     pub j: u64,
 }
 
+/// 单个 case 的冻结基线：输入哈希、eval_rq、胜者、轮数、总分、最终 RC4 与逐轮摘要。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StressCaseGolden {
     pub file_name: String,
@@ -130,6 +138,7 @@ pub struct StressCaseGolden {
     pub round_digests: Vec<String>,
 }
 
+/// 整套 stress 基线：schema 版本、计数与全部 case 条目。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StressGoldenSet {
     pub schema_version: u32,

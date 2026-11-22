@@ -41,6 +41,7 @@ pub struct RoundOutcome {
     pub winner_team: Option<usize>,
 }
 
+/// 调度阶段选中的内置主动技能，附普攻/技能共用的固定 lane 编号。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SelectedBuiltinSkill {
     pub skill: BuiltinActiveSkill,
@@ -50,6 +51,7 @@ pub struct SelectedBuiltinSkill {
 /// 内置主动技能的已选目标；常规上限为地震的 6 个目标，直接保存在栈内。
 pub type PreparedTargetList = smallvec::SmallVec<[EntityIdx; 8]>;
 
+/// 一个内置主动技能的完整行动计划：选中的技能加上由技能 `aa` 规则选出的目标列表。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreparedBuiltinSkillAction {
     pub selected: SelectedBuiltinSkill,
@@ -63,6 +65,7 @@ pub struct PreparedBossSkillAction {
     pub targets: PreparedTargetList,
 }
 
+/// 普通攻击命中时附加的伤害效果；新冠（covid）与懒羊羊（lazy）变体记录传染源与变异值。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlainAttackOnDamage {
     None,
@@ -77,6 +80,9 @@ pub enum PlainAttackOnDamage {
     LazyDefaultSpread,
 }
 
+/// 普通角色在本回合准备执行的行动，由 [`super::scheduler`] 选出后交给结算逻辑。
+///
+/// `ThanosSnap` 只标记是否发动，实际目标在结算时按原版顺序与死亡链交错抽取。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PreparedPlainAction {
     BasicAttack {

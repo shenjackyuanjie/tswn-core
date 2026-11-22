@@ -36,6 +36,7 @@ impl PlannedTargeting {
 }
 
 impl CombatRuntime {
+    /// 推进一个最小回合并返回 outcome；没有可见内容时继续推进直到产生。
     pub fn run_minimal_round(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture::<true, _>(round_outcome) }
 
     #[cfg(test)]
@@ -65,6 +66,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 尝试推进一个最小回合；未选出行动时返回 None。
     pub fn run_minimal_round_once(&mut self) -> Option<RoundOutcome> {
         self.run_minimal_round_once_with_capture::<true, _>(round_outcome)
     }
@@ -471,6 +473,7 @@ impl CombatRuntime {
         self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, &skill_plans.late, updates);
     }
 
+    /// 用既定行动与更新收尾一个回合，同步胜者并产出 outcome。
     pub fn finish_round(&mut self, action: Option<ActionPlan>, updates: RunUpdates) -> RoundOutcome {
         if updates.capture_updates {
             self.finish_round_with_capture::<true, _>(action, updates, round_outcome)
@@ -501,6 +504,7 @@ impl CombatRuntime {
         build(action, frame, winner_team)
     }
 
+    /// 掷一次聪明判定：智慧高于随机掷值视为聪明。
     pub fn roll_actor_smart(&mut self, actor: EntityIdx) -> bool {
         let smart_byte = self.rng.next_u8();
         let smart_roll = (smart_byte & 63) as i32;
@@ -508,6 +512,7 @@ impl CombatRuntime {
     }
 
     #[cfg(not(feature = "no_debug"))]
+    /// 调试探针：当前行动者是否匹配探针指定的名称或编号。
     pub fn probe_plain_action_matches(&self, actor: EntityIdx) -> bool {
         crate::debug::probe_action()
             .map(|needle| {
@@ -518,6 +523,7 @@ impl CombatRuntime {
             .unwrap_or(false)
     }
 
+    /// 为行动者准备本回合行动：优先消费外部脚本指令，否则按规则选择技能。
     pub fn prepare_plain_action(
         &mut self,
         actor: EntityIdx,

@@ -7,6 +7,7 @@
 
 use crate::error::{Ds4Error, Ds4Result};
 
+/// DS4 单评模式，判别值与协议编号一致：bc=1、fz=2、wc=3、fs=4、pj=5。
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ScoreMode {
     Bc = 1,
@@ -17,8 +18,10 @@ pub enum ScoreMode {
 }
 
 impl ScoreMode {
+    /// 全部模式，顺序 bc/fz/wc/fs/pj。
     pub const ALL: [Self; 5] = [Self::Bc, Self::Fz, Self::Wc, Self::Fs, Self::Pj];
 
+    /// 返回模式的 CLI 字符串名。
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Bc => "bc",
@@ -29,6 +32,7 @@ impl ScoreMode {
         }
     }
 
+    /// 把协议编号解析为模式；未知编号返回解析错误。
     pub fn from_i32(value: i32) -> Ds4Result<Self> {
         match value {
             1 => Ok(Self::Bc),
@@ -41,8 +45,10 @@ impl ScoreMode {
     }
 }
 
+/// 系数索引表：线性项下标与二次项下标（None 表示被省略的项），供评分与梯度共用。
 pub type PositionTables = ([usize; 46], [[Option<usize>; 46]; 46]);
 
+/// 构建系数索引表：pos 记录各线性项在模型数组中的位置，pos2 记录二次项位置。
 #[allow(clippy::needless_range_loop)]
 pub fn init_pos_tables() -> PositionTables {
     let mut pos = [0usize; 46];
@@ -68,6 +74,7 @@ pub fn init_pos_tables() -> PositionTables {
     (pos, pos2)
 }
 
+/// 按索引表计算常数项、线性项与二次上三角组成的评分。
 pub fn base_score(x: &[f64; 46], model: &[f64; 1124], pos: &[usize; 46], pos2: &[[Option<usize>; 46]; 46]) -> f64 {
     let mut score = model[0];
     for i in 0..46 {
@@ -83,6 +90,7 @@ pub fn base_score(x: &[f64; 46], model: &[f64; 1124], pos: &[usize; 46], pos2: &
     score
 }
 
+/// 计算评分对 46 维特征的梯度，供潜力搜索使用。
 pub fn gradient(x: &[f64; 46], model: &[f64; 1124], pos: &[usize; 46], pos2: &[[Option<usize>; 46]; 46]) -> [f64; 46] {
     let mut dt = [0.0_f64; 46];
     for i in 0..46 {
@@ -97,6 +105,7 @@ pub fn gradient(x: &[f64; 46], model: &[f64; 1124], pos: &[usize; 46], pos2: &[[
     dt
 }
 
+/// 从完整名字提取的评分特征：名字基底、技能、val 基底、46 维特征向量及末位标记等。
 #[derive(Debug, Clone)]
 pub struct NameFeature {
     pub name: String,
@@ -113,6 +122,7 @@ pub struct NameFeature {
 }
 
 impl NameFeature {
+    /// 按 C++ build() 的裁剪规则从完整名字构建特征；空名字返回解析错误。
     pub fn from_full_name(full: &str) -> Ds4Result<Self> {
         let bytes = full.as_bytes();
         if bytes.is_empty() {
@@ -211,6 +221,7 @@ impl NameFeature {
         })
     }
 
+    /// 用当前基底数据重算 46 维特征向量。
     pub fn recompute_x(&self) -> [f64; 46] {
         let mut core = NameCore::new();
         core.val_base = self.val_base;
@@ -226,6 +237,7 @@ impl NameFeature {
     }
 }
 
+/// 一次评分的完整剖面：模式、当前分、潜力分与所用特征。
 #[derive(Debug, Clone)]
 pub struct ScoreProfile {
     pub mode: ScoreMode,
@@ -235,9 +247,11 @@ pub struct ScoreProfile {
 }
 
 impl ScoreProfile {
+    /// 把评分剖面格式化为 `score potential name` 输出行。
     pub fn to_line(&self) -> String { format!("{:.0} {:.0} {}", self.score, self.potential, self.feature.name) }
 }
 
+/// 评分上下文：预建的系数索引表，可跨调用与跨线程复用。
 #[derive(Debug, Clone)]
 pub struct ScoreContext {
     pub pos: [usize; 46],
@@ -245,6 +259,7 @@ pub struct ScoreContext {
 }
 
 impl ScoreContext {
+    /// 构建默认评分上下文（初始化索引表）。
     pub fn new() -> Self {
         let (pos, pos2) = init_pos_tables();
         Self { pos, pos2 }

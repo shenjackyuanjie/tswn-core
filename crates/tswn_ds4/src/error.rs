@@ -9,8 +9,10 @@ use std::fmt::{Display, Formatter};
 use std::io;
 use std::path::PathBuf;
 
+/// tswn_ds4 内部统一的结果类型，错误为 Ds4Error。
 pub type Ds4Result<T> = Result<T, Ds4Error>;
 
+/// tswn_ds4 错误枚举：IO、解析、CLI 参数与缺失配置（含已检查路径列表）。
 #[derive(Debug)]
 pub enum Ds4Error {
     Io(io::Error),
@@ -20,8 +22,10 @@ pub enum Ds4Error {
 }
 
 impl Ds4Error {
+    /// 构造解析错误。
     pub fn parse(message: impl Into<String>) -> Self { Self::Parse(message.into()) }
 
+    /// 构造 CLI 用法错误。
     pub fn cli(message: impl Into<String>) -> Self { Self::Cli(message.into()) }
 }
 

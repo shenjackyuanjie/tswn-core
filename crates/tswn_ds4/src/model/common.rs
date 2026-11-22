@@ -17,12 +17,15 @@ use crate::output::AtomicFileWriter;
 use rayon::ThreadPoolBuilder;
 use rayon::prelude::*;
 
+/// 单个名字的评分结果：当前分与估计的潜力分。
 #[derive(Debug, Clone, Copy)]
 pub struct SingleScore {
     pub score: f64,
     pub potential: f64,
 }
 
+/// 按模式与两道筛值串行评分输入文件：score 或 potential 达标即写入，输出以 CRLF 结尾并原子落盘；
+/// 输入文件不存在时按空输入处理，返回写入行数。
 pub fn score_file(
     input_file: &Path,
     output_file: &Path,
@@ -58,6 +61,7 @@ pub fn score_file(
     Ok(written)
 }
 
+/// score_file 的并行版本：用 rayon 线程池按 1024 个名字分块并发评分，返回写入行数。
 pub fn score_file_with_threads(
     input_file: &Path,
     output_file: &Path,
@@ -127,6 +131,7 @@ fn write_scored_chunk(
     Ok(written)
 }
 
+/// 评估单个名字：构建特征并计算当前分，未通过模式门控时记 1111；通过门控时沿 hp 与技能维度做二次搜索估计潜力分。
 pub fn evaluate_name(full_name: &str, mode: ScoreMode, model: &[f64; MODEL_SIZE], ctx: &ScoreContext) -> Ds4Result<SingleScore> {
     let feature = NameFeature::from_full_name(full_name)?;
     let base_x = feature.x;

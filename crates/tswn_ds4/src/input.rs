@@ -6,6 +6,7 @@
 
 #![allow(dead_code)]
 
+/// 一行评分输入记录：原始分、PTT 原始分与名字，字段口径与 C++ two_*.exe 一致。
 #[derive(Debug, Clone)]
 pub struct InputRecord {
     pub raw_score: f64,
@@ -15,6 +16,7 @@ pub struct InputRecord {
 
 #[allow(dead_code)]
 impl InputRecord {
+    /// 按 C++ two_*.exe 的读取方式解析 `score ptt name` 一行，保留名称中的尾随空格与 CR；字段不足时返回 None。
     pub fn parse_scored_line(line: &str) -> Option<Self> {
         // C++ two_*.exe 解析器行为：
         // 1) `cin >> score; getchar(); cin >> ptt; getchar();`

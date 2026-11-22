@@ -18,6 +18,8 @@ pub(super) fn run_runtime_diff(raw: String) {
     }
 }
 
+/// 跑一局自定义 runtime 对局，把完整的规范化诊断 JSON 打印到 stdout；
+/// 输入构建、执行或序列化失败时在 stderr 报告中文错误并以退出码 1 终止。
 pub fn run_runtime_normalized(raw: String, max_rounds: usize) {
     match runtime_normalized_json(&raw, max_rounds) {
         Ok(json) => println!("{json}"),

@@ -428,6 +428,7 @@ impl RunUpdates {
         }
     }
 
+    /// 返回本批次记录的 legacy 主体行动边界；[`Self::new_no_capture()`] 高速路径下为空。
     #[cfg(not(feature = "no_debug"))]
     pub fn action_boundaries(&self) -> &[LegacyActionBoundary] { &self.action_boundaries }
 

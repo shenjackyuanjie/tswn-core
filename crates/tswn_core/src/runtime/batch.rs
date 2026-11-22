@@ -122,10 +122,13 @@ pub struct RuntimeBatchSummary {
 }
 
 impl RuntimeBatchSummary {
+    /// 胜率百分比；分母为 `total`，空统计按 0 处理。
     pub fn win_rate_percent(self) -> f64 { self.wins as f64 * 100.0 / self.total.max(1) as f64 }
 
+    /// 万分制评分（胜率乘以 10000）；分母口径与 [`Self::win_rate_percent`] 相同。
     pub fn score_10000(self) -> f64 { self.wins as f64 * 10_000.0 / self.total.max(1) as f64 }
 
+    /// 把 `other` 的计数与计时累加到自身，用于合并分片或 worker 的部分统计。
     pub fn merge(&mut self, other: Self) {
         self.wins += other.wins;
         self.total += other.total;
@@ -135,6 +138,10 @@ impl RuntimeBatchSummary {
     }
 }
 
+/// 批量评分或胜率执行失败的顶层错误。
+///
+/// `DefaultProfile` 表示默认自定义 profile 构建失败，`Import` 表示阵容导入失败；
+/// 逐轮初始化失败不经过该错误，而是计入 [`RuntimeBatchSummary::errors`]。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeBatchError {
     DefaultProfile(DefaultCustomRuntimeProfileError),

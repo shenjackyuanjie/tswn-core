@@ -1,5 +1,6 @@
 use super::*;
 
+/// 组装默认游戏规则的导入配置：注册表、bed2 kind 与使魔 overlay，以及默认 handler 绑定。
 pub fn default_custom_runtime_import_config() -> Result<CustomRuntimeImportConfig<'static>, DefaultCustomRuntimeProfileError> {
     let mut builder = ExtensionRegistryBuilder::default();
     let summon = builder.register_skill(

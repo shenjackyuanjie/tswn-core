@@ -58,6 +58,7 @@ impl CombatRuntime {
         }
     }
 
+    /// PRE_ACTION 计划中含驱散技能时，选出该技能的驱散目标。
     pub fn selected_pre_action_target(&mut self, plan: &SkillHookPlan, actor: EntityIdx, smart: bool) -> Option<EntityIdx> {
         let has_disperse = plan.entries.iter().any(|entry| {
             self.registry
@@ -546,6 +547,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 吞噬结算：合并属性与固定槽位技能，转移 MP 与行动点；有实际合并返回 true。
     pub fn apply_plain_merge_into(&mut self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) -> bool {
         self.ensure_effect_entity("merge", "caster", caster);
         self.ensure_effect_entity("merge", "target", target);
@@ -669,6 +671,7 @@ impl CombatRuntime {
         true
     }
 
+    /// 召唤物自爆的自身死亡链：走 die hook 并移出战场。
     pub fn drain_summon_explode_self_death_into(&mut self, caster: EntityIdx, updates: &mut RunUpdates) {
         let caster_entity = self
             .entities

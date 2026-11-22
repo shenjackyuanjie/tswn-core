@@ -1,3 +1,9 @@
+//! 对局初始化：解析输入文本与 roster，构造可重复应用的初始状态。
+//!
+//! PreparedBattleInit 保存完整初始状态（玩家、输入分组、行动序、RNG 等），
+//! PreparedBattleSeed 只保留 seed 会改变的部分，供批量胜率逐局快速应用；
+//! 文本拆分、roster 构建与 seed 应用分别由 init、roster、seed 子模块完成。
+
 use super::*;
 use crate::namerena::{
     NAME_MAX_LEN, PlayerStats, RINICK_MODIFIER_BOSS_ALIAS, SAITAMA_RETIREMENT_WINNER, boss_combat_identity_override,
@@ -10,6 +16,7 @@ mod init;
 mod roster;
 mod seed;
 
+/// 对局初始化失败：单个玩家构造错误，或准备好的实体数与 Runtime 不一致。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeBattleInitError {
     Player {
@@ -396,6 +403,7 @@ pub struct PreparedBattleRoster {
     recycle_score_buffers: bool,
 }
 
+/// 一局对局的完整初始状态，可重复应用到 CombatRuntime。
 #[derive(Debug, Clone)]
 pub struct PreparedBattleInit {
     players: Vec<Option<PreparedPlayerInit>>,

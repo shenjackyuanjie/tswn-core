@@ -272,6 +272,7 @@ impl CombatRuntime {
         self.world.revive_alive(summoned, team);
     }
 
+    /// 为使魔分配唯一名字：以根实体名为基础，追加实体槽中的自增计数。
     pub fn allocate_plain_minion_name(&mut self, actor: EntityIdx) -> String {
         let root = self.plain_minion_name_root(actor);
         let counter_slot = self

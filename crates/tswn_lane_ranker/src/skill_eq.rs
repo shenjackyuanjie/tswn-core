@@ -22,6 +22,7 @@ const SKILL_NAME_MAP: [&str; 35] = [
     "反击", "吞噬", "召灵", "垂死", "隐匿",
 ];
 
+/// 分组的文字技能摘要：展示用组合名、类型标签与成员明细。
 #[derive(Debug, Clone)]
 pub struct GroupSkillSummary {
     /// UI / 导出展示用组合名。双人组按原算法 cfz 从低到高显示。
@@ -36,6 +37,7 @@ pub struct GroupSkillSummary {
     pub skill_totals: Vec<SkillValue>,
 }
 
+/// 从 canonical 文本（+ 分隔成员）计算分组的技能摘要。
 pub fn compute_group_skill_summary_from_canonical(canonical: &str) -> GroupSkillSummary {
     let members: Vec<String> = canonical
         .split('+')
@@ -46,6 +48,7 @@ pub fn compute_group_skill_summary_from_canonical(canonical: &str) -> GroupSkill
     compute_group_skill_summary(&members)
 }
 
+/// 从成员列表计算分组的技能摘要。
 pub fn compute_group_skill_summary(members: &[String]) -> GroupSkillSummary {
     let raw_members: Vec<String> = members
         .iter()

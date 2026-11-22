@@ -34,6 +34,7 @@ pub fn scrolled_to_end(content: egui::Vec2, viewport: egui::Rect, offset: egui::
 }
 
 impl ResultsView {
+    /// 绘制视图切换控件（纯文本/卡片/表格）与对应帮助入口。
     pub fn controls(&mut self, ui: &mut egui::Ui, active_help: &mut Option<HelpTopic>, kind: ResultKind) {
         ui.horizontal_wrapped(|ui| {
             for (mode, label) in [(ViewMode::Text, "纯文本"), (ViewMode::Cards, "卡片"), (ViewMode::Table, "表格")] {
@@ -153,6 +154,7 @@ impl ResultsView {
         }
     }
 
+    /// 绘制结果区：按当前视图模式渲染日志、卡片或表格。
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         ui.scope(|ui| {
             // 行高按等宽字体计算，纵向行距沿用环境值：表格、卡片与纯文本日志逐行对齐。

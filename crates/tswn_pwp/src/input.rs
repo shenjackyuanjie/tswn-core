@@ -16,6 +16,7 @@ use tswn_core::{
     runtime::RuntimeRunner,
 };
 
+/// 一个样本 case：来源标识、原始输入、分组与对局 ID。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Case {
     pub source: String,
@@ -24,6 +25,7 @@ pub struct Case {
     pub matchup_id: String,
 }
 
+/// 由分组计算规范化对局 ID：组内与组间排序后取摘要。
 pub fn matchup_id(groups: &[Vec<String>]) -> String {
     let mut canonical = groups.to_vec();
     for team in &mut canonical {
@@ -83,6 +85,7 @@ fn files(path: &Path, result: &mut Vec<std::path::PathBuf>) -> Result<()> {
     Ok(())
 }
 
+/// 从参数加载 case 列表：--input 与 --names 必须且只能选一个，返回 case 与主种子。
 pub fn load(args: &GenerateArgs) -> Result<(Vec<Case>, String)> {
     ensure!(
         args.input.is_some() != args.names.is_some(),

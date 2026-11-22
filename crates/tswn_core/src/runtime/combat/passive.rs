@@ -8,6 +8,7 @@ enum PlainUpdateEndCounter {
 }
 
 impl CombatRuntime {
+    /// 行动前解除隐匿并重算属性。
     pub fn clear_plain_hide_before_action(&mut self, actor: EntityIdx) {
         let Some(actor) = self.entities.get_mut(actor) else {
             return;
@@ -19,6 +20,7 @@ impl CombatRuntime {
         actor.refresh_runtime_stats_from_template();
     }
 
+    /// 按 post_damage 顺序执行受伤方的被动链，结尾处理新冠与懒癌传染。
     pub fn drain_plain_post_damage_skill_chain_into(
         &mut self,
         target: EntityIdx,
@@ -136,6 +138,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 反击被动：按等级与智慧判定是否登记本批次的反击目标。
     pub fn run_plain_counter_post_damage_into(
         &mut self,
         target: EntityIdx,
@@ -314,6 +317,7 @@ impl CombatRuntime {
         updates.on_update_end.push(owner.0 as usize);
     }
 
+    /// 排空 update-end 队列并执行待发反击，最多迭代 64 轮。
     pub fn drain_plain_update_end_into(&mut self, updates: &mut RunUpdates) {
         let mut guard = 0usize;
         while guard < 64 && !updates.on_update_end.is_empty() {
@@ -328,6 +332,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 执行一个实体的待发反击：先普通反击，再结算玄月反击。
     pub fn run_plain_counter_update_end_into(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
         for _level in self.plain_update_end_counter_levels(owner, DEFAULT_CORE_COUNTER_SKILL_EXPORT) {
             self.run_plain_update_end_counter_attack_into(owner, PlainUpdateEndCounter::Counter, updates);
@@ -426,6 +431,7 @@ impl CombatRuntime {
         self.drain_plain_attack_with_atp_into(owner, target, false, atp, updates);
     }
 
+    /// 垂死抗争被动：低体力时按等级概率激活，全属性上升。
     pub fn run_plain_upgrade_post_damage_into(
         &mut self,
         target: EntityIdx,
@@ -470,6 +476,7 @@ impl CombatRuntime {
         assert!(target.activate_upgrade_runtime(), "runtime upgrade activated twice");
     }
 
+    /// 隐匿被动：受伤后按等级概率进入隐匿，降低吸引力。
     pub fn run_plain_hide_post_damage_into(
         &mut self,
         target: EntityIdx,

@@ -123,8 +123,10 @@ impl FeatureEncoder {
         })
     }
 
+    /// 本编码器绑定的 manifest：schema 版本、张量规格与支持域。
     pub fn manifest(&self) -> &EncoderManifest { &self.manifest }
 
+    /// 本编码器的容量档位，决定各维上限与批缓冲形状。
     pub fn profile(&self) -> &ProfileSpec { &self.profile }
 
     /// 分配一份单样本批缓冲并编码，成功后由调用方拥有全部张量。

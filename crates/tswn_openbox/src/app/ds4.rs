@@ -20,6 +20,7 @@ use super::state::OpenboxApp;
 use super::style::Palette;
 use super::view::tool_header;
 
+/// DS4 工具的界面状态：工作目录、已加载的配置文档与提示消息。
 pub struct Ds4State {
     pub root: String,
     pub document: Value,
@@ -46,6 +47,7 @@ impl Ds4State {
         std::path::absolute(self.root.trim()).map_err(|err| err.to_string())
     }
 
+    /// 从工作目录下的 config.json 读取并解析配置；格式错误时返回中文提示。
     pub fn load(&mut self) -> Result<(), String> {
         let root = self.root_path()?;
         let path = root.join("config.json");
@@ -104,6 +106,7 @@ impl Ds4State {
 }
 
 impl OpenboxApp {
+    /// 绘制 DS4 工作流说明界面（从名字到候选组合的步骤指引）。
     pub fn ds4_workflow_ui(&mut self, ui: &mut egui::Ui) {
         let palette = Palette::of(ui);
         let requested_help = Cell::new(None);
@@ -122,6 +125,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 绘制 DS4 主界面：目录选择、参数配置与运行控制。
     pub fn ds4_ui(&mut self, ui: &mut egui::Ui) {
         tool_header(ui, "DS4", "批量评分、增量配对与实战筛选", Some(&mut self.more_settings_open));
         let palette = Palette::of(ui);
@@ -264,6 +268,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 绘制 DS4 的更多设置窗口。
     pub fn ds4_more_settings(&mut self, ui: &mut egui::Ui) {
         let palette = Palette::of(ui);
         let requested_help = Cell::new(None);
@@ -308,6 +313,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 保存当前配置并启动 DS4 后台任务；保存失败时记录错误且不启动。
     pub fn start_ds4(&mut self) {
         let (root, config) = match self.ds4.save() {
             Ok(value) => value,

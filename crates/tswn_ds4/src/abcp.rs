@@ -22,6 +22,9 @@ fn model_dir(root: &Path) -> PathBuf {
         .unwrap_or_else(|| root.join("abcp5"))
 }
 
+/// 调用外部 ABCP5 预测器（`abcp5.exe`、`model4.onnx`、`scale.txt`）为 input 中的名字打分并原子写入 output，返回结果行数。
+/// input 无有效行时直接写空输出并返回 0；预测失败时按 threads、threads/2、threads/4、1 依次降档重试，
+/// 每次尝试覆盖中间输出，诊断信息累积写入 output 同名的 `.failure.txt`。
 pub fn predict(root: &Path, input: &Path, output: &Path, sieve: i32, threads: usize) -> Ds4Result<usize> {
     let mut has_input = false;
     for line in BufReader::new(fs::File::open(input)?).lines() {
@@ -94,6 +97,7 @@ fn thread_attempts(threads: usize) -> Vec<usize> {
     attempts
 }
 
+/// 用指定 sieve 与线程数准备三方配对（three pairs）的预测输入，返回处理的记录数。
 pub fn prepare_three_pairs(root: &Path, sieve: i32, threads: usize) -> Ds4Result<usize> {
     prepare_three_pairs_with(root, |input, output| predict(root, input, output, sieve, threads))
 }
@@ -138,6 +142,7 @@ fn prepare_three_pairs_with(root: &Path, mut predict: impl FnMut(&Path, &Path) -
     Ok(count)
 }
 
+/// 用指定 sieve 与线程数对最终配对集合执行 ABCP 预测，返回预测结果行数。
 pub fn predict_final_pairs(root: &Path, sieve: i32, threads: usize) -> Ds4Result<usize> {
     predict_final_pairs_with(root, |input, output| predict(root, input, output, sieve, threads))
 }
@@ -291,6 +296,7 @@ fn cfz(feature: &NameFeature) -> i32 {
     ((feature.x[1] - feature.x[2] + feature.x[3] + feature.x[5] - feature.x[6]) * 2.0 + feature.x[4] + feature.x[7]) as i32
 }
 
+/// FS 特征门控判定：按 x[31]、x[32] 与交叉项的线性组合是否达到 50.0，决定样本是否通过 FS 筛选。
 pub fn fs_gate(x: &[f64; 46]) -> bool { x[31] * 2.0 + x[32] + 0.01 * x[31] * x[19] + 0.01 * x[31] * x[36] >= 50.0 }
 
 #[cfg(test)]

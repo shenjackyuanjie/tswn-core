@@ -8,6 +8,7 @@ use super::*;
 /// 未显式提供 guard 的语言绑定统一使用的最大主回合数。
 pub const BINDING_COMPLETION_MAX_ROUNDS: usize = 20_000;
 
+/// 语言绑定可见的使魔类型：分身、召唤物、幻影与亡灵。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeMinionKind {
     Clone,
@@ -17,6 +18,7 @@ pub enum RuntimeMinionKind {
 }
 
 impl RuntimeMinionKind {
+    /// 使魔类型的稳定字符串名，与绑定层取值一致。
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Clone => "clone",
@@ -74,10 +76,12 @@ impl RuntimeRunner {
         PreparedBattleInit::split_namerena_raw(raw_input)
     }
 
+    /// 按默认 eval_rq 从分组与 seed 行构造会话。
     pub fn new_from_groups_with_seed(groups: &[Vec<String>], seed: &[String]) -> Result<Self, RuntimeBuildError> {
         Self::new_from_groups_with_seed_and_eval_rq(groups, seed, crate::namerena::eval_name::DEFAULT_EVAL_RQ)
     }
 
+    /// 按指定 eval_rq 从分组与 seed 行构造会话。
     pub fn new_from_groups_with_seed_and_eval_rq(
         groups: &[Vec<String>],
         seed: &[String],
@@ -98,15 +102,18 @@ impl RuntimeRunner {
         prepared.new_with_seed(seed).map_err(Into::into)
     }
 
+    /// 用默认 eval_rq 预构建可复用阵容。
     pub fn prepare_groups(groups: &[Vec<String>]) -> Result<PreparedRuntimeRunner, RuntimeBuildError> {
         Self::prepare_groups_with_eval_rq(groups, crate::namerena::eval_name::DEFAULT_EVAL_RQ)
     }
 
+    /// 按指定 eval_rq 预构建可复用阵容。
     pub fn prepare_groups_with_eval_rq(groups: &[Vec<String>], eval_rq: f64) -> Result<PreparedRuntimeRunner, RuntimeBuildError> {
         let config = default_custom_runtime_import_config()?;
         PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(groups, eval_rq, config).map_err(Into::into)
     }
 
+    /// 从准备模板与 seed 行构造会话。
     pub fn new_from_prepared_with_seed(prepared: &PreparedRuntimeRunner, seed: &[String]) -> Result<Self, RuntimeBuildError> {
         prepared.new_with_seed(seed).map_err(Into::into)
     }
@@ -119,14 +126,18 @@ impl RuntimeRunner {
         self.run_to_completion(BINDING_COMPLETION_MAX_ROUNDS).winner_team.is_some()
     }
 
+    /// 是否已产生胜者队伍。
     pub fn have_winner(&self) -> bool { self.runtime.world.winner_team().is_some() }
 
+    /// 获胜的输入组下标列表。
     pub fn winner_team_indices(&self) -> Vec<usize> {
         (0..self.input_groups.len()).filter(|index| self.input_group_won(*index)).collect()
     }
 
+    /// 首个获胜的输入组下标。
     pub fn winner_team_index(&self) -> Option<usize> { self.winner_team_indices().into_iter().next() }
 
+    /// 胜者队伍成员的语言绑定 ID 列表。
     pub fn winner_ids(&self) -> Vec<PlrId> {
         self.runtime
             .world
@@ -138,12 +149,15 @@ impl RuntimeRunner {
             .collect()
     }
 
+    /// 全部实体（含生成空槽之外的实际实体）的语言绑定 ID。
     pub fn all_player_ids(&self) -> Vec<PlrId> { self.runtime.entities.iter().map(|(entity, _)| entity.0 as PlrId).collect() }
 
+    /// 存活实体的语言绑定 ID 列表。
     pub fn alive_player_ids(&self) -> Vec<PlrId> {
         self.runtime.world.flat_alive().iter().map(|entity| entity.0 as PlrId).collect()
     }
 
+    /// 按输入组分别列出存活实体的语言绑定 ID。
     pub fn alive_player_groups(&self) -> Vec<Vec<PlrId>> {
         (0..self.input_groups.len())
             .map(|team| {
@@ -158,12 +172,14 @@ impl RuntimeRunner {
             .collect()
     }
 
+    /// 取指定 ID 实体的标准快照；ID 不存在返回 None。
     pub fn player_snapshot(&self, id: PlrId) -> Option<RuntimePlayerSnapshot> {
         let entity_idx = EntityIdx(id.try_into().ok()?);
         let entity = self.runtime.entities.get(entity_idx)?;
         Some(self.snapshot_entity(entity_idx, entity))
     }
 
+    /// 取全部实体的标准快照。
     pub fn player_snapshots(&self) -> Vec<RuntimePlayerSnapshot> {
         self.runtime
             .entities

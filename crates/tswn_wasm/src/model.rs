@@ -30,10 +30,13 @@ pub struct FightOptions {
 }
 
 impl FightOptions {
+    /// 取生效的评估口径；未设置时用默认 fight 口径。
     pub fn resolved_eval_rq(&self) -> f64 { self.eval_rq.unwrap_or(tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ) }
 
+    /// 是否在快照中附带图标；未设置时默认 false。
     pub fn include_icons(&self) -> bool { self.include_icons.unwrap_or(false) }
 
+    /// 是否捕获回放；未设置时默认 true。
     pub fn capture_replay(&self) -> bool { self.capture_replay.unwrap_or(true) }
 }
 
@@ -47,8 +50,10 @@ pub struct WinRateOptions {
 }
 
 impl WinRateOptions {
+    /// 取生效的胜率评估口径；未设置时用胜率默认值。
     pub fn resolved_eval_rq(&self) -> f64 { self.eval_rq.unwrap_or(tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ) }
 
+    /// 解析线程选项；WASM 目标只接受 0 或 1，均按单线程处理。
     pub fn resolved_thread(&self) -> Result<u32, &'static str> {
         match self.thread.unwrap_or(0) {
             0 | 1 => Ok(1),
@@ -92,6 +97,7 @@ impl Default for BattleOptions {
 }
 
 impl BattleOptions {
+    /// 转换为 core 的 BattleOptions；未设置项保留 core 默认值。
     pub fn to_core(&self) -> core_cli_api::BattleOptions {
         let mut options = core_cli_api::BattleOptions::default();
         if let Some(eval_rq) = self.eval_rq {
@@ -108,6 +114,7 @@ impl BattleOptions {
     }
 }
 
+/// 玩家元数据：ID、队伍索引、id_name 与图标键等。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct PlayerMeta {
     pub id: usize,
@@ -119,6 +126,7 @@ pub struct PlayerMeta {
     pub icon_png_base64: Option<String>,
 }
 
+/// 玩家展示状态：属性、技能与图标信息。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct PlayerState {
     pub id: usize,
@@ -159,6 +167,7 @@ pub struct PlayerState {
     pub status_labels: Vec<String>,
 }
 
+/// 召唤物类型视图：clone/summon/shadow/zombie。
 #[derive(Debug, Clone, Copy, Serialize, Tsify)]
 #[serde(rename_all = "snake_case")]
 pub enum MinionKindView {
@@ -179,6 +188,7 @@ impl From<RuntimeMinionKind> for MinionKindView {
     }
 }
 
+/// 更新类型视图：win/none/next_line。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Tsify)]
 #[serde(rename_all = "snake_case")]
 pub enum UpdateTypeView {
@@ -208,6 +218,7 @@ impl From<&str> for UpdateTypeView {
     }
 }
 
+/// 规范化运行结果：各回合结局、胜者队伍与 guard 状态。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct RuntimeNormalizedRunView {
     pub rounds: Vec<RuntimeNormalizedOutcomeView>,
@@ -216,6 +227,7 @@ pub struct RuntimeNormalizedRunView {
     pub total_score: u64,
 }
 
+/// 单回合的规范化结局：胜者、回合、总分与 RNG 状态。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct RuntimeNormalizedOutcomeView {
     pub winner_team: Option<usize>,
@@ -238,6 +250,7 @@ pub struct RuntimeNormalizedOutcomeView {
     pub frames: Vec<RuntimeUpdateFrameView>,
 }
 
+/// 动作边界记录：回合、行动者、目标与数值。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct RuntimeActionBoundaryView {
     pub round: u64,
@@ -246,6 +259,7 @@ pub struct RuntimeActionBoundaryView {
     pub amount: i32,
 }
 
+/// 回合内的更新帧：消息、施法者与目标列表。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct RuntimeUpdateFrameView {
     pub message: String,
@@ -260,6 +274,7 @@ pub struct RuntimeUpdateFrameView {
     pub update_type: UpdateTypeView,
 }
 
+/// 消息语气：用于回放展示的分级。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Tsify)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageTone {
@@ -275,6 +290,7 @@ pub enum MessageTone {
     StatusExit,
 }
 
+/// 单条更新的展示视图：分数、延迟、目标与消息片段。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct UpdateView {
     pub score: u32,
@@ -296,6 +312,7 @@ pub struct UpdateView {
     pub tone: MessageTone,
 }
 
+/// 回放文本片段类型：text/highlight/player/data。
 #[derive(Debug, Clone, Serialize, Tsify)]
 #[serde(rename_all = "snake_case")]
 pub enum ReplayTextPartKind {
@@ -305,6 +322,7 @@ pub enum ReplayTextPartKind {
     Data,
 }
 
+/// 回放文本片段：类型、文本与可选玩家 ID。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct ReplayTextPart {
     pub kind: ReplayTextPartKind,
@@ -318,6 +336,7 @@ pub struct ReplayTextPart {
     pub emoji: Option<String>,
 }
 
+/// 回放行中的一个片段：延迟、颜色与语气。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct ReplayClip {
     pub delay: i32,
@@ -336,12 +355,14 @@ pub struct ReplayClip {
     pub winner: bool,
 }
 
+/// 回放行：缩进标记与片段列表。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct ReplayRow {
     pub indent: bool,
     pub clips: Vec<ReplayClip>,
 }
 
+/// 一个回合的帧：完成标记、胜者与更新列表。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct RoundFrame {
     pub finished: bool,
@@ -354,6 +375,7 @@ pub struct RoundFrame {
     pub total_delay: i32,
 }
 
+/// 完整回放：玩家、帧序列、胜者与终态。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct FightReplay {
     pub players: Vec<PlayerMeta>,
@@ -362,6 +384,7 @@ pub struct FightReplay {
     pub final_states: Vec<PlayerState>,
 }
 
+/// 战斗摘要：完成标记、玩家、胜者与终态。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct FightSummary {
     pub finished: bool,
@@ -370,10 +393,12 @@ pub struct FightSummary {
     pub final_states: Vec<PlayerState>,
 }
 
+/// 胜者 ID 列表（透明包装）。
 #[derive(Debug, Clone, Serialize, Tsify)]
 #[serde(transparent)]
 pub struct WinnerIds(pub Vec<usize>);
 
+/// 胜率进度：完成标记、轮次与胜场计数。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct WinRateProgress {
     pub done: bool,
@@ -383,12 +408,14 @@ pub struct WinRateProgress {
     pub percent: f64,
 }
 
+/// 计时信息：初始化与战斗耗时（纳秒）。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct WinRateTiming {
     pub init_nanos: u64,
     pub fight_nanos: u64,
 }
 
+/// 胜率结果：进度、计时与汇总。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct WinRateResult {
     pub done: bool,
@@ -400,12 +427,14 @@ pub struct WinRateResult {
     pub timing: Option<WinRateTiming>,
 }
 
+/// 单个对手的胜率结果。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct GroupWinRateResult {
     pub opponent: String,
     pub result: WinRateResult,
 }
 
+/// CLI 口径胜率结果：胜场、总数、胜率与耗时。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct CliWinRateResult {
     pub wins: usize,
@@ -415,12 +444,14 @@ pub struct CliWinRateResult {
     pub fight_nanos: u64,
 }
 
+/// CLI 口径分组胜率：对手与对应结果。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct CliGroupWinRateResult {
     pub opponent: String,
     pub result: CliWinRateResult,
 }
 
+/// CLI 口径评分结果：分数、胜场、总数与错误数。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct CliScoreResult {
     pub score: f64,
@@ -431,6 +462,7 @@ pub struct CliScoreResult {
     pub fight_nanos: u64,
 }
 
+/// CLI 口径 namer-pf 结果：分组、模式与各项分数。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct CliNamerPfResult {
     pub group: Vec<String>,
@@ -439,6 +471,7 @@ pub struct CliNamerPfResult {
     pub total_score: f64,
 }
 
+/// CLI 口径批量胜率：标签、平均与聚合胜率。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct CliBatchRateResult {
     pub label: String,
@@ -452,12 +485,14 @@ pub struct CliBatchRateResult {
     pub fight_nanos: u64,
 }
 
+/// CLI 口径配对条目：名字与比率。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct CliPairRateEntry {
     pub name: String,
     pub rate: f64,
 }
 
+/// CLI 口径配对结果：标签、最终分数与入选数。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct CliPairRateResult {
     pub label: String,
@@ -474,6 +509,7 @@ pub struct CliPairRateResult {
     pub fight_nanos: u64,
 }
 
+/// CLI 口径图标信息：边框样式、形状与背景色。
 #[derive(Debug, Clone, Serialize, Tsify)]
 pub struct CliIconInfo {
     pub border_style: usize,

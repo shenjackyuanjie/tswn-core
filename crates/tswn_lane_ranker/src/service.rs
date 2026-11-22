@@ -43,6 +43,7 @@ use groups::*;
 use jobs::*;
 use targets::*;
 
+/// 应用服务：持有数据库句柄与排名配置，供 HTTP 层与 worker 复用。
 #[derive(Clone)]
 pub struct AppService {
     pub db: Db,
@@ -50,8 +51,10 @@ pub struct AppService {
 }
 
 impl AppService {
+    /// 用数据库与排名配置构造服务。
     pub fn new(db: Db, config: RankerConfig) -> Self { Self { db, config } }
 
+    /// 按给定配置把一批 lane 加入重算队列，返回实际入队的 lane。
     pub fn queue_recompute_lanes_with_config(&self, lanes: Vec<usize>, config: RankerConfig) -> anyhow::Result<Vec<usize>> {
         let mut queued = Vec::new();
 
@@ -94,6 +97,7 @@ impl AppService {
         Ok(queued)
     }
 
+    /// 把单个 lane 加入重算队列，可带粘性与并发参数。
     pub fn queue_recompute_lane(
         &self,
         lane: usize,
@@ -112,6 +116,7 @@ impl AppService {
         Ok(RecomputeLaneResponse { queued_lanes })
     }
 
+    /// 把单个 lane 加入约束选择队列，返回生效的请求参数。
     pub fn queue_constrained_selection_lane(
         &self,
         lane: usize,
@@ -161,6 +166,7 @@ impl AppService {
         })
     }
 
+    /// 校验指定 lane 的两两强度结果，返回校验详情 JSON。
     pub fn validate_pair_strength_lane(
         &self,
         lane: usize,

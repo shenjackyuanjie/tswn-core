@@ -23,8 +23,10 @@ use crate::model::{
 };
 use crate::service::AppService;
 
+/// HTTP 层共享的应用服务句柄。
 pub type SharedService = Arc<AppService>;
 
+/// 用给定服务构造 axum Router（健康检查、分组、胜率、屏蔽与任务等路由）。
 pub fn router(service: AppService) -> Router {
     let shared = Arc::new(service);
 
@@ -254,6 +256,7 @@ async fn job(State(service): State<SharedService>, Path(job_id): Path<i64>) -> R
     Ok(Json(serde_json::to_value(service.db.job(job_id)?)?))
 }
 
+/// HTTP 层错误包装：把 anyhow::Error 转换为统一错误响应。
 #[derive(Debug)]
 pub struct ApiError(anyhow::Error);
 

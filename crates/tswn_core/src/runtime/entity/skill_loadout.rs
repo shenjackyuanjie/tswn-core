@@ -138,6 +138,7 @@ impl PartialEq for SkillLoadout {
 impl Eq for SkillLoadout {}
 
 impl SkillLoadout {
+    /// 从技能 ID 列表构造装载，等级统一为 1。
     pub fn from_skills(skills: impl IntoIterator<Item = SkillId>) -> Self {
         let skills = skills.into_iter().collect::<SmallVec<[SkillId; 8]>>();
         let levels = std::iter::repeat_n(1, skills.len()).collect::<SmallVec<[u32; 8]>>();
@@ -173,6 +174,7 @@ impl SkillLoadout {
         }
     }
 
+    /// 从 (技能, 等级) 列表构造装载。
     pub fn from_skill_levels(skills: impl IntoIterator<Item = (SkillId, u32)>) -> Self {
         let (skills, levels): (SmallVec<[SkillId; 8]>, SmallVec<[u32; 8]>) = skills.into_iter().unzip();
         let build_levels = levels.clone();
@@ -207,6 +209,7 @@ impl SkillLoadout {
         }
     }
 
+    /// 从 (技能, 等级, 强化) 列表构造；构建等级取强化前的基线。
     pub fn from_skill_levels_and_boosts(skills: impl IntoIterator<Item = (SkillId, u32, Option<SkillBoost>)>) -> Self {
         let mut skill_ids = SmallVec::<[SkillId; 8]>::new();
         let mut levels = SmallVec::<[u32; 8]>::new();
@@ -517,22 +520,31 @@ impl SkillLoadout {
         self.enabled_hook_mask = u8::MAX;
     }
 
+    /// 按固定 lane 排列的技能 ID。
     pub fn skills(&self) -> &[SkillId] { &self.skills }
 
+    /// 各固定 lane 的当前等级。
     pub fn levels(&self) -> &[u32] { &self.levels }
 
+    /// 指定 lane 的当前等级；越界返回 None。
     pub fn level_at(&self, fixed_lane: usize) -> Option<u32> { self.levels.get(fixed_lane).copied() }
 
+    /// 指定 lane 的构建等级（导入基线）；越界返回 None。
     pub fn build_level_at(&self, fixed_lane: usize) -> Option<u32> { self.build_levels.get(fixed_lane).copied() }
 
+    /// 指定 lane 的强化记录；越界或未强化返回 None。
     pub fn boost_at(&self, fixed_lane: usize) -> Option<&SkillBoost> { self.boosts.get(fixed_lane).and_then(Option::as_ref) }
 
+    /// 指定 lane 是否已强化；越界返回 None。
     pub fn boosted_at(&self, fixed_lane: usize) -> Option<bool> { self.boosted.get(fixed_lane).copied() }
 
+    /// 指定 lane 的固定键（legacy 兼容编号）；越界返回 None。
     pub fn fixed_lane_key_at(&self, fixed_lane: usize) -> Option<usize> { self.fixed_lane_keys.get(fixed_lane).copied() }
 
+    /// 吞噬配对使用的 lane 顺序。
     pub fn merge_lane_order(&self) -> &[usize] { &self.merge_lane_order }
 
+    /// 设置当前等级；等级进出 0 时刷新 hook 启用掩码，lane 越界返回 false。
     pub fn set_level_at(&mut self, fixed_lane: usize, level: u32) -> bool {
         let Some(current) = self.levels.get_mut(fixed_lane) else {
             return false;
@@ -549,6 +561,7 @@ impl SkillLoadout {
         true
     }
 
+    /// 主动技能的遍历顺序（lane 排列）。
     pub fn active_order(&self) -> &[usize] { &self.active_order }
 
     pub(crate) fn with_effective_skill_weights(
@@ -616,18 +629,24 @@ impl SkillLoadout {
 
     pub(crate) fn uses_effective_skill_weights(&self) -> bool { self.effective_skill_weights.is_some() }
 
+    /// PRE_ACTION 阶段的 lane 顺序。
     pub fn pre_action_order(&self) -> &[usize] { &self.pre_action_order }
 
+    /// POST_DAMAGE 阶段的 lane 顺序。
     pub fn post_damage_order(&self) -> &[usize] { &self.post_damage_order }
 
+    /// 延后到状态之后执行的 POST_ACTION 条目：(状态游标, lane)。
     pub fn post_action_after_states(&self) -> &[(u64, usize)] { &self.post_action_after_states }
 
     pub(crate) const fn hook_generation(&self) -> u32 { self.hook_generation }
 
+    /// 是否没有任何技能。
     pub fn is_empty(&self) -> bool { self.skills.is_empty() }
 
+    /// 技能数量，即固定 lane 数。
     pub fn len(&self) -> usize { self.skills.len() }
 
+    /// 按各 lane 的强化类型重建一套克隆等级，供分身使用。
     pub fn rebuilt_for_clone(&self) -> Self {
         let mut clone = self.clone();
         let mut eligibility_changed = false;
@@ -703,6 +722,7 @@ impl SkillLoadout {
         clone
     }
 
+    /// 从主动顺序移除指定 lane，并使 hook 缓存失效。
     pub fn disable_action_lane(&mut self, fixed_lane: usize) {
         let before = self.active_order.len();
         self.active_order.retain(|lane| *lane != fixed_lane);
@@ -712,6 +732,7 @@ impl SkillLoadout {
         }
     }
 
+    /// 设置主动顺序；引用不存在的 lane 会 panic。
     pub fn with_active_order(mut self, active_order: impl IntoIterator<Item = usize>) -> Self {
         self.active_order = active_order.into_iter().collect();
         self.invalidate_hook_cache();
@@ -722,6 +743,7 @@ impl SkillLoadout {
         self
     }
 
+    /// 设置 PRE_ACTION 顺序；引用不存在的 lane 会 panic。
     pub fn with_pre_action_order(mut self, pre_action_order: impl IntoIterator<Item = usize>) -> Self {
         self.pre_action_order = pre_action_order.into_iter().collect();
         assert!(
@@ -731,6 +753,7 @@ impl SkillLoadout {
         self
     }
 
+    /// 设置 POST_DAMAGE 顺序；引用不存在的 lane 会 panic。
     pub fn with_post_damage_order(mut self, post_damage_order: impl IntoIterator<Item = usize>) -> Self {
         self.post_damage_order = post_damage_order.into_iter().collect();
         assert!(
@@ -740,6 +763,7 @@ impl SkillLoadout {
         self
     }
 
+    /// 设置延后 POST_ACTION 条目并按游标排序；引用不存在的 lane 会 panic。
     pub fn with_post_action_after_states(mut self, post_action_after_states: impl IntoIterator<Item = (u64, usize)>) -> Self {
         self.post_action_after_states = post_action_after_states.into_iter().collect();
         assert!(
@@ -750,6 +774,7 @@ impl SkillLoadout {
         self
     }
 
+    /// 登记一个延后 POST_ACTION 条目；同一 lane 重复登记被忽略。
     pub fn register_post_action_after_states(&mut self, fixed_lane: usize, state_order_cursor: u64) {
         assert!(
             fixed_lane < self.skills.len(),
@@ -763,6 +788,7 @@ impl SkillLoadout {
         self.mark_hook_mutation(SKILL_DIRTY_DEFERRED);
     }
 
+    /// 确保指定 lane 出现在 PRE_ACTION 顺序中。
     pub fn ensure_pre_action_lane(&mut self, fixed_lane: usize) {
         assert!(
             fixed_lane < self.skills.len(),
@@ -774,6 +800,7 @@ impl SkillLoadout {
         }
     }
 
+    /// 从 PRE_ACTION 顺序中移除指定 lane。
     pub fn remove_pre_action_lane(&mut self, fixed_lane: usize) {
         let before = self.pre_action_order.len();
         self.pre_action_order.retain(|lane| *lane != fixed_lane);
@@ -782,6 +809,7 @@ impl SkillLoadout {
         }
     }
 
+    /// 设置固定键；长度必须与技能数一致，否则 panic。
     pub fn with_fixed_lane_keys(mut self, fixed_lane_keys: impl IntoIterator<Item = usize>) -> Self {
         self.fixed_lane_keys = fixed_lane_keys.into_iter().collect();
         assert_eq!(
@@ -792,6 +820,7 @@ impl SkillLoadout {
         self
     }
 
+    /// 设置已强化标记；长度必须与技能数一致，否则 panic。
     pub fn with_boosted_flags(mut self, boosted: impl IntoIterator<Item = bool>) -> Self {
         self.boosted = boosted.into_iter().collect();
         assert_eq!(
@@ -819,6 +848,7 @@ impl SkillLoadout {
         false
     }
 
+    /// 设置吞噬配对顺序；引用不存在的 lane 会 panic。
     pub fn with_merge_lane_order(mut self, merge_lane_order: impl IntoIterator<Item = usize>) -> Self {
         self.merge_lane_order = merge_lane_order.into_iter().collect();
         assert!(
@@ -828,6 +858,7 @@ impl SkillLoadout {
         self
     }
 
+    /// 按吞噬策略从来源合并技能等级；任一 lane 提升时返回 true。
     pub fn merge_fixed_lanes_from(&mut self, source: &Self, policy: MergePolicy) -> bool {
         match policy {
             MergePolicy::None => false,

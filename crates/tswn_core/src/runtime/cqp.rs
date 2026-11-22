@@ -22,6 +22,7 @@ pub struct RuntimeCqpMatchup {
 }
 
 impl RuntimeCqpMatchup {
+    /// 用已拆成队伍的分组构造一个 matchup。
     pub fn new(groups: Vec<Vec<String>>) -> Self { Self { groups } }
 }
 

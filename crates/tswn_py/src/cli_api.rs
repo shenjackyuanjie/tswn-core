@@ -872,6 +872,7 @@ mod tests {
     }
 }
 
+/// Python 侧 InvalidArgumentError：继承 ValueError，表示参数非法。
 #[pyclass(extends=PyValueError)]
 #[pyo3(name = "InvalidArgumentError")]
 pub struct PyInvalidArgumentError;
@@ -883,6 +884,7 @@ impl PyInvalidArgumentError {
     fn code(&self) -> &'static str { core_cli_api::CliApiErrorCode::InvalidArgument.as_str() }
 }
 
+/// Python 侧 UnsupportedOptionError：继承 ValueError，表示选项不受支持。
 #[pyclass(extends=PyValueError)]
 #[pyo3(name = "UnsupportedOptionError")]
 pub struct PyUnsupportedOptionError;
@@ -894,6 +896,7 @@ impl PyUnsupportedOptionError {
     fn code(&self) -> &'static str { core_cli_api::CliApiErrorCode::UnsupportedOption.as_str() }
 }
 
+/// Python 侧 TswnInternalError：继承 RuntimeError，表示内部错误。
 #[pyclass(extends=PyRuntimeError)]
 #[pyo3(name = "TswnInternalError")]
 pub struct PyInternalError;

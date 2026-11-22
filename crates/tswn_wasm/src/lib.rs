@@ -82,18 +82,23 @@ static PANIC_HOOK: Once = Once::new();
 /// 仅安装一次控制台 panic hook；用于诊断，不提供 catch 或业务错误转换。
 pub fn install_panic_hook() { PANIC_HOOK.call_once(console_error_panic_hook::set_once); }
 
+/// WASM 模块入口：安装 panic hook。
 #[wasm_bindgen(start)]
 pub fn wasm_start() { install_panic_hook(); }
 
+/// 返回本 crate 的版本号。
 #[wasm_bindgen]
 pub fn version() -> String { env!("CARGO_PKG_VERSION").to_string() }
 
+/// 返回 tswn_core 的版本号。
 #[wasm_bindgen]
 pub fn core_version() -> String { tswn_core::version().to_string() }
 
+/// 返回普通对局的默认评估口径。
 #[wasm_bindgen]
 pub fn default_eval_rq() -> f64 { tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ }
 
+/// 返回胜率计算的评估口径。
 #[wasm_bindgen]
 pub fn win_rate_eval_rq() -> f64 { tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ }
 
@@ -201,6 +206,7 @@ pub fn team_win_rate_summary(
         .and_then(|result| ts_out(&result))
 }
 
+/// 计算 target 对多个 against 的胜率汇总，可指定总轮数与 eval_rq。
 #[wasm_bindgen]
 pub fn group_win_rate_summary(
     target: String,
@@ -249,6 +255,7 @@ pub fn namer_pf(
         .and_then(|results| ts_out_vec(&results))
 }
 
+/// 批量计算选手组对靶子组的平均胜率，按标签返回汇总。
 #[wasm_bindgen]
 pub fn batch_rate(
     target_groups: Vec<String>,
@@ -298,6 +305,7 @@ pub fn batch_rate_factored(
     .and_then(|results| ts_out_vec(&results))
 }
 
+/// 计算选手与队友组合的配对表现，返回逐项结果。
 #[wasm_bindgen]
 pub fn pair_rate(
     target_groups: Vec<String>,
@@ -351,6 +359,7 @@ pub fn pair_rate_factored(
     .and_then(|results| ts_out_vec(&results))
 }
 
+/// 用默认 custom runtime 运行一次规范化对局，返回标准化运行结果。
 #[wasm_bindgen]
 pub fn default_custom_runtime_normalized_run(raw_input: String, max_rounds: usize) -> WasmResult<Ts<RuntimeNormalizedRunView>> {
     install_panic_hook();
@@ -417,9 +426,11 @@ fn planned_actions(actions: &[u32]) -> WasmResult<Vec<PlannedAction>> {
     tswn_core::runtime::decode_actions(actions).map_err(error::invalid_argument)
 }
 
+/// 返回 forced action 的命中计数（诊断用）。
 #[wasm_bindgen]
 pub fn forced_hits() -> u32 { tswn_core::runtime::forced_action::hits() }
 
+/// 返回 forced action 的触发计数（诊断用）。
 #[wasm_bindgen]
 pub fn forced_taken() -> u32 { tswn_core::runtime::forced_action::taken() }
 

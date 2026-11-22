@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use serde::Deserialize;
 use tswn_core::namerena::{PlayerOverlay, raw_namerena_to_id_name};
 
+/// 把文本逐行去空白解析为非空行列表。
 pub fn parse_line_list(content: &str) -> Vec<String> {
     content
         .lines()
@@ -17,6 +18,7 @@ pub fn parse_line_list(content: &str) -> Vec<String> {
         .collect()
 }
 
+/// 按分隔符（+ 或 ++）解析靶子分组。
 pub fn parse_target_groups(content: &str, double_plus: bool) -> Vec<String> {
     let separator = if double_plus { "++" } else { "+" };
     parse_separated_groups(content, separator)
@@ -33,6 +35,7 @@ struct FactoredTarget {
     players: Vec<String>,
 }
 
+/// 解析带权靶子 TOML，返回分组与权重；targets 为空时返回中文错误。
 pub fn parse_factored_target_groups(content: &str) -> Result<(Vec<String>, Vec<f64>), String> {
     let parsed: FactoredTargetFile = toml::from_str(content).map_err(|err| format!("解析带权靶子 TOML 失败: {err}"))?;
     if parsed.targets.is_empty() {
@@ -64,6 +67,7 @@ fn parse_separated_groups(content: &str, separator: &str) -> Vec<String> {
         .collect()
 }
 
+/// 解析玩家分组，并保留原始行作为展示标签。
 pub fn parse_player_groups_with_labels(content: &str, double_plus: bool) -> (Vec<String>, Vec<String>) {
     let mut groups = Vec::new();
     let mut labels = Vec::new();
@@ -75,6 +79,7 @@ pub fn parse_player_groups_with_labels(content: &str, double_plus: bool) -> (Vec
     (groups, labels)
 }
 
+/// 解析 namer-pf 输入：每行一个分组，成员为名字列表。
 pub fn parse_namer_pf_groups(raw: &str) -> Vec<Vec<String>> {
     raw.lines()
         .map(str::trim)
@@ -84,6 +89,7 @@ pub fn parse_namer_pf_groups(raw: &str) -> Vec<Vec<String>> {
         .collect()
 }
 
+/// 返回对局中第一个重复出现的名字（按 id 归一化）；无重复返回 None。
 pub fn first_duplicate_name_in_matchup(groups: &[&str]) -> Option<String> {
     let mut seen = HashSet::new();
     for group in groups {
@@ -97,6 +103,7 @@ pub fn first_duplicate_name_in_matchup(groups: &[&str]) -> Option<String> {
     None
 }
 
+/// 判断两组文本的玩家集合是否相同（测试辅助）。
 #[cfg(test)]
 pub fn groups_have_same_players(left: &str, right: &str) -> bool {
     normalized_group_players(left) == normalized_group_players(right)

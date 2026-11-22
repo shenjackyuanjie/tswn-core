@@ -19,6 +19,7 @@ use super::format::display_group;
 #[cfg(test)]
 use super::parse::{first_duplicate_name_in_matchup, groups_have_same_players};
 
+/// 基准测试汇总：胜场与总场数。
 #[cfg(test)]
 #[derive(Debug, Clone)]
 pub struct BenchSummary {
@@ -28,9 +29,11 @@ pub struct BenchSummary {
 
 #[cfg(test)]
 impl BenchSummary {
+    /// 返回胜率百分比；total 为 0 时按 1 计。
     pub fn win_rate_percent(&self) -> f64 { self.wins as f64 * 100.0 / self.total.max(1) as f64 }
 }
 
+/// 批量胜率汇总：平均胜率、胜负数、有效与跳过的对局数。
 #[derive(Debug, Clone)]
 pub struct BatchRateSummary {
     pub avg: f64,
@@ -40,6 +43,7 @@ pub struct BatchRateSummary {
     pub skipped_matchups: usize,
 }
 
+/// 批量靶子的处理结果：计入胜率或跳过。
 #[cfg(test)]
 #[derive(Debug, Clone)]
 pub enum BatchTargetOutcome {
@@ -47,6 +51,7 @@ pub enum BatchTargetOutcome {
     Skipped,
 }
 
+/// 对单个选手组跑批量胜率基准（测试辅助）。
 #[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub fn bench_batch_rate_for_group(
@@ -161,6 +166,7 @@ pub fn bench_batch_rate_for_group(
     }
 }
 
+/// 计算一组名字在指定修饰下的 namer-pf 各项分数（pp/pd/qp/qd/sum）。
 pub fn namer_pf_score(
     base_group: &[String],
     modifier: &str,
@@ -205,6 +211,7 @@ pub(super) fn eval_rq(keep_rq: bool) -> f64 {
     }
 }
 
+/// namer-pf 各项分数：pp、pd、qp、qd 与总分。
 #[derive(Debug, Clone, Copy)]
 pub struct NamerPfScores {
     pub pp: f64,

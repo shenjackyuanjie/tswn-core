@@ -23,6 +23,7 @@ use tswn_core::{
 use crate::{SampleRow, storage};
 use source::SourceDataset;
 
+/// encode 子命令参数：源数据集目录、manifest、输出目录与批大小。
 #[derive(Debug, Clone, clap::Args)]
 pub struct EncodeArgs {
     /// 已生成的 Parquet 数据集目录。
@@ -109,6 +110,7 @@ struct SelectedRow {
     source: SourceRow,
 }
 
+/// 执行编码：校验参数与 manifest，按批读取源数据集并原子写出编码包。
 pub fn run(args: &EncodeArgs) -> Result<()> {
     ensure!(args.batch_size > 0, "batch-size 必须大于 0");
     output::ensure_absent(&args.out)?;

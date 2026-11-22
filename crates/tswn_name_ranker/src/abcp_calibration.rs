@@ -34,11 +34,13 @@ struct TreeNode {
     leaf: bool,
 }
 
+/// ABCP 方向校准器：ridge 参数与直方图模型，参数来自内嵌 JSON。
 pub struct Calibrator {
     parameters: Parameters,
     features: HashMap<String, Vec<f64>>,
 }
 
+/// 一个候选配对：两侧名字、原始分、展开标记与两侧系数。
 #[derive(Clone, Debug)]
 pub struct Candidate {
     pub a: String,
@@ -50,6 +52,7 @@ pub struct Candidate {
 }
 
 impl Calibrator {
+    /// 加载内嵌校准参数；维度与预期不符时返回错误。
     pub fn embedded() -> anyhow::Result<Self> {
         let parameters: Parameters = serde_json::from_str(include_str!("../abcp_directional_calibrator.json"))?;
         anyhow::ensure!(
@@ -117,6 +120,7 @@ impl Calibrator {
         Some((ridge, raw / 100.0 + hist))
     }
 
+    /// 从候选中筛出合法配对集合：展开项超过阈值即入选。
     pub fn legal_pairs(&self, candidates: &[Candidate]) -> HashSet<(String, String)> {
         let mut legal = HashSet::new();
         let mut ranked = [HashMap::<&str, Vec<(f64, usize)>>::new(), HashMap::new(), HashMap::new()];

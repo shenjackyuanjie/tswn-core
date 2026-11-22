@@ -8,6 +8,7 @@ use std::fmt::Write as _;
 
 use super::types::{OutputMode, PairDetailMode};
 
+/// 清洗名字标签：去掉 ol: 与 diy[ 前缀的成员和空成员，再用 + 连接。
 pub fn clean_name_label(raw: &str) -> String {
     raw.split('+')
         .map(str::trim)
@@ -16,6 +17,7 @@ pub fn clean_name_label(raw: &str) -> String {
         .join("+")
 }
 
+/// 清洗分组标签：逐行清洗名字后用 + 连接。
 pub fn clean_group_label(raw: &str) -> String {
     raw.lines()
         .map(clean_name_label)
@@ -24,6 +26,7 @@ pub fn clean_group_label(raw: &str) -> String {
         .join("+")
 }
 
+/// 按输出模式（Log/Pure/Jsonl）格式化一条批量结果记录。
 pub fn format_batch_file_record(mode: OutputMode, label: &str, avg: f64, precision: usize) -> String {
     let label = clean_name_label(label);
     match mode {
@@ -37,6 +40,7 @@ pub fn format_batch_file_record(mode: OutputMode, label: &str, avg: f64, precisi
     }
 }
 
+/// 格式化批量结果的屏幕日志：平均分加各靶子明细。
 pub fn format_batch_screen_log(label: &str, avg: f64, detail_rates: &[(f64, String)], precision: usize) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "{} {}", format_rate(avg, precision), clean_name_label(label));
@@ -46,6 +50,7 @@ pub fn format_batch_screen_log(label: &str, avg: f64, detail_rates: &[(f64, Stri
     out
 }
 
+/// 按输出模式格式化一条配对结果记录。
 pub fn format_pair_file_record(
     mode: OutputMode,
     label: &str,
@@ -84,6 +89,7 @@ pub fn format_pair_file_record(
     }
 }
 
+/// 格式化配对结果的屏幕日志，按 detail_mode 控制明细层级。
 pub fn format_pair_screen_log(
     label: &str,
     final_score: f64,
@@ -113,11 +119,13 @@ pub fn format_pair_screen_log(
     out
 }
 
+/// 把多行分组格式化为逗号连接的单行（测试辅助）。
 #[cfg(test)]
 pub fn display_group(raw: &str) -> String {
     raw.lines().map(str::trim).filter(|line| !line.is_empty()).collect::<Vec<_>>().join(", ")
 }
 
+/// 按精度格式化比率；小于半个精度格的值归零。
 pub fn format_rate(value: f64, precision: usize) -> String {
     let value = if value.abs() < 0.5_f64 * 10_f64.powi(-(precision as i32)) {
         0.0

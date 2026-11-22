@@ -1,5 +1,6 @@
 use super::*;
 
+/// 泛型回放 fixture：内嵌 large_12 对局输入，跑完整战斗并逐行比对冻结 JS 回放。
 pub fn large_12<E: crate::EngineAdapter>() {
     const CASE: &str = r####"WmG4iW0iZI
 L6x5GQXq47

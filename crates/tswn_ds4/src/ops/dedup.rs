@@ -22,6 +22,8 @@ pub struct DedupStats {
     pub remaining: usize,
 }
 
+/// 按 C++ 行切分规则去重：先保留 new_file 中首次出现的行，再剔除 old_file 已覆盖的行，
+/// 剩余行按逆序原子写出到 output_file，并返回新行数、命中历史数与剩余数统计。
 pub fn remove_duplicates(new_file: &Path, old_file: &Path, output_file: &Path) -> Ds4Result<DedupStats> {
     let mut set = HashSet::new();
     let mut insertion_order = Vec::new();

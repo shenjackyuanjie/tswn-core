@@ -20,6 +20,9 @@ static NEXT_SLOT_BASELINE_ID: AtomicU64 = AtomicU64::new(1);
 
 fn next_slot_baseline_id() -> u64 { NEXT_SLOT_BASELINE_ID.fetch_add(1, Ordering::Relaxed) }
 
+/// 扩展数据槽的取值类型。
+///
+/// [`PlayerTemplate`] 变体装箱存储，以缩小枚举体积。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SlotValue {
     Bool(bool),
@@ -29,6 +32,7 @@ pub enum SlotValue {
     PlayerTemplate(Box<PlayerTemplate>),
 }
 
+/// 扩展槽访问错误：给定的注册表 ID 超出对应 storage 的已分配长度。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SlotError {
     InvalidTemplateSlot(TemplateSlotId),
@@ -36,16 +40,20 @@ pub enum SlotError {
     InvalidEntitySlot(EntitySlotId),
 }
 
+/// 按 [`TemplateSlotId`] 索引的模板期扩展槽存储，容量来自 registry 的 template_slots。
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct TemplateSlotStorage {
     values: Vec<Option<SlotValue>>,
 }
 
 impl TemplateSlotStorage {
+    /// 按 registry 的 template_slots 数量分配等长空存储。
     pub fn from_registry(registry: &ExtensionRegistry) -> Self { Self::with_len(registry.template_slots().len()) }
 
+    /// 分配指定长度的空存储。
     pub fn with_len(len: usize) -> Self { Self { values: vec![None; len] } }
 
+    /// 写入指定槽位；ID 越界返回 [`SlotError::InvalidTemplateSlot`]。
     pub fn set(&mut self, id: TemplateSlotId, value: SlotValue) -> Result<(), SlotError> {
         let Some(slot) = self.values.get_mut(id.0 as usize) else {
             return Err(SlotError::InvalidTemplateSlot(id));
@@ -54,8 +62,10 @@ impl TemplateSlotStorage {
         Ok(())
     }
 
+    /// 读取指定槽位；未设置或越界返回 `None`。
     pub fn get(&self, id: TemplateSlotId) -> Option<&SlotValue> { self.values.get(id.0 as usize).and_then(Option::as_ref) }
 
+    /// 按索引顺序遍历已设置的 (槽位 ID, 值) 对。
     pub fn iter(&self) -> impl Iterator<Item = (TemplateSlotId, &SlotValue)> {
         self.values
             .iter()
@@ -63,11 +73,14 @@ impl TemplateSlotStorage {
             .filter_map(|(idx, value)| value.as_ref().map(|value| (TemplateSlotId(idx as u32), value)))
     }
 
+    /// 返回已分配的槽位数量（含未设置槽）。
     pub fn len(&self) -> usize { self.values.len() }
 
+    /// 是否没有任何已分配槽位。
     pub fn is_empty(&self) -> bool { self.values.is_empty() }
 }
 
+/// 按 [`BattleSlotId`] 索引的单局战斗扩展槽存储，记录 prepared runner 的全局槽基线以便复位。
 #[derive(Debug, Clone)]
 pub struct BattleSlotStorage {
     values: Vec<Option<SlotValue>>,
@@ -86,8 +99,10 @@ impl PartialEq for BattleSlotStorage {
 impl Eq for BattleSlotStorage {}
 
 impl BattleSlotStorage {
+    /// 按 registry 的 battle_slots 数量分配等长存储。
     pub fn from_registry(registry: &ExtensionRegistry) -> Self { Self::with_len(registry.battle_slots().len()) }
 
+    /// 分配指定长度的空存储，并领取新的基线 ID。
     pub fn with_len(len: usize) -> Self {
         Self {
             values: vec![None; len],
@@ -96,6 +111,7 @@ impl BattleSlotStorage {
         }
     }
 
+    /// 写入指定槽位并标记本局已改动；ID 越界返回 [`SlotError::InvalidBattleSlot`]。
     pub fn set(&mut self, id: BattleSlotId, value: SlotValue) -> Result<(), SlotError> {
         let Some(slot) = self.values.get_mut(id.0 as usize) else {
             return Err(SlotError::InvalidBattleSlot(id));
@@ -105,8 +121,10 @@ impl BattleSlotStorage {
         Ok(())
     }
 
+    /// 读取指定槽位；未设置或越界返回 `None`。
     pub fn get(&self, id: BattleSlotId) -> Option<&SlotValue> { self.values.get(id.0 as usize).and_then(Option::as_ref) }
 
+    /// 清空所有槽位为未设置，保留容量。
     pub fn clear(&mut self) {
         let mut changed = false;
         for value in &mut self.values {
@@ -132,8 +150,10 @@ impl BattleSlotStorage {
         self.battle_dirty = false;
     }
 
+    /// 返回已分配的槽位数量（含未设置槽）。
     pub fn len(&self) -> usize { self.values.len() }
 
+    /// 是否没有任何已分配槽位。
     pub fn is_empty(&self) -> bool { self.values.is_empty() }
 }
 
@@ -141,6 +161,7 @@ const ENTITY_SLOT_DIRTY_TEAM: u64 = 1;
 const ENTITY_SLOT_DIRTY_VALUE: u64 = 2;
 const ENTITY_SLOTS_PER_DIRTY_WORD: usize = 32;
 
+/// 按 [`EntitySlotId`] 索引的单实体扩展槽存储，用脏位标记本局改动以支持精细化复位。
 #[derive(Debug, Clone)]
 pub struct EntitySlotStorage {
     values: Vec<Option<SlotValue>>,
@@ -160,8 +181,10 @@ impl PartialEq for EntitySlotStorage {
 impl Eq for EntitySlotStorage {}
 
 impl EntitySlotStorage {
+    /// 按 registry 的 entity_slots 数量分配等长存储。
     pub fn from_registry(registry: &ExtensionRegistry) -> Self { Self::with_len(registry.entity_slots().len()) }
 
+    /// 分配指定长度的空存储与脏位字，并领取新的基线 ID。
     pub fn with_len(len: usize) -> Self {
         Self {
             values: vec![None; len],
@@ -170,6 +193,7 @@ impl EntitySlotStorage {
         }
     }
 
+    /// 写入指定槽位并标记值脏位；ID 越界返回 [`SlotError::InvalidEntitySlot`]。
     pub fn set(&mut self, id: EntitySlotId, value: SlotValue) -> Result<(), SlotError> {
         let index = id.0 as usize;
         if index >= self.values.len() {
@@ -180,8 +204,10 @@ impl EntitySlotStorage {
         Ok(())
     }
 
+    /// 读取指定槽位；未设置或越界返回 `None`。
     pub fn get(&self, id: EntitySlotId) -> Option<&SlotValue> { self.values.get(id.0 as usize).and_then(Option::as_ref) }
 
+    /// 取得指定槽位的可变引用并标记值脏位；未设置或越界返回 `None`。
     pub fn get_mut(&mut self, id: EntitySlotId) -> Option<&mut SlotValue> {
         let index = id.0 as usize;
         if !self.values.get(index).is_some_and(Option::is_some) {
@@ -211,6 +237,7 @@ impl EntitySlotStorage {
         removed
     }
 
+    /// 清空所有槽位为未设置，保留容量，并标记相关脏位。
     pub fn clear(&mut self) {
         for index in 0..self.values.len() {
             if self.values[index].take().is_some() {
@@ -262,8 +289,10 @@ impl EntitySlotStorage {
 
     fn has_battle_dirty(&self) -> bool { self.battle_dirty_words.iter().any(|word| *word != 0) }
 
+    /// 返回已分配的槽位数量（含未设置槽）。
     pub fn len(&self) -> usize { self.values.len() }
 
+    /// 是否没有任何已分配槽位。
     pub fn is_empty(&self) -> bool { self.values.is_empty() }
 }
 

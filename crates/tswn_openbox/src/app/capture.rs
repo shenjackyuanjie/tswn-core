@@ -44,6 +44,7 @@ struct CaptureArgs {
     capture_align: String,
 }
 
+/// 命令行请求截图模式时执行一次性渲染并返回运行结果；未请求时返回 None。
 pub fn run_if_requested() -> Option<eframe::Result<()>> {
     let args = CaptureArgs::parse();
     let align = match args.capture_align.as_str() {

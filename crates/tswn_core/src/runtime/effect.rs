@@ -40,6 +40,7 @@ pub use queue::*;
 pub use skill_context::*;
 pub use state_context::*;
 
+/// 待提交的战斗效果：伤害、传染、治疗、召唤、状态变更与自定义效果，由 Runtime 统一结算。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QueuedEffect {
     Damage {
@@ -157,6 +158,7 @@ pub enum QueuedEffect {
     Custom(CustomEffect),
 }
 
+/// 自定义效果：交给注册的 effect handler 解释的执行请求。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomEffect {
     pub handler: EffectHandlerId,
@@ -166,6 +168,7 @@ pub struct CustomEffect {
 }
 
 impl CustomEffect {
+    /// 构造一个自定义效果；`target` 可为空，由 handler 自行解释。
     pub fn new(handler: EffectHandlerId, caster: EntityIdx, target: Option<EntityIdx>, payload: CustomEffectPayload) -> Self {
         Self {
             handler,
@@ -176,6 +179,7 @@ impl CustomEffect {
     }
 }
 
+/// 自定义效果载荷：无数据、整数或文本。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CustomEffectPayload {
     None,
@@ -183,12 +187,18 @@ pub enum CustomEffectPayload {
     Text(String),
 }
 
+/// effect handler 的函数签名：读取上下文并提交后续效果。
 pub type EffectHandlerFn = fn(&mut EffectContext<'_>, &CustomEffect);
+/// skill handler 的函数签名：按 hook 计划条目执行技能逻辑。
 pub type SkillHandlerFn = fn(&mut SkillContext<'_>, &SkillHookPlanEntry);
+/// state handler 的函数签名：按 hook 计划条目执行状态逻辑。
 pub type StateHandlerFn = fn(&mut StateContext<'_>, &StateHookPlanEntry);
+/// replay 渲染器签名：从 RuntimeFrame 产出可选的回放事件。
 pub type ReplayRendererFn = fn(&RuntimeFrame) -> Option<RenderedReplay>;
+/// show 渲染器签名：从 RuntimeFrame 产出可选的展示事件。
 pub type ShowRendererFn = fn(&RuntimeFrame) -> Option<RenderedShow>;
 
+/// hook 上下文错误：缺少能力、实体不存在或槽操作失败。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EffectContextError {
     MissingCapability(ExtensionCapability),
@@ -200,6 +210,7 @@ impl From<SlotError> for EffectContextError {
     fn from(error: SlotError) -> Self { Self::Slot(error) }
 }
 
+/// 按 EffectHandlerId 索引的 effect handler 表。
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct EffectHandlers {
     handlers: Vec<Option<EffectHandlerFn>>,
@@ -207,6 +218,7 @@ pub struct EffectHandlers {
 }
 
 impl EffectHandlers {
+    /// 按注册表中的 effect handler 数量建空表。
     pub fn from_registry(registry: &ExtensionRegistry) -> Self {
         Self {
             handlers: vec![None; registry.effect_handlers().len()],
@@ -214,8 +226,10 @@ impl EffectHandlers {
         }
     }
 
+    /// 绑定 effect handler，不声明额外能力。
     pub fn set(&mut self, id: EffectHandlerId, handler: EffectHandlerFn) { self.set_with_capabilities(id, handler, &[]); }
 
+    /// 绑定 effect handler 并记录其扩展能力；ID 越界时 panic。
     pub fn set_with_capabilities(&mut self, id: EffectHandlerId, handler: EffectHandlerFn, capabilities: &[ExtensionCapability]) {
         let Some(slot) = self.handlers.get_mut(id.0 as usize) else {
             panic!("unknown runtime effect handler id: {}", id.0);
@@ -224,15 +238,18 @@ impl EffectHandlers {
         self.capabilities[id.0 as usize] = capabilities.to_vec();
     }
 
+    /// 查询已绑定的 effect handler；未绑定返回 None。
     pub fn get(&self, id: EffectHandlerId) -> Option<EffectHandlerFn> {
         self.handlers.get(id.0 as usize).and_then(|handler| *handler)
     }
 
+    /// 查询该 handler 声明的扩展能力。
     pub fn capabilities(&self, id: EffectHandlerId) -> Option<&[ExtensionCapability]> {
         self.capabilities.get(id.0 as usize).map(Vec::as_slice)
     }
 }
 
+/// 按 SkillId 索引的 skill handler 表。
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SkillHandlers {
     handlers: Vec<Option<SkillHandlerFn>>,
@@ -240,6 +257,7 @@ pub struct SkillHandlers {
 }
 
 impl SkillHandlers {
+    /// 按注册表中的技能数量建空表。
     pub fn from_registry(registry: &ExtensionRegistry) -> Self {
         Self {
             handlers: vec![None; registry.skills().len()],
@@ -247,8 +265,10 @@ impl SkillHandlers {
         }
     }
 
+    /// 绑定 skill handler，不声明额外能力。
     pub fn set(&mut self, id: SkillId, handler: SkillHandlerFn) { self.set_with_capabilities(id, handler, &[]); }
 
+    /// 绑定 skill handler 并记录其扩展能力；ID 越界时 panic。
     pub fn set_with_capabilities(&mut self, id: SkillId, handler: SkillHandlerFn, capabilities: &[ExtensionCapability]) {
         let Some(slot) = self.handlers.get_mut(id.0 as usize) else {
             panic!("unknown runtime skill handler id: {}", id.0);
@@ -257,13 +277,16 @@ impl SkillHandlers {
         self.capabilities[id.0 as usize] = capabilities.to_vec();
     }
 
+    /// 查询已绑定的 skill handler；未绑定返回 None。
     pub fn get(&self, id: SkillId) -> Option<SkillHandlerFn> { self.handlers.get(id.0 as usize).and_then(|handler| *handler) }
 
+    /// 查询该 handler 声明的扩展能力。
     pub fn capabilities(&self, id: SkillId) -> Option<&[ExtensionCapability]> {
         self.capabilities.get(id.0 as usize).map(Vec::as_slice)
     }
 }
 
+/// 按 StateId 索引的 state handler 表。
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct StateHandlers {
     handlers: Vec<Option<StateHandlerFn>>,
@@ -271,6 +294,7 @@ pub struct StateHandlers {
 }
 
 impl StateHandlers {
+    /// 按注册表中的状态数量建空表。
     pub fn from_registry(registry: &ExtensionRegistry) -> Self {
         Self {
             handlers: vec![None; registry.states().len()],
@@ -278,8 +302,10 @@ impl StateHandlers {
         }
     }
 
+    /// 绑定 state handler，不声明额外能力。
     pub fn set(&mut self, id: StateId, handler: StateHandlerFn) { self.set_with_capabilities(id, handler, &[]); }
 
+    /// 绑定 state handler 并记录其扩展能力；ID 越界时 panic。
     pub fn set_with_capabilities(&mut self, id: StateId, handler: StateHandlerFn, capabilities: &[ExtensionCapability]) {
         let Some(slot) = self.handlers.get_mut(id.0 as usize) else {
             panic!("unknown runtime state handler id: {}", id.0);
@@ -288,13 +314,16 @@ impl StateHandlers {
         self.capabilities[id.0 as usize] = capabilities.to_vec();
     }
 
+    /// 查询已绑定的 state handler；未绑定返回 None。
     pub fn get(&self, id: StateId) -> Option<StateHandlerFn> { self.handlers.get(id.0 as usize).and_then(|handler| *handler) }
 
+    /// 查询该 handler 声明的扩展能力。
     pub fn capabilities(&self, id: StateId) -> Option<&[ExtensionCapability]> {
         self.capabilities.get(id.0 as usize).map(Vec::as_slice)
     }
 }
 
+/// 一条由渲染器产出的回放事件。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderedReplay {
     pub renderer: ReplayRendererId,
@@ -302,6 +331,7 @@ pub struct RenderedReplay {
 }
 
 impl RenderedReplay {
+    /// 用渲染器 ID 与载荷构造回放事件。
     pub fn new(renderer: ReplayRendererId, payload: impl Into<String>) -> Self {
         Self {
             renderer,
@@ -310,6 +340,7 @@ impl RenderedReplay {
     }
 }
 
+/// 一条由渲染器产出的展示事件。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderedShow {
     pub renderer: ShowRendererId,
@@ -317,6 +348,7 @@ pub struct RenderedShow {
 }
 
 impl RenderedShow {
+    /// 用渲染器 ID 与载荷构造展示事件。
     pub fn new(renderer: ShowRendererId, payload: impl Into<String>) -> Self {
         Self {
             renderer,
@@ -325,6 +357,7 @@ impl RenderedShow {
     }
 }
 
+/// 核心回放事件的投影字段，供渲染器直接引用。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CoreReplayEvent {
     pub message: String,
@@ -335,24 +368,28 @@ pub struct CoreReplayEvent {
     pub score: u32,
 }
 
+/// 核心展示事件的投影字段，供渲染器直接引用。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CoreShowEvent {
     pub text: String,
     pub score: u32,
 }
 
+/// 按 ReplayRendererId 索引的 replay 渲染器表。
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ReplayRenderers {
     renderers: Vec<Option<ReplayRendererFn>>,
 }
 
 impl ReplayRenderers {
+    /// 按注册表中的 replay 渲染器数量建空表。
     pub fn from_registry(registry: &ExtensionRegistry) -> Self {
         Self {
             renderers: vec![None; registry.replay_renderers().len()],
         }
     }
 
+    /// 绑定 replay 渲染器；ID 越界时 panic。
     pub fn set(&mut self, id: ReplayRendererId, renderer: ReplayRendererFn) {
         let Some(slot) = self.renderers.get_mut(id.0 as usize) else {
             panic!("unknown runtime replay renderer id: {}", id.0);
@@ -360,23 +397,27 @@ impl ReplayRenderers {
         *slot = Some(renderer);
     }
 
+    /// 查询已绑定的 replay 渲染器；未绑定返回 None。
     pub fn get(&self, id: ReplayRendererId) -> Option<ReplayRendererFn> {
         self.renderers.get(id.0 as usize).and_then(|renderer| *renderer)
     }
 }
 
+/// 按 ShowRendererId 索引的 show 渲染器表。
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ShowRenderers {
     renderers: Vec<Option<ShowRendererFn>>,
 }
 
 impl ShowRenderers {
+    /// 按注册表中的 show 渲染器数量建空表。
     pub fn from_registry(registry: &ExtensionRegistry) -> Self {
         Self {
             renderers: vec![None; registry.show_renderers().len()],
         }
     }
 
+    /// 绑定 show 渲染器；ID 越界时 panic。
     pub fn set(&mut self, id: ShowRendererId, renderer: ShowRendererFn) {
         let Some(slot) = self.renderers.get_mut(id.0 as usize) else {
             panic!("unknown runtime show renderer id: {}", id.0);
@@ -384,6 +425,7 @@ impl ShowRenderers {
         *slot = Some(renderer);
     }
 
+    /// 查询已绑定的 show 渲染器；未绑定返回 None。
     pub fn get(&self, id: ShowRendererId) -> Option<ShowRendererFn> {
         self.renderers.get(id.0 as usize).and_then(|renderer| *renderer)
     }

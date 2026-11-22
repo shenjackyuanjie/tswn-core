@@ -9,6 +9,7 @@ use std::cell::Cell;
 const HELP_ICON_SIZE: f32 = 18.0;
 const HELP_TOOLTIP_WIDTH: f32 = 380.0;
 
+/// 帮助主题枚举：对应各工具的说明弹窗内容。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HelpTopic {
     DiyExport,
@@ -40,6 +41,7 @@ pub enum HelpTopic {
 }
 
 impl HelpTopic {
+    /// 返回主题的窗口标题。
     pub fn title(self) -> &'static str {
         match self {
             Self::DiyExport => "导出格式与详情",
@@ -71,6 +73,7 @@ impl HelpTopic {
         }
     }
 
+    /// 返回主题的正文内容。
     pub fn body(self) -> &'static str {
         match self {
             Self::Ds4Workflow => super::ds4_help::WORKFLOW,
@@ -183,6 +186,7 @@ impl HelpTopic {
     }
 }
 
+/// 绘制可点击的帮助图标；点击时把请求打开的主题写入 cell。
 pub fn help_icon(ui: &mut egui::Ui, topic: HelpTopic, requested: &Cell<Option<HelpTopic>>) {
     let (rect, response) = ui.allocate_exact_size(egui::vec2(HELP_ICON_SIZE, HELP_ICON_SIZE), egui::Sense::click());
     let color = if response.hovered() {
@@ -213,6 +217,7 @@ pub fn help_icon(ui: &mut egui::Ui, topic: HelpTopic, requested: &Cell<Option<He
     }
 }
 
+/// 绘制置顶的帮助弹窗；无活动主题时不做任何事。
 pub fn show_help_window(ctx: &egui::Context, active: &mut Option<HelpTopic>) {
     let Some(topic) = *active else {
         return;

@@ -28,6 +28,7 @@ const TOP_BAR_VERTICAL_SPACE: f32 = 2.0;
 const RUN_BUTTON_HEIGHT: f32 = 38.0;
 const INPUT_FOOTER_RESERVED_HEIGHT: f32 = 56.0;
 
+/// 启动 egui/eframe 桌面应用：配置原生窗口选项并进入 Openbox 主界面。
 pub fn run() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()

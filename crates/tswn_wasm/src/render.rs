@@ -20,6 +20,7 @@ fn collect_between(tokens: &mut Vec<String>, template: &str, prefix: &str, suffi
     }
 }
 
+/// 从消息模板中提取状态变化相关的中文标记片段。
 pub fn status_change_tokens(template: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     collect_between(&mut tokens, template, "从[", "]中解除");

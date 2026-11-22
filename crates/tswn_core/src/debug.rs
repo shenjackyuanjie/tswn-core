@@ -78,6 +78,7 @@ fn init_once() {
     });
 }
 
+/// `TSWN_DEBUG_ACTION` 的调试对象玩家名；未启用或值为空时返回 `None`。
 #[inline]
 pub fn debug_action() -> Option<String> {
     init_once();
@@ -88,6 +89,7 @@ pub fn debug_action() -> Option<String> {
     }
 }
 
+/// 玩家名是否命中 `TSWN_DEBUG_ACTION`：相等或包含调试串均算命中。
 #[inline]
 pub fn debug_action_matches(name: &str) -> bool {
     init_once();
@@ -100,42 +102,49 @@ pub fn debug_action_matches(name: &str) -> bool {
     }
 }
 
+/// `TSWN_DEBUG_STATS`：调试玩家属性计算。
 #[inline]
 pub fn debug_stats() -> bool {
     init_once();
     DEBUG_STATS.load(Ordering::Relaxed)
 }
 
+/// `TSWN_DEBUG_WORLD`：调试世界状态同步。
 #[inline]
 pub fn debug_world() -> bool {
     init_once();
     DEBUG_WORLD.load(Ordering::Relaxed)
 }
 
+/// `TSWN_DEBUG_TICK`：调试每个 tick 的执行。
 #[inline]
 pub fn debug_tick() -> bool {
     init_once();
     DEBUG_TICK.load(Ordering::Relaxed)
 }
 
+/// `TSWN_DEBUG_PICK`：调试目标选择逻辑。
 #[inline]
 pub fn debug_pick() -> bool {
     init_once();
     DEBUG_PICK.load(Ordering::Relaxed)
 }
 
+/// `TSWN_DEBUG_DODGE`：调试闪避逻辑。
 #[inline]
 pub fn debug_dodge() -> bool {
     init_once();
     DEBUG_DODGE.load(Ordering::Relaxed)
 }
 
+/// `TSWN_DEBUG_DODGE_ALL`：调试所有玩家的闪避。
 #[inline]
 pub fn debug_dodge_all() -> bool {
     init_once();
     DEBUG_DODGE_ALL.load(Ordering::Relaxed)
 }
 
+/// `TSWN_DEBUG_DIE` 的调试对象玩家名；未启用时返回 `None`。
 #[inline]
 pub fn debug_die() -> Option<String> {
     init_once();
@@ -146,42 +155,49 @@ pub fn debug_die() -> Option<String> {
     }
 }
 
+/// `TSWN_DEBUG_STATE`：调试状态系统（设置/清除/追踪）。
 #[inline]
 pub fn debug_state() -> bool {
     init_once();
     DEBUG_STATE.load(Ordering::Relaxed)
 }
 
+/// `TSWN_DEBUG_POST_ACTION`：调试 post_action 链顺序。
 #[inline]
 pub fn debug_post_action() -> bool {
     init_once();
     DEBUG_POST_ACTION.load(Ordering::Relaxed)
 }
 
+/// `TSWN_DEBUG_FORCED_SKILL`：调试 pre_action 强制技能选择。
 #[inline]
 pub fn debug_forced_skill() -> bool {
     init_once();
     DEBUG_FORCED_SKILL.load(Ordering::Relaxed)
 }
 
+/// `TSWN_DEBUG_COVID`：调试 COVID Boss 相关逻辑。
 #[inline]
 pub fn debug_covid() -> bool {
     init_once();
     DEBUG_COVID.load(Ordering::Relaxed)
 }
 
+/// `TSWN_DEBUG_FIRE`：调试火焰技能。
 #[inline]
 pub fn debug_fire() -> bool {
     init_once();
     DEBUG_FIRE.load(Ordering::Relaxed)
 }
 
+/// `TSWN_DEBUG_HEAL`：调试治疗技能。
 #[inline]
 pub fn debug_heal() -> bool {
     init_once();
     DEBUG_HEAL.load(Ordering::Relaxed)
 }
 
+/// `TSWN_DEBUG_UPGRADE` 的调试对象玩家名；未启用时返回 `None`。
 #[inline]
 pub fn debug_upgrade() -> Option<String> {
     init_once();
@@ -192,18 +208,21 @@ pub fn debug_upgrade() -> Option<String> {
     }
 }
 
+/// `TSWN_DEBUG_REFLECT`：调试反射技能。
 #[inline]
 pub fn debug_reflect() -> bool {
     init_once();
     DEBUG_REFLECT.load(Ordering::Relaxed)
 }
 
+/// `TSWN_DEBUG_DAMAGE`：调试伤害计算。
 #[inline]
 pub fn debug_damage() -> bool {
     init_once();
     DEBUG_DAMAGE.load(Ordering::Relaxed)
 }
 
+/// `TSWN_TRACE_RC4`：追踪 RC4 随机数状态。
 #[inline]
 pub fn trace_rc4() -> bool {
     init_once();

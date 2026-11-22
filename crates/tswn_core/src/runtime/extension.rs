@@ -64,33 +64,43 @@ use crate::runtime::profile::{
     DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT,
 };
 
+/// 玩家类型 ID；由注册表按注册次序分配，仅在所属注册表内有效。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PlayerKindId(pub u32);
 
+/// 技能 ID；由注册表按注册次序分配，仅在所属注册表内有效。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SkillId(pub u32);
 
+/// 状态 ID；由注册表按注册次序分配，仅在所属注册表内有效。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StateId(pub u32);
 
+/// 模板槽 ID；由注册表按注册次序分配，仅在所属注册表内有效。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TemplateSlotId(pub u32);
 
+/// 对局级槽 ID；由注册表按注册次序分配，仅在所属注册表内有效。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BattleSlotId(pub u32);
 
+/// 实体槽 ID；由注册表按注册次序分配，仅在所属注册表内有效。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntitySlotId(pub u32);
 
+/// 效果 handler ID；由注册表按注册次序分配，仅在所属注册表内有效。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EffectHandlerId(pub u32);
 
+/// 回放渲染器 ID；由注册表按注册次序分配，仅在所属注册表内有效。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ReplayRendererId(pub u32);
 
+/// 展示渲染器 ID；由注册表按注册次序分配，仅在所属注册表内有效。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ShowRendererId(pub u32);
 
+/// 扩展的语义化版本号。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ExtensionVersion {
     pub major: u16,
@@ -99,9 +109,11 @@ pub struct ExtensionVersion {
 }
 
 impl ExtensionVersion {
+    /// 构造版本号。
     pub const fn new(major: u16, minor: u16, patch: u16) -> Self { Self { major, minor, patch } }
 }
 
+/// handler 需要的上下文能力；实际授权由 set_*_handler_with_capabilities 完成。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ExtensionCapability {
     ReadAllies,
@@ -111,28 +123,42 @@ pub enum ExtensionCapability {
     MutateEntitySlots,
 }
 
+/// hook 执行优先级；数值越小越先执行，同值按注册次序。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SkillPriority(pub i32);
 
+/// 注册次序，用于同优先级内的稳定排序。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RegistrationOrder(pub u32);
 
+/// 生命周期 hook 掩码；各位相互独立，可用位或组合。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ProcMask(pub u64);
 
 impl ProcMask {
+    /// 空掩码，不参与任何 hook。
     pub const NONE: Self = Self(0);
+    /// 行动前 hook。
     pub const PRE_ACTION: Self = Self(1 << 0);
+    /// 行动后 hook。
     pub const POST_ACTION: Self = Self(1 << 1);
+    /// 伤害结算前 hook。
     pub const PRE_DAMAGE: Self = Self(1 << 2);
+    /// 伤害结算后 hook。
     pub const POST_DAMAGE: Self = Self(1 << 3);
+    /// 防御判定前 hook。
     pub const PRE_DEFEND: Self = Self(1 << 4);
+    /// 防御判定后 hook。
     pub const POST_DEFEND: Self = Self(1 << 5);
+    /// 死亡 hook。
     pub const DIE: Self = Self(1 << 6);
+    /// 击杀 hook。
     pub const KILL: Self = Self(1 << 7);
 
+    /// 两个掩码是否有共同阶段。
     pub const fn intersects(self, rhs: Self) -> bool { (self.0 & rhs.0) != 0 }
 
+    /// 掩码是否为空。
     pub const fn is_empty(self) -> bool { self.0 == 0 }
 }
 
@@ -150,6 +176,7 @@ impl std::ops::BitOrAssign for ProcMask {
     fn bitor_assign(&mut self, rhs: Self) { self.0 |= rhs.0; }
 }
 
+/// 技能的目标策略：无目标、敌方、友方或任意。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum TargetPolicy {
     #[default]
@@ -159,6 +186,7 @@ pub enum TargetPolicy {
     Any,
 }
 
+/// POST_ACTION 阶段的执行时机：早（默认）或晚。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum SkillPostActionPhase {
     #[default]
@@ -166,19 +194,29 @@ pub enum SkillPostActionPhase {
     Late,
 }
 
+/// 玩家类型标志位；各位相互独立，可用位或组合。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PlayerKindFlags(pub u64);
 
 impl PlayerKindFlags {
+    /// 无标志。
     pub const NONE: Self = Self(0);
+    /// Boss 角色。
     pub const BOSS: Self = Self(1 << 0);
+    /// 使魔（召唤物谱系）。
     pub const MINION: Self = Self(1 << 1);
+    /// 召唤物。
     pub const SUMMON: Self = Self(1 << 2);
+    /// bed2 自定义阵容成员。
     pub const BED2: Self = Self(1 << 3);
+    /// 加成（boost）角色。
     pub const BOOST: Self = Self(1 << 4);
+    /// 参与战斗结算的使魔。
     pub const COMBAT_MINION: Self = Self(1 << 5);
 
+    /// 是否包含全部指定标志。
     pub const fn contains(self, rhs: Self) -> bool { (self.0 & rhs.0) == rhs.0 }
+    /// 是否有任一指定标志。
     pub const fn intersects(self, rhs: Self) -> bool { (self.0 & rhs.0) != 0 }
 }
 
@@ -192,6 +230,7 @@ impl std::ops::BitOrAssign for PlayerKindFlags {
     fn bitor_assign(&mut self, rhs: Self) { self.0 |= rhs.0; }
 }
 
+/// 归属解析策略：效果归属自身还是根所有者。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum OwnerResolutionPolicy {
     #[default]
@@ -199,6 +238,7 @@ pub enum OwnerResolutionPolicy {
     RootOwner,
 }
 
+/// 伤害共享策略：不共享、共享给所有者或共享给召唤物。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum DamageSharePolicy {
     #[default]
@@ -207,6 +247,7 @@ pub enum DamageSharePolicy {
     ShareToSummons,
 }
 
+/// 吞噬（合并）策略：合并槽位映射与资源转移方式。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum MergePolicy {
     None,
@@ -217,6 +258,7 @@ pub enum MergePolicy {
     DropUnmappedSkills,
 }
 
+/// 玩家类型的策略组合：归属、伤害共享、吞噬与主防抗继承。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PlayerKindPolicies {
     pub owner_resolution: OwnerResolutionPolicy,
@@ -225,6 +267,7 @@ pub struct PlayerKindPolicies {
     pub inherit_owner_def_res: bool,
 }
 
+/// 玩家类型的注册信息：ID、命名、导出名、标志与策略。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerKindSpec {
     pub id: PlayerKindId,
@@ -235,6 +278,7 @@ pub struct PlayerKindSpec {
     pub policies: PlayerKindPolicies,
 }
 
+/// 技能的注册信息：ID、命名、导出名、hook 掩码、目标策略与优先级。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillSpec {
     pub id: SkillId,
@@ -248,6 +292,7 @@ pub struct SkillSpec {
     pub registration_order: RegistrationOrder,
 }
 
+/// 状态的注册信息：ID、命名、导出名、hook 掩码与优先级。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateSpec {
     pub id: StateId,
@@ -259,6 +304,7 @@ pub struct StateSpec {
     pub registration_order: RegistrationOrder,
 }
 
+/// 模板槽的注册信息：ID、命名与导出名。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TemplateSlotSpec {
     pub id: TemplateSlotId,
@@ -267,6 +313,7 @@ pub struct TemplateSlotSpec {
     pub export_name: String,
 }
 
+/// 对局级槽的注册信息：ID、命名与导出名。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BattleSlotSpec {
     pub id: BattleSlotId,
@@ -275,6 +322,7 @@ pub struct BattleSlotSpec {
     pub export_name: String,
 }
 
+/// 实体槽的注册信息：ID、命名与导出名。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntitySlotSpec {
     pub id: EntitySlotId,
@@ -283,6 +331,7 @@ pub struct EntitySlotSpec {
     pub export_name: String,
 }
 
+/// 效果 handler 的注册信息：ID、命名、导出名与优先级。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectHandlerSpec {
     pub id: EffectHandlerId,
@@ -293,6 +342,7 @@ pub struct EffectHandlerSpec {
     pub registration_order: RegistrationOrder,
 }
 
+/// 回放渲染器的注册信息：ID、命名、导出名与优先级。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReplayRendererSpec {
     pub id: ReplayRendererId,
@@ -303,6 +353,7 @@ pub struct ReplayRendererSpec {
     pub registration_order: RegistrationOrder,
 }
 
+/// 展示渲染器的注册信息：ID、命名、导出名与优先级。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShowRendererSpec {
     pub id: ShowRendererId,
@@ -313,6 +364,7 @@ pub struct ShowRendererSpec {
     pub registration_order: RegistrationOrder,
 }
 
+/// 已安装扩展的记录：名称、版本与声明的能力。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstalledExtensionSpec {
     pub name: String,
@@ -320,6 +372,7 @@ pub struct InstalledExtensionSpec {
     pub capabilities: Vec<ExtensionCapability>,
 }
 
+/// 注册错误：扩展名、类别内名称或导出名重复。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExtensionError {
     DuplicateExtensionName { name: String },
@@ -388,6 +441,7 @@ pub struct ExtensionRegistryBuilder {
 }
 
 impl ExtensionRegistryBuilder {
+    /// 安装一个扩展：调用其注册步骤并记录名称、版本与能力。
     pub fn install_extension(&mut self, extension: &impl TswnExtension) -> Result<(), ExtensionError> {
         let name = extension.name().to_owned();
         if self.extension_names.contains_key(&name) {
@@ -404,6 +458,7 @@ impl ExtensionRegistryBuilder {
         Ok(())
     }
 
+    /// 注册玩家类型，使用默认标志与策略。
     pub fn register_player_kind(
         &mut self,
         namespace: impl Into<String>,
@@ -419,6 +474,7 @@ impl ExtensionRegistryBuilder {
         )
     }
 
+    /// 注册玩家类型并指定标志与策略。
     pub fn register_player_kind_with_policies(
         &mut self,
         namespace: impl Into<String>,
@@ -454,6 +510,7 @@ impl ExtensionRegistryBuilder {
         Ok(id)
     }
 
+    /// 注册技能，默认挂到 PRE_ACTION hook。
     pub fn register_skill(
         &mut self,
         namespace: impl Into<String>,
@@ -465,6 +522,7 @@ impl ExtensionRegistryBuilder {
         self.register_skill_with_hooks(namespace, name, export_name, ProcMask::PRE_ACTION, target_policy, priority)
     }
 
+    /// 注册技能并指定 hook 掩码。
     pub fn register_skill_with_hooks(
         &mut self,
         namespace: impl Into<String>,
@@ -485,6 +543,7 @@ impl ExtensionRegistryBuilder {
         )
     }
 
+    /// 注册技能并指定 hook 掩码与 POST_ACTION 执行时机。
     pub fn register_skill_with_hooks_and_post_action_phase(
         &mut self,
         namespace: impl Into<String>,
@@ -525,6 +584,7 @@ impl ExtensionRegistryBuilder {
         Ok(id)
     }
 
+    /// 注册状态并指定 hook 掩码与优先级。
     pub fn register_state(
         &mut self,
         namespace: impl Into<String>,
@@ -561,6 +621,7 @@ impl ExtensionRegistryBuilder {
         Ok(id)
     }
 
+    /// 预留一个模板槽。
     pub fn reserve_template_slot(
         &mut self,
         namespace: impl Into<String>,
@@ -592,6 +653,7 @@ impl ExtensionRegistryBuilder {
         Ok(id)
     }
 
+    /// 预留一个对局级槽。
     pub fn reserve_battle_slot(
         &mut self,
         namespace: impl Into<String>,
@@ -623,6 +685,7 @@ impl ExtensionRegistryBuilder {
         Ok(id)
     }
 
+    /// 预留一个实体槽。
     pub fn reserve_entity_slot(
         &mut self,
         namespace: impl Into<String>,
@@ -654,6 +717,7 @@ impl ExtensionRegistryBuilder {
         Ok(id)
     }
 
+    /// 注册一个效果 handler。
     pub fn register_effect_handler(
         &mut self,
         namespace: impl Into<String>,
@@ -688,6 +752,7 @@ impl ExtensionRegistryBuilder {
         Ok(id)
     }
 
+    /// 注册一个回放渲染器。
     pub fn register_replay_renderer(
         &mut self,
         namespace: impl Into<String>,
@@ -722,6 +787,7 @@ impl ExtensionRegistryBuilder {
         Ok(id)
     }
 
+    /// 注册一个展示渲染器。
     pub fn register_show_renderer(
         &mut self,
         namespace: impl Into<String>,
@@ -756,6 +822,7 @@ impl ExtensionRegistryBuilder {
         Ok(id)
     }
 
+    /// 冻结注册表：解析内置主动技能映射与蓝图槽 ID。
     pub fn build(self) -> ExtensionRegistry {
         let builtin_active_skills = self
             .skills
@@ -791,6 +858,7 @@ impl ExtensionRegistryBuilder {
     }
 }
 
+/// 冻结后的扩展注册表：按 ID 索引各类别 spec，并提供导出名查询。
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ExtensionRegistry {
     installed_extensions: Vec<InstalledExtensionSpec>,
@@ -812,114 +880,148 @@ pub struct ExtensionRegistry {
 impl ExtensionRegistry {
     pub(crate) fn seed_blueprint_slots(&self) -> [Option<EntitySlotId>; 3] { self.seed_blueprint_slots }
 
+    /// 已安装扩展列表，按安装顺序排列。
     pub fn installed_extensions(&self) -> &[InstalledExtensionSpec] { &self.installed_extensions }
 
+    /// 按 ID 查玩家类型；越界返回 None。
     pub fn player_kind(&self, id: PlayerKindId) -> Option<&PlayerKindSpec> { self.player_kinds.get(id.0 as usize) }
 
+    /// 全部玩家类型，按注册顺序排列。
     pub fn player_kinds(&self) -> &[PlayerKindSpec] { &self.player_kinds }
 
+    /// 按导出名查玩家类型。
     pub fn player_kind_by_export_name(&self, export_name: &str) -> Option<&PlayerKindSpec> {
         self.player_kinds.iter().find(|spec| spec.export_name == export_name)
     }
 
+    /// 按导出名查玩家类型 ID。
     pub fn player_kind_id_by_export_name(&self, export_name: &str) -> Option<PlayerKindId> {
         self.player_kind_by_export_name(export_name).map(|spec| spec.id)
     }
 
+    /// 按 ID 查技能；越界返回 None。
     pub fn skill(&self, id: SkillId) -> Option<&SkillSpec> { self.skills.get(id.0 as usize) }
 
     pub(crate) fn builtin_active_skill(&self, id: SkillId) -> Option<BuiltinActiveSkill> {
         self.builtin_active_skills.get(id.0 as usize).copied().flatten()
     }
 
+    /// 全部技能，按注册顺序排列。
     pub fn skills(&self) -> &[SkillSpec] { &self.skills }
 
+    /// 按 namespace 与 name 查技能。
     pub fn skill_by_name(&self, namespace: &str, name: &str) -> Option<&SkillSpec> {
         self.skills.iter().find(|spec| spec.namespace == namespace && spec.name == name)
     }
 
+    /// 按 namespace 与 name 查技能 ID。
     pub fn skill_id_by_name(&self, namespace: &str, name: &str) -> Option<SkillId> {
         self.skill_by_name(namespace, name).map(|spec| spec.id)
     }
 
+    /// 按导出名查技能。
     pub fn skill_by_export_name(&self, export_name: &str) -> Option<&SkillSpec> {
         self.skills.iter().find(|spec| spec.export_name == export_name)
     }
 
+    /// 按导出名查技能 ID。
     pub fn skill_id_by_export_name(&self, export_name: &str) -> Option<SkillId> {
         self.skill_by_export_name(export_name).map(|spec| spec.id)
     }
 
+    /// 按 ID 查状态；越界返回 None。
     pub fn state(&self, id: StateId) -> Option<&StateSpec> { self.states.get(id.0 as usize) }
 
+    /// 全部状态，按注册顺序排列。
     pub fn states(&self) -> &[StateSpec] { &self.states }
 
+    /// 按导出名查状态。
     pub fn state_by_export_name(&self, export_name: &str) -> Option<&StateSpec> {
         self.states.iter().find(|spec| spec.export_name == export_name)
     }
 
+    /// 按导出名查状态 ID。
     pub fn state_id_by_export_name(&self, export_name: &str) -> Option<StateId> {
         self.state_by_export_name(export_name).map(|spec| spec.id)
     }
 
+    /// 按 ID 查模板槽；越界返回 None。
     pub fn template_slot(&self, id: TemplateSlotId) -> Option<&TemplateSlotSpec> { self.template_slots.get(id.0 as usize) }
 
+    /// 全部模板槽，按注册顺序排列。
     pub fn template_slots(&self) -> &[TemplateSlotSpec] { &self.template_slots }
 
+    /// 按 ID 查对局级槽；越界返回 None。
     pub fn battle_slot(&self, id: BattleSlotId) -> Option<&BattleSlotSpec> { self.battle_slots.get(id.0 as usize) }
 
+    /// 全部对局级槽，按注册顺序排列。
     pub fn battle_slots(&self) -> &[BattleSlotSpec] { &self.battle_slots }
 
+    /// 按 ID 查实体槽；越界返回 None。
     pub fn entity_slot(&self, id: EntitySlotId) -> Option<&EntitySlotSpec> { self.entity_slots.get(id.0 as usize) }
 
+    /// 按导出名查实体槽。
     pub fn entity_slot_by_export_name(&self, export_name: &str) -> Option<&EntitySlotSpec> {
         self.entity_slots.iter().find(|spec| spec.export_name == export_name)
     }
 
+    /// 按导出名查实体槽 ID。
     pub fn entity_slot_id_by_export_name(&self, export_name: &str) -> Option<EntitySlotId> {
         self.entity_slot_by_export_name(export_name).map(|spec| spec.id)
     }
 
+    /// 全部实体槽，按注册顺序排列。
     pub fn entity_slots(&self) -> &[EntitySlotSpec] { &self.entity_slots }
 
+    /// 按 ID 查效果 handler；越界返回 None。
     pub fn effect_handler(&self, id: EffectHandlerId) -> Option<&EffectHandlerSpec> { self.effect_handlers.get(id.0 as usize) }
 
+    /// 全部效果 handler，按注册顺序排列。
     pub fn effect_handlers(&self) -> &[EffectHandlerSpec] { &self.effect_handlers }
 
+    /// 按 ID 查回放渲染器；越界返回 None。
     pub fn replay_renderer(&self, id: ReplayRendererId) -> Option<&ReplayRendererSpec> {
         self.replay_renderers.get(id.0 as usize)
     }
 
+    /// 全部回放渲染器，按注册顺序排列。
     pub fn replay_renderers(&self) -> &[ReplayRendererSpec] { &self.replay_renderers }
 
+    /// 按 ID 查展示渲染器；越界返回 None。
     pub fn show_renderer(&self, id: ShowRendererId) -> Option<&ShowRendererSpec> { self.show_renderers.get(id.0 as usize) }
 
+    /// 全部展示渲染器，按注册顺序排列。
     pub fn show_renderers(&self) -> &[ShowRendererSpec] { &self.show_renderers }
 
+    /// 按优先级与注册次序排序的技能列表。
     pub fn skills_in_hook_order(&self) -> Vec<&SkillSpec> {
         let mut specs: Vec<&SkillSpec> = self.skills.iter().collect();
         specs.sort_by_key(|spec| (spec.priority, spec.registration_order));
         specs
     }
 
+    /// 按优先级与注册次序排序的状态列表。
     pub fn states_in_hook_order(&self) -> Vec<&StateSpec> {
         let mut specs: Vec<&StateSpec> = self.states.iter().collect();
         specs.sort_by_key(|spec| (spec.priority, spec.registration_order));
         specs
     }
 
+    /// 按优先级与注册次序排序的效果 handler 链。
     pub fn effect_handlers_in_chain_order(&self) -> Vec<&EffectHandlerSpec> {
         let mut specs: Vec<&EffectHandlerSpec> = self.effect_handlers.iter().collect();
         specs.sort_by_key(|spec| (spec.priority, spec.registration_order));
         specs
     }
 
+    /// 按优先级与注册次序排序的回放渲染器链。
     pub fn replay_renderers_in_order(&self) -> Vec<&ReplayRendererSpec> {
         let mut specs: Vec<&ReplayRendererSpec> = self.replay_renderers.iter().collect();
         specs.sort_by_key(|spec| (spec.priority, spec.registration_order));
         specs
     }
 
+    /// 按优先级与注册次序排序的展示渲染器链。
     pub fn show_renderers_in_order(&self) -> Vec<&ShowRendererSpec> {
         let mut specs: Vec<&ShowRendererSpec> = self.show_renderers.iter().collect();
         specs.sort_by_key(|spec| (spec.priority, spec.registration_order));

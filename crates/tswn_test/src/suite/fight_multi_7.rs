@@ -4,6 +4,7 @@
 
 use super::*;
 
+/// 多人对局（multi_7）的完整回放 fixture：锁定 JS 产物兼容性。
 pub fn fight_multi_7<E: crate::EngineAdapter>() {
     const FIGHT_CASE: &str = include_str!("fixtures/fight_multi_7.md");
     let (raw_input, expected_lines) = parse_embedded_fight_case(

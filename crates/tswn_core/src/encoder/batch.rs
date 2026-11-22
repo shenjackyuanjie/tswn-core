@@ -690,8 +690,10 @@ impl EncodedBatch {
     /// 用冻结档位 `BASELINE_64` 分配；测试与一次性编码的便捷入口。
     pub fn baseline(batch: usize) -> Self { Self::new(&BASELINE_64, batch) }
 
+    /// 本批的样本数（batch 轴长度）。
     pub fn batch(&self) -> usize { self.batch }
 
+    /// 本批的九维容量，来自分配时使用的 profile。
     pub fn dims(&self) -> &[usize; 9] { &self.dims }
 
     /// 张量静态描述；未注册返回 None。
@@ -740,6 +742,7 @@ impl EncodedBatch {
         }
     }
 
+    /// 借用 i32 张量的全部批数据，按 batch 主序排列；dtype 不符时返回 [`EncodeError::UnknownTensor`]。
     pub fn i32_all(&self, name: &str) -> Result<&[i32], EncodeError> {
         match &self.slot(name)?.buffer {
             TensorBuffer::I32(values) => Ok(values),
@@ -747,6 +750,7 @@ impl EncodedBatch {
         }
     }
 
+    /// 借用 u8 张量的全部批数据，按 batch 主序排列；dtype 不符时返回 [`EncodeError::UnknownTensor`]。
     pub fn u8_all(&self, name: &str) -> Result<&[u8], EncodeError> {
         match &self.slot(name)?.buffer {
             TensorBuffer::U8(values) => Ok(values),
@@ -754,6 +758,7 @@ impl EncodedBatch {
         }
     }
 
+    /// 借用 u32 张量的全部批数据，按 batch 主序排列；dtype 不符时返回 [`EncodeError::UnknownTensor`]。
     pub fn u32_all(&self, name: &str) -> Result<&[u32], EncodeError> {
         match &self.slot(name)?.buffer {
             TensorBuffer::U32(values) => Ok(values),
@@ -787,6 +792,7 @@ impl EncodedBatch {
         }
     }
 
+    /// i32 张量的可写批槽位行，偏移为 `batch_index × per_sample`；dtype 不符返回 [`EncodeError::UnknownTensor`]。
     pub fn i32_row_mut(&mut self, name: &str, batch_index: usize) -> Result<&mut [i32], EncodeError> {
         self.check_batch(name, batch_index)?;
         let slot = self.slot_mut(name)?;
@@ -797,6 +803,7 @@ impl EncodedBatch {
         }
     }
 
+    /// u8 张量的可写批槽位行，偏移为 `batch_index × per_sample`；dtype 不符返回 [`EncodeError::UnknownTensor`]。
     pub fn u8_row_mut(&mut self, name: &str, batch_index: usize) -> Result<&mut [u8], EncodeError> {
         self.check_batch(name, batch_index)?;
         let slot = self.slot_mut(name)?;
@@ -807,6 +814,7 @@ impl EncodedBatch {
         }
     }
 
+    /// u32 张量的可写批槽位行，偏移为 `batch_index × per_sample`；dtype 不符返回 [`EncodeError::UnknownTensor`]。
     pub fn u32_row_mut(&mut self, name: &str, batch_index: usize) -> Result<&mut [u32], EncodeError> {
         self.check_batch(name, batch_index)?;
         let slot = self.slot_mut(name)?;

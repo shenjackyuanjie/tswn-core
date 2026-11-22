@@ -20,7 +20,9 @@ const MAX_RESULT_BYTES: usize = 8 * 1024 * 1024;
 
 /// 表格高度的自动模式：按可用高度的 [`TABLE_AUTO_RATIO`] 分配，拖动分隔条后写入具体像素值。
 pub const TABLE_HEIGHT_AUTO: f32 = 0.0;
+/// 结果表格高度下限：80。
 pub const TABLE_HEIGHT_MIN: f32 = 80.0;
+/// 结果表格高度上限：10000。
 pub const TABLE_HEIGHT_MAX: f32 = 10_000.0;
 /// 自动模式下表格占结果区高度的比例；与拖动前的默认版面一致。
 pub const TABLE_AUTO_RATIO: f32 = 0.55;
@@ -38,6 +40,7 @@ pub const DEFAULT_VIEW_MODES: [ViewMode; 6] = [
     ViewMode::Text,
 ];
 
+/// 结果视图模式：文本、卡片与表格。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ViewMode {
     Text,
@@ -46,6 +49,7 @@ pub enum ViewMode {
     Table,
 }
 
+/// 列对齐方式：左、中、右。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ColumnAlign {
     Left,
@@ -54,6 +58,7 @@ pub enum ColumnAlign {
 }
 
 impl ColumnAlign {
+    /// 全部列对齐方式。
     pub const ALL: [Self; 3] = [Self::Left, Self::Center, Self::Right];
 
     fn label(self) -> &'static str {
@@ -239,6 +244,7 @@ pub struct SortState {
     pub descending: bool,
 }
 
+/// 结果视图状态：模式、跟随滚动、列宽与列对齐等。
 pub struct ResultsView {
     pub mode: ViewMode,
     pub follow: bool,
@@ -311,6 +317,7 @@ impl ResultsView {
     /// 按指定视图模式创建空结果视图；初始状态与设置恢复共用。
     pub fn with_mode(mode: ViewMode) -> Self { Self { mode, ..Self::default() } }
 
+    /// 清空结果与日志，保留视图偏好设置。
     pub fn clear(&mut self) {
         *self = Self {
             mode: self.mode,
@@ -451,8 +458,10 @@ impl ResultsView {
         Some(record.copy_text(group))
     }
 
+    /// 记录任务的终止状态文本。
     pub fn finish(&mut self, status: &str) { self.terminal = Some(status.to_owned()); }
 
+    /// 应用一条结果更新：写入日志并按需刷新表格数据。
     pub fn apply(&mut self, update: ResultUpdate, log: &mut LogBuffer) {
         let group = update.group;
         let prefix = format!("[#{} {}]", group + 1, update.label);

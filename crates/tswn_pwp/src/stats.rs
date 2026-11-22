@@ -76,6 +76,7 @@ impl Series {
     }
 }
 
+/// 对局级统计：总数、完成、截断、失败与按切分计数。
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BattleStats {
     pub total: usize,
@@ -94,6 +95,7 @@ pub struct BattleStats {
     pub truncated_by_team_count: BTreeMap<usize, usize>,
 }
 
+/// 样本级统计：总数、按切分计数、初始状态数与进度分布。
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SampleStats {
     pub total: usize,
@@ -110,6 +112,7 @@ pub struct SampleStats {
     pub skill_count: ValueStats,
 }
 
+/// 内容统计：技能 ID、状态载荷 kind 与实体模板 kind 的频次。
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContentStats {
     /// 稳定 1-based 技能 ID 频次；不是 fixed_lane 或 legacy key。
@@ -142,6 +145,7 @@ pub struct CapacityStats {
     pub dims: BTreeMap<String, CapacityDimStats>,
 }
 
+/// 数据集统计：对局、样本、内容与容量四个维度。
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DatasetStats {
     pub battles: BattleStats,
@@ -359,6 +363,7 @@ pub struct StatsArgs {
     pub top: usize,
 }
 
+/// 执行 stats：收集统计，按参数写出 JSON 并打印报告。
 pub fn run(args: &StatsArgs) -> Result<()> {
     let stats = collect(&args.out)?;
     if let Some(path) = &args.json_out {

@@ -1,6 +1,7 @@
 use super::*;
 
 impl PreparedBattleSeed {
+    /// seed 快照中记录的输入分组。
     pub fn input_groups(&self) -> &[Vec<EntityIdx>] { &self.input_groups }
 
     /// 把本轮已排好的输入分组交给 runner，并接管 runner 上一轮的向量作为下次复用缓冲。
@@ -82,6 +83,7 @@ impl PreparedBattleSeed {
         Self::apply_entity_seed_values(&self.teams, &self.speed_points, runtime)
     }
 
+    /// 把 seed 状态应用到已复位的 Runtime，并重置行动模式。
     pub fn apply(self, runtime: &mut CombatRuntime) -> Result<(), RuntimeBattleInitError> {
         self.apply_entities(runtime)?;
 

@@ -135,6 +135,7 @@ pub struct tswn_player_snapshot_t {
     pub frozen: u8,
 }
 
+/// 单条更新的类型标签：Win 为获胜更新，None 为普通机制更新，NextLine 为消息换行标记。
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, Default)]
 pub enum tswn_update_type_t {

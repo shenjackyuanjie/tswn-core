@@ -1,10 +1,12 @@
 use super::*;
 
 impl PreparedBattleRoster {
+    /// 用默认 eval_rq 从原始分组构建 roster。
     pub fn from_groups(raw_groups: &[Vec<String>], registry: &ExtensionRegistry) -> Result<Self, RuntimeBattleInitError> {
         Self::from_groups_with_eval_rq(raw_groups, crate::namerena::eval_name::DEFAULT_EVAL_RQ, registry)
     }
 
+    /// 按指定 eval_rq 从原始分组构建 roster。
     pub fn from_groups_with_eval_rq(
         raw_groups: &[Vec<String>],
         eval_rq: f64,
@@ -14,6 +16,7 @@ impl PreparedBattleRoster {
         Self::from_groups_with_eval_rq_and_skill_import(raw_groups, eval_rq, registry, &skill_import)
     }
 
+    /// 复用调用方提供的内置技能导入表构建 roster，避免重复注册表扫描。
     pub fn from_groups_with_eval_rq_and_skill_import(
         raw_groups: &[Vec<String>],
         eval_rq: f64,
@@ -364,8 +367,10 @@ impl PreparedBattleRoster {
         })
     }
 
+    /// 附加 seed 行并生成完整初始状态，保留自身供后续轮次复用。
     pub fn with_seed(&self, seed: &[String]) -> PreparedBattleInit { self.seed_state(seed).into_init(self.players.clone()) }
 
+    /// 消耗自身附加 seed 并生成完整初始状态。
     pub fn into_with_seed(self, seed: &[String]) -> PreparedBattleInit {
         let seed_state = self.seed_state(seed);
         self.into_init_with_seed_state(seed_state)
@@ -400,6 +405,7 @@ impl PreparedBattleRoster {
         state.into_init_with_score_buffers(players, score_buffers)
     }
 
+    /// 只生成 seed 相关的轻量状态，不含玩家模板与技能表。
     pub fn seed_state(&self, seed: &[String]) -> PreparedBattleSeed {
         let mut state = self.new_seed_state();
         self.refill_seed_state(seed, &mut state);
@@ -611,6 +617,7 @@ impl PreparedBattleRoster {
         groups.resize_with(len, Vec::new);
     }
 
+    /// 按实体顺序返回输入分组的下标。
     pub fn input_groups(&self) -> Vec<Vec<EntityIdx>> {
         self.input_groups.iter().map(|group| PreparedBattleInit::entity_order(group)).collect()
     }

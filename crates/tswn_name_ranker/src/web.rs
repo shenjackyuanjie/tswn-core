@@ -19,6 +19,7 @@ use axum::{
 use serde_json::json;
 use std::sync::Arc;
 use tower_http::services::ServeDir;
+/// 用给定服务构造 axum Router（健康检查、名字、靶子与排名等路由）。
 pub fn router(service: Service) -> Router {
     Router::new()
         .route("/api/health", get(|| async { Json(json!({"ok":true})) }))
@@ -87,6 +88,7 @@ async fn export_results(State(s): State<Arc<Service>>) -> Result<impl IntoRespon
         s.export_results()?,
     ))
 }
+/// HTTP 层错误包装：把 anyhow::Error 转换为统一错误响应。
 pub struct ApiError(anyhow::Error);
 impl<E: Into<anyhow::Error>> From<E> for ApiError {
     fn from(e: E) -> Self { Self(e.into()) }

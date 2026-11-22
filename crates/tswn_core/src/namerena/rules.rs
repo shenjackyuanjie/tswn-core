@@ -2,6 +2,7 @@
 
 pub(crate) const SAITAMA_RETIREMENT_WINNER: &str = "SAITAMA";
 
+/// 内置 Boss 名字表；用于身份分类、默认技能与免疫规则查询。
 pub const BOSS_NAMES: [&str; 15] = [
     "mario",
     "sonic",
@@ -20,6 +21,7 @@ pub const BOSS_NAMES: [&str; 15] = [
     SAITAMA_RETIREMENT_WINNER,
 ];
 
+/// 加成角色名字表；对应 [`boost_value`] 的加成来源。
 pub const BOOST_NAMES: [&str; 3] = ["云剑狄卡敢", "云剑穸跄祇", "田一人"];
 
 pub(crate) fn boss_combat_name(name: &str) -> &str {
@@ -36,6 +38,7 @@ pub(crate) fn boss_combat_identity_override(identity: &str) -> Option<&'static s
     }
 }
 
+/// Boss 的中文展示名；未知名按原名返回。
 pub fn boss_display_name(name: &str) -> &str {
     match name {
         "mario" => "马里奥",
@@ -129,6 +132,7 @@ pub fn boss_action_skills(name: &str) -> &'static [(BossActionSkill, u32)] {
     }
 }
 
+/// 加成角色的加成值；非加成角色返回 0。
 pub fn boost_value(name: &str) -> u32 {
     match name {
         "云剑狄卡敢" => 25,
@@ -141,6 +145,7 @@ pub fn boost_value(name: &str) -> u32 {
 /// 0.5.5 中 `k3` 使用 `SklAttack` 的 Boss；它们的默认攻击可以走魔法分支。
 pub fn boss_uses_skill_attack(name: &str) -> bool { matches!(boss_combat_name(name), "aokiji" | "ikaruga") }
 
+/// Boss 行动概率的抽样条目数；`covid` / `lazy` / `testsubject` 为 0，其余为 1。
 pub fn boss_action_prob_count(name: &str) -> usize {
     match boss_combat_name(name) {
         "covid" | "lazy" | "testsubject" => 0,
@@ -201,6 +206,7 @@ pub fn boss_immune_threshold(name: &str, key: &str) -> i32 {
     }
 }
 
+/// 三个可取中位数的值的中位数；用于属性派生等三值聚合场景。
 pub fn median<T>(x: T, y: T, z: T) -> T
 where
     T: Ord + Copy,

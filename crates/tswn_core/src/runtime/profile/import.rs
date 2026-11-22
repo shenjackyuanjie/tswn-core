@@ -1,6 +1,7 @@
 use super::*;
 
 impl CustomBed2Import {
+    /// 解析 bed2 行格式：名字、可选队伍标记与 `+` 段体力；无法解析返回 None。
     pub fn parse(raw: &str) -> Option<Self> {
         let raw = raw.trim();
         if raw.is_empty() {
@@ -25,6 +26,7 @@ impl CustomBed2Import {
         })
     }
 
+    /// 按玩家外观格式解析 bed2 行；体力取外观值，缺省时用标记值。
     pub fn parse_player_facade_raw(raw: &str) -> Option<Self> {
         let marker_import = Self::parse(raw)?;
         let id_name = crate::namerena::raw_namerena_to_id_name(raw.trim());
@@ -36,6 +38,7 @@ impl CustomBed2Import {
         })
     }
 
+    /// 把导入结果转成 PlayerTemplate：默认防抗、身份名与召唤技能。
     pub fn into_player_template(self, id: PlrId, kind: PlayerKindId, team: usize, summon_skill: SkillId) -> PlayerTemplate {
         let id_key_name = self
             .team
@@ -49,6 +52,7 @@ impl CustomBed2Import {
             .with_skills([summon_skill])
     }
 
+    /// 把 bed2 roster 转换成准备模板。
     pub fn roster_into_prepared_template(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -59,6 +63,7 @@ impl CustomBed2Import {
         Ok(PreparedCombatTemplate::with_registry(players, registry))
     }
 
+    /// 把 bed2 roster 转换成准备模板，并写入召唤物模板槽。
     pub fn roster_into_prepared_template_with_summon_overlay(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -70,6 +75,7 @@ impl CustomBed2Import {
         Self::prepared_template_with_summon_overlay(raw_groups, registry, players, config)
     }
 
+    /// 把 bed2 roster 转换成准备模板，并写入幻影模板槽。
     pub fn roster_into_prepared_template_with_shadow_overlay(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -81,6 +87,7 @@ impl CustomBed2Import {
         Self::prepared_template_with_shadow_overlay(raw_groups, registry, players, config)
     }
 
+    /// 把 bed2 roster 转换成准备模板，并写入亡灵模板槽。
     pub fn roster_into_prepared_template_with_zombie_overlay(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -92,6 +99,7 @@ impl CustomBed2Import {
         Self::prepared_template_with_zombie_overlay(raw_groups, registry, players, config)
     }
 
+    /// 把 bed2 roster 转换成准备模板，并写入全部使魔模板槽。
     pub fn roster_into_prepared_template_with_minion_overlays(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -222,6 +230,7 @@ impl CustomBed2Import {
         Ok(template)
     }
 
+    /// 把 bed2 roster 逐行转成 PlayerTemplate；解析失败带队伍与行内位置。
     pub fn roster_into_player_templates(
         raw_groups: &[Vec<String>],
         kind: PlayerKindId,
@@ -248,6 +257,7 @@ impl CustomBed2Import {
         Ok(players)
     }
 
+    /// 把混合 roster（bed2 行与 namerena 行）转换成准备模板。
     pub fn mixed_roster_into_prepared_template(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -258,6 +268,7 @@ impl CustomBed2Import {
         Ok(PreparedCombatTemplate::with_registry(players, registry))
     }
 
+    /// 把混合 roster 转换成准备模板，并写入召唤物模板槽。
     pub fn mixed_roster_into_prepared_template_with_summon_overlay(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -269,6 +280,7 @@ impl CustomBed2Import {
         Self::prepared_template_with_summon_overlay(raw_groups, registry, players, config)
     }
 
+    /// 把混合 roster 转换成准备模板，并写入幻影模板槽。
     pub fn mixed_roster_into_prepared_template_with_shadow_overlay(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -280,6 +292,7 @@ impl CustomBed2Import {
         Self::prepared_template_with_shadow_overlay(raw_groups, registry, players, config)
     }
 
+    /// 把混合 roster 转换成准备模板，并写入亡灵模板槽。
     pub fn mixed_roster_into_prepared_template_with_zombie_overlay(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -291,6 +304,7 @@ impl CustomBed2Import {
         Self::prepared_template_with_zombie_overlay(raw_groups, registry, players, config)
     }
 
+    /// 把混合 roster 转换成准备模板，并写入全部使魔模板槽。
     pub fn mixed_roster_into_prepared_template_with_minion_overlays(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -302,6 +316,7 @@ impl CustomBed2Import {
         Self::prepared_template_with_minion_overlays(raw_groups, registry, players, config)
     }
 
+    /// 把混合 roster 逐行转成 PlayerTemplate：bed2 行走 bed2 解析，其余走 namerena 构建。
     pub fn mixed_roster_into_player_templates(
         raw_groups: &[Vec<String>],
         bed2_kind: PlayerKindId,

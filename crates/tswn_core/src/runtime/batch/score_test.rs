@@ -9,8 +9,10 @@ use crate::namerena::eval_name::WIN_RATE_EVAL_RQ;
 use crate::namerena::trim_js_line_end;
 use crate::runtime::{PreparedRuntimeRunner, RunUpdate, RuntimeRunner, default_custom_runtime_import_config};
 
+/// 评分测试固定的样本局数（10,000 场）。
 pub const SCORE_TEST_TOTAL: usize = 10_000;
 
+/// 一条技能消息在样本中的出现次数与占比。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ScoreSkillFrequency {
     pub message: String,
@@ -18,6 +20,7 @@ pub struct ScoreSkillFrequency {
     pub frequency: f64,
 }
 
+/// 评分测试的进度快照：完成局数、得分、截断数与技能频率分布。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ScoreTestProgress {
     pub completed: usize,
@@ -136,6 +139,7 @@ impl ScoreTestSession {
         }
     }
 
+    /// 构造当前进度快照；评分与频率以已完成局数为分母。
     pub fn progress(&self) -> ScoreTestProgress {
         let denominator = self.completed.max(1) as f64;
         ScoreTestProgress {

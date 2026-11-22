@@ -20,6 +20,7 @@ mod wasm {
     pub struct Stopwatch(f64);
 
     impl Stopwatch {
+        /// 记录当前墙钟毫秒时间戳。
         pub fn now() -> Self { Self(js_sys::Date::now()) }
 
         /// 将当前墙钟与计时点的差换算为纳秒数，时钟回拨时返回 `0`。
@@ -69,6 +70,7 @@ mod native {
     pub struct Stopwatch(std::time::Instant);
 
     impl Stopwatch {
+        /// 记录当前单调时刻。
         pub fn now() -> Self { Self(std::time::Instant::now()) }
 
         /// 返回从采集计时点到本次调用经过的纳秒数。

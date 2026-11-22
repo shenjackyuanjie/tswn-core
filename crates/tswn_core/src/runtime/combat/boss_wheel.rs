@@ -48,6 +48,7 @@ pub const MOVE_CAP: i32 = 0x800;
 /// 选定目标所需的体力差下限（`0x40`）。
 pub const TARGET_HP_GAP: i32 = 0x40;
 
+/// 生命之轮的显示名，与 `DISPLAY_NAME` 一致。
 pub fn display_name() -> &'static str { DISPLAY_NAME }
 
 /// 受击一次后的行动点。
@@ -102,7 +103,7 @@ use crate::runtime::lang::keys;
 use crate::runtime::update::RunUpdateHp;
 
 impl CombatRuntime {
-    /// 生命之轮的交换目标：敌方存活者里 hp 比自己高 ≥ [`TARGET_HP_GAP`] 的最高血量者。
+    /// 生命之轮的交换目标：敌方存活者里 hp 比自己高 ≥ `TARGET_HP_GAP` 的最高血量者。
     ///
     /// 与 JS `_0x46c448.select` 一致：只用 `world.flat_alive()` 与
     /// `plain_effective_team` 判敌我，取 hp 最高者；并列时取先出现者。

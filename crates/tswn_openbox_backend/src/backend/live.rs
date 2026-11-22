@@ -12,6 +12,7 @@ use super::ProgressEvent;
 
 const MAX_PENDING_BYTES: usize = 8 * 1024 * 1024;
 
+/// 结果类型：DIY、分数、胜率与配对。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResultKind {
     Diy,
@@ -20,6 +21,7 @@ pub enum ResultKind {
     Pair,
 }
 
+/// 条目类型：普通、高亮与技能板。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryKind {
     Plain,
@@ -39,6 +41,7 @@ pub struct ResultEntry {
 }
 
 impl ResultEntry {
+    /// 构造数值型结果条目（下标、标签与数值）。
     pub fn number(index: usize, label: String, value: f64) -> Self {
         Self {
             index,
@@ -49,9 +52,11 @@ impl ResultEntry {
         }
     }
 
+    /// 估算该条目的内存占用（含标签与文本）。
     pub fn bytes(&self) -> usize { size_of::<Self>() + self.label.len() + self.text.len() }
 }
 
+/// 结果终止信息：可选最终分数与可见性、高亮标记。
 #[derive(Debug, Clone)]
 pub struct ResultFinish {
     pub score: Option<f64>,
@@ -78,6 +83,7 @@ pub struct ResultUpdate {
 }
 
 impl ResultUpdate {
+    /// 构造一条结果更新（分组、标签、类型与精度）。
     pub fn new(group: usize, label: &str, kind: ResultKind, precision: usize) -> Self {
         Self {
             group,
@@ -92,12 +98,14 @@ impl ResultUpdate {
         }
     }
 
+    /// 构造带旧版日志权威标记的结果更新。
     pub fn new_with_legacy(group: usize, label: &str, kind: ResultKind, precision: usize) -> Self {
         let mut update = Self::new(group, label, kind, precision);
         update.legacy_log_authoritative = true;
         update
     }
 
+    /// 估算该更新的内存占用（含旧版日志与全部条目）。
     pub fn bytes(&self) -> usize {
         size_of::<Self>()
             + self.label.len()
@@ -110,6 +118,7 @@ impl ResultUpdate {
 /// 回调接收自有更新，应尽快转发到 UI 收件箱；本层不会替观察者捕获 panic。
 pub type ResultObserver<'a> = Option<&'a (dyn Fn(ResultUpdate) + Sync)>;
 
+/// 实时事件：一条结果更新或一段日志文本。
 #[derive(Debug)]
 pub enum LiveEvent {
     Result(ResultUpdate),
@@ -144,8 +153,10 @@ pub struct LiveBatch {
 pub struct LiveFeed(Arc<Mutex<LiveBatch>>);
 
 impl LiveFeed {
+    /// 向馈送推送一条结果更新事件。
     pub fn result(&self, update: ResultUpdate) { self.push(LiveEvent::Result(update)); }
 
+    /// 把进度事件转换为实时事件并推送（进度、完成或日志）。
     pub fn progress(&self, event: ProgressEvent) {
         match event {
             ProgressEvent::Progress { done, total } => self.0.lock().unwrap().progress = Some((done, total)),

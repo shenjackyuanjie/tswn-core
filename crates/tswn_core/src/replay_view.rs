@@ -12,14 +12,18 @@ use crate::runtime::PlrId;
 use crate::runtime::lang::{get_lang, keys};
 use crate::runtime::update::{RunUpdate, RunUpdateHp, UpdateType};
 
+/// 胜利更新的首段播放延时（毫秒）。
 pub const WIN_UPDATE_DELAY0_MS: i32 = 3000;
+/// 默认文本颜色。
 pub const DEFAULT_TEXT_COLOR: &str = "0077BB";
+/// 状态退出文本的颜色。
 pub const STATUS_EXIT_TEXT_COLOR: &str = "bb7700";
 const FRAME_FIRST_DELAY_MS: i32 = 900;
 const QUICK_AREA_ROW_FIRST_DELAY_MS: i32 = 150;
 const HP_CHANGE_DELAY_MS: i32 = 600;
 const DEFAULT_CLIP_DELAY_MS: i32 = 500;
 
+/// 片段语气：普通、伤害、恢复、击倒与状态退出。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReplayTone {
     Normal,
@@ -29,6 +33,7 @@ pub enum ReplayTone {
     StatusExit,
 }
 
+/// 文本片段类型：纯文本、高亮、玩家引用与数值。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReplayTextPartKind {
     Text,
@@ -66,12 +71,14 @@ pub struct ReplayClip<S> {
     pub winner: bool,
 }
 
+/// 一行展示内容：是否缩进，以及该行按序播放的片段。
 #[derive(Debug, Clone)]
 pub struct ReplayRow<S> {
     pub indent: bool,
     pub clips: Vec<ReplayClip<S>>,
 }
 
+/// 一帧的展示投影：全部行与各片段延时之和。
 #[derive(Debug, Clone)]
 pub struct ReplayViewFrame<S> {
     pub rows: Vec<ReplayRow<S>>,
@@ -155,6 +162,7 @@ pub(crate) fn is_percent_hp_damage_update(update: &RunUpdate) -> bool {
     update.message.contains("体力减少") && update.message.contains("[2]%")
 }
 
+/// 语气到文本颜色的映射；仅状态退出使用专用颜色，其余走默认色。
 pub fn replay_tone_color(tone: ReplayTone) -> &'static str {
     match tone {
         ReplayTone::StatusExit => STATUS_EXIT_TEXT_COLOR,

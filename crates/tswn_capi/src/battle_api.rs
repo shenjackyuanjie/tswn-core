@@ -53,6 +53,7 @@ pub struct tswn_battle_session_t {
     inner: BattleSession,
 }
 
+/// 战斗会话生命周期状态：Running 表示仍在推进（Runtime 失败后也保持 Running），Finished 为正常产生胜者，Truncated 为安全截断后仍可读取结果。
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum tswn_battle_status_t {
@@ -60,6 +61,7 @@ pub enum tswn_battle_status_t {
     TSWN_BATTLE_FINISHED = 1,
     TSWN_BATTLE_TRUNCATED = 2,
 }
+/// 战斗停止原因：Winner 为产生胜者，MaxRounds 为达到回合上限，NoProgress 为无法继续推进；Paused 仅用于回放截断，表示受控单位在等待外部指令，不是终局。
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum tswn_battle_stop_reason_t {

@@ -1,5 +1,6 @@
 use super::*;
 
+/// 为使魔分配唯一名字：取根角色名加实体槽自增计数；槽类型非法或溢出报错。
 pub fn next_minion_name_from_entity_slot(
     context: &mut SkillContext<'_>,
     counter_slot: EntitySlotId,
@@ -18,6 +19,7 @@ pub fn next_minion_name_from_entity_slot(
     Ok(format!("{root_name}?{next}"))
 }
 
+/// 分配名字后把使魔模板入队生成，并播报给定消息；返回预期实体下标。
 pub fn push_minion_from_template_with_allocated_name(
     context: &mut SkillContext<'_>,
     counter_slot: EntitySlotId,
@@ -35,6 +37,7 @@ pub fn push_minion_from_template_with_allocated_name(
     Ok(next_entity)
 }
 
+/// 分配名字后静默入队生成使魔，不播报消息；返回预期实体下标。
 pub fn push_minion_from_template_with_allocated_name_silent(
     context: &mut SkillContext<'_>,
     counter_slot: EntitySlotId,
@@ -50,6 +53,7 @@ pub fn push_minion_from_template_with_allocated_name_silent(
     Ok(next_entity)
 }
 
+/// 从模板槽取出使魔模板并带消息入队生成；槽缺失或类型非法报错。
 pub fn push_minion_from_template_slot_with_allocated_name(
     context: &mut SkillContext<'_>,
     counter_slot: EntitySlotId,
@@ -64,6 +68,7 @@ pub fn push_minion_from_template_slot_with_allocated_name(
     push_minion_from_template_with_allocated_name(context, counter_slot, minion_template, message)
 }
 
+/// 从模板槽取出使魔模板并静默入队生成；槽缺失或类型非法报错。
 pub fn push_minion_from_template_slot_with_allocated_name_silent(
     context: &mut SkillContext<'_>,
     counter_slot: EntitySlotId,
@@ -77,6 +82,7 @@ pub fn push_minion_from_template_slot_with_allocated_name_silent(
     push_minion_from_template_with_allocated_name_silent(context, counter_slot, minion_template)
 }
 
+/// 幻术使魔 handler：播报幻术后从模板槽生成使魔。
 pub fn run_shadow_minion_from_template_slot_with_config(
     context: &mut SkillContext<'_>,
     counter_slot: EntitySlotId,
@@ -92,10 +98,12 @@ pub fn run_shadow_minion_from_template_slot_with_config(
         .expect("shadow minion handler should spawn template-slot minion");
 }
 
+/// 幻术使魔 handler 的默认槽位绑定。
 pub fn run_shadow_minion_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     run_shadow_minion_from_template_slot_with_config(context, EntitySlotId(0), TemplateSlotId(0));
 }
 
+/// 亡灵使魔 handler：静默生成后播报召唤与转化消息。
 pub fn run_zombie_minion_from_template_slot_with_config(
     context: &mut SkillContext<'_>,
     counter_slot: EntitySlotId,
@@ -115,11 +123,13 @@ pub fn run_zombie_minion_from_template_slot_with_config(
     context.add_update(zombied);
 }
 
+/// 亡灵使魔 handler 的默认槽位绑定，取当前选中目标作为转化来源。
 pub fn run_zombie_minion_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     let killed_target = context.selected_target().unwrap_or(EntityIdx(1));
     run_zombie_minion_from_template_slot_with_config(context, EntitySlotId(0), TemplateSlotId(0), killed_target);
 }
 
+/// 从名字后缀解析使魔的展示序号；非使魔或无法解析时按 1 处理。
 pub fn minion_display_index_for_entity(entity: Option<&EntityRecord>) -> usize {
     let Some(entity) = entity else {
         return 0;

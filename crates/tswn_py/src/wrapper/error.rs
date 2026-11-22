@@ -4,6 +4,7 @@
 //! `RunnerError`，可在 Python 层直接 `except RunnerError` 捕获。
 
 use pyo3::{PyErr, exceptions::PyException, pyclass};
+/// Python 侧 RunnerError：继承 Exception，承载 runner 错误消息。
 #[pyclass(extends=PyException)]
 #[pyo3(name = "RunnerError")]
 pub struct PyRunnerError {
@@ -14,6 +15,7 @@ impl From<PyRunnerError> for PyErr {
 }
 
 impl PyRunnerError {
+    /// 由任意 Display 错误构造 RunnerError。
     pub fn new(error: impl std::fmt::Display) -> Self {
         Self {
             message: error.to_string(),

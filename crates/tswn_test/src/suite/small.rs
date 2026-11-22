@@ -4,6 +4,7 @@
 
 use super::*;
 
+/// 小规模 seed 对局的回放 fixture。
 pub fn small_seed<E: crate::EngineAdapter>() {
     let mut runner = E::new_from_raw("aaaaa\nbbbbb\nseed:tester@!".to_string()).unwrap();
     let (lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 256, true);

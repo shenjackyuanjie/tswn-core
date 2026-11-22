@@ -12,6 +12,7 @@ pub struct BattleModelFrame {
     pub rounds_advanced: usize,
 }
 
+/// 数据生成会话的终止结果：停止原因、推进回合数、产出帧数与胜者队伍索引。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BattleModelOutcome {
     pub stop_reason: BattleStopReason,
@@ -31,6 +32,7 @@ pub struct BattleModelSession {
 }
 
 impl BattleModelSession {
+    /// 从 namerena 文本创建数据生成会话；输入或选项非法时返回错误。
     pub fn new(raw: &str, options: BattleOptions) -> CliApiResult<Self> {
         Ok(Self {
             driver: BattleDriver::from_raw(raw, options)?,
@@ -48,7 +50,10 @@ impl BattleModelSession {
             driver: BattleDriver::new(runner, max_rounds)?,
         })
     }
+    /// 读取当前机制状态，不消耗随机数、不推进对局；sticky failure 时返回错误。
     pub fn model_state(&self) -> Result<BattleModelState, ModelStateError> { self.driver.model_state() }
+    /// 推进到下一个可见帧并返回其边界；对局终止后返回 `None`，
+    /// sticky failure 时返回相同错误。
     pub fn next_frame(&mut self) -> CliApiResult<Option<BattleModelFrame>> {
         while let Some(step) = self.driver.advance_round()? {
             if let Some(frame_index) = step.frame_index {
@@ -61,8 +66,11 @@ impl BattleModelSession {
         }
         Ok(None)
     }
+    /// 是否已正常终止（胜者或截断）；Runtime failure 不属于正常终止。
     pub fn is_done(&self) -> bool { self.driver.stop_reason.is_some() }
+    /// 是否发生 sticky Runtime failure；此时 [`Self::result`] 为 `None`。
     pub fn is_failed(&self) -> bool { self.driver.failure.is_some() }
+    /// 取终止结果；运行中或失败时为 `None`，终止后可重复查询。
     pub fn result(&self) -> Option<BattleModelOutcome> {
         Some(BattleModelOutcome {
             stop_reason: self.driver.stop_reason?,
@@ -71,6 +79,7 @@ impl BattleModelSession {
             winner_team_indices: self.driver.runner.winner_team_indices(),
         })
     }
+    /// 仅测试用：破坏 skill handlers，让下一次推进经过真实 Runtime validation 失败。
     #[cfg(any(test, feature = "battle-test-support"))]
     #[doc(hidden)]
     pub fn invalidate_runtime_for_test(&mut self) { self.driver.runner.runtime_mut().skill_handlers = Default::default(); }

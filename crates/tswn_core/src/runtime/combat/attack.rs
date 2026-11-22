@@ -15,6 +15,7 @@ impl CombatRuntime {
             .unwrap_or(false)
     }
 
+    /// 普攻默认选目标：在排除队友后抽样并按聪明口径评分，无候选返回 None。
     pub fn select_plain_default_attack_target(&mut self, actor: EntityIdx, smart: bool) -> Option<EntityIdx> {
         self.entities.get(actor)?;
         let actor_team = self.plain_effective_team(actor);
@@ -304,6 +305,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 普通攻击结算：处理懒癌特殊分支，播报攻击消息并走伤害链。
     pub fn drain_plain_default_attack_into(
         &mut self,
         actor: EntityIdx,
@@ -374,6 +376,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 读取一拳超人的 (回合数, 累计伤害, 攻击者数, 召唤物数)；无状态返回 None。
     pub fn saitama_boss_state(&self, actor: EntityIdx) -> Option<(i32, i32, usize, usize)> {
         self.entities.get(actor)?.states.entries().iter().find_map(|entry| {
             let StatePayload::SaitamaBoss {
@@ -389,6 +392,7 @@ impl CombatRuntime {
         })
     }
 
+    /// 一拳超人行动：饥饿超阈退场，否则累计回合，第十回合起出拳并清场。
     pub fn drain_plain_saitama_action_into(
         &mut self,
         actor: EntityIdx,
@@ -470,6 +474,7 @@ impl CombatRuntime {
             .speed_points = 1700;
     }
 
+    /// 以给定威力发动普攻：默认伤害类型且无附带效果。
     pub fn drain_plain_attack_with_atp_into(
         &mut self,
         actor: EntityIdx,
@@ -491,6 +496,7 @@ impl CombatRuntime {
         )
     }
 
+    /// 以给定威力发动普攻，并指定附带伤害效果。
     pub fn drain_plain_attack_with_atp_and_on_damage_into(
         &mut self,
         actor: EntityIdx,
@@ -514,6 +520,7 @@ impl CombatRuntime {
         )
     }
 
+    /// 以给定威力发动普攻，并指定新冠传染来源。
     pub fn drain_plain_attack_with_atp_and_covid_into(
         &mut self,
         actor: EntityIdx,
@@ -535,6 +542,7 @@ impl CombatRuntime {
         )
     }
 
+    /// 以给定威力发动普攻，同时指定新冠来源与附带伤害效果。
     pub fn drain_plain_attack_with_atp_covid_and_on_damage_into(
         &mut self,
         actor: EntityIdx,
@@ -749,6 +757,7 @@ impl CombatRuntime {
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// 回避判定后的普攻结算：按防御折算伤害、过 POST_DEFEND 并落地。
     pub fn drain_plain_attack_after_dodge_into(
         &mut self,
         actor: EntityIdx,
@@ -818,6 +827,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 应用普攻伤害（默认类型，新冠来源取施法者自身）。
     pub fn apply_plain_attack_damage_into(
         &mut self,
         caster: EntityIdx,
@@ -829,6 +839,7 @@ impl CombatRuntime {
         self.apply_plain_attack_damage_with_covid_into(caster, target, amount, covid_source, updates)
     }
 
+    /// 应用普攻伤害并显式指定新冠来源。
     pub fn apply_plain_attack_damage_with_covid_into(
         &mut self,
         caster: EntityIdx,
@@ -847,6 +858,7 @@ impl CombatRuntime {
         )
     }
 
+    /// 应用普攻伤害，同时指定新冠来源与附带效果；负伤害转为吸收回复。
     pub fn apply_plain_attack_damage_with_covid_and_on_damage_into(
         &mut self,
         caster: EntityIdx,
@@ -905,6 +917,7 @@ impl CombatRuntime {
                 .is_some_and(|entity| entity.runtime.hp == 0 && entity.runtime.alive)
     }
 
+    /// 吸血效果：按伤害量回复施法者体力并播报恢复消息。
     pub fn apply_absorb_on_damage(&mut self, caster: EntityIdx, damage: i32, updates: &mut RunUpdates) {
         if damage <= 0 {
             return;
@@ -928,6 +941,7 @@ impl CombatRuntime {
         ));
     }
 
+    /// 狂暴效果：给目标附加或延长狂暴状态。
     pub fn apply_berserk_on_damage(&mut self, caster: EntityIdx, target: EntityIdx, damage: i32, updates: &mut RunUpdates) {
         if damage <= 0 {
             return;
@@ -977,6 +991,7 @@ impl CombatRuntime {
         ));
     }
 
+    /// 诅咒效果：按概率给目标附加诅咒状态。
     pub fn apply_curse_on_damage(&mut self, caster: EntityIdx, target: EntityIdx, damage: i32, updates: &mut RunUpdates) {
         if damage <= 0 {
             return;

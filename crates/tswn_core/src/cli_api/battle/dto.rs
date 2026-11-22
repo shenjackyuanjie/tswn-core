@@ -224,7 +224,7 @@ pub struct BattleUpdate {
     pub message_rendered: String,
     pub caster_id: Option<usize>,
     pub target_id: Option<usize>,
-    /// 替换消息占位符 [2] 的实体列表，不包含只参与动画的实体。
+    /// 替换消息占位符 \[2\] 的实体列表，不包含只参与动画的实体。
     pub target_ids: Vec<usize>,
     /// 原版群体动画的有序参与者，不是单体目标。
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -306,6 +306,7 @@ pub struct BattleReplayTextPart {
     pub emoji: Option<String>,
 }
 
+/// [`BattleOptions`] 的旧名，仅为兼容保留；新代码请改用 [`BattleOptions`]。
 #[deprecated(note = "use BattleOptions")]
 pub type BattleReplayOptions = BattleOptions;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

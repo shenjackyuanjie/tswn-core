@@ -79,6 +79,7 @@ impl CsvSample {
     }
 }
 
+/// 文本输入源：内联文本或从文件读取，附带预览与错误状态。
 #[derive(Debug, Clone)]
 pub struct TextSource {
     inline: String,
@@ -93,6 +94,7 @@ pub struct TextSource {
 }
 
 impl TextSource {
+    /// 用内联文本构造输入源。
     pub fn inline(text: impl Into<String>) -> Self {
         Self {
             inline: text.into(),
@@ -107,6 +109,7 @@ impl TextSource {
         }
     }
 
+    /// 绘制输入源控件：内联/文件切换、路径选择与内容预览。
     pub fn ui(&mut self, ui: &mut egui::Ui, label: &str, id: &'static str, rows: usize) {
         ui.horizontal(|ui| {
             ui.label(label);
@@ -196,6 +199,7 @@ impl TextSource {
         source
     }
 
+    /// 读取完整输入文本；文件模式下未选文件或读取失败时返回中文错误。
     pub fn read_all(&mut self) -> Result<String, String> {
         self.warning = None;
         if !self.from_file {

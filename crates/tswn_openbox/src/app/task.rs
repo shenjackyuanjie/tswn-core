@@ -19,6 +19,7 @@ const MAX_EVENTS_PER_POLL: usize = 256;
 const RUNNING_REPAINT_INTERVAL: Duration = Duration::from_millis(100);
 
 impl OpenboxApp {
+    /// 请求停止当前任务：置取消令牌并将状态改为停止中。
     pub fn stop_current_task(&mut self) {
         if let Some(token) = &self.cancel_token {
             token.store(true, Ordering::Relaxed);
@@ -39,6 +40,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 开始新任务：重置进度、创建取消令牌并清空实时馈送。
     pub fn begin_task(&mut self) {
         self.live_feed = None;
         self.pending_live = Default::default();
@@ -55,6 +57,7 @@ impl OpenboxApp {
         self.status = "运行中".to_string();
     }
 
+    /// 启动前失败：复位运行状态并记录错误信息。
     pub fn fail_before_start(&mut self, err: String) {
         self.running = false;
         self.cancel_requested = false;
@@ -90,6 +93,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 轮询后端事件并驱动界面重绘。
     pub fn poll_events(&mut self, ctx: &egui::Context) {
         if self.pending_live.events.is_empty()
             && self.pending_live.done.is_none()
@@ -153,6 +157,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 根据已完成数量刷新进度与速度统计。
     pub fn update_progress_stats(&mut self) {
         let Some(started_at) = self.started_at else {
             return;
@@ -173,6 +178,7 @@ impl OpenboxApp {
         };
     }
 
+    /// 向当前工具的日志追加一条普通日志。
     pub fn append_log(&mut self, text: &str) {
         let index = self.task_tool as usize;
         self.logs[index].append(text, LogKind::Plain);

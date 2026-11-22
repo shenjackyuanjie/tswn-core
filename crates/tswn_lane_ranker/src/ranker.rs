@@ -25,9 +25,13 @@ use crate::model::{GroupId, LaneResultRow, RankNode, StoredGroup};
 use crate::team::TeamDsu;
 use crate::winrate::compute_rate_without_db;
 
+/// 标准榜单规模：50。
 pub const STANDARD_SIZE: usize = 50;
+/// 单个分组的最大成员数：5。
 pub const TEAM_LIMIT: usize = 5;
+/// 默认预热轮数：10,000。
 pub const DEFAULT_WARMUP_ROUNDS: usize = 10_000;
+/// 默认总轮数：10,000,000。
 pub const DEFAULT_TOTAL_ROUNDS: usize = 10_000_000;
 
 /// 每条缺失配对边默认采样 100,000 场，不表示统计误差保证或胜率精度。
@@ -42,17 +46,21 @@ pub const DEFAULT_STICKINESS_PER_MEMBER: usize = 10;
 ///
 /// 这是有限精度的提前终止条件，不等价于所有底层胜率、支持集合或实数分数已经收敛。
 pub const EARLY_STOP_START_ROUND: usize = 100_000;
+/// 提前终止所需的稳定轮数：100。
 pub const EARLY_STOP_STABLE_ROUNDS: usize = 100;
 
 /// 此轮后，只有已经获得非零 Golden 质量的组继续参与迭代更新。剩余的 Raw 分数会依据最终 Golden 目标重建一次。
 pub const RAW_CORE_ONLY_START_ROUND: usize = 100_000;
 
+/// 踢出阈值：平均 CQD 低于该值的组被踢出本轮迭代。
 pub const KICK_AVG_CQD_THRESHOLD: f64 = 45.0;
 
 /// 跑完后自动封存阈值：单人组 47.0；双人/多人组 48.0。
 pub const ARCHIVE_AVG_CQD_THRESHOLD_SINGLE: f64 = 47.0;
+/// 多人组跑完后的自动封存阈值：48.0。
 pub const ARCHIVE_AVG_CQD_THRESHOLD_MULTI: f64 = 48.0;
 
+/// 返回对应 lane 规模的自动封存阈值：单人 47.0，多人 48.0。
 pub fn archive_avg_cqd_threshold(lane_size: usize) -> f64 {
     if lane_size == 1 {
         ARCHIVE_AVG_CQD_THRESHOLD_SINGLE
@@ -81,6 +89,7 @@ pub struct RankerConfig {
 }
 
 impl RankerConfig {
+    /// 从环境变量读取排名配置，未设置的项用默认值。
     pub fn from_env() -> Self {
         Self {
             warmup_rounds: read_env_usize("LANE_WARMUP_ROUNDS", DEFAULT_WARMUP_ROUNDS),
@@ -93,6 +102,7 @@ impl RankerConfig {
         }
     }
 
+    /// 返回生效的粘性：未显式设置时按 lane 规模取默认值，且至少为 1。
     pub fn effective_stickiness(&self, lane_size: usize) -> usize {
         self.stickiness.unwrap_or(DEFAULT_STICKINESS_PER_MEMBER * lane_size.max(1)).max(1)
     }
@@ -140,6 +150,7 @@ fn format_inner_workers(inner_workers: u32) -> String {
     }
 }
 
+/// 反复重算指定 lane，直到满足稳定条件后返回。
 pub fn recompute_lane_until_stable(db: &Db, lane_size: usize, config: &RankerConfig) -> anyhow::Result<()> {
     let mut recompute_pass = 0usize;
 

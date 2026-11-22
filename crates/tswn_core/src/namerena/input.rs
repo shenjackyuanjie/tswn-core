@@ -2,11 +2,15 @@ use std::fmt;
 
 use super::{BOOST_NAMES, BOSS_NAMES, PlayerOverlay};
 
+/// 单个名字的最大字节数（UTF-8）。
 pub const NAME_MAX_LEN: usize = 256;
+/// 单个阵营名的最大字节数（UTF-8）。
 pub const TEAM_MAX_LEN: usize = 256;
+/// seed 行前缀；匹配区分大小写。
 pub const SEED_PREFIX: &str = "seed:";
 pub(crate) const RINICK_MODIFIER_BOSS_ALIAS: &str = "Rinick属性修改器@!";
 
+/// 名字的身份分类：普通、分身、Boss、加成、seed 与各类测试身份。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlayerClass {
     Normal,
@@ -33,6 +37,7 @@ pub struct PlayerSpec {
     pub class: PlayerClass,
 }
 
+/// 单个名字输入解析错误：名字或阵营超长、`effective_skills` overlay 非法。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlayerSpecError {
     NameTooLong { len: usize, max: usize },
@@ -144,6 +149,7 @@ impl PlayerSpec {
         })
     }
 
+    /// 把本条目的 raw 归一为 ID 名：去掉武器与 overlay 后缀、按规则处理阵营。
     pub fn id_name(&self) -> String { raw_namerena_to_id_name(&self.raw) }
 }
 
@@ -169,6 +175,8 @@ impl NamerenaInput {
         Self::from_raw_groups_with_seed(&raw_groups, seed)
     }
 
+    /// 从已按空行分组的 raw 行构建输入，并从中提取 seed 行；
+    /// 只含 seed 的组会被丢弃，任一玩家长度超限返回错误。
     pub fn from_raw_groups(raw_groups: &[Vec<String>]) -> Result<Self, PlayerSpecError> {
         let seed = raw_groups.iter().flatten().filter(|line| is_seed_line(line)).cloned().collect();
         Self::from_raw_groups_with_seed(raw_groups, seed)
@@ -191,8 +199,10 @@ impl NamerenaInput {
     }
 }
 
+/// 判断一行是否为 seed 行（[`SEED_PREFIX`] 开头）。
 pub fn is_seed_line(raw: &str) -> bool { raw.starts_with(SEED_PREFIX) }
 
+/// 把 raw namerena 文本转换为 ID 名：去武器后缀，无阵营或阵营与名字相同/含 `:` 时只用名字。
 pub fn raw_namerena_to_id_name(raw: &str) -> String {
     let mut output = String::new();
     raw_namerena_to_id_name_into(raw, &mut output);

@@ -7,6 +7,9 @@
 
 use crate::runtime::entity::{EntityArena, EntityIdx};
 
+/// 战斗世界的索引视图：行动顺序、各队 roster、存活列表与胜者判定。
+///
+/// 只保存索引，实体本体与数值由 [`EntityArena`] 保存。
 #[derive(Debug, Clone)]
 pub struct WorldArena {
     round_order: Vec<EntityIdx>,
@@ -52,6 +55,7 @@ impl WorldArena {
         }
     }
 
+    /// 从实体表构建初始世界视图，按实体遍历顺序填充行动顺序、各队 roster 与存活列表。
     pub fn from_entities(entities: &EntityArena) -> Self {
         let round_order = entities.iter().map(|(idx, _)| idx).collect();
         let team_count = entities.iter().map(|(_, entity)| entity.runtime.team).max().map_or(0, |team| team + 1);
@@ -85,6 +89,7 @@ impl WorldArena {
         world
     }
 
+    /// 用给定的初始顺序覆盖世界视图，并在调试构建中断言其与实体表一致。
     pub fn sync_initial_views(
         &mut self,
         entities: &EntityArena,
@@ -184,6 +189,7 @@ impl WorldArena {
         }
     }
 
+    /// 沿行动顺序返回下一个存活实体，跳过空槽与已死亡实体；一轮无可用行动时返回 `None`。
     pub fn next_actor(&mut self, entities: &EntityArena) -> Option<EntityIdx> {
         self.next_round_actor_with(|actor| entities.get(actor).filter(|entity| entity.runtime.alive).map(|_| actor))
     }
@@ -218,6 +224,7 @@ impl WorldArena {
         None
     }
 
+    /// 返回给定实体在扁平存活列表中遇到的第一个敌对队伍存活实体。
     pub fn first_alive_enemy(&self, actor: EntityIdx, entities: &EntityArena) -> Option<EntityIdx> {
         let actor_team = entities.get(actor)?.runtime.team;
         self.flat_alive
@@ -226,8 +233,10 @@ impl WorldArena {
             .find(|idx| entities.get(*idx).is_some_and(|entity| entity.runtime.team != actor_team))
     }
 
+    /// 把实体追加到行动顺序末尾（不去重）。
     pub fn append_round_actor(&mut self, actor: EntityIdx) { self.round_order.push(actor); }
 
+    /// 登记一个召唤生成的实体：加入 team_roster、行动顺序与存活列表。
     pub fn add_spawned_alive(&mut self, actor: EntityIdx, team: usize) {
         if self.team_roster.len() <= team {
             self.team_roster.resize_with(team + 1, Vec::new);
@@ -240,6 +249,7 @@ impl WorldArena {
         self.revive_alive(actor, team);
     }
 
+    /// 从行动顺序移除实体并相应调整游标；返回是否确实发生了移除。
     pub fn remove_round_actor(&mut self, actor: EntityIdx) -> bool {
         let Some(pos) = self.round_order.iter().position(|idx| *idx == actor) else {
             return false;
@@ -275,6 +285,7 @@ impl WorldArena {
         true
     }
 
+    /// 把实体重新加入行动顺序；已在顺序中则返回 `false`。
     pub fn revive_round_actor(&mut self, actor: EntityIdx) -> bool {
         if self.round_order.contains(&actor) {
             return false;
@@ -290,16 +301,20 @@ impl WorldArena {
         }
     }
 
+    /// 返回当前行动顺序切片。
     pub fn round_order(&self) -> &[EntityIdx] { &self.round_order }
 
     /// 返回 legacy `WorldState::all_plr_len()` 对应的世界 roster 实体数。
     /// 已死亡实体仍保留在 roster 中，EntityArena 的空 ID 槽则不计入。
     pub fn roster_entity_count(&self) -> usize { self.roster_count }
 
+    /// 返回当前行动游标位置；`-1` 表示尚未开始或行动顺序为空。
     pub const fn round_position(&self) -> i32 { self.round_pos }
 
+    /// 返回指定队的完整 roster 切片（含已死亡实体）；队索引越界返回 `None`。
     pub fn team_roster(&self, team: usize) -> Option<&[EntityIdx]> { self.team_roster.get(team).map(Vec::as_slice) }
 
+    /// 返回指定队的存活实体切片；队索引越界返回 `None`。
     pub fn team_alive(&self, team: usize) -> Option<&[EntityIdx]> { self.team_alive.get(team).map(Vec::as_slice) }
 
     /// 仅供目标预选使用的双队视图；不提交到真实战场，也不推进战斗。
@@ -316,10 +331,13 @@ impl WorldArena {
         view
     }
 
+    /// 返回跨队扁平存活顺序切片。
     pub fn flat_alive(&self) -> &[EntityIdx] { &self.flat_alive }
 
+    /// 返回按 legacy 语义维护的存活队伍计数；队伍被清空后复活不会补回该计数。
     pub fn alive_group_count(&self) -> usize { self.alive_group_count }
 
+    /// 返回包含给定实体的存活队伍长度；实体不在任何存活队时返回 `0`。
     pub fn alive_group_len_containing(&self, actor: EntityIdx) -> usize {
         if let Some(&team) = self.alive_team_by_entity.get(actor.0 as usize) {
             return self.team_alive.get(team).map_or(0, Vec::len);
@@ -361,6 +379,7 @@ impl WorldArena {
         }
     }
 
+    /// 把实体重新加入存活视图，插在同队最后一个存活实体之后，并维护扁平顺序与派生缓存。
     pub fn revive_alive(&mut self, actor: EntityIdx, team: usize) {
         if self.flat_alive.contains(&actor) {
             return;
@@ -386,6 +405,7 @@ impl WorldArena {
         }
     }
 
+    /// 从存活视图移除实体，同步扁平顺序、队伍列表与存活队计数；返回此前是否在扁平存活中。
     pub fn remove_alive(&mut self, actor: EntityIdx, team: usize) -> bool {
         let was_flat_alive = if let Some(pos) = self.flat_alive.iter().position(|idx| *idx == actor) {
             self.flat_alive.remove(pos);
@@ -408,12 +428,14 @@ impl WorldArena {
         was_flat_alive
     }
 
+    /// 标记实体死亡：移出存活视图与行动顺序；返回此前是否存活。
     pub fn mark_dead(&mut self, actor: EntityIdx, team: usize) -> bool {
         let was_alive = self.remove_alive(actor, team);
         self.remove_round_actor(actor);
         was_alive
     }
 
+    /// 通过扫描实体表判定唯一存活队伍；仍有多个队存活时返回 `None`。已声明胜者后返回缓存结果。
     pub fn sync_winner(&mut self, entities: &EntityArena) -> Option<usize> {
         if self.winner_declared {
             return self.winner_team;
@@ -460,6 +482,7 @@ impl WorldArena {
         self.winner_views_dirty = false;
     }
 
+    /// 返回当前判定的胜者队伍；尚未分胜负返回 `None`。
     pub fn winner_team(&self) -> Option<usize> { self.winner_team }
 
     pub(crate) fn declare_winner(&mut self, team: usize) {

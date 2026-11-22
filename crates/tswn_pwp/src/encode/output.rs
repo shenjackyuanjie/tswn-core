@@ -14,12 +14,14 @@ use std::{
 use super::FileEntry;
 use crate::{random, storage};
 
+/// 输出目录句柄：暂存目录与目标路径，提交时整体替换。
 pub struct OutputDirectory {
     pub staging: PathBuf,
     destination: PathBuf,
 }
 
 impl OutputDirectory {
+    /// 创建暂存输出目录并返回句柄。
     pub fn create(out: &Path, estimated_bytes: u64) -> Result<Self> {
         let name = out.file_name().context("输出目录必须有末级名称")?;
         let parent = out.parent().filter(|path| !path.as_os_str().is_empty()).unwrap_or(Path::new("."));
@@ -46,6 +48,7 @@ impl OutputDirectory {
         Ok(Self { staging, destination })
     }
 
+    /// 把暂存目录提交到目标位置；目标已存在时报错。
     pub fn commit(&self) -> Result<()> {
         ensure_absent(&self.destination)?;
         fs::rename(&self.staging, &self.destination).context("提交完整编码包")?;
@@ -53,6 +56,7 @@ impl OutputDirectory {
     }
 }
 
+/// 确保路径不存在；已存在（含符号链接）时返回不覆盖错误。
 pub fn ensure_absent(path: &Path) -> Result<()> {
     match fs::symlink_metadata(path) {
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
@@ -61,6 +65,7 @@ pub fn ensure_absent(path: &Path) -> Result<()> {
     }
 }
 
+/// 向目录写入一个 payload 文件并返回文件条目；同名文件已存在时报错。
 pub fn write_payload(dir: &Path, name: &str, bytes: &[u8]) -> Result<FileEntry> {
     let path = dir.join(name);
     let mut file = OpenOptions::new().write(true).create_new(true).open(&path)?;

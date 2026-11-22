@@ -17,6 +17,7 @@ use super::widgets::OptionalFileOutput;
 use tswn_openbox::presets::{load_selected_target_text, load_selected_teammate_text};
 
 impl OpenboxApp {
+    /// 读取 DIY 输入并启动 to-diy 后台任务；读取失败时记录错误且不启动。
     pub fn start_to_diy(&mut self) {
         let raw = match self.to_diy.names.read_all() {
             Ok(raw) => raw,
@@ -57,6 +58,7 @@ impl OpenboxApp {
         });
     }
 
+    /// 读取名字输入并启动 namer-pf 后台任务；读取失败时记录错误且不启动。
     pub fn start_namer_pf(&mut self) {
         let raw = match self.namer_pf.names.read_all() {
             Ok(raw) => raw,
@@ -153,6 +155,7 @@ impl OpenboxApp {
         });
     }
 
+    /// 按手动或预设靶子读取输入并启动批量胜率任务；读取失败时记录错误且不启动。
     pub fn start_batch_rate(&mut self) {
         let (target_text, target_double_plus, target_factor_enabled) = if self.batch_rate.manual_targets {
             match self.batch_rate.targets.read_all() {
@@ -232,6 +235,7 @@ impl OpenboxApp {
         });
     }
 
+    /// 读取输入并启动配对任务；读取失败时记录错误且不启动。
     pub fn start_pair(&mut self) {
         let (target_text, target_factor_enabled) = if self.pair.manual_targets {
             match self.pair.targets.read_all() {
@@ -342,6 +346,7 @@ impl OpenboxApp {
         });
     }
 
+    /// 校验名字非空后启动 base 任务；其余格式校验交由后端给出与 CLI 一致的提示。
     pub fn start_base(&mut self) {
         if self.base.name.trim().is_empty() {
             self.fail_before_start("base 需要一个名字。".to_string());

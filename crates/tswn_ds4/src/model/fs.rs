@@ -11,6 +11,7 @@ use super::coeffs::MODEL_FS;
 use super::common::{score_file, score_file_with_threads};
 use super::engine::{ScoreContext, ScoreMode};
 
+/// 以 fs 模式串行评分单个输入文件并原子写出结果，返回写入行数。
 pub fn score_file_fs(input_file: &Path, output_file: &Path, score_sieve: i32, potential_sieve: i32) -> Ds4Result<usize> {
     let ctx = ScoreContext::new();
     score_file(
@@ -24,6 +25,7 @@ pub fn score_file_fs(input_file: &Path, output_file: &Path, score_sieve: i32, po
     )
 }
 
+/// fs 模式的并行版本：按 threads 并发评分输入文件，返回写入行数。
 pub fn score_file_fs_with_threads(
     input_file: &Path,
     output_file: &Path,

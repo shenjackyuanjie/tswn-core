@@ -20,6 +20,7 @@ use tswn_core::runtime::{
     model_state::{BattleModelState, ModelPayload, ModelTemplate},
 };
 
+/// calibrate 子命令参数：数据集目录、目标切分与输出路径。
 #[derive(Debug, Clone, Args)]
 pub struct CalibrateArgs {
     /// 已完成的胜率数据集目录。

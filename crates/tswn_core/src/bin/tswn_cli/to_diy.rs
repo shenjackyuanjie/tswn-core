@@ -11,6 +11,8 @@ use std::path::Path;
 use tswn_core::cli_api;
 use tswn_core::namerena::{NamerenaInput, PreparedRoster};
 
+/// 执行 `to-diy` 导出：`batch` 时按输入顺序逐行输出每个输入的 DIY/OL 文本，
+/// 否则只处理第一个输入并可在 stdout 附赠属性详情；`out_file` 存在时改写该文件。
 pub fn run(names: &[String], batch: bool, out_file: Option<&Path>, old: bool, minions: bool, details: bool) {
     let mut out = match open_output(out_file) {
         Ok(out) => out,

@@ -93,6 +93,7 @@ pub struct EventDto {
     pub is_next_line: bool,
 }
 
+/// 取对局胜者的显示名列表。
 pub fn winner_names(runner: &Runner) -> Vec<String> {
     runner
         .winner_ids()
@@ -165,10 +166,12 @@ fn display_name_for_snapshot(state: &PlayerSnapshot) -> String {
     }
 }
 
+/// 从快照列表构造 玩家 ID -> 显示名 映射。
 pub fn player_names_from_snapshots(states: &[PlayerSnapshot]) -> HashMap<PlrId, String> {
     states.iter().map(|state| (state.id, display_name_for_snapshot(state))).collect()
 }
 
+/// 用名字映射渲染更新消息（展开占位符）。
 pub fn render_update_message(update: &RunUpdate, names: &HashMap<PlrId, String>) -> String {
     core_render_update_message(update, names)
 }
@@ -279,6 +282,7 @@ fn replay_text_part_kind_to_str(kind: CoreReplayTextPartKind) -> &'static str {
     }
 }
 
+/// 把一条更新转换为展示用 EventDto（含消息、语气与类型）。
 pub fn update_to_dto(update: &RunUpdate, names: &HashMap<PlrId, String>) -> EventDto {
     let message_rendered = render_update_message(update, names);
     EventDto {
@@ -334,6 +338,7 @@ pub fn compute_event_delays(
         .collect()
 }
 
+/// 计算事件序列的回放总延迟（按可见事件累计等待）。
 pub fn playback_total_delay(events: &[EventDto]) -> i32 {
     let mut total_delay = 0;
     let mut next_wait = 1800;
@@ -348,6 +353,7 @@ pub fn playback_total_delay(events: &[EventDto]) -> i32 {
     total_delay
 }
 
+/// 返回 Python 的 None（便捷helper）。
 pub fn py_none(py: pyo3::Python<'_>) -> PyResult<pyo3::Bound<'_, pyo3::PyAny>> { py.None().into_bound_py_any(py) }
 
 fn set_optional_usize(dict: &pyo3::Bound<'_, PyDict>, key: &str, value: Option<usize>) -> PyResult<()> {
@@ -433,6 +439,7 @@ pub fn event_to_pydict<'py>(py: pyo3::Python<'py>, event: &EventDto) -> PyResult
     Ok(dict)
 }
 
+/// 把回放文本片段转换为 Python dict。
 pub fn replay_text_part_to_pydict<'py>(py: pyo3::Python<'py>, part: &CoreReplayTextPart) -> PyResult<pyo3::Bound<'py, PyDict>> {
     let dict = PyDict::new(py);
     dict.set_item("kind", replay_text_part_kind_to_str(part.kind))?;
@@ -450,6 +457,7 @@ pub fn replay_text_part_to_pydict<'py>(py: pyo3::Python<'py>, part: &CoreReplayT
     Ok(dict)
 }
 
+/// 把回放行转换为 Python dict。
 pub fn replay_row_to_pydict<'py>(
     py: pyo3::Python<'py>,
     row: &CoreReplayRow<PlayerSnapshot>,
@@ -482,6 +490,7 @@ pub fn replay_row_to_pydict<'py>(
     Ok(dict)
 }
 
+/// 把回放视图帧转换为 Python dict。
 pub fn replay_view_frame_to_pydict<'py>(
     py: pyo3::Python<'py>,
     view: &ReplayViewFrame<PlayerSnapshot>,
@@ -496,6 +505,7 @@ pub fn replay_view_frame_to_pydict<'py>(
     Ok(dict)
 }
 
+/// 把整个回合集合转换为 EventDto 列表。
 pub fn updates_to_event_dtos(updates: &RunUpdates, names: &HashMap<PlrId, String>) -> Vec<EventDto> {
     updates.updates.iter().map(|update| update_to_dto(update, names)).collect()
 }

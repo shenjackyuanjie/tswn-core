@@ -12,6 +12,7 @@ use std::path::Path;
 use crate::error::{Ds4Error, Ds4Result};
 use crate::output::AtomicFileWriter;
 
+/// 排序选项：分数列数、0 基排序键与是否在输出中附带分数。
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct SortOptions {
     pub score_number: usize,
@@ -25,6 +26,7 @@ struct ScoredRow {
     name: String,
 }
 
+/// 按指定键对已评分文件排序并原子写出；score_number 必须 >= 1，排序键须小于列数，否则返回解析错误。
 pub fn sort_scored_file(input_file: &Path, output_file: &Path, options: &SortOptions) -> Ds4Result<usize> {
     if options.score_number == 0 {
         return Err(Ds4Error::parse("score_number must be >= 1"));

@@ -1,6 +1,7 @@
 use super::*;
 
 impl PreparedBattleInit {
+    /// 把 namerena 原始文本拆成输入分组与 seed 行：空行分队，纯 seed 组并入相邻队伍。
     pub fn split_namerena_raw(raw_input: String) -> (Vec<Vec<String>>, Vec<String>) {
         let raw_input = raw_input.replace("\r\n", "\n").replace('\r', "\n");
         let mut lines = raw_input.split('\n').map(trim_js_line_end).map(str::to_owned).collect::<Vec<_>>();
@@ -58,6 +59,7 @@ impl PreparedBattleInit {
         (groups, seed)
     }
 
+    /// 用默认 eval_rq 从原始分组构造完整初始状态。
     pub fn from_groups(
         raw_groups: &[Vec<String>],
         seed: &[String],
@@ -66,6 +68,7 @@ impl PreparedBattleInit {
         Self::from_groups_with_eval_rq(raw_groups, seed, crate::namerena::eval_name::DEFAULT_EVAL_RQ, registry)
     }
 
+    /// 按指定 eval_rq 从原始分组构造完整初始状态。
     pub fn from_groups_with_eval_rq(
         raw_groups: &[Vec<String>],
         seed: &[String],
@@ -75,10 +78,12 @@ impl PreparedBattleInit {
         Ok(PreparedBattleRoster::from_groups_with_eval_rq(raw_groups, eval_rq, registry)?.with_seed(seed))
     }
 
+    /// 输入分组对应的实体下标。
     pub fn input_groups(&self) -> &[Vec<EntityIdx>] { &self.input_groups }
 
     pub(crate) fn has_score_reuse_buffers(&self) -> bool { self.score_buffers.is_some() }
 
+    /// 把初始状态应用到 Runtime；实体数与准备值不一致时返回错误。
     pub fn apply(self, runtime: &mut CombatRuntime) -> Result<(), RuntimeBattleInitError> {
         self.apply_and_recover_seed(runtime).map(drop)
     }

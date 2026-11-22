@@ -17,6 +17,7 @@ struct Observer {
     counters: [[[SkillCounts; BuiltinActiveSkill::CORE.len()]; 2]; 2],
 }
 
+/// 单个技能在一次扫描中的累计计数，按本体/分身与聪明/普通分别统计。
 #[derive(Clone, Copy, Default, Serialize)]
 pub struct SkillCounts {
     pub reached: u64,
@@ -30,6 +31,7 @@ pub struct SkillCounts {
     pub no_target_to_skill: u64,
 }
 
+/// 一个（技能、是否分身、是否聪明）组合的观察结果，仅包含实际到达过的条目。
 #[derive(Serialize)]
 pub struct SkillObservation {
     skill: &'static str,

@@ -1,6 +1,7 @@
 use super::*;
 
 impl CombatRuntime {
+    /// 按选中的内置主动技能分派到对应技能实现；能力作用域限定于实际施法者。
     pub fn drain_plain_builtin_skill_into(
         &mut self,
         actor: EntityIdx,
@@ -136,10 +137,12 @@ impl CombatRuntime {
         }
     }
 
+    /// 默认选敌：按聪明与否的配额在存活敌人中抽取并评分排序。
     pub fn select_plain_default_enemy_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         self.select_plain_default_enemy_targets_with_count(actor, smart, if smart { 3 } else { 2 })
     }
 
+    /// 默认选敌并显式指定抽取配额；配额为 0 时返回空列表。
     pub fn select_plain_default_enemy_targets_with_count(
         &mut self,
         actor: EntityIdx,
@@ -225,6 +228,7 @@ impl CombatRuntime {
         scored.into_iter().map(|(target, _)| target).collect()
     }
 
+    /// 默认选敌评分：聪明按血量与吸引力，普通掷随机加吸引力。
     pub fn score_plain_default_enemy_target(&mut self, target: EntityIdx, smart: bool) -> f64 {
         let entity = self
             .entities
@@ -237,6 +241,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 火球术：队列为空时直接结算火焰攻击，否则入队后统一结算。
     pub fn drain_plain_fire_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         if self.effects.is_empty() {
             self.drain_fire_attack_effect_into(actor, target, PLAIN_FIRE_STATE_KEY, updates);
@@ -251,6 +256,7 @@ impl CombatRuntime {
         self.drain_effects_into(updates);
     }
 
+    /// 雷击术：3 到 6 段攻击，每段命中递减 10，威力按 0.36 折算。
     pub fn drain_plain_thunder_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[雷击术]",
@@ -318,6 +324,7 @@ impl CombatRuntime {
         self.control.finish_thunder();
     }
 
+    /// 地裂术：随机取 4 或 5 个目标，威力按目标数分摊。
     pub fn drain_plain_quake_skill_into(&mut self, actor: EntityIdx, mut targets: PreparedTargetList, updates: &mut RunUpdates) {
         if targets.is_empty() {
             return;
@@ -356,6 +363,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 吸血攻击：1.3 倍魔法威力并附加吸血效果。
     pub fn drain_plain_absorb_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         let atp = self
             .entities
@@ -381,6 +389,7 @@ impl CombatRuntime {
         );
     }
 
+    /// 投毒：按魔法威力攻击并附加中毒效果。
     pub fn drain_plain_poison_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         let atp = self
             .entities
@@ -405,6 +414,7 @@ impl CombatRuntime {
         );
     }
 
+    /// 会心一击：三段物理取样取最高值攻击。
     pub fn drain_plain_critical_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         let actor_runtime = &mut self
             .entities
@@ -424,6 +434,7 @@ impl CombatRuntime {
         self.drain_plain_attack_with_atp_into(actor, target, false, atp, updates);
     }
 
+    /// 狂暴选目标：聪明时排除已狂暴目标与战斗使魔。
     pub fn select_plain_berserk_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         self.select_plain_filtered_enemy_targets(
             actor,
@@ -443,6 +454,7 @@ impl CombatRuntime {
         )
     }
 
+    /// 狂暴选目标评分：已狂暴或已魅惑的目标评分打折。
     pub fn score_plain_berserk_target(&mut self, target: EntityIdx, smart: bool) -> f64 {
         let mut score = self.score_plain_default_enemy_target(target, smart);
         let target_entity = self
@@ -460,6 +472,7 @@ impl CombatRuntime {
         score
     }
 
+    /// 狂暴术：魔法威力攻击并附加狂暴效果。
     pub fn drain_plain_berserk_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         let atp = self
             .entities
@@ -484,6 +497,7 @@ impl CombatRuntime {
         );
     }
 
+    /// 加速选目标：同队存活成员，聪明时有体力下限与状态重叠限制。
     pub fn select_plain_haste_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let candidates = self.world.team_alive(actor_team).unwrap_or_default();
@@ -533,6 +547,7 @@ impl CombatRuntime {
         scored.into_iter().map(|(target, _)| target).collect()
     }
 
+    /// 加速选目标评分：已疾走的目标评分减为四分之一。
     pub fn score_plain_haste_target(&mut self, target: EntityIdx, smart: bool) -> f64 {
         if !smart {
             return self.rng.rFFFF() as f64;
@@ -556,6 +571,7 @@ impl CombatRuntime {
         score
     }
 
+    /// 加速术：推进施法者行动点，并给目标附加或延长疾走状态。
     pub fn drain_plain_haste_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[加速术]",
@@ -633,6 +649,7 @@ impl CombatRuntime {
         ));
     }
 
+    /// 铁壁：按魔法与蓄力计算保护值与步数，并扣除 256 行动点。
     pub fn drain_plain_iron_skill_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
         let (magic, charge_active) = {
             let owner = self
@@ -690,6 +707,7 @@ impl CombatRuntime {
         ));
     }
 
+    /// 连击选目标：聪明抽 5 个、普通抽 3 个敌人并按评分排序。
     pub fn select_plain_rapid_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive();
@@ -756,6 +774,7 @@ impl CombatRuntime {
         scored.into_iter().map(|(target, _)| target).collect()
     }
 
+    /// 连击：2 或 3 轮攻击，同一目标再次命中时威力衰减。
     pub fn drain_plain_rapid_skill_into(&mut self, actor: EntityIdx, mut targets: PreparedTargetList, updates: &mut RunUpdates) {
         if targets.is_empty() {
             return;

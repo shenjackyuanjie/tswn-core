@@ -45,6 +45,7 @@ pub enum CliApiErrorCode {
     InternalError,
 }
 impl CliApiErrorCode {
+    /// 错误码的 SCREAMING_SNAKE_CASE 稳定字符串；序列化与跨语言匹配共用。
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::InvalidInput => "INVALID_INPUT",
@@ -67,6 +68,7 @@ pub enum CliApiError {
     Internal(String),
 }
 impl CliApiError {
+    /// 把错误映射为跨语言错误分类。
     pub fn code(&self) -> CliApiErrorCode {
         match self {
             Self::InvalidInput(_) => CliApiErrorCode::InvalidInput,
@@ -144,6 +146,7 @@ pub struct ScoreResult {
     pub fight_nanos: u128,
 }
 
+/// 规范化 runtime 运行记录的 JSON 投影：逐回合 outcome、胜者队伍、guard 耗尽标记与总分。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct JsonRuntimeNormalizedRun {
     pub rounds: Vec<JsonRuntimeNormalizedOutcome>,
@@ -152,6 +155,7 @@ pub struct JsonRuntimeNormalizedRun {
     pub total_score: u64,
 }
 
+/// 单回合末的规范化状态快照：RNG 位置、实体属性、存活与排序、行动边界和更新帧。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct JsonRuntimeNormalizedOutcome {
     pub winner_team: Option<usize>,
@@ -174,6 +178,7 @@ pub struct JsonRuntimeNormalizedOutcome {
     pub frames: Vec<JsonRuntimeUpdateFrame>,
 }
 
+/// 一次行动边界的 JSON 记录：回合、行动者、目标与数值。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct JsonRuntimeActionBoundary {
     pub round: u64,
@@ -182,6 +187,7 @@ pub struct JsonRuntimeActionBoundary {
     pub amount: i32,
 }
 
+/// 一条更新消息的 JSON 记录：文本、施法与目标、分数、展示延迟和类型名。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct JsonRuntimeUpdateFrame {
     pub message: String,
@@ -256,6 +262,7 @@ impl From<NormalizedUpdateFrame> for JsonRuntimeUpdateFrame {
     }
 }
 
+/// 把 [`UpdateType`] 映射为 JSON 输出使用的稳定字符串。
 pub fn runtime_update_type_name(value: UpdateType) -> &'static str {
     match value {
         UpdateType::Win => "win",
@@ -287,6 +294,7 @@ pub struct BatchRateResult {
     pub fight_nanos: u128,
 }
 
+/// pair 明细中的单个队友组合：队友名字与乘权后的分数。
 #[derive(Debug, Clone, PartialEq)]
 pub struct PairRateEntry {
     pub name: String,
@@ -556,6 +564,8 @@ pub fn pair_rate(
         .collect()
 }
 
+/// 带权靶子的批量胜率：每个玩家组对全部靶子按权重求平均，并按输入顺序返回。
+/// `target_groups` 与 `target_factors` 长度必须一致，`player_labels` 需与玩家组一一对应。
 pub fn batch_rate_factored(
     target_groups: &[String],
     target_factors: &[f64],
@@ -635,6 +645,7 @@ pub fn pair_rate_factored(
         .collect()
 }
 
+/// 导出单个名字的 DIY/OL 文本；`old` 旧格式与 `minions` 召唤物不能同时为 true。
 pub fn to_diy(name: &str, old: bool, minions: bool) -> CliApiResult<String> { parse::export_player(name, old, minions) }
 
 /// 导出 DIY，使用指定的分隔符连接同一输出行的成员。
@@ -652,10 +663,12 @@ pub fn to_diy_prepared(player: &crate::namerena::PreparedPlayer, old: bool, mini
     Ok(parse::export_built_player(player, old, minions))
 }
 
+/// 按输入顺序批量导出 DIY/OL 文本；任一名字失败即整体返回错误。
 pub fn to_diy_batch(names: &[String], old: bool, minions: bool) -> CliApiResult<Vec<String>> {
     names.iter().map(|name| parse::export_player(name, old, minions)).collect()
 }
 
+/// 读取名字图标的结构化信息（边框、形状、前景/背景色），不渲染像素。
 pub fn icon_info(name: &str) -> IconInfo {
     let icon = icon_from_raw_name(name);
     IconInfo {
@@ -669,6 +682,8 @@ pub fn icon_info(name: &str) -> IconInfo {
     }
 }
 
+/// 把行文本按 `+`（`double_plus` 时为 `++`）拆成同输出行的成员，
+/// 每个非空行展开为一个组，成员间用换行连接；空行与空成员被忽略。
 pub fn parse_group_lines(content: &str, double_plus: bool) -> Vec<String> {
     content
         .lines()
@@ -685,15 +700,19 @@ pub fn parse_group_lines(content: &str, double_plus: bool) -> Vec<String> {
         .collect()
 }
 
+/// 用自定义 import 配置从混合 namerena 文本构造 `RuntimeRunner`；
+/// 配置缺失或解析失败时返回带上下文的错误。
 pub fn custom_runtime_mixed_runner(raw: &str, config: CustomRuntimeImportConfig<'_>) -> CliApiResult<RuntimeRunner> {
     RuntimeRunner::from_custom_mixed_namerena_raw(raw.to_owned(), config).map_err(custom_runtime_import_error)
 }
 
+/// 用仓库默认自定义 profile 的 [`custom_runtime_mixed_runner`]。
 pub fn default_custom_runtime_mixed_runner(raw: &str) -> CliApiResult<RuntimeRunner> {
     let config = default_custom_runtime_import_config().map_err(default_custom_runtime_profile_error)?;
     custom_runtime_mixed_runner(raw, config)
 }
 
+/// 跑自定义 runtime 对局并返回逐回合规范化记录；`max_rounds` 必须为正。
 pub fn custom_runtime_normalized_run(
     raw: &str,
     max_rounds: usize,
@@ -704,6 +723,7 @@ pub fn custom_runtime_normalized_run(
     Ok(runner.run_until_winner_normalized_rounds(max_rounds))
 }
 
+/// 用默认自定义 profile 的 [`custom_runtime_normalized_run`]。
 pub fn default_custom_runtime_normalized_run(raw: &str, max_rounds: usize) -> CliApiResult<RuntimeNormalizedRun> {
     ensure_runtime_max_rounds(max_rounds)?;
     let mut runner = default_custom_runtime_mixed_runner(raw)?;

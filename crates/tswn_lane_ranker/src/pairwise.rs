@@ -32,6 +32,7 @@ use crate::model::{CorrectTargetTrace, CorrectTargetTraceWeight, GroupId, LaneRe
 use crate::ranker::RankerConfig;
 use crate::winrate::compute_rate_without_db;
 
+/// 返回 lane 默认的校准池 Raw Score 门槛：单人 lane 48.0，多人 lane 48.7。
 pub fn default_selection_cqd_threshold(lane_size: usize) -> f64 { if lane_size == 1 { 48.0 } else { 48.7 } }
 
 /// 前瞻性 Correct 替换槽位因 lane 而异：单人 lane 使用十个假设替换项，所有多成员 lane 保留生产版五槽位设置。
@@ -47,6 +48,7 @@ fn format_k_label(k: f64) -> String {
 
 fn correct_score_mode(k: f64) -> String { format!("exact_k{}_replacement_correct_big_target", format_k_label(k)) }
 
+/// 两两校准报告：候选数、边数、跳过原因与生成的目标轨迹。
 #[derive(Debug, Clone)]
 pub struct PairwiseCalibrationReport {
     pub candidate_count: usize,
@@ -124,6 +126,7 @@ fn reset_calibration_fields(row: &mut LaneResultRow) {
     row.residual_profile_variance_feature = None;
 }
 
+/// 用数据库中已保存的 lane 结果执行 Correct 校准，返回报告。
 pub fn calibrate_saved_lane_results(
     db: &Db,
     lane_size: usize,
@@ -211,6 +214,7 @@ pub fn calibrate_saved_lane_results(
     Ok(report)
 }
 
+/// 校验已保存的两两强度结果，返回校验详情 JSON。
 pub fn validate_saved_pair_strength_results(
     db: &Db,
     lane_size: usize,

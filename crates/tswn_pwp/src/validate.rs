@@ -16,6 +16,7 @@ use std::{
 };
 use tswn_core::cli_api::battle::BattleStopReason;
 
+/// 校验汇总：对局与样本计数及完成/截断/失败分布。
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Summary {
     pub battles: usize,
@@ -47,6 +48,7 @@ impl Summary {
     }
 }
 
+/// 校验输出数据集：配置、目录布局与各分片收据，返回汇总。
 pub fn validate_dataset(out: &Path) -> Result<Summary> {
     let config: DatasetConfig = storage::read_json(&out.join("manifest.json"))?;
     let total = check_config(&config)?;

@@ -24,6 +24,7 @@ impl CombatRuntime {
         })
     }
 
+    /// 检查并支付实体 MP：未激活或不足时返回 false。
     pub fn entity_mp_ready(&mut self, owner: EntityIdx) -> bool {
         let Some(entity) = self.entities.get(owner) else {
             return false;
@@ -38,6 +39,7 @@ impl CombatRuntime {
             .mp_ready(&mut self.rng)
     }
 
+    /// 命中伤害超过阈值时叠加中毒：威力累加、层数重置为 4。
     pub fn apply_poison_on_damage(&mut self, caster: EntityIdx, target: EntityIdx, damage: i32, updates: &mut RunUpdates) {
         if damage <= 4 {
             return;
@@ -111,6 +113,7 @@ impl CombatRuntime {
         ));
     }
 
+    /// 读取新冠 Boss 的当前变异值；未感染或状态缺失返回 None。
     pub fn covid_boss_mutation(&self, boss: EntityIdx) -> Option<i32> {
         let states = &self.entities.get(boss)?.states;
         if !states.may_contain(StatePayloadKind::CovidBoss) {
@@ -136,6 +139,7 @@ impl CombatRuntime {
         })
     }
 
+    /// 读取懒癌 Boss 当前的攻击加成；未设置返回 None。
     pub fn lazy_boss_at_boost(&self, boss: EntityIdx) -> Option<f64> {
         let states = &self.entities.get(boss)?.states;
         if !states.may_contain(StatePayloadKind::LazyBoss) {
@@ -149,6 +153,7 @@ impl CombatRuntime {
         })
     }
 
+    /// 写入懒癌 Boss 的攻击加成；状态缺失会 panic。
     pub fn set_lazy_boss_at_boost(&mut self, boss: EntityIdx, at_boost: f64) {
         let boss_entity = self
             .entities
@@ -165,6 +170,7 @@ impl CombatRuntime {
         );
     }
 
+    /// 目标是否携带懒癌传染。
     pub fn has_lazy_infection(&self, target: EntityIdx) -> bool {
         self.entities.get(target).is_some_and(|entity| {
             entity.states.may_contain(StatePayloadKind::LazyInfection)
@@ -176,6 +182,7 @@ impl CombatRuntime {
         })
     }
 
+    /// 给目标附加懒癌传染；已携带或状态已存在时返回 false。
     pub fn infect_with_lazy_into(&mut self, boss: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) -> bool {
         if self.has_lazy_infection(target) {
             return false;
@@ -201,6 +208,7 @@ impl CombatRuntime {
         true
     }
 
+    /// 播报懒癌跳回合的活动文案与「什么也没做」。
     pub fn emit_lazy_activity_into(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
         use crate::runtime::lang::{keys, lazy_activity_key};
         let activity = lazy_activity_key(self.rng.next_u8());
@@ -210,6 +218,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 新冠 Boss 命中时尝试把病毒传播给目标。
     pub fn try_covid_spread_on_damage_into(
         &mut self,
         boss: EntityIdx,
@@ -263,6 +272,7 @@ impl CombatRuntime {
         self.infect_with_covid_into(boss, attacker, mutation, updates);
     }
 
+    /// 给目标附加新冠传染并登记新株；首次康复后仍接纳未见过的株。
     pub fn infect_with_covid_into(
         &mut self,
         boss: EntityIdx,
@@ -450,6 +460,7 @@ impl CombatRuntime {
         false
     }
 
+    /// 懒癌发作：按 Boss 威力对感染者造成直接伤害，不走新普攻。
     pub fn drain_lazy_flare_into(&mut self, owner: EntityIdx, boss: EntityIdx, updates: &mut RunUpdates) {
         if !self.entities.get(owner).is_some_and(|entity| entity.runtime.alive) {
             return;
@@ -474,6 +485,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 致死链：播报死亡、走 die hook，移出战场并按条件触发击杀回调。
     pub fn drain_plain_lethal_damage_into(&mut self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         self.emit_plain_lethal_replay_into(caster, target, updates);
         self.drain_die_hooks_into(target, updates);
@@ -494,6 +506,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 播报通用死亡消息；战斗已结束时抑制使魔自身的死亡日志。
     pub fn emit_plain_lethal_replay_into(&self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         let target_entity = self
             .entities
@@ -519,6 +532,7 @@ impl CombatRuntime {
         ));
     }
 
+    /// 行动后恢复：按智慧概率回复 16 点 MP，并追加换行分隔。
     pub fn recover_plain_actor_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
         let recover_threshold = self
             .entities

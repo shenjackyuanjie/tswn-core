@@ -10,6 +10,7 @@ const MAX_LOG_BYTES: usize = 4 * 1024 * 1024;
 /// 纯文本里不同输入组之间的分隔行。
 pub const DIY_GROUP_SEPARATOR: &str = "=========";
 
+/// 日志行的渲染类型：普通、高亮与技能板。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LogKind {
     Plain,
@@ -17,12 +18,14 @@ pub enum LogKind {
     SkillBoard,
 }
 
+/// 一条日志行：文本内容与渲染类型。
 pub struct LogLine {
     text: String,
     pub kind: LogKind,
 }
 
 impl LogLine {
+    /// 返回去除行尾 CR 的显示文本。
     pub fn display_text(&self) -> &str { self.text.strip_suffix('\r').unwrap_or(&self.text) }
 }
 
@@ -34,6 +37,7 @@ pub struct WrappedRow {
     pub end: usize,
 }
 
+/// 环形日志缓冲：按字节与行数上限淘汰旧行，并维护技能板行索引。
 pub struct LogBuffer {
     lines: VecDeque<LogLine>,
     bytes: usize,
@@ -68,6 +72,7 @@ impl LogBuffer {
         }
     }
 
+    /// 清空全部日志与相关统计。
     pub fn clear(&mut self) {
         self.lines.clear();
         self.bytes = 0;
@@ -78,18 +83,24 @@ impl LogBuffer {
         self.wrapped_lines = 0;
     }
 
+    /// 是否没有非空日志行。
     pub fn is_empty(&self) -> bool { self.non_blank_lines == 0 }
 
+    /// 当前保留的日志行数。
     pub fn len(&self) -> usize { self.lines.len() }
 
+    /// 按下标读取日志行。
     pub fn get(&self, index: usize) -> Option<&LogLine> { self.lines.get(index) }
 
+    /// 返回技能板行数量。
     pub fn skill_board_line_count(&self) -> usize { self.skill_board_indices.len() }
 
+    /// 按技能板序号读取日志行（换算为缓冲区下标）。
     pub fn skill_board_line(&self, index: usize) -> Option<&LogLine> {
         self.get(self.skill_board_indices.get(index)?.checked_sub(self.discarded)?)
     }
 
+    /// 返回已被淘汰的日志行数。
     pub fn discarded_lines(&self) -> usize { self.discarded }
 
     /// 按可用宽度把日志切成渲染行，返回总段数；宽度未变时只切分新增内容。
@@ -142,6 +153,7 @@ impl LogBuffer {
         Some((row.line.checked_sub(self.discarded)?, row.start, row.end))
     }
 
+    /// 追加一条日志；去除尾部换行后为空时忽略。
     pub fn append(&mut self, text: &str, kind: LogKind) {
         let trimmed = text.trim_end_matches('\n');
         if trimmed.is_empty() {
@@ -169,6 +181,7 @@ impl LogBuffer {
         self.append(text, kind);
     }
 
+    /// 导出全部日志为纯文本，每行以换行结尾。
     pub fn copy_text(&self) -> String {
         let mut text = String::with_capacity(self.bytes);
         for line in &self.lines {

@@ -16,22 +16,29 @@ pub struct TswnError {
     pub message: String,
 }
 
+/// WASM 层结果类型：错误为可抛出的 JS 值。
 pub type WasmResult<T> = Result<T, JsValue>;
 
+/// 构造 InvalidInput 错误值。
 pub fn invalid_input(message: impl Into<String>) -> JsValue { error_value(CliApiErrorCode::InvalidInput.as_str(), message) }
 
+/// 构造 InvalidArgument 错误值。
 pub fn invalid_argument(message: impl Into<String>) -> JsValue { error_value(CliApiErrorCode::InvalidArgument.as_str(), message) }
 
+/// 构造 RunnerInitFailed 错误值。
 pub fn runner_init_failed(message: impl Into<String>) -> JsValue {
     error_value(CliApiErrorCode::RunnerInitFailed.as_str(), message)
 }
 
+/// 构造胜率输入分组非法的错误值。
 pub fn win_rate_invalid_groups() -> JsValue {
     error_value("WIN_RATE_INVALID_GROUPS", "win_rate requires at least two non-empty groups")
 }
 
+/// 构造 InternalError 错误值。
 pub fn internal_error(message: impl Into<String>) -> JsValue { error_value(CliApiErrorCode::InternalError.as_str(), message) }
 
+/// 构造 UnsupportedOption 错误值。
 pub fn unsupported_option(message: impl Into<String>) -> JsValue {
     error_value(CliApiErrorCode::UnsupportedOption.as_str(), message)
 }
@@ -42,14 +49,17 @@ pub fn error_value(code: &'static str, message: impl Into<String>) -> JsValue {
     serde_wasm_bindgen::to_value(&error).unwrap_or_else(|_| JsValue::from_str(error.code))
 }
 
+/// 把 CliApiError 转换为 JS 错误值。
 pub fn cli_api_error(err: CliApiError) -> JsValue {
     let error = cli_api_tswn_error(err);
     error_value(error.code, error.message)
 }
 
+/// 把 CliApiError 转换为 TswnError 结构。
 pub fn cli_api_tswn_error(err: CliApiError) -> TswnError { TswnError::new(err.code().as_str(), err.to_string()) }
 
 impl TswnError {
+    /// 用 code 与 message 构造 TswnError。
     pub fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             code,

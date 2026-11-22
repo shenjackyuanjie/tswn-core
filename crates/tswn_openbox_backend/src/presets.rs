@@ -52,6 +52,7 @@ const DEFAULT_SETTING_FILES: &[(&str, &str)] = &[
     ("teammates/teammate_fs.txt", include_str!("../assets/teammates/teammate_fs.txt")),
 ];
 
+/// 靶子预设：ID、名称、文件路径与选项。
 #[derive(Debug, Clone)]
 pub struct TargetPreset {
     pub id: u64,
@@ -69,6 +70,7 @@ pub struct TargetPresetState {
     pub error: Option<String>,
 }
 
+/// 队友预设：取前 N 个、名称、文件路径与选项。
 #[derive(Debug, Clone)]
 pub struct TeammatePreset {
     pub head: usize,
@@ -86,6 +88,7 @@ pub struct TeammatePresetState {
 }
 
 impl TargetPresetState {
+    /// 加载靶子预设列表（默认选择第一项）。
     pub fn load() -> Self { Self::load_with_preferred_id(None) }
 
     /// 同步加载并写出缺失默认资源；优先选择存在的 preferred_id，否则选择第一项。
@@ -109,6 +112,7 @@ impl TargetPresetState {
         }
     }
 
+    /// 重新加载靶子预设，尽量保留此前的选择。
     pub fn reload(&mut self) {
         let next = Self::load();
         let previous_id = self.selected_id;
@@ -121,6 +125,7 @@ impl TargetPresetState {
         }
     }
 
+    /// 返回当前选中的靶子预设。
     pub fn selected(&self) -> Option<&TargetPreset> {
         let selected_id = self.selected_id?;
         self.items.iter().find(|item| item.id == selected_id)
@@ -128,6 +133,7 @@ impl TargetPresetState {
 }
 
 impl TeammatePresetState {
+    /// 加载队友预设列表（默认选择第一项）。
     pub fn load() -> Self {
         match load_setting_file().map(load_teammate_presets) {
             Ok(items) => Self {
@@ -143,6 +149,7 @@ impl TeammatePresetState {
         }
     }
 
+    /// 重新加载队友预设，尽量保留此前的选择。
     pub fn reload(&mut self) {
         let next = Self::load();
         let previous_index = self.selected_index;
@@ -153,6 +160,7 @@ impl TeammatePresetState {
             .or_else(|| (!self.items.is_empty()).then_some(0));
     }
 
+    /// 返回当前选中的队友预设。
     pub fn selected(&self) -> Option<&TeammatePreset> {
         let selected_index = self.selected_index?;
         self.items.get(selected_index)
@@ -193,6 +201,7 @@ struct TeammatePresetEntry {
     factor_enabled: bool,
 }
 
+/// 读取选中靶子预设的文本内容；未选择时返回中文错误。
 pub fn load_selected_target_text(state: &TargetPresetState) -> Result<String, String> {
     let preset = state.selected().ok_or_else(|| "请先选择靶子预设。".to_string())?;
     load_target_preset_text(preset)
@@ -202,6 +211,7 @@ pub fn load_selected_target_text(state: &TargetPresetState) -> Result<String, St
 /// 普通或带权格式由调用方解析。读取失败时返回含路径的错误。
 pub fn load_target_preset_text(preset: &TargetPreset) -> Result<String, String> { read_preset_text(&preset.path) }
 
+/// 读取选中队友预设的文本内容；未选择时返回中文错误。
 pub fn load_selected_teammate_text(state: &TeammatePresetState) -> Result<String, String> {
     let preset = state.selected().ok_or_else(|| "请先选择队友预设。".to_string())?;
     load_teammate_preset_text(preset)

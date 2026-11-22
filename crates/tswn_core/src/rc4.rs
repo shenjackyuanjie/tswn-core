@@ -292,6 +292,8 @@ pub struct Rc4KeySchedulePrefix {
 }
 
 impl Rc4KeySchedulePrefix {
+    /// 用密钥前缀预跑 KSA 得到可续跑的检查点；前缀不能为空，
+    /// 超过 256 字节的部分不参与调度。
     pub fn new(key_prefix: &[u8]) -> Self {
         assert!(!key_prefix.is_empty(), "RC4 KSA 前缀不能为空");
         let scheduled_len = key_prefix.len().min(VAL_LEN);
@@ -304,8 +306,10 @@ impl Rc4KeySchedulePrefix {
         Self { key_prefix, main_val, j }
     }
 
+    /// 已缓存的密钥前缀字节数。
     pub fn len(&self) -> usize { self.key_prefix.len() }
 
+    /// 缓存的密钥前缀是否为空。
     pub fn is_empty(&self) -> bool { self.key_prefix.is_empty() }
 }
 
@@ -324,9 +328,11 @@ impl Default for RC4 {
 #[allow(unused)]
 impl RC4 {
     #[inline]
+    /// S-box 长度，恒为 256。
     pub const fn val_len() -> usize { VAL_LEN }
 
     #[inline]
+    /// 读取 S-box 在 `index` 处的值，不推进随机状态。
     pub fn get_val(&self, index: u8) -> u8 { self.main_val[index as usize] }
 
     #[inline]
@@ -338,6 +344,7 @@ impl RC4 {
     pub unsafe fn get_val_unchecked(&self, index: u8) -> u8 { unsafe { *self.main_val.get_unchecked(index as usize) } }
 
     #[inline]
+    /// 写入 S-box 在 `index` 处的值，不推进随机状态。
     pub fn set_val(&mut self, index: u8, value: u8) { self.main_val[index as usize] = value; }
 
     /// 从恒等排列开始执行 `round` 轮密钥调度，并将 i/j 设为 0。

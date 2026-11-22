@@ -19,6 +19,7 @@ pub enum CaseMode {
 }
 
 impl CaseMode {
+    /// 模式的短标签：`1v1` / `2v2` / `3v3v3` / `ffa_<人数>`，用于案例 ID 与输出。
     pub fn label(self) -> String {
         match self {
             Self::OneVsOne => "1v1".to_string(),
@@ -28,6 +29,7 @@ impl CaseMode {
         }
     }
 
+    /// 模式所需的总玩家数；自由混战返回其人数参数。
     pub fn total_players(self) -> usize {
         match self {
             Self::OneVsOne => 2,
@@ -55,6 +57,7 @@ impl CaseMode {
     }
 }
 
+/// 一个生成的案例：模式、抽中的玩家、拼好的 raw 输入与稳定哈希。
 #[derive(Clone, Debug)]
 pub struct GeneratedCase {
     pub mode: CaseMode,
@@ -182,6 +185,7 @@ pub fn stable_hash<T: Hash>(value: &T) -> u64 {
     hasher.finish()
 }
 
+/// 由模式标签与输入哈希组成案例短 ID，如 `1v1-0123456789abcdef`。
 pub fn case_id(mode: CaseMode, input_hash: u64) -> String { format!("{}-{:016x}", mode.label(), input_hash) }
 
 #[cfg(test)]

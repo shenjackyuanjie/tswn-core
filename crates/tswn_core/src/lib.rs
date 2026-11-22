@@ -76,72 +76,107 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 #[cfg(not(feature = "no_debug"))]
 pub mod debug;
 
+/// `no_debug` 构建下的调试探针禁用模块：所有开关编译期恒假，文本探针恒返回 `None`。
+/// 语义与默认构建的 debug 模块一致，只是不再读取环境或输出诊断。
 #[cfg(feature = "no_debug")]
 pub mod debug {
+    /// 禁用实现：对应 `TSWN_DEBUG_ACTION`，恒返回 `None`。
     #[inline(always)]
     pub fn debug_action() -> Option<String> { None }
+    /// 禁用实现：对应 `TSWN_DEBUG_ACTION 匹配`，恒返回 `false`。
     #[inline(always)]
     pub const fn debug_action_matches(_name: &str) -> bool { false }
+    /// 禁用实现：对应 `TSWN_DEBUG_STATS`，恒返回 `false`。
     #[inline(always)]
     pub const fn debug_stats() -> bool { false }
+    /// 禁用实现：对应 `TSWN_DEBUG_WORLD`，恒返回 `false`。
     #[inline(always)]
     pub const fn debug_world() -> bool { false }
+    /// 禁用实现：对应 `TSWN_DEBUG_TICK`，恒返回 `false`。
     #[inline(always)]
     pub const fn debug_tick() -> bool { false }
+    /// 禁用实现：对应 `TSWN_DEBUG_PICK`，恒返回 `false`。
     #[inline(always)]
     pub const fn debug_pick() -> bool { false }
+    /// 禁用实现：对应 `TSWN_DEBUG_DODGE`，恒返回 `false`。
     #[inline(always)]
     pub const fn debug_dodge() -> bool { false }
+    /// 禁用实现：对应 `TSWN_DEBUG_DODGE_ALL`，恒返回 `false`。
     #[inline(always)]
     pub const fn debug_dodge_all() -> bool { false }
+    /// 禁用实现：对应 `TSWN_DEBUG_DIE`，恒返回 `None`。
     #[inline(always)]
     pub fn debug_die() -> Option<String> { None }
+    /// 禁用实现：对应 `TSWN_DEBUG_STATE`，恒返回 `false`。
     #[inline(always)]
     pub const fn debug_state() -> bool { false }
+    /// 禁用实现：对应 `TSWN_DEBUG_POST_ACTION`，恒返回 `false`。
     #[inline(always)]
     pub const fn debug_post_action() -> bool { false }
+    /// 禁用实现：对应 `TSWN_DEBUG_FORCED_SKILL`，恒返回 `false`。
     #[inline(always)]
     pub const fn debug_forced_skill() -> bool { false }
+    /// 禁用实现：对应 `TSWN_DEBUG_COVID`，恒返回 `false`。
     #[inline(always)]
     pub const fn debug_covid() -> bool { false }
+    /// 禁用实现：对应 `TSWN_DEBUG_FIRE`，恒返回 `false`。
     #[inline(always)]
     pub const fn debug_fire() -> bool { false }
+    /// 禁用实现：对应 `TSWN_DEBUG_HEAL`，恒返回 `false`。
     #[inline(always)]
     pub const fn debug_heal() -> bool { false }
+    /// 禁用实现：对应 `TSWN_DEBUG_UPGRADE`，恒返回 `None`。
     #[inline(always)]
     pub fn debug_upgrade() -> Option<String> { None }
+    /// 禁用实现：对应 `TSWN_DEBUG_REFLECT`，恒返回 `false`。
     #[inline(always)]
     pub const fn debug_reflect() -> bool { false }
+    /// 禁用实现：对应 `TSWN_DEBUG_DAMAGE`，恒返回 `false`。
     #[inline(always)]
     pub const fn debug_damage() -> bool { false }
+    /// 禁用实现：对应 `TSWN_TRACE_RC4`，恒返回 `false`。
     #[inline(always)]
     pub const fn trace_rc4() -> bool { false }
+    /// 禁用实现：对应 `TSWN_PROBE_STEP`，恒返回 `None`。
     #[inline(always)]
     pub const fn probe_step() -> Option<&'static str> { None }
+    /// 禁用实现：对应 `TSWN_PROBE_ACTION`，恒返回 `None`。
     #[inline(always)]
     pub const fn probe_action() -> Option<&'static str> { None }
+    /// 禁用实现：对应 `TSWN_PROBE_DEFAULT_ATTACK`，恒返回 `None`。
     #[inline(always)]
     pub const fn probe_default_attack() -> Option<&'static str> { None }
+    /// 禁用实现：对应 `TSWN_PROBE_REFRESH`，恒返回 `None`。
     #[inline(always)]
     pub const fn probe_refresh() -> Option<&'static str> { None }
+    /// 禁用实现：对应 `TSWN_PROBE_RC4`，恒返回 `None`。
     #[inline(always)]
     pub const fn probe_rc4() -> Option<&'static str> { None }
+    /// 禁用实现：对应 `TSWN_PROBE_PROTECT`，恒返回 `None`。
     #[inline(always)]
     pub const fn probe_protect() -> Option<&'static str> { None }
+    /// 禁用实现：对应 `TSWN_PROBE_COUNTER`，恒返回 `None`。
     #[inline(always)]
     pub const fn probe_counter() -> Option<&'static str> { None }
+    /// 禁用实现：对应 `TSWN_PROBE_HIDE`，恒返回 `None`。
     #[inline(always)]
     pub const fn probe_hide() -> Option<&'static str> { None }
+    /// 禁用实现：对应 `TSWN_PROBE_POSSESS`，恒返回 `None`。
     #[inline(always)]
     pub const fn probe_possess() -> Option<&'static str> { None }
+    /// 禁用实现：对应 `TSWN_PROBE_CHARM`，恒返回 `None`。
     #[inline(always)]
     pub const fn probe_charm() -> Option<&'static str> { None }
+    /// 禁用实现：对应 `TSWN_PROBE_EXCHANGE`，恒返回 `None`。
     #[inline(always)]
     pub const fn probe_exchange() -> Option<&'static str> { None }
+    /// 禁用实现：对应 `TSWN_PROBE_HEAL`，恒返回 `None`。
     #[inline(always)]
     pub const fn probe_heal() -> Option<&'static str> { None }
+    /// 禁用实现：对应 `TSWN_PROBE_MINION_BLUEPRINT`，恒返回 `None`。
     #[inline(always)]
     pub const fn probe_minion_blueprint() -> Option<&'static str> { None }
+    /// 禁用实现：对应 `TSWN_DEBUG_TICK_ORDER`，恒返回 `None`。
     #[inline(always)]
     pub const fn debug_tick_order() -> Option<&'static str> { None }
 }

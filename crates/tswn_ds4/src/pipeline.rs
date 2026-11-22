@@ -85,6 +85,7 @@ pub enum RunStage {
 }
 
 impl RunStage {
+    /// 返回阶段的展示名（进度标签）。
     pub fn label(self) -> &'static str {
         match self {
             Self::Input => "合并输入、队伍筛选与去重",
@@ -98,8 +99,10 @@ impl RunStage {
         }
     }
 
+    /// 返回已完成阶段的数量（按枚举序号）。
     pub fn completed(self) -> usize { self as usize }
 
+    /// 阶段总数，用作进度分母。
     pub const TOTAL: usize = Self::Complete as usize;
 }
 
@@ -123,6 +126,7 @@ pub fn run_with_progress(root: &Path, config: &Config, mut progress: impl FnMut(
     run_with_store_observed(&store, config, &mut progress)
 }
 
+/// 用给定 store 与 config 执行完整流水线（合并输入、去重、各模式评分、配对与归档），返回运行报告。
 pub fn run_full_with_store(store: &Store, config: &Config) -> Ds4Result<FullRunReport> {
     run_with_store_observed(store, config, &mut |_| {})
 }
@@ -358,11 +362,13 @@ fn copy_sp1_to_new(store: &Store, config: &Config) -> Ds4Result<()> {
     Ok(())
 }
 
+/// 以 root 创建 store 并执行第一阶段流水线，返回阶段报告。
 pub fn run_stage1(root: &Path, config: &Config) -> Ds4Result<Stage1Report> {
     let store = Store::new(root.to_path_buf());
     run_stage1_with_store(&store, config)
 }
 
+/// 在既有 store 上执行第一阶段：准备目录、合并输入并按配置去重，返回阶段报告。
 pub fn run_stage1_with_store(store: &Store, config: &Config) -> Ds4Result<Stage1Report> {
     prepare_dirs(store)?;
     reset_tmp(store)?;

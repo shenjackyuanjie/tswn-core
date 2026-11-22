@@ -3,6 +3,7 @@ use crate::runtime::update::{RunUpdates, UpdateType};
 
 use super::{CombatRuntime, RoundOutcome};
 
+/// RC4 随机流的规范化检查点，用于跨版本比对随机推进是否一致。
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct NormalizedRngCheckpoint {
     pub i: u32,
@@ -12,6 +13,7 @@ pub struct NormalizedRngCheckpoint {
 }
 
 impl NormalizedRngCheckpoint {
+    /// 从 RC4 当前状态构造检查点。
     pub fn from_rc4(rng: &RC4) -> Self {
         Self {
             i: rng.i,
@@ -21,8 +23,10 @@ impl NormalizedRngCheckpoint {
         }
     }
 
+    /// 从 Runtime 的 RNG 构造检查点。
     pub fn from_runtime(runtime: &CombatRuntime) -> Self { Self::from_rc4(&runtime.rng) }
 
+    /// 默认 RC4 推进 `count` 字节后的检查点，用于表达预期的随机消耗。
     pub fn after_next_u8(count: usize) -> Self {
         let mut rng = RC4::default();
         for _ in 0..count {
@@ -32,6 +36,7 @@ impl NormalizedRngCheckpoint {
     }
 }
 
+/// 一次行动的规范化边界：回合号、行动者、目标与行动量。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NormalizedActionBoundary {
     pub round: u64,
@@ -41,6 +46,7 @@ pub struct NormalizedActionBoundary {
 }
 
 impl NormalizedActionBoundary {
+    /// 从回合结果提取行动边界；本回合无行动时返回空列表。
     pub fn from_outcome(runtime: &CombatRuntime, outcome: &RoundOutcome) -> Vec<Self> {
         outcome
             .action
@@ -56,6 +62,7 @@ impl NormalizedActionBoundary {
     }
 }
 
+/// 一条更新消息的规范化投影，只保留展示与统计所需字段。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NormalizedUpdateFrame {
     pub message: String,
@@ -70,6 +77,7 @@ pub struct NormalizedUpdateFrame {
 }
 
 impl NormalizedUpdateFrame {
+    /// 把更新序列逐条投影为规范化帧，顺序保持不变。
     pub fn from_updates(updates: &RunUpdates) -> Vec<Self> {
         updates
             .updates
@@ -88,11 +96,13 @@ impl NormalizedUpdateFrame {
             .collect()
     }
 
+    /// 从回合结果提取本回合可见帧；本回合无可见帧时返回空列表。
     pub fn from_outcome(outcome: &RoundOutcome) -> Vec<Self> {
         outcome.frame.as_ref().map(|frame| Self::from_updates(&frame.updates)).unwrap_or_default()
     }
 }
 
+/// 一回合结束后的规范化快照：实体数值、存活视图、行动边界与消息帧。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NormalizedOutcome {
     pub winner_team: Option<usize>,
@@ -115,6 +125,7 @@ pub struct NormalizedOutcome {
 }
 
 impl NormalizedOutcome {
+    /// 从 Runtime 当前状态与回合结果构造规范化快照。
     pub fn from_runtime(runtime: &CombatRuntime, outcome: &RoundOutcome) -> Self {
         let team_count = runtime
             .entities

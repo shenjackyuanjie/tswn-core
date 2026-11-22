@@ -17,6 +17,7 @@ use crate::model::engine::{NameFeature, PositionTables, base_score, init_pos_tab
 use crate::output::AtomicFileWriter;
 use crate::sp1_coeffs::{MODEL_CQD0, MODEL_CQD3, MODEL_PD0, MODEL_PP0, MODEL_QD0, MODEL_QP0};
 
+/// SP1 评分模式：qp/qd/pp/pd/cqd 五种口径。
 #[derive(Debug, Clone, Copy)]
 pub enum Sp1Mode {
     Qp,
@@ -27,8 +28,10 @@ pub enum Sp1Mode {
 }
 
 impl Sp1Mode {
+    /// 全部 SP1 模式，顺序 qp/qd/pp/pd/cqd。
     pub const ALL: [Self; 5] = [Self::Qp, Self::Qd, Self::Pp, Self::Pd, Self::Cqd];
 
+    /// 返回模式的 CLI 字符串名。
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Qp => "qp",
@@ -59,9 +62,11 @@ impl Sp1Mode {
     }
 }
 
+/// 36×3 的当前分数表，数据来自 root 下的 score_now.txt 或内置默认值。
 pub struct ScoreNow([[i32; 3]; 36]);
 
 impl ScoreNow {
+    /// 从 root 下的 score_now.txt 加载分数表；文件缺失时回退到内置数据。
     pub fn load(root: &Path) -> Ds4Result<Self> {
         let source = if root.join("score_now.txt").exists() {
             fs::read_to_string(root.join("score_now.txt"))?
@@ -89,6 +94,7 @@ impl ScoreNow {
     }
 }
 
+/// 以指定 SP1 模式与 ScoreNow 基准评分输入文件，可选额外写出技能输出，返回写入行数。
 pub fn score_file(
     input: &Path,
     output: &Path,

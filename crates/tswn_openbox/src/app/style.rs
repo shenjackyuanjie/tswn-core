@@ -12,6 +12,7 @@ pub(super) struct Palette {
 }
 
 impl Palette {
+    /// 按当前明暗模式取对应色板。
     pub fn of(ui: &egui::Ui) -> Self {
         let rgb = egui::Color32::from_rgb;
         if ui.visuals().dark_mode {
@@ -33,6 +34,7 @@ impl Palette {
         }
     }
 
+    /// 按任务状态文本返回主题色。
     pub fn status(self, status: &str) -> egui::Color32 {
         match status {
             "完成" => self.success,
@@ -42,6 +44,7 @@ impl Palette {
         }
     }
 
+    /// 按工具名返回主题色。
     pub fn tool(self, tool: &str) -> egui::Color32 {
         match tool {
             "to-diy" => self.success,

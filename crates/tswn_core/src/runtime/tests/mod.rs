@@ -1,3 +1,9 @@
+//! runtime 的集成测试集合。
+//!
+//! 按机制主题拆分到各子模块：自定义效果导入、plain 技能/状态行为、召唤爆炸、
+//! 胜者路径一致性与 prepared 初始化等。共享的测试辅助 handler、渲染器与 fixture
+//! 助手定义在本模块，供各子模块复用。
+
 use super::*;
 
 mod custom_bed2_fixture_tests;

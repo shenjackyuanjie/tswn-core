@@ -18,6 +18,8 @@ pub struct PreparedRinickData {
     pub clone_skills: Option<SkillLoadoutSpec>,
 }
 
+/// 一名玩家的完整构建结果：身份、八围、状态、技能表与各类机制标记。
+/// 不含本场战斗 RNG，可重复用于初始化多个对局。
 #[derive(Debug, Clone)]
 pub struct PreparedPlayer {
     pub id: usize,
@@ -56,6 +58,7 @@ pub struct PreparedRoster {
     pub groups: Vec<Vec<usize>>,
 }
 
+/// 召唤物种类：幻影、使魔与丧尸。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MinionKind {
     Shadow,
@@ -63,6 +66,8 @@ pub enum MinionKind {
     Zombie,
 }
 
+/// 召唤物蓝图：按主人单独构建的玩家数据，外加召唤语义标记
+/// （预留 ID 数、重铸时是否复用技能/状态、是否继承主人 DEF/RES）。
 #[derive(Debug, Clone)]
 pub struct PreparedMinionBlueprint {
     pub player: PreparedPlayer,
@@ -73,6 +78,7 @@ pub struct PreparedMinionBlueprint {
     pub inherit_owner_def_res: bool,
 }
 
+/// 构建阵容的错误类型；当前没有可构造变体，Result 仅为保留既有接口形状。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PreparedRosterError {}
 
@@ -146,6 +152,8 @@ impl PreparedPlayer {
         }
     }
 
+    /// 按类型为该玩家生成召唤物蓝图：名字追加 `?<kind>` 后缀、按 Normal 类重新构建，
+    /// 名字系数归零；使魔在 overlay 要求时继承主人的 DEF 与 RES。
     pub fn minion_blueprint(&self, kind: MinionKind, eval_rq: f64) -> PreparedMinionBlueprint {
         let (suffix, display_name) = match kind {
             MinionKind::Shadow => ("shadow", "幻影"),

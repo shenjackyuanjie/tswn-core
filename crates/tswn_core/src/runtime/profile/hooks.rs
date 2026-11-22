@@ -1,5 +1,6 @@
 use super::*;
 
+/// 防御技能 POST_DEFEND：按等级概率发动，把本次伤害减半。
 pub fn run_defend_post_defend_skill(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let damage = context.defend_damage().expect("runtime defend skill must run during POST_DEFEND");
     let level = context.skill_level(entry);
@@ -14,6 +15,7 @@ pub fn run_defend_post_defend_skill(context: &mut SkillContext<'_>, entry: &Skil
     context.set_defend_damage(damage / 2);
 }
 
+/// 伤害反弹 PRE_DEFEND：按等级与五成概率把攻击威力反弹给攻击者。
 pub fn run_reflect_pre_defend_skill(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let atp = context.defend_atp().expect("runtime reflect skill must run during PRE_DEFEND");
     if !context.defend_caster_active().expect("runtime reflect incoming caster must exist") {
@@ -44,6 +46,7 @@ pub fn run_reflect_pre_defend_skill(context: &mut SkillContext<'_>, entry: &Skil
     });
 }
 
+/// 护盾技能 PRE_ACTION：等级不低于当前盾值时按公式追加护盾。
 pub fn run_shield_pre_action_skill(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let level = context.skill_level(entry);
     let shield = context.owner_shield().expect("runtime shield skill owner must exist");
@@ -58,6 +61,7 @@ pub fn run_shield_pre_action_skill(context: &mut SkillContext<'_>, entry: &Skill
     context.set_owner_shield(shield + add).expect("runtime shield skill owner must exist");
 }
 
+/// 守护技能 POST_ACTION：按等级重选保护目标并维护保护链接。
 pub fn run_protect_post_action_skill(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let level = context.skill_level(entry);
     let forced_target = context.selected_target();
@@ -66,8 +70,10 @@ pub fn run_protect_post_action_skill(context: &mut SkillContext<'_>, entry: &Ski
         .expect("runtime protect post-action context must access allies");
 }
 
+/// 空操作的被动 handler：占位且不产生任何效果。
 pub fn run_plain_passive_noop_skill(_: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {}
 
+/// 吞噬 KILL：按等级概率把死亡目标并入施法者。
 pub fn run_merge_kill_skill(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let level = context.skill_level(entry);
     let roll = context.rng_r63();
@@ -83,6 +89,7 @@ pub fn run_merge_kill_skill(context: &mut SkillContext<'_>, entry: &SkillHookPla
     });
 }
 
+/// 护身符 DIE：按等级概率抵挡死亡，按随机体力复活并播报两条消息。
 pub fn run_reraise_die_skill(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let level = context.skill_level(entry);
     if !context.force_passive() && !context.roll_automatic_skill(level, 128) {

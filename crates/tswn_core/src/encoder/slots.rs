@@ -123,6 +123,7 @@ pub enum SlotScope {
 }
 
 impl SlotScope {
+    /// 作用域的序列化名，与规格第 14 节 `slot_index` 的 `scope` 取值一致。
     pub fn name(self) -> &'static str {
         match self {
             Self::Entity => "entity",
@@ -139,6 +140,7 @@ impl SlotScope {
         }
     }
 
+    /// 把原始 `slot_id` 映射为白名单行号（从 1 起）；不在白名单返回 `None`。
     pub fn whitelist_id(self, raw: u32) -> Option<u32> {
         self.whitelist().iter().position(|entry| entry.slot_id == raw).map(|row| row as u32 + 1)
     }

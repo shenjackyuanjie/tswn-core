@@ -7,6 +7,7 @@
 use super::*;
 
 impl Db {
+    /// 插入解析后的分组；canonical 已存在时返回 Duplicated，否则 Added。
     pub fn insert_group(&self, parsed: &ParsedGroup) -> anyhow::Result<InsertGroupOutcome> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
@@ -43,10 +44,12 @@ impl Db {
         Ok(InsertGroupOutcome::Added(group_id))
     }
 
+    /// 按 lane 规模加载分组（含已归档）。
     pub fn load_groups_by_lane(&self, lane_size: usize) -> anyhow::Result<Vec<StoredGroup>> {
         self.load_groups_by_lane_for_run(lane_size, false)
     }
 
+    /// 按 lane 规模加载分组；skip_archived 为 true 时排除已归档与已屏蔽分组。
     pub fn load_groups_by_lane_for_run(&self, lane_size: usize, skip_archived: bool) -> anyhow::Result<Vec<StoredGroup>> {
         let conn = self.conn.lock().unwrap();
         let sql = if skip_archived {
@@ -89,6 +92,7 @@ impl Db {
         Ok(groups)
     }
 
+    /// 判断 canonical 对应的分组是否已归档。
     pub fn is_group_archived_by_canonical(&self, canonical: &str) -> anyhow::Result<bool> {
         let conn = self.conn.lock().unwrap();
         let exists = conn
@@ -102,6 +106,7 @@ impl Db {
         Ok(exists)
     }
 
+    /// 按 canonical 查找分组的 (id, lane_size, canonical)。
     pub fn find_group_by_canonical(&self, canonical: &str) -> anyhow::Result<Option<(GroupId, usize, String)>> {
         let conn = self.conn.lock().unwrap();
         let group = conn
@@ -120,6 +125,7 @@ impl Db {
         Ok(group)
     }
 
+    /// 按 canonical 查找完整分组记录。
     pub fn find_stored_group_by_canonical(&self, canonical: &str) -> anyhow::Result<Option<StoredGroup>> {
         let conn = self.conn.lock().unwrap();
         let group = conn
@@ -150,6 +156,8 @@ impl Db {
         group.members = load_members_locked(&conn, group.id)?;
         Ok(Some(group))
     }
+
+    /// 按 ID 查找完整分组记录。
     pub fn get_group(&self, group_id: GroupId) -> anyhow::Result<Option<StoredGroup>> {
         let conn = self.conn.lock().unwrap();
         let group = conn
@@ -182,6 +190,7 @@ impl Db {
         Ok(Some(group))
     }
 
+    /// 返回存在分组的所有 lane 规模（升序）。
     pub fn all_nonempty_lanes(&self) -> anyhow::Result<Vec<usize>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare("SELECT DISTINCT lane_size FROM groups ORDER BY lane_size ASC")?;
@@ -193,6 +202,7 @@ impl Db {
         Ok(lanes)
     }
 
+    /// 查询 a 对 b 的胜率；同一分组返回 50.0，无记录返回 None。
     pub fn get_rate(&self, a: GroupId, b: GroupId) -> anyhow::Result<Option<f64>> {
         if a == b {
             return Ok(Some(50.0));
@@ -208,6 +218,7 @@ impl Db {
         Ok(rate)
     }
 
+    /// 批量写入分组两两胜率与样本数。
     pub fn save_rate_pairs_bulk(&self, rates: &[(GroupId, GroupId, f64)], samples: usize) -> anyhow::Result<()> {
         if rates.is_empty() {
             return Ok(());
@@ -237,6 +248,7 @@ impl Db {
         Ok(())
     }
 
+    /// 以原因和平均 CQD 归档单个分组，返回是否实际发生归档。
     pub fn archive_group_combination(&self, group_id: GroupId, reason: &str, average_cqd: f64) -> anyhow::Result<bool> {
         let conn = self.conn.lock().unwrap();
         let group: Option<(String, usize)> = conn
@@ -267,6 +279,7 @@ impl Db {
         Ok(true)
     }
 
+    /// 批量归档候选分组，返回实际归档数量。
     pub fn archive_group_combinations(&self, candidates: &[(GroupId, String, f64)]) -> anyhow::Result<usize> {
         let mut archived = 0usize;
         for (group_id, reason, average_cqd) in candidates {
@@ -322,6 +335,7 @@ impl Db {
         Ok(archived)
     }
 
+    /// 设置或取消分组屏蔽，返回受影响分组的 lane 规模与 canonical。
     pub fn set_group_blocked(&self, group_id: GroupId, blocked: bool) -> anyhow::Result<Option<(usize, String)>> {
         let conn = self.conn.lock().unwrap();
         let group: Option<(String, usize)> = conn
@@ -360,6 +374,7 @@ impl Db {
 }
 
 #[derive(Debug, Clone, Copy)]
+/// insert_group 的结果：Added 为新增分组，Duplicated 为 canonical 已存在，均带分组 ID。
 pub enum InsertGroupOutcome {
     Added(GroupId),
     Duplicated(GroupId),

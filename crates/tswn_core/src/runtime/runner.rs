@@ -10,8 +10,10 @@ pub struct PreparedCombatTemplate {
 }
 
 impl PreparedCombatTemplate {
+    /// 用默认注册表构造准备模板。
     pub fn new(players: Vec<PlayerTemplate>) -> Self { Self::with_registry(players, ExtensionRegistry::default()) }
 
+    /// 用给定注册表构造准备模板，并派生模板槽存储。
     pub fn with_registry(players: Vec<PlayerTemplate>, registry: ExtensionRegistry) -> Self {
         let slots = TemplateSlotStorage::from_registry(&registry);
         Self {
@@ -21,6 +23,7 @@ impl PreparedCombatTemplate {
         }
     }
 
+    /// 构造 1v1 最小模板，只设置体力与攻击，用于单独验证阶段机制。
     pub fn minimal_1v1(left_hp: i32, right_hp: i32, attack: i32) -> Self {
         Self::new(vec![
             PlayerTemplate::new(1, "left", 0, left_hp, attack),
@@ -74,9 +77,11 @@ pub struct PreparedRuntimeRunner {
 }
 
 impl RuntimeRunSummary {
+    /// 最后一个回合的 outcome。
     pub fn last_outcome(&self) -> Option<&RoundOutcome> { self.rounds.last() }
 }
 
+/// 保存逐回合规范化快照的运行结果。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeNormalizedRun {
     pub rounds: Vec<NormalizedOutcome>,
@@ -86,15 +91,18 @@ pub struct RuntimeNormalizedRun {
 }
 
 impl RuntimeNormalizedRun {
+    /// 最后一个回合的规范化快照。
     pub fn last_outcome(&self) -> Option<&NormalizedOutcome> { self.rounds.last() }
 }
 
+/// 缺失 handler 的技能来源：实体装备或模板槽。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeSkillSource {
     Entity(EntityIdx),
     TemplateSlot(TemplateSlotId),
 }
 
+/// 一个缺少 handler 的技能及其全部使用位置。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeMissingSkillHandler {
     pub skill_id: SkillId,
@@ -102,6 +110,7 @@ pub struct RuntimeMissingSkillHandler {
     pub sources: Vec<RuntimeSkillSource>,
 }
 
+/// 就绪校验失败：列出全部缺失的 skill handler。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeReadyError {
     pub missing_skill_handlers: Vec<RuntimeMissingSkillHandler>,
@@ -176,6 +185,7 @@ pub enum DamageKind {
     Ice,
 }
 
+/// 防御 hook 的受击值：PRE_DEFEND 存攻击威力，POST_DEFEND 存整数伤害。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RuntimeDefendValue {
     Atp {
@@ -194,6 +204,7 @@ pub enum RuntimeDefendValue {
 }
 
 impl RuntimeDefendValue {
+    /// 取攻击威力；当前为伤害阶段时返回 None。
     pub fn atp(self) -> Option<f64> {
         match self {
             Self::Atp { value, .. } => Some(value),
@@ -201,6 +212,7 @@ impl RuntimeDefendValue {
         }
     }
 
+    /// 是否魔法攻击；当前为伤害阶段时返回 None。
     pub fn is_magic(self) -> Option<bool> {
         match self {
             Self::Atp { is_magic, .. } => Some(is_magic),
@@ -208,6 +220,7 @@ impl RuntimeDefendValue {
         }
     }
 
+    /// 改写攻击威力；当前为伤害阶段时 panic。
     pub fn set_atp(&mut self, atp: f64) {
         match self {
             Self::Atp { value, .. } => *value = atp,
@@ -215,6 +228,7 @@ impl RuntimeDefendValue {
         }
     }
 
+    /// 取整数伤害；当前为威力阶段时返回 None。
     pub fn damage(self) -> Option<i32> {
         match self {
             Self::Atp { .. } => None,
@@ -222,6 +236,7 @@ impl RuntimeDefendValue {
         }
     }
 
+    /// 改写整数伤害；当前为威力阶段时 panic。
     pub fn set_damage(&mut self, damage: i32) {
         match self {
             Self::Atp { .. } => panic!("runtime defend value is atp, not damage"),
@@ -229,18 +244,21 @@ impl RuntimeDefendValue {
         }
     }
 
+    /// 受击值中的攻击者下标。
     pub fn caster(self) -> EntityIdx {
         match self {
             Self::Atp { caster, .. } | Self::Damage { caster, .. } => caster,
         }
     }
 
+    /// 受击值中的目标下标。
     pub fn target(self) -> EntityIdx {
         match self {
             Self::Atp { target, .. } | Self::Damage { target, .. } => target,
         }
     }
 
+    /// 受击值携带的伤害类型。
     pub fn kind(self) -> DamageKind {
         match self {
             Self::Atp { kind, .. } | Self::Damage { kind, .. } => kind,
@@ -260,6 +278,7 @@ impl RuntimeRunner {
         Self::from_custom_mixed_namerena_raw_with_eval_rq(raw_input, eval_rq, config).map_err(Into::into)
     }
 
+    /// 从准备模板构造一场对局，输入组按模板队伍推导。
     pub fn from_template(template: PreparedCombatTemplate) -> Self {
         let input_groups = Self::input_groups_from_templates(&template.players);
         Self {
@@ -278,6 +297,7 @@ impl RuntimeRunner {
         groups.into_iter().filter(|group| !group.is_empty()).collect()
     }
 
+    /// 按自定义 bed2 roster 与导入配置构造对局，并安装配置内的 handler。
     pub fn from_custom_bed2_roster(
         raw_groups: &[Vec<String>],
         config: CustomRuntimeImportConfig<'_>,
@@ -304,6 +324,7 @@ impl RuntimeRunner {
         Ok(runner)
     }
 
+    /// 按混合 roster 与导入配置构造对局，并安装配置内的 handler。
     pub fn from_custom_mixed_roster(
         raw_groups: &[Vec<String>],
         config: CustomRuntimeImportConfig<'_>,
@@ -330,6 +351,7 @@ impl RuntimeRunner {
         Ok(runner)
     }
 
+    /// 按默认 eval_rq 从 namerena 文本构造混合对局。
     pub fn from_custom_mixed_namerena_raw(
         raw_input: String,
         config: CustomRuntimeImportConfig<'_>,
@@ -337,6 +359,7 @@ impl RuntimeRunner {
         Self::from_custom_mixed_namerena_raw_with_eval_rq(raw_input, crate::namerena::eval_name::DEFAULT_EVAL_RQ, config)
     }
 
+    /// 按指定 eval_rq 从 namerena 文本构造混合对局。
     pub fn from_custom_mixed_namerena_raw_with_eval_rq(
         raw_input: String,
         eval_rq: f64,
@@ -351,6 +374,7 @@ impl RuntimeRunner {
         Ok(runner)
     }
 
+    /// 从 bed2 roster 构造对局。
     pub fn from_bed2_roster(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -361,6 +385,7 @@ impl RuntimeRunner {
         Ok(Self::from_template(template))
     }
 
+    /// 从 bed2 roster 构造对局，并叠加召唤物模板配置。
     pub fn from_bed2_roster_with_summon_overlay(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -378,6 +403,7 @@ impl RuntimeRunner {
         Ok(Self::from_template(template))
     }
 
+    /// 从 bed2 roster 构造对局，并叠加幻影模板配置。
     pub fn from_bed2_roster_with_shadow_overlay(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -395,6 +421,7 @@ impl RuntimeRunner {
         Ok(Self::from_template(template))
     }
 
+    /// 从 bed2 roster 构造对局，并叠加亡灵模板配置。
     pub fn from_bed2_roster_with_zombie_overlay(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -412,6 +439,7 @@ impl RuntimeRunner {
         Ok(Self::from_template(template))
     }
 
+    /// 从 bed2 roster 构造对局，并叠加一组使魔模板配置。
     pub fn from_bed2_roster_with_minion_overlays(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -429,6 +457,7 @@ impl RuntimeRunner {
         Ok(Self::from_template(template))
     }
 
+    /// 从混合 roster 构造对局。
     pub fn from_mixed_roster(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -439,6 +468,7 @@ impl RuntimeRunner {
         Ok(Self::from_template(template))
     }
 
+    /// 从混合 roster 构造对局，并叠加召唤物模板配置。
     pub fn from_mixed_roster_with_summon_overlay(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -456,6 +486,7 @@ impl RuntimeRunner {
         Ok(Self::from_template(template))
     }
 
+    /// 从混合 roster 构造对局，并叠加幻影模板配置。
     pub fn from_mixed_roster_with_shadow_overlay(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -473,6 +504,7 @@ impl RuntimeRunner {
         Ok(Self::from_template(template))
     }
 
+    /// 从混合 roster 构造对局，并叠加亡灵模板配置。
     pub fn from_mixed_roster_with_zombie_overlay(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -490,6 +522,7 @@ impl RuntimeRunner {
         Ok(Self::from_template(template))
     }
 
+    /// 从混合 roster 构造对局，并叠加一组使魔模板配置。
     pub fn from_mixed_roster_with_minion_overlays(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -507,13 +540,16 @@ impl RuntimeRunner {
         Ok(Self::from_template(template))
     }
 
+    /// 只读访问内部 CombatRuntime。
     pub fn runtime(&self) -> &CombatRuntime { &self.runtime }
 
     /// 高级机制入口；直接修改字段可能破坏世界视图、缓存与默认导出支持域。
     pub fn runtime_mut(&mut self) -> &mut CombatRuntime { &mut self.runtime }
 
+    /// 输入组对应的实体下标。
     pub fn input_groups(&self) -> &[Vec<EntityIdx>] { &self.input_groups }
 
+    /// 指定输入组是否包含最终胜者队伍的成员。
     pub fn input_group_won(&self, group_index: usize) -> bool {
         let Some(winner_team) = self.runtime.world.winner_team() else {
             return false;
@@ -557,6 +593,7 @@ impl RuntimeRunner {
         self.run_round_unchecked()
     }
 
+    /// 推进一个 Runtime 回合并返回规范化快照。
     pub fn run_round_normalized(&mut self) -> NormalizedOutcome {
         let outcome = self.run_round();
         NormalizedOutcome::from_runtime(&self.runtime, &outcome)
@@ -607,6 +644,7 @@ impl RuntimeRunner {
         }
     }
 
+    /// 跑到胜者或上限，返回逐回合摘要与终局规范化快照。
     pub fn run_until_winner_normalized(&mut self, max_rounds: usize) -> (RuntimeRunSummary, NormalizedOutcome) {
         let summary = self.run_until_winner(max_rounds);
         let final_outcome = summary.last_outcome().cloned().unwrap_or(RoundOutcome {
@@ -618,6 +656,7 @@ impl RuntimeRunner {
         (summary, normalized)
     }
 
+    /// 跑到胜者或上限，保留逐回合规范化快照与累计得分。
     pub fn run_until_winner_normalized_rounds(&mut self, max_rounds: usize) -> RuntimeNormalizedRun {
         self.assert_ready();
         let mut rounds = Vec::new();
@@ -641,6 +680,7 @@ impl RuntimeRunner {
 }
 
 impl PreparedRuntimeRunner {
+    /// 按默认 eval_rq 从混合 roster 预构建可复用阵容。
     pub fn from_custom_mixed_roster(
         raw_groups: &[Vec<String>],
         config: CustomRuntimeImportConfig<'_>,
@@ -648,6 +688,7 @@ impl PreparedRuntimeRunner {
         Self::from_custom_mixed_roster_with_eval_rq(raw_groups, crate::namerena::eval_name::DEFAULT_EVAL_RQ, config)
     }
 
+    /// 按指定 eval_rq 从混合 roster 预构建可复用阵容。
     pub fn from_custom_mixed_roster_with_eval_rq(
         raw_groups: &[Vec<String>],
         eval_rq: f64,
@@ -741,6 +782,7 @@ impl PreparedRuntimeRunner {
         Ok(runner)
     }
 
+    /// 用一份新 roster 与 seed 复位已有 runner，复用其注册表与缓冲。
     pub fn reset_from_groups_with_seed_and_eval_rq(
         &self,
         runner: &mut RuntimeRunner,
@@ -912,5 +954,6 @@ impl PreparedRuntimeRunner {
         }
     }
 
+    /// 准备阵容的输入组下标。
     pub fn input_groups(&self) -> Vec<Vec<EntityIdx>> { self.battle_roster.input_groups() }
 }

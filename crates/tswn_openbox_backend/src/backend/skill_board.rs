@@ -9,11 +9,13 @@ use tswn_core::text_input::read_text_file;
 use super::format::SKILL_CN_NAMES;
 use super::score::NamerPfScores;
 
+/// 技能榜配置：各技能的入选阈值表。
 #[derive(Debug, Clone)]
 pub struct SkillBoardConfig {
     entries: HashMap<String, SkillBoardThreshold>,
 }
 
+/// 单项技能的阈值：pp/pd/qp/qd 与 all，均可选。
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub struct SkillBoardThreshold {
     pub pp: Option<u64>,
@@ -23,6 +25,7 @@ pub struct SkillBoardThreshold {
     pub all: Option<u64>,
 }
 
+/// 技能榜的一行：标题与分数。
 #[derive(Debug, Clone)]
 pub struct SkillBoardLine {
     pub title: String,
@@ -65,6 +68,7 @@ impl SkillBoardConfig {
     }
 }
 
+/// 根据名字组的技能与分数评估技能榜，返回入选行。
 pub fn evaluate_skill_board(name_group: &[String], scores: &NamerPfScores, config: &SkillBoardConfig) -> Vec<SkillBoardLine> {
     let name_skills = name_group.iter().filter_map(|raw| skills_from_name(raw)).collect::<Vec<_>>();
     evaluate_skill_board_for_skills(&name_skills, scores, config)

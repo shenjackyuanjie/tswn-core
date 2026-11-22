@@ -10,12 +10,15 @@ use super::{ClassifiedSkillRef, SkillBoost, player_classified_skill_ref_from_nam
 pub struct EffectiveSkillWeight(u64);
 
 impl EffectiveSkillWeight {
+    /// 从 f64 熟练度构造权重，单位为百万分之一；
+    /// 取值超出 `[0, u32::MAX]` 时返回 `None`。
     pub fn new(value: f64) -> Option<Self> {
         (0.0..=f64::from(u32::MAX))
             .contains(&value)
             .then(|| Self((value * 1_000_000.0).round() as u64))
     }
 
+    /// 还原为 f64 熟练度。
     pub fn value(self) -> f64 { self.0 as f64 / 1_000_000.0 }
 
     pub(super) fn default_level(self) -> u32 { self.0.div_ceil(1_000_000) as u32 }
@@ -96,6 +99,8 @@ pub struct PlayerOverlay {
 }
 
 impl MinionOverlay {
+    /// 把召唤物 overlay 提升为玩家 overlay，只保留三类召唤物子树；
+    /// 三类都未配置时返回 `None`。
     pub fn child_player_overlay(&self) -> Option<PlayerOverlay> {
         if self.shadow.is_none() && self.summon.is_none() && self.zombie.is_none() {
             return None;

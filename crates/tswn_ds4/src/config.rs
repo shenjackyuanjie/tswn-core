@@ -27,8 +27,10 @@ pub enum SingleMode {
 }
 
 impl SingleMode {
+    /// 全部单评模式，顺序为 bc/fz/wc/fs/pj。
     pub const ALL: [Self; 5] = [Self::Bc, Self::Fz, Self::Wc, Self::Fs, Self::Pj];
 
+    /// 返回模式的 CLI 字符串名（bc/fz/wc/fs/pj）。
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Bc => "bc",
@@ -51,8 +53,10 @@ pub enum PairMode {
 }
 
 impl PairMode {
+    /// 全部配对模式，顺序为 fc/wc/rh。
     pub const ALL: [Self; 3] = [Self::Fc, Self::Wc, Self::Rh];
 
+    /// 返回模式的 CLI 字符串名（fc/wc/rh）。
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Fc => "fc",
@@ -139,6 +143,7 @@ impl Config {
     /// 因而成功返回不表示每个未知字段都被校验，也不接受 JSON bool 作为数字开关。
     pub fn from_json(source: &str) -> Ds4Result<Self> { parse_ds4_json(source) }
 
+    /// 读取指定单评模式的阈值配置。
     pub fn single(&self, mode: SingleMode) -> SingleThreshold {
         match mode {
             SingleMode::Bc => self.single_bc,
@@ -149,6 +154,7 @@ impl Config {
         }
     }
 
+    /// 读取指定配对模式的阈值配置。
     pub fn pair(&self, mode: PairMode) -> PairThreshold {
         match mode {
             PairMode::Fc => self.pair_fc,

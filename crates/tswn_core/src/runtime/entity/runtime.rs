@@ -29,11 +29,13 @@ fn median_i32_3(mut a: i32, mut b: i32, mut c: i32) -> i32 {
     b
 }
 
+/// 行动条状态：当前行动点，达到阈值即可行动。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MoveState {
     pub speed_points: i32,
 }
 
+/// 个体策略覆盖；未设置的字段沿用注册表中的玩家类型策略。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PlayerPolicyOverrides {
     pub owner_resolution: Option<OwnerResolutionPolicy>,
@@ -43,6 +45,7 @@ pub struct PlayerPolicyOverrides {
 }
 
 impl PlayerPolicyOverrides {
+    /// 把覆盖项应用到基础策略并返回结果。
     pub fn apply_to(self, mut policies: PlayerKindPolicies) -> PlayerKindPolicies {
         if let Some(owner_resolution) = self.owner_resolution {
             policies.owner_resolution = owner_resolution;
@@ -59,23 +62,27 @@ impl PlayerPolicyOverrides {
         policies
     }
 
+    /// 设置伤害共享覆盖。
     pub fn with_damage_share(mut self, damage_share: DamageSharePolicy) -> Self {
         self.damage_share = Some(damage_share);
         self
     }
 
+    /// 设置是否继承 owner 防御与抗性的覆盖。
     pub fn with_inherit_owner_def_res(mut self, inherit_owner_def_res: bool) -> Self {
         self.inherit_owner_def_res = Some(inherit_owner_def_res);
         self
     }
 }
 
+/// 保护链接：保护者实体与保护技能等级。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProtectLinkRuntime {
     pub owner: EntityIdx,
     pub level: u32,
 }
 
+/// 隐匿运行时快照：等级与当时的吸引力、敏捷、防御、抗性。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HideRuntime {
     pub level: u32,
@@ -85,6 +92,7 @@ pub struct HideRuntime {
     pub resistance: i32,
 }
 
+/// 待发暗杀：固定 lane、目标与受伤是否打断。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AssassinateRuntime {
     pub fixed_lane: usize,
@@ -92,6 +100,7 @@ pub struct AssassinateRuntime {
     pub break_on_damage: bool,
 }
 
+/// 反击运行时：待反击标记、上次目标与手动决策成本。
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CounterRuntime {
     /// 手动决策时展示的成本，延迟到 update-end 执行时使用同一个值。
@@ -103,12 +112,14 @@ pub struct CounterRuntime {
 }
 
 /// 0.5.5 `SklS11` 的运行时字段：技能等级会被砍手分支改写，耐久从 3 开始递减。
+/// 剁手刀（SklS11）运行时：当前技能等级与剩余耐久。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct WeaponS11Runtime {
     pub level: u32,
     pub durability: i32,
 }
 
+/// 尸体类型标记：无、融合、亡灵或史莱姆分裂残留。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RuntimeCorpseKind {
     #[default]
@@ -118,6 +129,7 @@ pub enum RuntimeCorpseKind {
     Slime,
 }
 
+/// 实体的当前战斗数值与机制运行时字段，由模板经状态处理得到。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PlayerRuntime {
     pub hp: i32,
@@ -170,6 +182,7 @@ pub struct PlayerRuntime {
 }
 
 impl PlayerRuntime {
+    /// 从模板构造初始运行态；Boss 与属性修改器身份会初始化专属字段。
     pub fn from_template(
         template: &PlayerTemplate,
         registry: &ExtensionRegistry,
@@ -330,16 +343,22 @@ impl PlayerRuntime {
         self.corpse = prepared.corpse;
     }
 
+    /// 当前攻击倍率。
     pub fn at_boost(&self) -> f64 { f64::from_bits(self.at_boost_bits) }
 
+    /// 当前吸引力。
     pub fn attract(&self) -> f64 { f64::from_bits(self.attract_bits) }
 
+    /// 是否为使魔。
     pub fn is_minion(&self) -> bool { self.flags.contains(PlayerKindFlags::MINION) }
 
+    /// 是否为参与战斗结算的使魔。
     pub fn is_combat_minion(&self) -> bool { self.flags.contains(PlayerKindFlags::COMBAT_MINION) }
 
+    /// 是否存活且有体力。
     pub fn active(&self) -> bool { self.alive && self.hp > 0 }
 
+    /// 尝试支付 MP：不足或未激活返回 false，成功则扣除。
     pub fn mp_ready(&mut self, randomer: &mut RC4) -> bool {
         let require_mp = randomer.r3x3() as i32;
         // 能力卡减耗只作用于当前技能的作用域，不改变掷骰消费。
@@ -352,6 +371,7 @@ impl PlayerRuntime {
         true
     }
 
+    /// 取攻击威力（物理或魔法），按中值网络抽样并应用攻击倍率。
     pub fn get_at(&self, use_mag: bool, randomer: &mut RC4) -> f64 {
         let atk = if use_mag { self.magic } else { self.attack };
         let a = median_i32_5(
@@ -369,12 +389,16 @@ impl PlayerRuntime {
         at
     }
 
+    /// 魔法防御：抗性加 64。
     pub fn magic_defense(&self) -> i32 { self.resistance + 64 }
 
+    /// 魔法命中：魔法加敏捷。
     pub fn magic_accuracy(&self) -> i32 { self.magic + self.agility }
 
+    /// 魔法闪避：抗性加敏捷。
     pub fn magic_dodge(&self) -> i32 { self.resistance + self.agility }
 
+    /// 闪避判定：按命中差计算概率并消费一个随机字节。
     pub fn dodge(accuracy: i32, dodge_value: i32, randomer: &mut RC4) -> bool {
         let chance = {
             let temp = 24 + dodge_value - accuracy;
@@ -417,6 +441,7 @@ mod median_tests {
     }
 }
 
+/// 蓄力运行时：激活标记、剩余步数与桂月常驻标记。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ChargeRuntime {
     pub active: bool,
@@ -437,6 +462,7 @@ impl ChargeRuntime {
     }
 }
 
+/// 聚气运行时：激活标记与聚气/蓄力叠加倍率。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AccumulateRuntime {
     pub active: bool,
@@ -455,8 +481,10 @@ impl Default for AccumulateRuntime {
 }
 
 impl AccumulateRuntime {
+    /// 当前聚气倍率。
     pub fn acc(self) -> f64 { f64::from_bits(self.acc_bits) }
 
+    /// 蓄力叠加到聚气上的额外倍率。
     pub fn charge_bonus(self) -> f64 { f64::from_bits(self.charge_bonus_bits) }
 
     fn set_acc(&mut self, acc: f64) { self.acc_bits = acc.to_bits(); }
@@ -464,6 +492,7 @@ impl AccumulateRuntime {
     fn set_charge_bonus(&mut self, charge_bonus: f64) { self.charge_bonus_bits = charge_bonus.to_bits(); }
 }
 
+/// 一个实体的完整记录：模板、运行态、状态存储与实体槽。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntityRecord {
     pub template: PlayerTemplate,
@@ -474,9 +503,11 @@ pub struct EntityRecord {
 
 impl EntityRecord {
     #[inline]
+    /// 是否可行动：存活有体力且未被冻结。
     pub fn is_active(&self) -> bool { self.runtime.active() && !self.states.is_frozen() }
 
     #[inline]
+    /// 含状态修正与垂死增益的有效速度。
     pub fn effective_speed(&self) -> i32 {
         let mut speed = self.states.effective_speed(self.template.speed);
         if self.runtime.upgrade_active {
@@ -490,11 +521,13 @@ impl EntityRecord {
         speed
     }
 
+    /// 应用派生属性到模板并同步运行态。
     pub fn apply_derived_stats(&mut self, stats: CloneDerivedStats) {
         self.template.apply_derived_stats(stats);
         self.apply_runtime_stats_from_template();
     }
 
+    /// 从模板重算运行态，应用隐匿、垂死、聚气与状态修正。
     pub fn refresh_runtime_stats_from_template(&mut self) {
         if self.template.rinick.is_some()
             && let Some(build) = &mut self.template.clone_build
@@ -575,6 +608,7 @@ impl EntityRecord {
         }
     }
 
+    /// 激活垂死增益并推进 400 行动点；已激活时返回 false。
     pub fn activate_upgrade_runtime(&mut self) -> bool {
         if self.runtime.upgrade_active {
             return false;
@@ -586,6 +620,7 @@ impl EntityRecord {
         true
     }
 
+    /// 撤销垂死增益；未激活时返回 false。
     pub fn clear_upgrade_runtime(&mut self) -> bool {
         if !self.runtime.upgrade_active {
             return false;
@@ -596,6 +631,7 @@ impl EntityRecord {
         true
     }
 
+    /// 激活蓄力并登记行动后回调，同时重算属性。
     pub fn activate_charge_runtime(&mut self) {
         if !self.runtime.charge.post_action_active {
             self.states.register_charge_post_action();
@@ -608,6 +644,7 @@ impl EntityRecord {
         self.refresh_runtime_stats_from_template();
     }
 
+    /// 行动后递减蓄力步数，归零时撤销并重算属性。
     pub fn tick_charge_post_action(&mut self) -> bool {
         if !self.runtime.charge.post_action_active || self.runtime.charge.permanent {
             return false;
@@ -624,6 +661,7 @@ impl EntityRecord {
         true
     }
 
+    /// 立即清除蓄力；未激活或为常驻标记时返回 false。
     pub fn clear_charge_runtime(&mut self) -> bool {
         if !self.runtime.charge.active || self.runtime.charge.permanent {
             return false;
@@ -636,6 +674,7 @@ impl EntityRecord {
         true
     }
 
+    /// 激活聚气；蓄力中额外获得倍率与 500 行动点。
     pub fn activate_accumulate_runtime(&mut self) -> bool {
         if self.runtime.accumulate.active {
             return false;
@@ -654,6 +693,7 @@ impl EntityRecord {
         true
     }
 
+    /// 清除聚气并复位倍率；未激活时返回 false。
     pub fn clear_accumulate_runtime(&mut self) -> bool {
         if !self.runtime.accumulate.active {
             return false;
@@ -667,6 +707,7 @@ impl EntityRecord {
         true
     }
 
+    /// 清除正面运行时状态（聚气、蓄力、垂死），返回按优先级排序的消息。
     pub fn clear_positive_runtime_messages(&mut self) -> Vec<(i32, &'static str)> {
         let emit_state_cancel = self.runtime.alive && self.runtime.hp > 0;
         let mut messages = Vec::new();
@@ -683,6 +724,7 @@ impl EntityRecord {
         messages
     }
 
+    /// 清除运行时与状态两类正面效果，合并后按优先级排序。
     pub fn clear_positive_messages(&mut self) -> Vec<(i32, &'static str)> {
         let mut messages = self.clear_positive_runtime_messages();
         messages.extend(self.clear_positive_state_messages());
@@ -690,6 +732,7 @@ impl EntityRecord {
         messages
     }
 
+    /// 清除正面状态（含护盾），返回按优先级排序的消息。
     pub fn clear_positive_state_messages(&mut self) -> Vec<(i32, &'static str)> {
         let emit_state_cancel = self.runtime.alive && self.runtime.hp > 0;
         self.runtime.shield = 0;
@@ -733,16 +776,19 @@ impl EntityRecord {
     }
 }
 
+/// 实体容器：按 [`EntityIdx`] 寻址，可为生成预留空槽。
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct EntityArena {
     entities: Vec<Option<EntityRecord>>,
 }
 
 impl EntityArena {
+    /// 用默认注册表从模板构造 arena。
     pub fn from_templates(players: Vec<PlayerTemplate>) -> Self {
         Self::from_templates_with_registry(players, &ExtensionRegistry::default())
     }
 
+    /// 用注册表从模板构造 arena，并准备技能 hook 缓存。
     pub fn from_templates_with_registry(players: Vec<PlayerTemplate>, registry: &ExtensionRegistry) -> Self {
         let entities = players
             .into_iter()
@@ -768,8 +814,10 @@ impl EntityArena {
         Self { entities }
     }
 
+    /// 槽范围长度，包含为空槽预留的位置。
     pub fn len(&self) -> usize { self.entities.len() }
 
+    /// 槽范围是否为空。
     pub fn is_empty(&self) -> bool { self.entities.is_empty() }
 
     /// 封存 prepared runner 的技能基线，后续未修改的技能表不再逐局深拷贝。
@@ -812,16 +860,20 @@ impl EntityArena {
         }
     }
 
+    /// 按下标取实体；越界或空槽返回 None。
     pub fn get(&self, idx: EntityIdx) -> Option<&EntityRecord> { self.entities.get(idx.0 as usize).and_then(Option::as_ref) }
 
+    /// 可变按下标取实体；越界或空槽返回 None。
     pub fn get_mut(&mut self, idx: EntityIdx) -> Option<&mut EntityRecord> {
         self.entities.get_mut(idx.0 as usize).and_then(Option::as_mut)
     }
 
+    /// 按模板的预留 ID 数计算下一个生成下标。
     pub fn next_spawn_idx(&self, template: &PlayerTemplate) -> EntityIdx {
         Self::next_spawn_idx_from_slot_count(self.entities.len(), template)
     }
 
+    /// 按给定槽数与预留数计算生成下标；溢出会 panic。
     pub fn next_spawn_idx_from_slot_count(slot_count: usize, template: &PlayerTemplate) -> EntityIdx {
         let reserved =
             usize::try_from(template.reserved_player_ids_before_spawn).expect("runtime reserved player id count overflow");
@@ -829,10 +881,12 @@ impl EntityArena {
         EntityIdx(idx.try_into().expect("runtime entity index overflow"))
     }
 
+    /// 从模板生成一个无属主实体，返回新下标。
     pub fn spawn_from_template(&mut self, template: PlayerTemplate, registry: &ExtensionRegistry) -> EntityIdx {
         self.spawn_from_template_with_owner(template, registry, None, None)
     }
 
+    /// 从模板生成实体并指定 owner 与根 owner；队伍、clan 与防抗继承按 owner 解析。
     pub fn spawn_from_template_with_owner(
         &mut self,
         mut template: PlayerTemplate,
@@ -884,6 +938,7 @@ impl EntityArena {
         idx
     }
 
+    /// 遍历现有实体及其下标，跳过空槽。
     pub fn iter(&self) -> impl Iterator<Item = (EntityIdx, &EntityRecord)> {
         self.entities
             .iter()

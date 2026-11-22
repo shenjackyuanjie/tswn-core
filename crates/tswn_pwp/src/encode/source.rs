@@ -16,6 +16,7 @@ use crate::{
     validate,
 };
 
+/// 编码源数据集：配置、分片收据、校验和与选中样本数。
 pub struct SourceDataset {
     pub config: DatasetConfig,
     pub receipts: Vec<ShardReceipt>,
@@ -27,6 +28,7 @@ pub struct SourceDataset {
 }
 
 impl SourceDataset {
+    /// 打开并校验源数据集；加共享锁以防与生成过程冲突。
     pub fn open(args: &EncodeArgs) -> Result<Self> {
         let lock = File::open(args.dataset.join(".generator.lock")).context("打开源数据集锁；请使用 generate 已完成的数据集")?;
         fs2::FileExt::try_lock_shared(&lock).context("源数据集正在生成或续跑，暂不能编码")?;

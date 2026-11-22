@@ -6,12 +6,14 @@
 
 use std::collections::HashMap;
 
+/// 队伍并查集：维护 name -> parent 的合并关系，根取字典序较小者。
 #[derive(Debug, Clone, Default)]
 pub struct TeamDsu {
     parent: HashMap<String, String>,
 }
 
 impl TeamDsu {
+    /// 从 (name, parent) 列表构造并查集。
     pub fn from_pairs(pairs: Vec<(String, String)>) -> Self {
         let mut dsu = Self::default();
 
@@ -32,8 +34,10 @@ impl TeamDsu {
         dsu
     }
 
+    /// 确保名字存在于并查集中；缺失时以自身为根加入。
     pub fn ensure(&mut self, name: &str) { self.parent.entry(name.to_string()).or_insert_with(|| name.to_string()); }
 
+    /// 查找名字所在集合的根（带路径压缩）。
     pub fn find(&mut self, name: &str) -> String {
         self.ensure(name);
 
@@ -47,6 +51,7 @@ impl TeamDsu {
         root
     }
 
+    /// 不可变地查找名字的根，不修改内部结构。
     pub fn find_readonly(&self, name: &str) -> String {
         let mut cur = name.to_string();
         let mut guard = 0usize;
@@ -67,6 +72,7 @@ impl TeamDsu {
         name.to_string()
     }
 
+    /// 合并两个名字所在集合，返回合并后的根。
     pub fn union(&mut self, a: &str, b: &str) -> String {
         let ra = self.find(a);
         let rb = self.find(b);
@@ -81,6 +87,7 @@ impl TeamDsu {
         }
     }
 
+    /// 导出全部 (name, root) 对，供持久化使用。
     pub fn pairs(&self) -> Vec<(String, String)> {
         let mut out = Vec::with_capacity(self.parent.len());
 

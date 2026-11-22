@@ -377,6 +377,7 @@ impl BattleSession {
             .map_err(|message| crate::cli_api::CliApiError::InvalidArgument(message.into()))?;
         Ok(())
     }
+    /// 当前等待外部决策的被动请求；没有被动暂停时为 `None`。
     pub fn pending_passive(&self) -> Option<&crate::runtime::PassiveRequest> { self.pending_passive.as_ref() }
 
     /// 按被动脚本索引读取回避结算；None等待中，false未执行或被覆盖，true实际执行。
@@ -444,7 +445,9 @@ impl BattleSession {
     pub fn is_done(&self) -> bool { self.driver.stop_reason.is_some() }
     /// Runtime error 后为 true；后续推进返回相同错误，调用方应停止推进并释放会话。
     pub fn is_failed(&self) -> bool { self.driver.failure.is_some() }
+    /// 是否以胜者方式正常结束（对应 [`BattleStatus::Finished`]）。
     pub fn is_finished(&self) -> bool { self.status() == BattleStatus::Finished }
+    /// 是否因安全截断结束（对应 [`BattleStatus::Truncated`]）。
     pub fn is_truncated(&self) -> bool { self.status() == BattleStatus::Truncated }
     /// 已提交的 Runtime 回合数，包含无消息回合。
     /// `preview_controlled_pause` 开启时另计当前已进入的主动暂停回合，兼容 Python 契约。

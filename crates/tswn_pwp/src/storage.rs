@@ -22,6 +22,7 @@ use std::{
     sync::Arc,
 };
 
+/// 流式计算文件的 SHA-256 十六进制值。
 pub fn file_hash(path: &Path) -> Result<String> {
     let mut file = File::open(path).with_context(|| format!("读取 {}", path.display()))?;
     let mut hash = Sha256::new();
@@ -36,6 +37,7 @@ pub fn file_hash(path: &Path) -> Result<String> {
     Ok(crate::random::hex(&hash.finalize()))
 }
 
+/// 把值以美化 JSON 写入文件并 sync。
 pub fn write_json(path: &Path, value: &impl Serialize) -> Result<()> {
     let mut file = File::create(path)?;
     serde_json::to_writer_pretty(&mut file, value)?;
@@ -44,10 +46,12 @@ pub fn write_json(path: &Path, value: &impl Serialize) -> Result<()> {
     Ok(())
 }
 
+/// 从文件读取并反序列化 JSON，错误信息带路径。
 pub fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
     serde_json::from_reader(File::open(path)?).with_context(|| format!("解析 {}", path.display()))
 }
 
+/// 从类型 T 派生可移植字段引用列表（枚举按字符串处理）。
 pub fn fields<T: DeserializeOwned>() -> Result<Vec<FieldRef>> {
     let fields =
         Vec::<FieldRef>::from_type::<T>(TracingOptions::default().enums_without_data_as_strings(true).from_type_budget(10_000))?;
@@ -75,6 +79,7 @@ fn portable_field(field: &FieldRef) -> FieldRef {
 /// 超大状态仍可能占用较多缓冲；实际空间与耗时应以具体数据集的 bench 报告为准。
 pub const ROW_GROUP_ROWS: usize = 1024;
 
+/// Parquet 表写入器：ZSTD 压缩与固定 row group 行数。
 pub struct TableWriter<T> {
     writer: ArrowWriter<File>,
     fields: Vec<FieldRef>,
@@ -82,6 +87,7 @@ pub struct TableWriter<T> {
     pub rows: usize,
 }
 impl<T: Serialize + DeserializeOwned> TableWriter<T> {
+    /// 创建表文件并返回写入器。
     pub fn create(path: &Path) -> Result<Self> {
         let fields = fields::<T>()?;
         let properties = WriterProperties::builder()
@@ -97,6 +103,7 @@ impl<T: Serialize + DeserializeOwned> TableWriter<T> {
             rows: 0,
         })
     }
+    /// 追加一批行；空批次直接返回。
     pub fn append(&mut self, rows: &[T]) -> Result<()> {
         if rows.is_empty() {
             return Ok(());
@@ -106,6 +113,7 @@ impl<T: Serialize + DeserializeOwned> TableWriter<T> {
         self.rows += rows.len();
         Ok(())
     }
+    /// 完成写入、sync 文件并返回总行数。
     pub fn finish(self) -> Result<usize> {
         let count = self.rows;
         let file = self.writer.into_inner()?;
@@ -114,6 +122,7 @@ impl<T: Serialize + DeserializeOwned> TableWriter<T> {
     }
 }
 
+/// 按 128 行一批读取 Parquet 表，逐批回调给 visit。
 pub fn read_rows<T: DeserializeOwned>(path: &Path, mut visit: impl FnMut(T) -> Result<()>) -> Result<()> {
     let reader = ParquetRecordBatchReaderBuilder::try_new(File::open(path)?)?
         .with_batch_size(128)
@@ -128,6 +137,7 @@ pub fn read_rows<T: DeserializeOwned>(path: &Path, mut visit: impl FnMut(T) -> R
     Ok(())
 }
 
+/// 分片收据：对局范围、样本数与内容校验和。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ShardReceipt {
     pub first_battle: usize,
@@ -138,6 +148,7 @@ pub struct ShardReceipt {
     pub samples_sha256: String,
 }
 
+/// 读取并校验分片的 complete.json：范围与对局数必须匹配。
 pub fn check_receipt(dir: &Path, first: usize, end: usize) -> Result<ShardReceipt> {
     let receipt: ShardReceipt = read_json(&dir.join("complete.json"))?;
     ensure!(

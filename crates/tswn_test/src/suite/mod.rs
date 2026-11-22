@@ -270,12 +270,15 @@ fn parse_embedded_fight_case(case_text: &str, split_err: &str, empty_err: &str) 
     (raw_input.trim_end().to_string(), expected_lines)
 }
 
+/// 取 runner 胜者的显示名列表（经 EngineAdapter 适配）。
 pub fn winner_names<E: EngineAdapter>(runner: &E::Runner) -> Vec<String> { E::winner_names(runner) }
 
+/// 用默认 eval_rq 断言运行结果匹配冻结 golden。
 pub fn assert_runtime_matches_frozen_golden(raw: &str, case_name: &str) {
     crate::golden::assert_runtime_matches_frozen_golden(raw, case_name);
 }
 
+/// 用显式 eval_rq 断言运行结果匹配冻结 golden。
 pub fn assert_runtime_matches_frozen_golden_with_eval_rq(raw: &str, case_name: &str, eval_rq: f64) {
     crate::golden::assert_runtime_matches_frozen_golden_with_eval_rq(raw, case_name, eval_rq);
 }
