@@ -41,7 +41,7 @@
 - `github`：`git@github.com:shenjackyuanjie/tswn-core.git`
 - `gitea`：`ssh://git@git.shenjack.top:5101/shenjack/tswn-core.git`
 
-**推送任何一个分支或 main 时，两个 remote 都要推**，不要只推 GitHub：
+**推送任何一个分支或 main 时，两个 remote 都要推**（只推一边会让两个远端分叉）：
 
 ```powershell
 git push github <branch>

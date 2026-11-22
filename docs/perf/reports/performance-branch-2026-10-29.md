@@ -16,7 +16,7 @@
 | PlayerTemplate | 2144 B | 1280 B |
 | EntityRecord | 3776 B | 2912 B |
 
-这不是“全部武器成本为零”：S11 初始化查找、小型运行态字段和部分分支仍保留。两个公开 `rinick_clone_skills` Rust 字段由 `Option<T>` 改为 `Option<Box<T>>`，构造方需相应 `Box::new`；`PlayerRuntime` 字段/序列化不变，不引入 unsafe。
+本轮移除的是已确认的常驻空间与无效扫描；S11 初始化查找、小型运行态字段和部分分支的成本仍保留。两个公开 `rinick_clone_skills` Rust 字段由 `Option<T>` 改为 `Option<Box<T>>`，构造方需相应 `Box::new`；`PlayerRuntime` 字段/序列化不变，不引入 unsafe。
 
 ## 实测与限制
 

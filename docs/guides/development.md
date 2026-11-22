@@ -17,7 +17,7 @@
 | 跨 crate 与冻结回归 | `tswn_test`：集成测试、JS exact trace 与压力 golden；基线维护说明见 [runtime_stress](../../crates/tswn_test/cases/runtime_stress/README.md) |
 | 自动化与分析 | [scripts](../../scripts/README.md)：构建打包、差分、真实绑定验收、性能测量与只读数据 loader |
 
-`tswn_name_ranker` 依赖独立校准数据，在 workspace 的 `exclude` 中，不作为常规 workspace 验收的一部分。不要因为它不参与默认构建就删除其源码或数据约定。
+`tswn_name_ranker` 是独立的单号排名服务，自带校准资源与独立构建流程；它在 workspace 的 `exclude` 中，不参与主 workspace 构建与常规验收，源码与数据约定独立维护。
 
 ## 验证怎么选
 

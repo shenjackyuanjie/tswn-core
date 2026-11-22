@@ -494,7 +494,7 @@
 - 将 `tswn_core` 专属 engine 测试拆到 `crates/tswn_core/tests/engine_core.rs`，让核心 crate 的公开行为测试与共享测试工具解耦。
 - 更新 `track_test.py` 默认追踪包，默认覆盖迁移后的 large / small seed / multi fight 测试集合。
 - 新增 CLI legacy/runtime 输出对账，覆盖最小对局以及含幻影、分身和 clan 的 `large_51`；补充 `raw` 普通对战与 `!test!` benchmark 的默认 runtime/显式 legacy 参数、路由和命令级逐字节对账，并覆盖普通/`!` 评分、胜率 profile seed 调度、4-worker 确定性、200 轮 profile 评分，以及反射冰冻与魅惑生命之轮的严格回归 fixture。该阶段 core/no_debug/CLI 门禁与 118 项 corpus 全部通过；CQD 与 benchmark score 新增回归后，当前完整 corpus 为 124 项。
-- 新增聚气激活/清除时刷新待生效疾走倍率的精确回归，并把 CQP 单人第 13 组第 185 轮加入完整 score legacy/runtime 严格对账，防止行动顺序和赢家再次漂移。
+- 新增聚气激活/清除时刷新待生效疾走倍率的精确回归，并把 CQP 单人第 13 组第 185 轮加入完整 score legacy/runtime 严格对账，覆盖行动顺序与赢家判定的一致性。
 
 ### 修复
 
@@ -1197,7 +1197,7 @@
 ### 修复
 
 - **修复 Protect 防御链提前刷新疾走倍率**：`ProtectState` 相关的 `pre_defend` 清态路径不再无条件 `update_states()`，改为只有在被清除状态确实影响属性时才重算。这样可以避免把 `HasteState` 的延迟倍率提前刷进 `speed`，修复 `3v3v3` 大样本中由此引发的行动顺序漂移、默认攻击目标偏移和后续 RC4 连锁分歧。
-- **Reraise 继续保持 JS 语义**：`Reraise` 仍然只在当前死亡链中直接回 HP，不额外排一次 revival/sync；补充中文注释说明这个选择已经过全量 `1w2 case` 验证，避免后续误改回错误同步路径。
+- **Reraise 继续保持 JS 语义**：`Reraise` 仍然只在当前死亡链中直接回 HP，不额外排一次 revival/sync；补充中文注释记录该选择已通过全量 `1w2 case` 验证。
 
 ### 调试与排查
 

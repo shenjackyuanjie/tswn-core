@@ -43,7 +43,7 @@ target\release\examples\perf_runtime.exe -i docs\perf\fixed_cases_30 -n 13000 --
 |  24 | `1v1-fb453d38e6c4cf02` | 1v1 高频技能触发      | 技能 act/fire、追加行动和条件触发路径。                     |
 |  25 | `1v1-d9ead8dd53251df2` | 1v1 高频 buff/debuff  | 状态添加、刷新、过期、检查和叠层相关路径。                  |
 |  26 | `1v1-7822d33f277cc830` | 1v1 高频随机/目标选择 | RNG、命中/概率触发、目标/条件筛选路径。                     |
-|  27 | `1v1-e4d73d1d7ae3ebe9` | 1v1 极端边界          | 特殊规则/边界机制，防止非普通路径退化。                     |
+|  27 | `1v1-e4d73d1d7ae3ebe9` | 1v1 极端边界          | 覆盖特殊规则与边界机制的非普通路径。                       |
 |  28 | `2v2-f5743e32254e64e5` | 2v2 常规 baseline     | 普通 2v2 主指标，基础队友交互。                             |
 |  29 | `2v2-b1e08a4b5faf6712` | 2v2 群体技能/多目标   | AoE、全体效果、队伍遍历和多目标 effect application。        |
 |  30 | `2v2-a2fa863c153307e2` | 2v2 队友交互/连锁触发 | 保护、协作、反击、死亡/连锁触发等 2v2 额外交互路径。        |
@@ -58,7 +58,7 @@ target\release\examples\perf_runtime.exe -i docs\perf\fixed_cases_30 -n 13000 --
 - 总量：`30 * 13000 = 390000` 场
 - 当时机器实测目标耗时：约 `18.2s`（`0.4.0` / 单线程 / release + `no_debug` + 默认 mimalloc）
 
-说明：`release-fast` profile 用于日常快速验证，编译更快；它的性能结果不要和本文长期 `--release` 留档数据混用。`0.4.0` 起 `tswn_core` 原生默认 feature 已包含 `mimalloc_alloc`，正式基线保持默认 feature 开启；若显式关闭默认 feature，必须作为另一套口径单独记录。
+说明：`release-fast` profile 用于日常快速验证，编译更快；长期留档数据统一使用 `--release` 口径，与 `release-fast` 的结果分开记录。`0.4.0` 起 `tswn_core` 原生默认 feature 已包含 `mimalloc_alloc`，正式基线保持默认 feature 开启；若显式关闭默认 feature，必须作为另一套口径单独记录。
 
 0.4.x 历史命令：
 
@@ -94,4 +94,4 @@ cargo run --release --features aux_bins,no_debug --bin track_perf_cases -- `
 - 看当前主路径是否退化，优先比较 `core_1v1_2v2`；
 - 只改战斗循环、技能、状态、目标选择时，同时看 `one_v_one`、`two_v_two` 和各 case 的 `fight us/场`；
 - 只改初始化、解析、模板构建时，重点看各分组和各 case 的 `init us/场`；
-- 多人压力路径仍用 `stress_multi` 观察，避免核心 1v1/2v2 变快时掩盖多人局退化。
+- 多人压力路径仍用 `stress_multi` 观察：核心 1v1/2v2 变快时，汇总指标会掩盖多人局的变化。

@@ -54,7 +54,7 @@ cargo +nightly fmt --check
 cargo build -p tswn_core --bin tswn-cli --release --features "no_debug,mimalloc_alloc"
 ```
 
-说明：`debug` / `release-fast` 只用于本地开发与测试，**不要部署**；线上统一
+说明：`debug` / `release-fast` 只用于本地开发与测试；线上统一
 `--release` 且启用 `no_debug,mimalloc_alloc`。`tswn_core` 默认 feature 已包含
 `mimalloc_alloc`，但命令里仍显式写出，避免默认 feature 变化时口径漂移。
 
@@ -72,8 +72,8 @@ cargo build -p tswn_core --bin tswn-cli --release --features "no_debug,mimalloc_
 | `tswn_py` | `cargo build --release -p tswn_py --features "no_debug,mimalloc_alloc"` |
 
 `tswn_py` 的依赖已固定启用 `tswn_core` 的这两个 feature，同时提供同名转发
-feature，所以统一命令可以直接用于它。不要用 `target/debug` / `target/release-fast`
-的二进制部署；部署前检查 `target/release` 的时间戳，并确认对应 fingerprint 的
+feature，所以统一命令可以直接用于它。部署使用 `target/release` 的二进制；部署前检查
+`target/release` 的时间戳，并确认对应 fingerprint 的
 features 含 `no_debug` 与 `mimalloc_alloc`。
 
 运行主 CLI：
