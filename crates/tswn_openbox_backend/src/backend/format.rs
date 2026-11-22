@@ -135,6 +135,7 @@ pub fn format_rate(value: f64, precision: usize) -> String {
     format!("{value:.precision$}")
 }
 
+/// 转义 JSON 字符串中的引号、反斜杠与控制字符。
 fn escape_json_string(raw: &str) -> String {
     let mut escaped = String::with_capacity(raw.len());
     for ch in raw.chars() {
@@ -150,6 +151,7 @@ fn escape_json_string(raw: &str) -> String {
     escaped
 }
 
+/// 判断分数是否达到 屏幕阈值 + 高亮增量。
 pub(super) fn should_highlight(score: f64, min_screen: Option<f64>, highlight_delta: Option<f64>) -> bool {
     highlight_delta.is_some_and(|delta| score >= min_screen.unwrap_or(0.0) + delta)
 }

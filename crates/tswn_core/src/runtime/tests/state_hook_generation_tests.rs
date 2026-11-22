@@ -1,5 +1,6 @@
 use super::*;
 
+/// 状态 hook：登记 state clear 并清除 owner 上 key=22 的后续状态。
 fn state_clears_later_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     context.add_update(crate::runtime::update::RunUpdate::new(
         "state clear",
@@ -10,6 +11,7 @@ fn state_clears_later_state(context: &mut StateContext<'_>, entry: &StateHookPla
     context.clear_owner_state(22).expect("later state should exist before generation refresh");
 }
 
+/// 状态 hook：按 owner 与 legacy_order_key 登记 state mark 更新。
 fn state_marks_update(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     context.add_update(crate::runtime::update::RunUpdate::new(
         "state mark",

@@ -62,6 +62,7 @@ impl CombatRuntime {
         self.has_pending_spawn_outside_team(caster_team)
     }
 
+    /// 效果队列中是否有由 `team` 之外的单位发起的待生成效果；判胜与击杀判定用它确认敌方仍有后续单位。
     fn has_pending_spawn_outside_team(&self, team: usize) -> bool {
         self.effects.iter().any(|effect| {
             let owner = match effect {
@@ -556,6 +557,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 应用 Boss 专属防御：青雉把冰伤害转为吸收回复并上报防御文案、物理伤害归零；斑鸠把奇数伤害转为吸收回复。
     fn apply_plain_boss_defend(
         &mut self,
         target: EntityIdx,

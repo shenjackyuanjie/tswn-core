@@ -206,6 +206,7 @@ fn roll_covid_mutations(
     changed
 }
 
+/// 按注册序在新冠感染条目中定位本次钩子对应的毒株下标。
 fn planned_covid_strain(
     context: &StateContext<'_>,
     entry: &StateHookPlanEntry,
@@ -248,10 +249,12 @@ pub(crate) fn propose_boss_infection_pre_action(
     }
 }
 
+/// 提议路径的新冠 PRE_ACTION 执行入口：变异已在前置钩子掷过，直接进入实现体。
 fn execute_proposed_covid_pre_action(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     run_covid_infection_state_impl(context, entry, true);
 }
 
+/// 提议路径的懒癌 PRE_ACTION 执行入口：发作概率已判定过，直接进入实现体。
 fn execute_proposed_lazy_pre_action(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     run_lazy_infection_state_impl(context, entry, true);
 }
@@ -261,6 +264,7 @@ pub fn run_covid_infection_state(context: &mut StateContext<'_>, entry: &StateHo
     run_covid_infection_state_impl(context, entry, false);
 }
 
+/// 新冠传染状态实现：PRE_ACTION 按变异抽样决定发作或接管动作，POST_ACTION 推入新冠肺炎效果；`proposed` 表示变异已在前置钩子处理。
 fn run_covid_infection_state_impl(context: &mut StateContext<'_>, entry: &StateHookPlanEntry, proposed: bool) {
     let Some(StatePayload::CovidInfection {
         mut entries,
@@ -441,6 +445,7 @@ fn run_covid_infection_state_impl(context: &mut StateContext<'_>, entry: &StateH
     }
 }
 
+/// 懒癌发作判定：128 分之一的概率，且本体当前可行动。
 fn roll_lazy_pre_action(context: &mut StateContext<'_>) -> bool {
     context.rng_next_u8() < 128 && context.owner().is_some_and(|owner| owner.is_active())
 }
@@ -450,6 +455,7 @@ pub fn run_lazy_infection_state(context: &mut StateContext<'_>, entry: &StateHoo
     run_lazy_infection_state_impl(context, entry, false);
 }
 
+/// 懒癌传染状态实现：PRE_ACTION 掷概率后选目标跳回合或发作；`proposed` 表示概率已在前置钩子判定过。
 fn run_lazy_infection_state_impl(context: &mut StateContext<'_>, entry: &StateHookPlanEntry, proposed: bool) {
     let Some(StatePayload::LazyInfection { boss }) = context.owner_state_payload(entry.legacy_order_key) else {
         return;
@@ -568,6 +574,7 @@ pub fn run_saitama_boss_state(context: &mut StateContext<'_>, entry: &StateHookP
     context.set_defend_damage(damage / 100);
 }
 
+/// 计时解除类状态的 POST_ACTION 收尾：步数归零时写回载荷并播报解除消息（含一拳超人的特殊发帧条件）。
 fn run_timed_release_post_action_state(
     context: &mut StateContext<'_>,
     entry: &StateHookPlanEntry,
@@ -657,6 +664,7 @@ pub fn run_iron_post_defend_state(context: &mut StateContext<'_>, entry: &StateH
     ));
 }
 
+/// 铁壁状态的 POST_ACTION 推进：原地递减步数，到期时延后清理状态并结算剩余免伤。
 fn run_iron_post_action_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry, protect: i32, step: i32) {
     if step <= 0 {
         context

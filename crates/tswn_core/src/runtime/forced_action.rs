@@ -29,11 +29,13 @@ thread_local! {
 
 /// 作用域守卫保证错误或 unwind 不会把当前会话的受控队伍、能力卡泄漏给另一场对局。
 pub fn with_state<R>(state: &mut ForcedState, f: impl FnOnce() -> R) -> R {
+    /// [`with_state`] 的作用域守卫：保存被借出的状态引用与替换前的快照。
     struct Restore<'a> {
         state: &'a mut ForcedState,
         previous: ForcedState,
     }
     impl Drop for Restore<'_> {
+        /// 守卫析构：把线程本地强制状态恢复为进入前的快照。
         fn drop(&mut self) { *self.state = ACTIVE.with(|cell| cell.replace(std::mem::take(&mut self.previous))); }
     }
     let previous = ACTIVE.with(|cell| cell.replace(std::mem::take(state)));
@@ -63,8 +65,10 @@ pub fn fallback_mode() -> ForcedFallback { FALLBACK_MODE.with(Cell::get) }
 /// 作用域守卫：进入时切换策略，退出（含提前返回与 unwind）时还原，
 /// 避免兼容语义借给同一进程里的其他对局或会话。
 pub fn with_fallback_mode<R>(mode: ForcedFallback, f: impl FnOnce() -> R) -> R {
+    /// [`with_fallback_mode`] 的作用域守卫：保存进入前的失败处理策略。
     struct Restore(ForcedFallback);
     impl Drop for Restore {
+        /// 守卫析构：还原进入前的失败处理策略。
         fn drop(&mut self) { FALLBACK_MODE.with(|cell| cell.set(self.0)); }
     }
     let _restore = Restore(FALLBACK_MODE.with(|cell| cell.replace(mode)));
@@ -196,6 +200,7 @@ mod ability {
     /// 技能内的随机攻击乘区按根角色隔离，嵌套反弹/反击退出后恢复原作用域。
     pub struct AbilityScope((u32, f64, u32));
     impl Drop for AbilityScope {
+        /// 作用域守卫析构：还原上一层的随机攻击乘区。
         fn drop(&mut self) { ABILITY_SCOPE.with(|cell| cell.set(self.0)); }
     }
     /// 为根角色建立能力作用域；守卫退出时还原上一层作用域。

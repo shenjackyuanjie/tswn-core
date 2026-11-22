@@ -21,6 +21,7 @@ pub struct SortOptions {
 }
 
 #[derive(Debug, Clone)]
+/// 排序中的一行：全部分数列与名字。
 struct ScoredRow {
     scores: Vec<f64>,
     name: String,
@@ -91,6 +92,7 @@ pub fn sort_scored_file(input_file: &Path, output_file: &Path, options: &SortOpt
     Ok(written)
 }
 
+/// 解析一行的前 score_number 个分数字段与其余名字；字段不足或非数字返回 None。
 fn parse_row(line: &str, score_number: usize) -> Option<ScoredRow> {
     let mut scores = Vec::with_capacity(score_number);
     let bytes = line.as_bytes();

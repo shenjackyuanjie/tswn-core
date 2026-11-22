@@ -4,6 +4,7 @@ use super::*;
 ///
 /// 比较完整规范化日志，区别于 simple 模块只检查开场九条消息的同阵容用例。
 pub fn large_67<E: crate::EngineAdapter>() {
+    /// large_67 用例的内嵌对局输入。
     const CASE: &str = r#"Stupefy #rkISERW8@Shabby_fish
 日落·日出 #Pd3J7shds@Shabby_fish
 

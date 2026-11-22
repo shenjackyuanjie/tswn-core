@@ -9,6 +9,8 @@ use crate::{
 use std::{ffi::c_char, mem::size_of, ptr};
 use tswn_core::cli_api::battle::{BattleOptions, BattleSession, BattleStatus, BattleStopReason};
 
+/// FFI 战斗选项的 V1 历史布局，只含最初四个字段，与 public struct 保持独立。
+/// 用于按前缀兼容读取旧 caller 传入的 `tswn_battle_options_t`：public struct 未来只能在末尾追加字段，此结构一旦发布不再改动。
 // 永久冻结的历史 V1 prefix；禁止增加字段。每个后续版本也须永久保留其 prefix size。
 // 未来字段 offset 必须 >= BATTLE_OPTIONS_V1_SIZE，必要时显式 padding，禁止复用 V1 tail padding。
 // 按 struct_size >= field_end_offset 单独读取扩展字段；缺失字段保留 core 默认值。
@@ -21,6 +23,7 @@ struct BattleOptionsV1 {
     max_rounds: usize,
     include_icons: u8,
 }
+/// `BattleOptionsV1` 的字节数；调用方传入的 `struct_size` 小于该值即判定为不兼容的旧版本并拒绝，避免按 V1 布局越界读取。
 const BATTLE_OPTIONS_V1_SIZE: usize = size_of::<BattleOptionsV1>();
 
 #[repr(C)]
@@ -77,6 +80,9 @@ pub enum tswn_battle_stop_reason_t {
     clippy::field_reassign_with_default,
     reason = "历史 prefix 未包含的未来字段必须保留 core 默认值"
 )]
+/// 从 FFI 指针读取战斗选项并转换为 core `BattleOptions`。
+/// 空指针返回默认值；`struct_size` 小于 V1 时拒绝；只按 V1 布局拷贝已知字段，
+/// 超出 V1 的 future 字段保留 core 默认值。`include_icons` 仅接受 0/1。
 unsafe fn read_options(options: *const tswn_battle_options_t) -> FfiResult<BattleOptions> {
     if options.is_null() {
         return Ok(BattleOptions::default());
@@ -101,11 +107,15 @@ unsafe fn read_options(options: *const tswn_battle_options_t) -> FfiResult<Battl
     result.include_icons = options.include_icons != 0;
     Ok(result)
 }
+/// 把 FFI 会话裸指针转换回内部 `BattleSession` 引用；指针为空时返回 `TSWN_ERR_NULL`。
+/// 返回的引用借用指针指向的存储，调用方需保证句柄有效且未释放。
 unsafe fn session_ref<'a>(session: *const tswn_battle_session_t) -> FfiResult<&'a BattleSession> {
     unsafe { session.as_ref() }
         .map(|s| &s.inner)
         .ok_or_else(|| ffi_error(tswn_status_t::TSWN_ERR_NULL, "session is null"))
 }
+/// 把可选的 has/json 输出参数清零（写入 0 与空 `tswn_str_t`），供失败路径避免调用方读到未初始化内容。
+/// 两个出参均为空时返回 `TSWN_ERR_NULL`。
 unsafe fn reset_optional(out_has: *mut u8, out_json: *mut tswn_str_t) -> FfiResult<()> {
     if !out_has.is_null() {
         unsafe { out_has.write(0) };

@@ -55,6 +55,7 @@ pub enum Fill {
 }
 
 impl Fill {
+    /// 按索引取填充值：Zero 恒 0，RefMinusOne 恒 -1，Index 按位列取 -1 或序号。
     fn i32_at(self, index: usize) -> i32 {
         match self {
             Self::Zero => 0,
@@ -89,10 +90,12 @@ pub struct TensorSpec {
 /// 容量九维的公共视图；常量档位与 manifest 声明档位都实现它，
 /// 避免批缓冲同时认识两种 profile 类型。
 pub trait CapacityDims {
+    /// 返回 profile 的 9 维容量。
     fn dims(&self) -> [usize; 9];
 }
 
 impl CapacityDims for EncoderProfile {
+    /// 返回 9 维容量（e/t/r/h/l/s/q/v/x）。
     fn dims(&self) -> [usize; 9] {
         [
             self.e_max, self.t_max, self.r_max, self.h_max, self.l_max, self.s_max, self.q_max, self.v_max, self.x_max,
@@ -101,6 +104,7 @@ impl CapacityDims for EncoderProfile {
 }
 
 impl CapacityDims for ProfileSpec {
+    /// 返回 9 维容量（e/t/r/h/l/s/q/v/x）。
     fn dims(&self) -> [usize; 9] {
         [
             self.e_max, self.t_max, self.r_max, self.h_max, self.l_max, self.s_max, self.q_max, self.v_max, self.x_max,
@@ -589,6 +593,7 @@ pub fn tensor_shape(dims: &[usize; 9], name: &str) -> Option<Vec<usize>> {
     })
 }
 
+/// 张量底层缓冲，按 dtype 分派到具体 Vec。
 #[derive(Debug)]
 enum TensorBuffer {
     F32(Vec<f32>),
@@ -598,6 +603,7 @@ enum TensorBuffer {
 }
 
 impl TensorBuffer {
+    /// 按 dtype 与填充方式分配缓冲。
     fn allocate(dtype: Dtype, len: usize, fill: Fill) -> Self {
         match (dtype, fill) {
             (Dtype::F32, _) => Self::F32(vec![fill.i32_at(0) as f32; len]),
@@ -609,6 +615,7 @@ impl TensorBuffer {
         }
     }
 
+    /// 把 [start, start+len) 区间按填充方式重置。
     fn clear(&mut self, start: usize, len: usize, fill: Fill) {
         match self {
             Self::F32(values) => {
@@ -635,6 +642,7 @@ impl TensorBuffer {
         }
     }
 
+    /// 缓冲元素个数。
     fn len(&self) -> usize {
         match self {
             Self::F32(values) => values.len(),
@@ -645,6 +653,7 @@ impl TensorBuffer {
     }
 }
 
+/// 单个张量槽：每样本宽度、填充方式与缓冲。
 #[derive(Debug)]
 struct TensorSlot {
     per_sample: usize,
@@ -723,10 +732,12 @@ impl EncodedBatch {
         Ok(())
     }
 
+    /// 按名取张量槽；不存在报 `UnknownTensor`。
     fn slot(&self, name: &str) -> Result<&TensorSlot, EncodeError> {
         self.slots.get(name).ok_or_else(|| EncodeError::UnknownTensor { name: name.to_owned() })
     }
 
+    /// 按名取可变张量槽；不存在报 `UnknownTensor`。
     fn slot_mut(&mut self, name: &str) -> Result<&mut TensorSlot, EncodeError> {
         self.slots
             .get_mut(name)
@@ -825,6 +836,7 @@ impl EncodedBatch {
         }
     }
 
+    /// 校验槽存在且 batch_index 未越界。
     /// 先查张量名再查批范围；与 `slot_mut` 分开以便同时借用。
     fn check_batch(&self, name: &str, batch_index: usize) -> Result<(), EncodeError> {
         self.slot(name)?;

@@ -6,6 +6,7 @@ use super::*;
 
 /// 基础回放 fixture：内嵌简单对局，逐行比对 JS 回放。
 pub fn simple_fight<E: crate::EngineAdapter>() {
+    /// 简单对局 fixture 的内嵌输入。
     const FIGHT_SIMPLE_CASE: &str = r###"aaa
 bbb
 ccc

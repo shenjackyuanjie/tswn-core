@@ -14,6 +14,7 @@ use tsify::Ts;
 use tswn_core::cli_api::battle::{BattleOptions, BattlePlayerState, BattleReplayFrame, BattleSession, BattleUpdate};
 use wasm_bindgen::prelude::*;
 
+/// 把 core 玩家状态转换为 wasm 侧 PlayerState。
 fn state_from_core(state: &BattlePlayerState) -> PlayerState {
     PlayerState {
         id: state.id,
@@ -54,6 +55,7 @@ fn state_from_core(state: &BattlePlayerState) -> PlayerState {
         status_labels: state.status_labels.clone(),
     }
 }
+/// 把语气字符串映射为 MessageTone。
 fn tone(value: &str) -> MessageTone {
     match value {
         "damage" => MessageTone::Damage,
@@ -63,6 +65,7 @@ fn tone(value: &str) -> MessageTone {
         _ => MessageTone::Normal,
     }
 }
+/// 把 core 更新转换为 UpdateView（legacy 展示口径）。
 fn update_from_core(update: BattleUpdate) -> UpdateView {
     let update = update.into_legacy_display();
     let (caster_id, target_id) = update.legacy_ids();
@@ -87,6 +90,7 @@ fn update_from_core(update: BattleUpdate) -> UpdateView {
         tone: tone(update.tone),
     }
 }
+/// 把 core 回放帧转换为 RoundFrame。
 fn frame_from_core(frame: BattleReplayFrame) -> RoundFrame {
     RoundFrame {
         finished: frame.finished,

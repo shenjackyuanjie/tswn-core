@@ -31,6 +31,7 @@ pub(super) fn run(job: Job, tx: SyncSender<ProgressEvent>, cancel: Arc<AtomicBoo
     }
 }
 
+/// 把 namer-pf 计划转换为后端输入（含技能榜选项）。
 fn namer_pf_input(plan: NamerPfPlan, cancel: Arc<AtomicBool>) -> NamerPfInput {
     NamerPfInput {
         raw: plan.raw,
@@ -53,6 +54,7 @@ fn skill_board_options(plan: SkillBoardPlan, no_screen: bool) -> NamerPfSkillBoa
     }
 }
 
+/// 把 cqd 计划转换为批量胜率输入；高亮是 GUI 语义，CLI 不映射。
 fn cqd_input(plan: CqdPlan, cancel: Arc<AtomicBool>) -> BatchRateInput {
     BatchRateInput {
         target_text: plan.target_text,
@@ -78,6 +80,7 @@ fn cqd_input(plan: CqdPlan, cancel: Arc<AtomicBool>) -> BatchRateInput {
     }
 }
 
+/// 把 pair 计划转换为搭档输入。
 fn pair_input(plan: PairPlan, cancel: Arc<AtomicBool>) -> PairInput {
     PairInput {
         target_text: plan.target_text,

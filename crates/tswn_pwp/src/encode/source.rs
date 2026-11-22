@@ -62,11 +62,13 @@ impl SourceDataset {
 }
 
 #[derive(Deserialize)]
+/// battles 表中选择相关列的投影结构。
 struct Selection {
     split: String,
     winner_team_index: Option<usize>,
 }
 
+/// 按 split/winner 列统计分片中的有效样本数。
 fn count_selected(path: &Path, args: &EncodeArgs) -> Result<(usize, usize)> {
     let builder = ParquetRecordBatchReaderBuilder::try_new(File::open(path)?)?;
     let indices = [

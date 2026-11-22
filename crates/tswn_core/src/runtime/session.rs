@@ -188,6 +188,7 @@ impl RuntimeRunner {
             .collect()
     }
 
+    /// 由实体记录生成标准快照：输入组归属（使魔回溯 root owner）、护盾、状态标签与克隆派生值逐项落地。
     fn snapshot_entity(&self, entity_idx: EntityIdx, entity: &EntityRecord) -> RuntimePlayerSnapshot {
         let minion_kind = self.minion_kind(entity);
         let is_minion = minion_kind.is_some();
@@ -244,6 +245,7 @@ impl RuntimeRunner {
         }
     }
 
+    /// 按玩家类型导出名识别使魔种类：分身、召唤、影袭与亡灵（含各自 bed2 变体）。
     fn minion_kind(&self, entity: &EntityRecord) -> Option<RuntimeMinionKind> {
         let export_name = self.runtime.registry.player_kind(entity.runtime.kind)?.export_name.as_str();
         match export_name {
@@ -255,6 +257,7 @@ impl RuntimeRunner {
         }
     }
 
+    /// 判定展示用玩家类型：使魔、Boss、加成，否则按 clan 归为 Test1/Test2/TestEx/Normal。
     fn player_type(&self, entity: &EntityRecord, minion_kind: Option<RuntimeMinionKind>) -> &'static str {
         if minion_kind.is_some() {
             return "Clone";
@@ -274,6 +277,7 @@ impl RuntimeRunner {
     }
 }
 
+/// 计算剩余护盾：死亡或体力为 0 时归零，否则叠加基础护盾与各护盾状态值。
 fn remaining_shield(entity: &EntityRecord) -> i32 {
     if !entity.runtime.alive || entity.runtime.hp <= 0 {
         return 0;
@@ -287,6 +291,7 @@ fn remaining_shield(entity: &EntityRecord) -> i32 {
     })
 }
 
+/// 去重后追加一个状态标签。
 fn push_status_label(labels: &mut Vec<String>, label: impl Into<String>) {
     let label = label.into();
     if !labels.contains(&label) {
@@ -294,8 +299,10 @@ fn push_status_label(labels: &mut Vec<String>, label: impl Into<String>) {
     }
 }
 
+/// 生成步数后缀：正数格式化为 ` (step)`，非正数返回空串。
 fn step_suffix(step: i32) -> String { if step > 0 { format!(" ({step})") } else { String::new() } }
 
+/// 汇总实体当前的状态标签：聚气、蓄力、隐匿、潜行、各类状态效果与垂死。
 fn status_labels(entity: &EntityRecord) -> Vec<String> {
     let mut labels = Vec::new();
     if entity.runtime.accumulate.active {
@@ -355,6 +362,7 @@ fn status_labels(entity: &EntityRecord) -> Vec<String> {
 mod tests {
     use super::*;
 
+    /// 测试辅助：构造带护盾技能与护盾/铁壁状态的对局，返回 runner 与两个状态 ID。
     fn shield_runner() -> (RuntimeRunner, StateId, StateId) {
         let mut builder = ExtensionRegistryBuilder::default();
         let shield_skill = builder

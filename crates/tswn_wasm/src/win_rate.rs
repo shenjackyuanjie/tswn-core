@@ -14,6 +14,7 @@ use crate::convert::{ts_in, ts_out};
 use crate::error::{WasmResult, invalid_input, runner_init_failed, unsupported_option, win_rate_invalid_groups};
 use crate::model::{WinRateOptions, WinRateProgress, WinRateResult, WinRateTiming};
 
+/// 校验输入并构建预备 runner：至少需要两支非空队伍。
 fn build_prepared_runner(raw_input: String, eval_rq: f64) -> WasmResult<PreparedRuntimeRunner> {
     if raw_input.trim().is_empty() {
         return Err(invalid_input("rawInput is empty"));
@@ -30,6 +31,7 @@ fn build_prepared_runner(raw_input: String, eval_rq: f64) -> WasmResult<Prepared
         .map_err(|error| runner_init_failed(format!("{error:?}")))
 }
 
+/// 把纳秒计数收敛到 u64，溢出取最大值。
 fn nanos_to_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
 
 #[wasm_bindgen]
@@ -48,6 +50,7 @@ pub struct WinRateSession {
 }
 
 impl WinRateSession {
+    /// 计算当前进度与累计统计快照。
     fn progress_value(&self) -> WinRateProgress {
         let rounds_done = self.next_round;
         let percent = if rounds_done == 0 {
@@ -81,6 +84,7 @@ impl WinRateSession {
         }
     }
 
+    /// 推进一批回合并累加胜场与耗时。
     fn step_internal(&mut self, batch_size: usize) -> WasmResult<WinRateProgress> {
         let batch_size = batch_size.max(1);
         let batch_end = self.total_rounds.min(self.next_round.saturating_add(batch_size));

@@ -216,6 +216,7 @@ impl Config {
     }
 }
 
+/// 从 JSON 对象读取 i32 键；缺失、类型不符或超出 i32 范围时按 0 处理。
 fn json_i32(object: &Value, key: &str) -> i32 {
     object
         .get(key)
@@ -224,8 +225,10 @@ fn json_i32(object: &Value, key: &str) -> i32 {
         .unwrap_or(0)
 }
 
+/// 以数字开关语义读取启用标记：值非零即启用。
 fn json_enabled(object: &Value, key: &str) -> bool { json_i32(object, key) != 0 }
 
+/// 解析 DS4 JSON 配置：team_name 必填，三人或 Openbox 启用时校验 pair_abcp_sieve 为正。
 fn parse_ds4_json(source: &str) -> Ds4Result<Config> {
     let value: Value = serde_json::from_str(source).map_err(|err| Ds4Error::parse(format!("config.json: {err}")))?;
     let team_name = value
@@ -302,6 +305,7 @@ fn parse_ds4_json(source: &str) -> Ds4Result<Config> {
     })
 }
 
+/// 解析旧版纯数字 TXT 配置（至少 19 个整数），不包含 SP1、三人与外部阶段。
 fn parse_legacy_config(source: &str) -> Ds4Result<Config> {
     let numbers = source
         .split_whitespace()
@@ -396,6 +400,7 @@ fn parse_legacy_config(source: &str) -> Ds4Result<Config> {
     })
 }
 
+/// 解析旧 TOML 兼容子集：按节与键值写入已知字段，未知键或节报错。
 fn parse_toml_like(source: &str) -> Ds4Result<Config> {
     let mut cfg = Config {
         team_name: None,
@@ -474,6 +479,7 @@ fn parse_toml_like(source: &str) -> Ds4Result<Config> {
     Ok(cfg)
 }
 
+/// 按第一个等号拆分键值；缺少等号或空键/空值报错。
 fn parse_key_value(line: &str) -> Ds4Result<(&str, &str)> {
     let pos = line.find('=').ok_or_else(|| Ds4Error::parse(format!("missing '=' in line: {line}")))?;
     let key = line[..pos].trim();
@@ -484,12 +490,14 @@ fn parse_key_value(line: &str) -> Ds4Result<(&str, &str)> {
     Ok((key, value))
 }
 
+/// 解析 i32，失败时附带原始行上下文。
 fn parse_i32(value: &str, line: &str) -> Ds4Result<i32> {
     value
         .parse::<i32>()
         .map_err(|_| Ds4Error::parse(format!("integer parse failed in line: {line}")))
 }
 
+/// 解析布尔值，接受 true/1/false/0。
 fn parse_bool(value: &str, line: &str) -> Ds4Result<bool> {
     match value.to_ascii_lowercase().as_str() {
         "true" | "1" => Ok(true),
@@ -498,6 +506,7 @@ fn parse_bool(value: &str, line: &str) -> Ds4Result<bool> {
     }
 }
 
+/// 把单人节的 score/potential 键写入目标阈值，未知键报错。
 fn apply_single(target: &mut SingleThreshold, key: &str, value: &str, line: &str) -> Ds4Result<()> {
     match key {
         "score" => target.score = parse_i32(value, line)?,
@@ -507,6 +516,7 @@ fn apply_single(target: &mut SingleThreshold, key: &str, value: &str, line: &str
     Ok(())
 }
 
+/// 把配对节的 enabled/sieve 键写入目标阈值，未知键报错。
 fn apply_pair(target: &mut PairThreshold, key: &str, value: &str, line: &str) -> Ds4Result<()> {
     match key {
         "enabled" => target.enabled = parse_bool(value, line)?,
@@ -517,6 +527,7 @@ fn apply_pair(target: &mut PairThreshold, key: &str, value: &str, line: &str) ->
 }
 
 #[allow(dead_code)]
+/// 调试辅助：返回旧配置候选路径列表（toml、txt）。
 fn _debug_config_path_list(root: &Path) -> [PathBuf; 2] { [root.join("config.toml"), root.join("config.txt")] }
 
 #[cfg(test)]

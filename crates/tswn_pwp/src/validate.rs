@@ -30,6 +30,7 @@ pub struct Summary {
 }
 
 impl Summary {
+    /// 把另一份汇总合并进当前汇总。
     pub(crate) fn add(&mut self, other: Self) {
         self.battles += other.battles;
         self.samples += other.samples;
@@ -143,6 +144,7 @@ pub(crate) fn summarize_fresh(config: &DatasetConfig, out: &Path, total: usize, 
     Ok(summary)
 }
 
+/// 校验单个分片的对局顺序、范围与 receipt 一致性。
 pub(crate) fn validate_shard(dir: &Path, config: &DatasetConfig, receipt: &ShardReceipt) -> Result<Summary> {
     let mut summary = Summary::default();
     let mut battles = Vec::new();

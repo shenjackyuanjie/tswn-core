@@ -56,6 +56,7 @@ mod tests {
 
 /// 根据玩家技能生成文字类型标签：取等效熟练度达标的中文技能名按降序拼接。
 pub fn player_text_type(player: &PreparedPlayer) -> String {
+    /// 技能索引到中文名的映射表，与 C++ 口径一致。
     const LABELS: [&str; 35] = [
         "火球", "冰冻", "雷击", "地裂", "吸血", "投毒", "连击", "会心", "瘟疫", "命轮", "狂暴", "魅惑", "加速", "减速", "诅咒",
         "治愈", "苏生", "净化", "铁壁", "蓄力", "聚气", "背刺", "血祭", "分身", "幻术", "防御", "守护", "反弹", "护符", "护盾",
@@ -73,6 +74,7 @@ pub fn player_text_type(player: &PreparedPlayer) -> String {
     }
 }
 
+/// 计算玩家 35 项技能的等效熟练度：按 active_order 前 16 项累计，主动与击杀分别按系数衰减。
 fn player_effective_skill_values(player: &PreparedPlayer) -> [f64; 35] {
     let storage = &player.skills;
     let mut values = [0.0; 35];

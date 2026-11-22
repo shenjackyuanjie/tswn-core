@@ -207,6 +207,7 @@ pub enum EffectContextError {
 }
 
 impl From<SlotError> for EffectContextError {
+    /// 把槽位错误转换为 [`EffectContextError::Slot`] 变体。
     fn from(error: SlotError) -> Self { Self::Slot(error) }
 }
 

@@ -4,6 +4,7 @@ use super::*;
 ///
 /// 用完整日志和总分 5468 约束该固定 seed 的行为，不延续旧排障笔记中尚未量化的异常描述。
 pub fn large_61<E: crate::EngineAdapter>() {
+    /// large_61 用例的内嵌对局输入。
     const CASE: &str = r#"5CZilPr9w=w1b3M@XJ联队
 子子油渍柚不子油不是子柚渍不不渍柚油柚子@柚子不是油渍
 luogu.com.cn/paste/q9h8sdzk@Shabby_fish

@@ -22,6 +22,7 @@ pub(super) struct BattleDriver {
     no_progress_rounds: usize,
 }
 
+/// 单步推进结果：本回合更新集合、回合序号与可选帧序号。
 pub(super) struct RoundStep {
     pub updates: RunUpdates,
     pub round_index: usize,

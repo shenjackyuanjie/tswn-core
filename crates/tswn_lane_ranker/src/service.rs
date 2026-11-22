@@ -31,11 +31,17 @@ use crate::parser::{parse_group, parse_member_team};
 use crate::ranker::{RankerConfig, recompute_lane_until_stable};
 use crate::winrate::compute_rate_without_db;
 
+/// 内嵌的靶子 MILP 求解 Python 脚本文本。
 const TARGET_MILP_SOLVER: &str = include_str!("../tools/target_milp_solver.py");
+/// 服务层胜率检查点累积条数：满 100 条或强制时落库。
 const RATE_PERSIST_CHECKPOINT_SIZE: usize = 100;
+/// 继承大靶子的压缩协议与 Python 求解器调用。
 mod compression;
+/// 组合导入、屏蔽与手动胜率批处理。
 mod groups;
+/// 后台排名与约束选择任务的启动和状态更新。
 mod jobs;
+/// 靶子候选、胜率补算、导出与审计。
 mod targets;
 
 use compression::*;
@@ -186,6 +192,7 @@ impl AppService {
         validate_saved_pair_strength_results(&self.db, lane, &config, threshold)
     }
 
+    /// 按请求覆盖生成运行配置：外层 worker 与 skip_archived 可覆盖，内层固定为 1。
     fn config_with_run_options(
         &self,
         outer_workers: Option<usize>,

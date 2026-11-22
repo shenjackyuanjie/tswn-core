@@ -6,10 +6,12 @@ use crate::namerena::{
 
 use super::CliApiResult;
 
+/// 导出单个玩家为 diy 文本，默认 `+` 分隔。
 pub(super) fn export_player(raw: &str, old: bool, minions: bool) -> CliApiResult<String> {
     export_player_with_separator(raw, old, minions, "+")
 }
 
+/// 按指定分隔符导出；old 与 minions 互斥，输入不能为空。
 pub(super) fn export_player_with_separator(raw: &str, old: bool, minions: bool, separator: &str) -> CliApiResult<String> {
     if old && minions {
         return Err(super::invalid_input("old and minions are mutually exclusive"));
@@ -25,6 +27,7 @@ pub(super) fn export_player_with_separator(raw: &str, old: bool, minions: bool, 
         .map(|lines| lines.join("\n"))
 }
 
+/// 把 raw 输入解析为多个 to-diy 组：显式 `++` 或整组都带队伍名时按 `+` 拆分，否则整行视为单个玩家。
 fn parse_to_diy_groups(raw: &str) -> Vec<Vec<String>> {
     raw.lines()
         .map(str::trim)
@@ -42,8 +45,10 @@ fn parse_to_diy_groups(raw: &str) -> Vec<Vec<String>> {
         .collect()
 }
 
+/// 判断玩家身份部分是否带 `@队伍`。
 fn player_identity_has_team(raw: &str) -> bool { raw.split_once('+').map_or(raw, |(identity, _)| identity).contains('@') }
 
+/// 判断引号外是否存在 `++`。
 fn has_double_plus_outside_quotes(raw: &str) -> bool {
     let mut chars = raw.chars().peekable();
     let mut in_string = false;
@@ -66,6 +71,7 @@ fn has_double_plus_outside_quotes(raw: &str) -> bool {
     false
 }
 
+/// 把一组玩家构建为 roster 并导出为 diy 文本。
 fn export_group(group: &[String], old: bool, minions: bool, separator: &str) -> CliApiResult<String> {
     if group.is_empty() {
         return Err(super::invalid_input("to_diy group is empty"));
@@ -84,6 +90,7 @@ fn export_group(group: &[String], old: bool, minions: bool, separator: &str) -> 
         .join(separator))
 }
 
+/// 把已构建玩家导出为 diy 文本；old 模式会合并 effective_skills 字段。
 pub(super) fn export_built_player(player: &PreparedPlayer, old: bool, minions: bool) -> String {
     let skills = skills_to_json(&player.skills, SkillExportContext::Player);
     let effective = effective_skills_to_json(&player.skills);
@@ -122,6 +129,7 @@ pub(super) fn export_built_player(player: &PreparedPlayer, old: bool, minions: b
     format!("{}{}+ol:{{{}}}", player.name, team_name_for_export(player), fields.join(","))
 }
 
+/// 把有效技能权重序列化为 JSON 字段；无权重时返回 None。
 fn effective_skills_to_json(skills: &SkillLoadoutSpec) -> Option<String> {
     let fields = skills
         .effective_skill_weights
@@ -151,6 +159,7 @@ fn effective_skills_to_json(skills: &SkillLoadoutSpec) -> Option<String> {
     Some(serialized)
 }
 
+/// 导出用队伍名：与玩家名相同返回空，否则 `@队伍`。
 fn team_name_for_export(player: &PreparedPlayer) -> String {
     if player.clan_name == player.name {
         String::new()
@@ -159,6 +168,7 @@ fn team_name_for_export(player: &PreparedPlayer) -> String {
     }
 }
 
+/// 把 8 项属性转为 overlay JSON 数组；前 7 项加 36 基数。
 fn attrs_to_overlay_json(attrs: [u32; 8]) -> String {
     attrs
         .into_iter()
@@ -168,6 +178,7 @@ fn attrs_to_overlay_json(attrs: [u32; 8]) -> String {
         .join(",")
 }
 
+/// 技能导出上下文：玩家、通用小兵、召唤小兵，影响技能名映射。
 #[derive(Clone, Copy)]
 enum SkillExportContext {
     Player,
@@ -175,6 +186,7 @@ enum SkillExportContext {
     SummonMinion,
 }
 
+/// 按 active_order 序列化技能 JSON；0 级且无有效权重的技能跳过。
 fn skills_to_json(skills: &SkillLoadoutSpec, context: SkillExportContext) -> String {
     let mut fields = Vec::new();
     for key in &skills.active_order {
@@ -210,6 +222,7 @@ fn skills_to_json(skills: &SkillLoadoutSpec, context: SkillExportContext) -> Str
     format!("{{{}}}", fields.join(","))
 }
 
+/// 按上下文把技能条目映射为导出用技能名。
 fn skill_export_name(entry: &SkillEntrySpec, context: SkillExportContext) -> String {
     match context {
         SkillExportContext::Player => classified_player_skill_name_for_export(entry.key).unwrap_or_else(|| match entry.skill {
@@ -253,6 +266,7 @@ fn skill_export_name(entry: &SkillEntrySpec, context: SkillExportContext) -> Str
     }
 }
 
+/// 序列化技能等级：槽位加成写成 `base+boost`，末位加成写成 `2*base`。
 fn skill_level_json(entry: &SkillEntrySpec) -> String {
     match &entry.boost {
         Some(SkillBoost::SlotBoost { base, boost }) => format!("\"{base}+{boost}\""),
@@ -261,6 +275,7 @@ fn skill_level_json(entry: &SkillEntrySpec) -> String {
     }
 }
 
+/// 按小兵类型把 overlay 或固定技能字段追加到导出字段列表。
 fn append_minion_export(player: &PreparedPlayer, kind: MinionKind, field: &str, fields: &mut Vec<String>) {
     let overlay_present = player.overlay.as_ref().is_some_and(|overlay| match kind {
         MinionKind::Shadow => overlay.shadow.is_some(),
@@ -284,6 +299,7 @@ fn append_minion_export(player: &PreparedPlayer, kind: MinionKind, field: &str, 
     fields.push(format!("\"{field}\":{}", minion_to_json(&blueprint)));
 }
 
+/// 把小兵蓝图序列化为 overlay JSON；召唤小兵附带复用技能标记。
 fn minion_to_json(blueprint: &PreparedMinionBlueprint) -> String {
     let context = if blueprint.kind == MinionKind::Summon {
         SkillExportContext::SummonMinion
@@ -303,6 +319,7 @@ fn minion_to_json(blueprint: &PreparedMinionBlueprint) -> String {
     format!("{{{}}}", fields.join(","))
 }
 
+/// 把 raw 按非空行解析为多个 `+` 分组，空组过滤。
 pub(super) fn parse_plus_separated_groups(raw: &str) -> Vec<Vec<String>> {
     raw.lines()
         .map(str::trim)
@@ -312,6 +329,7 @@ pub(super) fn parse_plus_separated_groups(raw: &str) -> Vec<Vec<String>> {
         .collect()
 }
 
+/// 解析单行 `+` 分组：引号内与 diy/ol 后缀中的 `+` 不当分隔符。
 fn parse_plus_group_line(line: &str) -> Vec<String> {
     let mut group = Vec::new();
     let mut current = String::new();
@@ -342,6 +360,7 @@ fn parse_plus_group_line(line: &str) -> Vec<String> {
     group
 }
 
+/// 定位 `ol:` / `diy[...]` 后缀的结束位置，供分组切分时跳过。
 fn overlay_suffix_end(rest: &str) -> Option<usize> {
     if rest.starts_with("ol:") {
         let mut idx = 3usize;
@@ -359,6 +378,7 @@ fn overlay_suffix_end(rest: &str) -> Option<usize> {
     None
 }
 
+/// 把索引向后跳过连续的 ASCII 空白字符。
 fn skip_ascii_ws(raw: &str, idx: &mut usize) {
     let bytes = raw.as_bytes();
     while *idx < bytes.len() && bytes[*idx].is_ascii_whitespace() {
@@ -366,6 +386,7 @@ fn skip_ascii_ws(raw: &str, idx: &mut usize) {
     }
 }
 
+/// 从 start 处消费一对平衡定界符（跳过字符串与转义），返回结束后的索引；起始字符不匹配返回 None。
 fn consume_balanced_ascii(raw: &str, start: usize, open: u8, close: u8) -> Option<usize> {
     let bytes = raw.as_bytes();
     if bytes.get(start).copied() != Some(open) {
@@ -409,6 +430,7 @@ fn consume_balanced_ascii(raw: &str, start: usize, open: u8, close: u8) -> Optio
     None
 }
 
+/// 把累积片段 trim 后追加到组并清空缓冲；空片段忽略。
 fn push_group_segment(group: &mut Vec<String>, current: &mut String) {
     let trimmed = current.trim();
     if !trimmed.is_empty() {

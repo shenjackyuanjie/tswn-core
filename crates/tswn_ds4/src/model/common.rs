@@ -103,6 +103,7 @@ pub fn score_file_with_threads(
     Ok(written)
 }
 
+/// 在给定线程池中并行评分一批名字，并按输入顺序写出通过筛值的行，返回写入行数。
 fn write_scored_chunk(
     pool: &rayon::ThreadPool,
     names: &[String],
@@ -209,6 +210,7 @@ pub fn evaluate_name(full_name: &str, mode: ScoreMode, model: &[f64; MODEL_SIZE]
     })
 }
 
+/// 以初始分、梯度与二阶项把基准特征增量到新特征，返回更新后的分数。
 fn incremental_score(
     score_init: f64,
     base_x: &[f64; 46],
@@ -238,6 +240,7 @@ fn incremental_score(
     score
 }
 
+/// 各模式的门控判定：BC 看 x[29] 下限，FZ/WC 看 x[29] 上限，FS 用特征线性组合，PJ 恒通过。
 fn pass_gate(mode: ScoreMode, x: &[f64; 46]) -> bool {
     match mode {
         ScoreMode::Bc => x[29] >= 25.0,

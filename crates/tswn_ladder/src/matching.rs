@@ -7,6 +7,7 @@
 use super::*;
 
 impl Updator {
+    /// 生成第一批匹配：随机顺序逐人找候选并按分数门限配对，避开已配对组合。
     pub(super) fn generate_base_matches(
         &mut self,
         players: &mut [PlayerRow],
@@ -56,6 +57,7 @@ impl Updator {
         matches
     }
 
+    /// 在第一批基础上补第二批匹配，继续避开已配对组合。
     pub(super) fn generate_second_matches(
         &mut self,
         players: &mut [PlayerRow],
@@ -107,6 +109,7 @@ impl Updator {
         matches
     }
 
+    /// 为指定玩家构建候选列表：按分数邻域取本地候选，可由回调按资格过滤。
     pub(super) fn build_candidate_list<F>(
         &mut self,
         i: usize,
@@ -177,6 +180,7 @@ impl Updator {
         merged
     }
 
+    /// 按探索比例混合本地候选与随机候选，保持两类交替入选。
     pub(super) fn blend_candidates(
         &mut self,
         local_candidates: &[usize],
@@ -203,6 +207,7 @@ impl Updator {
         merged
     }
 
+    /// 统计各玩家场次分布（最少 / 最多 / 平均）与最终平方 loss。
     pub(super) fn analyze_match_distribution(
         &self,
         matches: &[MatchPair],
@@ -236,6 +241,7 @@ impl Updator {
         }
     }
 
+    /// 计算每个玩家在本轮对阵中的期望改分总量。
     pub(super) fn calculate_all_expected_deltas(
         &self,
         players: &[PlayerRow],
@@ -260,8 +266,10 @@ pub(super) fn handicap_adjustment_bound(handicap_map: &HashMap<PairKey, Handicap
     handicap_map.values().map(|d| d.disturbed_value.abs()).fold(0.0_f64, f64::max) * HANDICAP_SCALE
 }
 
+/// 规范化下标对（小下标在前）。
 pub(super) fn ordered_usize_pair(a: usize, b: usize) -> (usize, usize) { if a < b { (a, b) } else { (b, a) } }
 
+/// 计算考虑 handicap 的期望胜率；disturbed 控制是否使用扰动值。
 pub(super) fn expected_win_prob_with_handicap(
     i: usize,
     j: usize,
@@ -285,6 +293,7 @@ pub(super) fn expected_win_prob_with_handicap(
     logistic_expected(score_diff)
 }
 
+/// 计算单场期望改分：基础期望与 handicap 期望之差乘 K 因子。
 pub(super) fn calculate_expected_delta(
     i: usize,
     j: usize,
@@ -299,8 +308,10 @@ pub(super) fn calculate_expected_delta(
     BASE_K_FACTOR * ((1.0 - expected_base) * expected_with_handicap - expected_base * (1.0 - expected_with_handicap))
 }
 
+/// 全部改分的平方和。
 pub(super) fn calculate_total_squared_loss(deltas: &[f64]) -> f64 { deltas.iter().map(|delta| delta * delta).sum() }
 
+/// 按 ELO 尺度的 logistic 期望胜率。
 pub(super) fn logistic_expected(score_diff: f64) -> f64 { 1.0 / (1.0 + 10_f64.powf(-score_diff / ELO_SCALE_FACTOR)) }
 
 #[cfg(test)]

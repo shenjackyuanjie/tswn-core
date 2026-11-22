@@ -6,6 +6,7 @@
 
 pub use view::{RESULT_FOOTER_HEIGHT, scrolled_to_end};
 
+/// 结果区表格/卡片的绘制子模块。
 mod view;
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -16,6 +17,7 @@ use tswn_openbox::backend::live::{EntryKind, ResultEntry, ResultFinish, ResultKi
 use super::icons::IconCache;
 use super::log::{LogBuffer, LogKind};
 
+/// 结果区缓存的字节上限：8 MiB，超出后淘汰较早记录。
 const MAX_RESULT_BYTES: usize = 8 * 1024 * 1024;
 
 /// 表格高度的自动模式：按可用高度的 [`TABLE_AUTO_RATIO`] 分配，拖动分隔条后写入具体像素值。
@@ -61,6 +63,7 @@ impl ColumnAlign {
     /// 全部列对齐方式。
     pub const ALL: [Self; 3] = [Self::Left, Self::Center, Self::Right];
 
+    /// 返回对齐方式的显示名。
     fn label(self) -> &'static str {
         match self {
             Self::Left => "左",
@@ -69,6 +72,7 @@ impl ColumnAlign {
         }
     }
 
+    /// 把对齐方式转换为 egui::Align。
     fn egui(self) -> egui::Align {
         match self {
             Self::Left => egui::Align::Min,
@@ -78,6 +82,7 @@ impl ColumnAlign {
     }
 }
 
+/// 一条结果条目：原始数据与预算好的显示文本。
 struct DisplayEntry {
     data: ResultEntry,
     display: String,
@@ -100,6 +105,7 @@ pub enum ResultRow {
     CardCopy(usize),
 }
 
+/// 一个结果组的缓存：条目、状态、摘要、明细与字节数。
 struct Record {
     label: String,
     kind: ResultKind,
@@ -165,6 +171,7 @@ impl Record {
         text
     }
 
+    /// 按需重建明细顺序与文本：Pair 按数值降序（Top 模式只排可见部分），DIY 用旧版文本行。
     fn refresh_detail_order(&mut self) {
         if !self.details_dirty {
             return;
@@ -220,6 +227,7 @@ impl Record {
         self.details_dirty = false;
     }
 
+    /// 按完成分数或前五项指标刷新摘要文本。
     fn update_summary(&mut self) {
         self.summary = if let Some(score) = self.finish.as_ref().and_then(|finish| finish.score) {
             format!("{score:.precision$}", precision = self.precision)
@@ -412,6 +420,7 @@ impl ResultsView {
         groups
     }
 
+    /// 表格按列比较两个组：第 0 列按标签，其余按条目数值，缺失值排后。
     fn compare_by_column(&self, a: usize, b: usize, column: usize) -> std::cmp::Ordering {
         use std::cmp::Ordering;
         let (Some(left), Some(right)) = (self.records.get(&a), self.records.get(&b)) else {
@@ -576,6 +585,7 @@ impl ResultsView {
         }
     }
 
+    /// 移除一个结果组并回收字节数，同时清理展开/选中状态。
     fn remove(&mut self, group: usize) {
         if let Some(record) = self.records.remove(&group) {
             self.bytes -= record.bytes;
@@ -603,6 +613,7 @@ fn detail_line_text(entry: &DisplayEntry) -> String {
     }
 }
 
+/// 把条目类型映射为日志行类型。
 fn log_kind(kind: EntryKind) -> LogKind {
     match kind {
         EntryKind::Plain => LogKind::Plain,
@@ -611,6 +622,7 @@ fn log_kind(kind: EntryKind) -> LogKind {
     }
 }
 
+/// 生成条目显示文本：优先原文，否则按精度格式化数值。
 fn display_value(entry: &ResultEntry, precision: usize) -> String {
     if !entry.text.is_empty() {
         entry.text.clone()

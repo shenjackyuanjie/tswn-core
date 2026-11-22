@@ -11,8 +11,10 @@ use std::{
 };
 use tswn_core::cli_api::battle::{BattleOptions, BattlePlayerState, BattleReplayFrame, BattleResult, BattleSession};
 
+/// driver 内部写输出使用的 Result 别名，错误为 `Box<dyn Error>`。
 type OutputResult = Result<(), Box<dyn Error>>;
 
+/// jsonl 模式下写出的事件类型：初始状态、单帧与最终结果。
 #[derive(Serialize)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 enum BattleEvent<'a> {
@@ -21,6 +23,7 @@ enum BattleEvent<'a> {
     Result(&'a BattleResult),
 }
 
+/// 把一个事件序列化为单行 JSON 写入输出并立即刷新，保证 jsonl 逐条可见。
 fn write_event(out: &mut impl Write, event: BattleEvent<'_>) -> OutputResult {
     serde_json::to_writer(&mut *out, &event)?;
     out.write_all(b"\n")?;
@@ -50,6 +53,7 @@ pub fn run(raw: String, jsonl: bool, max_rounds: usize) {
 /// 运行 runtime diff 诊断：收集两条执行路径的消息文本差异并打印，无差异时不输出。
 pub fn run_diff(raw: String) { super::runtime::run_runtime_diff(raw); }
 
+/// 驱动整场战斗输出：jsonl 模式逐条写 Initial/Frame/Result 事件，文本模式打印初始状态与逐帧可读日志。
 fn write_battle(session: &mut BattleSession, out: &mut impl Write, jsonl: bool) -> OutputResult {
     if jsonl {
         write_event(out, BattleEvent::Initial(session.initial_states()))?;

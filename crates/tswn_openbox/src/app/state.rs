@@ -269,6 +269,7 @@ impl Default for PairState {
     }
 }
 
+/// namer-pf 高亮增量的默认值：sum 项 300，其余 100。
 fn default_namer_pf_highlight_delta(metric: NamerPfMetric) -> u64 { if metric == NamerPfMetric::Sum { 300 } else { 100 } }
 
 /// base 页只需一个名字：输出是固定格式的多行文本，走右侧日志，没有结构化结果。

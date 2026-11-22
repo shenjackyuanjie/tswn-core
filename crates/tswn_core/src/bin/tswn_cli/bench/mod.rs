@@ -12,13 +12,21 @@
 //! 都能按默认规则被加载，不需要再写 `#[path = ...]`。batch-rate 与 pair 曾是
 //! 同一个 `batch.rs`，随 openbox 对齐功能膨胀到 1300+ 行后按职责拆分。
 
+/// `bench batch-rate` / `bench cqp` 的批量评估实现。
 mod batch_rate;
+/// benchmark 共享的摘要与耗时格式化类型。
 mod common;
+/// benchmark 输出、文件交互与文本格式化 helper。
 mod output;
+/// `bench pair` 的二人组评估实现。
 mod pair;
+/// 批量评估共用的终端进度条。
 mod progress;
+/// 评分 benchmark 与 `namer-pf` 的实现。
 mod score;
+/// `namer-pf` 技能榜。
 mod skill_board;
+/// 胜率 benchmark 的入口与调度。
 mod winrate;
 
 pub use batch_rate::run_bench_batch_rate;

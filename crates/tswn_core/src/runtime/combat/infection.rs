@@ -552,6 +552,7 @@ impl CombatRuntime {
 mod tests {
     use super::*;
 
+    /// 测试辅助：推进 RNG 直到下一随机字节等于 `roll`，最多尝试 4096 次。
     fn set_next_roll(runtime: &mut CombatRuntime, roll: u8) {
         for _ in 0..4096 {
             if runtime.rng.peek_next_u8() == roll {
@@ -562,6 +563,7 @@ mod tests {
         panic!("未找到预期随机字节 {roll}");
     }
 
+    /// 测试辅助：断言 runtime 的 RC4 游标与主值和期望值一致。
     fn assert_rng(runtime: &CombatRuntime, expected: &crate::rc4::RC4) {
         assert_eq!((runtime.rng.i, runtime.rng.j), (expected.i, expected.j));
         assert_eq!(runtime.rng.main_val, expected.main_val);
@@ -803,12 +805,15 @@ mod tests {
         }
     }
 
+    /// 测试辅助：按模板 `id_key_name` 查找实体索引。
     fn by_name(runtime: &CombatRuntime, name: &str) -> EntityIdx {
         runtime.entities.iter().find(|(_, entity)| entity.template.id_key_name == name).unwrap().0
     }
 
+    /// 测试辅助：读取指定实体的当前体力。
     fn hp(runtime: &CombatRuntime, owner: EntityIdx) -> i32 { runtime.entities.get(owner).unwrap().runtime.hp }
 
+    /// 测试辅助：改写新冠感染状态中各毒株的剩余天数，数量须与现有条目一致。
     fn set_strain_days(runtime: &mut CombatRuntime, owner: EntityIdx, days: &[i32]) {
         let state = runtime
             .entities
@@ -826,6 +831,7 @@ mod tests {
         }
     }
 
+    /// 测试辅助：执行指定单位的 POST_ACTION 状态钩子计划，并返回产生的帧更新。
     fn covid_post_action(runtime: &mut CombatRuntime, owner: EntityIdx) -> RunUpdates {
         let plan = runtime.scheduler.state_hook_plan(&runtime.entities, owner, ProcMask::POST_ACTION);
         let mut updates = RunUpdates::new();
@@ -833,6 +839,7 @@ mod tests {
         updates
     }
 
+    /// 测试辅助：推进至多 512 步，返回下一场含非空消息的可见战斗帧。
     fn next_visible(runner: &mut RuntimeRunner) -> RuntimeFrame {
         (0..512)
             .find_map(|_| {

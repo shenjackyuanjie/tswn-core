@@ -6,7 +6,9 @@
 
 use std::cell::Cell;
 
+/// 帮助图标尺寸。
 const HELP_ICON_SIZE: f32 = 18.0;
+/// 悬停提示的最大宽度。
 const HELP_TOOLTIP_WIDTH: f32 = 380.0;
 
 /// 帮助主题枚举：对应各工具的说明弹窗内容。

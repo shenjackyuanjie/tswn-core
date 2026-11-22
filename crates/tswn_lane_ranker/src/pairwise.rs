@@ -4,8 +4,11 @@
 //! 可复用追溯。严格验证另行运行 Python，不以 Rust 近似指标代替其数值过程。
 //! 缺失对局会补算并保存；结果与追溯分别提交，追溯保存失败会尽力清除旧记录。
 
+/// Rust 快速 Correct 校准实现。
 mod correct;
+/// 严格 Python 校准器调用与结果解析。
 mod python;
+/// 校准所需胜率的检查、并行补算和持久化。
 mod rates;
 
 use correct::*;
@@ -38,6 +41,7 @@ pub fn default_selection_cqd_threshold(lane_size: usize) -> f64 { if lane_size =
 /// 前瞻性 Correct 替换槽位因 lane 而异：单人 lane 使用十个假设替换项，所有多成员 lane 保留生产版五槽位设置。
 pub fn replacement_k_for_lane(lane_size: usize) -> f64 { if lane_size == 1 { 10.0 } else { 5.0 } }
 
+/// 把替换槽位 K 格式化为整数或一位小数字符串，用于 score_mode 与日志。
 fn format_k_label(k: f64) -> String {
     if (k.fract()).abs() <= 1e-9 {
         format!("{k:.0}")
@@ -46,6 +50,7 @@ fn format_k_label(k: f64) -> String {
     }
 }
 
+/// 生成对应 K 值的 Correct score_mode 标识，供追溯版本匹配。
 fn correct_score_mode(k: f64) -> String { format!("exact_k{}_replacement_correct_big_target", format_k_label(k)) }
 
 /// 两两校准报告：候选数、边数、跳过原因与生成的目标轨迹。
@@ -58,6 +63,7 @@ pub struct PairwiseCalibrationReport {
 }
 
 #[derive(Debug, Clone)]
+/// 严格 Python 校验的单行结果：组 ID、Correct 分数与是否被解析器选中。
 struct StrictPythonScoreRow {
     group_id: GroupId,
     correct_score: f64,
@@ -65,26 +71,31 @@ struct StrictPythonScoreRow {
 }
 
 #[derive(Debug, Clone)]
+/// 严格 Python 一次运行的输出目录与逐行分数。
 struct StrictPythonRun {
     out_dir: PathBuf,
     scores: Vec<StrictPythonScoreRow>,
 }
 
 #[derive(Debug, Clone)]
+/// 校准前必须补齐胜率的一对组合。
 struct RequiredRatePair {
     a: StoredGroup,
     b: StoredGroup,
 }
 
 #[derive(Debug, Clone)]
+/// Python 动态请求的缺失胜率批次：输出目录、待补组合对与上下文标识。
 struct StrictPythonMissingRateRequest {
     out_dir: PathBuf,
     pairs: Vec<(GroupId, GroupId)>,
     context: String,
 }
 
+/// 内嵌的严格 Python 校准脚本文本，运行时写入临时目录执行。
 const STRICT_PYTHON_CALIBRATOR: &str = include_str!("../tools/strict_python_calibrator.py");
 
+/// 清空一行的配对校准与画像诊断字段，避免过期指标被当成当前模型的结果。
 fn reset_calibration_fields(row: &mut LaneResultRow) {
     row.pair_score = None;
     row.pair_rank = None;
@@ -277,6 +288,7 @@ pub fn validate_saved_pair_strength_results(
     }))
 }
 
+/// 驱动严格 Python 校准：按其缺失胜率请求动态补算后重试，重复请求或超过 256 次尝试即失败。
 fn run_strict_python_calibrator_with_dynamic_rate_fill(
     db: &Db,
     lane_size: usize,

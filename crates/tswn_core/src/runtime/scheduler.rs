@@ -92,6 +92,7 @@ pub struct PhaseScheduler {
 }
 
 impl Default for PhaseScheduler {
+    /// 默认调度器：最小回合模式，无待处理冰冻解除事件。
     fn default() -> Self {
         Self {
             action_mode: ActionSchedulerMode::Minimal,
@@ -128,6 +129,7 @@ impl PhaseScheduler {
     /// 取走本次选行动期间记录的冰冻解除事件。
     pub fn take_ice_release_events(&mut self) -> SmallVec<[EntityIdx; 4]> { std::mem::take(&mut self.ice_release_events) }
 
+    /// 由实体推断调度模式：出现非默认类型且非 Boss/加成的实体时走最小模式，否则按是否存在正速度选 legacy 速度条。
     fn infer_action_mode(entities: &EntityArena) -> ActionSchedulerMode {
         let mut has_speed = false;
         for (_, entity) in entities.iter() {

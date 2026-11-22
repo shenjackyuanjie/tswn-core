@@ -13,6 +13,7 @@ use crate::app::icons::{ICON_SIZE_MAX, ICON_TEXT_GAP, IconCache};
 use crate::app::style::Palette;
 use tswn_openbox::backend::live::{EntryKind, ResultKind};
 
+/// 表格单元格间距。
 const CELL_GAP: f32 = 4.0;
 /// 结果区底部留给“复制全部”按钮的高度；由调用方从可用高度中扣除。
 pub const RESULT_FOOTER_HEIGHT: f32 = 34.0;
@@ -22,6 +23,7 @@ const TABLE_DIVIDER_HEIGHT: f32 = 8.0;
 const COPY_NAME_WIDTH: f32 = 88.0;
 /// 卡片标题右侧显示未完成状态时占用的宽度，够放“已停止 · 结果不完整”。
 const CARD_STATE_WIDTH: f32 = 168.0;
+/// 表格各列标题：输入序号、复制名字、五项评分与总分。
 const COLUMN_LABELS: [&str; 7] = ["名字 / 输入序号", "复制名字", "pp", "pd", "qp", "qd", "sum"];
 
 /// 表格与卡片的文字行度量：与纯文本日志完全一致（等宽字体 + 同样的行距）。
@@ -83,6 +85,7 @@ impl ResultsView {
         }
     }
 
+    /// 绘制排版控制：徽章开关与卡片对齐/恢复默认。
     fn layout_controls(&mut self, ui: &mut egui::Ui, kind: ResultKind) {
         ui.horizontal(|ui| {
             ui.checkbox(&mut self.show_icons, "显示徽章").on_hover_text(
@@ -166,6 +169,7 @@ impl ResultsView {
         });
     }
 
+    /// 按当前模式绘制结果区内容（文本/卡片/表格）并处理跟随最新。
     fn content_ui(&mut self, ui: &mut egui::Ui) {
         if self.records.is_empty() {
             ui.weak("暂无结果；运行后将在这里显示已完成的明细。");
@@ -537,6 +541,7 @@ impl ResultsView {
     }
 }
 
+/// 返回该结果类型的表格列数。
 fn column_count(kind: ResultKind) -> usize {
     match kind {
         ResultKind::Diy => 2,
@@ -545,6 +550,7 @@ fn column_count(kind: ResultKind) -> usize {
     }
 }
 
+/// 返回列标题；非评分表的第 3 列显示“分数”。
 fn column_label(index: usize, scores: bool) -> &'static str {
     if !scores && index == 2 {
         "分数"
@@ -553,12 +559,14 @@ fn column_label(index: usize, scores: bool) -> &'static str {
     }
 }
 
+/// 绘制左/中/右对齐选择。
 fn alignment_controls(ui: &mut egui::Ui, alignment: &mut ColumnAlign) {
     for align in ColumnAlign::ALL {
         ui.selectable_value(alignment, align, align.label());
     }
 }
 
+/// 在列右边界放置拖拽手柄，拖动改变列宽。
 fn resize_column(ui: &mut egui::Ui, index: usize, rect: egui::Rect, width: &mut f32) {
     let handle = egui::Rect::from_min_max(
         egui::pos2(rect.right() - 4.0, rect.top()),
@@ -691,6 +699,7 @@ fn cell_button(ui: &mut egui::Ui, width: f32, text: &str, align: ColumnAlign, fi
     child.add(egui::Button::new(egui::RichText::new(text).monospace()).small())
 }
 
+/// 生成卡片标题中的摘要文本，高亮时着色。
 fn summary_text(record: &Record, palette: Palette) -> egui::RichText {
     let text = egui::RichText::new(&record.summary).monospace();
     if record.finish.as_ref().is_some_and(|finish| finish.highlight) {

@@ -20,6 +20,7 @@ use super::{OpenboxApp, Tool, configure_ui_style, install_cjk_fonts};
 
 #[derive(Parser)]
 #[command(about = "Openbox 可选界面截图校验；不传参数时正常启动")]
+/// 截图校验的命令行参数：目标目录、主题、场景与对齐方式。
 struct CaptureArgs {
     /// 使用内置 pair 样例生成卡片、表格、文本、停止状态四张 PNG，然后退出。
     #[arg(long)]
@@ -65,6 +66,7 @@ pub fn run_if_requested() -> Option<eframe::Result<()>> {
     })
 }
 
+/// 一次性截图驱动：持有应用、阶段进度与截图/失败回传通道。
 struct CaptureApp {
     app: OpenboxApp,
     directory: PathBuf,
@@ -81,6 +83,7 @@ struct CaptureApp {
 }
 
 impl CaptureApp {
+    /// 记录失败信息、停止任务并关闭视口。
     fn fail(&mut self, ctx: &egui::Context, message: String) {
         *self.failure.lock().unwrap() = Some(message);
         self.app.stop_current_task();
@@ -98,6 +101,7 @@ impl CaptureApp {
         }
     }
 
+    /// 把当前阶段截图按命名规则写为 PNG。
     fn save_screenshot(&self, image: &egui::ColorImage) -> Result<(), String> {
         let name = if self.ds4 {
             ["ds4", "ds4-settings", "ds4-help"][self.stage]
@@ -122,6 +126,7 @@ impl CaptureApp {
 }
 
 impl eframe::App for CaptureApp {
+    /// 逐阶段驱动渲染与截图回传，超过 60 秒未完成即失败。
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.frame += 1;
         let ctx = ui.ctx().clone();
@@ -200,6 +205,7 @@ const CSV_SAMPLE: &str = "\
 我也不知道我要测多少 —— 垂耗潦@shenjack,
 ";
 
+/// 按参数准备样例数据并启动一次性 eframe 截图流程。
 fn run_capture(
     directory: PathBuf,
     light: bool,

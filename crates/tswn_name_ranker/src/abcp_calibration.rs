@@ -9,10 +9,13 @@ use std::collections::{HashMap, HashSet};
 use anyhow::Context;
 use serde::Deserialize;
 
+/// 每个方向模型为每个名字保留的 Top 搭档数：10。
 const PREDICTED_PARTNERS: usize = 10;
+/// 展开项直接入选合法配对的原始分阈值：4500。
 const EXPANDED_THRESHOLD: f64 = 4500.0;
 
 #[derive(Deserialize)]
+/// 内嵌校准参数：ridge 三件套、直方图树与仿射分支。
 struct Parameters {
     ridge_mean: Vec<f64>,
     ridge_scale: Vec<f64>,
@@ -25,6 +28,7 @@ struct Parameters {
 }
 
 #[derive(Deserialize)]
+/// 直方图模型节点：值/特征/阈值/左右子节点/是否叶子。
 struct TreeNode {
     value: f64,
     feature: usize,
@@ -77,6 +81,7 @@ impl Calibrator {
         Ok(Self { parameters, features })
     }
 
+    /// 构造 231 维方向特征：原始分、和/差/积项与按 cfz 排序的两侧特征；缺任一侧特征返回 None。
     fn directional_features(&self, raw: f64, a: &str, b: &str) -> Option<Vec<f64>> {
         let fa = self.features.get(a)?;
         let fb = self.features.get(b)?;
@@ -91,6 +96,7 @@ impl Calibrator {
         Some(x)
     }
 
+    /// 分别用 ridge 与直方图树预测两个方向的分数。
     fn predict_directional(&self, raw: f64, a: &str, b: &str) -> Option<(f64, f64)> {
         let x = self.directional_features(raw, a, b)?;
         let residual = self.parameters.ridge_intercept
@@ -155,10 +161,12 @@ impl Calibrator {
     }
 }
 
+/// 由特征向量计算 CFZ 分，用于两侧排序。
 fn cfz(features: &[f64]) -> i32 {
     ((features[1] - features[2] + features[3] + features[5] - features[6]) * 2.0 + features[4] + features[7]) as i32
 }
 
+/// 把百分比 clamp 后转对数几率；调用方需保证输入有限。
 fn logit(percent: f64) -> f64 {
     let p = (percent / 100.0).clamp(1e-6, 1.0 - 1e-6);
     (p / (1.0 - p)).ln()

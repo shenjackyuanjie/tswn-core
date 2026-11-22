@@ -42,18 +42,21 @@ pub struct ValueStats {
 }
 
 #[derive(Debug, Default, Clone)]
+/// 一个数值序列：原始值（分位数用）与可选直方图。
 struct Series {
     values: Vec<f64>,
     histogram: BTreeMap<u64, usize>,
 }
 
 impl Series {
+    /// 记录一个整数值及其直方图计数。
     fn push(&mut self, value: u64) {
         self.values.push(value as f64);
         *self.histogram.entry(value).or_default() += 1;
     }
     /// 连续量只保留分位数，不记录逐值直方图。
     fn push_continuous(&mut self, value: f64) { self.values.push(value); }
+    /// 排序后计算分位数与汇总；空序列返回默认值。
     fn finish(mut self) -> ValueStats {
         if self.values.is_empty() {
             return ValueStats::default();
@@ -343,6 +346,7 @@ pub fn print_report(stats: &DatasetStats, top: usize) {
     }
 }
 
+/// 取计数最高的前 top 项，计数相同按键升序。
 fn top_of<K: std::fmt::Debug + Clone + Ord>(map: &BTreeMap<K, usize>, top: usize) -> Vec<(K, usize)> {
     let mut items: Vec<_> = map.iter().map(|(key, count)| (key.clone(), *count)).collect();
     items.sort_by(|left, right| right.1.cmp(&left.1).then(left.0.cmp(&right.0)));

@@ -13,6 +13,7 @@ use tswn_core::namerena::{
 };
 use tswn_core::rc4::RC4;
 
+/// 七围显示名：攻/防/速/敏/魔/抗/智。
 const PROP_NAMES: [&str; 7] = ["攻", "防", "速", "敏", "魔", "抗", "智"];
 
 /// 社区 base 工具使用的短技能名；id 32 沿用「亡灵」的叫法。
@@ -89,6 +90,7 @@ pub fn run_base(raw: &str) -> Result<String, String> {
     Ok(render(&player).trim_end().to_string())
 }
 
+/// 把单个玩家渲染为社区 base 工具格式的多行文本。
 fn render(player: &PreparedPlayer) -> String {
     let raw = &player.raw_name_base;
     let mut out = String::new();
@@ -196,6 +198,7 @@ fn render(player: &PreparedPlayer) -> String {
     out
 }
 
+/// 用 RC4 以名字与队伍推导 40 个技能槽的行动顺序。
 fn action_order(player: &PreparedPlayer) -> [u32; 40] {
     let mut name_key = [0u8; NAME_MAX_LEN + 1];
     name_key[1..1 + player.name.len()].copy_from_slice(player.name.as_bytes());
@@ -210,6 +213,7 @@ fn action_order(player: &PreparedPlayer) -> [u32; 40] {
     order
 }
 
+/// 把字节序列格式化为逗号分隔字符串。
 fn join_u8(values: &[u8]) -> String { values.iter().map(|value| value.to_string()).collect::<Vec<_>>().join(",") }
 
 #[cfg(test)]

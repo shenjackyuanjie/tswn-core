@@ -46,6 +46,7 @@ impl PyPreparedRunner {
     pub fn eval_rq(&self) -> f64 { self.eval_rq }
 }
 
+/// 包装 Core 的 PreparedRunner；`eval_rq` 固定为 `DEFAULT_EVAL_RQ`，不随构造参数变化。
 impl From<CorePreparedRunner> for PyPreparedRunner {
     fn from(value: CorePreparedRunner) -> Self {
         Self {
@@ -68,6 +69,7 @@ pub struct PyRunner {
 #[pymethods]
 impl PyRunner {
     #[staticmethod]
+    /// 由 namerena 原始文本构造 Runner。
     fn new_from_namerena_raw(raw_str: String) -> PyResult<Self> {
         Ok(Self {
             inner: Runner::new_from_namerena_raw(raw_str).map_err(error::PyRunnerError::new)?,
@@ -75,11 +77,13 @@ impl PyRunner {
     }
 
     #[staticmethod]
+    /// 把原始文本拆分为分组与展示标签。
     fn split_namerena_into_groups(raw_str: String) -> (Vec<Vec<String>>, Vec<String>) {
         Runner::split_namerena_into_groups(raw_str)
     }
 
     #[staticmethod]
+    /// 由分组与 seed 构造 Runner。
     fn new_from_groups_with_seed(groups: Vec<Vec<String>>, seed: Vec<String>) -> PyResult<Self> {
         Ok(Self {
             inner: Runner::new_from_groups_with_seed(&groups, &seed).map_err(error::PyRunnerError::new)?,
@@ -87,6 +91,7 @@ impl PyRunner {
     }
 
     #[staticmethod]
+    /// 由分组、seed 与 eval_rq 构造 Runner。
     fn new_from_groups_with_seed_and_eval_rq(groups: Vec<Vec<String>>, seed: Vec<String>, eval_rq: f64) -> PyResult<Self> {
         Ok(Self {
             inner: Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, eval_rq).map_err(error::PyRunnerError::new)?,
@@ -94,6 +99,7 @@ impl PyRunner {
     }
 
     #[staticmethod]
+    /// 预构建分组，返回可复用的 PyPreparedRunner。
     fn prepare_groups(groups: Vec<Vec<String>>) -> PyResult<PyPreparedRunner> {
         Runner::prepare_groups(&groups)
             .map(|inner| PyPreparedRunner {
@@ -104,6 +110,7 @@ impl PyRunner {
     }
 
     #[staticmethod]
+    /// 按指定 eval_rq 预构建分组。
     fn prepare_groups_with_eval_rq(groups: Vec<Vec<String>>, eval_rq: f64) -> PyResult<PyPreparedRunner> {
         Runner::prepare_groups_with_eval_rq(&groups, eval_rq)
             .map(|inner| PyPreparedRunner { inner, eval_rq })
@@ -111,6 +118,7 @@ impl PyRunner {
     }
 
     #[staticmethod]
+    /// 由预构建结果与 seed 构造 Runner。
     fn new_from_prepared_with_seed(prepared: &PyPreparedRunner, seed: Vec<String>) -> PyResult<Self> {
         Ok(Self {
             inner: Runner::new_from_prepared_with_seed(&prepared.inner, &seed).map_err(error::PyRunnerError::new)?,

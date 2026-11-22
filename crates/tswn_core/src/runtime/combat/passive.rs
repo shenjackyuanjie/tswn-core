@@ -349,6 +349,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 收集实体模板中指定导出名反击技能在各固定槽位的等级；每一级对应一次待发反击结算。
     fn plain_update_end_counter_levels(&self, owner: EntityIdx, export_name: &str) -> Vec<u32> {
         self.entities
             .get(owner)
@@ -370,6 +371,7 @@ impl CombatRuntime {
             .unwrap_or_default()
     }
 
+    /// 结算一次 update-end 待发反击：校验 pending 与批次、目标存活、施法者状态与 MP，扣除成本后发起反击攻击。
     fn run_plain_update_end_counter_attack_into(
         &mut self,
         owner: EntityIdx,

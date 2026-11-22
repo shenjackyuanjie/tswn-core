@@ -4,6 +4,7 @@ use super::*;
 ///
 /// 校验全部规范化事件直到终局，不通过召唤物后缀去噪放宽消息匹配，也不单独冻结总分。
 pub fn large_63<E: crate::EngineAdapter>() {
+    /// large_63 用例的内嵌对局输入。
     const CASE: &str = r#"killer YFgziuYJGUOW93Ryni2X@czr2012
 dust lmHylvLqY4hn0QIMnCia@czr2012
 

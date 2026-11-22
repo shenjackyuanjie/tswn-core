@@ -522,10 +522,12 @@ impl BuiltinSkillImportMap {
         }
     }
 
+    /// 按索引取召唤物专用技能 ID；默认 profile 未注册该索引时 panic。
     fn special_skill_id(&self, index: usize) -> SkillId {
         self.special_skill_ids[index].unwrap_or_else(|| panic!("runtime 默认 profile 未注册召唤物技能索引 {index}"))
     }
 
+    /// 把导入的技能条目与各顺序键落成 [`SkillLoadout`]：固定键映射到 lane，未列入行动序的 lane 追加到末尾。
     fn finish_import(
         &self,
         imported: Vec<(usize, SkillId, u32, bool, Option<crate::namerena::SkillBoost>)>,
@@ -840,6 +842,7 @@ pub enum DefaultCustomRuntimeProfileError {
 }
 
 impl From<ExtensionError> for DefaultCustomRuntimeProfileError {
+    /// 把注册表构建错误转换为 [`DefaultCustomRuntimeProfileError::Registry`] 变体。
     fn from(error: ExtensionError) -> Self { Self::Registry(error) }
 }
 
@@ -853,14 +856,17 @@ pub enum CustomBed2SummonTemplateImportError {
 }
 
 impl From<CustomBed2RosterImportError> for CustomBed2SummonTemplateImportError {
+    /// 把 bed2 roster 错误转换为 [`CustomBed2SummonTemplateImportError::Roster`] 变体。
     fn from(error: CustomBed2RosterImportError) -> Self { Self::Roster(error) }
 }
 
 impl From<CustomMixedRosterImportError> for CustomBed2SummonTemplateImportError {
+    /// 把混合 roster 错误转换为 [`CustomBed2SummonTemplateImportError::MixedRoster`] 变体。
     fn from(error: CustomMixedRosterImportError) -> Self { Self::MixedRoster(error) }
 }
 
 impl From<SlotError> for CustomBed2SummonTemplateImportError {
+    /// 把槽错误转换为 [`CustomBed2SummonTemplateImportError::Slot`] 变体。
     fn from(error: SlotError) -> Self { Self::Slot(error) }
 }
 
@@ -874,14 +880,17 @@ pub enum CustomBed2ShadowTemplateImportError {
 }
 
 impl From<CustomBed2RosterImportError> for CustomBed2ShadowTemplateImportError {
+    /// 把 bed2 roster 错误转换为 [`CustomBed2ShadowTemplateImportError::Roster`] 变体。
     fn from(error: CustomBed2RosterImportError) -> Self { Self::Roster(error) }
 }
 
 impl From<CustomMixedRosterImportError> for CustomBed2ShadowTemplateImportError {
+    /// 把混合 roster 错误转换为 [`CustomBed2ShadowTemplateImportError::MixedRoster`] 变体。
     fn from(error: CustomMixedRosterImportError) -> Self { Self::MixedRoster(error) }
 }
 
 impl From<SlotError> for CustomBed2ShadowTemplateImportError {
+    /// 把槽错误转换为 [`CustomBed2ShadowTemplateImportError::Slot`] 变体。
     fn from(error: SlotError) -> Self { Self::Slot(error) }
 }
 
@@ -895,14 +904,17 @@ pub enum CustomBed2ZombieTemplateImportError {
 }
 
 impl From<CustomBed2RosterImportError> for CustomBed2ZombieTemplateImportError {
+    /// 把 bed2 roster 错误转换为 [`CustomBed2ZombieTemplateImportError::Roster`] 变体。
     fn from(error: CustomBed2RosterImportError) -> Self { Self::Roster(error) }
 }
 
 impl From<CustomMixedRosterImportError> for CustomBed2ZombieTemplateImportError {
+    /// 把混合 roster 错误转换为 [`CustomBed2ZombieTemplateImportError::MixedRoster`] 变体。
     fn from(error: CustomMixedRosterImportError) -> Self { Self::MixedRoster(error) }
 }
 
 impl From<SlotError> for CustomBed2ZombieTemplateImportError {
+    /// 把槽错误转换为 [`CustomBed2ZombieTemplateImportError::Slot`] 变体。
     fn from(error: SlotError) -> Self { Self::Slot(error) }
 }
 
@@ -918,26 +930,32 @@ pub enum CustomBed2MinionOverlayImportError {
 }
 
 impl From<CustomBed2RosterImportError> for CustomBed2MinionOverlayImportError {
+    /// 把 bed2 roster 错误转换为 [`CustomBed2MinionOverlayImportError::Roster`] 变体。
     fn from(error: CustomBed2RosterImportError) -> Self { Self::Roster(error) }
 }
 
 impl From<CustomMixedRosterImportError> for CustomBed2MinionOverlayImportError {
+    /// 把混合 roster 错误转换为 [`CustomBed2MinionOverlayImportError::MixedRoster`] 变体。
     fn from(error: CustomMixedRosterImportError) -> Self { Self::MixedRoster(error) }
 }
 
 impl From<CustomBed2SummonTemplateImportError> for CustomBed2MinionOverlayImportError {
+    /// 把召唤模板导入错误转换为 [`CustomBed2MinionOverlayImportError::Summon`] 变体。
     fn from(error: CustomBed2SummonTemplateImportError) -> Self { Self::Summon(error) }
 }
 
 impl From<CustomBed2ShadowTemplateImportError> for CustomBed2MinionOverlayImportError {
+    /// 把影袭模板导入错误转换为 [`CustomBed2MinionOverlayImportError::Shadow`] 变体。
     fn from(error: CustomBed2ShadowTemplateImportError) -> Self { Self::Shadow(error) }
 }
 
 impl From<CustomBed2ZombieTemplateImportError> for CustomBed2MinionOverlayImportError {
+    /// 把亡灵模板导入错误转换为 [`CustomBed2MinionOverlayImportError::Zombie`] 变体。
     fn from(error: CustomBed2ZombieTemplateImportError) -> Self { Self::Zombie(error) }
 }
 
 impl From<SlotError> for CustomBed2MinionOverlayImportError {
+    /// 把槽错误转换为 [`CustomBed2MinionOverlayImportError::Slot`] 变体。
     fn from(error: SlotError) -> Self { Self::Slot(error) }
 }
 
@@ -952,22 +970,27 @@ pub enum CustomRuntimeImportError {
 }
 
 impl From<CustomBed2RosterImportError> for CustomRuntimeImportError {
+    /// 把 bed2 roster 错误转换为 [`CustomRuntimeImportError::Bed2Roster`] 变体。
     fn from(error: CustomBed2RosterImportError) -> Self { Self::Bed2Roster(error) }
 }
 
 impl From<CustomMixedRosterImportError> for CustomRuntimeImportError {
+    /// 把混合 roster 错误转换为 [`CustomRuntimeImportError::MixedRoster`] 变体。
     fn from(error: CustomMixedRosterImportError) -> Self { Self::MixedRoster(error) }
 }
 
 impl From<CustomBed2MinionOverlayImportError> for CustomRuntimeImportError {
+    /// 把使魔 overlay 导入错误转换为 [`CustomRuntimeImportError::Bed2MinionOverlay`] 变体。
     fn from(error: CustomBed2MinionOverlayImportError) -> Self { Self::Bed2MinionOverlay(error) }
 }
 
 impl From<RuntimeBattleInitError> for CustomRuntimeImportError {
+    /// 把战斗初始化错误转换为 [`CustomRuntimeImportError::BattleInit`] 变体。
     fn from(error: RuntimeBattleInitError) -> Self { Self::BattleInit(error) }
 }
 
 impl From<RuntimeReadyError> for CustomRuntimeImportError {
+    /// 把就绪校验错误转换为 [`CustomRuntimeImportError::NotReady`] 变体。
     fn from(error: RuntimeReadyError) -> Self { Self::NotReady(error) }
 }
 

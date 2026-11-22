@@ -7,6 +7,7 @@
 use super::*;
 
 impl Updator {
+    /// 构造更新器：保存连接与配置，并恢复玩家状态快照。
     pub(super) fn new(client: Client, config: Config) -> Self {
         eprintln!("[start] Updator已启动");
         let snapshot = load_member_state(&config.state_dir);
@@ -75,6 +76,7 @@ impl Updator {
         }
     }
 
+    /// 按 cron 常驻运行：等待下一个触发点执行一轮，并响应退出信号。
     pub(super) async fn run_forever(&mut self) -> Result<()> {
         let schedule = parse_cron_schedule(&self.config.cron_schedule)?;
         eprintln!("[cron] schedule={}", self.config.cron_schedule);
@@ -102,6 +104,7 @@ impl Updator {
         }
     }
 
+    /// 执行一个匹配轮次：先保活，再逐组处理，最后做周期性维护与状态落盘。
     pub(super) async fn run_round(&mut self) -> Result<()> {
         eprintln!("[tick] 天梯匹配轮次开始 {}", Utc::now().to_rfc3339());
         if let Err(err) = self.ensure_postgres_connected().await {
@@ -141,6 +144,7 @@ impl Updator {
         Ok(())
     }
 
+    /// 检查进程 RSS；超过上限时打印并退出进程。
     pub(super) fn check_memory_usage(&self) {
         if let Some(used_mb) = current_rss_mb() {
             eprintln!("[mem] {used_mb}MB");
@@ -151,6 +155,7 @@ impl Updator {
         }
     }
 
+    /// 单组完整流程：读数、handicap、匹配、对战与写回，并分阶段计时。
     pub(super) async fn process_all_players(&mut self, group: &str) -> Result<()> {
         // 分阶段耗时：用来判断"匹配"到底值不值得优化（线上实测对战占绝大部分）。
         let mut stage = std::time::Instant::now();
@@ -269,6 +274,7 @@ impl Updator {
         Ok(())
     }
 
+    /// 概率化取整：小数部分以自身概率进位。
     pub(super) fn probabilistic_round(&mut self, value: f64) -> i32 {
         let floor = value.floor();
         if self.rng.f64() < value - floor {
@@ -278,13 +284,16 @@ impl Updator {
         }
     }
 
+    /// 按设定精度对 handicap 做概率化舍入。
     pub(super) fn round_handicap(&mut self, value: f64) -> f64 {
         let scale = 10_f64.powi(HANDICAP_PRECISION as i32);
         self.probabilistic_round(value * scale) as f64 / scale
     }
 
+    /// 取 [-a, a) 区间内的均匀随机数。
     pub(super) fn random_in_range(&mut self, a: f64) -> f64 { self.rng.f64() * 2.0 * a - a }
 
+    /// Fisher-Yates 洗牌。
     pub(super) fn shuffle<T>(&mut self, values: &mut [T]) {
         for i in (1..values.len()).rev() {
             let j = self.rng.usize(..=i);
@@ -293,6 +302,7 @@ impl Updator {
     }
 }
 
+/// 从 /proc/self/status 读取 VmRSS（MB）；非 Linux 或解析失败返回 None。
 pub(super) fn current_rss_mb() -> Option<u64> {
     let status = std::fs::read_to_string("/proc/self/status").ok()?;
     for line in status.lines() {

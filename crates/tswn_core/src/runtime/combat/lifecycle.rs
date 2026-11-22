@@ -6,8 +6,11 @@ fn passive_decision_skill(export_name: &str) -> bool {
 }
 use smallvec::SmallVec;
 
+/// 内置静态 handler 的能力声明：不需要读取队友或敌人。
 const NO_EXTENSION_CAPABILITIES: &[ExtensionCapability] = &[];
+/// 内置静态 handler 的能力声明：需要读取队友（如保护）。
 const READ_ALLIES_CAPABILITY: &[ExtensionCapability] = &[ExtensionCapability::ReadAllies];
+/// 内置静态 handler 的能力声明：需要同时读取队友与敌人（如各类 Boss 感染状态）。
 const READ_ALLIES_AND_ENEMIES_CAPABILITIES: &[ExtensionCapability] =
     &[ExtensionCapability::ReadAllies, ExtensionCapability::ReadEnemies];
 
@@ -167,6 +170,7 @@ impl CombatRuntime {
         self.builtin_static_skill_handler(skill_id).is_some()
     }
 
+    /// 按技能导出名返回内置静态 skill handler 及其能力要求；未命中内置表时返回 `None`。
     fn builtin_static_skill_handler(&self, skill_id: SkillId) -> Option<(SkillHandlerFn, &'static [ExtensionCapability])> {
         let export_name = self.registry.skill(skill_id)?.export_name.as_str();
         match export_name {
@@ -192,6 +196,7 @@ impl CombatRuntime {
         self.builtin_static_state_handler(state_id).is_some()
     }
 
+    /// 按状态导出名返回内置静态 state handler 及其能力要求；未命中内置表时返回 `None`。
     fn builtin_static_state_handler(&self, state_id: StateId) -> Option<(StateHandlerFn, &'static [ExtensionCapability])> {
         let export_name = self.registry.state(state_id)?.export_name.as_str();
         match export_name {
@@ -746,12 +751,14 @@ impl CombatRuntime {
         action_intercepted
     }
 
+    /// 计划中是否包含 Boss 版新冠感染的 PRE_ACTION 条目；混合感染执行时据此要求携带 action smart 判定。
     fn has_boss_infection_pre_actions(&self, plan: &StateHookPlan) -> bool {
         plan.entries
             .iter()
             .any(|entry| entry.legacy_order_key == PLAIN_COVID_INFECTION_STATE_KEY && self.is_builtin_infection_pre_action(entry))
     }
 
+    /// 判断状态条目是否为 Boss 版新冠或懒感染的内置 PRE_ACTION 条目。
     fn is_builtin_infection_pre_action(&self, entry: &StateHookPlanEntry) -> bool {
         let export = match entry.legacy_order_key {
             PLAIN_COVID_INFECTION_STATE_KEY => DEFAULT_CORE_COVID_INFECTION_STATE_EXPORT,

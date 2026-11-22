@@ -124,6 +124,7 @@ pub enum RuntimeBuildError {
 }
 
 impl std::fmt::Display for RuntimeBuildError {
+    /// 显示构造错误：区分默认 profile 构建失败与阵容导入失败，均附内部错误的调试信息。
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Profile(error) => write!(f, "default runtime profile failed: {error:?}"),
@@ -135,14 +136,17 @@ impl std::fmt::Display for RuntimeBuildError {
 impl std::error::Error for RuntimeBuildError {}
 
 impl From<DefaultCustomRuntimeProfileError> for RuntimeBuildError {
+    /// 把默认 profile 错误转换为 [`RuntimeBuildError::Profile`] 变体。
     fn from(error: DefaultCustomRuntimeProfileError) -> Self { Self::Profile(error) }
 }
 
 impl From<CustomRuntimeImportError> for RuntimeBuildError {
+    /// 把导入错误转换为 [`RuntimeBuildError::Import`] 变体。
     fn from(error: CustomRuntimeImportError) -> Self { Self::Import(error) }
 }
 
 impl std::fmt::Display for RuntimeReadyError {
+    /// 显示就绪校验错误：逐个列出缺失 skill handler 的导出名/ID 及其使用来源。
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("runtime missing skill handlers: ")?;
         for (index, missing) in self.missing_skill_handlers.iter().enumerate() {
@@ -288,6 +292,7 @@ impl RuntimeRunner {
         }
     }
 
+    /// 由模板列表推导输入组：按队伍分桶实体下标，空队丢弃。
     fn input_groups_from_templates(players: &[PlayerTemplate]) -> Vec<Vec<EntityIdx>> {
         let team_count = players.iter().map(|player| player.team).max().map_or(0, |team| team + 1);
         let mut groups = vec![Vec::new(); team_count];
@@ -565,6 +570,7 @@ impl RuntimeRunner {
     /// 检查当前实体与模板槽使用的技能是否已安装 handler。
     pub fn validate_ready(&self) -> Result<(), RuntimeReadyError> { self.runtime.validate_ready() }
 
+    /// 批量安装 skill handler 绑定，连同各自声明的能力一起写入。
     fn install_skill_handler_bindings(&mut self, bindings: Vec<RuntimeSkillHandlerBinding>) {
         for binding in bindings {
             self.runtime
@@ -572,6 +578,7 @@ impl RuntimeRunner {
         }
     }
 
+    /// 批量安装 state handler 绑定，连同各自声明的能力一起写入。
     fn install_state_handler_bindings(&mut self, bindings: Vec<RuntimeStateHandlerBinding>) {
         for binding in bindings {
             self.runtime
@@ -579,12 +586,14 @@ impl RuntimeRunner {
         }
     }
 
+    /// 就绪校验；未就绪时 panic 并附完整错误文本。
     fn assert_ready(&self) {
         if let Err(error) = self.validate_ready() {
             panic!("{error}");
         }
     }
 
+    /// 跳过就绪校验，直接推进一个最小回合。
     fn run_round_unchecked(&mut self) -> RoundOutcome { self.runtime.run_minimal_round() }
 
     /// 推进一个 Runtime 回合；可能没有可见帧。未就绪时会 panic，高层会话会先校验。
@@ -754,6 +763,7 @@ impl PreparedRuntimeRunner {
         self.reset_with_seed_state(runner, |roster, state| roster.refill_seed_state_with_rng(state, rng))
     }
 
+    /// 用回调填充 seed 状态并复位 runner：先恢复可变战斗状态，再套用 seed 与输入组。
     fn reset_with_seed_state(
         &self,
         runner: &mut RuntimeRunner,
@@ -879,11 +889,13 @@ impl PreparedRuntimeRunner {
         self.reset_with_score_init(runner, init, fixed_count, roster_buffers)
     }
 
+    /// 用准备初始化数据复位 runner：实体整体克隆原型，再走统一收尾。
     fn reset_with_init(&self, runner: &mut RuntimeRunner, init: PreparedBattleInit) -> Result<(), CustomRuntimeImportError> {
         runner.runtime.entities.clone_from(&self.prototype.runtime.entities);
         self.finish_reset_with_init(runner, init, None)
     }
 
+    /// 用 score 初始化数据复位：可复用 score 缓冲时只恢复固定实体，否则回退完整复位。
     fn reset_with_score_init(
         &self,
         runner: &mut RuntimeRunner,
@@ -903,6 +915,7 @@ impl PreparedRuntimeRunner {
         self.finish_reset_with_init(runner, init, Some(roster_buffers))
     }
 
+    /// 复位的统一收尾：恢复共享状态、套用初始化数据、按需回收 score 缓冲，并做就绪校验。
     fn finish_reset_with_init(
         &self,
         runner: &mut RuntimeRunner,
@@ -928,11 +941,13 @@ impl PreparedRuntimeRunner {
         Ok(())
     }
 
+    /// 只恢复每局可变的实体战斗状态，再走共享状态复位。
     fn reset_mutable_battle_state(&self, runner: &mut RuntimeRunner) {
         runner.runtime.entities.reset_battle_state_from(&self.prototype.runtime.entities);
         self.reset_shared_battle_state(runner);
     }
 
+    /// 复位跨实体共享状态：调度器、效果队列、scratch、槽位、外部脚本与回合计数。
     fn reset_shared_battle_state(&self, runner: &mut RuntimeRunner) {
         runner.runtime.scheduler.clone_from(&self.prototype.runtime.scheduler);
         runner.runtime.effects.clear();
@@ -945,6 +960,7 @@ impl PreparedRuntimeRunner {
         runner.runtime.round = 0;
     }
 
+    /// 复用目标向量容量，从来源整体复制输入组。
     fn clone_input_groups_reusing(target: &mut Vec<Vec<EntityIdx>>, source: &[Vec<EntityIdx>]) {
         target.truncate(source.len());
         target.resize_with(source.len(), Vec::new);

@@ -312,6 +312,7 @@ impl<'a> StateContext<'a> {
         Ok(())
     }
 
+    /// 校验上下文是否持有指定扩展能力；缺失时返回 [`EffectContextError::MissingCapability`]。
     fn require(&self, capability: ExtensionCapability) -> Result<(), EffectContextError> {
         if self.capabilities.contains(&capability) {
             Ok(())

@@ -375,6 +375,7 @@ impl PreparedBattleInit {
         }
     }
 
+    /// 由最小代蓝图构造使魔模板：按种类绑定玩家类型、导入技能，并带上克隆构建与复用开关。
     fn template_from_namerena_minion(
         blueprint: crate::namerena::PreparedMinionBlueprint,
         team: usize,
@@ -415,12 +416,14 @@ impl PreparedBattleInit {
         template
     }
 
+    /// 计算子分身名字系数：战斗名与队伍名的评估值取较大者，队伍值先减 6。
     fn namerena_child_clone_name_factor(player: &crate::namerena::PreparedPlayer, eval_rq: f64) -> f64 {
         let factor_name = crate::namerena::eval_name::eval_str_common_with_rq(player.combat_name(), true, eval_rq);
         let factor_team = crate::namerena::eval_name::eval_str_common_with_rq(&player.clan_name, true, eval_rq);
         factor_name.max(factor_team - 6.0)
     }
 
+    /// 由准备玩家构造基础模板：身份名、八围、行动点、技能与永久蓄力等逐项落地。
     fn template_from_namerena_player(
         player: &crate::namerena::PreparedPlayer,
         id: PlrId,

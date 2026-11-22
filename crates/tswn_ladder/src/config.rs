@@ -6,6 +6,7 @@
 
 use super::*;
 
+/// 天梯运行配置：数据库连接、cron、分组与各项调参。
 #[derive(Debug, Clone)]
 pub(super) struct Config {
     pub(super) database_url: String,
@@ -29,6 +30,7 @@ pub(super) struct Config {
 }
 
 impl Config {
+    /// 从环境变量读取配置：必填项缺失报错，可选项走默认值。
     pub(super) fn from_env() -> Result<Self> {
         let database_url = env::var("DATABASE_URL").context("DATABASE_URL is required")?;
         let cron_schedule = env::var("LADDER_CRON_SCHEDULE").unwrap_or_else(|_| "* * * * *".to_string());
@@ -82,6 +84,7 @@ fn read_env_f64(name: &str, default: f64) -> f64 {
     }
 }
 
+/// 解析 cron 表达式：5 段形式按“分 时 日 月 周”补 0 秒前缀。
 pub(super) fn parse_cron_schedule(value: &str) -> Result<Schedule> {
     let parts = value.split_whitespace().count();
     if parts == 5 {
@@ -92,6 +95,7 @@ pub(super) fn parse_cron_schedule(value: &str) -> Result<Schedule> {
     Schedule::from_str(value).with_context(|| format!("parse cron schedule {value:?}"))
 }
 
+/// 读取布尔环境变量，兼容 1/true/yes/on 与 0/false/no/off；无法识别用默认值。
 pub(super) fn read_env_bool(name: &str, default: bool) -> bool {
     match env::var(name).ok().map(|x| x.to_ascii_lowercase()) {
         Some(value) if matches!(value.as_str(), "1" | "true" | "yes" | "y" | "on") => true,
@@ -100,6 +104,7 @@ pub(super) fn read_env_bool(name: &str, default: bool) -> bool {
     }
 }
 
+/// 等待退出信号：Unix 上同时监听 SIGINT 与 SIGTERM，其他平台仅 ctrl-c。
 pub(super) async fn shutdown_signal() -> Result<()> {
     #[cfg(unix)]
     {

@@ -10,17 +10,26 @@
 //! `NAME_RANKER_DB` / `NAME_RANKER_BIND` 覆盖库路径和地址，默认本机端口 3001。
 //! 启动和后台任务将结果写入数据库；它作为内部服务单独构建和部署。
 
+/// ABCP 方向性校准参数与特征查询。
 mod abcp_calibration;
+/// SQLite 持久化：名字、靶子、配对分、ABCP 分数与结果。
 mod db;
+/// 请求/响应与运行状态等数据模型。
 mod model;
+/// 名字档案：玩家构建、技能等效值与文字类型。
 mod name_profile;
+/// 输入文本解析。
 mod parser;
+/// 搭档拟合排名算法。
 mod ranker;
+/// 应用服务与后台重算任务。
 mod service;
+/// Axum HTTP 接口。
 mod web;
 use anyhow::Context;
 use std::net::SocketAddr;
 #[tokio::main]
+/// 服务入口：初始化日志、按环境变量打开数据库与绑定地址并启动 Axum。
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
     let path = std::env::var("NAME_RANKER_DB").unwrap_or_else(|_| "name_ranker.sqlite3".into());

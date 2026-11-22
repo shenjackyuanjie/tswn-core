@@ -24,9 +24,11 @@ pub struct PyInvalidInputError;
 
 #[pymethods]
 impl PyInvalidInputError {
+    /// 构造 InvalidInputError；message 仅为兼容 Python 签名保留。
     #[new]
     fn new(_message: &pyo3::Bound<'_, PyAny>) -> Self { Self }
 
+    /// 返回 InvalidInputError 的稳定错误码。
     #[getter]
     fn code(&self) -> &'static str { core_cli_api::CliApiErrorCode::InvalidInput.as_str() }
 }
@@ -38,9 +40,11 @@ pub struct PyCliRuntimeError;
 
 #[pymethods]
 impl PyCliRuntimeError {
+    /// 构造 TswnRuntimeError；message 仅为兼容 Python 签名保留。
     #[new]
     fn new(_message: &pyo3::Bound<'_, PyAny>) -> Self { Self }
 
+    /// 返回 TswnRuntimeError 的稳定错误码。
     #[getter]
     fn code(&self) -> &'static str { core_cli_api::CliApiErrorCode::RuntimeFailed.as_str() }
 }
@@ -71,21 +75,27 @@ impl From<core_cli_api::WinRateResult> for PyWinRateResult {
 
 #[pymethods]
 impl PyWinRateResult {
+    /// 胜场计数。
     #[getter]
     fn wins(&self) -> usize { self.wins }
 
+    /// 总试验数。
     #[getter]
     fn total(&self) -> usize { self.total }
 
+    /// 胜率百分比。
     #[getter]
     fn win_rate(&self) -> f64 { self.win_rate }
 
+    /// 初始化耗时（纳秒）。
     #[getter]
     fn init_nanos(&self) -> u128 { self.init_nanos }
 
+    /// 战斗耗时（纳秒）。
     #[getter]
     fn fight_nanos(&self) -> u128 { self.fight_nanos }
 
+    /// 返回调试用文本表示。
     fn __repr__(&self) -> String {
         format!(
             "WinRateResult(wins={}, total={}, win_rate={:.6})",
@@ -122,24 +132,31 @@ impl From<core_cli_api::ScoreResult> for PyScoreResult {
 
 #[pymethods]
 impl PyScoreResult {
+    /// 单项评分分数。
     #[getter]
     fn score(&self) -> f64 { self.score }
 
+    /// 胜场计数。
     #[getter]
     fn wins(&self) -> usize { self.wins }
 
+    /// 总试验数。
     #[getter]
     fn total(&self) -> usize { self.total }
 
+    /// 失败或耗尽保护预算的试验数。
     #[getter]
     fn errors(&self) -> usize { self.errors }
 
+    /// 初始化耗时（纳秒）。
     #[getter]
     fn init_nanos(&self) -> u128 { self.init_nanos }
 
+    /// 战斗耗时（纳秒）。
     #[getter]
     fn fight_nanos(&self) -> u128 { self.fight_nanos }
 
+    /// 返回调试用文本表示。
     fn __repr__(&self) -> String {
         format!(
             "ScoreResult(score={:.6}, wins={}, total={}, errors={})",
@@ -172,18 +189,23 @@ impl From<core_cli_api::NamerPfResult> for PyNamerPfResult {
 
 #[pymethods]
 impl PyNamerPfResult {
+    /// 名字组成员列表。
     #[getter]
     fn group(&self) -> Vec<String> { self.group.clone() }
 
+    /// 各评分项名称，与 scores 同序。
     #[getter]
     fn modes(&self) -> Vec<String> { self.modes.clone() }
 
+    /// 各评分项分数。
     #[getter]
     fn scores(&self) -> Vec<f64> { self.scores.clone() }
 
+    /// 各项分数总和。
     #[getter]
     fn total_score(&self) -> f64 { self.total_score }
 
+    /// 按精度把分数格式化为竖线分隔的一行文本。
     fn as_line(&self, precision: usize) -> String {
         self.scores
             .iter()
@@ -194,6 +216,7 @@ impl PyNamerPfResult {
             .join("|")
     }
 
+    /// 返回调试用文本表示。
     fn __repr__(&self) -> String {
         format!(
             "NamerPfResult(group={:?}, modes={:?}, total_score={:.6})",
@@ -236,33 +259,43 @@ impl From<core_cli_api::BatchRateResult> for PyBatchRateResult {
 
 #[pymethods]
 impl PyBatchRateResult {
+    /// 候选组标签。
     #[getter]
     fn label(&self) -> String { self.label.clone() }
 
+    /// 对各靶子胜率的平均值。
     #[getter]
     fn avg_win_rate(&self) -> f64 { self.avg_win_rate }
 
+    /// 按累计 wins/total 计算的胜率。
     #[getter]
     fn aggregate_win_rate(&self) -> f64 { self.aggregate_win_rate }
 
+    /// 累计胜场。
     #[getter]
     fn wins(&self) -> usize { self.wins }
 
+    /// 累计场数。
     #[getter]
     fn total(&self) -> usize { self.total }
 
+    /// 有效对战数。
     #[getter]
     fn valid_matchups(&self) -> usize { self.valid_matchups }
 
+    /// 跳过的对战数。
     #[getter]
     fn skipped_matchups(&self) -> usize { self.skipped_matchups }
 
+    /// 初始化耗时（纳秒）。
     #[getter]
     fn init_nanos(&self) -> u128 { self.init_nanos }
 
+    /// 战斗耗时（纳秒）。
     #[getter]
     fn fight_nanos(&self) -> u128 { self.fight_nanos }
 
+    /// 返回调试用文本表示。
     fn __repr__(&self) -> String {
         format!(
             "BatchRateResult(label={:?}, avg_win_rate={:.6}, valid_matchups={}, skipped_matchups={})",
@@ -311,42 +344,55 @@ impl From<core_cli_api::PairRateResult> for PyPairRateResult {
 
 #[pymethods]
 impl PyPairRateResult {
+    /// 玩家标签。
     #[getter]
     fn label(&self) -> String { self.label.clone() }
 
+    /// 最终汇总分数。
     #[getter]
     fn final_score(&self) -> f64 { self.final_score }
 
+    /// 参与汇总的头部搭档数。
     #[getter]
     fn head(&self) -> usize { self.head }
 
+    /// 实际选中的搭档数。
     #[getter]
     fn selected(&self) -> usize { self.selected }
 
+    /// 头部搭档与分数副本。
     #[getter]
     fn top_pairs(&self) -> Vec<(String, f64)> { self.top_pairs.clone() }
 
+    /// 按累计 wins/total 计算的胜率。
     #[getter]
     fn aggregate_win_rate(&self) -> f64 { self.aggregate_win_rate }
 
+    /// 累计胜场。
     #[getter]
     fn wins(&self) -> usize { self.wins }
 
+    /// 累计场数。
     #[getter]
     fn total(&self) -> usize { self.total }
 
+    /// 有效对战数。
     #[getter]
     fn valid_matchups(&self) -> usize { self.valid_matchups }
 
+    /// 跳过的对战数。
     #[getter]
     fn skipped_matchups(&self) -> usize { self.skipped_matchups }
 
+    /// 初始化耗时（纳秒）。
     #[getter]
     fn init_nanos(&self) -> u128 { self.init_nanos }
 
+    /// 战斗耗时（纳秒）。
     #[getter]
     fn fight_nanos(&self) -> u128 { self.fight_nanos }
 
+    /// 返回调试用文本表示。
     fn __repr__(&self) -> String {
         format!(
             "PairRateResult(label={:?}, final_score={:.6}, selected={}, head={})",
@@ -385,27 +431,35 @@ impl From<core_cli_api::IconInfo> for PyIconInfo {
 
 #[pymethods]
 impl PyIconInfo {
+    /// 图标边框样式索引。
     #[getter]
     fn border_style(&self) -> usize { self.border_style }
 
+    /// 形状索引列表。
     #[getter]
     fn shapes(&self) -> Vec<usize> { self.shapes.clone() }
 
+    /// 背景色索引。
     #[getter]
     fn bg_color_idx(&self) -> usize { self.bg_color_idx }
 
+    /// 背景色 RGB。
     #[getter]
     fn bg_color(&self) -> (u8, u8, u8) { self.bg_color }
 
+    /// 前景色索引列表。
     #[getter]
     fn fg_color_indices(&self) -> Vec<usize> { self.fg_color_indices.clone() }
 
+    /// 前景色 RGB 列表。
     #[getter]
     fn fg_colors(&self) -> Vec<(u8, u8, u8)> { self.fg_colors.clone() }
 
+    /// 消耗的颜色数量。
     #[getter]
     fn colors_consumed(&self) -> usize { self.colors_consumed }
 
+    /// 返回调试用文本表示。
     fn __repr__(&self) -> String {
         format!(
             "IconInfo(border_style={}, shapes={:?}, bg_color={:?}, fg_colors={:?})",
@@ -414,6 +468,7 @@ impl PyIconInfo {
     }
 }
 
+/// 把 core CliApiError 映射为对应的 Python 异常，保持稳定 code。
 pub(crate) fn map_cli_error(err: CliApiError) -> pyo3::PyErr {
     match err {
         CliApiError::InvalidInput(message) => pyo3::PyErr::new::<PyInvalidInputError, _>(message),
@@ -425,6 +480,7 @@ pub(crate) fn map_cli_error(err: CliApiError) -> pyo3::PyErr {
     }
 }
 
+/// 把规范回放运行转换为 Python dict。
 fn normalized_run_to_pydict<'py>(py: Python<'py>, run: JsonRuntimeNormalizedRun) -> PyResult<pyo3::Bound<'py, PyDict>> {
     let dict = PyDict::new(py);
     let rounds = run
@@ -439,6 +495,7 @@ fn normalized_run_to_pydict<'py>(py: Python<'py>, run: JsonRuntimeNormalizedRun)
     Ok(dict)
 }
 
+/// 把单轮结果转换为 Python dict，含动作与更新帧列表。
 fn normalized_outcome_to_pydict<'py>(
     py: Python<'py>,
     outcome: JsonRuntimeNormalizedOutcome,
@@ -484,6 +541,7 @@ fn normalized_outcome_to_pydict<'py>(
     Ok(dict)
 }
 
+/// 把单条更新帧转换为 Python dict。
 fn normalized_update_frame_to_pydict<'py>(py: Python<'py>, frame: JsonRuntimeUpdateFrame) -> PyResult<pyo3::Bound<'py, PyDict>> {
     let dict = PyDict::new(py);
     dict.set_item("message", frame.message)?;
@@ -683,6 +741,7 @@ pub fn default_custom_runtime_normalized_run(py: Python<'_>, raw: String, max_ro
     Ok(normalized_run_to_pydict(py, run.into())?.into_any().unbind())
 }
 
+/// 按精度格式化分数；绝对值小于半个末位时归零。
 fn format_rate(value: f64, precision: usize) -> String {
     let value = if value.abs() < 0.5_f64 * 10_f64.powi(-(precision as i32)) {
         0.0
@@ -878,8 +937,10 @@ mod tests {
 pub struct PyInvalidArgumentError;
 #[pymethods]
 impl PyInvalidArgumentError {
+    /// 构造 InvalidArgumentError；message 仅为兼容 Python 签名保留。
     #[new]
     fn new(_message: &pyo3::Bound<'_, PyAny>) -> Self { Self }
+    /// 返回 InvalidArgumentError 的稳定错误码。
     #[getter]
     fn code(&self) -> &'static str { core_cli_api::CliApiErrorCode::InvalidArgument.as_str() }
 }
@@ -890,8 +951,10 @@ impl PyInvalidArgumentError {
 pub struct PyUnsupportedOptionError;
 #[pymethods]
 impl PyUnsupportedOptionError {
+    /// 构造 UnsupportedOptionError；message 仅为兼容 Python 签名保留。
     #[new]
     fn new(_message: &pyo3::Bound<'_, PyAny>) -> Self { Self }
+    /// 返回 UnsupportedOptionError 的稳定错误码。
     #[getter]
     fn code(&self) -> &'static str { core_cli_api::CliApiErrorCode::UnsupportedOption.as_str() }
 }
@@ -902,8 +965,10 @@ impl PyUnsupportedOptionError {
 pub struct PyInternalError;
 #[pymethods]
 impl PyInternalError {
+    /// 构造 TswnInternalError；message 仅为兼容 Python 签名保留。
     #[new]
     fn new(_message: &pyo3::Bound<'_, PyAny>) -> Self { Self }
+    /// 返回 TswnInternalError 的稳定错误码。
     #[getter]
     fn code(&self) -> &'static str { core_cli_api::CliApiErrorCode::InternalError.as_str() }
 }

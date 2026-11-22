@@ -4,6 +4,7 @@ use super::*;
 ///
 /// 此处通过日志行为间接约束数值边界，不直接断言内部 clamp 实现或单独冻结总分。
 pub fn large_66<E: crate::EngineAdapter>() {
+    /// large_66 用例的内嵌对局输入。
     const CASE: &str = r#"太阳帝国 #Sc2WCffta@Shabby_fish
 机械革命 #nYHCsQ1ak@Shabby_fish
 

@@ -380,6 +380,7 @@ pub enum InsertGroupOutcome {
     Duplicated(GroupId),
 }
 
+/// 在调用方已持有数据库锁的上下文中，按 position 升序读取分组成员名。
 pub(super) fn load_members_locked(conn: &Connection, group_id: GroupId) -> rusqlite::Result<Vec<String>> {
     let mut stmt = conn.prepare("SELECT member FROM group_members WHERE group_id = ?1 ORDER BY position ASC")?;
     let rows = stmt.query_map(params![group_id], |row| row.get(0))?;

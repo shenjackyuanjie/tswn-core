@@ -50,13 +50,21 @@
 //! 打包、网页运行、Node/Bun 验证和资源路径见
 //! [WASM 使用说明](https://github.com/shenjackyuanjie/tswn-core/tree/main/crates/tswn_wasm)。
 
+/// 对局会话的 wasm 绑定。
 mod battle;
+/// tsify 边界转换辅助。
 mod convert;
+/// wasm 层错误类型与构造函数。
 mod error;
+/// 回放帧、状态与更新的视图转换。
 mod fight;
+/// 向 JS 暴露的数据模型。
 mod model;
+/// 旧版 UpdateView 的状态标签兼容。
 mod render;
+/// 评分测试会话导出。
 mod score_test;
+/// 分批胜率会话导出。
 mod win_rate;
 
 use std::sync::Once;
@@ -77,6 +85,7 @@ pub use score_test::ScoreTestSession;
 use wasm_bindgen::prelude::*;
 pub use win_rate::WinRateSession;
 
+/// 确保 panic hook 只安装一次。
 static PANIC_HOOK: Once = Once::new();
 
 /// 仅安装一次控制台 panic hook；用于诊断，不提供 catch 或业务错误转换。
@@ -366,6 +375,7 @@ pub fn default_custom_runtime_normalized_run(raw_input: String, max_rounds: usiz
     default_custom_runtime_normalized_run_impl(raw_input, max_rounds).and_then(|run| ts_out(&run))
 }
 
+/// 调用 core 默认 custom Runtime 规范回放，并转换为 JS 视图。
 fn default_custom_runtime_normalized_run_impl(raw_input: String, max_rounds: usize) -> WasmResult<RuntimeNormalizedRunView> {
     tswn_core::cli_api::default_custom_runtime_normalized_run(&raw_input, max_rounds)
         .map(tswn_core::cli_api::JsonRuntimeNormalizedRun::from)
@@ -408,7 +418,7 @@ pub fn battle_replay_with_actions(
 /// 卡牌前端的兼容入口：入参校验与 [`battle_replay_with_actions`] 相同，运行时语义更宽松。
 ///
 /// 点名的技能放不出来（未装备、MP 不足）时降级为普通攻击，并在战报里写
-/// 「[1]的指定技能无法生效，改为普通攻击」；选不出目标时暂停并保留这一手。
+/// 「\[1\]的指定技能无法生效，改为普通攻击」；选不出目标时暂停并保留这一手。
 /// 非法三元组、编号越界与不存在的行动者仍然抛 INVALID_ARGUMENT。
 #[wasm_bindgen(unchecked_return_type = "BattleReplay")]
 pub fn battle_replay_forced(

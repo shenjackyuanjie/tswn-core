@@ -281,6 +281,7 @@ impl PreparedBattleRoster {
         Self::from_groups_with_options(raw_groups, eval_rq, registry, skill_import, lazy_blueprint_players, true)
     }
 
+    /// 按原始分组构造准备 roster：逐队解析玩家规格并跳过 seed 行，交给名字竞技场构建；`team_upgrades` 控制队伍升级解析。
     fn from_groups_with_options(
         raw_groups: &[Vec<String>],
         eval_rq: f64,
@@ -382,6 +383,7 @@ impl PreparedBattleRoster {
         self.into_init_with_seed_state(state)
     }
 
+    /// 用已有 seed 状态消耗自身生成初始化数据，并按需回收 score 缓冲。
     fn into_init_with_seed_state(self, state: PreparedBattleSeed) -> PreparedBattleInit {
         let Self {
             players,
@@ -447,6 +449,7 @@ impl PreparedBattleRoster {
     /// 预拼八位 profile 编号的密钥模板，并返回数字起始下标。
     /// 同名或同前缀的固定名字可能改变 seed 的位置，交给逐局排序。
     pub(in crate::runtime) fn profile_seed_key_template(&self) -> Option<(usize, Vec<u8>)> {
+        /// 预拼密钥时使用的占位 seed 行；已有 `seed:` 开头名字时放弃模板路径。
         const MARKER: &str = "seed:00000000@!";
         if self.base_names_sorted.iter().any(|name| name.starts_with("seed:")) {
             return None;
@@ -595,6 +598,7 @@ impl PreparedBattleRoster {
         state.rng = rng;
     }
 
+    /// 复用目标向量容量，把 PlrId 分组改写为 EntityIdx 分组。
     fn refill_entity_groups(target: &mut Vec<Vec<EntityIdx>>, source: &[Vec<PlrId>]) {
         Self::resize_nested_groups(target, source.len());
         for (target, source) in target.iter_mut().zip(source) {
@@ -603,6 +607,7 @@ impl PreparedBattleRoster {
         }
     }
 
+    /// 复用目标向量容量，从来源整体复制 PlrId 分组。
     fn clone_player_groups_reusing(target: &mut Vec<Vec<PlrId>>, source: &[Vec<PlrId>]) {
         target.truncate(source.len());
         target.resize_with(source.len(), Vec::new);
@@ -612,6 +617,7 @@ impl PreparedBattleRoster {
         }
     }
 
+    /// 把嵌套分组裁剪或扩容到指定队数，保留各内层向量的容量。
     fn resize_nested_groups(groups: &mut Vec<Vec<EntityIdx>>, len: usize) {
         groups.truncate(len);
         groups.resize_with(len, Vec::new);
@@ -627,6 +633,7 @@ impl PreparedBattleRoster {
 mod native_roster_tests {
     use super::*;
 
+    /// 测试辅助：逐字段比对两份 roster，断言消息附上下文。
     fn assert_rosters_equal(actual: &PreparedBattleRoster, expected: &PreparedBattleRoster, context: &str) {
         assert_eq!(actual.players, expected.players, "{context}: players");
         assert_eq!(actual.player_alive, expected.player_alive, "{context}: alive flags");

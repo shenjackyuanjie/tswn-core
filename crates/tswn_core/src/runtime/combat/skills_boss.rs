@@ -96,6 +96,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 读取马里奥 Boss 状态中记录的火系技能等级；没有该状态时返回 0。
     fn plain_mario_fire_level(&self, actor: EntityIdx) -> u32 {
         self.entities
             .get(actor)
@@ -292,6 +293,7 @@ impl CombatRuntime {
         scored.into_iter().map(|(target, _)| target).collect()
     }
 
+    /// 设置柯南的推理阶段值；推理状态必须已存在，否则 panic。
     fn set_conan_thinking(&mut self, actor: EntityIdx, value: i32) {
         let entity = self
             .entities

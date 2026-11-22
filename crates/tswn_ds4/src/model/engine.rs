@@ -267,6 +267,7 @@ impl ScoreContext {
 }
 
 #[derive(Debug, Clone, Copy)]
+/// 名称展开的中间状态：RC4 式置换表、name_base、技能频率与 46 维特征。
 struct NameCore {
     ual: [u8; 256],
     val: [u8; 256],
@@ -287,6 +288,7 @@ struct NameCore {
 }
 
 impl NameCore {
+    /// 创建全零初始化的 NameCore，last 置 -1 表示无末位技能。
     fn new() -> Self {
         Self {
             ual: [0; 256],
@@ -308,6 +310,7 @@ impl NameCore {
         }
     }
 
+    /// 以队伍字节初始化 val_base 置换表（RC4 KSA 变体），供后续名称展开复用。
     fn load_team(&mut self, team: &[u8]) {
         for i in 0..256 {
             self.val_base[i] = i as u8;
@@ -326,6 +329,7 @@ impl NameCore {
         }
     }
 
+    /// 用影子名展开置换表并计算 shadowcfz/shadowi 等影子权重（只取前 96 项）。
     fn load_shadowname(&mut self, name: &[u8]) {
         self.val = self.val_base;
         let t_len = name.len();
@@ -369,6 +373,7 @@ impl NameCore {
             + prop[7] as f64;
     }
 
+    /// 用名称展开置换表，生成 name_base、技能顺序与频率标记。
     fn load_name(&mut self, name: &[u8]) {
         self.val = self.val_base;
         let t_len = name.len();
@@ -422,6 +427,7 @@ impl NameCore {
         }
     }
 
+    /// 从置换结果收集 name_base；prefer_96 时先扫描前 96 项，不足再回退完整范围。
     fn collect_name_base_limited(&mut self, prefer_96: bool) {
         let range_first = if prefer_96 { 0..96 } else { 0..256 };
         self.ual = [0; 256];
@@ -459,6 +465,7 @@ impl NameCore {
         }
     }
 
+    /// 由 name_base 计算 46 维特征 x：HP、七项属性、技能频率与影子修正。
     fn get_43(&mut self) {
         self.base_hp.copy_from_slice(&self.name_base[0..10]);
         self.base_hp.sort_unstable();
@@ -545,6 +552,7 @@ impl NameCore {
         }
     }
 
+    /// RC4 式伪随机一步：推进 p/q 并交换置换表项，返回当前输出字节。
     fn m(&mut self) -> u8 {
         self.p = self.p.wrapping_add(1);
         self.q = self.q.wrapping_add(self.val[self.p as usize]);
@@ -552,6 +560,7 @@ impl NameCore {
         self.val[(self.val[self.p as usize].wrapping_add(self.val[self.q as usize])) as usize]
     }
 
+    /// 由两次 m() 的输出组合出 0..40 的技能索引。
     fn next_skill_index(&mut self) -> u8 {
         let u = self.m() as u16;
         let v = self.m() as u16;
@@ -560,6 +569,7 @@ impl NameCore {
 }
 
 #[inline(always)]
+/// 返回三个 u8 的中位数。
 fn median(x: u8, y: u8, z: u8) -> u8 {
     if x < y {
         if x < z { if y < z { y } else { z } } else { x }

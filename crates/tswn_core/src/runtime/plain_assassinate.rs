@@ -93,6 +93,7 @@ impl CombatRuntime {
         )
     }
 
+    /// 背刺选目评分：普通模式按随机值加仇恨；smart 按高体力权重乘以队伍人数或属性总和。
     fn score_plain_assassinate_target(&mut self, target: EntityIdx, smart: bool) -> f64 {
         let entity = self
             .entities
@@ -117,6 +118,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 取走并清空实体的待发背刺记录，同时移除对应的 PRE_ACTION lane。
     fn clear_plain_assassinate_pending(&mut self, actor: EntityIdx) -> Option<AssassinateRuntime> {
         let entity = self
             .entities

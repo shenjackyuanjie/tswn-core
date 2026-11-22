@@ -775,6 +775,7 @@ fn flush_effects_panics_on_unknown_damage_target() {
     assert!(result.is_err());
 }
 
+/// 断言把给定效果 flush 时会 panic（catch_unwind 后要求结果为 Err）。
 fn assert_effect_panics(effect: QueuedEffect) {
     let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::minimal_1v1(10, 10, 3));
     runtime.effects.push(effect);
@@ -784,6 +785,7 @@ fn assert_effect_panics(effect: QueuedEffect) {
     assert!(result.is_err());
 }
 
+/// 构造一份占位 StateEntry（无 payload、无 hook），供状态相关测试复用。
 fn dummy_state_entry() -> StateEntry {
     StateEntry {
         legacy_order_key: 999,

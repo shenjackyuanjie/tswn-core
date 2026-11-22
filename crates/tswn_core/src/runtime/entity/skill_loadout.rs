@@ -8,9 +8,11 @@ use super::*;
 use crate::namerena::EffectiveSkillWeight;
 use std::sync::Arc;
 
+/// hook 缓存按阶段分区的段数（对应 ProcMask 低 8 位）。
 const SKILL_HOOK_COUNT: usize = 8;
 static NEXT_SKILL_LOADOUT_BASELINE_ID: AtomicU64 = AtomicU64::new(1);
 
+/// 分配下一个 loadout 基线编号，用来识别外部整体替换技能表的情况。
 fn next_skill_loadout_baseline_id() -> u64 { NEXT_SKILL_LOADOUT_BASELINE_ID.fetch_add(1, Ordering::Relaxed) }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,11 +45,17 @@ pub(crate) struct CachedBuiltinActionEntry {
     pub(crate) skill: BuiltinActiveSkill,
 }
 
+/// dirty 位：当前等级被修改。
 const SKILL_DIRTY_LEVELS: u8 = 1 << 0;
+/// dirty 位：强化记录被修改。
 const SKILL_DIRTY_BOOSTS: u8 = 1 << 1;
+/// dirty 位：主动钩子顺序被修改。
 const SKILL_DIRTY_ACTIVE_HOOKS: u8 = 1 << 2;
+/// dirty 位：PRE_ACTION 顺序被修改。
 const SKILL_DIRTY_PRE_ACTION: u8 = 1 << 3;
+/// dirty 位：POST_DAMAGE 顺序被修改。
 const SKILL_DIRTY_POST_DAMAGE: u8 = 1 << 4;
+/// dirty 位：POST_ACTION 延迟条目被修改。
 const SKILL_DIRTY_DEFERRED: u8 = 1 << 5;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -91,6 +99,7 @@ pub struct SkillLoadout {
 }
 
 impl Default for SkillLoadout {
+    /// 空技能表：无技能与缓存，基线编号新建，启用掩码保守置为全量。
     fn default() -> Self {
         Self {
             skills: SmallVec::new(),
@@ -119,6 +128,7 @@ impl Default for SkillLoadout {
 }
 
 impl PartialEq for SkillLoadout {
+    /// 语义相等：只比较技能、等级、强化与权重等数据字段，忽略 hook 缓存等纯派生内容。
     fn eq(&self, other: &Self) -> bool {
         self.skills == other.skills
             && self.levels == other.levels
@@ -455,6 +465,7 @@ impl SkillLoadout {
         self.finish_hook_cache_offsets();
     }
 
+    /// 重建 hook 缓存的分段偏移与启用掩码：按 `hook_index` 顺序登记各区起止，并标记含非零等级技能的阶段。
     fn finish_hook_cache_offsets(&mut self) {
         let mut cursor = 0usize;
         self.enabled_hook_mask = 0;
@@ -478,6 +489,7 @@ impl SkillLoadout {
         hook.0 & !absent_hooks != 0
     }
 
+    /// 仅按当前等级重算启用掩码；缓存未就绪时跳过。
     fn refresh_enabled_hook_mask(&mut self) {
         if !self.hook_cache_ready {
             return;
@@ -511,6 +523,7 @@ impl SkillLoadout {
         self.action_cache_ready.then_some(self.action_cache.as_slice())
     }
 
+    /// 作废 hook 与行动缓存：清空条目、偏移归零，启用掩码保守置为全量。
     fn invalidate_hook_cache(&mut self) {
         self.action_cache.clear();
         self.action_cache_ready = false;
@@ -889,6 +902,7 @@ impl SkillLoadout {
         }
     }
 
+    /// 把来源等级合并到指定 lane：仅在提升时写入；从 0 抬到正等级时重排行动序与 POST_DAMAGE 序，并作废 hook 缓存。
     fn merge_level_at(&mut self, owner_idx: usize, source_level: u32) -> bool {
         let owner_level = &mut self.levels[owner_idx];
         if source_level <= *owner_level {

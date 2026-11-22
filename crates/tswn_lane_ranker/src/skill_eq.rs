@@ -9,13 +9,20 @@
 
 use crate::model::SkillValue;
 
+/// 置换表长度：256，与 C++ 实现一致。
 const N: usize = 256;
+/// name_base 长度：128。
 const M: usize = 128;
+/// 技能频率扫描区间长度：64。
 const K: usize = 64;
+/// 技能总数：40。
 const SKILL_CNT: usize = 40;
+/// 计入文字类型的等效熟练度门槛：25。
 const TYPE_SKILL_THRESHOLD: f64 = 25.0;
+/// 主动技能数量：SKILL_NAME_MAP 前 25 项。
 const ACTIVE_SKILL_COUNT: usize = 25;
 
+/// 技能索引到中文名的映射表，顺序与 C++ 一致。
 const SKILL_NAME_MAP: [&str; 35] = [
     "火球", "冰冻", "雷击", "地裂", "吸血", "投毒", "连击", "会心", "瘟疫", "命轮", "狂暴", "魅惑", "加速", "减速", "诅咒",
     "治愈", "苏生", "净化", "铁壁", "蓄力", "聚气", "背刺", "血祭", "分身", "幻术", "防御", "守护", "反弹", "护符", "护盾",
@@ -127,6 +134,7 @@ pub fn compute_group_skill_summary(members: &[String]) -> GroupSkillSummary {
     }
 }
 
+/// 返回成员展示顺序；仅双人组按 cfz 升序，其余保留输入顺序。
 fn member_display_order_by_cfz(raw_members: &[String], group: &[Name]) -> Vec<usize> {
     let mut order: Vec<usize> = (0..group.len()).collect();
 
@@ -139,6 +147,7 @@ fn member_display_order_by_cfz(raw_members: &[String], group: &[Name]) -> Vec<us
 }
 
 #[derive(Clone)]
+/// 单个名字的展开状态：置换表、name_base、技能顺序与 50 维特征。
 struct Name {
     ual: [u8; N],
     val: [u8; N],
@@ -179,6 +188,7 @@ impl Default for Name {
 
 impl Name {
     #[inline]
+    /// RC4 式伪随机一步：推进 p/q、交换置换表并返回输出字节。
     fn m(&mut self) -> u8 {
         self.p = self.p.wrapping_add(1);
         self.q = self.q.wrapping_add(self.val[self.p as usize]);
@@ -188,11 +198,13 @@ impl Name {
     }
 
     #[inline]
+    /// 由两次 m() 的输出组合出 0..40 的技能索引。
     fn next_skill_index(&mut self) -> usize {
         let u = self.m() as usize;
         ((u << 8) | self.m() as usize) % SKILL_CNT
     }
 
+    /// 以队伍文本初始化 val_base 置换表；字节按 C 字符串循环读取。
     fn load_team(&mut self, team: &str) {
         let bytes = team.as_bytes();
         for i in 0..N {
@@ -208,6 +220,7 @@ impl Name {
         }
     }
 
+    /// 以影子名展开并计算影子 cfz/shadowi；只扫描前 96 项，不足再回退完整范围。
     fn load_shadowname(&mut self, name: &str) {
         self.val = self.val_base;
         self.q_len = -1;
@@ -272,6 +285,7 @@ impl Name {
                 + 0.8 * prop7 as f64;
     }
 
+    /// 以名字展开置换表，生成 name_base、技能乱序与 last 标记。
     fn load_name(&mut self, name: &str) {
         self.val = self.val_base;
         self.q_len = -1;
@@ -335,6 +349,7 @@ impl Name {
         }
     }
 
+    /// 返回某技能的等效熟练度：铁壁（idx 18）在护盾存在时取 x\[45\]；非主动技能按 0.85 折算。
     fn effective_skill_value(&self, idx: usize) -> f64 {
         // 对齐修复版 CPP 的 write_sparse_skill_row：
         // get_43() 中如果存在护盾，会把 x[26] 移到 x[45] 并清零 x[26]。
@@ -347,6 +362,7 @@ impl Name {
         if idx >= ACTIVE_SKILL_COUNT { value * 0.85 } else { value }
     }
 
+    /// 返回等效熟练度最高的主动技能名。
     fn top_active_skill_label(&self) -> &'static str {
         let mut best_idx = 0usize;
         let mut best_value = f64::NEG_INFINITY;
@@ -362,6 +378,7 @@ impl Name {
         SKILL_NAME_MAP[best_idx]
     }
 
+    /// 由 name_base 计算 50 维特征 x：HP、七项属性、技能频率（含衰减）与影子修正。
     fn get_43(&mut self) {
         self.name_base[..10].sort();
 
@@ -457,6 +474,7 @@ impl Name {
     }
 }
 
+/// 由原始成员文本构建 Name：拆分 name@team，载入队伍与名字，并用影子名覆盖 shadow 字段。
 fn build_single_raw(raw: &str) -> Name {
     let s = trim_line(raw);
     let (name, team) = split_name_team(&s);
@@ -475,6 +493,7 @@ fn build_single_raw(raw: &str) -> Name {
     x
 }
 
+/// 按成员间 name_base 交叉提升应用组队加成，返回新副本。
 fn apply_group_bonus(original: &[Name]) -> Vec<Name> {
     let mut boosted = original.to_vec();
 
@@ -495,6 +514,7 @@ fn apply_group_bonus(original: &[Name]) -> Vec<Name> {
     boosted
 }
 
+/// 按最后一个 @ 拆分名字与队伍；不修剪两侧空格，与 C++ 行为一致。
 fn split_name_team(s: &str) -> (String, String) {
     if let Some(at) = s.rfind('@') {
         // 对齐修复版 CPP：build() 不会修剪 @ 两侧的空格。
@@ -505,6 +525,7 @@ fn split_name_team(s: &str) -> (String, String) {
     }
 }
 
+/// 去掉 BOM 与首尾空白（含 NUL）。
 fn trim_line(s: &str) -> String {
     let s = s.strip_prefix('\u{feff}').unwrap_or(s);
     s.trim_matches(|c| c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\0')
@@ -512,15 +533,19 @@ fn trim_line(s: &str) -> String {
 }
 
 #[inline]
+/// 把字节按有符号 char 解释为 i32，保持 C++ signed-char 行为。
 fn byte_value(b: u8) -> i32 { (b as i8) as i32 }
 
 #[inline]
+/// 按 C 字符串语义取字节：索引等于长度时返回 0（末尾 \0）。
 fn c_string_byte(bytes: &[u8], index: usize) -> u8 { if index == bytes.len() { 0 } else { bytes[index] } }
 
 #[inline]
+/// C 字符串索引前进一位，越界回绕到 0，使末尾 \0 参与一次打乱。
 fn next_c_string_index(len: usize, index: usize) -> usize { if index == len { 0 } else { index + 1 } }
 
 #[inline]
+/// 返回三个 i32 的中位数。
 fn med3(x: i32, y: i32, z: i32) -> i32 {
     if x < y {
         if x < z { if y < z { y } else { z } } else { x }
@@ -532,7 +557,9 @@ fn med3(x: i32, y: i32, z: i32) -> i32 {
 }
 
 #[inline]
+/// 返回四个 u8 的最小值。
 fn min4(a: u8, b: u8, c: u8, d: u8) -> u8 { a.min(b).min(c).min(d) }
 
 #[inline]
+/// 返回三个 u8 的最小值。
 fn min3_u8(a: u8, b: u8, c: u8) -> u8 { a.min(b).min(c) }

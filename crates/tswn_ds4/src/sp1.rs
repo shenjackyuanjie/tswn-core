@@ -42,6 +42,7 @@ impl Sp1Mode {
         }
     }
 
+    /// 返回该 SP1 模式对应的 1124 项系数表（CQD 使用主模型）。
     fn model(self) -> &'static [f64; 1124] {
         match self {
             Self::Qp => &MODEL_QP0,
@@ -52,6 +53,7 @@ impl Sp1Mode {
         }
     }
 
+    /// 返回该模式在 score_now 表中的技能列索引；PD/CQD 不支持技能筛选。
     fn skill_column(self) -> Option<usize> {
         match self {
             Self::Qp => Some(1),
@@ -156,9 +158,11 @@ pub fn score_file(
     Ok(retained)
 }
 
+/// 评分单个名字：构建 SP1 特征并求基分，CQD 在 x[32] 达标时取第三套分支的更高分并乘 100。
 fn score_one(name: &str, mode: Sp1Mode) -> Ds4Result<(f64, Vec<usize>)> {
     let feature = NameFeature::from_full_name(name)?;
     let (x, skills) = sp1_features(&feature);
+    /// score_one 的进程级位置索引表缓存。
     static TABLES: OnceLock<PositionTables> = OnceLock::new();
     let (pos, pos2) = TABLES.get_or_init(init_pos_tables);
     let mut score = base_score(&x, mode.model(), pos, pos2).max(0.0);
@@ -171,6 +175,7 @@ fn score_one(name: &str, mode: Sp1Mode) -> Ds4Result<(f64, Vec<usize>)> {
     Ok((score, skills))
 }
 
+/// 由名称特征生成 SP1 口径的 46 维特征与候选技能列表。
 fn sp1_features(feature: &NameFeature) -> ([f64; 46], Vec<usize>) {
     let mut x = feature.x;
     x[8..].fill(0.0);

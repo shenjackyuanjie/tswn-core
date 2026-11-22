@@ -7,6 +7,7 @@
 use super::*;
 
 impl Updator {
+    /// 执行一轮全部对战并用校准后的 Elo 结算：生成唯一 seed，累计历史记录、handicap 变更与统计指标。
     pub(super) async fn execute_matches_with_calibrated_elo(
         &mut self,
         players: &mut [PlayerRow],
@@ -260,6 +261,7 @@ impl Updator {
         })
     }
 
+    /// 跑单场对战并返回胜方（1 / 0）；keep_plus 控制 `+` 是否保留还是转为换行分隔。
     pub(super) fn get_winner(
         &mut self,
         player1_str: &str,
@@ -291,6 +293,7 @@ impl Updator {
         }
     }
 
+    /// 记录对战执行错误：限量打印后抑制，并累计错误计数。
     pub(super) fn log_battle_error(
         &mut self,
         err: &anyhow::Error,
@@ -362,6 +365,7 @@ pub(super) fn settle_round(scores: &[i32], matches: &[(usize, usize)], outcomes:
     targets
 }
 
+/// 生成带时间戳与随机号的唯一 seed。
 pub(super) fn generate_unique_seed(rng: &mut fastrand::Rng) -> String {
     let basic_seed = format!("{:06}", rng.u32(..1_000_000));
     let seed = format_seed_timestamp(Utc::now());
@@ -375,6 +379,7 @@ pub(super) fn format_seed_timestamp(now: DateTime<Utc>) -> String {
     now.with_timezone(&Shanghai).format("%Y-%m-%d %H:%M").to_string()
 }
 
+/// 以 raw 输入跑完对战并返回胜方索引；没有胜者返回 None。
 pub(super) fn run_battle_winner(runs: &str, _player1: &str, _player2: &str) -> Result<Option<i32>> {
     let mut runner = Runner::new_from_namerena_raw(runs.to_string()).map_err(|err| anyhow::anyhow!(err.to_string()))?;
     if runner.run_to_completion(20_000).winner_team.is_none() {

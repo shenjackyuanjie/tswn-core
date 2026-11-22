@@ -57,14 +57,19 @@ pub struct PlayerSnapshot {
 }
 
 impl ReplayState for PlayerSnapshot {
+    /// 返回玩家 id。
     fn id(&self) -> PlrId { self.id }
 
+    /// 返回当前 HP。
     fn hp(&self) -> i32 { self.hp }
 
+    /// 返回最大 HP。
     fn max_hp(&self) -> i32 { self.max_hp }
 
+    /// 是否存活。
     fn alive(&self) -> bool { self.alive }
 
+    /// 返回改写 HP/存活后的副本，并同步 active 状态。
     fn with_hp_alive(&self, hp: i32, alive: bool) -> Self {
         Self {
             hp,
@@ -117,6 +122,7 @@ pub fn snapshot_players(runner: &Runner) -> Vec<PlayerSnapshot> {
         .collect()
 }
 
+/// 把 core 快照转换为 Python 侧快照，附带展示顺序。
 fn snapshot_from_core(snapshot: CorePlayerSnapshot, display_order: usize) -> PlayerSnapshot {
     PlayerSnapshot {
         id: snapshot.id,
@@ -150,6 +156,7 @@ fn snapshot_from_core(snapshot: CorePlayerSnapshot, display_order: usize) -> Pla
     }
 }
 
+/// 把更新类型转换为稳定字符串。
 fn update_type_str(update_type: UpdateType) -> &'static str {
     match update_type {
         UpdateType::Win => "win",
@@ -158,6 +165,7 @@ fn update_type_str(update_type: UpdateType) -> &'static str {
     }
 }
 
+/// 生成展示名：带序号的克隆体追加 #序号。
 fn display_name_for_snapshot(state: &PlayerSnapshot) -> String {
     if state.minion_kind == Some("clone") && state.display_index > 0 {
         format!("{} #{}", state.display_name, state.display_index)
@@ -176,6 +184,7 @@ pub fn render_update_message(update: &RunUpdate, names: &HashMap<PlrId, String>)
     core_render_update_message(update, names)
 }
 
+/// 按更新类型与消息内容推断语气标签。
 fn classify_message_tone(update: &RunUpdate, rendered: &str) -> &'static str {
     if matches!(update.update_type, UpdateType::Win) {
         return "win";
@@ -227,6 +236,7 @@ fn classify_message_tone(update: &RunUpdate, rendered: &str) -> &'static str {
     }
 }
 
+/// 把事件语气字符串映射为 ReplayTone。
 fn replay_tone_from_event_tone(tone: &str) -> ReplayTone {
     match tone {
         "damage" => ReplayTone::Damage,
@@ -237,6 +247,7 @@ fn replay_tone_from_event_tone(tone: &str) -> ReplayTone {
     }
 }
 
+/// 把 ReplayTone 转换为稳定字符串。
 fn replay_tone_to_str(tone: ReplayTone) -> &'static str {
     match tone {
         ReplayTone::Normal => "normal",
@@ -247,6 +258,7 @@ fn replay_tone_to_str(tone: ReplayTone) -> &'static str {
     }
 }
 
+/// 判断消息是否为状态解除类文本。
 fn is_status_exit_message(message: &str) -> bool {
     has_between(message, "从[", "]中解除")
         || has_between(message, "从[", "]状态中解除")
@@ -258,6 +270,7 @@ fn is_status_exit_message(message: &str) -> bool {
         || has_between(message, "的[", "]属性被打消")
 }
 
+/// 判断文本中是否存在 prefix…suffix 片段。
 fn has_between(text: &str, prefix: &str, suffix: &str) -> bool {
     let mut rest = text;
     while let Some(start) = rest.find(prefix) {
@@ -273,6 +286,7 @@ fn has_between(text: &str, prefix: &str, suffix: &str) -> bool {
     false
 }
 
+/// 把文本片段类型转换为稳定字符串。
 fn replay_text_part_kind_to_str(kind: CoreReplayTextPartKind) -> &'static str {
     match kind {
         CoreReplayTextPartKind::Text => "text",
@@ -302,6 +316,7 @@ pub fn update_to_dto(update: &RunUpdate, names: &HashMap<PlrId, String>) -> Even
     }
 }
 
+/// 判断事件是否可见：非换行且消息非空。
 fn is_visible_event(event: &EventDto) -> bool { !event.is_next_line && !event.message_rendered.trim().is_empty() }
 
 /// 按事件顺序返回毫秒等待列表；缩放仅影响输出，不修改输入事件。
@@ -356,6 +371,7 @@ pub fn playback_total_delay(events: &[EventDto]) -> i32 {
 /// 返回 Python 的 None（便捷helper）。
 pub fn py_none(py: pyo3::Python<'_>) -> PyResult<pyo3::Bound<'_, pyo3::PyAny>> { py.None().into_bound_py_any(py) }
 
+/// 把 Option<usize> 写入 dict，缺失时写 None。
 fn set_optional_usize(dict: &pyo3::Bound<'_, PyDict>, key: &str, value: Option<usize>) -> PyResult<()> {
     if let Some(value) = value {
         dict.set_item(key, value)
@@ -364,6 +380,7 @@ fn set_optional_usize(dict: &pyo3::Bound<'_, PyDict>, key: &str, value: Option<u
     }
 }
 
+/// 把 Option<u32> 写入 dict，缺失时写 None。
 fn set_optional_u32(dict: &pyo3::Bound<'_, PyDict>, key: &str, value: Option<u32>) -> PyResult<()> {
     if let Some(value) = value {
         dict.set_item(key, value)

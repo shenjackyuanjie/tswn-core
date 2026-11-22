@@ -2,6 +2,7 @@ use super::*;
 
 use crate::runtime::lang::{get_lang, keys};
 
+/// 构造注册了三把武器技能 (s11 等) 的 (registry, 三个 SkillId)。
 fn weapon_registry() -> (ExtensionRegistry, SkillId, SkillId, SkillId) {
     let mut builder = ExtensionRegistryBuilder::default();
     let s11 = builder
@@ -48,6 +49,7 @@ fn tune_weapon_rng<T>(runtime: &mut CombatRuntime, mut accept: impl FnMut(&mut R
     panic!("no rng offset satisfies the weapon test predicate");
 }
 
+/// 过滤掉 NextLine 类型后提取消息字符串切片。
 fn non_next_line_messages(updates: &RunUpdates) -> Vec<&str> {
     updates
         .updates
@@ -57,6 +59,7 @@ fn non_next_line_messages(updates: &RunUpdates) -> Vec<&str> {
         .collect()
 }
 
+/// 用给定八围构造一份零修正的 CloneBuildData。
 fn clone_build_with_attrs(attrs: [u32; 8]) -> CloneBuildData {
     CloneBuildData {
         attrs,
@@ -81,11 +84,13 @@ fn clone_build_with_attrs(attrs: [u32; 8]) -> CloneBuildData {
     }
 }
 
+/// 用指定武器字符串构造公开武器对局的 RuntimeRunner。
 fn public_weapon_duel(weapon: &str) -> RuntimeRunner {
     let config = default_custom_runtime_import_config().unwrap();
     RuntimeRunner::from_custom_mixed_namerena_raw(format!("b\n\na+{weapon}"), config).unwrap()
 }
 
+/// 最多跑 64 回合直到产生可见帧并返回该 RoundOutcome。
 fn next_weapon_duel_frame(runner: &mut RuntimeRunner) -> RoundOutcome {
     (0..64)
         .map(|_| runner.run_round())
@@ -93,6 +98,7 @@ fn next_weapon_duel_frame(runner: &mut RuntimeRunner) -> RoundOutcome {
         .expect("应产生可见回合")
 }
 
+/// 读取 runner 当前 RNG 的 (i, j, 下一个 u8 窥探值)。
 fn weapon_duel_rng(runner: &RuntimeRunner) -> (u32, u32, u8) {
     let rng = &runner.runtime().rng;
     (rng.i, rng.j, rng.peek_next_u8())
@@ -677,6 +683,7 @@ fn gui_yue_permanent_charge_stays_active_without_attack_boost() {
     assert_eq!(owner.runtime.at_boost_millionths, 2_700_000);
 }
 
+/// 构造注册了冰河世纪/尤里控制等技能的 (registry, 两个 SkillId)。
 fn rinick_weapon_registry() -> (ExtensionRegistry, SkillId, SkillId) {
     let mut builder = ExtensionRegistryBuilder::default();
     let ice_age = builder
@@ -709,6 +716,7 @@ fn rinick_weapon_registry() -> (ExtensionRegistry, SkillId, SkillId) {
     (builder.build(), ice_age, yuri_control)
 }
 
+/// 按给定技能构造 rinick 武器场景的 CombatRuntime。
 fn rinick_weapon_runtime(skill: SkillId) -> CombatRuntime {
     let (registry, _, _) = rinick_weapon_registry();
     CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
@@ -781,6 +789,7 @@ fn rinick_yuri_control_scan_selects_enemy_and_charms_through_builtin_drain() {
     assert_eq!(updates.updates[0].message, get_lang(keys::SKL_YURI_CONTROL));
 }
 
+/// 构造 rinick 身份测试用的 ExtensionRegistry（含随从计数实体槽）。
 fn rinick_identity_registry() -> ExtensionRegistry {
     let mut builder = ExtensionRegistryBuilder::default();
     builder
@@ -798,6 +807,7 @@ fn rinick_identity_registry() -> ExtensionRegistry {
     builder.build()
 }
 
+/// 按 id/name/team/八围构造带 Rinick 标识的 PlayerTemplate。
 fn rinick_identity_template(id: PlrId, name: &str, team: usize, raw: [u32; 8]) -> PlayerTemplate {
     let mut template = PlayerTemplate::new(id, name, team, raw[7] as i32, 10)
         .with_display_name(format!("{name}@Rinick"))

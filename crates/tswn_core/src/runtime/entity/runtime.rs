@@ -471,6 +471,7 @@ pub struct AccumulateRuntime {
 }
 
 impl Default for AccumulateRuntime {
+    /// 默认聚气运行态：未激活、聚气倍率 1.7、无蓄力叠加。
     fn default() -> Self {
         Self {
             active: false,
@@ -487,8 +488,10 @@ impl AccumulateRuntime {
     /// 蓄力叠加到聚气上的额外倍率。
     pub fn charge_bonus(self) -> f64 { f64::from_bits(self.charge_bonus_bits) }
 
+    /// 设置聚气倍率，以 f64 位模式存储。
     fn set_acc(&mut self, acc: f64) { self.acc_bits = acc.to_bits(); }
 
+    /// 设置蓄力叠加到聚气上的额外倍率，以 f64 位模式存储。
     fn set_charge_bonus(&mut self, charge_bonus: f64) { self.charge_bonus_bits = charge_bonus.to_bits(); }
 }
 
@@ -539,6 +542,7 @@ impl EntityRecord {
         self.apply_runtime_stats_from_template();
     }
 
+    /// 把模板八围与派生数值同步到运行态：套用垂死增益、重算 at_boost 与仇恨修正，并按隐匿等级折算属性。
     fn apply_runtime_stats_from_template(&mut self) {
         #[cfg(not(feature = "no_debug"))]
         let probe_pending_haste = crate::debug::probe_refresh()
@@ -753,6 +757,7 @@ impl EntityRecord {
         self.slots.reset_battle_state_from(&prepared.slots);
     }
 
+    /// 重算运行态攻击倍率：非永久蓄力乘 3、聚气乘累计倍率、马里奥蘑菇乘 1.5，并同步整数百万分比。
     fn refresh_runtime_at_boost(&mut self) {
         let mut at_boost = f64::from_bits(self.template.at_boost_bits);
         // 攻击倍率来自 SklCharge.ar；桂月的常驻标记没有 ar，只满足存在性判定。

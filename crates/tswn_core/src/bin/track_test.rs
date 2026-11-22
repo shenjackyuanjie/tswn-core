@@ -12,14 +12,17 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
+/// 默认测试过滤表达式，覆盖大规模用例集。
 const DEFAULT_FILTER: &str = "large large_full small_seed fight_multi";
 
+/// 单个测试的历史记录：状态（PASSED/FAILED）与分叉点 idx，-1 表示未记录。
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct TestRecord {
     status: String,
     idx: i64,
 }
 
+/// 存档点：名称、时间与当时的全量测试记录。
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Checkpoint {
     name: String,
@@ -27,6 +30,7 @@ struct Checkpoint {
     records: BTreeMap<String, TestRecord>,
 }
 
+/// 命令行配置：过滤表达式、show/reset/quiet 开关与可选子命令。
 #[derive(Debug)]
 struct Config {
     filter: String,
@@ -36,6 +40,7 @@ struct Config {
     command: Option<TrackCommand>,
 }
 
+/// 存档点子命令：save/list/diff/delete。
 #[derive(Debug)]
 enum TrackCommand {
     Save { name: Option<String> },
@@ -44,6 +49,7 @@ enum TrackCommand {
     Delete { name: String },
 }
 
+/// 两条记录间的单个变化：测试名、变化类型与前后 idx。
 #[derive(Debug)]
 struct Change {
     test: String,
@@ -52,6 +58,7 @@ struct Change {
     prev_idx: i64,
 }
 
+/// `track_test` 入口：错误打印到 stderr 并以退出码 1 结束。
 fn main() {
     if let Err(err) = try_main() {
         eprintln!("错误: {err}");
@@ -59,6 +66,7 @@ fn main() {
     }
 }
 
+/// 主流程：解析参数；有子命令时执行存档点操作，否则运行测试、与历史记录比较并输出结论。
 fn try_main() -> Result<(), String> {
     let config = parse_args()?;
     let paths = Paths::new();
@@ -165,6 +173,7 @@ fn try_main() -> Result<(), String> {
     Ok(())
 }
 
+/// 工具使用的文件路径：记录文件、日志与存档点目录，均位于 target 下。
 struct Paths {
     record_file: PathBuf,
     log_file: PathBuf,
@@ -172,6 +181,7 @@ struct Paths {
 }
 
 impl Paths {
+    /// 构造默认路径（target/test_regression.json 等）。
     fn new() -> Self {
         Self {
             record_file: PathBuf::from("target").join("test_regression.json"),
@@ -181,6 +191,7 @@ impl Paths {
     }
 }
 
+/// 解析命令行参数为 Config；无法识别时报错并退出。
 fn parse_args() -> Result<Config, String> {
     let args = std::env::args().skip(1).collect::<Vec<String>>();
     let mut filter = DEFAULT_FILTER.to_string();
@@ -236,6 +247,7 @@ fn parse_args() -> Result<Config, String> {
     })
 }
 
+/// 打印 track_test 用法与选项说明。
 fn print_usage() {
     println!(
         r#"用法:
@@ -254,6 +266,7 @@ fn print_usage() {
     );
 }
 
+/// 按 `TrackCommand` 分派到对应 cmd_* 实现。
 fn run_command(command: &TrackCommand, paths: &Paths) -> Result<(), String> {
     match command {
         TrackCommand::Save { name } => cmd_save(paths, name.clone()),
@@ -263,6 +276,7 @@ fn run_command(command: &TrackCommand, paths: &Paths) -> Result<(), String> {
     }
 }
 
+/// 以给定过滤表达式运行 `cargo test`，合并 stdout 与 stderr 为一段文本。
 fn run_cargo_test(filter: &str) -> Result<String, String> {
     let mut cmd = Command::new("cargo");
     cmd.arg("test").arg("--");
@@ -277,6 +291,7 @@ fn run_cargo_test(filter: &str) -> Result<String, String> {
     Ok(text)
 }
 
+/// 解析 cargo test 输出为 测试名 -> `TestRecord` 映射：FAILED 记为 FAILED，其余记为 PASSED，idx 暂记 -1。
 fn parse_cargo_test_output(output: &str) -> BTreeMap<String, TestRecord> {
     let lines = output.lines().collect::<Vec<&str>>();
     let mut results = BTreeMap::new();
@@ -358,6 +373,7 @@ fn parse_cargo_test_output(output: &str) -> BTreeMap<String, TestRecord> {
     results
 }
 
+/// 解析 `test <name> ... <status>` 行，仅接受 FAILED/ok/ignored 三种状态。
 fn parse_test_status_line(line: &str) -> Option<(String, &str)> {
     let rest = line.strip_prefix("test ")?;
     let (test_name, status) = rest.split_once(" ... ")?;
@@ -368,6 +384,7 @@ fn parse_test_status_line(line: &str) -> Option<(String, &str)> {
     }
 }
 
+/// 从测试名提取用例 key：优先 fight_large，其次 sampled_large_case_ 前缀片段。
 fn first_contains_case_key(test_name: &str) -> Option<String> {
     if test_name.contains("fight_large") {
         return Some("fight_large".to_string());
@@ -379,6 +396,7 @@ fn first_contains_case_key(test_name: &str) -> Option<String> {
     if key.is_empty() { None } else { Some(key) }
 }
 
+/// 提取测试名末尾 `::large_NN` 的两位数字作为用例编号。
 fn suffix_large_idx(test_name: &str) -> Option<String> {
     let (_, tail) = test_name.rsplit_once("::large_")?;
     if tail.len() == 2 && tail.chars().all(|ch| ch.is_ascii_digit()) {
@@ -388,18 +406,21 @@ fn suffix_large_idx(test_name: &str) -> Option<String> {
     }
 }
 
+/// 解析 `---- <name> stdout ----` 头，返回失败测试名。
 fn parse_stdout_header(line: &str) -> Option<String> {
     let rest = line.strip_prefix("---- ")?;
     let name = rest.strip_suffix(" stdout ----")?;
     Some(name.to_string())
 }
 
+/// 从线程名行提取 `thread '...'` 中的线程名。
 fn parse_thread_name(line: &str) -> Option<String> {
     let start = line.find("thread '")? + "thread '".len();
     let end = line[start..].find('\'')? + start;
     Some(line[start..end].to_string())
 }
 
+/// 从输出行提取 `mismatch at idx=` 之后的数字。
 fn parse_mismatch_idx(line: &str) -> Option<i64> {
     let marker = "mismatch at idx=";
     let start = line.find(marker)? + marker.len();
@@ -407,6 +428,7 @@ fn parse_mismatch_idx(line: &str) -> Option<i64> {
     digits.parse::<i64>().ok()
 }
 
+/// 从任意输出行推断用例 key：优先 fight_large/large_full，其次 large_NN 形式。
 fn parse_case_key_from_line(line: &str) -> Option<String> {
     for key in ["fight_large", "large_full"] {
         if line.contains(key) {
@@ -436,6 +458,7 @@ fn parse_case_key_from_line(line: &str) -> Option<String> {
     None
 }
 
+/// 比较两批记录产出变化列表（改进/退步/新失败/新通过）；两侧都存在的测试才比较，状态相同则忽略。
 fn compare_records(current: &BTreeMap<String, TestRecord>, previous: &BTreeMap<String, TestRecord>) -> Vec<Change> {
     let all_tests = current.keys().chain(previous.keys()).cloned().collect::<BTreeSet<String>>();
     let mut changes = Vec::new();
@@ -485,6 +508,7 @@ fn compare_records(current: &BTreeMap<String, TestRecord>, previous: &BTreeMap<S
     changes
 }
 
+/// 按变化类型打印明细。
 fn print_changes(changes: &[Change]) {
     for change in changes {
         match change.kind {
@@ -497,6 +521,7 @@ fn print_changes(changes: &[Change]) {
     }
 }
 
+/// 统计并打印变化汇总，返回 (改进, 退步, 新失败, 修复) 四计数。
 fn print_changes_summary(changes: &[Change], quiet: bool) -> (usize, usize, usize, usize) {
     let mut improved = 0usize;
     let mut regressed = 0usize;
@@ -538,6 +563,7 @@ fn print_changes_summary(changes: &[Change], quiet: bool) -> (usize, usize, usiz
     (improved, regressed, new_fail, fixed)
 }
 
+/// 根据变化打印结论：有改进且无退步判为有效，存在退步判为有问题。
 fn print_conclusion(changes: &[Change], commit_wording: bool) {
     let any_improved = changes.iter().any(|c| c.kind == "IMPROVED" || c.kind == "NEW_PASS");
     let any_regressed = changes.iter().any(|c| c.kind == "REGRESSED");
@@ -554,6 +580,7 @@ fn print_conclusion(changes: &[Change], commit_wording: bool) {
     }
 }
 
+/// 把当前记录与最新存档点比较并打印结论；无存档点时跳过。
 fn print_checkpoint_comparison(paths: &Paths, current_records: &BTreeMap<String, TestRecord>, quiet: bool) -> Result<(), String> {
     let Some(cp) = latest_checkpoint(&paths.checkpoint_dir)? else {
         return Ok(());
@@ -568,6 +595,7 @@ fn print_checkpoint_comparison(paths: &Paths, current_records: &BTreeMap<String,
     Ok(())
 }
 
+/// 把当前记录保存为存档点；同名覆盖，默认名取当前时间戳。
 fn cmd_save(paths: &Paths, name: Option<String>) -> Result<(), String> {
     let records = load_records(&paths.record_file);
     let now = Timestamp::now();
@@ -601,6 +629,7 @@ fn cmd_save(paths: &Paths, name: Option<String>) -> Result<(), String> {
     Ok(())
 }
 
+/// 列出全部存档点及各自失败数。
 fn cmd_list(paths: &Paths) -> Result<(), String> {
     let files = checkpoint_files(&paths.checkpoint_dir)?;
     if files.is_empty() {
@@ -620,6 +649,7 @@ fn cmd_list(paths: &Paths) -> Result<(), String> {
     Ok(())
 }
 
+/// 与指定或最新存档点比较，输出变化与结论。
 fn cmd_diff(paths: &Paths, name: Option<&str>) -> Result<(), String> {
     let cp = if let Some(name) = name {
         let path = find_checkpoint(&paths.checkpoint_dir, name)?.ok_or_else(|| format!("存档点 \"{name}\" 不存在"))?;
@@ -635,6 +665,7 @@ fn cmd_diff(paths: &Paths, name: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
+/// 删除指定名称的存档点文件。
 fn cmd_delete(paths: &Paths, name: &str) -> Result<(), String> {
     let path = find_checkpoint(&paths.checkpoint_dir, name)?.ok_or_else(|| format!("存档点 \"{name}\" 不存在"))?;
     fs::remove_file(path).map_err(|e| format!("删除存档点失败: {e}"))?;
@@ -642,10 +673,13 @@ fn cmd_delete(paths: &Paths, name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// 读取记录文件；缺失或损坏时返回空映射。
 fn load_records(path: &Path) -> BTreeMap<String, TestRecord> { read_json(path).unwrap_or_default() }
 
+/// 把记录写入文件。
 fn save_records(path: &Path, records: &BTreeMap<String, TestRecord>) -> Result<(), String> { write_json(path, records) }
 
+/// 向日志文件追加一条带时间戳的消息，自动创建父目录。
 fn write_log(path: &Path, message: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建日志目录失败: {e}"))?;
@@ -656,6 +690,7 @@ fn write_log(path: &Path, message: &str) -> Result<(), String> {
     fs::write(path, existing).map_err(|e| format!("写入日志失败: {e}"))
 }
 
+/// 列出存档点目录下的 json 文件，按文件名逆序（最新在前）。
 fn checkpoint_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
     if !dir.exists() {
         return Ok(Vec::new());
@@ -671,6 +706,7 @@ fn checkpoint_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(files)
 }
 
+/// 读取最新存档点；没有则返回 None。
 fn latest_checkpoint(dir: &Path) -> Result<Option<Checkpoint>, String> {
     let Some(path) = checkpoint_files(dir)?.into_iter().next() else {
         return Ok(None);
@@ -678,6 +714,7 @@ fn latest_checkpoint(dir: &Path) -> Result<Option<Checkpoint>, String> {
     Ok(Some(read_json(&path)?))
 }
 
+/// 按名称查找存档点文件路径。
 fn find_checkpoint(dir: &Path, name: &str) -> Result<Option<PathBuf>, String> {
     for file in checkpoint_files(dir)? {
         let cp: Checkpoint = read_json(&file)?;
@@ -688,11 +725,13 @@ fn find_checkpoint(dir: &Path, name: &str) -> Result<Option<PathBuf>, String> {
     Ok(None)
 }
 
+/// 读取并反序列化 JSON 文件，错误信息带路径。
 fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, String> {
     let raw = fs::read_to_string(path).map_err(|e| format!("读取 {} 失败: {e}", path.display()))?;
     serde_json::from_str(&raw).map_err(|e| format!("解析 {} 失败: {e}", path.display()))
 }
 
+/// 序列化为美化 JSON 后写文件，自动创建父目录。
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
@@ -701,6 +740,7 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
     fs::write(path, raw).map_err(|e| format!("写入 {} 失败: {e}", path.display()))
 }
 
+/// 时间戳的多种展示形式：紧凑、显示与短格式。
 struct Timestamp {
     compact: String,
     display: String,
@@ -708,6 +748,7 @@ struct Timestamp {
 }
 
 impl Timestamp {
+    /// 取当前 UNIX 时间戳生成各格式。
     fn now() -> Self {
         let secs = SystemTime::now().duration_since(UNIX_EPOCH).map(|dur| dur.as_secs()).unwrap_or(0);
         Self {
@@ -718,6 +759,7 @@ impl Timestamp {
     }
 }
 
+/// 把文件名中的非法字符（Windows 保留字符与控制字符）替换为下划线。
 fn sanitize_filename(name: &str) -> String {
     name.chars()
         .map(|ch| match ch {

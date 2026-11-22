@@ -13,11 +13,15 @@ pub enum CompressedLegacyState {
 }
 
 impl CompressedLegacyState {
+    /// 把压缩状态类别换算为位标记（`1 << 序号`）。
     fn bit(self) -> u8 { 1 << self as u8 }
 }
 
+/// 调度器快速否定位：存在冰冻类状态。
 const SCHEDULER_STATE_ICE: u8 = 1 << 0;
+/// 调度器快速否定位：存在影响速度类的状态。
 const SCHEDULER_STATE_SPEED: u8 = 1 << 1;
+/// 调度器关心的全部状态位。
 const SCHEDULER_STATE_ALL: u8 = SCHEDULER_STATE_ICE | SCHEDULER_STATE_SPEED;
 
 /// [`StatePayload`] 的种类标记，用于对状态表做"肯定不存在"的快速否定判断。
@@ -110,6 +114,7 @@ pub struct StateStore {
 }
 
 impl PartialEq for StateStore {
+    /// 状态存储相等：比较条目、hook 掩码、代数、注册序与压缩位标记等全部持久字段。
     fn eq(&self, other: &Self) -> bool {
         self.entries == other.entries
             && self.hook_mask == other.hook_mask
@@ -508,6 +513,7 @@ impl StateStore {
         entries
     }
 
+    /// 由全部条目重建缓存元数据：聚合 hook 掩码、调度器状态位与载荷种类位图。
     fn rebuild_cached_metadata(&mut self) {
         let mut hook_mask = ProcMask::default();
         let mut state_flags = 0u8;

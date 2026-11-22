@@ -4,8 +4,11 @@
 //! 组数或合法标准集合不足时清空已存结果并进入 waiting；默认归档后继续重算直到稳定。
 //! skip_archived=false 才全量复核并替换封存集合。函数会持续更新数据库进度与缓存。
 
+/// 单轮 Raw/Golden 迭代与标准榜选择。
 mod algorithm;
+/// 低分与折叠组合的封存候选规则。
 mod archive;
+/// 胜率矩阵与缺失对局并行补算。
 mod rates;
 
 use algorithm::*;
@@ -108,10 +111,12 @@ impl RankerConfig {
     }
 }
 
+/// 读取 usize 环境变量，缺失或非法时用默认值。
 fn read_env_usize(name: &str, default: usize) -> usize {
     std::env::var(name).ok().and_then(|x| x.parse().ok()).unwrap_or(default)
 }
 
+/// 读取布尔环境变量，接受 1/true/yes/y/on 与 0/false/no/n/off。
 fn read_env_bool(name: &str, default: bool) -> bool {
     match std::env::var(name).ok().map(|x| x.to_ascii_lowercase()) {
         Some(value) if matches!(value.as_str(), "1" | "true" | "yes" | "y" | "on") => true,
@@ -120,10 +125,12 @@ fn read_env_bool(name: &str, default: bool) -> bool {
     }
 }
 
+/// 读取可选取值环境变量；非正数视为未设置。
 fn read_env_optional_usize(name: &str) -> Option<usize> {
     std::env::var(name).ok().and_then(|x| x.parse::<usize>().ok()).filter(|&x| x > 0)
 }
 
+/// 确定胜率补算的外层 worker 数：显式值按总量裁剪，0 表示按系统并行度自动。
 fn resolve_rate_pair_workers(requested_outer_workers: usize, total: usize) -> usize {
     if requested_outer_workers > 0 {
         return requested_outer_workers.max(1).min(total.max(1));
@@ -134,6 +141,7 @@ fn resolve_rate_pair_workers(requested_outer_workers: usize, total: usize) -> us
     available.max(1).min(total.max(1))
 }
 
+/// 把外层 worker 数格式化为 auto(n)/static(n) 标签。
 fn format_outer_workers(requested_outer_workers: usize, actual_workers: usize) -> String {
     if requested_outer_workers == 0 {
         format!("auto({actual_workers})")
@@ -142,6 +150,7 @@ fn format_outer_workers(requested_outer_workers: usize, actual_workers: usize) -
     }
 }
 
+/// 把内层线程数格式化为进度标签。
 fn format_inner_workers(inner_workers: u32) -> String {
     if inner_workers == 0 {
         "auto(0)".to_string()
@@ -287,8 +296,10 @@ pub fn recompute_lane_until_stable(db: &Db, lane_size: usize, config: &RankerCon
     }
 }
 
+/// 判断该轮是否需要上报进度：第 1 轮、末轮或每 1000 轮。
 fn should_report_round(round: usize, total_rounds: usize) -> bool { round == 1 || round == total_rounds || round % 1000 == 0 }
 
+/// 把秒数格式化为 s/m/h 进度文本。
 fn format_duration(seconds: f64) -> String {
     if seconds < 60.0 {
         format!("{seconds:.1}s")

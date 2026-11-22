@@ -25,11 +25,13 @@ pub fn parse_target_groups(content: &str, double_plus: bool) -> Vec<String> {
 }
 
 #[derive(Debug, Deserialize)]
+/// 带权靶子 TOML 的顶层结构。
 struct FactoredTargetFile {
     targets: Vec<FactoredTarget>,
 }
 
 #[derive(Debug, Deserialize)]
+/// 单个带权靶子：权重与成员列表。
 struct FactoredTarget {
     factor: f64,
     players: Vec<String>,
@@ -58,6 +60,7 @@ pub fn parse_factored_target_groups(content: &str) -> Result<(Vec<String>, Vec<f
     Ok((groups, factors))
 }
 
+/// 按分隔符把每行拆成一组，成员以换行连接。
 fn parse_separated_groups(content: &str, separator: &str) -> Vec<String> {
     content
         .lines()
@@ -109,6 +112,7 @@ pub fn groups_have_same_players(left: &str, right: &str) -> bool {
     normalized_group_players(left) == normalized_group_players(right)
 }
 
+/// 把分组规范化为排序后的玩家标识列表，用于镜像判定。
 pub(super) fn normalized_group_players(group: &str) -> Vec<String> {
     let mut players: Vec<_> = group
         .lines()
@@ -120,6 +124,7 @@ pub(super) fn normalized_group_players(group: &str) -> Vec<String> {
     players
 }
 
+/// 解析 namer-pf 的一行分组：行内覆盖层并入前一成员。
 fn parse_namer_pf_group_line(line: &str) -> Vec<String> {
     let mut group: Vec<String> = Vec::new();
     for segment in split_plus_outside_quotes(line) {
@@ -139,6 +144,7 @@ fn parse_namer_pf_group_line(line: &str) -> Vec<String> {
     group
 }
 
+/// 按 + 拆分，但跳过引号字符串内的 +。
 fn split_plus_outside_quotes(raw: &str) -> Vec<String> {
     let mut segments = Vec::new();
     let mut current = String::new();

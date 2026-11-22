@@ -38,6 +38,7 @@ pub fn matchup_id(groups: &[Vec<String>]) -> String {
     ]))
 }
 
+/// 把原始输入规范化为 Case：分队、过滤种子行并生成 matchup_id。
 fn case(source: String, original_input: String) -> Result<Case> {
     let (groups, _) = RuntimeRunner::split_namerena_into_groups(original_input.clone());
     let groups: Vec<Vec<String>> = groups
@@ -62,6 +63,7 @@ fn case(source: String, original_input: String) -> Result<Case> {
     })
 }
 
+/// 递归收集输入文件，拒绝符号链接。
 fn files(path: &Path, result: &mut Vec<std::path::PathBuf>) -> Result<()> {
     ensure!(
         !fs::symlink_metadata(path)?.file_type().is_symlink(),

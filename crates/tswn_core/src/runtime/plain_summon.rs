@@ -168,6 +168,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 取出召唤蓝图模板：确保最小代蓝图存在；开启继承时把 owner 的防御/抗性同步到蓝图并重算派生属性。
     fn plain_summon_blueprint(&mut self, actor: EntityIdx) -> PlayerTemplate {
         self.ensure_plain_minion_blueprint(actor, crate::namerena::MinionKind::Summon);
         let slot = self
@@ -194,12 +195,14 @@ impl CombatRuntime {
         template
     }
 
+    /// 解析默认召唤物实体槽的 ID。
     fn plain_summon_entity_slot(&self) -> EntitySlotId {
         self.registry
             .entity_slot_id_by_export_name(DEFAULT_CORE_SUMMON_ENTITY_EXPORT)
             .expect("default runtime profile must reserve core summoned entity slot")
     }
 
+    /// 按开关设置召唤蓝图中分摊伤害固定 lane 的等级（开为 1、关为 0）。
     fn set_plain_summon_share_level(&self, skills: &mut SkillLoadout, enabled: bool) {
         let lane = (0..skills.len())
             .find(|lane| skills.fixed_lane_key_at(*lane) == Some(crate::namerena::SUMMON_SHARE_DAMAGE_SKILL_KEY));
@@ -212,6 +215,7 @@ impl CombatRuntime {
         );
     }
 
+    /// 用新蓝图复位已记住的召唤物：沿用既有身份与 root owner，按复用开关继承技能/属性，重设伤害分享等级并重建运行态。
     fn reset_plain_summon(
         &mut self,
         actor: EntityIdx,
@@ -298,6 +302,7 @@ impl CombatRuntime {
         format!("{root_name}?{next}")
     }
 
+    /// 沿 owner 链找到最小代名字的根实体：首个战斗使魔或链尾自身。
     fn plain_minion_name_root(&self, start: EntityIdx) -> EntityIdx {
         let mut current = start;
         loop {

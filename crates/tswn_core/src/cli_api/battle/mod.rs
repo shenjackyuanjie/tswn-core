@@ -32,9 +32,13 @@
 //! 查询机制状态不消费随机流；`BattleOptions::include_icons` 仅影响展示快照，
 //! [`BattleModelSession`] 不生成图标或回放，prepared 构造还会沿用模板中固化的 `eval_rq`。
 mod driver;
+/// 战斗回放 DTO：玩家状态与技能快照的序列化结构。
 mod dto;
+/// 模型态战斗会话封装。
 mod model_session;
+/// 回放帧构建：runtime 更新到带 tone 与文本片段回放结构的转换。
 mod replay;
+/// FFI 战斗会话：创建、推进、帧构建与结果查询。
 mod session;
 
 pub use dto::*;

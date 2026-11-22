@@ -1,5 +1,6 @@
 use super::*;
 
+/// 按 hp/atp/count 构造注册了中毒状态的 CombatRuntime，并返回 (runtime, StateId)。
 fn poison_runtime(hp: i32, atp: f64, count: i32) -> (CombatRuntime, StateId) {
     let mut builder = ExtensionRegistryBuilder::default();
     let poison_state = builder

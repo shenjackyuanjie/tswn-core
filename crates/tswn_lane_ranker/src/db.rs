@@ -15,8 +15,11 @@ use crate::model::{
 };
 use crate::parser::ParsedGroup;
 use crate::team::TeamDsu;
+/// 组合与成员的增删查及屏蔽状态。
 mod groups;
+/// lane 结果、进度与状态读写。
 mod results;
+/// 建表与兼容列迁移。
 mod schema;
 
 pub use groups::InsertGroupOutcome;

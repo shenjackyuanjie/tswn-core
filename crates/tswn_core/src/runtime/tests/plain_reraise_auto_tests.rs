@@ -1,5 +1,6 @@
 use super::*;
 
+/// 按等级构造注册了自动复活技能（DIE hook）的 CombatRuntime。
 fn reraise_runtime(level: u32) -> CombatRuntime {
     let mut builder = ExtensionRegistryBuilder::default();
     let reraise = builder
@@ -25,6 +26,7 @@ fn reraise_runtime(level: u32) -> CombatRuntime {
     runtime
 }
 
+/// 构造一份 PassiveDecision，activate 与 success 同取 success。
 fn decision(actor: usize, skill: &str, success: bool) -> PassiveDecision {
     PassiveDecision {
         actor,

@@ -174,6 +174,7 @@ pub struct SkillLoadoutSpec {
     pub effective_skill_adjustment: Option<Vec<(usize, EffectiveSkillWeight)>>,
 }
 
+/// effective_skills 调整项的数量上限。
 pub(crate) const MAX_EFFECTIVE_SKILL_ADJUSTMENTS: usize = 10;
 
 /// 条件受战况影响较大的主动技，以及需要保留发动位置的分身。
@@ -210,6 +211,7 @@ const EFFECTIVE_SKILL_CONSUMPTION: [f64; 25] = [
 ];
 
 impl SkillLoadoutSpec {
+    /// 用等级 / 加成 / 行动序数组构造标准技能装载。
     pub(crate) fn standard(
         levels: &[u32; 40],
         boosted: &[bool; 40],
@@ -240,6 +242,7 @@ impl SkillLoadoutSpec {
         }
     }
 
+    /// 用 overlay 的技能与 effective 列表构造玩家技能装载；含分类技能时走分类条目。
     pub(crate) fn player_overlay(
         skills: &[(String, SkillBoost)],
         effective_skills: Option<&[(String, EffectiveSkillWeight)]>,
@@ -304,6 +307,7 @@ impl SkillLoadoutSpec {
         spec
     }
 
+    /// 按 active_order 与等级自动分配 effective_skills 权重。
     pub(crate) fn enable_auto_effective_skills(&mut self) {
         let mut weights = Vec::new();
         let mut adjustments = Vec::new();
@@ -346,6 +350,7 @@ impl SkillLoadoutSpec {
         self.effective_skill_redistribution = EffectiveSkillWeight::new(1.0);
     }
 
+    /// 用技能列表构造通用小兵 overlay。
     pub(crate) fn generic_minion_overlay(skills: &[(String, SkillBoost)]) -> Self {
         if skills.iter().any(|(name, _)| parse_prefixed_classified_skill_name(name).is_some()) {
             let mut entries = classified_player_entries();
@@ -382,6 +387,7 @@ impl SkillLoadoutSpec {
         Self::from_entries(entries, fixed_lanes.clone(), fixed_lanes)
     }
 
+    /// 用技能列表构造召唤小兵 overlay；share_damage 控制分担伤害技能。
     pub(crate) fn summon_overlay(skills: &[(String, SkillBoost)], share_damage: bool) -> Self {
         let classified = skills.iter().any(|(name, _)| parse_prefixed_classified_skill_name(name).is_some());
         let (mut entries, fixed_lanes) = if classified {
@@ -431,6 +437,7 @@ impl SkillLoadoutSpec {
         Self::from_entries(entries, fixed_lanes, active_order)
     }
 
+    /// 构造默认影子（附身）overlay。
     pub(crate) fn shadow_default(base_level: u32) -> Self {
         let boost = (base_level > 0).then_some(SkillBoost::LastBoost(base_level));
         Self::from_entries(
@@ -446,6 +453,7 @@ impl SkillLoadoutSpec {
         )
     }
 
+    /// 按槽位等级与行动序构造默认召唤 overlay。
     pub(crate) fn summon_default(slot_levels: [u32; 3], action_order: [usize; 3]) -> Self {
         let mut entries = vec![
             empty_entry(0, BuiltinSkillRef::SummonFire),
@@ -475,6 +483,7 @@ impl SkillLoadoutSpec {
         Self::from_entries(entries, vec![0, 1, 2], action_order.into_iter().collect())
     }
 
+    /// 从条目表构造技能装载：推导 active_order 与 post_damage 顺序。
     fn from_entries(entries: Vec<SkillEntrySpec>, fixed_lanes: Vec<usize>, active_order: Vec<usize>) -> Self {
         let keys_for_normal = |skill_key: usize| {
             entries
@@ -555,6 +564,7 @@ impl SkillLoadoutSpec {
     }
 }
 
+/// 构造 0 级空技能条目。
 fn empty_entry(key: usize, skill: BuiltinSkillRef) -> SkillEntrySpec {
     SkillEntrySpec {
         key,
@@ -565,14 +575,17 @@ fn empty_entry(key: usize, skill: BuiltinSkillRef) -> SkillEntrySpec {
     }
 }
 
+/// 把加成应用到条目：设置最终等级、boosted 与 boost。
 fn apply_boost(entry: &mut SkillEntrySpec, boost: &SkillBoost) {
     entry.level = boost.final_level();
     entry.boosted = !matches!(boost, SkillBoost::Normal(_));
     entry.boost = entry.boosted.then(|| boost.clone());
 }
 
+/// 普通玩家的 40 个空技能条目。
 fn normal_player_entries() -> Vec<SkillEntrySpec> { (0..40).map(|key| empty_entry(key, BuiltinSkillRef::Normal(key))).collect() }
 
+/// 分类玩家条目：普通 40 项加召唤 / 附身等固定键。
 fn classified_player_entries() -> Vec<SkillEntrySpec> {
     normal_player_entries()
         .into_iter()
@@ -585,6 +598,7 @@ fn classified_player_entries() -> Vec<SkillEntrySpec> {
         .collect()
 }
 
+/// 召唤小兵条目：40 个映射键加召唤 / 附身固定键。
 fn classified_summon_entries() -> Vec<SkillEntrySpec> {
     (0..40)
         .map(|id| empty_entry(SUMMON_MINION_NORMAL_SKILL_KEY_BASE + id, BuiltinSkillRef::Normal(id)))
@@ -730,6 +744,7 @@ pub fn player_classified_skill_ref_from_name(name: &str) -> Option<ClassifiedSki
         .or_else(|| skill_name_to_id(name).map(ClassifiedSkillRef::Normal))
 }
 
+/// 判断名字是否为分类玩家技能（前缀 / 召唤 / 附身）。
 fn is_player_classified_skill_name(name: &str) -> bool {
     parse_prefixed_classified_skill_name(name).is_some()
         || summon_slot_skill_ref_from_name(name).is_some()
@@ -754,6 +769,7 @@ pub fn phantom_skill_ref_from_name(name: &str) -> Option<ClassifiedSkillRef> {
     }
 }
 
+/// 去掉 skl / skill 前缀并小写化。
 fn normalize_skill_name(name: &str) -> String {
     let lower = name.trim().to_ascii_lowercase();
     lower

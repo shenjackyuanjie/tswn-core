@@ -51,6 +51,7 @@ impl InputRecord {
     }
 }
 
+/// 从 idx 处跳过空白后读取一个数字字节串并解析为 f64；为空或非法时返回 None。
 fn parse_number_token(line: &str, bytes: &[u8], idx: &mut usize) -> Option<f64> {
     while *idx < bytes.len() && bytes[*idx].is_ascii_whitespace() {
         *idx += 1;

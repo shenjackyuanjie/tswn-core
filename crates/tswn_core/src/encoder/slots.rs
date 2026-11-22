@@ -132,6 +132,7 @@ impl SlotScope {
         }
     }
 
+    /// 按槽类别取对应的 slot 白名单。
     fn whitelist(self) -> &'static [SlotWhitelistEntry] {
         match self {
             Self::Entity => ENTITY_SLOT_WHITELIST,

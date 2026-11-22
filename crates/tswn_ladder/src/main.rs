@@ -17,10 +17,15 @@
 //! 运行环境与配置见
 //! [ladder README](https://github.com/shenjackyuanjie/tswn-core/tree/main/crates/tswn_ladder)。
 
+/// 对战执行与 Elo 结算。
 mod battle;
+/// 环境变量配置。
 mod config;
+/// 匹配生成与期望分差计算。
 mod matching;
+/// PostgreSQL 存取与状态落盘。
 mod storage;
+/// 天梯主循环：轮次调度、状态维护与内存看护。
 mod updator;
 
 #[cfg(test)]
@@ -43,8 +48,11 @@ use tokio::io::AsyncWriteExt;
 use tokio_postgres::{Client, NoTls};
 use tswn_core::Runner;
 
+/// 分数差到期望胜率的 logistic 尺度。
 const ELO_SCALE_FACTOR: f64 = 50_600.0;
+/// handicap 值到分数等效量的缩放。
 const HANDICAP_SCALE: f64 = 88.3;
+/// K 因子基准值。
 const BASE_K_FACTOR: f64 = 80.0;
 /// 累计场次很多之后 K 收缩到的下限（占 `BASE_K_FACTOR` 的比例）。
 /// 一分钟一轮时每个玩家一天要打上万场，固定 K=80 的稳态误差远大于真实实力差，
@@ -53,12 +61,19 @@ const K_FLOOR_RATIO: f64 = 0.15;
 /// K 收缩尺度：`K_i = BASE_K_FACTOR / (1 + n_i / K_SHRINK_MATCHES)`。
 /// n_i 为玩家累计参赛场次（跨进程保存，见 `storage::load_match_counts`）。
 const K_SHRINK_MATCHES: f64 = 200.0;
+/// handicap 对 K 的附加系数。
 const K_HANDICAP: f64 = 6.0;
+/// 每轮 handicap 的衰减系数。
 const HANDICAP_DECAY: f64 = 0.97;
+/// 累计场次每轮的衰减系数。
 const MATCHCOUNT_DECAY: f64 = 0.9999;
+/// handicap 扰动的取值半径。
 const PERTURBATION_RANGE: f64 = 40.0;
+/// 每轮分数统一衰减比例（按组均值折算成相同绝对量）。
 const DROPRATE: f64 = 0.9996;
+/// 进程 RSS 上限（MB），超出即退出。
 const MEMORY_LIMIT_MB: u64 = 256;
+/// handicap 保留的小数位数。
 const HANDICAP_PRECISION: u32 = 2;
 /// handicap 回写刻度：与库里的值差不到这个量就不写（0.01 的存储精度下，
 /// 1.0 换算成胜率只有 10^(1*88.3/50600)≈0.4%，对匹配没有可见影响）。
@@ -74,6 +89,7 @@ const HANDICAP_MAINTENANCE_EVERY: u32 = 30;
 const HANDICAP_VACUUM_EVERY: u32 = 10;
 /// 每轮结束后隔多少轮把累计场次快照落盘一次。
 const MATCHCOUNT_SAVE_EVERY: u32 = 10;
+/// 累计场次快照文件名。
 const MATCHCOUNT_STATE_FILE: &str = "ladder_matchcount.txt";
 /// 换号后保持满 K 的轮数。
 ///
@@ -82,9 +98,12 @@ const MATCHCOUNT_STATE_FILE: &str = "ladder_matchcount.txt";
 /// 相当于把处罚悄悄加重了 6 倍。检测到成员名称变化（=换号）时，临时恢复满 K 跑
 /// `LADDER_K_BOOST_ROUNDS` 轮，把回补速度拉回原来的量级；设 0 关闭。
 const K_BOOST_ROUNDS: u32 = 250;
+/// 对战错误日志打印条数上限，超出后抑制重复输出。
 const BATTLE_ERROR_LOG_LIMIT: usize = 3;
 
+/// 主动方每人每轮的场次上限。
 const MAX_ACTIVE_MATCHES: usize = 7;
+/// 被动方每人每轮的场次上限。
 const MAX_PASSIVE_MATCHES: usize = 8;
 /// 每人每轮的场次上限（含给「补位」预留的 2 个槽）。
 ///
@@ -113,17 +132,26 @@ const MAX_PASSIVE_MATCHES: usize = 8;
 /// 若以后 handicap 的量级发生数量级变化（例如把补偿比例提到 100%，`|h|` 从 ~10 涨到 ~50），
 /// 这个结论需要重新评估。
 const MAX_MATCHES: usize = 11;
+/// 为补位预留的槽位数（补位逻辑目前保持关闭）。
 const SUPPLEMENT_RESERVED_SLOTS: usize = 2;
+/// 补位前每人每轮的场次上限。
 const PRE_SA_MAX_MATCHES: usize = MAX_MATCHES - SUPPLEMENT_RESERVED_SLOTS;
 
+/// 第二阶段主动方场次上限。
 const SECOND_ACTIVE_MATCHES: usize = 5;
+/// 第二阶段被动方场次上限。
 const SECOND_PASSIVE_MATCHES: usize = 9;
+/// 候选列表中随机探索所占比例。
 const GLOBAL_EXPLORATION_RATIO: f64 = 0.2;
+/// 随机探索候选的最少条数。
 const GLOBAL_EXPLORATION_MIN: usize = 2;
+/// handicap 判零使用的 epsilon。
 const HANDICAP_ZERO_EPSILON: f64 = 1e-9;
 
+/// 未配置 `LADDER_GROUPS` 时的默认分组。
 const DEFAULT_GROUPS: &[&str] = &["1a", "1b", "2a", "2b", "3a"];
 
+/// 单行玩家数据：库内分数、本轮分数、名次与场次统计。
 #[derive(Debug, Clone)]
 struct PlayerRow {
     id: i32,
@@ -139,6 +167,7 @@ struct PlayerRow {
     supplement_matches: usize,
 }
 
+/// 一对玩家间的 handicap：基础值、扰动值与累计场次，含回写基线。
 #[derive(Debug, Clone)]
 struct HandicapData {
     basic_value: f64,
@@ -151,6 +180,7 @@ struct HandicapData {
     persisted_count: f64,
 }
 
+/// 一条对战历史记录：双方身份、分数、名次与输入。
 #[derive(Debug, Clone)]
 struct HistoryRecord {
     win_or_lose: &'static str,
@@ -167,6 +197,7 @@ struct HistoryRecord {
     actual_result: f64,
 }
 
+/// 本轮匹配统计：最少 / 最多 / 平均场次与最终平方 loss。
 #[derive(Debug, Clone)]
 struct MatchStats {
     min_matches: usize,
@@ -175,12 +206,14 @@ struct MatchStats {
     final_squared_loss: f64,
 }
 
+/// handicap 汇总：平均场次与平均值。
 #[derive(Debug, Clone)]
 struct HandicapStats {
     avg_match_count: f64,
     avg_handicap: f64,
 }
 
+/// 一轮更新的汇总结果：历史记录、变更 handicap、质量指标与跳过回写标志。
 #[derive(Debug, Clone)]
 struct UpdateResults {
     history_records: Vec<HistoryRecord>,
@@ -193,20 +226,25 @@ struct UpdateResults {
     handicap_stats: HandicapStats,
 }
 
+/// 无序玩家对键（小 id 在前），用作 handicap 映射的键。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct PairKey(i32, i32);
 
 impl PairKey {
+    /// 用两个成员 id 构造无序对键。
     fn new(a: i32, b: i32) -> Self { if a < b { Self(a, b) } else { Self(b, a) } }
 }
 
+/// 一场比赛的下标对（小下标在前）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct MatchPair(usize, usize);
 
 impl MatchPair {
+    /// 取规范化后的下标对。
     fn key(self) -> (usize, usize) { if self.0 < self.1 { (self.0, self.1) } else { (self.1, self.0) } }
 }
 
+/// 玩家的跨轮状态：累计场次、名称哈希与满 K 截止轮次。
 #[derive(Debug, Clone, Copy, Default)]
 struct MemberState {
     /// 累计参赛场次，决定自适应 K。
@@ -218,6 +256,7 @@ struct MemberState {
     boost_until: u32,
 }
 
+/// 天梯更新器：数据库连接、配置、RNG、跨轮状态与轮次计数。
 struct Updator {
     client: Client,
     config: Config,
@@ -232,6 +271,7 @@ struct Updator {
     state_save_warned: bool,
 }
 
+/// 服务入口：读配置连库；run_once 时跑一轮后退出，否则按 cron 常驻。
 #[tokio::main]
 async fn main() -> Result<()> {
     let config = Config::from_env()?;
@@ -246,6 +286,7 @@ async fn main() -> Result<()> {
     updator.run_forever().await
 }
 
+/// 取有限值；NaN / Inf 时回落为默认值。
 fn finite_or(value: f64, fallback: f64) -> f64 { if value.is_finite() { value } else { fallback } }
 
 /// 本轮的统一衰减量：组内平均分按 `DROPRATE` 会掉的那一份，从每个玩家身上扣掉同样多。

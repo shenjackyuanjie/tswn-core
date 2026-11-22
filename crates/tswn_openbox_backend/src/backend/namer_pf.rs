@@ -257,6 +257,7 @@ pub fn run_namer_pf_observed(input: NamerPfInput, send: impl Fn(ProgressEvent), 
     send(ProgressEvent::Done(Ok(message)));
 }
 
+/// 判断某指标是否需要计算：勾选屏幕或指定输出文件即需要。
 fn metric_enabled(metrics: &[super::types::NamerPfMetricOptions], metric: NamerPfMetric) -> bool {
     metrics
         .iter()
@@ -264,6 +265,7 @@ fn metric_enabled(metrics: &[super::types::NamerPfMetricOptions], metric: NamerP
 }
 
 #[derive(Clone, Copy)]
+/// 单个名字组的评分设置：场数、线程、口径与需要计算的指标。
 struct NamerPfScoreSettings {
     n: usize,
     threads: Option<usize>,
@@ -275,15 +277,18 @@ struct NamerPfScoreSettings {
 }
 
 impl NamerPfScoreSettings {
+    /// 返回替换线程数后的设置副本。
     fn with_threads(self, threads: Option<usize>) -> Self { Self { threads, ..self } }
 }
 
+/// 一个名字组的评分结果：标签、各项分数与技能榜行。
 struct NamerPfJobResult {
     label: String,
     scores: NamerPfScores,
     skill_lines: Vec<SkillBoardLine>,
 }
 
+/// 按需计算各指标分数，并逐项回调进度。
 fn compute_namer_pf_result(
     group: &[String],
     settings: NamerPfScoreSettings,
@@ -336,12 +341,14 @@ fn compute_namer_pf_result(
     }
 }
 
+/// 技能榜输出配置：配置引用、文件句柄与是否上屏。
 struct SkillBoardEmitCfg<'a> {
     config: Option<&'a SkillBoardConfig>,
     output: &'a mut Option<File>,
     screen: bool,
 }
 
+/// 把一组结果按指标阈值写入屏幕/文件，含高亮与技能榜输出。
 fn emit_namer_pf_result(
     result: &NamerPfJobResult,
     metrics: &[NamerPfMetricOptions],

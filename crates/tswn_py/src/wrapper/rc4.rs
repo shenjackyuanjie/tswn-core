@@ -20,6 +20,7 @@ pub struct PyRC4 {
 }
 
 impl PyRC4 {
+    /// 校验密钥非空，否则抛出 ValueError。
     fn ensure_non_empty_keys(keys: &[u8]) -> PyResult<()> {
         if keys.is_empty() {
             Err(PyValueError::new_err("keys must not be empty"))

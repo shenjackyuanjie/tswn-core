@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
 impl From<&SkillLoadout> for ModelSkills {
+    /// 把技能表投影为模型技能：lane、当前/构建等级、强化与各类顺序原样导出。
     fn from(value: &SkillLoadout) -> Self {
         use crate::namerena::SkillBoost;
         Self {
@@ -66,6 +67,7 @@ impl From<&SkillLoadout> for ModelSkills {
 }
 
 impl ModelSlot {
+    /// 把槽值投影为模型槽：布尔与整数直接落地，玩家模板递归投影，未审计的文本槽报错。
     fn project(slot_id: u32, value: &SlotValue, clans: &mut Vec<String>) -> Result<Self, ModelStateError> {
         let mut slot = Self {
             slot_id,
@@ -351,6 +353,7 @@ pub const MODEL_SKILL_EXPORTS: [&str; 47] = [
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelStateError(pub String);
 impl std::fmt::Display for ModelStateError {
+    /// 显示模型状态错误：原样输出内部描述文本。
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str(&self.0) }
 }
 impl std::error::Error for ModelStateError {}
@@ -501,6 +504,7 @@ pub struct ModelTemplate {
 }
 
 impl ModelTemplate {
+    /// 把玩家模板投影为模型模板：阵营名归并为分组下标，并解析 Boss 身份、免疫表等冷数据。
     fn project(value: &PlayerTemplate, clans: &mut Vec<String>) -> Self {
         let clan_group = clans.iter().position(|name| name == &value.clan_name).unwrap_or_else(|| {
             clans.push(value.clan_name.clone());
@@ -683,6 +687,7 @@ pub struct MarioBossPayload {
 }
 
 impl From<&StatePayload> for ModelPayload {
+    /// 把状态载荷投影为模型载荷：按种类填写对应字段，未知种类归为默认。
     fn from(value: &StatePayload) -> Self {
         let mut result = Self::default();
         match value {
@@ -865,6 +870,7 @@ pub struct ModelPlayerRuntime {
 }
 
 impl From<&PlayerRuntime> for ModelPlayerRuntime {
+    /// 把运行态投影为模型运行态：八围、倍率位模式与各类运行期结构逐字段导出。
     fn from(value: &PlayerRuntime) -> Self {
         Self {
             hp: value.hp,

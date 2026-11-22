@@ -41,6 +41,7 @@ pub struct RuntimeCqpBatchResult {
     pub completed: usize,
 }
 
+/// 一个分片执行完毕的事件：区间序号、区间结果与起止计时。
 struct RangeEvent {
     index: usize,
     summary: Result<RuntimeBatchSummary, RuntimeBatchError>,
@@ -56,6 +57,7 @@ struct RangePlan {
 }
 
 impl RangePlan {
+    /// 计算区间切分计划：把每个 matchup 的轮次切成 `parts` 段，尽量给每个 worker 四份工作，同时限制不可取消区间的长度。
     fn new(thread: u32, matchups: usize, n: usize) -> Self {
         if matchups == 0 {
             return Self {
@@ -82,6 +84,7 @@ impl RangePlan {
         }
     }
 
+    /// 计算第 `part` 段在原始轮次编号中的 `[start, end)`，不能整除的余数分摊到前若干段。
     fn bounds(self, part: usize, n: usize) -> (usize, usize) {
         let base = n / self.parts;
         let extra = n % self.parts;
@@ -90,6 +93,7 @@ impl RangePlan {
     }
 }
 
+/// 单个 matchup 的分片累加器：统计已完成段数、合并摘要，并记录最早开始与最晚结束时间。
 struct Accumulator {
     parts: usize,
     summary: Result<RuntimeBatchSummary, RuntimeBatchError>,
@@ -98,6 +102,7 @@ struct Accumulator {
 }
 
 impl Accumulator {
+    /// 构造空累加器：0 段、`Ok` 空摘要、无计时。
     fn new() -> Self {
         Self {
             parts: 0,
@@ -107,6 +112,7 @@ impl Accumulator {
         }
     }
 
+    /// 登记一个分片事件：累加段数、扩展起止时间并合并摘要；任一区间出错时整体转为 `Err`。
     fn record(&mut self, event: RangeEvent) {
         self.parts += 1;
         self.started = Some(self.started.map_or(event.started, |old| old.min(event.started)));
@@ -351,6 +357,7 @@ mod tests {
 mod range_regressions {
     use super::*;
 
+    /// 测试辅助：构造一个 alpha 对 beta 的双队 matchup。
     fn matchup() -> RuntimeCqpMatchup { RuntimeCqpMatchup::new(vec![vec!["alpha@red".to_owned()], vec!["beta@blue".to_owned()]]) }
 
     #[test]

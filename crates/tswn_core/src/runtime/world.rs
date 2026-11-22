@@ -28,6 +28,8 @@ pub struct WorldArena {
 }
 
 impl PartialEq for WorldArena {
+    /// 按战斗语义判定相等：比较行动顺序、各队 roster/存活、扁平顺序、存活队计数、游标与胜者状态；
+    /// 忽略派生缓存 `alive_team_by_entity`、`roster_count` 与瞬态 `winner_views_dirty`。
     fn eq(&self, other: &Self) -> bool {
         self.round_order == other.round_order
             && self.team_roster == other.team_roster
@@ -43,6 +45,7 @@ impl PartialEq for WorldArena {
 impl Eq for WorldArena {}
 
 impl WorldArena {
+    /// 克隆当前索引视图为 `ModelWorld` 快照，供 model_state 导出或外部核对。
     pub(crate) fn model_state(&self) -> super::model_state::ModelWorld {
         super::model_state::ModelWorld {
             round_order: self.round_order.clone(),
@@ -142,6 +145,7 @@ impl WorldArena {
         self.finish_initial_views(entities.len());
     }
 
+    /// 调试断言：校验初始视图与实体表一致——所有索引存在、队伍归属正确、存活标记匹配。
     #[inline]
     fn assert_initial_views(
         entities: &EntityArena,
@@ -164,6 +168,7 @@ impl WorldArena {
         })));
     }
 
+    /// 初始视图落地后重算派生字段：存活队计数、alive_team 缓存、roster 计数，并复位游标与胜者；仅一队存活时置脏胜者视图。
     #[inline]
     fn finish_initial_views(&mut self, entity_slots: usize) {
         self.alive_group_count = self.team_alive.iter().filter(|team| !team.is_empty()).count();
@@ -176,11 +181,13 @@ impl WorldArena {
         self.winner_views_dirty = self.alive_group_count == 1;
     }
 
+    /// 复用 target 容量，用 source 内容整体覆盖（先 clear 再 extend）。
     fn clone_slice_reusing<T: Copy>(target: &mut Vec<T>, source: &[T]) {
         target.clear();
         target.extend_from_slice(source);
     }
 
+    /// 复用双层 Vec 容量，把 target 调整到 source 长度后逐层覆盖内层 Vec。
     fn clone_nested_reusing<T: Copy>(target: &mut Vec<Vec<T>>, source: &[Vec<T>]) {
         target.truncate(source.len());
         target.resize_with(source.len(), Vec::new);
@@ -294,6 +301,7 @@ impl WorldArena {
         true
     }
 
+    /// 找不到行动者时按原版语义让游标继续后退（用 -1 参与比较）。
     pub(crate) fn repeat_round_actor_removal(&mut self) {
         // 原版找不到行动者时用 -1 参与游标比较。
         if self.round_pos < 0 {
@@ -345,12 +353,14 @@ impl WorldArena {
         self.team_alive.iter().find(|team| team.contains(&actor)).map_or(0, Vec::len)
     }
 
+    /// 全量重建 `alive_team_by_entity` 缓存：清空并扩展到实体数、填 `usize::MAX` 后再从 team_alive 填充。
     fn rebuild_alive_team_cache(&mut self, entity_slots: usize) {
         self.alive_team_by_entity.clear();
         self.alive_team_by_entity.resize(entity_slots, usize::MAX);
         self.fill_alive_team_cache_from(0);
     }
 
+    /// 从 start 起的实体，按其在 team_alive 中首次出现的队伍号写入缓存（取最小值）。
     fn fill_alive_team_cache_from(&mut self, start: usize) {
         for (team, alive) in self.team_alive.iter().enumerate() {
             for actor in alive {
@@ -364,6 +374,7 @@ impl WorldArena {
         }
     }
 
+    /// 更新复活实体的队伍缓存：索引在缓存范围内就地取最小值；稀疏越界时仅在缺口 <64 才扩容并回填已覆盖范围。
     fn cache_revived_actor(&mut self, actor: EntityIdx, team: usize) {
         let index = actor.0 as usize;
         if let Some(cached) = self.alive_team_by_entity.get_mut(index) {
@@ -474,6 +485,7 @@ impl WorldArena {
         self.winner_team
     }
 
+    /// 冷路径：按 team_alive 非空槽位数重算胜者，仅当恰好一队存活时锁定胜者，并清除脏标记。
     #[cold]
     #[inline(never)]
     fn recompute_winner_from_alive_views(&mut self) {
@@ -485,11 +497,13 @@ impl WorldArena {
     /// 返回当前判定的胜者队伍；尚未分胜负返回 `None`。
     pub fn winner_team(&self) -> Option<usize> { self.winner_team }
 
+    /// 强制判定胜者队伍并锁定，之后的胜者同步返回缓存结果。
     pub(crate) fn declare_winner(&mut self, team: usize) {
         self.winner_team = Some(team);
         self.winner_declared = true;
     }
 
+    /// 是否已通过 `declare_winner` 强制锁定胜者。
     pub(crate) fn has_declared_winner(&self) -> bool { self.winner_declared }
 }
 

@@ -48,12 +48,14 @@ impl Updator {
             eprintln!("[db] PostgreSQL重连失败: {reconnect_err:#}");
         }
     }
+    /// 用配置的 URL 重建数据库连接。
     async fn reconnect_postgres(&mut self) -> Result<()> {
         let database_url = self.config.database_url.clone();
         self.client = connect_postgres(&database_url).await?;
         Ok(())
     }
 
+    /// 按分组加载活跃玩家，按分数降序返回。
     pub(super) async fn load_players(&self, group: &str) -> Result<Vec<PlayerRow>> {
         let rows = self
             .client
@@ -87,6 +89,7 @@ impl Updator {
             .collect())
     }
 
+    /// 只加载本轮活跃玩家之间的 handicap 行，避免无意义带宽与回写。
     pub(super) async fn load_handicap_data(
         &mut self,
         players: &[PlayerRow],
@@ -346,6 +349,7 @@ impl Updator {
             .context("prune stale handicap rows")
     }
 
+    /// 按最终分数排序玩家，写历史记录并更新名次与日志。
     pub(super) async fn update_ranks_and_logs(
         &mut self,
         players: &mut [PlayerRow],
@@ -543,6 +547,7 @@ pub(super) fn save_member_state(dir: &std::path::Path, round: u32, state: &HashM
     std::fs::create_dir_all(dir).is_ok() && std::fs::write(&tmp, text.as_bytes()).is_ok() && std::fs::rename(&tmp, &path).is_ok()
 }
 
+/// 把 NUMERIC 列读取为 f64，兼容 f64 / f32 / i32 表示。
 pub(super) fn numeric_to_f64(row: &tokio_postgres::Row, idx: usize) -> f64 {
     if let Ok(value) = row.try_get::<_, f64>(idx) {
         return value;

@@ -26,5 +26,6 @@ impl PyRunnerError {
 #[pyo3::pymethods]
 impl PyRunnerError {
     #[getter]
+    /// 返回 RunnerError 的稳定错误码。
     fn code(&self) -> &'static str { tswn_core::cli_api::CliApiErrorCode::RunnerInitFailed.as_str() }
 }

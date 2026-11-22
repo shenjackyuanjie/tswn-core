@@ -93,6 +93,7 @@ impl ScoreTestSession {
         Ok(())
     }
 
+    /// 执行单场评分对局：按当前完成局数设置分队轮次并复位 runner，逐帧累计技能消息，更新截断、胜场与完成数。
     fn step_match(&mut self) -> CliApiResult<()> {
         self.groups.set_round(self.completed);
         self.prepared
@@ -128,6 +129,7 @@ impl ScoreTestSession {
         Ok(())
     }
 
+    /// 累计一条帧更新中的被测本体技能消息：只统计施法者为跟踪目标、得分为正且为普通技能（排除 `[s_dmg0]`）的消息。
     fn count_update(&mut self, update: RunUpdate) {
         if update.has_caster
             && update.caster < self.subject_count

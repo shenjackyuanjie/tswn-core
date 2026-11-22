@@ -16,8 +16,10 @@ use crate::runtime::{BattleSlotId, EntitySlotId, ExtensionRegistry, TemplateSlot
 use smallvec::SmallVec;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+/// 全局自增计数器，为每个 slot storage 分配唯一 baseline_id，用于复位时识别是否同源。
 static NEXT_SLOT_BASELINE_ID: AtomicU64 = AtomicU64::new(1);
 
+/// 领取全局唯一的槽位基线 ID（原子自增，Relaxed 顺序）；同源 storage 共享 baseline 以支持精细化复位。
 fn next_slot_baseline_id() -> u64 { NEXT_SLOT_BASELINE_ID.fetch_add(1, Ordering::Relaxed) }
 
 /// 扩展数据槽的取值类型。
@@ -93,6 +95,7 @@ impl Default for BattleSlotStorage {
 }
 
 impl PartialEq for BattleSlotStorage {
+    /// 仅按槽位内容判定相等；baseline_id 与 battle_dirty 不参与，便于复位后与基线比较。
     fn eq(&self, other: &Self) -> bool { self.values == other.values }
 }
 
@@ -157,8 +160,11 @@ impl BattleSlotStorage {
     pub fn is_empty(&self) -> bool { self.values.is_empty() }
 }
 
+/// 实体槽脏位标记：蓝图 team 字段发生变化。
 const ENTITY_SLOT_DIRTY_TEAM: u64 = 1;
+/// 实体槽脏位标记：完整值写入或移除。
 const ENTITY_SLOT_DIRTY_VALUE: u64 = 2;
+/// 每个脏位字覆盖的实体槽数量；每槽占 2 bit（team/value 各 1 bit）。
 const ENTITY_SLOTS_PER_DIRTY_WORD: usize = 32;
 
 /// 按 [`EntitySlotId`] 索引的单实体扩展槽存储，用脏位标记本局改动以支持精细化复位。
@@ -175,6 +181,7 @@ impl Default for EntitySlotStorage {
 }
 
 impl PartialEq for EntitySlotStorage {
+    /// 仅按槽位内容判定相等；baseline_id 与脏位不参与，便于复位后与基线比较。
     fn eq(&self, other: &Self) -> bool { self.values == other.values }
 }
 
@@ -228,6 +235,7 @@ impl EntitySlotStorage {
         }
     }
 
+    /// 取出并清空指定槽位，若原先有值则标记值脏位；越界返回 `None`。
     pub(crate) fn remove(&mut self, id: EntitySlotId) -> Option<SlotValue> {
         let index = id.0 as usize;
         let removed = self.values.get_mut(index).and_then(Option::take);
@@ -280,6 +288,7 @@ impl EntitySlotStorage {
         }
     }
 
+    /// 在脏位字中为指定槽位叠加 flags（team/value），使复位时只恢复本局写过的槽。
     #[inline]
     fn mark_battle_dirty(&mut self, index: usize, flags: u64) {
         let word = index / ENTITY_SLOTS_PER_DIRTY_WORD;
@@ -287,6 +296,7 @@ impl EntitySlotStorage {
         self.battle_dirty_words[word] |= flags << shift;
     }
 
+    /// 是否存在任何被标记为脏的实体槽。
     fn has_battle_dirty(&self) -> bool { self.battle_dirty_words.iter().any(|word| *word != 0) }
 
     /// 返回已分配的槽位数量（含未设置槽）。

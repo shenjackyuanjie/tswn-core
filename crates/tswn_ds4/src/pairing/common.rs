@@ -115,6 +115,7 @@ pub fn run_pair_mode_with_threads(
     Ok(total)
 }
 
+/// 读取已评分文件为 PairRow：解析分数行、构建特征并预计算梯度；文件不存在返回空表。
 fn load_scored_rows(
     path: &Path,
     model: &[f64; 1124],
@@ -157,6 +158,7 @@ fn load_scored_rows(
     Ok(rows)
 }
 
+/// 计算一对候选的配对分：按模式做交叉 name_base 合并、门控判定与两侧增量得分求和。
 fn pair_score(
     left: &PairRow,
     right: &PairRow,
@@ -208,6 +210,7 @@ fn pair_score(
     (sx + sy) as i32
 }
 
+/// 用预计算梯度 dt 与二阶项把旧特征增量到新特征，返回更新后的分数。
 fn incremental_from_dt(
     score_init: f64,
     old_x: &[f64; 46],
@@ -236,6 +239,7 @@ fn incremental_from_dt(
     score
 }
 
+/// 按 C++ 口径修剪名字两端的 NUL/空格/加号；前导内容被截断时返回空串。
 fn pair_output_name_like_cpp(raw: &str) -> String {
     let bytes = raw.as_bytes();
     if bytes.is_empty() {

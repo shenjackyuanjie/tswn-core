@@ -6,6 +6,7 @@ use crate::encoder::capacity::BASELINE_64;
 use crate::encoder::manifest::{CALIBRATION_SCHEMA, CALIBRATION_SCHEMA_VERSION, CalibrationFieldReport, CalibrationReport};
 use crate::runtime::RuntimeRunner;
 
+/// 构造固定输入（带 seed）的测试 runner。
 fn runner() -> RuntimeRunner {
     RuntimeRunner::new_from_namerena_raw("private-left@red\n\nprivate-right@blue\nseed:private-seed".into()).unwrap()
 }
@@ -22,6 +23,7 @@ fn battle_state(rounds: usize) -> BattleModelState {
     runner.model_state().unwrap()
 }
 
+/// 构造确定性校准报告，供 manifest 测试复用。
 fn calibration_field() -> CalibrationFieldReport {
     CalibrationFieldReport {
         count: 100,
@@ -59,6 +61,7 @@ fn manifest() -> EncoderManifest {
     EncoderManifest::from_calibration(&report, &BASELINE_64).unwrap()
 }
 
+/// 用测试 manifest 构造 `FeatureEncoder`。
 fn encoder() -> FeatureEncoder { FeatureEncoder::new(manifest()).expect("测试 manifest 必须有效") }
 
 /// `core.entity.minion_counter` 槽（U64 计数语义）。
@@ -103,13 +106,18 @@ fn tensor_bytes(batch: &EncodedBatch, name: &str) -> Vec<u8> {
     }
 }
 
+/// 把任意切片 reinterpret 为字节切片。
 fn slice_as_bytes<T>(values: &[T]) -> &[u8] {
     unsafe { std::slice::from_raw_parts(values.as_ptr().cast::<u8>(), std::mem::size_of_val(values)) }
 }
 
 // ------------------------------------------------------------ 基本路径
 
+/// 批处理相关测试。
 mod batching;
+/// 字段族相关测试。
 mod families;
+/// 复核（raw / extra）相关测试。
 mod review;
+/// 校验相关测试。
 mod validation;

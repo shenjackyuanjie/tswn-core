@@ -813,6 +813,7 @@ impl CombatRuntime {
         amount
     }
 
+    /// 普攻伤害落地：应用伤害（含新冠来源与附带效果），若造成击杀则继续结算致死伤害链。
     fn settle_plain_attack_damage_into(
         &mut self,
         actor: EntityIdx,

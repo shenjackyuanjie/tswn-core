@@ -30,6 +30,7 @@ impl Ds4Error {
 }
 
 impl Display for Ds4Error {
+    /// 按错误分支输出可读信息；缺失配置时列出全部已检查路径。
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Io(err) => write!(f, "io error: {err}"),

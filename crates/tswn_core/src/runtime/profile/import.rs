@@ -111,6 +111,7 @@ impl CustomBed2Import {
         Self::prepared_template_with_minion_overlays(raw_groups, registry, players, config)
     }
 
+    /// 在准备模板上写召唤 overlay：解析火与爆炸技能 ID，把 roster 中第一个召唤 overlay 落成模板槽。
     fn prepared_template_with_summon_overlay(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -138,6 +139,7 @@ impl CustomBed2Import {
         Ok(template)
     }
 
+    /// 在准备模板上写影袭 overlay：解析附身技能 ID，把 roster 中第一个影袭 overlay 落成模板槽。
     fn prepared_template_with_shadow_overlay(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -158,6 +160,7 @@ impl CustomBed2Import {
         Ok(template)
     }
 
+    /// 在准备模板上写亡灵 overlay：把 roster 中第一个亡灵 overlay 落成模板槽。
     fn prepared_template_with_zombie_overlay(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -175,6 +178,7 @@ impl CustomBed2Import {
         Ok(template)
     }
 
+    /// 一次性写全部使魔 overlay：召唤、影袭与亡灵共用同一准备模板；各类技能导出名缺失时报对应变体错误。
     fn prepared_template_with_minion_overlays(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -379,6 +383,7 @@ impl CustomBed2Import {
         Ok(players)
     }
 
+    /// 解析门面 id_name：拆出名字、队伍与体力标记，`+` 段的体力优先于 `@` 段。
     fn parse_facade_id_name(id_name: &str) -> (String, Option<String>, Option<i32>) {
         let (base, plus_rest) = id_name.split_once('+').unwrap_or((id_name, ""));
         let (name, team, team_marker_hp) = Self::split_facade_name_team(base);
@@ -386,6 +391,7 @@ impl CustomBed2Import {
         (name, team, plus_marker_hp.or(team_marker_hp))
     }
 
+    /// 按 `@` 拆分名字与队伍段，再解析队伍段里的 bed2 体力标记。
     fn split_facade_name_team(raw: &str) -> (String, Option<String>, Option<i32>) {
         if let Some((name, team)) = raw.split_once('@') {
             let (team, hp) = Self::split_bed2_team_marker(team.trim());
@@ -395,6 +401,7 @@ impl CustomBed2Import {
         }
     }
 
+    /// 解析队伍段中的 bed2 标记：纯 `bed2` 或 `名字@bed2` 表示使用默认体力，空队伍段返回 `None`。
     fn split_bed2_team_marker(team: &str) -> (Option<String>, Option<i32>) {
         if team == "bed2" {
             return (None, Some(DEFAULT_BED2_HP));
@@ -406,14 +413,17 @@ impl CustomBed2Import {
         }
     }
 
+    /// 取 `+` 分段中最后一个 `bed2[hp]` 体力标记。
     fn parse_bed2_plus_segments(raw: &str) -> Option<i32> { raw.split('+').filter_map(Self::parse_bed2_plus_marker).last() }
 
+    /// 解析单个 `bed2[hp]` 段；hp 必须为正整数。
     fn parse_bed2_plus_marker(segment: &str) -> Option<i32> {
         let rest = segment.trim().strip_prefix("bed2[")?;
         let hp = rest.strip_suffix(']')?.trim().parse::<i32>().ok()?;
         (hp > 0).then_some(hp)
     }
 
+    /// 扫描 roster，找到第一个带召唤 overlay 的玩家并生成召唤模板。
     fn first_summon_template_from_roster(
         raw_groups: &[Vec<String>],
         summon_kind: PlayerKindId,
@@ -447,6 +457,7 @@ impl CustomBed2Import {
         None
     }
 
+    /// 扫描 roster，找到第一个带影袭 overlay 的玩家并生成影袭模板。
     fn first_shadow_template_from_roster(
         raw_groups: &[Vec<String>],
         shadow_kind: PlayerKindId,
@@ -478,6 +489,7 @@ impl CustomBed2Import {
         None
     }
 
+    /// 扫描 roster，找到第一个带亡灵 overlay 的玩家并生成亡灵模板；技能导出名缺失时返回导入错误。
     fn first_zombie_template_from_roster(
         raw_groups: &[Vec<String>],
         zombie_kind: PlayerKindId,
@@ -511,6 +523,7 @@ impl CustomBed2Import {
         Ok(None)
     }
 
+    /// 由召唤 overlay 生成 `名字?0` 模板：缺省属性偏防御与抗性，带火/爆炸技能，并可继承 owner 的防御抗性。
     fn summon_template_from_overlay(
         import: &Self,
         team: usize,
@@ -539,6 +552,7 @@ impl CustomBed2Import {
         .with_skill_loadout(skills)
     }
 
+    /// 由影袭 overlay 生成 `名字?shadow` 模板：只带附身技能，行动点为负。
     fn shadow_template_from_overlay(
         import: &Self,
         team: usize,
@@ -565,6 +579,7 @@ impl CustomBed2Import {
         .with_skill_loadout(skills)
     }
 
+    /// 由亡灵 overlay 生成 `名字?zombie` 模板：技能按导出名前缀解析，行动点为 0。
     fn zombie_template_from_overlay(
         import: &Self,
         team: usize,
@@ -592,6 +607,7 @@ impl CustomBed2Import {
         .with_skill_loadout(skills))
     }
 
+    /// 由 overlay 技能表生成召唤技能配置：按名字映射 lane 组成行动序；没有可识别技能时退回默认三技能。
     fn summon_skill_loadout_from_overlay(
         overlay: &crate::namerena::MinionOverlay,
         fire_skill: SkillId,
@@ -614,6 +630,7 @@ impl CustomBed2Import {
         summon_default_skill_loadout(fire_skill, explode_skill, [0, 1, 2]).with_active_order(active_order)
     }
 
+    /// 把召唤 overlay 技能名映射到固定 lane：火1、火2与爆炸分别为 0/1/2。
     fn summon_overlay_skill_lane(name: &str) -> Option<usize> {
         let skill_ref = crate::namerena::parse_prefixed_classified_skill_name(name)
             .or_else(|| crate::namerena::summon_slot_skill_ref_from_name(name))?;
@@ -625,6 +642,7 @@ impl CustomBed2Import {
         }
     }
 
+    /// 由 overlay 技能表生成影袭技能配置：只认附身 lane，没有可识别技能时退回默认。
     fn shadow_skill_loadout_from_overlay(overlay: &crate::namerena::MinionOverlay, possess_skill: SkillId) -> SkillLoadout {
         let mut active_order = Vec::new();
         if let Some(skill_levels) = overlay.skills.as_ref() {
@@ -643,6 +661,7 @@ impl CustomBed2Import {
         SkillLoadout::from_skills([possess_skill]).with_active_order(active_order)
     }
 
+    /// 把影袭 overlay 技能名映射到附身 lane（唯一 lane 为 0）。
     fn shadow_overlay_skill_lane(name: &str) -> Option<usize> {
         let skill_ref = crate::namerena::parse_prefixed_classified_skill_name(name)
             .or_else(|| crate::namerena::phantom_skill_ref_from_name(name))?;
@@ -652,6 +671,7 @@ impl CustomBed2Import {
         }
     }
 
+    /// 由 overlay 技能表生成亡灵技能配置：按导出名（含前缀）解析技能 ID，缺失时报导入错误。
     fn zombie_skill_loadout_from_overlay(
         overlay: &crate::namerena::MinionOverlay,
         registry: &ExtensionRegistry,
@@ -682,6 +702,7 @@ impl CustomBed2Import {
         Ok(SkillLoadout::from_skills(skills))
     }
 
+    /// 解析亡灵 overlay 技能名对应的导出名后缀：先走分类技能引用，再走归一化名字匹配。
     fn zombie_overlay_skill_export_suffix(name: &str) -> Option<String> {
         match crate::namerena::player_classified_skill_ref_from_name(name) {
             Some(crate::namerena::ClassifiedSkillRef::Normal(skill_id)) => {
@@ -700,11 +721,13 @@ impl CustomBed2Import {
         }
     }
 
+    /// 由技能编号生成导出名后缀：去掉 `skl` 前缀并转为小写。
     fn normal_skill_export_suffix(skill_id: usize) -> String {
         let export_name = crate::namerena::skill_name_for_export(skill_id);
         export_name.strip_prefix("skl").unwrap_or(export_name.as_str()).to_ascii_lowercase()
     }
 
+    /// 归一化使魔 overlay 技能名：去掉 `skl` 或 `skill` 前缀并转小写。
     fn normalize_minion_overlay_skill_name(name: &str) -> String {
         let lower = name.trim().to_ascii_lowercase();
         lower
@@ -714,6 +737,7 @@ impl CustomBed2Import {
             .to_string()
     }
 
+    /// 从原始行解析玩家 overlay：按 JSON 外的 `+` 分段，取最后一段可解析的 overlay。
     fn player_overlay_from_raw(raw: &str) -> Option<crate::namerena::PlayerOverlay> {
         Self::split_by_plus_outside_json(raw)
             .into_iter()
@@ -721,6 +745,7 @@ impl CustomBed2Import {
             .last()
     }
 
+    /// 按 JSON 外的 `+` 拆分原始行：字符串、花括号与方括号内的加号不作为分隔符。
     fn split_by_plus_outside_json(raw: &str) -> Vec<String> {
         let mut segments = Vec::new();
         let mut current = String::new();

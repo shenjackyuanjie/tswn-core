@@ -150,6 +150,7 @@ where
     }
 }
 
+/// 解析 run/openbox-cqp 的 --root 与 --config，缺省 root 为当前目录。
 fn parse_run(args: Vec<String>) -> Ds4Result<Cli> {
     let mut root = std::env::current_dir()?;
     let mut config_path = None;
@@ -176,6 +177,7 @@ fn parse_run(args: Vec<String>) -> Ds4Result<Cli> {
     })
 }
 
+/// 解析 show-config 的 --root 与 --config。
 fn parse_show_config(args: Vec<String>) -> Ds4Result<Cli> {
     let mut root = std::env::current_dir()?;
     let mut config_path = None;
@@ -202,6 +204,7 @@ fn parse_show_config(args: Vec<String>) -> Ds4Result<Cli> {
     })
 }
 
+/// 解析 merge 的输入目录与输出文件两个位置参数。
 fn parse_merge(args: Vec<String>) -> Ds4Result<Cli> {
     if args.len() != 2 {
         return Err(Ds4Error::cli("merge usage: tswn_ds4 merge <input_dir> <output_file>"));
@@ -214,6 +217,7 @@ fn parse_merge(args: Vec<String>) -> Ds4Result<Cli> {
     })
 }
 
+/// 解析 dedup 的新文件、旧文件与输出文件三个位置参数。
 fn parse_dedup(args: Vec<String>) -> Ds4Result<Cli> {
     if args.len() != 3 {
         return Err(Ds4Error::cli("dedup usage: tswn_ds4 dedup <new_file> <old_file> <output_file>"));
@@ -227,6 +231,7 @@ fn parse_dedup(args: Vec<String>) -> Ds4Result<Cli> {
     })
 }
 
+/// 解析 sort 的位置参数，并校验分数列号与排序键范围。
 fn parse_sort(args: Vec<String>) -> Ds4Result<Cli> {
     if args.len() != 5 {
         return Err(Ds4Error::cli(
@@ -264,6 +269,7 @@ fn parse_sort(args: Vec<String>) -> Ds4Result<Cli> {
     })
 }
 
+/// 解析 score-* 的线程数与两道筛值，线程数至少为 1。
 fn parse_score(args: Vec<String>, mode: SingleMode) -> Ds4Result<Cli> {
     if args.len() != 5 {
         return Err(Ds4Error::cli(
@@ -291,6 +297,7 @@ fn parse_score(args: Vec<String>, mode: SingleMode) -> Ds4Result<Cli> {
     })
 }
 
+/// 解析 pair-* 参数；type 0 表示同集合、1 表示左右集合，线程数至少为 1。
 fn parse_pair(args: Vec<String>, mode: PairCliMode) -> Ds4Result<Cli> {
     if args.len() != 6 {
         return Err(Ds4Error::cli(
@@ -353,6 +360,7 @@ NOTES:
     );
 }
 
+/// 按 --config 路径或 root 自动查找加载配置。
 fn load_config(root: &Path, config_path: Option<PathBuf>) -> Ds4Result<Config> {
     match config_path {
         Some(path) => Config::load_from_path(&path),

@@ -22,6 +22,7 @@ pub enum RuntimeSummonHandlerError {
 }
 
 impl From<EffectContextError> for RuntimeSummonHandlerError {
+    /// 把上下文错误转换为 [`RuntimeSummonHandlerError::Context`] 变体。
     fn from(error: EffectContextError) -> Self { Self::Context(error) }
 }
 
@@ -36,6 +37,7 @@ pub enum RuntimeMinionHandlerError {
 }
 
 impl From<EffectContextError> for RuntimeMinionHandlerError {
+    /// 把上下文错误转换为 [`RuntimeMinionHandlerError::Context`] 变体。
     fn from(error: EffectContextError) -> Self { Self::Context(error) }
 }
 
@@ -350,6 +352,7 @@ pub fn select_disperse_targets(
     select_disperse_targets_from_candidates(entities, world, &candidates, smart, rng)
 }
 
+/// 从候选集合中抽取驱散目标：smart 选 3 个、否则 2 个，重复与无效抽样有次数上限；多选时按评分降序返回。
 fn select_disperse_targets_from_candidates(
     entities: &EntityArena,
     world: &WorldArena,

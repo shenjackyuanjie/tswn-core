@@ -521,6 +521,7 @@ pub struct CliIconInfo {
     pub colors_consumed: usize,
 }
 
+/// 把纳秒计数收敛到 u64，溢出取最大值。
 fn nanos_to_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
 
 impl From<core_cli_api::JsonRuntimeNormalizedRun> for RuntimeNormalizedRunView {

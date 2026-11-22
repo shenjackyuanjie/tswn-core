@@ -18,6 +18,7 @@ use crate::{
     tswn_runner_t, tswn_status_t, tswn_str_t, tswn_update_snapshot_t, tswn_update_type_t, tswn_updates_t, tswn_win_rate_result_t,
 };
 
+/// 读取可选的 C 字符串参数：空指针表示缺省并返回空 Vec，否则返回仅含一个字符串的 Vec。
 fn read_optional_utf8(ptr: *const c_char, name: &str) -> FfiResult<Vec<String>> {
     if ptr.is_null() {
         Ok(Vec::new())
@@ -26,6 +27,7 @@ fn read_optional_utf8(ptr: *const c_char, name: &str) -> FfiResult<Vec<String>> 
     }
 }
 
+/// 校验胜率调用至少包含两个非空组，否则报 `TSWN_ERR_INVALID_ARGUMENT`。
 fn ensure_groups_for_win_rate(groups: &[Vec<String>]) -> FfiResult<()> {
     let count = groups.iter().filter(|group| !group.is_empty()).count();
     if count < 2 {
@@ -38,6 +40,7 @@ fn ensure_groups_for_win_rate(groups: &[Vec<String>]) -> FfiResult<()> {
     }
 }
 
+/// 把 core `UpdateType` 映射为 C 侧 `tswn_update_type_t`。
 fn update_type_to_c(update_type: UpdateType) -> tswn_update_type_t {
     match update_type {
         UpdateType::Win => tswn_update_type_t::Win,
@@ -46,6 +49,7 @@ fn update_type_to_c(update_type: UpdateType) -> tswn_update_type_t {
     }
 }
 
+/// 把 `RuntimePlayerSnapshot` 逐字段转换为 C 快照结构；`id` 同时写入 id 与 ptr 两个字段以兼容旧绑定。
 fn player_snapshot(player: RuntimePlayerSnapshot) -> tswn_player_snapshot_t {
     tswn_player_snapshot_t {
         id: player.id as u64,
@@ -70,6 +74,7 @@ fn player_snapshot(player: RuntimePlayerSnapshot) -> tswn_player_snapshot_t {
     }
 }
 
+/// 把 `RunUpdate` 转换为 C 更新快照；`param` 缺省时填默认值并用 `has_param` 标记是否存在。
 fn update_snapshot(update: &RunUpdate) -> tswn_update_snapshot_t {
     tswn_update_snapshot_t {
         score: update.score,
@@ -84,6 +89,7 @@ fn update_snapshot(update: &RunUpdate) -> tswn_update_snapshot_t {
     }
 }
 
+/// 对已准备的 runner 执行胜率统计并转换为 C 结果结构；core 错误映射 `TSWN_ERR_RUNNER`。
 fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, thread: u32) -> FfiResult<tswn_win_rate_result_t> {
     let summary = tswn_core::runtime::prepared_runtime_win_rate(prepared, n, thread)
         .map_err(|err| ffi_error(tswn_status_t::TSWN_ERR_RUNNER, err.to_string()))?;
@@ -93,6 +99,7 @@ fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, thread: u32) -> Ff
     })
 }
 
+/// 把玩家 id 列表拷贝到调用方缓冲区：容量不足报参数错误；列表非空而出参为空报 `TSWN_ERR_NULL`。
 fn copy_ids(ids: &[PlrId], out: *mut u64, cap: usize, name: &str) -> FfiResult<()> {
     if ids.len() > cap {
         return Err(ffi_error(

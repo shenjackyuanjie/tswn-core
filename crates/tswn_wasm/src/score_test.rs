@@ -5,6 +5,7 @@ use crate::battle::dto_to_js;
 use crate::error::{WasmResult, cli_api_error};
 
 #[wasm_bindgen(typescript_custom_section)]
+/// 评分测试导出类型的 TypeScript 声明（自定义 section）。
 const SCORE_TEST_TYPES: &str = r#"
 export interface ScoreSkillFrequency {
     message: string;

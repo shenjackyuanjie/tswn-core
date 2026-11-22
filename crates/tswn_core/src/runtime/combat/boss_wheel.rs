@@ -304,6 +304,7 @@ mod tests {
         runtime
     }
 
+    /// 测试辅助：抽取 [`RunUpdates`] 中全部帧更新的消息文本。
     fn messages_of(updates: &RunUpdates) -> Vec<String> {
         updates.updates.iter().map(|update| update.message.to_string()).collect()
     }
@@ -371,6 +372,7 @@ mod tests {
         );
     }
 
+    /// 测试辅助：构造生命之轮 Boss 与敌人的战场；可指定目标体力、是否加入第二名敌人、`at_boost` 与 PRE_DAMAGE 钩子。
     fn wheel_turn_runtime(
         target_hp: i32,
         another_enemy: bool,
@@ -419,6 +421,7 @@ mod tests {
         runtime
     }
 
+    /// 测试钩子：对 1 号实体嵌套一次 1 点伤害，用于模拟执行前体力变化。
     fn lower_first_target_hp(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
         context.push_nested(QueuedEffect::Damage {
             caster: entry.owner,
@@ -427,6 +430,7 @@ mod tests {
         });
     }
 
+    /// 测试钩子：对 1 号实体嵌套一次 1 点治疗，用于模拟执行前体力变化。
     fn raise_first_target_hp(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
         context.push_nested(QueuedEffect::Heal {
             caster: entry.owner,
@@ -545,6 +549,7 @@ mod tests {
         );
     }
 
+    /// 测试辅助：推进至多 100 步，返回第一段含非空消息的帧更新批次。
     fn next_visible_batch(runner: &mut RuntimeRunner) -> Vec<RunUpdate> {
         for _ in 0..100 {
             let Some(frame) = runner.run_round().frame else { continue };
@@ -561,6 +566,7 @@ mod tests {
         panic!("100 步内没有可见批次");
     }
 
+    /// 测试辅助：读取生命之轮的 `(hp, speed_points, magic_point)` 与 RC4 游标快照，用于逐批比对。
     fn wheel_checkpoint(runner: &RuntimeRunner, wheel: EntityIdx) -> ((i32, i32, i32), (u32, u32)) {
         let runtime = runner.runtime();
         let state = &runtime.entities.get(wheel).unwrap().runtime;

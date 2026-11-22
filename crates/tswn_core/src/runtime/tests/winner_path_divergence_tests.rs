@@ -12,8 +12,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::*;
 use crate::runtime::{RuntimeRunner, default_custom_runtime_import_config};
 
+/// 单用例扫描的最大回合数上限。
 const MAX_ROUNDS: usize = 20_000;
 
+/// 单个 stress 用例的扫描报告：回合数、胜者与各类视图不一致计数。
 #[derive(Default, Debug)]
 struct CaseReport {
     rounds: usize,
@@ -37,6 +39,7 @@ fn entity_alive_teams(runner: &RuntimeRunner) -> BTreeMap<usize, BTreeSet<usize>
     teams
 }
 
+/// 按 team_alive 视图收集“存活队伍 → 成员索引”的有序映射。
 fn world_view_teams(runner: &RuntimeRunner) -> BTreeMap<usize, BTreeSet<usize>> {
     let mut teams: BTreeMap<usize, BTreeSet<usize>> = BTreeMap::new();
     let mut team = 0usize;
@@ -49,6 +52,7 @@ fn world_view_teams(runner: &RuntimeRunner) -> BTreeMap<usize, BTreeSet<usize>> 
     teams
 }
 
+/// 收集扁平存活顺序中的实体索引集合。
 fn flat_view(runner: &RuntimeRunner) -> BTreeSet<usize> {
     runner.runtime.world.flat_alive().iter().map(|idx| idx.0 as usize).collect()
 }
@@ -64,12 +68,14 @@ fn live_teams(runtime: &CombatRuntime) -> Vec<usize> {
     teams.into_iter().collect()
 }
 
+/// 读取 tswn_test 中指定 stress 用例文件并扫描为 CaseReport。
 fn run_case(file_name: &str) -> CaseReport {
     let path = format!("{}/../tswn_test/cases/runtime_stress/{file_name}", env!("CARGO_MANIFEST_DIR"));
     let raw = std::fs::read_to_string(&path).unwrap_or_else(|err| panic!("读取 {path} 失败: {err}"));
     scan_raw(raw, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap_or_else(|err| panic!("{file_name} 导入失败: {err}"))
 }
 
+/// 用默认 profile 把 raw 输入跑到底，比较 alive 视图与实体表视角并产出报告。
 fn scan_raw(raw: String, eval_rq: f64) -> Result<CaseReport, String> {
     let config = default_custom_runtime_import_config().map_err(|err| format!("{err:?}"))?;
     let mut runner =
@@ -130,6 +136,7 @@ fn scan_raw(raw: String, eval_rq: f64) -> Result<CaseReport, String> {
     }
 }
 
+/// 参与胜者路径一致性扫描的 stress 用例文件名列表。
 const CASES: &[&str] = &[
     "1v1-0f92cb76cc37fdc5.txt",
     "2v2-554f4128af707167.txt",
@@ -199,6 +206,7 @@ fn stress_cases_have_no_winner_path_divergence() {
     println!("总计 rounds={total_rounds} revives={total_revives}");
 }
 
+/// 把指定实体 hp 置 0、标记死亡并同步世界视图。
 fn kill(runtime: &mut CombatRuntime, actor: EntityIdx, team: usize) {
     let entity = runtime.entities.get_mut(actor).expect("被击杀实体存在");
     entity.runtime.hp = 0;

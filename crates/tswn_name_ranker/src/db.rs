@@ -35,6 +35,7 @@ impl Db {
         db.init()?;
         Ok(db)
     }
+    /// 建表：names、targets、pair_scores、results、abcp_* 与扩展/归档表。
     fn init(&self) -> anyhow::Result<()> {
         self.conn.lock().unwrap().execute_batch(r#"
 CREATE TABLE IF NOT EXISTS names(id INTEGER PRIMARY KEY, raw TEXT NOT NULL UNIQUE, diy TEXT NOT NULL, text_type TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);

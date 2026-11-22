@@ -6,6 +6,7 @@
 
 use super::*;
 
+/// extra 族的顺序写入器：按行追加并受 x_max 容量约束。
 struct ExtraWriter<'a> {
     encoder: &'a FeatureEncoder,
     batch_index: usize,
@@ -14,6 +15,7 @@ struct ExtraWriter<'a> {
 }
 
 impl ExtraWriter<'_> {
+    /// 开始一行 extra 写入；超出 x_max 容量报 `CapacityExceeded`。
     fn begin(&mut self, scope: i32, owner: i32, field: i32, ordinal: i32) -> Result<(), EncodeError> {
         if self.row >= self.encoder.profile.x_max {
             return Err(EncodeError::CapacityExceeded {
@@ -27,18 +29,21 @@ impl ExtraWriter<'_> {
             .copy_from_slice(&[scope, owner, field, ordinal]);
         Ok(())
     }
+    /// 写入一个 f32 数值 extra 行。
     fn number(&mut self, scope: i32, field: i32, owner: i32, ordinal: i32, value: f32) -> Result<(), EncodeError> {
         self.begin(scope, owner, field, ordinal)?;
         self.out.f32_row_mut("extra_num", self.batch_index)?[self.row] = value;
         self.row += 1;
         Ok(())
     }
+    /// 写入一个 i32 引用 extra 行。
     fn reference(&mut self, scope: i32, field: i32, owner: i32, ordinal: i32, value: i32) -> Result<(), EncodeError> {
         self.begin(scope, owner, field, ordinal)?;
         self.out.i32_row_mut("extra_ref", self.batch_index)?[self.row] = value;
         self.row += 1;
         Ok(())
     }
+    /// 写入一个 u64 位域 extra 行（拆成两个 u32）。
     fn bits(&mut self, scope: i32, field: i32, owner: i32, ordinal: i32, value: u64) -> Result<(), EncodeError> {
         self.begin(scope, owner, field, ordinal)?;
         let bits = self.out.u32_row_mut("extra_bits", self.batch_index)?;
@@ -48,14 +53,17 @@ impl ExtraWriter<'_> {
         Ok(())
     }
 
+    /// 以 ordinal 0 写入 u64 位域。
     fn raw_u64(&mut self, owner_scope: i32, owner: i32, field: i32, value: u64) -> Result<(), EncodeError> {
         self.bits(owner_scope, field, owner, 0, value)
     }
 
+    /// 写入 u32 原始字段。
     fn raw_u32(&mut self, owner_scope: i32, owner: i32, field: i32, value: u32) -> Result<(), EncodeError> {
         self.raw_u64(owner_scope, owner, field, u64::from(value))
     }
 
+    /// 把实体 runtime 原始字段按固定 field id 展开为 extra 行。
     fn raw_entity(&mut self, owner: i32, entity: &crate::runtime::model_state::ModelEntity) -> Result<(), EncodeError> {
         self.raw_u32(2, owner, 4096, entity.runtime.kind.0)?;
         self.raw_u64(2, owner, 4104, entity.runtime.at_boost_bits)?;
@@ -70,6 +78,7 @@ impl ExtraWriter<'_> {
         Ok(())
     }
 
+    /// 把模板原始字段按固定 field id 展开为 extra 行。
     fn raw_template(&mut self, owner: i32, template: &crate::runtime::model_state::ModelTemplate) -> Result<(), EncodeError> {
         self.raw_u32(3, owner, 4097, template.kind.0)?;
         if let Some(kind) = template.identity.boss_kind {
@@ -88,6 +97,7 @@ impl ExtraWriter<'_> {
         Ok(())
     }
 
+    /// 把状态条目原始字段按固定 field id 展开为 extra 行。
     fn raw_state(&mut self, owner: usize, entry: &crate::runtime::model_state::ModelStateEntry) -> Result<(), EncodeError> {
         self.raw_u32(4, owner as i32, 4099, entry.legacy_order_key)?;
         if let Some(value) = entry.extension_state_id {
@@ -99,6 +109,7 @@ impl ExtraWriter<'_> {
         Ok(())
     }
 
+    /// 把世界级原始字段展开为 extra 行。
     fn raw_world(&mut self, state: &BattleModelState) -> Result<(), EncodeError> {
         self.raw_u64(1, 0, 4120, state.world.alive_group_count as u64)?;
         self.raw_u64(1, 0, 4121, state.world.round_pos as i64 as u64)
@@ -106,6 +117,7 @@ impl ExtraWriter<'_> {
 }
 
 impl FeatureEncoder {
+    /// 把 slot 族（实体 / 模板 / 战斗槽位）写入编码批次。
     pub(super) fn write_slot_family(
         &self,
         state: &BattleModelState,
@@ -180,6 +192,7 @@ impl FeatureEncoder {
         Ok(())
     }
 
+    /// 把 extra 原始字段族写入编码批次。
     pub(super) fn write_extra_family(
         &self,
         state: &BattleModelState,

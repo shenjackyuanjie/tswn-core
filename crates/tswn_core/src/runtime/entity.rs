@@ -31,8 +31,11 @@ pub use runtime::*;
 pub use skill_loadout::*;
 pub use state::*;
 
+/// 默认 at_boost 倍率 1.0 的百万分比表示，用于整数比较与导出。
 const DEFAULT_AT_BOOST_MILLIONTHS: i64 = 1_000_000;
+/// 默认 at_boost 倍率 1.0 的 f64 位模式，是派生统计的零修正基准。
 const DEFAULT_AT_BOOST_BITS: u64 = 1.0_f64.to_bits();
+/// 本体衰减系数（约 0.78）：生成子分身时前七维八围按它向上取整折算。
 const CLONE_ATTR_DECAY: f64 = 0.7799999713897705;
 
 /// 把 at_boost 倍率换算为百万分比整数，用于整数比较与导出。
@@ -266,6 +269,7 @@ impl CloneBuildData {
     /// 返回构造召唤物蓝图所需的 owner 原始八围。
     pub(crate) fn attrs(&self) -> [u32; 8] { self.attrs }
 
+    /// 由原始八围与名字系数计算分身派生统计：按各自除数缩放八围并补速度基准，汇总 `attr_sum` 与 `atk_sum`，倍率取默认值。
     fn derive_raw(attrs: [u32; 8], name_factor: f64) -> CloneDerivedStats {
         let scale = |value: u32, divisor: f64| ((value as f64) * (1.0 - name_factor / divisor)).round() as i32;
         let attr_sum = attrs[..7].iter().sum();

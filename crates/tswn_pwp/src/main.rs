@@ -5,6 +5,7 @@
 
 use clap::Parser;
 
+/// CLI 入口：解析参数并调用库门面，失败时打印错误并以退出码 1 结束。
 fn main() {
     if let Err(error) = tswn_pwp::run(tswn_pwp::Cli::parse()) {
         eprintln!("{error:#}");

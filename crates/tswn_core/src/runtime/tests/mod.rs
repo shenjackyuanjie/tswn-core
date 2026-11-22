@@ -65,12 +65,14 @@ mod summon_explode_scheduler_tests;
 mod summon_explode_tests;
 mod winner_path_divergence_tests;
 
+/// 比较两个 RC4 的 i/j/main_val，校验随机流游标复现一致。
 fn assert_rng_state_eq(actual: &RC4, expected: &RC4) {
     assert_eq!(actual.i, expected.i);
     assert_eq!(actual.j, expected.j);
     assert_eq!(actual.main_val, expected.main_val);
 }
 
+/// 自定义效果 handler：要求 Text payload，把消息作为一条 RunUpdate 登记（caster→target）。
 fn custom_marks_update(context: &mut EffectContext<'_>, effect: &CustomEffect) {
     let CustomEffectPayload::Text(message) = &effect.payload else {
         panic!("custom test effect expects text payload");
@@ -83,6 +85,7 @@ fn custom_marks_update(context: &mut EffectContext<'_>, effect: &CustomEffect) {
     ));
 }
 
+/// 自定义效果 handler：要求 Int payload，按 caster→target 入队一条嵌套伤害效果。
 fn custom_spawns_nested_damage(context: &mut EffectContext<'_>, effect: &CustomEffect) {
     let CustomEffectPayload::Int(amount) = effect.payload else {
         panic!("custom test effect expects int payload");
@@ -94,6 +97,7 @@ fn custom_spawns_nested_damage(context: &mut EffectContext<'_>, effect: &CustomE
     });
 }
 
+/// 自定义效果 handler：要求 Int payload，按 caster→target 入队一条嵌套治疗效果。
 fn custom_spawns_nested_heal(context: &mut EffectContext<'_>, effect: &CustomEffect) {
     let CustomEffectPayload::Int(amount) = effect.payload else {
         panic!("custom test effect expects int payload");
@@ -105,6 +109,7 @@ fn custom_spawns_nested_heal(context: &mut EffectContext<'_>, effect: &CustomEff
     });
 }
 
+/// 自定义效果 handler：断言缺少 ReadEnemies 能力时跨实体读取被拒，并登记 read denied。
 fn custom_rejects_cross_entity_read(context: &mut EffectContext<'_>, _: &CustomEffect) {
     assert_eq!(
         context.entity(EntityIdx(2)),
@@ -113,11 +118,13 @@ fn custom_rejects_cross_entity_read(context: &mut EffectContext<'_>, _: &CustomE
     context.add_update(crate::runtime::update::RunUpdate::new("read denied", 0, 0, 0));
 }
 
+/// 自定义效果 handler：具备跨实体读取能力时读取实体 2 的模板名并登记。
 fn custom_reads_cross_entity(context: &mut EffectContext<'_>, _: &CustomEffect) {
     let observed = context.entity(EntityIdx(2)).expect("capability should allow cross-entity read");
     context.add_update(crate::runtime::update::RunUpdate::new(observed.template.name.clone(), 0, 2, 0));
 }
 
+/// 自定义效果 handler：要求 Int payload 作为槽 ID，把目标实体槽置为 Bool(true)。
 fn custom_mutates_entity_slot(context: &mut EffectContext<'_>, effect: &CustomEffect) {
     let CustomEffectPayload::Int(slot) = effect.payload else {
         panic!("custom test effect expects entity slot id payload");
@@ -132,6 +139,7 @@ fn custom_mutates_entity_slot(context: &mut EffectContext<'_>, effect: &CustomEf
     context.add_update(crate::runtime::update::RunUpdate::new("slot set", 0, 0, 0));
 }
 
+/// 自定义效果 handler：要求 Int payload 作为上限，消耗一次 i32 与一次 u8 随机并登记结果。
 fn custom_consumes_rng(context: &mut EffectContext<'_>, effect: &CustomEffect) {
     let CustomEffectPayload::Int(max) = effect.payload else {
         panic!("custom test effect expects rng max payload");
@@ -146,6 +154,7 @@ fn custom_consumes_rng(context: &mut EffectContext<'_>, effect: &CustomEffect) {
     ));
 }
 
+/// 技能 hook：按 owner 与 skill_id 登记一条 skill mark 更新。
 fn skill_marks_update(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     context.add_update(crate::runtime::update::RunUpdate::new(
         "skill mark",
@@ -155,6 +164,7 @@ fn skill_marks_update(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry
     ));
 }
 
+/// 技能 hook：读取预选目标并登记其 ID，用于验证目标传递。
 fn skill_marks_selected_target(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let target = context.selected_target().expect("skill should receive selected target");
     context.add_update(crate::runtime::update::RunUpdate::new(
@@ -165,6 +175,7 @@ fn skill_marks_selected_target(context: &mut SkillContext<'_>, entry: &SkillHook
     ));
 }
 
+/// 状态 hook：按蓄力是否生效且 at_boost 达 3_000_000 登记 boosted/inactive。
 fn state_marks_charge_boost(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let owner = context.owner().expect("state owner should exist");
     let message = if owner.runtime.charge.active && owner.runtime.at_boost_millionths == 3_000_000 {
@@ -180,6 +191,7 @@ fn state_marks_charge_boost(context: &mut StateContext<'_>, entry: &StateHookPla
     ));
 }
 
+/// 技能 hook：取出并清空 owner 的 positive runtime 消息，按优先级重新登记。
 fn skill_clears_positive_runtime(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     let messages = context
         .clear_owner_positive_runtime_messages()
@@ -195,6 +207,7 @@ fn skill_clears_positive_runtime(context: &mut SkillContext<'_>, _: &SkillHookPl
     }
 }
 
+/// 技能 hook：取出并清空 owner 的 positive state 消息，按优先级重新登记。
 fn skill_clears_positive_states(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     let messages = context.clear_owner_positive_state_messages().expect("clear-positive owner should exist");
     let owner = context.owner_idx();
@@ -208,6 +221,7 @@ fn skill_clears_positive_states(context: &mut SkillContext<'_>, _: &SkillHookPla
     }
 }
 
+/// 技能 hook：取出并清空 owner 的 positive 消息（合并路径），按优先级重新登记。
 fn skill_clears_positive(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     let messages = context.clear_owner_positive_messages().expect("clear-positive owner should exist");
     let owner = context.owner_idx();
@@ -221,8 +235,10 @@ fn skill_clears_positive(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry)
     }
 }
 
+/// 技能 hook：空操作，用于占位或不副作用的场景。
 fn skill_noop(_: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {}
 
+/// 技能 hook：向实体 1 入队一条固定伤害（amount=2）的嵌套效果。
 fn skill_pushes_nested_damage(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     context.push_nested(QueuedEffect::Damage {
         caster: context.owner_idx(),
@@ -231,6 +247,7 @@ fn skill_pushes_nested_damage(context: &mut SkillContext<'_>, _: &SkillHookPlanE
     });
 }
 
+/// 防御前技能 hook：读取并把 defend ATP 减半，验证防御前可改写 ATP。
 fn skill_halves_defend_atp(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let atp = context.defend_atp().expect("pre-defend skill should receive atp");
     context.add_update(crate::runtime::update::RunUpdate::new(
@@ -242,6 +259,7 @@ fn skill_halves_defend_atp(context: &mut SkillContext<'_>, entry: &SkillHookPlan
     context.set_defend_atp(atp / 2.0);
 }
 
+/// 防御前技能 hook：断言 ATP>0 后将其置 0，验证防御前清零。
 fn skill_zeroes_defend_atp(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     assert!(context.defend_atp().expect("pre-defend skill should receive atp") > 0.0);
     context.add_update(crate::runtime::update::RunUpdate::new(
@@ -253,6 +271,7 @@ fn skill_zeroes_defend_atp(context: &mut SkillContext<'_>, entry: &SkillHookPlan
     context.set_defend_atp(0.0);
 }
 
+/// 防御后技能 hook：读取入射 caster/target 登记防御回放，验证防御后可见入射信息。
 fn skill_marks_defend_replay(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     let caster = context.defend_caster().expect("post-defend skill should receive incoming caster");
     let target = context.defend_target().expect("post-defend skill should receive incoming target");
@@ -264,6 +283,7 @@ fn skill_marks_defend_replay(context: &mut SkillContext<'_>, _: &SkillHookPlanEn
     ));
 }
 
+/// 防御后技能 hook：读取并把防御伤害减半，验证防御后可改写伤害。
 fn skill_halves_defend_damage(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let damage = context.defend_damage().expect("post-defend skill should receive damage");
     context.add_update(crate::runtime::update::RunUpdate::new(
@@ -275,15 +295,18 @@ fn skill_halves_defend_damage(context: &mut SkillContext<'_>, entry: &SkillHookP
     context.set_defend_damage(damage / 2);
 }
 
+/// bed2 技能 hook：从模板槽 0 推送召唤，验证模板槽召唤路径。
 fn skill_bed2_template_slot_summon_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     push_summon_from_template_slot(context, TemplateSlotId(0)).expect("bed2 summon handler should read template slot payload");
 }
 
+/// bed2 技能 hook：从模板槽 0 以固定消息推送召唤，验证带消息的召唤路径。
 fn skill_bed2_template_slot_legacy_summon_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     push_summon_from_template_slot_with_message(context, TemplateSlotId(0), "召唤出[1]")
         .expect("bed2 summon handler should read template slot payload");
 }
 
+/// bed2 技能 hook：断言读取缺失模板槽返回 MissingTemplateSlot 并登记。
 fn skill_records_missing_template_slot_error(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     assert_eq!(
         push_summon_from_template_slot(context, TemplateSlotId(0)),
@@ -297,6 +320,7 @@ fn skill_records_missing_template_slot_error(context: &mut SkillContext<'_>, ent
     ));
 }
 
+/// 技能 hook：消耗一次 i32（上限 10）与一次 u8 随机并登记结果。
 fn skill_consumes_rng(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let value = context.rng_next_i32(10);
     let next_byte = context.rng_next_u8();
@@ -308,6 +332,7 @@ fn skill_consumes_rng(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry
     ));
 }
 
+/// 召唤重铸 fixture handler：构造召唤模板并从实体槽 0 触发重铸（spawn 或 revive）。
 fn skill_summon_recast_fixture_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     let summon_template = PlayerTemplate::with_kind(3, "summon", PlayerKindId(1), 0, 10, 1)
         .with_def_res(11, 22)
@@ -316,6 +341,7 @@ fn skill_summon_recast_fixture_handler(context: &mut SkillContext<'_>, _: &Skill
         .expect("summon recast fixture should spawn or revive summon");
 }
 
+/// 召唤重铸 fixture handler：先登记血祭消息，再以固定消息从实体槽 0 触发重铸。
 fn skill_legacy_summon_recast_fixture_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     context.add_update(crate::runtime::update::RunUpdate::new(
         "[0]使用[血祭]",
@@ -330,10 +356,12 @@ fn skill_legacy_summon_recast_fixture_handler(context: &mut SkillContext<'_>, _:
         .expect("legacy summon recast fixture should spawn or revive summon");
 }
 
+/// 召唤重铸 handler：按配置从模板槽 1 运行重铸，验证配置化入口。
 fn skill_configured_summon_recast_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     run_summon_recast_from_template_slot_with_config(context, EntitySlotId(1), TemplateSlotId(1), 7);
 }
 
+/// 召唤重铸 handler：断言记忆的召唤仍存活时返回 RememberedSummonAlive。
 fn skill_records_alive_summon_recast_error(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     let summon_template = PlayerTemplate::with_kind(3, "summon", PlayerKindId(1), 0, 10, 1)
         .with_def_res(11, 22)
@@ -344,6 +372,7 @@ fn skill_records_alive_summon_recast_error(context: &mut SkillContext<'_>, _: &S
     );
 }
 
+/// 召唤重铸 handler：断言缺少 ReadAllies 能力时重铸读取被拒。
 fn skill_records_missing_recast_read_allies_error(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     let summon_template = PlayerTemplate::with_kind(3, "summon", PlayerKindId(1), 0, 10, 1)
         .with_def_res(11, 22)
@@ -356,6 +385,7 @@ fn skill_records_missing_recast_read_allies_error(context: &mut SkillContext<'_>
     );
 }
 
+/// 随从 handler：从实体槽 0 分配下一个随从名并登记。
 fn skill_records_next_minion_name(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     let name = next_minion_name_from_entity_slot(context, EntitySlotId(0)).expect("minion name helper should allocate a name");
     context.add_update(crate::runtime::update::RunUpdate::new(
@@ -366,6 +396,7 @@ fn skill_records_next_minion_name(context: &mut SkillContext<'_>, _: &SkillHookP
     ));
 }
 
+/// 随从 handler：断言缺少 ReadAllies 能力时随从名分配被拒。
 fn skill_records_missing_minion_name_read_allies_error(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     assert_eq!(
         next_minion_name_from_entity_slot(context, EntitySlotId(0)),
@@ -375,6 +406,7 @@ fn skill_records_missing_minion_name_read_allies_error(context: &mut SkillContex
     );
 }
 
+/// 随从 handler：以分配名从实体槽 0 推送随从，断言生成到实体 2。
 fn skill_pushes_named_minion_spawn(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     let minion_template = PlayerTemplate::with_kind(3, "placeholder", PlayerKindId(0), 0, 5, 1);
     assert_eq!(
@@ -383,6 +415,7 @@ fn skill_pushes_named_minion_spawn(context: &mut SkillContext<'_>, _: &SkillHook
     );
 }
 
+/// 随从 handler：从模板槽 0 以分配名推送随从，断言生成到实体 2。
 fn skill_pushes_named_minion_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     assert_eq!(
         push_minion_from_template_slot_with_allocated_name(context, EntitySlotId(0), TemplateSlotId(0), "召唤出[1]"),
@@ -390,14 +423,17 @@ fn skill_pushes_named_minion_from_template_slot(context: &mut SkillContext<'_>, 
     );
 }
 
+/// 影子随从 handler：按配置从模板槽 1 运行影子随从。
 fn skill_configured_shadow_minion_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     run_shadow_minion_from_template_slot_with_config(context, EntitySlotId(1), TemplateSlotId(1));
 }
 
+/// 僵尸随从 handler：按配置从模板槽 2 运行僵尸随从（目标实体 2）。
 fn skill_configured_zombie_minion_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     run_zombie_minion_from_template_slot_with_config(context, EntitySlotId(1), TemplateSlotId(2), EntityIdx(2));
 }
 
+/// 状态 hook：按 owner 与 legacy_order_key 登记一条 state mark 更新。
 fn state_marks_update(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     context.add_update(crate::runtime::update::RunUpdate::new(
         "state mark",
@@ -407,6 +443,7 @@ fn state_marks_update(context: &mut StateContext<'_>, entry: &StateHookPlanEntry
     ));
 }
 
+/// 状态 hook：向 owner 入队一条固定治疗（amount=2）的嵌套效果。
 fn state_pushes_nested_heal(context: &mut StateContext<'_>, _: &StateHookPlanEntry) {
     context.push_nested(QueuedEffect::Heal {
         caster: context.owner_idx(),
@@ -415,6 +452,7 @@ fn state_pushes_nested_heal(context: &mut StateContext<'_>, _: &StateHookPlanEnt
     });
 }
 
+/// 状态 hook：消耗一次 i32（上限 10）与一次 u8 随机并登记结果。
 fn state_consumes_rng(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let value = context.rng_next_i32(10);
     let next_byte = context.rng_next_u8();
@@ -426,6 +464,7 @@ fn state_consumes_rng(context: &mut StateContext<'_>, entry: &StateHookPlanEntry
     ));
 }
 
+/// 防御后状态 hook：读取并把防御伤害加 3，验证防御后状态可改写伤害。
 fn state_adds_defend_damage(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let damage = context.defend_damage().expect("post-defend state should receive damage");
     context.add_update(crate::runtime::update::RunUpdate::new(
@@ -437,6 +476,7 @@ fn state_adds_defend_damage(context: &mut StateContext<'_>, entry: &StateHookPla
     context.set_defend_damage(damage + 3);
 }
 
+/// 回放渲染器：取本帧第一条更新的消息作为 ReplayRendererId(0) 输出。
 fn render_first_message_replay(frame: &RuntimeFrame) -> Option<RenderedReplay> {
     Some(RenderedReplay::new(
         ReplayRendererId(0),
@@ -444,6 +484,7 @@ fn render_first_message_replay(frame: &RuntimeFrame) -> Option<RenderedReplay> {
     ))
 }
 
+/// 回放渲染器：把本帧更新条数作为 ReplayRendererId(1) 输出。
 fn render_update_count_replay(frame: &RuntimeFrame) -> Option<RenderedReplay> {
     Some(RenderedReplay::new(
         ReplayRendererId(1),
@@ -451,6 +492,7 @@ fn render_update_count_replay(frame: &RuntimeFrame) -> Option<RenderedReplay> {
     ))
 }
 
+/// 展示渲染器：取本帧第一条更新的消息作为 ShowRendererId(0) 输出。
 fn render_first_message_show(frame: &RuntimeFrame) -> Option<RenderedShow> {
     Some(RenderedShow::new(
         ShowRendererId(0),
@@ -458,6 +500,7 @@ fn render_first_message_show(frame: &RuntimeFrame) -> Option<RenderedShow> {
     ))
 }
 
+/// 展示渲染器：定位血量播报更新并格式化为 hp-bar 字符串输出。
 fn render_hp_marker_bar_show(frame: &RuntimeFrame) -> Option<RenderedShow> {
     let hp_report = frame.updates.updates.iter().find(|update| update.message == "[0]还剩[2]点血")?;
     Some(RenderedShow::new(

@@ -158,6 +158,7 @@ pub fn generate(args: &GenerateArgs) -> Result<()> {
     Ok(())
 }
 
+/// 计算第 index 个分片负责的 battle_id 区间。
 pub(crate) fn range(config: &DatasetConfig, index: usize, total: usize) -> (usize, usize) {
     let first = index * config.battles_per_shard;
     (first, first.saturating_add(config.battles_per_shard).min(total))
@@ -170,6 +171,7 @@ pub(crate) fn range(config: &DatasetConfig, index: usize, total: usize) -> (usiz
 /// 它只控制写入缓冲，不改变战斗 seed、抽样选择、行序或最终样本数。
 const APPEND_BATCH_ROWS: usize = 256;
 
+/// 写出一个分片：临时目录内生成、双跑比对，回读验证后重命名发布。
 fn write_shard(out: &Path, config: &DatasetConfig, index: usize, total: usize, stop: &AtomicBool) -> Result<Summary> {
     let name = format!(".shard-{index:06}.tmp");
     storage::remove_incomplete(out, &name)?;
@@ -240,6 +242,7 @@ struct ActiveBattle<'a> {
 }
 
 impl<'a> ActiveBattle<'a> {
+    /// 构造进行中战斗的现场记录器。
     fn new(path: PathBuf, config: &'a DatasetConfig) -> Self {
         Self {
             path,
@@ -248,15 +251,18 @@ impl<'a> ActiveBattle<'a> {
         }
     }
 
+    /// 登记当前战斗信息，供失败时写出现场。
     fn set(&mut self, battle_id: usize, case_index: usize, seed: &str) {
         self.current = Some((battle_id, case_index, seed.to_owned()));
     }
 
     /// 分片正常收尾后调用：不再需要写失败现场。
+    /// 正常收尾后清除现场记录，避免 Drop 误写失败文件。
     fn defuse(&mut self) { self.current = None; }
 }
 
 impl Drop for ActiveBattle<'_> {
+    /// 未 defuse 时写出失败现场 JSON，便于续跑定位。
     fn drop(&mut self) {
         let Some((battle_id, case_index, seed)) = self.current.take() else {
             return;
@@ -275,6 +281,7 @@ impl Drop for ActiveBattle<'_> {
     }
 }
 
+/// 生成单局数据：同 seed 跑两遍并比对边界与结果，返回对局行与样本行。
 pub(crate) fn generate_battle(
     config: &DatasetConfig,
     battle_id: usize,

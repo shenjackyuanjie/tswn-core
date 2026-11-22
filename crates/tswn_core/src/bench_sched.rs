@@ -43,6 +43,7 @@ pub fn low_accuracy_outer_workers(n: usize, item_count: usize, thread: u32) -> u
     requested.min(item_count)
 }
 
+/// 调度器内部事件：携带任务索引的结果，便于在乱序完成时还原输出顺序。
 struct OuterEvent<R> {
     index: usize,
     result: R,

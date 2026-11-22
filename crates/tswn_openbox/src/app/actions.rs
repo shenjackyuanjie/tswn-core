@@ -363,6 +363,7 @@ impl OpenboxApp {
 }
 
 impl OpenboxApp {
+    /// 取出当前任务的取消令牌；未启动任务时直接 panic。
     fn cancel_token(&self) -> Arc<AtomicBool> {
         self.cancel_token.as_ref().expect("cancel token should be set after begin_task").clone()
     }
@@ -377,6 +378,7 @@ fn namer_pf_unfiltered(state: &NamerPfState) -> bool {
         && state.metrics.iter().all(|metric| !metric.screen && !metric.file_output.enabled)
 }
 
+/// 解析输出文件选择：启用但未选路径时返回错误。
 fn resolve_output_path(output: &OptionalFileOutput) -> Result<Option<std::path::PathBuf>, String> {
     match output.selected_path() {
         Some(path) => Ok(Some(path)),
@@ -385,6 +387,7 @@ fn resolve_output_path(output: &OptionalFileOutput) -> Result<Option<std::path::
     }
 }
 
+/// 读取队友文本：手动模式读输入源，否则加载所选预设。
 fn read_teammate_text(
     manual_source: &mut super::source::TextSource,
     presets: &tswn_openbox::presets::TeammatePresetState,
@@ -397,6 +400,7 @@ fn read_teammate_text(
     }
 }
 
+/// 按计数模式返回场数：精确度预设或手动值（至少 1）。
 fn bench_count(mode: CountMode, accuracy: super::state::AccuracyPreset, manual_count: usize) -> usize {
     match mode {
         CountMode::Accuracy => accuracy.count(),
@@ -404,10 +408,13 @@ fn bench_count(mode: CountMode, accuracy: super::state::AccuracyPreset, manual_c
     }
 }
 
+/// 把线程设置转换为 Option：自动模式返回 None。
 fn bench_threads(auto_threads: bool, threads: usize) -> Option<usize> { if auto_threads { None } else { non_zero(threads) } }
 
+/// 把 0 转换为 None，其余原样返回。
 fn non_zero(value: usize) -> Option<usize> { if value == 0 { None } else { Some(value) } }
 
+/// 解析可选浮点并校验闭区间范围；空值返回 None。
 fn parse_optional_f64_in_range(raw: &str, field_name: &str, range: RangeInclusive<f64>) -> Result<Option<f64>, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -422,6 +429,7 @@ fn parse_optional_f64_in_range(raw: &str, field_name: &str, range: RangeInclusiv
     Ok(Some(value))
 }
 
+/// 解析可选浮点并校验下限；空值返回 None。
 fn parse_optional_f64_at_least(raw: &str, field_name: &str, min: f64) -> Result<Option<f64>, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -434,6 +442,7 @@ fn parse_optional_f64_at_least(raw: &str, field_name: &str, min: f64) -> Result<
     Ok(Some(value))
 }
 
+/// 解析有限浮点，失败时返回中文提示。
 fn parse_f64(raw: &str, field_name: &str) -> Result<f64, String> {
     let value = raw.parse::<f64>().map_err(|_| format!("{field_name} 需要是数字。"))?;
     if !value.is_finite() {

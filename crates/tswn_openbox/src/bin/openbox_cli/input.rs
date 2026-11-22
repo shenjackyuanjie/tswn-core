@@ -20,6 +20,7 @@ pub(super) fn read_file(path: &Path) -> Result<String, clap::Error> {
 /// 把命令行里的字面量 `\n` 还原成真实换行。
 pub(super) fn decode_raw(raw: &str) -> String { raw.replace("\\n", "\n") }
 
+/// 解析线程数：必须为正整数。
 pub(super) fn parse_thread_count(raw: &str) -> Result<usize, String> {
     let value = raw.parse::<usize>().map_err(|_| "线程数必须是正整数".to_string())?;
     if value == 0 {

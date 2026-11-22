@@ -695,6 +695,7 @@ fn damage_phases_dispatch_custom_skills_after_unprepared_loadout_replacement() {
     assert_eq!(marks, vec![pre.0, post.0]);
 }
 
+/// 技能 hook：向 owner 入队一条同相位 AddState（PRE/POST_DAMAGE）。
 fn damage_skill_adds_same_phase_state(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     context.push_nested(QueuedEffect::AddState {
         target: entry.owner,

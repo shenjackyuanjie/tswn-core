@@ -60,6 +60,7 @@ pub fn remove_duplicates(new_file: &Path, old_file: &Path, output_file: &Path) -
     })
 }
 
+/// 按 C++ 行切分规则遍历文件行：以 \r 切分并跳过空段；文件不存在视为空。
 fn visit_cpp_lines(path: &Path, mut visit: impl FnMut(&str)) -> Ds4Result<()> {
     if !path.exists() {
         return Ok(());

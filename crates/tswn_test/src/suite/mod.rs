@@ -35,6 +35,7 @@ pub mod large_71_80;
 pub mod simple;
 pub mod small;
 
+/// 按实体 id 取展示名，缺失时退化为 #id。
 fn runtime_entity_name(runner: &RuntimeRunner, id: usize) -> String {
     u32::try_from(id)
         .ok()
@@ -43,6 +44,7 @@ fn runtime_entity_name(runner: &RuntimeRunner, id: usize) -> String {
         .unwrap_or_else(|| format!("#{id}"))
 }
 
+/// 把更新消息中的 [0]/[1]/[2] 占位符替换为施法者、目标与参数。
 fn format_runtime_update_message(runner: &RuntimeRunner, update: &RunUpdate) -> String {
     let caster = runtime_entity_name(runner, update.caster);
     let target = runtime_entity_name(runner, update.target);
@@ -65,13 +67,16 @@ fn format_runtime_update_message(runner: &RuntimeRunner, update: &RunUpdate) -> 
 }
 
 impl EngineAdapter for RuntimeEngine {
+    /// Runtime 引擎使用的 runner 类型。
     type Runner = RuntimeRunner;
 
+    /// 由原始文本构建 RuntimeRunner。
     fn new_from_raw(raw: String) -> Result<Self::Runner, String> {
         let config = default_custom_runtime_import_config().map_err(|err| format!("{err:?}"))?;
         RuntimeRunner::from_custom_mixed_namerena_raw(raw, config).map_err(|err| format!("{err:?}"))
     }
 
+    /// 推进一轮并把更新转换为事件快照。
     fn main_round(runner: &mut Self::Runner) -> Vec<EventSnapshot> {
         let outcome = runner.run_round();
         let Some(frame) = outcome.frame else {
@@ -97,8 +102,10 @@ impl EngineAdapter for RuntimeEngine {
             .collect()
     }
 
+    /// 是否已产生胜者队伍。
     fn have_winner(runner: &Self::Runner) -> bool { runner.runtime().world.winner_team().is_some() }
 
+    /// 胜者队伍中存活实体的名字列表。
     fn winner_names(runner: &Self::Runner) -> Vec<String> {
         let Some(team) = runner.runtime().world.winner_team() else {
             return Vec::new();
@@ -114,13 +121,16 @@ impl EngineAdapter for RuntimeEngine {
             .collect()
     }
 
+    /// 返回胜者队伍编号。
     fn winner_team_index(runner: &Self::Runner) -> Option<usize> { runner.runtime().world.winner_team() }
 
+    /// 返回当前 RC4 游标 (i, j)。
     fn rc4_state(runner: &Self::Runner) -> Option<(usize, usize)> {
         Some((runner.runtime().rng.i as usize, runner.runtime().rng.j as usize))
     }
 }
 
+/// 规范化轨迹行：去掉占位标记与方括号，压缩空白。
 fn normalize_trace_line(line: String) -> String {
     line.replace("[s_counter]", "")
         .replace("[s_dmg160]", "")
@@ -132,6 +142,7 @@ fn normalize_trace_line(line: String) -> String {
         .to_string()
 }
 
+/// 推进到胜者产生或回合上限，收集轨迹行、守卫轮数与总分。
 fn collect_replay_events<E: EngineAdapter>(
     runner: &mut E::Runner,
     max_rounds: usize,
@@ -222,6 +233,7 @@ pub fn collect_replay_lines<E: EngineAdapter>(
     (lines, guard, total_score)
 }
 
+/// 统计总分与按施法者累计的分数表。
 fn collect_battle_scores<E: EngineAdapter>(runner: &mut E::Runner, max_rounds: usize) -> (u64, HashMap<String, u64>) {
     let mut total_score = 0u64;
     let mut score_by_name: HashMap<String, u64> = HashMap::new();
@@ -240,6 +252,7 @@ fn collect_battle_scores<E: EngineAdapter>(runner: &mut E::Runner, max_rounds: u
     (total_score, score_by_name)
 }
 
+/// 按环境变量 TSWN_DUMP_TRACE 判断是否输出完整轨迹。
 fn should_dump_full_trace(case_name: &str) -> bool {
     let Some(raw) = std::env::var_os("TSWN_DUMP_TRACE") else {
         return false;
@@ -249,6 +262,7 @@ fn should_dump_full_trace(case_name: &str) -> bool {
     filter.is_empty() || filter == "1" || case_name.contains(filter)
 }
 
+/// 向 stderr 打印带索引的完整轨迹。
 fn dump_full_trace(label: &str, lines: &[String]) {
     eprintln!("{label} full trace (len={}):", lines.len());
     for (idx, line) in lines.iter().enumerate() {
@@ -256,6 +270,7 @@ fn dump_full_trace(label: &str, lines: &[String]) {
     }
 }
 
+/// 把内嵌 fixture 按空行分隔拆为输入与期望轨迹。
 fn parse_embedded_fight_case(case_text: &str, split_err: &str, empty_err: &str) -> (String, Vec<String>) {
     let fight_text = case_text.replace("\r\n", "\n").replace('\r', "\n");
     let (raw_input, expected_part) = fight_text.split_once("\n\n\n").expect(split_err);
@@ -283,6 +298,7 @@ pub fn assert_runtime_matches_frozen_golden_with_eval_rq(raw: &str, case_name: &
     crate::golden::assert_runtime_matches_frozen_golden_with_eval_rq(raw, case_name, eval_rq);
 }
 
+/// 比对轨迹，失败时给出首个差异上下文（可按需 dump 全量）。
 fn assert_trace_with_context(case_name: &str, actual_lines: &[String], expected_lines: &[String]) {
     if actual_lines == expected_lines {
         return;
@@ -316,6 +332,7 @@ fn assert_trace_with_context(case_name: &str, actual_lines: &[String], expected_
     );
 }
 
+/// 去掉名字中的 clone/summon 数字后缀噪声。
 fn strip_name_noise_suffix(line: &str) -> String {
     let bytes = line.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -343,6 +360,7 @@ fn strip_name_noise_suffix(line: &str) -> String {
     String::from_utf8(out).expect("stripping ASCII suffix should keep valid UTF-8")
 }
 
+/// 先剥离名字噪声再比对轨迹。
 fn assert_trace_with_name_noise_ignored(case_name: &str, actual_lines: &[String], expected_lines: &[String]) {
     let normalized_actual = actual_lines.iter().map(|line| strip_name_noise_suffix(line)).collect::<Vec<String>>();
     let normalized_expected = expected_lines.iter().map(|line| strip_name_noise_suffix(line)).collect::<Vec<String>>();

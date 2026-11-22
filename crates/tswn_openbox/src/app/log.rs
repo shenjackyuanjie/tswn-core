@@ -6,6 +6,7 @@
 
 use std::collections::VecDeque;
 
+/// 日志缓冲的字节上限：4 MiB。
 const MAX_LOG_BYTES: usize = 4 * 1024 * 1024;
 /// 纯文本里不同输入组之间的分隔行。
 pub const DIY_GROUP_SEPARATOR: &str = "=========";
@@ -57,6 +58,7 @@ impl Default for LogBuffer {
 }
 
 impl LogBuffer {
+    /// 以指定字节上限构造日志缓冲。
     fn with_limit(max_bytes: usize) -> Self {
         Self {
             lines: VecDeque::new(),
@@ -191,6 +193,7 @@ impl LogBuffer {
         text
     }
 
+    /// 追加一行日志并维护字节/非空行统计；超限时从队首淘汰并清理对应折行缓存。
     fn push_line(&mut self, text: &str, kind: LogKind) {
         self.bytes += text.len() + 1;
         self.non_blank_lines += usize::from(!text.trim().is_empty());

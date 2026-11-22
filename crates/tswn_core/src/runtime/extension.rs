@@ -163,16 +163,20 @@ impl ProcMask {
 }
 
 impl Default for ProcMask {
+    /// 默认 hook 掩码：空掩码，不参与任何阶段。
     fn default() -> Self { Self::NONE }
 }
 
 impl std::ops::BitOr for ProcMask {
+    /// 位或结果类型：ProcMask 自身。
     type Output = Self;
 
+    /// 合并两个掩码的 hook 阶段。
     fn bitor(self, rhs: Self) -> Self::Output { Self(self.0 | rhs.0) }
 }
 
 impl std::ops::BitOrAssign for ProcMask {
+    /// 就地并入另一掩码的 hook 阶段。
     fn bitor_assign(&mut self, rhs: Self) { self.0 |= rhs.0; }
 }
 
@@ -221,12 +225,15 @@ impl PlayerKindFlags {
 }
 
 impl std::ops::BitOr for PlayerKindFlags {
+    /// 位或结果类型：PlayerKindFlags 自身。
     type Output = Self;
 
+    /// 合并两组玩家类型标志。
     fn bitor(self, rhs: Self) -> Self::Output { Self(self.0 | rhs.0) }
 }
 
 impl std::ops::BitOrAssign for PlayerKindFlags {
+    /// 就地并入另一组玩家类型标志。
     fn bitor_assign(&mut self, rhs: Self) { self.0 |= rhs.0; }
 }
 
@@ -381,6 +388,7 @@ pub enum ExtensionError {
 }
 
 impl Display for ExtensionError {
+    /// 显示注册错误：区分扩展名重复、类别内名称重复与导出名重复三类。
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ExtensionError::DuplicateExtensionName { name } => {
@@ -851,6 +859,7 @@ impl ExtensionRegistryBuilder {
         }
     }
 
+    /// 分配下一个注册序（单调递增，溢出回绕），供各类 spec 登记使用。
     fn next_order(&mut self) -> RegistrationOrder {
         let order = RegistrationOrder(self.next_registration_order);
         self.next_registration_order = self.next_registration_order.wrapping_add(1);

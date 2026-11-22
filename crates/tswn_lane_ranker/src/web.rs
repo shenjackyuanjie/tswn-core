@@ -52,8 +52,10 @@ pub fn router(service: AppService) -> Router {
         .with_state(shared)
 }
 
+/// 健康检查：返回固定 ok JSON。
 async fn health() -> Json<serde_json::Value> { Json(json!({ "ok": true })) }
 
+/// 导入组合分组，返回新增/重复统计。
 async fn add_groups(
     State(service): State<SharedService>,
     Json(req): Json<AddGroupsRequest>,
@@ -62,6 +64,7 @@ async fn add_groups(
     Ok(Json(serde_json::to_value(response)?))
 }
 
+/// 导入手动胜率观测；计算移交 spawn_blocking，返回新增行数。
 async fn add_winrates(
     State(service): State<SharedService>,
     Json(req): Json<AddWinratesRequest>,
@@ -73,6 +76,7 @@ async fn add_winrates(
     Ok(Json(serde_json::to_value(response)?))
 }
 
+/// 按文本批量屏蔽组合。
 async fn block_groups_by_text(
     State(service): State<SharedService>,
     Json(req): Json<BlockGroupsByTextRequest>,
@@ -81,6 +85,7 @@ async fn block_groups_by_text(
     Ok(Json(serde_json::to_value(response)?))
 }
 
+/// 按文本批量取消屏蔽。
 async fn unblock_groups_by_text(
     State(service): State<SharedService>,
     Json(req): Json<BlockGroupsByTextRequest>,
@@ -89,6 +94,7 @@ async fn unblock_groups_by_text(
     Ok(Json(serde_json::to_value(response)?))
 }
 
+/// 按组 ID 屏蔽单个组合。
 async fn block_group(
     State(service): State<SharedService>,
     Path(group_id): Path<i64>,
@@ -98,6 +104,7 @@ async fn block_group(
     Ok(Json(serde_json::to_value(response)?))
 }
 
+/// 按组 ID 取消屏蔽单个组合。
 async fn unblock_group(
     State(service): State<SharedService>,
     Path(group_id): Path<i64>,
@@ -107,6 +114,7 @@ async fn unblock_group(
     Ok(Json(serde_json::to_value(response)?))
 }
 
+/// 合并队伍并重排队受影响 lane。
 async fn merge_teams(
     State(service): State<SharedService>,
     Json(req): Json<MergeTeamsRequest>,
@@ -115,6 +123,7 @@ async fn merge_teams(
     Ok(Json(serde_json::to_value(response)?))
 }
 
+/// 把指定 lane 加入重算队列；空请求体用默认参数，stickiness 为 0 时拒绝。
 async fn recompute_lane(
     State(service): State<SharedService>,
     Path(lane_size): Path<usize>,
@@ -145,6 +154,7 @@ async fn recompute_lane(
     Ok(Json(serde_json::to_value(response)?))
 }
 
+/// 把指定 lane 加入约束选择（校准）队列。
 async fn constrained_selection(
     State(service): State<SharedService>,
     Path(lane_size): Path<usize>,
@@ -165,6 +175,7 @@ async fn constrained_selection(
     Ok(Json(serde_json::to_value(response)?))
 }
 
+/// 与 constrained-selection 共用同一入队路径，保留旧路由兼容。
 async fn calibration(
     State(service): State<SharedService>,
     Path(lane_size): Path<usize>,
@@ -185,6 +196,7 @@ async fn calibration(
     Ok(Json(serde_json::to_value(response)?))
 }
 
+/// 在 blocking 池生成靶子配置；失败时把 lane 状态与进度标记为错误。
 async fn generate_targets(
     State(service): State<SharedService>,
     Path(lane_size): Path<usize>,
@@ -214,6 +226,7 @@ async fn generate_targets(
     Ok(Json(serde_json::to_value(response)?))
 }
 
+/// 对已保存结果执行严格 Python 两两强度校验。
 async fn pair_validation(
     State(service): State<SharedService>,
     Path(lane_size): Path<usize>,
@@ -234,10 +247,12 @@ async fn pair_validation(
     Ok(Json(response))
 }
 
+/// 返回各 lane 的状态与组数。
 async fn lanes(State(service): State<SharedService>) -> Result<Json<serde_json::Value>, ApiError> {
     Ok(Json(serde_json::to_value(service.db.lane_statuses()?)?))
 }
 
+/// 返回指定 lane 的结果行。
 async fn lane_results(
     State(service): State<SharedService>,
     Path(lane_size): Path<usize>,
@@ -245,6 +260,7 @@ async fn lane_results(
     Ok(Json(serde_json::to_value(service.db.lane_results(lane_size)?)?))
 }
 
+/// 返回指定 lane 的当前进度。
 async fn lane_progress(
     State(service): State<SharedService>,
     Path(lane_size): Path<usize>,
@@ -252,6 +268,7 @@ async fn lane_progress(
     Ok(Json(serde_json::to_value(service.db.lane_progress(lane_size)?)?))
 }
 
+/// 返回指定 job 的状态与错误信息。
 async fn job(State(service): State<SharedService>, Path(job_id): Path<i64>) -> Result<Json<serde_json::Value>, ApiError> {
     Ok(Json(serde_json::to_value(service.db.job(job_id)?)?))
 }
@@ -268,6 +285,7 @@ where
 }
 
 impl IntoResponse for ApiError {
+    /// 把应用错误统一映射为 500 与 JSON error 字段。
     fn into_response(self) -> Response {
         let body = Json(json!({
             "error": self.0.to_string()

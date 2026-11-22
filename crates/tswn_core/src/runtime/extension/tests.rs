@@ -1,16 +1,21 @@
 use super::*;
 
+/// 测试用扩展：固定名称、版本与两项能力，注册一个玩家类型、一个技能并预留一个实体槽。
 struct FixtureExtension;
 
 impl TswnExtension for FixtureExtension {
+    /// 扩展名称：`fixture`。
     fn name(&self) -> &'static str { "fixture" }
 
+    /// 扩展版本：1.2.3。
     fn version(&self) -> ExtensionVersion { ExtensionVersion::new(1, 2, 3) }
 
+    /// 声明读取队友与修改实体槽两项能力。
     fn capabilities(&self) -> &'static [ExtensionCapability] {
         &[ExtensionCapability::ReadAllies, ExtensionCapability::MutateEntitySlots]
     }
 
+    /// 注册玩家类型、敌方目标技能，并预留一个实体槽。
     fn register(&self, registry: &mut ExtensionRegistryBuilder) -> Result<(), ExtensionError> {
         registry.register_player_kind("fixture", "kind", "fixture.kind")?;
         registry.register_skill("fixture", "skill", "fixture.skill", TargetPolicy::Enemy, SkillPriority(3))?;

@@ -15,7 +15,9 @@ use std::sync::{
 use std::time::{Duration, Instant};
 use tswn_openbox::backend::{ProgressEvent, live::LiveFeed};
 
+/// 单次轮询最多处理的实时事件数：256。
 const MAX_EVENTS_PER_POLL: usize = 256;
+/// 运行中请求重绘的间隔：100 毫秒。
 const RUNNING_REPAINT_INTERVAL: Duration = Duration::from_millis(100);
 
 impl OpenboxApp {
@@ -28,6 +30,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 在命名线程中执行任务并捕获 panic，异常时以完成事件反馈错误。
     pub(super) fn spawn_worker(&mut self, task: impl FnOnce(&LiveFeed) + Send + 'static) {
         let feed = LiveFeed::default();
         self.live_feed = Some(feed.clone());
@@ -185,6 +188,7 @@ impl OpenboxApp {
     }
 }
 
+/// 把秒数格式化为 x s / x m x s / x h x m x s；非有限值显示 --。
 fn format_duration(secs: f64) -> String {
     if secs.is_nan() || secs.is_infinite() || secs < 0.0 {
         return "--".to_string();

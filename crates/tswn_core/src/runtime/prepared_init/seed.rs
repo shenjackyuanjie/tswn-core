@@ -79,6 +79,7 @@ impl PreparedBattleSeed {
         Ok(())
     }
 
+    /// 把 seed 的各队编号与行动点写回已复位的 runtime 实体。
     fn apply_entities(&self, runtime: &mut CombatRuntime) -> Result<(), RuntimeBattleInitError> {
         Self::apply_entity_seed_values(&self.teams, &self.speed_points, runtime)
     }

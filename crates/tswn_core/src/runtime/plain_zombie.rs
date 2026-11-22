@@ -37,6 +37,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 取用玩家对击杀被动的决策：非决策模式返回 `None`；有待处理决策时返回其放行结果，否则挂起请求并触发 `PassivePause`。
     fn consume_kill_passive_decision(
         &mut self,
         entry: &SkillHookPlanEntry,

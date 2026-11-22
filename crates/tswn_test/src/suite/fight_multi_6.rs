@@ -6,6 +6,7 @@ use super::*;
 
 /// 多人对局（multi_6）的完整回放 fixture：锁定 JS 产物兼容性。
 pub fn fight_multi_6<E: crate::EngineAdapter>() {
+    /// multi_6 用例的 fixture：输入与冻结 JS 回放轨迹。
     const FIGHT_CASE: &str = r###"测707640862046T，烦恼立刻消失@爱
 坚持 E6b10FVHvKDO@Afterglow
 Influence #MEZC2wa@Unbound

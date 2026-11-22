@@ -70,6 +70,7 @@ pub fn save_icons(dir: &Path, names: &[String]) -> Result<(), String> {
     }
 }
 
+/// 打印图标信息与终端预览：Boss 固定徽章走固定渲染，普通图标输出边框、形状与颜色明细。
 fn print_icon(name: &str) {
     if has_boss_icon(name) {
         println!("=== Icon: {name} ===");
@@ -99,6 +100,7 @@ fn print_icon(name: &str) {
     println!();
 }
 
+/// 把 16x16 RGBA 像素渲染为终端真彩色方块画。
 fn render_pixels_to_terminal(pixels: &[u8]) {
     let border_line = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
     println!("┌{}┐", border_line);
@@ -118,6 +120,7 @@ fn render_pixels_to_terminal(pixels: &[u8]) {
     println!("└{}┘", border_line);
 }
 
+/// 按 (x, y) 取像素 RGB；越界或 alpha 为 0 时返回 None。
 fn get_pixel(pixels: &[u8], x: usize, y: usize) -> Option<(u8, u8, u8)> {
     if x >= 16 || y >= 16 {
         return None;

@@ -55,20 +55,27 @@
 //! tswn-cli icon show mario luigi
 //! ```
 
+/// CLI 参数解析与命令表示。
 mod args;
+/// benchmark 子命令实现。
 mod bench;
+/// fight 与 runtime 诊断子命令实现。
 mod fight;
+/// icon 子命令实现。
 mod icon;
+/// to-diy 导出子命令实现。
 mod to_diy;
 
 use args::ParsedCommand;
 
+/// 打印启动横幅与版本信息。
 fn print_banner() {
     println!("欢迎来到 tswn - {}, 使用 --help/-h 获取帮助信息谢谢喵", tswn_core::version());
     println!("WARNING: ALPHA 版本, 仅供测试使用, 已知有 bug, 暂未实现: 天卫、Boss、武器");
     println!("发现行为不一致请不要惊慌, 呼叫 shenjack 即可 (qq: 3695888)（欢迎入群 hack: 935216900）");
 }
 
+/// CLI 入口：解析参数，非 jsonl 场景打印横幅，并按 `ParsedCommand` 分派到各子命令。
 fn main() {
     let cli = args::parse().unwrap_or_else(|err| err.exit());
 

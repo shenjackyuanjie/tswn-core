@@ -90,6 +90,7 @@ pub fn load_library(path: &Path) -> Result<Vec<String>, String> {
     Ok(names)
 }
 
+/// 去掉字符串开头的 UTF-8 BOM，没有则原样返回。
 fn strip_utf8_bom(s: &str) -> &str { s.strip_prefix('\u{feff}').unwrap_or(s) }
 
 /// 用给定 seed 原地重排名字，不读取系统随机源；空切片与单元素切片保持不变。
@@ -149,6 +150,7 @@ pub fn generate_cases_for_mode(names: &[String], mode: CaseMode, case_offset: us
     cases
 }
 
+/// 挑选与 len 互质且小于 len 的候选步长，保证采样窗口元素不重复；无候选时退化为 1。
 fn candidate_steps(len: usize) -> Vec<usize> {
     let mut steps = Vec::new();
     for candidate in [1usize, 7, 11, 13, 17, 19, 23, 29, 31] {
@@ -162,6 +164,7 @@ fn candidate_steps(len: usize) -> Vec<usize> {
     steps
 }
 
+/// 最大公约数（欧几里得算法）。
 fn gcd(mut lhs: usize, mut rhs: usize) -> usize {
     while rhs != 0 {
         let rem = lhs % rhs;
@@ -171,6 +174,7 @@ fn gcd(mut lhs: usize, mut rhs: usize) -> usize {
     lhs
 }
 
+/// 按步长从 names 循环采样 total 个元素；步长与长度互质时不重复。
 fn sample_unique_window(names: &[String], start: usize, total: usize, step: usize) -> Vec<String> {
     (0..total).map(|idx| names[(start + idx * step) % names.len()].clone()).collect()
 }

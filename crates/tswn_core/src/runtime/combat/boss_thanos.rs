@@ -250,6 +250,7 @@ mod tests {
         CombatRuntime::from_template(PreparedCombatTemplate::with_registry(templates, builder.build()))
     }
 
+    /// 测试辅助：抽取 [`RunUpdates`] 中全部帧更新的消息文本。
     fn messages_of(updates: &RunUpdates) -> Vec<String> {
         updates.updates.iter().map(|update| update.message.to_string()).collect()
     }
@@ -394,6 +395,7 @@ mod tests {
         assert_eq!(runtime.world.flat_alive().len(), 3, "4 敌 1 我 → 只剩 2 敌 + 灭霸");
     }
 
+    /// 测试用击杀回调：对选中目标消费一个随机字节，并上报一条“击杀回调”消息。
     fn record_snap_kill(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
         let target = context.selected_target().unwrap();
         let roll = context.rng_next_u8();
@@ -405,6 +407,7 @@ mod tests {
         ));
     }
 
+    /// 测试辅助：构造灭霸 + 召唤师 + 指定数量其他敌人与联动召唤物的战场，返回 runtime 与召唤物实体索引。
     fn thanos_against_linked_summons(other_enemies: usize, summons: usize) -> (CombatRuntime, EntityIdx) {
         let mut builder = ExtensionRegistryBuilder::default();
         let boss = builder

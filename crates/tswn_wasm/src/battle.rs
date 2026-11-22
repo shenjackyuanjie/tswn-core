@@ -14,8 +14,10 @@ use tswn_core::cli_api::battle::BattleSession as CoreBattleSession;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(typescript_custom_section)]
+/// 对局相关导出类型的 TypeScript 声明（自定义 section）。
 const BATTLE_TYPES: &str = include_str!("battle_types.d.ts");
 
+/// 把 DTO 序列化为 JSON 兼容的 JsValue。
 pub(crate) fn dto_to_js<T: Serialize + ?Sized>(dto: &T) -> WasmResult<JsValue> {
     dto.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
         .map_err(|error| internal_error(error.to_string()))

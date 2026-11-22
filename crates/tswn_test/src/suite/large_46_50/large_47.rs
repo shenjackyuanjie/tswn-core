@@ -4,6 +4,7 @@ use super::*;
 ///
 /// 期望日志逐行比较，总分固定为 705，避免只按阵容而忽略 seed 的回归差异。
 pub fn large_47<E: crate::EngineAdapter>() {
+    /// large_47 用例的内嵌对局输入。
     const CASE: &str = r#"Momomomo #YAORzaY@Arcadia
 泠珞 itVMnXnsL@807139
 seed:3@!

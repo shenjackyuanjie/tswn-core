@@ -1,5 +1,6 @@
 use super::*;
 
+/// 按给定玩家模板构造注册了 kill-rng 技能（KILL hook）的 CombatRuntime。
 fn kill_rng_runtime(players: Vec<PlayerTemplate>) -> CombatRuntime {
     let mut builder = ExtensionRegistryBuilder::default();
     let kill_skill = builder
@@ -20,6 +21,7 @@ fn kill_rng_runtime(players: Vec<PlayerTemplate>) -> CombatRuntime {
     runtime
 }
 
+/// 向 runtime 入队一条对 target 的致死伤害（caster=0, amount=3）。
 fn queue_lethal_damage(runtime: &mut CombatRuntime, target: EntityIdx) {
     runtime.effects.push(QueuedEffect::Damage {
         caster: EntityIdx(0),
@@ -28,6 +30,7 @@ fn queue_lethal_damage(runtime: &mut CombatRuntime, target: EntityIdx) {
     });
 }
 
+/// 用默认 profile 构造僵尸/融合技能并指定两者等级的 CombatRuntime。
 fn zombie_merge_kill_runtime(zombie_level: u32, target_zombie_level: u32) -> CombatRuntime {
     let config = default_custom_runtime_import_config().expect("default runtime profile should build");
     let zombie = config
@@ -50,6 +53,7 @@ fn zombie_merge_kill_runtime(zombie_level: u32, target_zombie_level: u32) -> Com
     ))
 }
 
+/// 取实体 0 的 KILL hook 计划，并把僵尸技能排序到首位。
 fn zombie_first_kill_plan(runtime: &CombatRuntime) -> SkillHookPlan {
     let mut plan = runtime
         .scheduler

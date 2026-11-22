@@ -11,6 +11,7 @@ thread_local! {
     static ACTIVE: RefCell<Option<Observer>> = const { RefCell::new(None) };
 }
 
+/// 线程本地观察器：记录统计主体、根实体，以及按（技能、是否分身、是否聪明）三维的累计计数。
 struct Observer {
     subject: String,
     roots: SmallVec<[EntityIdx; 2]>,
@@ -43,8 +44,10 @@ pub struct SkillObservation {
 
 /// 在当前线程的批量区间入口统计第一输入组中的指定名字及其分身。
 pub fn observe<T>(subject: &str, run: impl FnOnce() -> T) -> (T, Vec<SkillObservation>) {
+    /// [`observe`] 的作用域守卫：退出时清除线程本地观察器，保证统计不嵌套。
     struct Scope;
     impl Drop for Scope {
+        /// 守卫析构：取出并丢弃当前线程的观察器。
         fn drop(&mut self) { ACTIVE.with(|active| active.borrow_mut().take()); }
     }
 

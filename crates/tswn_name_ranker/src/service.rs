@@ -27,8 +27,11 @@ use crate::{
     parser, ranker,
 };
 
+/// 每个靶子的固定采样局数：10,000。
 const WIN_RATE_SAMPLES: usize = 10_000;
+/// 跑完后自动归档的分数阈值：48.0。
 const ARCHIVE_SCORE_THRESHOLD: f64 = 48.0;
+/// 文字类型算法版本标识；变化时触发全量重算文字类型。
 const TEXT_TYPE_VERSION: &str = "single_effective_skill_passive_85_v2";
 
 /// 名字排名服务：数据库、共享运行状态与校准器。
@@ -50,6 +53,7 @@ impl Service {
         })
     }
 
+    /// 用校准器从数据库候选中筛出合法 ABCP 配对集合。
     fn legal_abcp_pairs(&self) -> anyhow::Result<std::collections::HashSet<(String, String)>> {
         Ok(self.calibrator.legal_pairs(&self.db.abcp_candidates()?))
     }
@@ -151,6 +155,7 @@ impl Service {
         Ok(())
     }
 
+    /// 执行一次重算：准备名字与靶子、补算 ABCP 与配对分，迭代拟合排名并写库。
     fn run(&self, req: RecomputeRequest) -> anyhow::Result<()> {
         let requested_workers = req.outer_workers.unwrap_or(0);
         let skip_archived = req.skip_archived.unwrap_or(true);
@@ -451,6 +456,7 @@ impl Service {
         Ok(())
     }
 
+    /// 按靶子权重计算一对名字的加权胜率分。
     fn compute_pair(&self, i: usize, j: usize, names: &[(NameRow, String)], targets: &[TargetRow]) -> anyhow::Result<f64> {
         let weight_sum: f64 = targets.iter().map(|target| target.weight).sum();
         let mut weighted = 0.0;
@@ -467,6 +473,7 @@ impl Service {
         Ok(score)
     }
 
+    /// 为当前名字集合补算缺失的 ABCP 预测，仅处理可用名字。
     fn ensure_abcp(&self, names: &[(NameRow, String)], requested_workers: usize) -> anyhow::Result<()> {
         let available = names.iter().map(|n| n.0.raw.as_str()).collect::<std::collections::HashSet<_>>();
         let pending = self
@@ -548,6 +555,7 @@ impl Service {
         Ok(())
     }
 
+    /// 把配对补算进度（完成数、速率、ETA）写入共享状态。
     fn update_pair_progress(&self, cached: usize, measured: usize, total: usize, workers: usize, mode: &str, started: Instant) {
         let done = cached + measured;
         let elapsed = started.elapsed().as_secs_f64();
@@ -568,6 +576,7 @@ impl Service {
     }
 }
 
+/// 按无序名字对判断配对是否在合法集合中。
 fn is_legal_pair(pairs: &std::collections::HashSet<(String, String)>, a: &str, b: &str) -> bool {
     if a <= b {
         pairs.contains(&(a.to_owned(), b.to_owned()))
@@ -576,6 +585,7 @@ fn is_legal_pair(pairs: &std::collections::HashSet<(String, String)>, a: &str, b
     }
 }
 
+/// 确定并行 worker 数：显式值按总量裁剪，0 表示按系统并行度自动。
 fn resolve_workers(requested: usize, total: usize) -> usize {
     if requested > 0 {
         return requested.max(1).min(total.max(1));
@@ -583,6 +593,7 @@ fn resolve_workers(requested: usize, total: usize) -> usize {
     thread::available_parallelism().map(|n| n.get()).unwrap_or(4).max(1).min(total.max(1))
 }
 
+/// 把秒数格式化为 s/m/h 进度文本。
 fn format_duration(seconds: f64) -> String {
     if seconds < 60.0 {
         format!("{seconds:.1}s")
@@ -593,6 +604,7 @@ fn format_duration(seconds: f64) -> String {
     }
 }
 
+/// 由原始文本构建单个 PreparedPlayer。
 fn build_player(raw: &str) -> anyhow::Result<PreparedPlayer> {
     let input = NamerenaInput::from_raw_groups(&[vec![raw.to_owned()]])?;
     let mut roster = match PreparedRoster::build(&input, DEFAULT_EVAL_RQ) {
@@ -602,6 +614,7 @@ fn build_player(raw: &str) -> anyhow::Result<PreparedPlayer> {
     roster.players.pop().ok_or_else(|| anyhow::anyhow!("没有构建出角色"))
 }
 
+/// 文字类型版本不匹配时重建全部名字的文字类型并写库。
 fn refresh_text_types_if_needed(db: &Db) -> anyhow::Result<()> {
     if db.text_type_version()?.as_deref() == Some(TEXT_TYPE_VERSION) {
         return Ok(());

@@ -1,6 +1,7 @@
 use super::*;
 use crate::runtime::{ExtensionRegistryBuilder, ProcMask, SkillPriority, StateId, TargetPolicy};
 
+/// 测试辅助：构造 0 号对 1 号的伤害效果。
 fn damage(amount: i32) -> QueuedEffect {
     QueuedEffect::Damage {
         caster: EntityIdx(0),
@@ -9,6 +10,7 @@ fn damage(amount: i32) -> QueuedEffect {
     }
 }
 
+/// 测试辅助：构造由指定 handler 处理、载荷为整数的自定义效果。
 fn custom(handler: EffectHandlerId, amount: i32) -> QueuedEffect {
     QueuedEffect::Custom(CustomEffect::new(
         handler,

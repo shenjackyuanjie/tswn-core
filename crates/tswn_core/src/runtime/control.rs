@@ -212,6 +212,7 @@ pub enum PlannedActionError {
 }
 
 impl fmt::Display for PlannedActionError {
+    /// 显示脚本指令错误：区分未装备技能、MP 不足与选不出目标三类。
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::SkillNotEquipped { actor, skill } => {

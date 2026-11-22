@@ -33,12 +33,14 @@ use super::plan::{MetricSpec, SkillBoardPlan};
     subcommand_required = true,
     arg_required_else_help = true
 )]
+/// openbox-cli 顶层参数：一个子命令。
 pub(super) struct Cli {
     #[command(subcommand)]
     pub(super) command: Command,
 }
 
 #[derive(Debug, Subcommand)]
+/// openbox-cli 子命令集合：to-diy / base / namer-pf / cqd / pair / filter。
 pub(super) enum Command {
     /// 将名字导出为 DIY / OL 覆盖格式（对齐 GUI 的 to-diy 面板）。
     ///
@@ -202,6 +204,7 @@ pub(super) struct BenchOptions {
 }
 
 #[derive(Debug, Args)]
+/// to-diy 参数：名字/文件、输出与旧版/随从开关。
 pub(super) struct ToDiyArgs {
     /// 单个玩家名字（namerena raw 格式，支持 @ 队伍名和 + 武器名）。
     #[arg(
@@ -235,6 +238,7 @@ pub(super) struct ToDiyArgs {
 }
 
 #[derive(Debug, Args)]
+/// filter 参数：输入文件、输出文件与隐藏的条件列表。
 pub(super) struct FilterArgs {
     /// 每行一个名字的 UTF-8 文件。
     #[arg(short = 'f', long = "file")]
@@ -247,6 +251,7 @@ pub(super) struct FilterArgs {
 }
 
 #[derive(Debug, Args)]
+/// base 参数：单个原始名字或其文件。
 pub(super) struct BaseArgs {
     /// 单个玩家名字（namerena raw 格式，只支持原始名字，不支持 `+diy` / `+ol` / 武器）。
     #[arg(
@@ -263,6 +268,7 @@ pub(super) struct BaseArgs {
 }
 
 #[derive(Debug, Args)]
+/// namer-pf 参数：输入、靶子预设、指标阈值与输出。
 pub(super) struct NamerPfArgs {
     /// 每行一个名字组、组内 `+` 分隔的输入文本（支持 `\n` 换行转义）。
     #[arg(
@@ -307,6 +313,7 @@ pub(super) struct NamerPfArgs {
 }
 
 #[derive(Debug, Args)]
+/// cqd 参数：靶子来源、选手输入、阈值与输出。
 pub(super) struct CqdArgs {
     /// 靶子列表文件；每行一组、组内默认 `+` 分隔。使用 `--target-factored` 时读带权 TOML。
     #[arg(
@@ -388,6 +395,7 @@ pub(super) struct CqdArgs {
 }
 
 #[derive(Debug, Args)]
+/// pair 参数：靶子、队友、保留数量与输出。
 pub(super) struct PairArgs {
     /// 靶子列表文件；每行一组、组内 `+` 分隔；带权 TOML 时按 factor 加权。
     #[arg(
@@ -495,6 +503,7 @@ pub(super) struct PairArgs {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+/// cqp 详情模式的命令行取值。
 pub(super) enum PairDetailArg {
     None,
     Every,
@@ -513,15 +522,21 @@ impl From<PairDetailArg> for PairDetailMode {
 
 /// 默认参数对齐 GUI 勾选状态。
 const DEFAULT_COUNT: usize = 10000;
+/// 默认保留的头部搭档数：3。
 const DEFAULT_HEAD: usize = 3;
+/// namer-pf 默认不保留短号 rq。
 const NAMER_PF_DEFAULT_KEEP_RQ: bool = false;
+/// bench 类命令默认保留短号 rq。
 const BENCH_DEFAULT_KEEP_RQ: bool = true;
 
 impl BenchOptions {
+    /// 返回生效场数，至少 1。
     fn count(&self) -> usize { self.count.unwrap_or(DEFAULT_COUNT).max(1) }
 
+    /// 返回线程数：单线程模式为 Some(1)，否则取显式值。
     fn threads(&self) -> Option<usize> { if self.single_thread { Some(1) } else { self.thread } }
 
+    /// 返回 keep_rq 生效值，按命令类型取不同默认。
     fn keep_rq(&self, namer_pf: bool) -> bool {
         self.keep_rq.unwrap_or(if namer_pf {
             NAMER_PF_DEFAULT_KEEP_RQ
@@ -534,6 +549,7 @@ impl BenchOptions {
 /// 解析命令行并归一化为执行计划（含预设解析与文件读取）。
 pub(super) fn parse() -> Result<Cli, clap::Error> { parse_from(std::env::args_os()) }
 
+/// 从参数迭代解析 CLI，并重写 filter 条件语法。
 fn parse_from<I, T>(args: I) -> Result<Cli, clap::Error>
 where
     I: IntoIterator<Item = T>,
@@ -643,6 +659,7 @@ struct ResolvedTarget {
     double_plus: bool,
 }
 
+/// 解析靶子来源：文件直读或按预设 id 加载，同时带回加权与 ++ 语义。
 fn resolve_target(
     targets: Option<&PathBuf>,
     target_preset: Option<u64>,
@@ -682,6 +699,7 @@ struct ResolvedTeammate {
     head: usize,
 }
 
+/// 解析队友来源：文件直读或按名称加载预设，并确定 head。
 fn resolve_teammate(
     teammates: Option<&PathBuf>,
     teammate_preset: Option<&String>,
@@ -733,6 +751,7 @@ pub(super) struct OutputPlan {
 }
 
 #[derive(Debug)]
+/// cqd 执行计划：靶子/选手文本、阈值与输出。
 pub(super) struct CqdPlan {
     pub target_text: String,
     pub target_factor_enabled: bool,
@@ -750,6 +769,7 @@ pub(super) struct CqdPlan {
 }
 
 #[derive(Debug)]
+/// pair 执行计划：靶子/队友文本、head 与详情模式。
 pub(super) struct PairPlan {
     pub target_text: String,
     pub target_factor_enabled: bool,
@@ -771,6 +791,7 @@ pub(super) struct PairPlan {
 }
 
 #[derive(Debug)]
+/// to-diy 执行计划：文本、开关与输出文件。
 pub(super) struct ToDiyPlan {
     pub raw: String,
     pub old: bool,
@@ -780,10 +801,12 @@ pub(super) struct ToDiyPlan {
 }
 
 #[derive(Debug)]
+/// base 执行计划：单个原始名字。
 pub(super) struct BasePlan {
     pub raw: String,
 }
 
+/// 把 log/pure 开关映射为输出模式。
 fn output_mode(log: bool, pure: bool) -> OutputMode {
     if pure {
         OutputMode::Pure

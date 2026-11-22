@@ -5,6 +5,7 @@ use crate::runtime::forced_action::ForcedFallback;
 /// 卡牌兼容模式的降级战报；前端按这句话判断「点名的技能没生效」。
 pub const FORCED_FALLBACK_MESSAGE: &str = "[1]的指定技能无法生效，改为普通攻击";
 
+/// 组装 [`RoundOutcome`]：行动计划、可见帧与胜者队伍。
 fn round_outcome(action: Option<ActionPlan>, frame: Option<RuntimeFrame>, winner_team: Option<usize>) -> RoundOutcome {
     RoundOutcome {
         action,
@@ -21,6 +22,7 @@ struct PlannedTargeting {
 }
 
 impl PlannedTargeting {
+    /// 按计划技能、指定队伍、智慧模式与 smart 推导瞄准策略：是否自动施放、是否全程跟随 smart、智慧关闭时是否无智慧重试。
     fn for_action(skill: PlannedSkill, team: Option<usize>, wisdom: TargetWisdom, smart: bool) -> Self {
         let ally_skill = matches!(
             skill,
@@ -52,6 +54,7 @@ impl CombatRuntime {
         self.run_minimal_round_with_capture::<false, _>(|_, _, winner| winner)
     }
 
+    /// 循环推进最小回合直到产出 outcome；未捕获模式下每轮同步胜者并提前返回。
     fn run_minimal_round_with_capture<const CAPTURE_UPDATES: bool, O>(
         &mut self,
         build: impl Fn(Option<ActionPlan>, Option<RuntimeFrame>, Option<usize>) -> O,
@@ -71,6 +74,7 @@ impl CombatRuntime {
         self.run_minimal_round_once_with_capture::<true, _>(round_outcome)
     }
 
+    /// 尝试推进一个最小回合：同步胜者、选出行动并补发冰冻解除事件；未选出行动时直接收尾当前批次。
     fn run_minimal_round_once_with_capture<const CAPTURE_UPDATES: bool, O>(
         &mut self,
         build: impl FnOnce(Option<ActionPlan>, Option<RuntimeFrame>, Option<usize>) -> O,
@@ -380,6 +384,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 排空 POST_ACTION 链：先早阶段技能，再按注册序交错延迟技能与状态条目，蓄力早于新冠时先撤销到期倍率，最后统一清理并执行尾阶段技能。
     fn drain_post_action_chain_into(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
         let actor = self.entities.get(owner).expect("runtime post-action owner missing");
         let skills = &actor.template.skills;
@@ -982,6 +987,7 @@ impl CombatRuntime {
         )
     }
 
+    /// 指定敌队时的普攻选目：切换到该敌队的 duel 视图取样后过滤回该队；未指定队时走普通选目。
     fn select_targeted_basic(&mut self, actor: EntityIdx, smart: bool, team: Option<usize>) -> Option<EntityIdx> {
         let Some(team) = team else {
             return self.select_plain_default_attack_target(actor, false);
@@ -997,6 +1003,7 @@ impl CombatRuntime {
         selected.filter(|id| self.entities.get(*id).is_some_and(|e| e.runtime.team == team))
     }
 
+    /// 计划内置技能的目标列表：按 [`PlannedTargeting`] 取样，空结果且允许无智慧重试时按旧指令再取样一次，保持随机流可重演。
     fn planned_builtin_targets(
         &mut self,
         actor: EntityIdx,
@@ -1012,6 +1019,7 @@ impl CombatRuntime {
         targets
     }
 
+    /// 指定敌队时的计划技能选目：duel 视图取样后过滤回该队；地裂与连击在首目标确定后按全场视图补足后续候选。
     fn select_targeted_planned_targets(
         &mut self,
         actor: EntityIdx,
@@ -1145,6 +1153,7 @@ impl CombatRuntime {
         self.preview_action_targets(actor, skill, team, targeting)
     }
 
+    /// 预览一次计划行动的目标：克隆 RNG 试取样后还原随机流；实体缺失或指定敌队不受支持时报无有效目标，未装备技能报 `SkillNotEquipped`。
     fn preview_action_targets(
         &mut self,
         actor: EntityIdx,
@@ -1437,6 +1446,7 @@ impl CombatRuntime {
         None
     }
 
+    /// 按内置技能类型选择目标并组装行动：自身类技能目标为施法者，武器技能目标留空到结算时解析；空目标且该技能不允许空目标时放弃。
     fn prepare_plain_builtin_skill_action(
         &mut self,
         actor: EntityIdx,
@@ -1507,6 +1517,7 @@ impl CombatRuntime {
         Some(PreparedBuiltinSkillAction { selected, targets })
     }
 
+    /// 有效技能抽样：按行动权重与一次 24 位样本选出技能，权重下限 128 的部分留给普攻，redistribution 压缩不可用区间；中签后再过允许判定并准备目标。
     fn draw_effective_skill(&mut self, actor: EntityIdx, smart: bool) -> Option<PreparedBuiltinSkillAction> {
         let loadout = &self.entities.get(actor).unwrap().template.skills;
         let redistribution = loadout.effective_skill_redistribution();
@@ -1536,6 +1547,7 @@ impl CombatRuntime {
         self.prepare_plain_builtin_skill_action(actor, smart, selected)
     }
 
+    /// compact 权重路径的技能抽样：普通技能视为抽样池，带 cut 的动态技能按尝试概率依次消耗池份额；候选找不到目标时按样本相对位置移除后继续抽样。
     fn draw_compact_effective_skill(&mut self, actor: EntityIdx, smart: bool) -> Option<PreparedBuiltinSkillAction> {
         let loadout = &self.entities.get(actor).unwrap().template.skills;
         let mut ordinary = smallvec::SmallVec::<[(SelectedBuiltinSkill, f64); 8]>::new();
@@ -1642,6 +1654,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 计算技能的尝试概率：S11 由智慧与武器等级决定，死亡笔记由存活标记与敌我关系决定，其余按权重封顶 128 归一，玄月恒为 0。
     fn effective_skill_attempt_probability(
         &self,
         actor: EntityIdx,
@@ -1677,6 +1690,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 返回行动者死亡笔记标记中仍然存活的实体；标记不存在或已死亡时返回 `None`。
     fn death_note_live_mark(&self, actor: EntityIdx) -> Option<EntityIdx> {
         self.entities
             .get(actor)?
@@ -1689,6 +1703,7 @@ impl CombatRuntime {
         self.registry.builtin_active_skill(skill_id)
     }
 
+    /// 行动抽样准入门槛：按技能类型检查当前是否允许尝试，如蓄力、吸收、钢铁、蓄劲、暗杀与召唤各有 gate。
     fn plain_action_skill_allowed(&self, actor: EntityIdx, builtin_skill: BuiltinActiveSkill, _level: u32, smart: bool) -> bool {
         #[cfg(not(feature = "no_debug"))]
         let probe_action = self.probe_plain_action_matches(actor);
@@ -1951,6 +1966,7 @@ impl CombatRuntime {
 mod damage_phase_cache_tests {
     use super::*;
 
+    /// 测试钩子：上报一条 `post damage` 消息，分数取技能 ID。
     fn mark(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
         context.add_update(crate::runtime::update::RunUpdate::new("post damage", 0, 0, entry.skill_id.0));
     }

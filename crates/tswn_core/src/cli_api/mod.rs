@@ -14,7 +14,9 @@
 //! 调用同步执行，包装层负责宿主调度、资源生命周期和 UI 更新。
 
 pub mod battle;
+/// 评分与胜率家族 API 的实现。
 mod bench;
+/// to-diy 导出与组文本解析实现。
 mod parse;
 
 pub use crate::runtime::{PlannedAction, PlannedActionError, PlannedSkill};
@@ -330,6 +332,7 @@ pub struct IconInfo {
     pub colors_consumed: usize,
 }
 
+/// 评分模式：Normal 与 Bang，决定导出与评分使用的修饰符。
 #[derive(Debug, Clone, Copy)]
 pub(super) enum ScoreMode {
     Normal,
@@ -337,6 +340,7 @@ pub(super) enum ScoreMode {
 }
 
 impl ScoreMode {
+    /// 模式对应的修饰符字符串。
     fn modifier(self) -> &'static str {
         match self {
             Self::Normal => "\u{0002}",
@@ -345,6 +349,7 @@ impl ScoreMode {
     }
 }
 
+/// namer-pf 的四个评分维度。
 #[derive(Debug, Clone, Copy)]
 pub(super) enum NamerPfMode {
     Pp,
@@ -354,8 +359,10 @@ pub(super) enum NamerPfMode {
 }
 
 impl NamerPfMode {
+    /// 全部评分维度，按固定顺序。
     const ALL: [Self; 4] = [Self::Pp, Self::Pd, Self::Qp, Self::Qd];
 
+    /// 维度的稳定字符串标签。
     fn label(self) -> &'static str {
         match self {
             Self::Pp => "pp",
@@ -365,6 +372,7 @@ impl NamerPfMode {
         }
     }
 
+    /// 维度对应的 (修饰符, 是否目标同名) 参数。
     fn score_params(self) -> (&'static str, bool) {
         match self {
             Self::Pp => ("\u{0002}", false),
@@ -375,6 +383,7 @@ impl NamerPfMode {
     }
 }
 
+/// 批量胜率汇总：平均/聚合胜率、计数、耗时与有效/跳过对阵数。
 #[derive(Debug, Clone, Copy, Default)]
 pub(super) struct BatchSummary {
     avg: f64,
@@ -740,8 +749,10 @@ pub fn battle_replay_with_actions(raw: &str, options: BattleOptions, actions: &[
     battle::battle_replay_with_actions(raw, options, actions)
 }
 
+/// 构造 `InvalidInput` 错误。
 pub(super) fn invalid_input(message: impl Into<String>) -> CliApiError { CliApiError::InvalidInput(message.into()) }
 
+/// 校验带权靶子：组非空、权重长度匹配且均为有限正数。
 fn validate_factored_targets(target_groups: &[String], target_factors: &[f64], api: &str) -> CliApiResult<()> {
     if target_groups.is_empty() {
         return Err(invalid_input(format!("{api} requires at least one target group")));
@@ -755,8 +766,10 @@ fn validate_factored_targets(target_groups: &[String], target_factors: &[f64], a
     Ok(())
 }
 
+/// 把 runtime 批量错误映射为 `CliApiError::Runtime`。
 fn runtime_batch_error(error: crate::runtime::RuntimeBatchError) -> CliApiError { CliApiError::Runtime(error.to_string()) }
 
+/// 把 custom runtime 导入错误映射为输入错误。
 fn custom_runtime_import_error(error: crate::runtime::CustomRuntimeImportError) -> CliApiError {
     match error {
         crate::runtime::CustomRuntimeImportError::NotReady(error) => invalid_input(error.to_string()),
@@ -764,10 +777,12 @@ fn custom_runtime_import_error(error: crate::runtime::CustomRuntimeImportError) 
     }
 }
 
+/// 把默认 custom runtime profile 错误映射为输入错误。
 fn default_custom_runtime_profile_error(error: crate::runtime::DefaultCustomRuntimeProfileError) -> CliApiError {
     invalid_input(format!("default custom runtime profile failed: {error:?}"))
 }
 
+/// 校验回合上限为正数。
 fn ensure_runtime_max_rounds(max_rounds: usize) -> CliApiResult<()> {
     if max_rounds == 0 {
         Err(invalid_input("runtime max_rounds must be positive"))
@@ -776,6 +791,7 @@ fn ensure_runtime_max_rounds(max_rounds: usize) -> CliApiResult<()> {
     }
 }
 
+/// 校验胜率组数至少为两个非空组。
 fn ensure_win_rate_group_count(groups: &[Vec<String>]) -> CliApiResult<()> {
     let group_count = groups.iter().filter(|g| !g.is_empty()).count();
     if group_count < 2 {
@@ -785,6 +801,7 @@ fn ensure_win_rate_group_count(groups: &[Vec<String>]) -> CliApiResult<()> {
     }
 }
 
+/// 按是否保留 rq 选择默认或胜率专用 eval_rq。
 fn win_rate_eval_rq(keep_rq: bool) -> f64 {
     if keep_rq {
         eval_name::DEFAULT_EVAL_RQ
@@ -793,6 +810,7 @@ fn win_rate_eval_rq(keep_rq: bool) -> f64 {
     }
 }
 
+/// 解析评分模式字符串，兼容 pp/pd/qp/qd 别名。
 fn parse_score_mode(mode: &str) -> CliApiResult<ScoreMode> {
     match mode {
         "normal" | "pp" | "pd" => Ok(ScoreMode::Normal),
@@ -801,6 +819,7 @@ fn parse_score_mode(mode: &str) -> CliApiResult<ScoreMode> {
     }
 }
 
+/// 归一化用户传入的评分维度列表：缺省或为空时取全部，并按固定顺序去重。
 fn normalize_namer_pf_modes(modes: Option<Vec<String>>) -> CliApiResult<Vec<NamerPfMode>> {
     let Some(raw_modes) = modes else {
         return Ok(NamerPfMode::ALL.to_vec());

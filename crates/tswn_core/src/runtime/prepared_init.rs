@@ -32,6 +32,7 @@ pub enum RuntimeBattleInitError {
 }
 
 impl std::fmt::Display for RuntimeBattleInitError {
+    /// 显示初始化错误：区分具体玩家构造失败与准备/运行实体数不匹配两类。
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Player {
@@ -122,6 +123,7 @@ pub(crate) struct ScoreRosterBuffers {
 }
 
 impl ScoreProfileBuild {
+    /// 由随机流构造 score profile：按 clan 类型（`!` 与其否则）改写名字基数，并随机打乱技能顺序。
     fn from_rng(id: PlrId, name: String, clan_name: String, mut rand: RC4) -> Self {
         let mut name_base = score_name_base(&rand.main_val);
         let normal_raw_name_base = name_base;
@@ -162,6 +164,7 @@ impl ScoreProfileBuild {
         }
     }
 
+    /// 用另一份 profile 的原始名字基数抬升自身对应下标；`test_ex` 组合不抬升。
     fn upgrade_from(&mut self, other: &Self) {
         if self.test_ex {
             return;
@@ -173,6 +176,7 @@ impl ScoreProfileBuild {
         }
     }
 
+    /// 把 score profile 落成准备玩家：由名字基数中位数推八围与体力、排定技能等级，并产出模板、克隆构建与蓝图占位。
     fn into_prepared(
         self,
         team: usize,
@@ -332,6 +336,7 @@ fn score_name_base(values: &[u8; 256]) -> [u8; 128] {
     score_name_base_scalar(values)
 }
 
+/// score 名字基数的标量实现：按 `value * 181 + 160` 取模过滤出 128 个 6 位值；AVX2 路径的结果必须与它一致。
 fn score_name_base_scalar(values: &[u8; 256]) -> [u8; 128] {
     let mut name_base = [0u8; 128];
     let mut output = 0usize;

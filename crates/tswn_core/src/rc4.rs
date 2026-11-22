@@ -225,6 +225,7 @@ pub(crate) struct PickSkipRange {
 }
 
 impl PickSkipRange {
+    /// 把一个跳过的下标并入区间：记录首个下标并延长长度。
     pub(crate) fn push(&mut self, index: usize) {
         if self.len == 0 {
             self.first = index;
@@ -232,6 +233,7 @@ impl PickSkipRange {
         self.len += 1;
     }
 
+    /// 把采样序号按跳过区间整体后移。
     #[inline]
     fn offset_sample(self, sample: usize) -> usize { if sample >= self.first { sample + self.len } else { sample } }
 
@@ -263,6 +265,7 @@ impl FromIterator<usize> for PickSkipRange {
     }
 }
 
+/// 小除数取模的魔数表：2^32 除以除数向上取整，供乘法代替除法。
 // 16 位被除数乘以向上取整的 32 位倒数，可精确求出 1..255 除数的商。
 const SMALL_RANGE_RECIPROCALS: [u64; 256] = {
     let mut table = [0; 256];
@@ -274,6 +277,7 @@ const SMALL_RANGE_RECIPROCALS: [u64; 256] = {
     table
 };
 
+/// 用魔数乘法计算 value 对 divisor 的余数，避免除法指令。
 #[inline]
 fn small_range_remainder(value: u32, divisor: u8) -> i32 {
     let quotient = ((u64::from(value) * SMALL_RANGE_RECIPROCALS[usize::from(divisor)]) >> 32) as u32;
@@ -577,6 +581,7 @@ impl RC4 {
     #[inline]
     pub fn js_xor_str(&mut self, bytes: &str) { self.mix_key_bytes(bytes.as_bytes()); }
 
+    /// 按字节序列混合密钥。
     #[inline]
     fn mix_key_bytes(&mut self, bytes: &[u8]) {
         for &byte in bytes {
@@ -584,6 +589,7 @@ impl RC4 {
         }
     }
 
+    /// 混合单个密钥字节：与未跟踪输出异或后累加 j。
     #[inline(always)]
     fn mix_key_byte(&mut self, byte: u8) {
         let val = byte ^ self.next_u8_untracked();

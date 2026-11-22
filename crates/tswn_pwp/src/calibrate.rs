@@ -82,6 +82,7 @@ pub struct CalibrationReport {
 }
 
 #[derive(Debug, Default)]
+/// 按字段路径累积的标量值集合，用于分位数与归一化拟合。
 struct Scalars {
     values: BTreeMap<&'static str, Vec<f64>>,
 }
@@ -93,10 +94,14 @@ impl Scalars {
             self.values.entry(path).or_default().push(value);
         }
     }
+    /// 记录一个整型标量。
     fn push_int(&mut self, path: &'static str, value: i64) { self.push(path, value as f64) }
+    /// 记录一个浮点标量。
     fn push_float(&mut self, path: &'static str, value: f64) { self.push(path, value) }
+    /// 记录一个计数值标量。
     fn push_count(&mut self, path: &'static str, value: usize) { self.push(path, value as f64) }
 
+    /// 对每个字段计算分位数与归一化常数，生成校准字段。
     fn finish(&mut self) -> BTreeMap<String, CalibrationField> {
         let mut fields = BTreeMap::new();
         for (path, values) in std::mem::take(&mut self.values) {
@@ -253,6 +258,7 @@ fn collect_template(template: &ModelTemplate, scalars: &mut Scalars) {
 /// 默认注册表 entity 域 `core.entity.minion_counter` 的 `slot_id`（第 3.2 节白名单）。
 const ENTITY_SLOT_MINION_COUNTER: u32 = 5;
 
+/// 克隆模板属性的校准路径。
 const CLONE_ATTR_PATHS: [&str; 8] = [
     "template.clone_build.attrs.0",
     "template.clone_build.attrs.1",
@@ -264,6 +270,7 @@ const CLONE_ATTR_PATHS: [&str; 8] = [
     "template.clone_build.attrs.7",
 ];
 
+/// 克隆模板武器加成的校准路径。
 const CLONE_WEAPON_PATHS: [&str; 8] = [
     "template.clone_build.weapon_attr_bonus.0",
     "template.clone_build.weapon_attr_bonus.1",
@@ -275,6 +282,7 @@ const CLONE_WEAPON_PATHS: [&str; 8] = [
     "template.clone_build.weapon_attr_bonus.7",
 ];
 
+/// 克隆模板调整项的校准路径。
 const CLONE_ADJUSTMENT_PATHS: [&str; 10] = [
     "template.clone_build.adjustments.max_hp",
     "template.clone_build.adjustments.attack",

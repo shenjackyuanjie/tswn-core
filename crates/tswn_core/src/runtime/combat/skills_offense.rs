@@ -826,6 +826,7 @@ impl CombatRuntime {
 mod tests {
     use super::*;
 
+    /// 测试辅助：推进至多 128 步并跳过纯空帧，返回下一可见批次及其胜者编号。
     fn next_visible_batch(runner: &mut RuntimeRunner) -> (RuntimeFrame, Option<usize>) {
         (0..128)
             .filter_map(|_| {
@@ -836,6 +837,7 @@ mod tests {
             .expect("应在跳过纯空帧后产生下一可见批次")
     }
 
+    /// 测试辅助：抽取帧中非空消息的 `(message, score)` 列表。
     fn visible_events(frame: &RuntimeFrame) -> Vec<(&str, u32)> {
         frame
             .updates
@@ -846,6 +848,7 @@ mod tests {
             .collect()
     }
 
+    /// 测试辅助：断言 RC4 游标与 `main_val` 的 FNV-1a 散列和期望值一致。
     fn assert_rapid_rng(runner: &RuntimeRunner, cursor: (u32, u32), expected_permutation: u64, context: &str) {
         let rng = &runner.runtime().rng;
         assert_eq!((rng.i, rng.j), cursor, "{context}");

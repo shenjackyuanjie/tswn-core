@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use super::ProgressEvent;
 
+/// 收件箱待处理事件的字节上限：8 MiB。
 const MAX_PENDING_BYTES: usize = 8 * 1024 * 1024;
 
 /// 结果类型：DIY、分数、胜率与配对。
@@ -126,6 +127,7 @@ pub enum LiveEvent {
 }
 
 impl LiveEvent {
+    /// 返回事件占用的字节数（结果更新或日志文本）。
     fn bytes(&self) -> usize {
         match self {
             Self::Result(update) => update.bytes(),
@@ -167,6 +169,7 @@ impl LiveFeed {
         }
     }
 
+    /// 推送事件并按预算裁剪：超大单条直接丢弃，超预算则从队首淘汰。
     fn push(&self, event: LiveEvent) {
         let bytes = event.bytes();
         let mut pending = self.0.lock().unwrap();

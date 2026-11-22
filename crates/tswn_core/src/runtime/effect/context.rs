@@ -101,6 +101,7 @@ impl<'a> EffectContext<'a> {
     /// 同步胜负视图，返回已产生的胜者队伍（如有）。
     pub fn sync_winner(&mut self) -> Option<usize> { self.world.sync_winner(self.entities) }
 
+    /// 校验上下文是否持有指定扩展能力；缺失时返回 [`EffectContextError::MissingCapability`]。
     fn require(&self, capability: ExtensionCapability) -> Result<(), EffectContextError> {
         if self.capabilities.contains(&capability) {
             Ok(())

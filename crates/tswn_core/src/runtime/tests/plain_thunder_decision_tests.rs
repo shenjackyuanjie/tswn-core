@@ -1,5 +1,6 @@
 use super::*;
 
+/// 按 defend 构造注册了防御 hook 的 CombatRuntime，用于雷电决策测试。
 fn runtime(defend: bool) -> CombatRuntime {
     let mut builder = ExtensionRegistryBuilder::default();
     let defend_id = builder
@@ -26,6 +27,7 @@ fn runtime(defend: bool) -> CombatRuntime {
     runtime
 }
 
+/// 构造一份 actor=1 的 evade PassiveDecision。
 fn evade(activate: bool, success: bool) -> PassiveDecision {
     PassiveDecision {
         actor: 1,

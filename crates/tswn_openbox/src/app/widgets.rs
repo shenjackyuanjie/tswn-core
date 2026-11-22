@@ -180,6 +180,7 @@ pub fn multiline(ui: &mut egui::Ui, id: &'static str, text: &mut String, rows: u
     });
 }
 
+/// 按默认文件名弹出保存对话框。
 fn pick_output_file(default_name: &str) -> Option<PathBuf> {
     rfd::FileDialog::new()
         .set_directory(current_dir())
@@ -190,6 +191,7 @@ fn pick_output_file(default_name: &str) -> Option<PathBuf> {
 /// 按默认文件名弹出输出文件选择对话框。
 pub fn pick_named_output_file(default_name: &str) -> Option<PathBuf> { pick_output_file(default_name) }
 
+/// 返回规范化的当前目录，失败时退到 “.”。
 fn current_dir() -> PathBuf {
     std::env::current_dir()
         .ok()
