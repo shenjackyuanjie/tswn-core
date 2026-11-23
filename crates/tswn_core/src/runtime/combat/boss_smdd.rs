@@ -92,15 +92,10 @@ impl CombatRuntime {
         }
     }
 
-    fn smdd_line(&self, actor: EntityIdx, message: &'static str, quote: &'static str, updates: &mut RunUpdates) {
+    /// 只播报用户给定的文本，不再保留任何旧技能名。
+    fn smdd_say(&self, actor: EntityIdx, message: &'static str, updates: &mut RunUpdates) {
         updates.add_newline();
         updates.add(RunUpdate::new(message, actor.0 as usize, actor.0 as usize, 1).without_replay_target());
-        updates.add_newline();
-        updates.add(
-            RunUpdate::new(quote, actor.0 as usize, actor.0 as usize, 0)
-                .as_dialogue()
-                .without_replay_target(),
-        );
         updates.add_newline();
     }
 
@@ -130,7 +125,7 @@ impl CombatRuntime {
             *runtime = *runtime * 5 / 4;
             *template = *template * 5 / 4;
         }
-        self.smdd_line(actor, "[0]使用[抛开事实不谈]", "我 rp 神", updates);
+        self.smdd_say(actor, "[0]使用[我 rp 神]", updates);
         updates.add(RunUpdate::new(
             format!("[0]全属性上升25%（{stacks}层）"),
             actor.0 as usize,
@@ -145,7 +140,7 @@ impl CombatRuntime {
             return;
         };
         let team = owner.runtime.team;
-        self.smdd_line(actor, "[0]使用[虎星恒等式]", "本队单双人都一堆", updates);
+        self.smdd_say(actor, "[0]使用[本队单双人都一堆]", updates);
         for (display, icon_key, hp, attack, speed) in [
             ("Gordon RLHTKAZRMFFJ@nan", "Gordon RLHTKAZRMFFJ@nan", 140, 120, 150),
             ("一对笑面虎 my7CAxNHHz@XJ联队", "XJ联队@XJ联队", 120, 110, 140),
@@ -199,7 +194,7 @@ impl CombatRuntime {
 
     /// 卿言猴儿：十连击，每击 90%。
     fn smdd_monkey(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
-        self.smdd_line(actor, "[0]使用[卿言猴儿，孰若孤]", "唉，乱杀", updates);
+        self.smdd_say(actor, "[0]使用[唉，乱杀]", updates);
         for _ in 0..10 {
             if !self.entities.get(actor).is_some_and(|e| e.runtime.active()) {
                 break;
@@ -217,7 +212,7 @@ impl CombatRuntime {
             return;
         };
         let team = owner.runtime.team;
-        self.smdd_line(actor, "[0]使用[孤常卖牢]", "猎豹不彻底等于彻底不猎豹", updates);
+        self.smdd_say(actor, "[0]使用[猎豹不彻底等于彻底不猎豹]", updates);
         self.smdd_spawn_unit(actor, team, "猎豹", "smdd-leopard", 100, 130, 320, updates);
     }
 
@@ -229,7 +224,7 @@ impl CombatRuntime {
         }
         let index = usize::from(self.rng.next_u8()) % enemies.len();
         let target = enemies[index];
-        self.smdd_line(actor, "[0]使用[矿机测号]", "神人，评价是弱智", updates);
+        self.smdd_say(actor, "[0]使用[神人，评价是弱智]", updates);
         if let Some(entity) = self.entities.get_mut(target) {
             for (runtime, template) in [
                 (&mut entity.runtime.attack, &mut entity.template.attack),
@@ -260,7 +255,14 @@ impl CombatRuntime {
             return;
         }
         let hits = enemies.len().clamp(1, 5);
-        self.smdd_line(actor, "[0]使用[赢]", "单人组：赢", updates);
+        let label: &'static str = match hits {
+            1 => "[0]使用[单人组：赢]",
+            2 => "[0]使用[双人组：赢]",
+            3 => "[0]使用[三人组：赢]",
+            4 => "[0]使用[四人组：赢]",
+            _ => "[0]使用[五人组：赢]",
+        };
+        self.smdd_say(actor, label, updates);
         for _ in 0..hits {
             let enemies = self.smdd_enemies(actor);
             if enemies.is_empty() {
@@ -282,7 +284,7 @@ impl CombatRuntime {
 
     /// 可能我是名竞之神：随机三选一。
     fn smdd_god(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
-        self.smdd_line(actor, "[0]使用[可能我是名竞之神]", "随机数处理好再跑只用花eps时间", updates);
+        self.smdd_say(actor, "[0]使用[可能我是名竞之神]", updates);
         match self.rng.next_u8() % 3 {
             0 => {
                 let enemies = self.smdd_enemies(actor);
