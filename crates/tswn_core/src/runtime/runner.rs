@@ -587,14 +587,14 @@ impl RuntimeRunner {
     }
 
     /// 就绪校验；未就绪时 panic 并附完整错误文本。
-    fn assert_ready(&self) {
+    pub(super) fn assert_ready(&self) {
         if let Err(error) = self.validate_ready() {
             panic!("{error}");
         }
     }
 
     /// 跳过就绪校验，直接推进一个最小回合。
-    fn run_round_unchecked(&mut self) -> RoundOutcome { self.runtime.run_minimal_round() }
+    pub(super) fn run_round_unchecked(&mut self) -> RoundOutcome { self.runtime.run_minimal_round() }
 
     /// 推进一个 Runtime 回合；可能没有可见帧。未就绪时会 panic，高层会话会先校验。
     pub fn run_round(&mut self) -> RoundOutcome {

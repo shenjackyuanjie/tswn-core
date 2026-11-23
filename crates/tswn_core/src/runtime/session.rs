@@ -119,7 +119,15 @@ impl RuntimeRunner {
     }
 
     /// 推进一个主 Runtime 回合并取出可见更新。
-    pub fn main_round(&mut self) -> RunUpdates { self.run_round().frame.map_or_else(RunUpdates::new, |frame| frame.updates) }
+    pub fn main_round(&mut self) -> RunUpdates {
+        self.assert_ready();
+        self.main_round_prevalidated()
+    }
+
+    /// 调用方已检查本回合的 handler 绑定；按公开入口相同的方式提取更新。
+    pub(crate) fn main_round_prevalidated(&mut self) -> RunUpdates {
+        self.run_round_unchecked().frame.map_or_else(RunUpdates::new, |frame| frame.updates)
+    }
 
     /// 使用语言绑定统一 guard 跑到结束，返回是否产生胜者。
     pub fn run_binding_to_completion(&mut self) -> bool {
