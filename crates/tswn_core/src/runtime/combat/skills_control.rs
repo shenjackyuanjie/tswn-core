@@ -159,7 +159,7 @@ impl CombatRuntime {
             .get_mut(actor)
             .unwrap_or_else(|| panic!("unknown runtime charge owner: {}", actor.0));
         owner.activate_charge_runtime();
-        owner.runtime.magic_point += 32;
+        owner.runtime.magic_point = (owner.runtime.magic_point + 32).min(100);
         updates.add(crate::runtime::update::RunUpdate::new(
             "[0]开始[蓄力]",
             actor.0 as usize,
