@@ -163,8 +163,6 @@ pub fn boss_action_prob_count(name: &str) -> usize {
 /// 返回 0 表示恒不免疫且不抽样；`piston` 是毒状态在 0.5.5 中的键名。
 pub fn boss_immune_threshold(name: &str, key: &str) -> i32 {
     match boss_combat_name(name) {
-        // 科研 Boss 保留净化、控制等反制，不套用其他 Boss 的兜底免疫。
-        "Squall" => 0,
         "saitama" => match key {
             "half" | "exchange" => 240,
             "berserk" | "slow" | "ice" => 192,
@@ -334,6 +332,10 @@ mod tests {
         assert_eq!(boss_immune_threshold("covid", "charm"), 192);
         assert_eq!(boss_immune_threshold("lazy", "curse"), 192);
         assert_eq!(boss_immune_threshold("aokiji", "charm"), 192);
+        // 科研 Boss 与其他 Boss 一样吃兜底免疫：净化按 84 抽样，控制类按 192。
+        assert_eq!(boss_immune_threshold("Squall", "disperse"), 84);
+        assert_eq!(boss_immune_threshold("Squall", "charm"), 192);
+        assert_eq!(boss_immune_threshold("Squall", "fire"), 84);
         assert_eq!(boss_immune_threshold("unknown", "charm"), 192);
     }
 }

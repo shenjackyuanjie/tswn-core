@@ -10,7 +10,7 @@ pub struct SquallRuntime {
     pub observed: bool,
     pub marked: Option<EntityIdx>,
     pub damage: Vec<(EntityIdx, i64)>,
-    pub next_skill: [u32; 6],
+    pub next_skill: [u32; 7],
     pub active_count: u8,
     pub summoned: bool,
     pub heal_count: u8,

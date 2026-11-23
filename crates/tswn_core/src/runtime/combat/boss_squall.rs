@@ -14,6 +14,12 @@ const SAMPLE_QUOTES: [&str; 5] = [
 /// 红温台词取自本地聊天记录中唯一出现“红温”的原话，发送于 2026-11-06 00:50:43。
 const RED_QUOTE: &str = "我已经要被 6.1sol 整红温了";
 
+/// 暴政一下的台词取自原话“暴政一下”前 1 分 46 秒的同段对话，语气同样是点名后赶人。
+const TYRANNY_QUOTE: &str = "所以情商低，下一个";
+
+/// 禁言把敌方魔力直接压到 -64；按每回合 +40 的自然恢复，需要两回合才回到能施法的水平。
+const TYRANNY_MP_FLOOR: i32 = -64;
+
 /// 技能编号固定用于调度与验证，不追加普通技能熟练度或随机扫描项。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ResearchSkill {
@@ -24,6 +30,7 @@ enum ResearchSkill {
     Iron,
     Quake,
     Heal,
+    Tyranny,
 }
 
 #[cfg(test)]
@@ -249,12 +256,7 @@ impl CombatRuntime {
             *template = *template * 3 / 2;
         }
         self.squall_say(actor, "[0]进入[红温]", RED_QUOTE, updates);
-        updates.add(RunUpdate::new(
-            "[0]的全属性上升50%，且无法被净化解除",
-            actor.0 as usize,
-            actor.0 as usize,
-            0,
-        ));
+        updates.add(RunUpdate::new("[0]的全属性上升50%", actor.0 as usize, actor.0 as usize, 0));
     }
 
     /// 阶段转换只触发一次，先清空样本再加成；不锁血，也不拦截致死伤害。
@@ -407,6 +409,17 @@ impl CombatRuntime {
         if e.runtime.hp * 100 < e.template.max_hp * 55 && s.heal_count < 3 && ready(5) {
             return Some(ResearchSkill::Heal);
         }
+        // 开局第一动仍留给铁壁；之后只要还有人没被压到 -64 就来一次禁言。
+        if ready(6)
+            && s.turn >= 1
+            && self.squall_enemies(actor, false).iter().any(|idx| {
+                self.entities
+                    .get(*idx)
+                    .is_some_and(|target| target.runtime.magic_point > TYRANNY_MP_FLOOR)
+            })
+        {
+            return Some(ResearchSkill::Tyranny);
+        }
         if !s.summoned && s.turn >= 2 {
             return Some(ResearchSkill::Team);
         }
@@ -518,6 +531,7 @@ impl CombatRuntime {
                 }
             }
             ResearchSkill::Heal => self.squall_heal(actor, updates),
+            ResearchSkill::Tyranny => self.squall_tyranny(actor, updates),
         }
     }
 
@@ -741,5 +755,23 @@ impl CombatRuntime {
             updates.add_newline();
         }
         updates.add(RunUpdate::new("[0]开始[蓄势]", actor.0 as usize, actor.0 as usize, 0));
+    }
+
+    /// 暴政一下：把每个敌方角色的魔力直接设为 -64，并按地裂那样逐目标各占一行战报。
+    fn squall_tyranny(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+        let targets = self.squall_enemies(actor, false);
+        if targets.is_empty() {
+            return;
+        }
+        let s = self.entities.get_mut(actor).unwrap().runtime.squall.as_mut().unwrap();
+        s.next_skill[6] = s.turn + 4;
+        self.squall_say(actor, "[0]使用[暴政一下]", TYRANNY_QUOTE, updates);
+        for target in targets {
+            if let Some(e) = self.entities.get_mut(target) {
+                e.runtime.magic_point = TYRANNY_MP_FLOOR;
+            }
+            updates.add_newline();
+            updates.add(RunUpdate::new("[1]被[0]禁言1分钟", actor.0 as usize, target.0 as usize, 0));
+        }
     }
 }

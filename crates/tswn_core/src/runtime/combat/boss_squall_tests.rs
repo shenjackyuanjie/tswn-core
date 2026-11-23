@@ -331,6 +331,56 @@ fn red_triggers_from_action_end_hook_when_hp_drops() {
 }
 
 #[test]
+fn tyranny_mutes_every_enemy_mp_and_reports_one_line_per_target() {
+    let (mut runner, boss, enemies) = battle();
+    let rt = runner.runtime_mut();
+    for idx in &enemies {
+        rt.entities.get_mut(*idx).unwrap().runtime.magic_point = 50;
+    }
+    let mut u = RunUpdates::new();
+    rt.squall_tyranny(boss, &mut u);
+    for idx in &enemies {
+        assert_eq!(rt.entities.get(*idx).unwrap().runtime.magic_point, TYRANNY_MP_FLOOR);
+    }
+    let lines: Vec<_> = messages(&u).into_iter().filter(|line| line.contains("禁言1分钟")).collect();
+    assert_eq!(lines.len(), enemies.len());
+    assert!(lines.contains(&"[1]被[0]禁言1分钟"));
+    assert!(messages(&u).contains(&"[0]使用[暴政一下]"));
+    assert!(u.updates.iter().any(|update| update.dialogue && update.message == TYRANNY_QUOTE));
+    let s = rt.entities.get(boss).unwrap().runtime.squall.as_ref().unwrap();
+    assert_eq!(s.next_skill[6], s.turn + 4);
+}
+
+#[test]
+fn tyranny_is_chosen_after_first_turn_and_skips_targets_already_muted() {
+    let (mut runner, boss, enemies) = battle();
+    let rt = runner.runtime_mut();
+    rt.entities.get_mut(boss).unwrap().runtime.squall.as_mut().unwrap().turn = 1;
+    assert_eq!(rt.select_research_skill(boss), Some(ResearchSkill::Tyranny));
+    let mut u = RunUpdates::new();
+    rt.squall_tyranny(boss, &mut u);
+    // 冷却期内不再施放；被压到下限的目标也不会重复触发。
+    assert_ne!(rt.select_research_skill(boss), Some(ResearchSkill::Tyranny));
+    let s = rt.entities.get_mut(boss).unwrap().runtime.squall.as_mut().unwrap();
+    s.next_skill[6] = 0;
+    for idx in &enemies {
+        rt.entities.get_mut(*idx).unwrap().runtime.magic_point = TYRANNY_MP_FLOOR;
+    }
+    assert_ne!(rt.select_research_skill(boss), Some(ResearchSkill::Tyranny));
+}
+
+#[test]
+fn squall_can_probabilistically_immune_unavoidable_dispel() {
+    let (mut runner, boss, _) = battle();
+    let rt = runner.runtime_mut();
+    // 净化原本必中；科研 Boss 现在按兜底阈值 84 抽样，多次判定必然出现免疫。
+    let immune = (0..400).filter(|_| rt.status_immune(boss, "disperse")).count();
+    assert!(immune > 0, "Squall 应能概率回避净化");
+    let charm = (0..400).filter(|_| rt.status_immune(boss, "charm")).count();
+    assert!(charm > immune, "控制类阈值 192 应高于净化的 84");
+}
+
+#[test]
 fn capture_and_fast_completion_have_identical_final_state() {
     let (mut captured, _, _) = battle();
     let (mut fast, _, _) = battle();
