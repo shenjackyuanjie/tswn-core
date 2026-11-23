@@ -11,6 +11,7 @@ use std::sync::Arc;
 #[cfg(feature = "cards")]
 mod abilities;
 mod attack;
+mod boss_squall;
 mod boss_thanos;
 mod boss_wheel;
 mod defense;
@@ -126,6 +127,8 @@ pub struct CombatRuntime {
     pub state_handlers: Arc<StateHandlers>,
     pub replay_renderers: Arc<ReplayRenderers>,
     pub show_renderers: Arc<ShowRenderers>,
+    /// 固定记录科研 Boss 的实体槽，普通对局不扫描所有实体。
+    pub(crate) squall_bosses: Vec<EntityIdx>,
     pub scratch: BattleScratch,
     pub template_slots: TemplateSlotStorage,
     pub slots: BattleSlotStorage,

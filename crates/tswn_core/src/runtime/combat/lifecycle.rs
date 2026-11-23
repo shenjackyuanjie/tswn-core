@@ -31,7 +31,12 @@ impl CombatRuntime {
         let state_handlers = StateHandlers::from_registry(&registry);
         let replay_renderers = ReplayRenderers::from_registry(&registry);
         let show_renderers = ShowRenderers::from_registry(&registry);
+        let squall_bosses = entities
+            .iter()
+            .filter_map(|(idx, entity)| entity.runtime.squall.is_some().then_some(idx))
+            .collect();
         Self {
+            squall_bosses,
             entities,
             world,
             scheduler,

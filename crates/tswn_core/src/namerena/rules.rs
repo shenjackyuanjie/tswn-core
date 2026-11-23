@@ -4,7 +4,7 @@
 pub(crate) const SAITAMA_RETIREMENT_WINNER: &str = "SAITAMA";
 
 /// 内置 Boss 名字表；用于身份分类、默认技能与免疫规则查询。
-pub const BOSS_NAMES: [&str; 15] = [
+pub const BOSS_NAMES: [&str; 16] = [
     "mario",
     "sonic",
     "mosquito",
@@ -20,6 +20,7 @@ pub const BOSS_NAMES: [&str; 15] = [
     "thanos",
     "wheel",
     SAITAMA_RETIREMENT_WINNER,
+    "Squall",
 ];
 
 /// 加成角色名字表；对应 [`boost_value`] 的加成来源。
@@ -116,6 +117,8 @@ pub enum BossActionSkill {
     MarioGet,
     YuriControl,
     Saitama,
+    /// Squall 的科研技能与研究助手统一进入专属结算器。
+    Squall,
 }
 
 /// 按 0.5.5 中 `k4` 的插入顺序返回 Boss 主动技能及基础等级。
@@ -160,6 +163,8 @@ pub fn boss_action_prob_count(name: &str) -> usize {
 /// 返回 0 表示恒不免疫且不抽样；`piston` 是毒状态在 0.5.5 中的键名。
 pub fn boss_immune_threshold(name: &str, key: &str) -> i32 {
     match boss_combat_name(name) {
+        // 科研 Boss 保留净化、控制等反制，不套用其他 Boss 的兜底免疫。
+        "Squall" => 0,
         "saitama" => match key {
             "half" | "exchange" => 240,
             "berserk" | "slow" | "ice" => 192,

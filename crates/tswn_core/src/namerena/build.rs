@@ -542,6 +542,13 @@ impl PlayerBuild {
             status = status_from_attrs(attrs, self.name_factor, true);
             status.magic_point = 1000;
         }
+        // Squall 使用固定的最终战斗属性；速度也不追加普通名字的 160 点。
+        if self.class == PlayerClass::Boss && self.name == "Squall" {
+            self.name_factor = 0.0;
+            attrs = [106, 106, 106, 106, 106, 106, 106, 360];
+            status = status_from_attrs(attrs, 0.0, true);
+            status.speed = 106;
+        }
         let mut skills = overlay_skills.map_or_else(
             || SkillLoadoutSpec::standard(&levels, &boosted, &boosts, &self.action_order),
             |skills| SkillLoadoutSpec::player_overlay(skills, effective_skills),

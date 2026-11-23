@@ -25,10 +25,12 @@ use super::{MOVE_POINT_THRESHOLD, PlrId};
 
 mod runtime;
 mod skill_loadout;
+mod squall;
 mod state;
 
 pub use runtime::*;
 pub use skill_loadout::*;
+pub use squall::*;
 pub use state::*;
 
 /// 默认 at_boost 倍率 1.0 的百万分比表示，用于整数比较与导出。

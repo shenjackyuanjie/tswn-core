@@ -305,6 +305,24 @@ fn step_suffix(step: i32) -> String { if step > 0 { format!(" ({step})") } else 
 /// 汇总实体当前的状态标签：聚气、蓄力、隐匿、潜行、各类状态效果与垂死。
 fn status_labels(entity: &EntityRecord) -> Vec<String> {
     let mut labels = Vec::new();
+    if let Some(s) = &entity.runtime.squall {
+        push_status_label(&mut labels, format!("测试样本 {}", s.samples));
+        if s.iron_until > s.turn {
+            push_status_label(&mut labels, "蓄力铁壁");
+        }
+        if s.amplify > 0 {
+            push_status_label(&mut labels, format!("蓄势 +{}%", s.amplify));
+        }
+        if s.exposed {
+            push_status_label(&mut labels, "红温复查");
+        }
+        if s.burned {
+            push_status_label(&mut labels, "烧库");
+        }
+    }
+    if entity.runtime.squall_taunt.is_some() {
+        push_status_label(&mut labels, "嘲讽变换");
+    }
     if entity.runtime.accumulate.active {
         push_status_label(&mut labels, "聚气");
     }

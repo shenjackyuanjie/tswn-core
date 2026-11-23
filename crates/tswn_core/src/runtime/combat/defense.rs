@@ -12,6 +12,8 @@ enum PlainBossDefend {
 impl CombatRuntime {
     /// 驱散命中：清除目标正面状态并按档位扣除 MP。
     pub fn apply_disperse_hit_into(&mut self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
+        // 净化也能解除科研 Boss 的铁壁、蓄势、剪枝与嘲讽交换。
+        self.dispel_squall_effects(target, updates);
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime disperse target entity: {}", target.0);
         };
@@ -519,6 +521,8 @@ impl CombatRuntime {
                 break;
             }
         }
+        // 科研铁壁和复查易伤应用于完成常规防御后的正伤害。
+        self.apply_squall_defense(target, defend_value);
     }
 
     /// 常规护盾在 POST_DEFEND 中抵减伤害；护盾不足时清零且不抵消伤害。
@@ -690,8 +694,10 @@ impl CombatRuntime {
             .entities
             .get_mut(target)
             .unwrap_or_else(|| panic!("unknown runtime plain legacy damage target entity: {}", target.0));
+        let actual_damage = amount.max(0).min(target_entity.runtime.hp.max(0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
+        self.record_squall_damage(caster, target, actual_damage);
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         // 原版 damage 先调用命中回调（含火球免疫随机数），再由 onDamaged 登记反击。
         if amount > 0
@@ -719,12 +725,14 @@ impl CombatRuntime {
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime damage target entity: {}", target.0);
         };
+        let actual_damage = amount.max(0).min(target_entity.runtime.hp.max(0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let killed = target_entity.runtime.hp == 0 && target_entity.runtime.alive;
         if killed {
             target_entity.runtime.alive = false;
         }
         let team = target_entity.runtime.team;
+        self.record_squall_damage(caster, target, actual_damage);
         updates.add(replay(caster.0 as usize, target.0 as usize, amount));
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         if killed {
@@ -745,8 +753,10 @@ impl CombatRuntime {
             .entities
             .get_mut(target)
             .unwrap_or_else(|| panic!("unknown runtime poison target entity: {}", target.0));
+        let actual_damage = amount.max(0).min(target_entity.runtime.hp.max(0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
+        self.record_squall_damage(caster, target, actual_damage);
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         was_alive
@@ -771,8 +781,10 @@ impl CombatRuntime {
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime disperse damage target entity: {}", target.0);
         };
+        let actual_damage = amount.max(0).min(target_entity.runtime.hp.max(0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
+        self.record_squall_damage(caster, target, actual_damage);
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         if amount > 0 {
             self.apply_disperse_hit_into(caster, target, updates);

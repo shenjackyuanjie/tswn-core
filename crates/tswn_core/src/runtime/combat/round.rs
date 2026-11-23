@@ -189,6 +189,8 @@ impl CombatRuntime {
                 }
                 return None;
             }
+            // 专属计时只在真正获得行动时推进，冰冻期间保留剪枝预告。
+            self.begin_squall_action(action.actor, &mut updates);
             let forced_pre_action_skill = plain_skill_pre_action.forced_skill.is_some();
             let prepared = self.prepare_plain_action(action.actor, smart, plain_skill_pre_action);
             // 卡牌兼容模式：点名的技能放不出来时引擎改用普攻，这里补一条说明战报。
@@ -491,9 +493,11 @@ impl CombatRuntime {
     fn finish_round_with_capture<const CAPTURE_UPDATES: bool, O>(
         &mut self,
         action: Option<ActionPlan>,
-        updates: RunUpdates,
+        mut updates: RunUpdates,
         build: impl FnOnce(Option<ActionPlan>, Option<RuntimeFrame>, Option<usize>) -> O,
     ) -> O {
+        // 普通回放与不捕获消息的评分路径共享同一份科研状态结算。
+        self.finish_squall_action(action.as_ref().map(|a| a.actor), &mut updates);
         debug_assert_eq!(updates.capture_updates, CAPTURE_UPDATES);
         let frame = (CAPTURE_UPDATES && updates.had_updates()).then_some(RuntimeFrame { updates });
         self.round += 1;
@@ -581,6 +585,16 @@ impl CombatRuntime {
             });
         }
 
+        if self
+            .entities
+            .get(actor)
+            .is_some_and(|e| e.runtime.squall.is_some() || e.runtime.squall_helper.is_some())
+        {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Squall,
+                targets: PreparedTargetList::new(),
+            }));
+        }
         if self.scratch.search_turn.is_some() {
             return self.prepare_search_action(actor, smart);
         }

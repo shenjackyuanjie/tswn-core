@@ -178,6 +178,13 @@ pub struct PlayerRuntime {
     pub conan_thinking: Option<i32>,
     /// 史莱姆 Boss 的分裂代数；0 为原始 Boss，1 为第一代子体，2 起不再分裂。
     pub slime_split_generation: Option<u32>,
+    /// 科研 Boss、助手角色和临时嘲讽覆盖随克隆与存档完整保存。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub squall: Option<Box<SquallRuntime>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub squall_helper: Option<(EntityIdx, u8, u32)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub squall_taunt: Option<(EntityIdx, u64)>,
     pub corpse: RuntimeCorpseKind,
 }
 
@@ -243,6 +250,10 @@ impl PlayerRuntime {
             rinick_reraise_lives: template.rinick.as_ref().is_some_and(|data| data.revive_attrs.is_some()).then_some(2),
             conan_thinking,
             slime_split_generation,
+            squall: (flags.contains(PlayerKindFlags::BOSS) && template.name == "Squall")
+                .then(|| Box::new(SquallRuntime::default())),
+            squall_helper: None,
+            squall_taunt: None,
             corpse: RuntimeCorpseKind::None,
         }
     }
@@ -295,6 +306,9 @@ impl PlayerRuntime {
         self.rinick_reraise_lives = None;
         self.conan_thinking = None;
         self.slime_split_generation = None;
+        self.squall = None;
+        self.squall_helper = None;
+        self.squall_taunt = None;
         self.corpse = RuntimeCorpseKind::None;
     }
 
@@ -340,6 +354,9 @@ impl PlayerRuntime {
         self.rinick_reraise_lives = prepared.rinick_reraise_lives;
         self.conan_thinking = prepared.conan_thinking;
         self.slime_split_generation = prepared.slime_split_generation;
+        self.squall.clone_from(&prepared.squall);
+        self.squall_helper = prepared.squall_helper;
+        self.squall_taunt = prepared.squall_taunt;
         self.corpse = prepared.corpse;
     }
 
@@ -347,7 +364,7 @@ impl PlayerRuntime {
     pub fn at_boost(&self) -> f64 { f64::from_bits(self.at_boost_bits) }
 
     /// 当前吸引力。
-    pub fn attract(&self) -> f64 { f64::from_bits(self.attract_bits) }
+    pub fn attract(&self) -> f64 { f64::from_bits(self.squall_taunt.map_or(self.attract_bits, |(_, bits)| bits)) }
 
     /// 是否为使魔。
     pub fn is_minion(&self) -> bool { self.flags.contains(PlayerKindFlags::MINION) }
@@ -574,7 +591,7 @@ impl EntityRecord {
         self.runtime.attr_sum = self.template.attr_sum;
         self.runtime.atk_sum = self.states.effective_atk_sum(self.template.atk_sum);
         self.runtime.attract_bits = self.template.attract_bits;
-        self.runtime.attract_bits = self.states.effective_attract(self.runtime.attract()).to_bits();
+        self.runtime.attract_bits = self.states.effective_attract(f64::from_bits(self.runtime.attract_bits)).to_bits();
         if self.runtime.upgrade_active {
             // 增益量独立乘算，保留原始技能等级。
             #[cfg(feature = "cards")]
