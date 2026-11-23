@@ -1,4 +1,4 @@
-//! 曙光 Boss 的固定数值、技能轮转与图标映射。
+//! 曙光 Boss 的固定数值与技能轮转。
 use super::*;
 
 fn battle() -> (RuntimeRunner, EntityIdx) {
@@ -9,13 +9,14 @@ fn battle() -> (RuntimeRunner, EntityIdx) {
 }
 
 #[test]
-fn fixed_stats_and_display_name_match_squall_tier() {
+fn fixed_stats_match_squall_and_use_squall_icon_rules() {
     let (runner, boss) = battle();
     let entity = runner.runtime().entities.get(boss).unwrap();
     let r = &entity.runtime;
+    // 106 是外显值，实际战斗速度补上普通公式的 160。
     assert_eq!(
         [r.attack, r.defense, r.speed, r.agility, r.magic, r.resistance, r.wisdom],
-        [106; 7]
+        [106, 106, 266, 106, 106, 106, 106]
     );
     assert_eq!(r.hp, 360);
     assert_eq!(entity.template.display_name, "曙光");
@@ -26,19 +27,17 @@ fn fixed_stats_and_display_name_match_squall_tier() {
 }
 
 #[test]
-fn ten_skills_rotate_by_action_count() {
+fn skills_rotate_over_seven_turns() {
     let (mut runner, boss) = battle();
     let rt = runner.runtime_mut();
     let mut seen = std::collections::HashSet::new();
-    for turn in 1..=10u32 {
+    for turn in 1..=7u32 {
         if let Some(state) = rt.entities.get_mut(boss).and_then(|e| e.runtime.smdd.as_mut()) {
             state.turn = turn;
         }
-        let skill = rt.next_smdd_skill(boss);
-        seen.insert(format!("{skill:?}"));
+        seen.insert(format!("{:?}", rt.next_smdd_skill(boss)));
     }
-    // 十轮里应当覆盖全部十种技能（虎星/抛开事实在无层数时回退为做局，属于设计内行为）。
-    assert!(seen.contains("Mining") && seen.contains("Speed") && seen.contains("Taunt"));
-    assert!(seen.contains("Random") && seen.contains("Flat") && seen.contains("Monkey"));
-    assert!(seen.contains("Sell") && seen.contains("Setup"));
+    for expected in ["Rp", "Tiger", "Monkey", "Leopard", "Mining", "Win", "God"] {
+        assert!(seen.contains(expected), "{expected} 应出现在轮转里");
+    }
 }

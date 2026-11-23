@@ -1,92 +1,60 @@
-//! smdd（被做局者）Boss：十个围绕“做局、卖牢、猴儿、算力”等群聊梗的科研型技能。
+//! smdd（曙光）Boss：以“做局”为核心的轮转型 Boss，技能全部取自群成员 3023226682 的发言。
 use super::*;
-use crate::runtime::entity::SmddRuntime;
 
 #[cfg(test)]
 #[path = "boss_smdd_tests.rs"]
 mod tests;
 
-/// 台词与技能均取自本地群聊里 3023226682 的原话。
+/// 角色名（小写键名）。
 pub const ID: &str = "smdd";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SmddSkill {
-    /// 抛开事实不谈：无视防御的真实伤害。
-    Fact,
-    /// 虎星恒等式2=0：清掉目标两层正面状态。
+    /// 我 rp 神：全属性 ×1.25，最多两层。
+    Rp,
+    /// 虎星恒等式：召唤 Gordon 与一对笑面虎。
     Tiger,
-    /// 卿言猴儿：召唤一只猴儿。
+    /// 卿言猴儿：十连击，每击 90%。
     Monkey,
-    /// 孤常卖牢：永久降防提攻。
-    Sell,
-    /// 矿机测号：四段小额普攻。
+    /// 孤常卖牢：召唤猎豹。
+    Leopard,
+    /// 矿机测号：随机敌方除智外属性减半，智变 36。
     Mining,
-    /// 卷测速：提速并追加一次普攻。
-    Speed,
-    /// 京爷式嘲讽：吸引攻击并减伤。
-    Taunt,
-    /// 随机数处理好：随机三选一。
-    Random,
-    /// 平A到底：五连普攻。
-    Flat,
-    /// 做局：叠加「局」层数并强化下一次真实伤害。
-    Setup,
+    /// 赢：按敌方人数连续普攻，回避率固定 50%。
+    Win,
+    /// 可能我是名竞之神：随机三选一。
+    God,
 }
 
 impl CombatRuntime {
+    fn smdd_enemies(&self, actor: EntityIdx) -> Vec<EntityIdx> {
+        let team = self.plain_effective_team(actor);
+        self.world
+            .flat_alive()
+            .iter()
+            .copied()
+            .filter(|idx| *idx != actor && self.plain_effective_team(*idx) != team)
+            .collect()
+    }
+
     fn next_smdd_skill(&self, actor: EntityIdx) -> SmddSkill {
-        let Some(entity) = self.entities.get(actor) else {
-            return SmddSkill::Flat;
+        let Some(state) = self.entities.get(actor).and_then(|e| e.runtime.smdd.as_ref()) else {
+            return SmddSkill::Win;
         };
-        let Some(state) = entity.runtime.smdd.as_ref() else {
-            return SmddSkill::Flat;
-        };
-        // 十个技能按行动次数轮转，保证每种风格都能出现；卖牢最多两次、猴儿只召唤一次。
-        match state.turn % 10 {
-            1 => SmddSkill::Setup,
-            2 => {
-                if state.summoned {
-                    SmddSkill::Flat
-                } else {
-                    SmddSkill::Monkey
-                }
-            }
-            3 => SmddSkill::Mining,
-            4 => {
-                if state.stacks >= 2 {
-                    SmddSkill::Tiger
-                } else {
-                    SmddSkill::Setup
-                }
-            }
-            5 => {
-                if state.sold < 2 {
-                    SmddSkill::Sell
-                } else {
-                    SmddSkill::Random
-                }
-            }
-            6 => SmddSkill::Flat,
-            7 => SmddSkill::Speed,
-            8 => SmddSkill::Taunt,
-            9 => SmddSkill::Random,
-            0 => {
-                if state.stacks >= 2 {
-                    SmddSkill::Fact
-                } else {
-                    SmddSkill::Setup
-                }
-            }
-            _ => SmddSkill::Setup,
+        match state.turn % 7 {
+            1 => SmddSkill::Rp,
+            2 => SmddSkill::Tiger,
+            3 => SmddSkill::Monkey,
+            4 => SmddSkill::Leopard,
+            5 => SmddSkill::Mining,
+            6 => SmddSkill::Win,
+            _ => SmddSkill::God,
         }
     }
 
-    /// 被敌方本体命中一次，「局」加一层；上限 8。
+    /// 被敌方本体命中时做局层数 +1；开始做局始终激活，每个自身行动也会 +1。
     pub(super) fn record_smdd_hit(&mut self, target: EntityIdx) {
-        let Some(entity) = self.entities.get_mut(target) else {
-            return;
-        };
-        if let Some(state) = entity.runtime.smdd.as_mut() {
+        if let Some(state) = self.entities.get_mut(target).and_then(|e| e.runtime.smdd.as_mut()) {
             state.stacks = (state.stacks + 1).min(8);
         }
     }
@@ -95,25 +63,32 @@ impl CombatRuntime {
         if !self.entities.get(actor).is_some_and(|e| e.runtime.active()) {
             return;
         }
-        {
+        // 开始做局：始终激活的被动，每次自身行动叠一层。
+        let stacks = {
             let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.smdd.as_mut()) else {
                 return;
             };
             state.turn = state.turn.saturating_add(1);
+            state.stacks = (state.stacks + 1).min(8);
+            state.stacks
+        };
+        if stacks >= 2 {
+            updates.add(RunUpdate::new(
+                format!("[0]的[局]累积到{stacks}层"),
+                actor.0 as usize,
+                actor.0 as usize,
+                0,
+            ));
+            updates.add_newline();
         }
-        let skill = self.next_smdd_skill(actor);
-        let target = self.select_plain_default_attack_target(actor, true);
-        match skill {
-            SmddSkill::Setup => self.smdd_setup(actor, updates),
-            SmddSkill::Fact => self.smdd_fact(actor, target, updates),
-            SmddSkill::Tiger => self.smdd_tiger(actor, target, updates),
+        match self.next_smdd_skill(actor) {
+            SmddSkill::Rp => self.smdd_rp(actor, updates),
+            SmddSkill::Tiger => self.smdd_tiger(actor, updates),
             SmddSkill::Monkey => self.smdd_monkey(actor, updates),
-            SmddSkill::Sell => self.smdd_sell(actor, updates),
-            SmddSkill::Mining => self.smdd_flurry(actor, 4, 0.45, updates),
-            SmddSkill::Speed => self.smdd_speed(actor, target, updates),
-            SmddSkill::Taunt => self.smdd_taunt(actor, updates),
-            SmddSkill::Random => self.smdd_random(actor, target, updates),
-            SmddSkill::Flat => self.smdd_flurry(actor, 5, 0.6, updates),
+            SmddSkill::Leopard => self.smdd_leopard(actor, updates),
+            SmddSkill::Mining => self.smdd_mining(actor, updates),
+            SmddSkill::Win => self.smdd_win(actor, updates),
+            SmddSkill::God => self.smdd_god(actor, updates),
         }
     }
 
@@ -129,196 +104,186 @@ impl CombatRuntime {
         updates.add_newline();
     }
 
-    fn smdd_setup(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
-        let stacks = {
-            let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.smdd.as_mut()) else {
-                return;
-            };
-            state.stacks = (state.stacks + 1).min(8);
-            state.next_skill[9] = state.turn + 1;
-            state.stacks
-        };
-        self.smdd_line(actor, "[0]开始做局", "怎么入库又猴儿了", updates);
-        updates.add(RunUpdate::new(
-            format!("[0]累积{stacks}层[局]"),
-            actor.0 as usize,
-            actor.0 as usize,
-            0,
-        ));
-    }
-
-    fn smdd_fact(&mut self, actor: EntityIdx, target: Option<EntityIdx>, updates: &mut RunUpdates) {
-        let Some(target) = target else {
-            self.smdd_setup(actor, updates);
+    /// 抛开事实不谈：全属性 ×1.25，最多两层。
+    fn smdd_rp(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+        let Some(entity) = self.entities.get_mut(actor) else {
             return;
         };
-        let stacks = self.smdd_state(actor).map_or(0, |state| state.stacks);
-        let amount = 40 + i32::from(stacks) * 25;
-        if let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.smdd.as_mut()) {
-            state.stacks = 0;
-            state.next_skill[0] = state.turn + 3;
-        }
-        self.smdd_line(actor, "[0]使用[抛开事实不谈]", "抛开事实不谈你确实挺牢的", updates);
-        // 真实伤害：直接扣血，不经过防御、护盾与回避。
-        updates.add(RunUpdate::new(
-            format!("[1]受到{amount}点真实伤害"),
-            actor.0 as usize,
-            target.0 as usize,
-            0,
-        ));
-        if self.apply_damage_into(actor, target, amount, updates) {
-            self.drain_plain_lethal_damage_into(actor, target, updates);
-        }
-    }
-
-    fn smdd_tiger(&mut self, actor: EntityIdx, target: Option<EntityIdx>, updates: &mut RunUpdates) {
-        let Some(target) = target else {
+        let Some(state) = entity.runtime.smdd.as_mut() else {
             return;
         };
-        let cleared = self.clear_two_buffs(target);
-        if let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.smdd.as_mut()) {
-            state.next_skill[1] = state.turn + 3;
+        if state.rp_stacks >= 2 {
+            self.smdd_win(actor, updates);
+            return;
         }
-        self.smdd_line(actor, "[0]使用[虎星恒等式2=0]", "虎星恒等式2=0", updates);
+        state.rp_stacks += 1;
+        let stacks = state.rp_stacks;
+        for (runtime, template) in [
+            (&mut entity.runtime.attack, &mut entity.template.attack),
+            (&mut entity.runtime.defense, &mut entity.template.defense),
+            (&mut entity.runtime.speed, &mut entity.template.speed),
+            (&mut entity.runtime.agility, &mut entity.template.agility),
+            (&mut entity.runtime.magic, &mut entity.template.magic),
+            (&mut entity.runtime.resistance, &mut entity.template.resistance),
+            (&mut entity.runtime.wisdom, &mut entity.template.wisdom),
+        ] {
+            *runtime = *runtime * 5 / 4;
+            *template = *template * 5 / 4;
+        }
+        self.smdd_line(actor, "[0]使用[抛开事实不谈]", "我 rp 神", updates);
         updates.add(RunUpdate::new(
-            format!("[1]的{cleared}层增益被清零"),
+            format!("[0]全属性上升25%（{stacks}层）"),
             actor.0 as usize,
-            target.0 as usize,
+            actor.0 as usize,
             0,
         ));
-        self.drain_plain_attack_with_atp_into(actor, target, true, self.plain_at(actor, 1.2, updates), updates);
     }
 
-    fn clear_two_buffs(&mut self, target: EntityIdx) -> u8 {
-        let Some(entity) = self.entities.get_mut(target) else {
-            return 0;
-        };
-        let keys: smallvec::SmallVec<[u32; 2]> = entity
-            .states
-            .entries()
-            .iter()
-            .filter(|entry| entry.is_positive_state())
-            .map(|entry| entry.legacy_order_key)
-            .take(2)
-            .collect();
-        for key in &keys {
-            entity.states.clear_legacy_key(*key);
-        }
-        entity.refresh_runtime_stats_from_template();
-        keys.len() as u8
-    }
-
-    fn smdd_monkey(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+    /// 虎星恒等式：召唤 Gordon 与一对笑面虎。
+    fn smdd_tiger(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
         let Some(owner) = self.entities.get(actor) else {
             return;
         };
-        let (team, max_hp) = (owner.runtime.team, (owner.template.max_hp * 20 / 100).max(1));
+        let team = owner.runtime.team;
+        self.smdd_line(actor, "[0]使用[虎星恒等式]", "本队单双人都一堆", updates);
+        for (display, icon_key, hp, attack, speed) in [
+            ("Gordon", "RLHTKAZRMFFJ@nan", 140, 120, 150),
+            ("笑面虎", "my7CAxNHHz@XJ联队", 120, 110, 140),
+            ("笑面虎", "2LRLYnOw5pmmhXG@XJ联队", 120, 110, 140),
+        ] {
+            self.smdd_spawn_unit(actor, team, display, icon_key, hp, attack, speed, updates);
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn smdd_spawn_unit(
+        &mut self,
+        actor: EntityIdx,
+        team: usize,
+        display: &str,
+        icon_key: &str,
+        hp: i32,
+        attack: i32,
+        speed: i32,
+        updates: &mut RunUpdates,
+    ) {
         let kind = self
             .registry
             .player_kind_id_by_export_name(DEFAULT_CORE_SUMMON_KIND_EXPORT)
             .expect("core summon kind missing");
-        let mut template = PlayerTemplate::with_kind(0, "猴儿", kind, team, max_hp, 90);
-        template.speed = 120;
-        template.magic = 90;
+        let mut template = PlayerTemplate::with_kind(0, display, kind, team, hp, attack);
+        template.speed = speed;
+        template.magic = attack;
         template.defense = 70;
         template.resistance = 70;
         template.agility = 90;
-        template.wisdom = 90;
-        template.id_key_name = "smdd-monkey".to_owned();
-        template.display_name = "猴儿".to_owned();
-        if let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.smdd.as_mut()) {
-            state.summoned = true;
-        }
-        self.smdd_line(actor, "[0]使用[卿言猴儿，孰若孤]", "卿言猴儿，孰若孤？", updates);
+        template.wisdom = 70;
+        template.magic_point = 40;
+        template.id_key_name = icon_key.to_owned();
+        template.display_name = display.to_owned();
         self.effects.push(QueuedEffect::SpawnWithMessage {
             caster: actor,
             template,
-            message: "召唤出[1]".to_owned(),
+            message: "[1]加入了己方".to_owned(),
         });
         self.drain_effects_into(updates);
     }
 
-    fn smdd_sell(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
-        let Some(entity) = self.entities.get_mut(actor) else {
-            return;
-        };
-        entity.runtime.attack = entity.runtime.attack * 130 / 100;
-        entity.template.attack = entity.template.attack * 130 / 100;
-        entity.runtime.defense = entity.runtime.defense * 80 / 100;
-        entity.template.defense = entity.template.defense * 80 / 100;
-        if let Some(state) = entity.runtime.smdd.as_mut() {
-            state.sold += 1;
-        }
-        self.smdd_line(
-            actor,
-            "[0]使用[孤常卖牢]",
-            "卿言猴儿，孰若孤？孤常卖牢，自以为大有所益",
-            updates,
-        );
-        updates.add(RunUpdate::new(
-            "[0]攻击上升30%，防御下降20%",
-            actor.0 as usize,
-            actor.0 as usize,
-            0,
-        ));
-    }
-
-    fn smdd_flurry(&mut self, actor: EntityIdx, hits: u8, scale: f64, updates: &mut RunUpdates) {
-        let target = self.select_plain_default_attack_target(actor, true);
-        let Some(target) = target else {
-            return;
-        };
-        self.smdd_line(actor, "[0]使用[平A到底]", "30以下ban平A", updates);
-        for _ in 0..hits {
+    /// 卿言猴儿：十连击，每击 90%。
+    fn smdd_monkey(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+        self.smdd_line(actor, "[0]使用[卿言猴儿，孰若孤]", "唉，乱杀", updates);
+        for _ in 0..10 {
             if !self.entities.get(actor).is_some_and(|e| e.runtime.active()) {
                 break;
             }
             let Some(current) = self.select_plain_default_attack_target(actor, true) else {
                 break;
             };
-            self.drain_plain_attack_with_atp_into(actor, current, false, self.plain_at(actor, scale, updates), updates);
+            self.drain_plain_attack_with_atp_into(actor, current, false, self.smdd_at(actor, 0.9), updates);
         }
-        let _ = target;
     }
 
-    fn smdd_speed(&mut self, actor: EntityIdx, target: Option<EntityIdx>, updates: &mut RunUpdates) {
-        if let Some(entity) = self.entities.get_mut(actor) {
-            entity.runtime.speed = entity.runtime.speed * 160 / 100;
-            entity.template.speed = entity.template.speed * 160 / 100;
-            if let Some(state) = entity.runtime.smdd.as_mut() {
-                state.next_skill[5] = state.turn + 4;
-            }
+    /// 孤常卖牢：召唤猎豹。
+    fn smdd_leopard(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+        let Some(owner) = self.entities.get(actor) else {
+            return;
+        };
+        let team = owner.runtime.team;
+        self.smdd_line(actor, "[0]使用[孤常卖牢]", "猎豹不彻底等于彻底不猎豹", updates);
+        self.smdd_spawn_unit(actor, team, "猎豹", "smdd-leopard", 100, 130, 320, updates);
+    }
+
+    /// 矿机测号：随机敌方除智外属性减半，智变 36。
+    fn smdd_mining(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+        let enemies = self.smdd_enemies(actor);
+        if enemies.is_empty() {
+            return;
         }
-        self.smdd_line(actor, "[0]使用[卷测速]", "可能比留在cn卷竞赛好", updates);
-        updates.add(RunUpdate::new("[0]速度上升60%", actor.0 as usize, actor.0 as usize, 0));
-        if let Some(target) = target {
+        let index = usize::from(self.rng.next_u8()) % enemies.len();
+        let target = enemies[index];
+        self.smdd_line(actor, "[0]使用[矿机测号]", "神人，评价是弱智", updates);
+        if let Some(entity) = self.entities.get_mut(target) {
+            for (runtime, template) in [
+                (&mut entity.runtime.attack, &mut entity.template.attack),
+                (&mut entity.runtime.defense, &mut entity.template.defense),
+                (&mut entity.runtime.speed, &mut entity.template.speed),
+                (&mut entity.runtime.agility, &mut entity.template.agility),
+                (&mut entity.runtime.magic, &mut entity.template.magic),
+                (&mut entity.runtime.resistance, &mut entity.template.resistance),
+            ] {
+                *runtime /= 2;
+                *template /= 2;
+            }
+            entity.runtime.wisdom = 36;
+            entity.template.wisdom = 36;
+        }
+        updates.add(RunUpdate::new(
+            "[1]的属性被削半，智力变为36",
+            actor.0 as usize,
+            target.0 as usize,
+            0,
+        ));
+    }
+
+    /// 赢：按敌方人数连续普攻，回避率固定 50%。
+    fn smdd_win(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+        let enemies = self.smdd_enemies(actor);
+        if enemies.is_empty() {
+            return;
+        }
+        let hits = enemies.len().clamp(1, 5);
+        self.smdd_line(actor, "[0]使用[赢]", "单人组：赢", updates);
+        for _ in 0..hits {
+            let enemies = self.smdd_enemies(actor);
+            if enemies.is_empty() {
+                break;
+            }
+            let target = enemies[usize::from(self.rng.next_u8()) % enemies.len()];
             updates.add_newline();
-            self.drain_plain_attack_with_atp_into(actor, target, false, self.plain_at(actor, 1.0, updates), updates);
-        }
-    }
-
-    fn smdd_taunt(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
-        if let Some(entity) = self.entities.get_mut(actor) {
-            entity.runtime.attract_bits = 1.0e9_f64.to_bits();
-            if let Some(state) = entity.runtime.smdd.as_mut() {
-                state.next_skill[6] = state.turn + 5;
-                state.taunt_until = state.turn + 1;
+            // 固定 50% 回避，不参考命中与敏捷。
+            if self.rng.next_u8() < 128 {
+                updates.add(RunUpdate::new("[1][回避]了攻击", actor.0 as usize, target.0 as usize, 0));
+                continue;
+            }
+            let amount = self.smdd_at(actor, 1.0) as i32;
+            if self.apply_plain_attack_damage_into(actor, target, amount, updates) {
+                self.drain_plain_lethal_damage_into(actor, target, updates);
             }
         }
-        self.smdd_line(actor, "[0]使用[京爷式嘲讽]", "因为托腮这种京爷看不上我们这群贱民", updates);
-        updates.add(RunUpdate::new("[0]吸引了全部攻击", actor.0 as usize, actor.0 as usize, 0));
     }
 
-    fn smdd_random(&mut self, actor: EntityIdx, target: Option<EntityIdx>, updates: &mut RunUpdates) {
-        if let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.smdd.as_mut()) {
-            state.next_skill[7] = state.turn + 2;
-        }
-        self.smdd_line(actor, "[0]使用[随机数处理好]", "随机数处理好再跑只用花eps时间", updates);
+    /// 可能我是名竞之神：随机三选一。
+    fn smdd_god(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+        self.smdd_line(actor, "[0]使用[可能我是名竞之神]", "随机数处理好再跑只用花eps时间", updates);
         match self.rng.next_u8() % 3 {
             0 => {
-                if let Some(target) = target {
+                let enemies = self.smdd_enemies(actor);
+                if let Some(target) = enemies.first().copied() {
                     updates.add(RunUpdate::new("[1]受到大额伤害", actor.0 as usize, target.0 as usize, 0));
-                    self.drain_plain_attack_with_atp_into(actor, target, true, self.plain_at(actor, 2.0, updates), updates);
+                    let amount = self.smdd_at(actor, 2.0) as i32;
+                    if self.apply_plain_attack_damage_into(actor, target, amount, updates) {
+                        self.drain_plain_lethal_damage_into(actor, target, updates);
+                    }
                 }
             }
             1 => {
@@ -352,9 +317,7 @@ impl CombatRuntime {
         }
     }
 
-    fn smdd_state(&self, actor: EntityIdx) -> Option<&SmddRuntime> { self.entities.get(actor)?.runtime.smdd.as_deref() }
-
-    fn plain_at(&self, actor: EntityIdx, scale: f64, _updates: &mut RunUpdates) -> f64 {
+    fn smdd_at(&self, actor: EntityIdx, scale: f64) -> f64 {
         self.entities.get(actor).map_or(0.0, |entity| f64::from(entity.runtime.attack) * scale)
     }
 }

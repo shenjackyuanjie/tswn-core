@@ -18,6 +18,7 @@ const QUILT_EMOJI = [
     ["quilt-monkey", "🐒"],
     ["quilt-fish", "🐟"],
     ["quilt", "🛏️"],
+    ["smdd-leopard", "🐆"],
 ];
 const quiltEmojiCache = new Map();
 

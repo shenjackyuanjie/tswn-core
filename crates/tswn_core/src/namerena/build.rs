@@ -542,19 +542,12 @@ impl PlayerBuild {
             status = status_from_attrs(attrs, self.name_factor, true);
             status.magic_point = 1000;
         }
-        // Squall 使用固定的最终战斗属性；速度也不追加普通名字的 160 点。
-        if self.class == PlayerClass::Boss && self.name == "Squall" {
+        // Squall 与 smdd 的 106 只是外显值；实际战斗速度按普通公式补上 160。
+        if self.class == PlayerClass::Boss && (self.name == "Squall" || self.name == "smdd") {
             self.name_factor = 0.0;
             attrs = [106, 106, 106, 106, 106, 106, 106, 360];
             status = status_from_attrs(attrs, 0.0, true);
-            status.speed = 106;
-        }
-        // smdd（曙光）与 Squall 同为 106 固定属性，速度不追加 160 点。
-        if self.class == PlayerClass::Boss && self.name == "smdd" {
-            self.name_factor = 0.0;
-            attrs = [106, 106, 106, 106, 106, 106, 106, 360];
-            status = status_from_attrs(attrs, 0.0, true);
-            status.speed = 106;
+            status.speed = 266;
         }
         // 被子是后排 Boss：500 HP、其余 100，速度同样不追加 160 点。
         if self.class == PlayerClass::Boss && self.name == "quilt" {

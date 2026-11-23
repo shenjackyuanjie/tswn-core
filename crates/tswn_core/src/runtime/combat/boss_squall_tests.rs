@@ -25,7 +25,7 @@ fn fixed_stats_identity_and_icon_match_requested_character() {
     let r = &e.runtime;
     assert_eq!(
         [r.attack, r.defense, r.speed, r.agility, r.magic, r.resistance, r.wisdom],
-        [106; 7]
+        [106, 106, 266, 106, 106, 106, 106]
     );
     assert_eq!(r.hp, 360);
     assert_eq!(e.template.max_hp, 360);
@@ -239,7 +239,7 @@ fn burn_is_once_preserves_base_stats_and_can_kill_itself() {
     rt.try_squall_burn(boss, &mut u);
     let e = rt.entities.get(boss).unwrap();
     assert_eq!(e.runtime.attack, 150);
-    assert_eq!(e.runtime.speed, 163);
+    assert_eq!(e.runtime.speed, 409);
     assert_eq!(e.runtime.squall.as_ref().unwrap().samples, 0);
     rt.try_squall_burn(boss, &mut u);
     assert_eq!(rt.entities.get(boss).unwrap().runtime.attack, 150);
@@ -296,7 +296,7 @@ fn red_starts_below_half_hp_once_and_cannot_be_dispelled() {
             e.runtime.resistance,
             e.runtime.wisdom
         ],
-        [159; 7]
+        [159, 159, 399, 159, 159, 159, 159]
     );
     assert_eq!(e.template.attack, 159);
     let m = messages(&u);
@@ -324,12 +324,12 @@ fn red_triggers_from_action_end_hook_when_hp_drops() {
     rt.finish_squall_action(Some(enemies[0]), &mut u);
     let e = rt.entities.get(boss).unwrap();
     assert!(e.runtime.squall.as_ref().unwrap().red);
-    assert_eq!(e.runtime.speed, 159);
+    assert_eq!(e.runtime.speed, 399);
     // 红温不属于普通状态，后续行动与净化都不会撤销它。
     rt.begin_squall_action(boss, &mut u);
     rt.dispel_squall_effects(boss, &mut u);
     assert!(rt.entities.get(boss).unwrap().runtime.squall.as_ref().unwrap().red);
-    assert_eq!(rt.entities.get(boss).unwrap().runtime.speed, 159);
+    assert_eq!(rt.entities.get(boss).unwrap().runtime.speed, 399);
 }
 
 #[test]

@@ -677,9 +677,14 @@ fn battle_icon_key<'a>(runner: &'a RuntimeRunner, state: &BattlePlayerState, gro
     }
     let entities = &runner.runtime().entities;
     let entity = entities.get(EntityIdx(state.id.try_into().ok()?))?;
-    // 被子的衍生物（猴区/鱼）保留自己的徽章键，便于前端改用 emoji 图标。
-    if entity.template.id_key_name.starts_with("quilt-") {
-        return Some(&entity.template.id_key_name);
+    // 被子衍生物与曙光的召唤物保留自己的徽章键，便于前端改用 emoji 图标。
+    let own_key = entity.template.id_key_name.as_str();
+    if own_key.starts_with("quilt-") || own_key == "smdd-leopard" || own_key == "RLHTKAZRMFFJ@nan" {
+        return Some(own_key);
+    }
+    // 两个 XJ 联队的笑面虎统一使用 XJ联队@XJ联队 的图标，而不是同队徽章。
+    if own_key.ends_with("@XJ联队") {
+        return Some("XJ联队@XJ联队");
     }
     // 分裂子体不属于常规召唤物，但必须继承源史莱姆的固定徽章。
     let root = if state.minion_kind.is_some() || entity.runtime.slime_split_generation.is_some_and(|generation| generation > 0) {
