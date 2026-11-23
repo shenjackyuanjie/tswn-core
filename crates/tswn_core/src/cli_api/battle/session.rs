@@ -679,7 +679,7 @@ fn battle_icon_key<'a>(runner: &'a RuntimeRunner, state: &BattlePlayerState, gro
     let entity = entities.get(EntityIdx(state.id.try_into().ok()?))?;
     // 被子衍生物与曙光的召唤物保留自己的徽章键，便于前端改用 emoji 图标。
     let own_key = entity.template.id_key_name.as_str();
-    if own_key.starts_with("quilt-") || own_key == "smdd-leopard" || own_key == "RLHTKAZRMFFJ@nan" {
+    if own_key.starts_with("quilt-") || own_key == "smdd-leopard" || own_key.ends_with("@nan") {
         return Some(own_key);
     }
     // 两个 XJ 联队的笑面虎统一使用 XJ联队@XJ联队 的图标，而不是同队徽章。

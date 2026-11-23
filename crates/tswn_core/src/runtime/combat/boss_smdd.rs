@@ -147,9 +147,9 @@ impl CombatRuntime {
         let team = owner.runtime.team;
         self.smdd_line(actor, "[0]使用[虎星恒等式]", "本队单双人都一堆", updates);
         for (display, icon_key, hp, attack, speed) in [
-            ("Gordon", "RLHTKAZRMFFJ@nan", 140, 120, 150),
-            ("笑面虎", "my7CAxNHHz@XJ联队", 120, 110, 140),
-            ("笑面虎", "2LRLYnOw5pmmhXG@XJ联队", 120, 110, 140),
+            ("Gordon RLHTKAZRMFFJ@nan", "Gordon RLHTKAZRMFFJ@nan", 140, 120, 150),
+            ("一对笑面虎 my7CAxNHHz@XJ联队", "XJ联队@XJ联队", 120, 110, 140),
+            ("2LRLYnOw5pmmhXG@XJ联队", "XJ联队@XJ联队", 120, 110, 140),
         ] {
             self.smdd_spawn_unit(actor, team, display, icon_key, hp, attack, speed, updates);
         }
@@ -171,6 +171,7 @@ impl CombatRuntime {
             .registry
             .player_kind_id_by_export_name(DEFAULT_CORE_SUMMON_KIND_EXPORT)
             .expect("core summon kind missing");
+        // 名字必须完整保留前缀与空格（含 @队伍），否则名字派生属性会变。
         let mut template = PlayerTemplate::with_kind(0, display, kind, team, hp, attack);
         template.speed = speed;
         template.magic = attack;
@@ -181,12 +182,19 @@ impl CombatRuntime {
         template.magic_point = 40;
         template.id_key_name = icon_key.to_owned();
         template.display_name = display.to_owned();
+        let idx = self.entities.next_spawn_idx(&template);
         self.effects.push(QueuedEffect::SpawnWithMessage {
             caster: actor,
             template,
             message: "[1]加入了己方".to_owned(),
         });
         self.drain_effects_into(updates);
+        // 召唤会继承 Boss 的 @! 徽章名，这里改回完整的名字与图标键。
+        if let Some(spawned) = self.entities.get_mut(idx) {
+            spawned.template.id_key_name = icon_key.to_owned();
+            spawned.template.display_name = display.to_owned();
+            spawned.template.name = display.to_owned();
+        }
     }
 
     /// 卿言猴儿：十连击，每击 90%。
