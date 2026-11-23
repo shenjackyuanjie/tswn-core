@@ -2,7 +2,7 @@
 
 ## 项目结构与模块
 
-这是一个 Rust workspace。核心战斗与 CLI 位于 `crates/tswn_core/`；跨语言与界面适配分别在 `tswn_capi`、`tswn_py`、`tswn_wasm`、`tswn_openbox`，排名与对战工具在 `tswn_*ranker`、`tswn_ladder`。共享或集成测试主要在 `crates/tswn_test/`，输入样例在 `tests/`，设计与构建说明在 `docs/`，自动化脚本在 `scripts/`。修改功能时优先将测试放在所属 crate 的模块内；跨 crate 行为放入 `tswn_test`。
+这是一个 Rust workspace。核心战斗与 CLI 位于 `crates/tswn_core/`；跨语言与界面适配分别在 `tswn_capi`、`tswn_py`、`tswn_wasm`、`tswn_openbox`，排名工具在 `tswn_*ranker`。共享或集成测试主要在 `crates/tswn_test/`，输入样例在 `tests/`，设计与构建说明在 `docs/`，自动化脚本在 `scripts/`。修改功能时优先将测试放在所属 crate 的模块内；跨 crate 行为放入 `tswn_test`。
 
 ## 仓库 skill
 

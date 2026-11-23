@@ -13,7 +13,7 @@
 | 界面与共用评分后端 | [Openbox](../../crates/tswn_openbox/README.md)：GUI/CLI 在 `tswn_openbox`，评分、预设与资源在 `tswn_openbox_backend`，DS4 可直接复用后端 |
 | DS4 批处理 | [tswn_ds4](../../crates/tswn_ds4/README.md)：流程、输入/历史文件、单人/配对模型与外部 ABCP5 适配 |
 | 胜率训练数据 | [tswn_pwp](../../crates/tswn_pwp/README.md)：生成、校验、校准、manifest 与安全离线导出；张量字段映射仍只在 core encoder 内实现 |
-| 排名与周期更新 | [lane ranker](../../crates/tswn_lane_ranker/README.md)、[ladder](../../crates/tswn_ladder/README.md)：分别使用 SQLite 与 PostgreSQL，数据库集成验证和普通单元测试分开 |
+| 排名服务 | [lane ranker](../../crates/tswn_lane_ranker/README.md)：SQLite 排名、校准与管理，数据库集成验证和普通单元测试分开 |
 | 跨 crate 与冻结回归 | `tswn_test`：集成测试、JS exact trace 与压力 golden；基线维护说明见 [runtime_stress](../../crates/tswn_test/cases/runtime_stress/README.md) |
 | 自动化与分析 | [scripts](../../scripts/README.md)：构建打包、差分、真实绑定验收、性能测量与只读数据 loader |
 

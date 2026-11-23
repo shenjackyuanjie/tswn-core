@@ -15,7 +15,7 @@
 | C/C++ | tswn_capi | opaque 句柄与成对 free | 状态码、JSON、字节缓冲 |
 | 本地面板/脚本化工具 | Openbox GUI / CLI | 后台任务与事件 | 增量视图、stdout、结果文件 |
 | 筛号目录 | DS4 | 一次有缓存的流程 | 模型分数、配对与归档 |
-| 排名服务 | lane ranker / ladder | 长期任务或周期轮次 | 数据库与审计 |
+| 排名服务 | lane ranker | 长期任务或周期轮次 | 数据库与审计 |
 
 ## CLI：从参数到输出
 
@@ -122,7 +122,6 @@ openbox-cli 数据行输出到 stdout，进度与状态输出到 stderr，适合
 | --- | --- | --- |
 | DS4 | 读取目录配置、增量处理输入、调用模型并归档 | 工作目录与可选 ABCP5 文件/模型 |
 | lane ranker | Axum 接口编排后台排名、校准与靶子任务 | SQLite、Python 数值环境 |
-| ladder | 按 cron 或单轮匹配、战斗、更新与回写 | PostgreSQL 和排名日志目录 |
 | name ranker | 独立单号排名服务 | 独立校准 JSON/TSV 与 SQLite |
 
 这些工具通过文件和数据库保存长期结果。试运行使用独立工作目录或测试数据库，就能保留完整输入、配置和审计过程。
@@ -130,7 +129,7 @@ openbox-cli 数据行输出到 stdout，进度与状态输出到 stderr，适合
 ## 继续查阅
 
 - [公共 API 契约](../reference/public-api.md)、[构建与打包](../guides/build-all.md)。
-- [DS4](../../crates/tswn_ds4/README.md)、[lane ranker](../../crates/tswn_lane_ranker/README.md)、[ladder](../../crates/tswn_ladder/README.md)。
+- [DS4](../../crates/tswn_ds4/README.md)、[lane ranker](../../crates/tswn_lane_ranker/README.md)。
 - [网页模块说明](../../crates/tswn_wasm/examples/README.md)、[脚本验证入口](../../scripts/README.md)。
 
 ---
