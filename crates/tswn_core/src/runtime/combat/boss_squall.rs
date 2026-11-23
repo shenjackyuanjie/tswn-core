@@ -620,22 +620,28 @@ impl CombatRuntime {
             updates,
         );
         let owner = self.entities.get(actor).unwrap();
-        let hp = (owner.template.max_hp * 15 / 100).max(1);
+        let hp = (owner.template.max_hp * 30 / 100).max(1);
         let team = owner.runtime.team;
         let kind = self
             .registry
             .player_kind_id_by_export_name(DEFAULT_CORE_SUMMON_KIND_EXPORT)
             .expect("core summon kind missing");
         for (role, name) in [(0, "高位辅助"), (1, "低位配件")] {
-            let mut template = PlayerTemplate::with_kind(0, name, kind, team, hp, 64);
-            template.magic = 64;
-            template.defense = 64;
-            template.resistance = 64;
-            template.speed = 106;
-            template.agility = 64;
-            template.wisdom = 64;
-            template.magic_point = 32;
-            template.attract_bits = if role == 0 { 1_048_576.0_f64 } else { 1024.0_f64 }.to_bits();
+            let mut template = PlayerTemplate::with_kind(0, name, kind, team, hp, 128);
+            template.magic = 128;
+            template.defense = 128;
+            template.resistance = 128;
+            template.speed = 212;
+            template.agility = 128;
+            template.wisdom = 128;
+            template.magic_point = 64;
+            // 高位辅助的嘲讽要真正拉走攻击；低位配件靠极高潜行躲开索敌。
+            template.attract_bits = if role == 0 { 1.0e12_f64 } else { 1024.0_f64 }.to_bits();
+            if role == 1
+                && let Some(hide) = self.registry.skill_id_by_export_name(DEFAULT_CORE_HIDE_SKILL_EXPORT)
+            {
+                template = template.with_skill_loadout(SkillLoadout::from_skill_levels([(hide, 200)]));
+            }
             template.id_key_name = format!("Squall·{}@Squall", name);
             template.display_name = name.to_owned();
             let idx = self.entities.next_spawn_idx(&template);
@@ -646,6 +652,8 @@ impl CombatRuntime {
             });
             self.drain_effects_into(updates);
             let helper = self.entities.get_mut(idx).expect("research helper missing");
+            // 召唤即满血。
+            helper.runtime.hp = helper.template.max_hp;
             helper.runtime.squall = None;
             helper.runtime.squall_helper = Some((actor, role, 0));
             helper.runtime.policies.damage_share = DamageSharePolicy::None;

@@ -178,7 +178,9 @@ fn team_creates_two_distinct_limited_helpers_that_can_act() {
     assert_eq!(helpers.len(), 2);
     for helper in helpers {
         let e = rt.entities.get(helper).unwrap();
-        assert_eq!(e.template.max_hp, 54);
+        assert_eq!(e.template.max_hp, 108);
+        assert_eq!(e.runtime.hp, 108);
+        assert_eq!(e.runtime.attack, 128);
         assert_eq!(e.runtime.root_owner, boss);
         assert!(e.runtime.is_minion());
         assert!(e.runtime.squall.is_none());
