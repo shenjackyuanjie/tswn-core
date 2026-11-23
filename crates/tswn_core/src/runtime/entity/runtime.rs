@@ -185,6 +185,9 @@ pub struct PlayerRuntime {
     pub squall_helper: Option<(EntityIdx, u8, u32)>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub squall_taunt: Option<(EntityIdx, u64)>,
+    /// 被子衍生物的行动计数与睡眠、钻被、得意等临时标记。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quilt_minion: Option<Box<QuiltMinionState>>,
     pub corpse: RuntimeCorpseKind,
 }
 
@@ -254,6 +257,7 @@ impl PlayerRuntime {
                 .then(|| Box::new(SquallRuntime::default())),
             squall_helper: None,
             squall_taunt: None,
+            quilt_minion: None,
             corpse: RuntimeCorpseKind::None,
         }
     }

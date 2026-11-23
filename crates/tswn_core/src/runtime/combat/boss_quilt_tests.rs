@@ -103,3 +103,41 @@ fn direct_damage_to_the_quilt_stays_on_the_quilt() {
     assert_eq!(rt.entities.get(boss).unwrap().runtime.hp, before - 40);
     assert_eq!(rt.entities.get(monkey).unwrap().runtime.hp, monkey_before);
 }
+
+#[test]
+fn monkey_arrest_poisons_target_and_removes_the_monkey() {
+    let (mut runner, boss, enemies) = battle();
+    let rt = runner.runtime_mut();
+    let mut u = RunUpdates::new();
+    rt.quilt_spawn(boss, Child::Monkey, &mut u);
+    let monkey = rt.quilt_monkeys(boss)[0];
+    rt.round = 3;
+    rt.drain_quilt_minion_action_into(monkey, enemies[0], &mut u);
+    assert!(!rt.entities.get(monkey).unwrap().runtime.alive);
+    assert!(
+        rt.entities
+            .get(enemies[0])
+            .unwrap()
+            .states
+            .entries()
+            .iter()
+            .any(|entry| matches!(entry.payload, StatePayload::Poison { .. }))
+    );
+}
+
+#[test]
+fn fish_dives_then_spits_a_monkey() {
+    let (mut runner, boss, enemies) = battle();
+    let rt = runner.runtime_mut();
+    let mut u = RunUpdates::new();
+    rt.quilt_spawn(boss, Child::Fish, &mut u);
+    let fish = rt.quilt_fish(boss)[0];
+    let before = rt.quilt_monkeys(boss).len();
+    rt.round = 2;
+    rt.drain_quilt_minion_action_into(fish, enemies[0], &mut u);
+    assert!(rt.entities.get(fish).unwrap().runtime.quilt_minion.as_ref().unwrap().pending_spawn);
+    // 钻被后的下一次行动先醒来，再下一次才钻出猴区。
+    rt.drain_quilt_minion_action_into(fish, enemies[0], &mut u);
+    rt.drain_quilt_minion_action_into(fish, enemies[0], &mut u);
+    assert_eq!(rt.quilt_monkeys(boss).len(), before + 1);
+}

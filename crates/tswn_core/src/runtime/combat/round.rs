@@ -279,7 +279,11 @@ impl CombatRuntime {
             self.drain_action_damage_phase_into(action.actor, ProcMask::PRE_DAMAGE, &mut updates);
             match prepared_plain_action.take() {
                 Some(PreparedPlainAction::BasicAttack { target, use_magic, .. }) => {
-                    self.drain_plain_default_attack_into(action.actor, target, use_magic, &mut updates);
+                    if self.quilt_minion_kind(action.actor).is_some() {
+                        self.drain_quilt_minion_action_into(action.actor, target, &mut updates);
+                    } else {
+                        self.drain_plain_default_attack_into(action.actor, target, use_magic, &mut updates);
+                    }
                 }
                 Some(PreparedPlainAction::ForcedAttack { target, .. }) => {
                     self.drain_plain_berserk_forced_attack_into(action.actor, target, &mut updates);

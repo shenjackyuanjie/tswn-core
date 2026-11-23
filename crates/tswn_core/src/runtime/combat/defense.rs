@@ -629,6 +629,8 @@ impl CombatRuntime {
 
     /// 执行目标的死亡 hook：护身符、史莱姆分裂、马里奥复活等。
     pub fn drain_die_hooks_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) {
+        // 猴区的 HOUQU_BLAST 先于其它死亡钩子结算，分裂出的子体不再继续分裂。
+        self.drain_quilt_split_into(target, updates);
         // 史莱姆分裂的死亡钩子优先级为 0，先于马里奥复活（10）和通用死亡链；
         // 分裂不阻止本体死亡，因此继续走后续死亡流程。
         self.drain_plain_slime_split_into(target, updates);
