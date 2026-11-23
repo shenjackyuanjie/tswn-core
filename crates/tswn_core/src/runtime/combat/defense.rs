@@ -702,16 +702,16 @@ impl CombatRuntime {
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
         self.record_squall_damage(caster, target, actual_damage);
-        // 被子的衍生物只把一半伤害传导给本体；本体自身不再二次分摊。
+        updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        // 被子的衍生物只把一半伤害传导给本体；本体那一行排在衍生物受击之后。
         if actual_damage > 0
             && let Some(owner) = self.quilt_share_owner(target)
         {
             let shared = actual_damage / 2;
-            if shared > 0 && self.apply_damage_into(caster, owner, shared, updates) {
+            if shared > 0 && self.apply_legacy_damage_into(caster, owner, shared, updates) {
                 self.drain_plain_lethal_damage_into(caster, owner, updates);
             }
         }
-        updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         // 原版 damage 先调用命中回调（含火球免疫随机数），再由 onDamaged 登记反击。
         if amount > 0
             && let Some(key) = fire_state_key

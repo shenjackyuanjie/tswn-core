@@ -70,3 +70,36 @@ fn merge_adds_stats_and_removes_one_monkey() {
     assert_eq!(monkeys.len(), 1);
     assert_eq!(rt.entities.get(monkeys[0]).unwrap().runtime.attack, attack * 2);
 }
+
+#[test]
+fn quilt_is_skipped_while_summons_live_and_targetable_afterwards() {
+    let (mut runner, boss, enemies) = battle();
+    let rt = runner.runtime_mut();
+    let mut u = RunUpdates::new();
+    rt.quilt_spawn(boss, Child::Monkey, &mut u);
+    let monkey = rt.quilt_monkeys(boss)[0];
+    assert!(rt.quilt_untargetable(boss), "quilt should be protected");
+    // 有召唤物时，普攻选敌永远不会落在被子上。
+    for _ in 0..50 {
+        let target = rt.select_plain_default_attack_target(enemies[0], true).unwrap();
+        assert_eq!(target, monkey);
+    }
+    // 清掉召唤物后，本体重新可以被选中，战斗才能继续。
+    rt.kill_entity_without_damage_into(monkey, &mut u);
+    let target = rt.select_plain_default_attack_target(enemies[0], true).unwrap();
+    assert_eq!(target, boss);
+}
+
+#[test]
+fn direct_damage_to_the_quilt_stays_on_the_quilt() {
+    let (mut runner, boss, enemies) = battle();
+    let rt = runner.runtime_mut();
+    let mut u = RunUpdates::new();
+    rt.quilt_spawn(boss, Child::Monkey, &mut u);
+    let monkey = rt.quilt_monkeys(boss)[0];
+    let before = rt.entities.get(boss).unwrap().runtime.hp;
+    let monkey_before = rt.entities.get(monkey).unwrap().runtime.hp;
+    rt.apply_plain_attack_damage_into(enemies[0], boss, 40, &mut u);
+    assert_eq!(rt.entities.get(boss).unwrap().runtime.hp, before - 40);
+    assert_eq!(rt.entities.get(monkey).unwrap().runtime.hp, monkey_before);
+}

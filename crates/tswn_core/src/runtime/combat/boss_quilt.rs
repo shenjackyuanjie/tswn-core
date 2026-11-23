@@ -30,6 +30,15 @@ impl CombatRuntime {
     /// 本体是否为被子。
     pub(super) fn is_quilt(&self, idx: EntityIdx) -> bool { self.entities.get(idx).is_some_and(|e| e.template.name == ID) }
 
+    /// 有存活衍生物时，本体不可被选中；没有衍生物时允许攻击本体，避免战斗卡住。
+    pub(super) fn quilt_untargetable(&self, idx: EntityIdx) -> bool {
+        self.is_quilt(idx)
+            && self
+                .quilt_children(idx)
+                .iter()
+                .any(|child| self.entities.get(*child).is_some_and(|entity| entity.runtime.alive))
+    }
+
     /// 衍生物受伤时应当分摊伤害的被子本体。
     pub(super) fn quilt_share_owner(&self, target: EntityIdx) -> Option<EntityIdx> {
         let entity = self.entities.get(target)?;

@@ -157,6 +157,15 @@ impl CombatRuntime {
         if all_alive.is_empty() {
             return PreparedTargetList::new();
         }
+        // 被子有存活召唤物时不可被选中：单独挑目标，避免破坏原版连续跳过区间。
+        if all_alive.iter().any(|idx| self.quilt_untargetable(*idx)) {
+            let candidates: Vec<EntityIdx> = all_alive
+                .iter()
+                .copied()
+                .filter(|idx| self.plain_effective_team(*idx) != actor_team && !self.quilt_untargetable(*idx))
+                .collect();
+            return candidates.into_iter().take(select_count).collect();
+        }
         let ally_skip_indices = all_alive
             .iter()
             .enumerate()
