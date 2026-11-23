@@ -206,8 +206,16 @@ pub fn build_replay_view_frame<S: ReplayState>(
         clips: Vec::new(),
     };
     let mut running = state_map(previous_states);
-    let frame_state_map = state_map(frame_states);
-    let state_order = frame_states.iter().map(ReplayState::id).collect::<Vec<_>>();
+    let frame_state_map = frame_states.iter().map(|state| (state.id(), state)).collect::<HashMap<_, _>>();
+    // 片段只能引入帧末已有的实体。统一排好两侧 ID，导出时只跳过当时尚不存在的实体。
+    let mut state_order = frame_states.iter().map(ReplayState::id).collect::<Vec<_>>();
+    if state_order.len() != frame_state_map.len() {
+        let mut seen = HashSet::new();
+        state_order.retain(|id| seen.insert(*id));
+    }
+    let frame_count = state_order.len();
+    state_order.extend(running.keys().filter(|id| !frame_state_map.contains_key(id)).copied());
+    state_order[frame_count..].sort_unstable();
     let mut total_delay = 0;
     let mut next_boss_delay = 0;
     let mut quick_area_skill_active = false;
@@ -245,7 +253,7 @@ pub fn build_replay_view_frame<S: ReplayState>(
                     before.insert(change.player, state.with_hp_alive(change.before, change.before > 0));
                 }
                 // 分裂子体可能只存在于帧末快照，或在同一批中再次死亡；出场体力以事件为准。
-                if let Some(state) = running.get(&change.player).or_else(|| frame_state_map.get(&change.player)) {
+                if let Some(state) = running.get(&change.player).or_else(|| frame_state_map.get(&change.player).copied()) {
                     running.insert(change.player, state.with_hp_alive(change.after, change.after > 0));
                 }
             }
@@ -268,7 +276,6 @@ pub fn build_replay_view_frame<S: ReplayState>(
         }
         let parts = build_clip_parts(update, &before, &running, player_names);
         sync_visible_shields(&parts, &mut running, &frame_state_map);
-        let after = running.clone();
         let show_hp = parts.iter().any(|part| part.show_hp);
         let mut delay = clip_delay(
             frame_has_visible_clip,
@@ -298,6 +305,11 @@ pub fn build_replay_view_frame<S: ReplayState>(
             }
         }
         target_ids.retain(|id| Some(*id) != caster);
+        // 前态是本片段持有的副本，可以直接移走；后态从继续推进的 running 只复制一次。
+        let mut sidebar_previous_states = Vec::with_capacity(before.len());
+        sidebar_previous_states.extend(state_order.iter().filter_map(|id| before.remove(id)));
+        let mut sidebar_states = Vec::with_capacity(running.len());
+        sidebar_states.extend(state_order.iter().filter_map(|id| running.get(id).cloned()));
         current_row.clips.push(ReplayClip {
             delay,
             color: replay_tone_color(event.tone).to_string(),
@@ -305,8 +317,8 @@ pub fn build_replay_view_frame<S: ReplayState>(
             parts,
             caster_ids: caster.into_iter().collect(),
             target_ids,
-            sidebar_states: states_from_map(&after, &state_order),
-            sidebar_previous_states: states_from_map(&before, &state_order),
+            sidebar_states,
+            sidebar_previous_states,
             winner: false,
         });
     }
@@ -349,26 +361,6 @@ fn state_map<S: ReplayState>(states: &[S]) -> HashMap<PlrId, S> {
     states.iter().map(|state| (state.id(), state.clone())).collect()
 }
 
-/// 按给定 id 顺序从映射取状态：去重并跳过缺失项。
-fn states_from_map<S: ReplayState>(running: &HashMap<PlrId, S>, state_order: &[PlrId]) -> Vec<S> {
-    let mut emitted = HashSet::new();
-    let mut states = Vec::with_capacity(running.len());
-    for id in state_order {
-        if emitted.insert(*id)
-            && let Some(state) = running.get(id)
-        {
-            states.push(state.clone());
-        }
-    }
-    let mut rest = running
-        .iter()
-        .filter_map(|(id, state)| (!emitted.contains(id)).then_some(state.clone()))
-        .collect::<Vec<S>>();
-    rest.sort_by_key(ReplayState::id);
-    states.extend(rest);
-    states
-}
-
 /// 收集更新的参与者 id（施法者、目标与目标列表），去重保序。
 fn update_participant_ids(update: &RunUpdate) -> Vec<PlrId> {
     let mut ids = Vec::new();
@@ -395,7 +387,7 @@ fn push_unique_id(ids: &mut Vec<PlrId>, id: PlrId) {
 fn sync_reappeared_participants<S: ReplayState>(
     update: &RunUpdate,
     running: &mut HashMap<PlrId, S>,
-    frame_states: &HashMap<PlrId, S>,
+    frame_states: &HashMap<PlrId, &S>,
 ) {
     for id in update_participant_ids(update) {
         let Some(frame_state) = frame_states.get(&id) else {
@@ -416,7 +408,7 @@ fn sync_reappeared_participants<S: ReplayState>(
 fn sync_visible_shields<S: ReplayState>(
     parts: &[ReplayTextPart],
     running: &mut HashMap<PlrId, S>,
-    frame_states: &HashMap<PlrId, S>,
+    frame_states: &HashMap<PlrId, &S>,
 ) {
     // 护盾增减没有独立消息，只能按帧末净值协调；首次出现玩家文字时推进，后续片段沿用该值。
     for id in parts.iter().filter_map(|part| part.player_id) {
@@ -469,10 +461,10 @@ fn apply_hp_delta<S: ReplayState>(running: &mut HashMap<PlrId, S>, id: PlrId, hp
 
 /// 交换施法者与目标的 HP，各自受自身上限约束。
 fn apply_hp_swap<S: ReplayState>(running: &mut HashMap<PlrId, S>, caster_id: PlrId, target_id: PlrId) {
-    let Some(caster) = running.get(&caster_id).cloned() else {
+    let Some(caster) = running.get(&caster_id) else {
         return;
     };
-    let Some(target) = running.get(&target_id).cloned() else {
+    let Some(target) = running.get(&target_id) else {
         return;
     };
     let caster_hp = caster.hp();
@@ -483,8 +475,10 @@ fn apply_hp_swap<S: ReplayState>(running: &mut HashMap<PlrId, S>, caster_id: Plr
         target_hp
     };
     let target_new_hp = caster_hp;
-    running.insert(caster_id, caster.with_hp_alive(caster_new_hp, caster_new_hp > 0));
-    running.insert(target_id, target.with_hp_alive(target_new_hp, target_new_hp > 0));
+    let caster_next = caster.with_hp_alive(caster_new_hp, caster_new_hp > 0);
+    let target_next = target.with_hp_alive(target_new_hp, target_new_hp > 0);
+    running.insert(caster_id, caster_next);
+    running.insert(target_id, target_next);
 }
 
 /// 把运行态标记为死亡（HP 0 且非存活）。

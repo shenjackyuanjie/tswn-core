@@ -141,6 +141,29 @@ fn newly_appeared_participant_shield_waits_for_its_visible_player_part() {
 }
 
 #[test]
+fn sidebar_keeps_frame_order_and_only_appends_existing_old_players() {
+    let updates = [RunUpdate::new("[0]准备行动", 0, 0, 0), RunUpdate::new("[1]出场", 0, 3, 0)];
+    let events = updates
+        .iter()
+        .map(|update| ReplayEventView {
+            update,
+            tone: ReplayTone::Normal,
+            message_rendered: "可见消息",
+        })
+        .collect::<Vec<_>>();
+    let previous = [state(9, 90), state(0, 100), state(2, 20), state(1, 10)];
+    let frame = [state(3, 70).with_shield(8), state(1, 10), state(0, 100), state(4, 80)];
+    let view = build_replay_view_frame(&events, &previous, &frame, &names(), false, &[]);
+    let clips = &view.rows[0].clips;
+    let ids = |states: &[TestState]| states.iter().map(|state| state.id).collect::<Vec<_>>();
+    assert_eq!(ids(&clips[0].sidebar_previous_states), [1, 0, 2, 9]);
+    assert_eq!(ids(&clips[0].sidebar_states), [1, 0, 2, 9]);
+    assert_eq!(ids(&clips[1].sidebar_previous_states), [1, 0, 2, 9]);
+    assert_eq!(ids(&clips[1].sidebar_states), [3, 1, 0, 2, 9]);
+    assert_eq!((clips[1].sidebar_states[0].hp, clips[1].sidebar_states[0].shield), (70, 8));
+}
+
+#[test]
 fn lethal_clip_clears_shield_and_following_death_clip_does_not_repeat_it() {
     let damage = RunUpdate::new("[1]受到[2]点伤害", 0, 1, 50);
     let death = RunUpdate::new("[1]被击倒了", 0, 1, 0);
