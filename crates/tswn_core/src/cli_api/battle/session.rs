@@ -678,7 +678,7 @@ fn battle_icon_key<'a>(runner: &'a RuntimeRunner, state: &BattlePlayerState, gro
     let entities = &runner.runtime().entities;
     let entity = entities.get(EntityIdx(state.id.try_into().ok()?))?;
     // 被子的衍生物（猴区/鱼）保留自己的徽章键，便于前端改用 emoji 图标。
-    if entity.runtime.is_minion() && entity.template.id_key_name.starts_with("quilt-") {
+    if entity.template.id_key_name.starts_with("quilt-") {
         return Some(&entity.template.id_key_name);
     }
     // 分裂子体不属于常规召唤物，但必须继承源史莱姆的固定徽章。

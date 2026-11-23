@@ -142,6 +142,8 @@ impl CombatRuntime {
         self.drain_effects_into(updates);
         if let Some(spawned) = self.entities.get_mut(idx) {
             spawned.runtime.policies.damage_share = DamageSharePolicy::ShareToOwner;
+            // 召唤会继承 Boss 的 `@!` 徽章名，这里改回衍生物自己的键，前端才能用 emoji 图标。
+            spawned.template.id_key_name = tag.to_owned();
         }
     }
 

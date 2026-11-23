@@ -31,6 +31,8 @@ fn summon_creates_child_that_shares_half_damage_with_the_quilt() {
     rt.quilt_spawn(boss, Child::Monkey, &mut u);
     let child = rt.quilt_monkeys(boss)[0];
     assert!(rt.quilt_share_owner(child) == Some(boss));
+    // 召唤会继承 Boss 的 @! 徽章名，必须还原成衍生物自己的图标键。
+    assert_eq!(rt.entities.get(child).unwrap().template.id_key_name, "quilt-monkey");
     let before = rt.entities.get(boss).unwrap().runtime.hp;
     rt.apply_plain_attack_damage_into(EntityIdx(0), child, 40, &mut u);
     assert_eq!(rt.entities.get(boss).unwrap().runtime.hp, before - 20);
