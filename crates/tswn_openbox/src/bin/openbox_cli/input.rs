@@ -1,65 +1,26 @@
 //! `openbox-cli` 的输入读取与参数校验 helper。
 //!
-//! 与 `tswn_cli` 的同名 helper 是两套独立实现：openbox-cli 属于 GUI 适配 crate，
-//! 不能反向依赖 core 的 bin 内部模块；`--metric` 语法与行为刻意保持一致。
+//! 文件解码与 `tswn-cli` 共用，参数校验保留各自的命令上下文。
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use clap::CommandFactory;
 use clap::error::ErrorKind;
+use tswn_core::text_input::read_text_file;
 use tswn_openbox::backend::NamerPfMetric;
 
 use super::args::Cli;
 use super::plan::MetricSpec;
 
-/// 从文件读取完整文本，统一去掉 UTF-8 BOM。
+/// 从文件读取完整文本，去掉 BOM 并跳过非 UTF-8 行。
 pub(super) fn read_file(path: &Path) -> Result<String, clap::Error> {
-    let mut content = fs::read_to_string(path).map_err(|err| cli_error(format!("读取文件失败: {err}")))?;
-    if content.starts_with('\u{feff}') {
-        content.drain(..'\u{feff}'.len_utf8());
-    }
-    Ok(content)
-}
-
-/// 名字依赖准确的 Unicode 文本；无效字节必须整行拒绝或显式跳过，不能替换成乱码。
-pub(super) fn read_filter_file(path: &Path, skip_invalid_utf8: bool) -> Result<String, clap::Error> {
-    let bytes = fs::read(path).map_err(|err| cli_error(format!("读取 {} 失败: {err}", path.display())))?;
-    let (content, skipped) = decode_filter_input(&bytes, skip_invalid_utf8).map_err(|line| {
-        cli_error(format!(
-            "{} 第 {line} 行不是合法 UTF-8；请转换文件编码，或使用 --skip-invalid-utf8 跳过此类行",
-            path.display()
-        ))
-    })?;
-    if skipped > 0 {
-        eprintln!("{}：已跳过 {skipped} 行非 UTF-8 名字。", path.display());
-    }
-    Ok(content)
-}
-
-fn decode_filter_input(bytes: &[u8], skip_invalid_utf8: bool) -> Result<(String, usize), usize> {
-    let bytes = bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(bytes);
-    match std::str::from_utf8(bytes) {
-        Ok(text) => return Ok((text.to_owned(), 0)),
-        Err(error) if !skip_invalid_utf8 => {
-            return Err(bytes[..error.valid_up_to()].iter().filter(|byte| **byte == b'\n').count() + 1);
-        }
-        Err(_) => {}
-    }
-    let mut content = String::with_capacity(bytes.len());
-    let mut skipped = 0;
-    for line in bytes.split_inclusive(|byte| *byte == b'\n') {
-        match std::str::from_utf8(line) {
-            Ok(line) => content.push_str(line),
-            Err(_) => skipped += 1,
-        }
-    }
-    Ok((content, skipped))
+    read_text_file(path).map_err(|err| cli_error(format!("读取文件失败: {}: {err}", path.display())))
 }
 
 /// 把命令行里的字面量 `\n` 还原成真实换行。
 pub(super) fn decode_raw(raw: &str) -> String { raw.replace("\\n", "\n") }
 
+/// 解析线程数：必须为正整数。
 pub(super) fn parse_thread_count(raw: &str) -> Result<usize, String> {
     let value = raw.parse::<usize>().map_err(|_| "线程数必须是正整数".to_string())?;
     if value == 0 {
@@ -212,14 +173,5 @@ mod tests {
         std::fs::write(&path, b"\xef\xbb\xbfmario\nluigi").unwrap();
         assert_eq!(read_file(&path).unwrap(), "mario\nluigi");
         let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn filter_input_reports_invalid_line_and_preserves_utf8_names() {
-        let bytes = b"\xef\xbb\xbf\xe4\xb8\xad\xe6\x96\x87@team\r\ninvalid\xc8\xba\xcc\xe5\r\nmario\nlast\xed";
-        assert_eq!(decode_filter_input(bytes, false), Err(2));
-        assert_eq!(decode_filter_input(bytes, true), Ok(("中文@team\r\nmario\n".to_owned(), 2)));
-        assert_eq!(decode_filter_input(b"\xff\n", true), Ok((String::new(), 1)));
-        assert_eq!(decode_filter_input(b"\xef\xbb\xbfmario", false), Ok(("mario".to_owned(), 0)));
     }
 }

@@ -10,14 +10,18 @@ use super::{ClassifiedSkillRef, SkillBoost, player_classified_skill_ref_from_nam
 pub struct EffectiveSkillWeight(u64);
 
 impl EffectiveSkillWeight {
+    /// 从 f64 熟练度构造权重，单位为百万分之一；
+    /// 取值超出 `[0, u32::MAX]` 时返回 `None`。
     pub fn new(value: f64) -> Option<Self> {
         (0.0..=f64::from(u32::MAX))
             .contains(&value)
             .then(|| Self((value * 1_000_000.0).round() as u64))
     }
 
+    /// 还原为 f64 熟练度。
     pub fn value(self) -> f64 { self.0 as f64 / 1_000_000.0 }
 
+    /// 把内部等级值换算为默认展示等级（按百万分比取整）。
     pub(super) fn default_level(self) -> u32 { self.0.div_ceil(1_000_000) as u32 }
 }
 
@@ -96,6 +100,8 @@ pub struct PlayerOverlay {
 }
 
 impl MinionOverlay {
+    /// 把召唤物 overlay 提升为玩家 overlay，只保留三类召唤物子树；
+    /// 三类都未配置时返回 `None`。
     pub fn child_player_overlay(&self) -> Option<PlayerOverlay> {
         if self.shadow.is_none() && self.summon.is_none() && self.zombie.is_none() {
             return None;
@@ -171,6 +177,7 @@ impl PlayerOverlay {
         Some(overlay)
     }
 
+    /// 解析 effective_skills 字段：true 走自动分配，否则解析显式权重。
     fn set_effective_skills(&mut self, raw: &str) -> Option<()> {
         self.auto_effective_skills = raw == "true";
         self.effective_skills = if self.auto_effective_skills {
@@ -361,6 +368,7 @@ fn parse_skill_map(raw: &str) -> Option<Vec<(String, SkillBoost)>> {
     Some(skills)
 }
 
+/// 解析技能加成：引号形式走 `SkillBoost::parse`，数字形式为 Normal。
 fn parse_skill_boost(raw: &str) -> Option<SkillBoost> {
     if raw.starts_with('"') {
         SkillBoost::parse(&parse_quoted_string(raw, 0)?.0)
@@ -369,6 +377,7 @@ fn parse_skill_boost(raw: &str) -> Option<SkillBoost> {
     }
 }
 
+/// 解析 effective_skills 字段：false 表示关闭，否则为命名映射。
 fn parse_effective_skill_field(raw: &str) -> Option<Option<Vec<(String, EffectiveSkillWeight)>>> {
     if raw == "false" {
         return Some(None);
@@ -387,6 +396,7 @@ fn parse_effective_skill_field(raw: &str) -> Option<Option<Vec<(String, Effectiv
     Some(Some(skills))
 }
 
+/// 解析技能调整映射：限普通技能键，受数量上限与键去重约束。
 fn parse_skill_adjustment(raw: &str) -> Option<Vec<(usize, EffectiveSkillWeight)>> {
     let mut adjustments = Vec::new();
     parse_named_map(raw, |key, value| {
@@ -406,6 +416,7 @@ fn parse_skill_adjustment(raw: &str) -> Option<Vec<(usize, EffectiveSkillWeight)
     Some(adjustments)
 }
 
+/// 解析重分配权重：限 [0,1] 区间的 f64。
 fn parse_redistribution(raw: &str) -> Option<EffectiveSkillWeight> {
     raw.parse::<f64>()
         .ok()
@@ -413,6 +424,7 @@ fn parse_redistribution(raw: &str) -> Option<EffectiveSkillWeight> {
         .and_then(EffectiveSkillWeight::new)
 }
 
+/// 解析 `{...}` 命名映射并对每项调用回调；格式不符返回 None。
 fn parse_named_map(raw: &str, mut field: impl FnMut(String, &str) -> Option<()>) -> Option<()> {
     let raw = raw.trim();
     let raw = raw.strip_prefix('{')?.strip_suffix('}')?;
@@ -455,6 +467,7 @@ fn parse_scalar_string(raw: &str) -> Option<String> {
     }
 }
 
+/// 解析布尔字段：仅接受 true / false。
 fn parse_bool(raw: &str) -> Option<bool> {
     match raw.trim() {
         "true" => Some(true),

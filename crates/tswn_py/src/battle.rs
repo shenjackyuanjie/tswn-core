@@ -9,6 +9,7 @@ use pyo3::types::PyModule;
 use tswn_core::cli_api::{BattleOptions, BattleSession};
 use tswn_core::runtime::{BuiltinActiveSkill, PassiveDecision, PlannedAction, PlannedSkill};
 
+/// 从 Python 参数构造 BattleOptions：未提供的项用 core 默认值，手动对战强制开启行动前预览。
 pub(crate) fn options(
     eval_rq: Option<f64>,
     include_icons: bool,
@@ -61,6 +62,7 @@ pub(crate) fn parse_planned_skill(value: &str) -> PyResult<PlannedSkill> {
     }
 }
 
+/// 把 actor、技能与消耗参数组装为 PlannedAction。
 pub(crate) fn parse_planned_action(actor: usize, skill: &str, magic_cost: Option<u8>, potion: u32) -> PyResult<PlannedAction> {
     Ok(PlannedAction {
         target_team: None,
@@ -71,6 +73,7 @@ pub(crate) fn parse_planned_action(actor: usize, skill: &str, magic_cost: Option
     })
 }
 
+/// 把可序列化 DTO 经 JSON 转换为 Python 对象（dict/list 副本）。
 pub(crate) fn dto_to_python<T: serde::Serialize + ?Sized>(py: Python<'_>, dto: &T) -> PyResult<Py<PyAny>> {
     let json = serde_json::to_string(dto)
         .map_err(|error| map_cli_error(tswn_core::cli_api::CliApiError::Internal(error.to_string())))?;
@@ -274,16 +277,25 @@ impl PyBattleSession {
     fn result(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         self.inner.result().map(|result| dto_to_python(py, &result)).transpose()
     }
+    /// 返回当前状态 DTO。
     fn status(&self, py: Python<'_>) -> PyResult<Py<PyAny>> { dto_to_python(py, &self.inner.status()) }
+    /// 返回终止原因 DTO。
     fn stop_reason(&self, py: Python<'_>) -> PyResult<Py<PyAny>> { dto_to_python(py, &self.inner.stop_reason()) }
     /// 只表示正常结束或截断；Runtime 失败时仍为 false，应同时检查 is_failed。
     fn is_done(&self) -> bool { self.inner.is_done() }
+    /// 是否因 Runtime 失败而终止。
     fn is_failed(&self) -> bool { self.inner.is_failed() }
+    /// 是否正常结束或截断。
     fn is_finished(&self) -> bool { self.inner.is_finished() }
+    /// 是否因回合上限被截断。
     fn is_truncated(&self) -> bool { self.inner.is_truncated() }
+    /// 返回已推进的回合数。
     fn rounds_advanced(&self) -> usize { self.inner.rounds_advanced() }
+    /// 返回已发出的帧数。
     fn frames_emitted(&self) -> usize { self.inner.frames_emitted() }
+    /// 返回自身作为迭代器。
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> { slf }
+    /// 取下一帧；耗尽时结束迭代。
     fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> { self.next_frame(py) }
 }
 

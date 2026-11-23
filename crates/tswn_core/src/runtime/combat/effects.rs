@@ -58,6 +58,7 @@ impl CombatRuntime {
         }
     }
 
+    /// PRE_ACTION 计划中含驱散技能时，选出该技能的驱散目标。
     pub fn selected_pre_action_target(&mut self, plan: &SkillHookPlan, actor: EntityIdx, smart: bool) -> Option<EntityIdx> {
         let has_disperse = plan.entries.iter().any(|entry| {
             self.registry
@@ -116,21 +117,29 @@ impl CombatRuntime {
                 } => {
                     self.ensure_effect_entity("reflected attack", "caster", caster);
                     self.ensure_effect_entity("reflected attack", "target", target);
-                    self.drain_plain_attack_with_atp_and_on_damage_into(
+                    self.drain_plain_attack_with_atp_covid_kind_and_on_damage_into(
                         caster,
                         target,
                         true,
                         f64::from_bits(atp_bits),
+                        None,
                         kind,
                         on_damage,
                         updates,
                     );
-                    self.entities
-                        .get_mut(caster)
-                        .expect("runtime reflected attack caster disappeared")
-                        .runtime
-                        .move_state
-                        .speed_points -= 480;
+                    // Vite 判胜会从反弹伤害中直接返回，不再扣除反弹者的行动点。
+                    // 仅对首领和属性修改器修正终局快照，普通反弹保留原来的兼容行为。
+                    let reflector = self.entities.get(caster).unwrap();
+                    let preserve_terminal_points =
+                        reflector.runtime.flags.contains(PlayerKindFlags::BOSS) || reflector.template.rinick.is_some();
+                    if !preserve_terminal_points || !self.plain_battle_has_ended() {
+                        self.entities
+                            .get_mut(caster)
+                            .expect("runtime reflected attack caster disappeared")
+                            .runtime
+                            .move_state
+                            .speed_points -= 480;
+                    }
                 }
                 QueuedEffect::PoisonTick { caster, target, amount } => {
                     self.ensure_effect_entity("poison tick", "caster", caster);
@@ -230,6 +239,16 @@ impl CombatRuntime {
                         "[0]使用[净化]",
                         20,
                     ));
+                    // 不掷普通闪避，但 Boss 或强化目标仍可免疫净化。免疫不进入 POST_DEFEND。
+                    if self.status_immune(target, "disperse") {
+                        updates.add(RuntimeFrame::replay_update(
+                            target.0 as usize,
+                            caster.0 as usize,
+                            "[0][回避]了攻击",
+                            20,
+                        ));
+                        continue;
+                    }
                     if self.control.passive_decision_mode() {
                         let Some(_decision) = self.control.next_passive_decision() else {
                             let request = PassiveRequest {
@@ -286,9 +305,7 @@ impl CombatRuntime {
                     self.ensure_effect_entity("covid-contact", "owner", owner);
                     self.ensure_effect_entity("covid-contact", "candidate", candidate);
                     self.ensure_effect_entity("covid-contact", "boss", boss);
-                    let owner_name = self.entities.get(owner).unwrap().template.display_name.clone();
                     let candidate_entity = self.entities.get(candidate).unwrap();
-                    let candidate_name = candidate_entity.template.display_name.clone();
                     let wisdom = candidate_entity.runtime.wisdom;
                     let threshold = if candidate_entity.template.covid_mask {
                         wisdom.saturating_add(192)
@@ -296,21 +313,11 @@ impl CombatRuntime {
                         wisdom >> 1
                     };
                     updates.add_with(|| {
-                        crate::runtime::update::RunUpdate::new(
-                            format!("{owner_name}和{candidate_name}近距离接触"),
-                            owner.0 as usize,
-                            candidate.0 as usize,
-                            0,
-                        )
+                        RunUpdate::new_lang(lang::keys::SKL_COVID_INFECT, owner.0 as usize, candidate.0 as usize, 0)
                     });
                     if i32::from(self.rng.next_u8()) < threshold {
                         updates.add_with(|| {
-                            crate::runtime::update::RunUpdate::new(
-                                format!("但{candidate_name}没被感染"),
-                                owner.0 as usize,
-                                candidate.0 as usize,
-                                0,
-                            )
+                            RunUpdate::new_lang(lang::keys::SKL_COVID_PREVENT, owner.0 as usize, candidate.0 as usize, 0)
                         });
                     } else {
                         self.infect_with_covid_into(boss, candidate, mutation, updates);
@@ -343,10 +350,9 @@ impl CombatRuntime {
                         updates,
                     );
                 }
-                QueuedEffect::CovidPneumonia { owner, boss, mutation } => {
+                QueuedEffect::CovidPneumonia { owner, order } => {
                     self.ensure_effect_entity("covid-pneumonia", "owner", owner);
-                    self.ensure_effect_entity("covid-pneumonia", "boss", boss);
-                    self.drain_covid_pneumonia_into(owner, boss, mutation, updates);
+                    self.drain_covid_strains_into(owner, order, updates);
                 }
                 QueuedEffect::LazyFlare { owner, boss } => {
                     self.ensure_effect_entity("lazy-flare", "owner", owner);
@@ -541,6 +547,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 吞噬结算：合并属性与固定槽位技能，转移 MP 与行动点；有实际合并返回 true。
     pub fn apply_plain_merge_into(&mut self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) -> bool {
         self.ensure_effect_entity("merge", "caster", caster);
         self.ensure_effect_entity("merge", "target", target);
@@ -664,15 +671,15 @@ impl CombatRuntime {
         true
     }
 
+    /// 召唤物自爆的自身死亡链：走 die hook 并移出战场。
     pub fn drain_summon_explode_self_death_into(&mut self, caster: EntityIdx, updates: &mut RunUpdates) {
         let caster_entity = self
             .entities
             .get(caster)
             .unwrap_or_else(|| panic!("runtime summon explode caster disappeared: {}", caster.0));
-        // 自爆伤害可能先杀死 owner；owner 的死亡清理会同步移除仍处于
-        // mark-only 状态的使魔。legacy 此时只保留 owner 清理产生的一次“消失”，
-        // 不会再次执行使魔自己的死亡链。
+        // 自爆伤害反弹时，使魔可能在延迟自杀前就被移出。原版仍会第二次调整行动游标。
         if !caster_entity.runtime.alive {
+            self.world.repeat_round_actor_removal();
             return;
         }
         if caster_entity.runtime.is_combat_minion() {

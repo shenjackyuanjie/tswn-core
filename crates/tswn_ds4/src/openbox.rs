@@ -51,6 +51,7 @@ pub fn screen_pairs(root: &Path, sieve: i32, threads: usize) -> Ds4Result<()> {
     })
 }
 
+/// 执行一次 Openbox 批量胜率任务，等待 Done 事件并转换后端错误。
 fn run_batch(job: BatchRateInput) -> Ds4Result<()> {
     let result = RefCell::new(None);
     backend::run_batch_rate(job, |event| match event {
@@ -69,6 +70,7 @@ fn run_batch(job: BatchRateInput) -> Ds4Result<()> {
         .map_err(Ds4Error::parse)
 }
 
+/// 三轮实战筛选的公共骨架：校验筛值与输入，按 100/1000/10000 局逐轮调用 run，归档后才清空 ABCP5 中间文件。
 fn screen_pairs_with(
     root: &Path,
     sieve: i32,

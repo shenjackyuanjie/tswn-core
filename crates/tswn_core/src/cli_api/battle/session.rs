@@ -8,15 +8,17 @@ use crate::replay_view::{
     hp_delta_for_tone, is_percent_hp_damage_update, render_update_message,
 };
 use crate::runtime::control::TargetWisdom;
-use crate::runtime::update::{RunUpdates, UpdateType};
+use crate::runtime::lang::{get_lang, keys};
+use crate::runtime::update::{RunUpdate, RunUpdates, UpdateType};
 use crate::runtime::{
-    EntityIdx, ForcedAction, PassivePause, PlannedAction, PlannedSkill, PlrId, RuntimeMinionKind, RuntimePlayerSnapshot,
-    RuntimeRunner,
+    EntityIdx, ForcedAction, PassivePause, PlannedAction, PlannedSkill, PlayerKindFlags, PlrId, RuntimeMinionKind,
+    RuntimePlayerSnapshot, RuntimeRunner,
 };
 
 use super::dto::*;
 use crate::cli_api::CliApiResult;
 
+/// 按名字渲染图标 base64；未启用 PNG 构建时内部契约要求不可达，公开入口必须先拒绝 include_icons。
 #[cfg(not(feature = "png_render"))]
 fn render_icon_b64_from_name(_name: &str) -> String {
     // 仅守卫内部契约；公开构造先返回 UnsupportedOption，不返回空图或占位图。
@@ -37,6 +39,8 @@ pub struct BattleSession {
     driver: super::driver::BattleDriver,
     options: BattleOptions,
     initial_states: Vec<BattlePlayerState>,
+    /// 以开局已解析的实体类型决定展示口径，不受名称或退场影响。
+    has_initial_boss: bool,
     current_states: Vec<BattlePlayerState>,
     /// 主动暂停的面板投影；内部帧仍以前一已提交边界为起点，避免续行与整场重演不同。
     paused_states: Option<Vec<BattlePlayerState>>,
@@ -161,12 +165,19 @@ impl BattleSession {
         }
         driver.runner.runtime_mut().control.set_skill_multiplier(options.skill_multiplier);
         let initial_states = states_from_runner(&driver.runner, options.include_icons, options.include_skills, &mut icon_cache);
+        let has_initial_boss = driver
+            .runner
+            .runtime()
+            .entities
+            .iter()
+            .any(|(_, entity)| entity.runtime.flags.contains(PlayerKindFlags::BOSS));
         Ok(Self {
             driver,
             options,
             current_states: initial_states.clone(),
             paused_states: None,
             initial_states,
+            has_initial_boss,
             icon_cache,
             paused: None,
             paused_forced_action: None,
@@ -383,6 +394,7 @@ impl BattleSession {
             .map_err(|message| crate::cli_api::CliApiError::InvalidArgument(message.into()))?;
         Ok(())
     }
+    /// 当前等待外部决策的被动请求；没有被动暂停时为 `None`。
     pub fn pending_passive(&self) -> Option<&crate::runtime::PassiveRequest> { self.pending_passive.as_ref() }
 
     /// 按被动脚本索引读取回避结算；None等待中，false未执行或被覆盖，true实际执行。
@@ -450,7 +462,9 @@ impl BattleSession {
     pub fn is_done(&self) -> bool { self.driver.stop_reason.is_some() }
     /// Runtime error 后为 true；后续推进返回相同错误，调用方应停止推进并释放会话。
     pub fn is_failed(&self) -> bool { self.driver.failure.is_some() }
+    /// 是否以胜者方式正常结束（对应 [`BattleStatus::Finished`]）。
     pub fn is_finished(&self) -> bool { self.status() == BattleStatus::Finished }
+    /// 是否因安全截断结束（对应 [`BattleStatus::Truncated`]）。
     pub fn is_truncated(&self) -> bool { self.status() == BattleStatus::Truncated }
     /// 已提交的 Runtime 回合数，包含无消息回合。
     /// `preview_controlled_pause` 开启时另计当前已进入的主动暂停回合，兼容 Python 契约。
@@ -493,7 +507,13 @@ impl BattleSession {
                             self.current_states = states;
                             return Ok(None);
                         };
-                        let mut frame = build_frame(&updates, &self.current_states, &states, &self.driver.runner);
+                        let mut frame = build_frame(
+                            &updates,
+                            &self.current_states,
+                            &states,
+                            &self.driver.runner,
+                            self.has_initial_boss,
+                        );
                         frame.frame_index = self.driver.frames_emitted;
                         frame.round_index = self.driver.rounds_advanced;
                         self.driver.frames_emitted += 1;
@@ -536,7 +556,13 @@ impl BattleSession {
                 &mut self.icon_cache,
             );
             let frame = visible.then(|| {
-                let mut frame = build_frame(&updates, &self.current_states, &states, &self.driver.runner);
+                let mut frame = build_frame(
+                    &updates,
+                    &self.current_states,
+                    &states,
+                    &self.driver.runner,
+                    self.has_initial_boss,
+                );
                 frame.frame_index = step.frame_index.unwrap();
                 frame.round_index = round_index;
                 frame
@@ -581,17 +607,22 @@ impl BattleSession {
     }
 }
 
+/// 把 runner 的全部玩家快照转换为 `BattlePlayerState`，按开关决定是否带图标与技能，图标经缓存去重。
 pub(super) fn states_from_runner(
     runner: &RuntimeRunner,
     include_icons: bool,
     include_skills: bool,
     icon_cache: &mut HashMap<String, String>,
 ) -> Vec<BattlePlayerState> {
+    let special_group_icons = special_group_icons(runner);
     runner
         .player_snapshots()
         .into_iter()
         .map(|snapshot| {
             let mut state = state_from_snapshot(snapshot, false);
+            if let Some(key) = battle_icon_key(runner, &state, &special_group_icons) {
+                state.icon_key = key.to_owned();
+            }
             if include_skills {
                 state.skills = skill_snapshots(runner, state.id);
                 state.active_skills = active_skill_snapshots(runner, state.id);
@@ -609,6 +640,57 @@ pub(super) fn states_from_runner(
             state
         })
         .collect()
+}
+
+/// 含特殊身份的输入组，普通同伴使用原版首成员的徽章。
+fn special_group_icons(runner: &RuntimeRunner) -> Vec<Option<&str>> {
+    let entities = &runner.runtime().entities;
+    if !entities.iter().any(|(_, entity)| entity.template.clan_name == "!") {
+        return Vec::new();
+    }
+    runner
+        .input_groups
+        .iter()
+        .map(|group| {
+            if !group
+                .iter()
+                .filter_map(|&id| entities.get(id))
+                .any(|entity| entity.template.clan_name == "!")
+            {
+                return None;
+            }
+            // 场上顺序会按 seed 洗牌；初始实体 ID 按原始输入顺序分配。
+            let first = entities.get(*group.iter().min()?)?;
+            if first.template.clan_name == "!" && !first.runtime.flags.contains(PlayerKindFlags::BOSS) {
+                Some(first.template.name.as_str())
+            } else {
+                Some(first.template.id_key_name.as_str())
+            }
+        })
+        .collect()
+}
+
+/// 解析玩家应使用的固定徽章 key：分裂子体回溯到源实体，特殊组名优先。
+fn battle_icon_key<'a>(runner: &'a RuntimeRunner, state: &BattlePlayerState, groups: &[Option<&'a str>]) -> Option<&'a str> {
+    if groups.is_empty() {
+        return None;
+    }
+    let entities = &runner.runtime().entities;
+    let entity = entities.get(EntityIdx(state.id.try_into().ok()?))?;
+    // 分裂子体不属于常规召唤物，但必须继承源史莱姆的固定徽章。
+    let root = if state.minion_kind.is_some() || entity.runtime.slime_split_generation.is_some_and(|generation| generation > 0) {
+        entities.get(entity.runtime.root_owner)?
+    } else {
+        entity
+    };
+    if root.template.clan_name == "!" {
+        return Some(if root.runtime.flags.contains(PlayerKindFlags::BOSS) {
+            &root.template.id_key_name
+        } else {
+            &root.template.name
+        });
+    }
+    state.input_team_index.and_then(|team| groups.get(team).copied().flatten())
 }
 
 /// 读取指定实体的技能熟练度投影。
@@ -673,6 +755,7 @@ fn active_skill_snapshots(runner: &RuntimeRunner, id: PlrId) -> Vec<SkillSnapsho
     skills
 }
 
+/// 把单个 runtime 快照转换为 DTO 状态；include_icons 时才渲染图标。
 fn state_from_snapshot(snapshot: RuntimePlayerSnapshot, include_icons: bool) -> BattlePlayerState {
     let icon_key = snapshot.id_key_name.clone();
     let icon_png_base64 = include_icons.then(|| render_icon_b64_from_name(&icon_key));
@@ -719,17 +802,28 @@ fn state_from_snapshot(snapshot: RuntimePlayerSnapshot, include_icons: bool) -> 
     }
 }
 
+/// 用前后状态与 runner 更新构建一帧回放：转换更新行、侧边栏状态与胜负信息。
 pub(super) fn build_frame(
     updates: &RunUpdates,
     previous_states: &[BattlePlayerState],
     states: &[BattlePlayerState],
     runner: &RuntimeRunner,
+    has_initial_boss: bool,
 ) -> BattleReplayFrame {
     let names = player_names(states);
+    let mut previous = None;
     let converted = updates
         .updates
         .iter()
-        .map(|update| update_from_runtime(update, &names))
+        .map(|update| {
+            let display = if has_initial_boss {
+                boss_self_status_display(update, previous)
+            } else {
+                None
+            };
+            previous = Some(update);
+            update_from_runtime(update, &names, display)
+        })
         .collect::<Vec<_>>();
     let events = updates
         .updates
@@ -755,6 +849,7 @@ pub(super) fn build_frame(
     }
 }
 
+/// 从状态列表构造 id -> 显示名映射；克隆体追加序号区分。
 fn player_names(states: &[BattlePlayerState]) -> HashMap<PlrId, String> {
     states
         .iter()
@@ -769,27 +864,60 @@ fn player_names(states: &[BattlePlayerState]) -> HashMap<PlrId, String> {
         .collect()
 }
 
-fn update_from_runtime(update: &crate::RunUpdate, names: &HashMap<PlrId, String>) -> BattleUpdate {
-    let tone = classify_tone(update);
-    let is_next_line = matches!(update.update_type, UpdateType::NextLine);
-    BattleUpdate {
-        update_type: update_type_name(update.update_type),
-        tone: tone_name(tone),
-        message_template: update.message.to_string(),
-        message_rendered: render_update_message(update, names),
-        caster_id: (!is_next_line).then_some(update.caster),
-        target_id: update.target_id(),
-        target_ids: update.targets.iter().copied().collect(),
-        param: update.param,
-        score: update.score,
-        delay0: update.delay0,
-        delay1: update.delay1,
-        hp_delta: hp_delta_for_tone(tone, update),
-        is_win: matches!(update.update_type, UpdateType::Win),
-        is_next_line,
+/// Boss 自我状态文案替换：仅在聚气后的攻击力上升等特定消息上生效，返回 (模板, 参数)。
+// 两个事件的 [0] 与 [1] 都指向同一人；仅校正规范模板，沿用原有文本渲染和片段。
+fn boss_self_status_display(update: &RunUpdate, previous: Option<&RunUpdate>) -> Option<(&'static str, i32)> {
+    if update.caster != update.target || update.caster_id().is_none() || update.replay_target_id().is_none() {
+        return None;
+    }
+    match update.message.as_ref() {
+        // 马力欧成长的文案相同，只在同一角色刚开始聚气时替换。
+        "[0]攻击力上升"
+            if previous.is_some_and(|previous| {
+                previous.message == get_lang(keys::SKL_ACCUMULATE)
+                    && previous.caster == update.caster
+                    && previous.target == update.target
+            }) =>
+        {
+            Some((get_lang(keys::SKL_ACCUMULATED), update.delay1))
+        }
+        "[1]从[铁壁]中解除" => Some((get_lang(keys::SKL_IRON_END), 500)),
+        _ => None,
     }
 }
 
+/// 把单条 runtime 更新转换为回放更新：计算 tone、渲染文本与差值信息。
+fn update_from_runtime(update: &RunUpdate, names: &HashMap<PlrId, String>, display: Option<(&'static str, i32)>) -> BattleUpdate {
+    let tone = classify_tone(update);
+    let is_next_line = matches!(update.update_type, UpdateType::NextLine);
+    let legacy_caster = (!is_next_line).then_some(update.caster);
+    let legacy_target = update.target_id().or(legacy_caster);
+    let legacy_hp_delta = hp_delta_for_tone(tone, update);
+    let damage = update.damage_param();
+    BattleUpdate {
+        update_type: update_type_name(update.update_type),
+        tone: tone_name(tone),
+        message_template: display.map_or(update.message.as_ref(), |(template, _)| template).to_owned(),
+        message_rendered: render_update_message(update, names),
+        caster_id: update.caster_id(),
+        target_id: update.replay_target_id(),
+        target_ids: update.targets.iter().copied().collect(),
+        animation_target_ids: update.animation_targets.as_deref().map(<[_]>::to_vec),
+        param: update.param,
+        param_payload: damage.map(|damage| BattleUpdateParamPayload::Damage { damage }),
+        score: update.score,
+        delay0: update.delay0,
+        delay1: display.map_or(update.delay1, |(_, delay1)| delay1),
+        hp_delta: damage.map(|damage| -(damage as i32)).or(legacy_hp_delta),
+        is_win: matches!(update.update_type, UpdateType::Win),
+        is_next_line,
+        legacy_ids: (legacy_caster.unwrap_or(0), legacy_target.unwrap_or(0)),
+        legacy_hp_delta,
+        legacy_display: display.map(|_| (update.message.clone(), update.delay1)),
+    }
+}
+
+/// 按更新类型与消息内容把更新分类为回放 tone。
 fn classify_tone(update: &crate::RunUpdate) -> ReplayTone {
     if matches!(update.update_type, UpdateType::Win) {
         return ReplayTone::Knockout;
@@ -809,12 +937,14 @@ fn classify_tone(update: &crate::RunUpdate) -> ReplayTone {
     }
 }
 
+/// 判断消息是否表示状态解除（识破/中止/打消等）。
 fn is_status_exit_message(message: &str) -> bool {
     ["中解除", "被识破", "被中止", "被打消", "属性被打消"]
         .iter()
         .any(|token| message.contains(token))
 }
 
+/// `UpdateType` 到稳定字符串名。
 fn update_type_name(value: UpdateType) -> &'static str {
     match value {
         UpdateType::Win => "win",
@@ -823,6 +953,7 @@ fn update_type_name(value: UpdateType) -> &'static str {
     }
 }
 
+/// `ReplayTone` 到稳定字符串名。
 fn tone_name(value: ReplayTone) -> &'static str {
     match value {
         ReplayTone::Normal => "normal",
@@ -833,6 +964,7 @@ fn tone_name(value: ReplayTone) -> &'static str {
     }
 }
 
+/// 稳定字符串名解析回 `ReplayTone`，未知值按 Normal。
 fn tone_from_name(value: &str) -> ReplayTone {
     match value {
         "damage" => ReplayTone::Damage,
@@ -843,6 +975,7 @@ fn tone_from_name(value: &str) -> ReplayTone {
     }
 }
 
+/// core 回放行转换为 battle DTO 行。
 fn row_from_core(row: ReplayRow<BattlePlayerState>) -> BattleReplayRow {
     BattleReplayRow {
         indent: row.indent,
@@ -850,6 +983,7 @@ fn row_from_core(row: ReplayRow<BattlePlayerState>) -> BattleReplayRow {
     }
 }
 
+/// core 回放片段转换为 battle DTO 片段，tone 转为字符串名。
 fn clip_from_core(clip: ReplayClip<BattlePlayerState>) -> BattleReplayClip {
     BattleReplayClip {
         delay: clip.delay,
@@ -864,6 +998,7 @@ fn clip_from_core(clip: ReplayClip<BattlePlayerState>) -> BattleReplayClip {
     }
 }
 
+/// core 文本片段转换为 battle DTO 片段，kind 转为字符串名。
 fn part_from_core(part: ReplayTextPart) -> BattleReplayTextPart {
     BattleReplayTextPart {
         kind: match part.kind {
@@ -1187,7 +1322,7 @@ seed:kill-pause-snapshot@!"#;
         updates.add(crate::RunUpdate::new("[0]发起攻击", 0, 1, 0));
         updates.add(crate::RunUpdate::new("[1]受到[2]点伤害", 0, 1, 0));
         updates.add(crate::RunUpdate::new("[1]挡住攻击", 0, 1, 0));
-        let frame = build_frame(&updates, &previous, &states, &session.driver.runner);
+        let frame = build_frame(&updates, &previous, &states, &session.driver.runner, session.has_initial_boss);
         let frame_json = serde_json::to_value(&frame).unwrap();
         assert_eq!(frame_json["states"][1]["shield"], 25);
         assert_eq!(frame_json["states"][1]["max_shield"], max_shield);
@@ -1234,7 +1369,7 @@ seed:kill-pause-snapshot@!"#;
             .runtime_mut()
             .drain_plain_half_skill_into(EntityIdx(0), EntityIdx(1), &mut updates);
         let states = states_from_runner(&session.driver.runner, false, false, &mut session.icon_cache);
-        let frame = build_frame(&updates, &previous, &states, &session.driver.runner);
+        let frame = build_frame(&updates, &previous, &states, &session.driver.runner, session.has_initial_boss);
         assert_eq!(frame.updates[0].message_template, "[0]使用[瘟疫]");
         assert_eq!(frame.updates[1].message_template, "[1]体力减少[2]%");
         assert_eq!(frame.updates[1].tone, "damage");
@@ -1451,6 +1586,37 @@ seed:7@!"#;
         for (key, value) in initial_cache {
             assert_eq!(icons.icon_cache.get(&key), Some(&value));
         }
+    }
+
+    #[cfg(feature = "png_render")]
+    #[test]
+    fn special_battle_icon_keys_match_the_original_display_groups() {
+        let options = BattleOptions {
+            include_icons: true,
+            ..Default::default()
+        };
+        let session = BattleSession::new("mario@!\nAlice@plain\n\na@!\nb@!\nc@green\n\nmario", options.clone()).unwrap();
+        let by_name: HashMap<_, _> = session.initial_states().iter().map(|state| (state.id_key_name.as_str(), state)).collect();
+        for (name, icon) in [
+            ("mario@!", "mario@!"),
+            ("Alice@plain", "mario@!"),
+            ("a@!", "a"),
+            ("b@!", "b"),
+            ("c@green", "a"),
+            ("mario", "mario"),
+        ] {
+            let state = by_name[name];
+            assert_eq!(state.icon_key, icon, "{name}");
+            assert_eq!(state.icon_png_base64.as_ref(), Some(&render_icon_b64_from_name(icon)));
+        }
+        let mut slime = BattleSession::new("slime@!\n\nlazy@!\nparity3a\nparity3b", options).unwrap();
+        let child_has_boss_icon = std::iter::from_fn(|| slime.next_frame().unwrap()).any(|frame| {
+            frame
+                .states
+                .iter()
+                .any(|state| state.id_key_name.starts_with("slime?") && state.icon_key == "slime@!")
+        });
+        assert!(child_has_boss_icon);
     }
 
     #[cfg(feature = "png_render")]

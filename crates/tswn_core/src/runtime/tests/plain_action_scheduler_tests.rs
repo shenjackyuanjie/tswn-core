@@ -1,5 +1,6 @@
 use super::*;
 
+/// 构造注册了暗杀等 pre-action 技能的 CombatRuntime，初始行动顺序由 pre_action_order 指定。
 fn pre_action_runtime(pre_action_order: [usize; 2]) -> CombatRuntime {
     let mut builder = ExtensionRegistryBuilder::default();
     let assassinate = builder

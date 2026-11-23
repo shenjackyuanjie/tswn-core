@@ -356,6 +356,7 @@ pub(super) struct NamerPfScores {
 }
 
 impl NamerPfScores {
+    /// 按指标枚举取对应分数。
     fn get(self, metric: NamerPfMetric) -> f64 {
         match metric {
             NamerPfMetric::Pp => self.pp,
@@ -499,6 +500,7 @@ fn parse_namer_pf_group_line(line: &str) -> Vec<String> {
     group
 }
 
+/// 把当前累积片段 trim 后追加到组列表并清空缓冲；空片段忽略。
 fn push_namer_pf_segment(group: &mut Vec<String>, current: &mut String) {
     let segment = current.trim();
     if !segment.is_empty() {
@@ -527,6 +529,7 @@ fn overlay_suffix_end(raw: &str) -> Option<usize> {
     None
 }
 
+/// 把索引向后跳过连续的 ASCII 空白字符。
 fn skip_ascii_ws(raw: &str, idx: &mut usize) {
     let bytes = raw.as_bytes();
     while *idx < bytes.len() && bytes[*idx].is_ascii_whitespace() {
@@ -534,6 +537,7 @@ fn skip_ascii_ws(raw: &str, idx: &mut usize) {
     }
 }
 
+/// 从 start 处消费一对平衡定界符（跳过字符串与转义），返回定界符结束后的索引；起始字符不匹配返回 None。
 fn consume_balanced_ascii(raw: &str, start: usize, open: u8, close: u8) -> Option<usize> {
     let bytes = raw.as_bytes();
     if bytes.get(start).copied() != Some(open) {

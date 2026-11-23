@@ -75,10 +75,14 @@ pub const SIG_COLORS: [[u8; 3]; 21] = [
     [144, 0, 0],     // 20
 ];
 
+/// 显著颜色数量（含无色槽）。
 const C_COUNT: usize = SIG_COLORS.len(); // 21
+/// 形状种类数。
 const NUM_SHAPES: usize = 38;
+/// 边框样式数。
 const NUM_BORDERS: usize = 8;
 
+/// 两个显著颜色的加权距离（保留 Dart 原版亮度项的兼容行为）。
 /// 预计算的颜色距离矩阵。
 /// 使用与 Dart/JS 相同的公式：R,G,B 加权欧几里得距离 + 亮度差异。
 /// 注意：Dart 代码有一个 bug，它对所有三个亮度项都使用 `sig_colors[i][0]`（R 通道）
@@ -95,9 +99,11 @@ fn color_distance(i: usize, j: usize) -> f64 {
     (dr * dr + dg * dg + db * db + dl * dl).sqrt()
 }
 
+/// 颜色距离矩阵的惰性缓存。
 /// 全局颜色距离矩阵，首次使用时初始化。
 static CDIF: OnceLock<[[f64; C_COUNT]; C_COUNT]> = OnceLock::new();
 
+/// 取颜色距离矩阵；首次访问时计算对称矩阵并缓存。
 /// 获取颜色距离矩阵（首次调用时懒初始化）。
 #[allow(clippy::needless_range_loop)]
 fn cdif() -> &'static [[f64; C_COUNT]; C_COUNT] {
@@ -146,30 +152,25 @@ pub fn icon_from_name(name: &str) -> IconResult {
     icon_from_colors(&colors)
 }
 
-/// 从原始名称解析 sglname（用于生成 icon 的名称）。
-///
-/// 根据 JS 源码逻辑：
-/// - `name@team` → 返回 `team`
-/// - `name` → 返回 `name`
-///
-/// 这意味着同一队伍的玩家会有相同的 icon。
+/// 从独立的玩家名称解析程序徽章使用的键。
+/// 未登记的 `name@!` 是感叹号玩家，使用自己的基名；普通公会仍使用公会名。
 pub fn parse_sglname(raw_name: &str) -> &str {
-    if let Some((_, team)) = raw_name.split_once('@') {
-        team
+    if let Some((name, team)) = raw_name.split_once('@') {
+        if team.split(['@', '+']).next() == Some("!") {
+            name
+        } else {
+            team
+        }
     } else {
         raw_name
     }
 }
 
-/// 从原始名称生成图标颜色选择。
-///
-/// 会自动解析 `name@team` 格式，使用队伍名生成 icon。
-/// 如果没有队伍名，则使用玩家名。
-pub fn icon_from_raw_name(raw_name: &str) -> IconResult {
-    let sglname = parse_sglname(raw_name);
-    icon_from_name(sglname)
-}
+/// 仅生成程序徽章的调色板资料，不描述固定像素的 Boss 图标。
+/// 按名称实际渲染时请使用 [`crate::namerena::icon_render`] 的 `_from_name` 入口。
+pub fn icon_from_raw_name(raw_name: &str) -> IconResult { icon_from_name(parse_sglname(raw_name)) }
 
+/// 从颜色字节流解析图标：边框、形状、背景与前景。
 /// 从转换后的颜色数组生成图标（复现 Sgl.create()）。
 fn icon_from_colors(colors: &[u8]) -> IconResult {
     let cdif = cdif();

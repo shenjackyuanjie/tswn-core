@@ -1,7 +1,7 @@
 //! GUI 文本输入源，统一内联文本与文件选择。
 //!
-//! 预览只读取前 16 KiB 并最多展示十行，允许有损 UTF-8 截断；实际运行时重新
-//! 完整读取并严格验证 UTF-8，去除开头 BOM，因此预览不是任务输入的持久快照。
+//! 纯文本预览读取文件开头并最多展示十行；实际运行时重新读取完整文件。
+//! 两处都去掉开头 BOM，跳过非 UTF-8 行。
 //! read_all 返回自有 String，不让后台任务借用控件状态；读失败返回含路径的错误。
 //!
 //! CSV 是可选读取方式，默认关闭：关闭时按整行读取，行为与纯文本文件完全一致。
@@ -11,6 +11,8 @@
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+
+use tswn_core::text_input::decode_utf8_lines;
 
 use super::style::Palette;
 use super::widgets::multiline;
@@ -58,6 +60,7 @@ struct CsvSample {
 }
 
 impl CsvSample {
+    /// 从内容构造取样：保留开头若干行，记录列数与总行数。
     fn of(content: &str) -> Self {
         let mut rows = Vec::new();
         let mut columns = 0;
@@ -77,6 +80,7 @@ impl CsvSample {
     }
 }
 
+/// 文本输入源：内联文本或从文件读取，附带预览与错误状态。
 #[derive(Debug, Clone)]
 pub struct TextSource {
     inline: String,
@@ -84,12 +88,14 @@ pub struct TextSource {
     file_path: Option<PathBuf>,
     preview: String,
     error: Option<String>,
+    warning: Option<String>,
     csv: CsvOptions,
     advanced_open: bool,
     sample: CsvSample,
 }
 
 impl TextSource {
+    /// 用内联文本构造输入源。
     pub fn inline(text: impl Into<String>) -> Self {
         Self {
             inline: text.into(),
@@ -97,12 +103,14 @@ impl TextSource {
             file_path: None,
             preview: String::new(),
             error: None,
+            warning: None,
             csv: CsvOptions::default(),
             advanced_open: false,
             sample: CsvSample::default(),
         }
     }
 
+    /// 绘制输入源控件：内联/文件切换、路径选择与内容预览。
     pub fn ui(&mut self, ui: &mut egui::Ui, label: &str, id: &'static str, rows: usize) {
         ui.horizontal(|ui| {
             ui.label(label);
@@ -140,6 +148,9 @@ impl TextSource {
             ui.label(path);
             if let Some(error) = &self.error {
                 ui.colored_label(Palette::of(ui).emphasis, error);
+            }
+            if let Some(warning) = &self.warning {
+                ui.colored_label(Palette::of(ui).warning, warning);
             }
             let mut preview = self.preview.as_str();
             egui::ScrollArea::both().id_salt(id).max_height(rows as f32 * 20.0).show(ui, |ui| {
@@ -189,12 +200,15 @@ impl TextSource {
         source
     }
 
-    pub fn read_all(&self) -> Result<String, String> {
+    /// 读取完整输入文本；文件模式下未选文件或读取失败时返回中文错误。
+    pub fn read_all(&mut self) -> Result<String, String> {
+        self.warning = None;
         if !self.from_file {
             return Ok(self.inline.clone());
         }
         let path = self.file_path.as_ref().ok_or_else(|| "请选择输入文件。".to_string())?;
-        let content = read_text_file(path)?;
+        let (content, warning) = read_text_file(path)?;
+        self.warning = warning;
         if self.csv.enabled {
             csv_extract(&content, &self.csv)
         } else {
@@ -202,6 +216,7 @@ impl TextSource {
         }
     }
 
+    /// 绘制高级选项窗口：文件路径、警告、CSV 列与行选择。
     fn advanced_ui(&mut self, ui: &mut egui::Ui, id: &'static str) {
         let path_label = self
             .file_path
@@ -209,6 +224,9 @@ impl TextSource {
             .map(|path| path.display().to_string())
             .unwrap_or_else(|| "未选择输入文件".to_string());
         ui.label(path_label);
+        if let Some(warning) = &self.warning {
+            ui.colored_label(Palette::of(ui).warning, warning);
+        }
         if self.file_path.is_none() {
             super::style::hint(ui, "先勾选“从文件中读取”并选好文件，再在这里调整读取方式。");
             return;
@@ -230,7 +248,7 @@ impl TextSource {
             self.refresh_preview();
         }
         if !self.csv.enabled {
-            super::style::hint(ui, "未启用 CSV：仍按整行读取，与旧版本行为一致。");
+            super::style::hint(ui, "未启用 CSV：按整行读取。");
             if let Some(error) = &self.error {
                 ui.colored_label(Palette::of(ui).emphasis, error);
             }
@@ -324,6 +342,7 @@ impl TextSource {
         }
     }
 
+    /// 弹出文件选择；换文件时按扩展名重置 CSV 选项并刷新预览。
     fn pick_file(&mut self) {
         if let Some(path) = rfd::FileDialog::new().pick_file() {
             // 换文件时按扩展名重新判断是否默认启用 CSV，用户仍可在高级选项里关掉。
@@ -337,7 +356,9 @@ impl TextSource {
         }
     }
 
+    /// 重读文件并更新预览文本、错误与警告。
     fn refresh_preview(&mut self) {
+        self.warning = None;
         let Some(path) = self.file_path.clone() else {
             self.preview.clear();
             self.error = None;
@@ -345,11 +366,12 @@ impl TextSource {
         };
         if self.csv.enabled {
             match read_text_file(&path) {
-                Ok(content) => {
+                Ok((content, warning)) => {
+                    self.warning = warning;
                     self.sample = CsvSample::of(&content);
                     match csv_extract(&content, &self.csv) {
                         Ok(extracted) => {
-                            self.preview = head_lines(&extracted, CSV_RESULT_PREVIEW_LINES);
+                            self.preview = head_lines(&extracted, CSV_RESULT_PREVIEW_LINES, false);
                             self.error = None;
                         }
                         Err(err) => {
@@ -367,9 +389,10 @@ impl TextSource {
             return;
         }
         match fs::File::open(&path).and_then(read_preview) {
-            Ok(preview) => {
+            Ok((preview, skipped)) => {
                 self.preview = preview;
                 self.error = None;
+                self.warning = (skipped > 0).then(|| format!("预览中已跳过 {skipped} 行非 UTF-8 文本。"));
             }
             Err(err) => {
                 self.preview.clear();
@@ -378,6 +401,7 @@ impl TextSource {
         }
     }
 
+    /// CSV 启用时重读文件并刷新取样行。
     fn reload_sample(&mut self) {
         if !self.csv.enabled {
             return;
@@ -385,7 +409,8 @@ impl TextSource {
         let Some(path) = self.file_path.as_ref() else {
             return;
         };
-        if let Ok(content) = read_text_file(path) {
+        if let Ok((content, warning)) = read_text_file(path) {
+            self.warning = warning;
             self.sample = CsvSample::of(&content);
         }
     }
@@ -440,6 +465,7 @@ fn csv_row_selected(relative_index: usize, options: &CsvOptions) -> bool {
     }
 }
 
+/// 按非空行拆分为 CSV 行。
 fn csv_rows(content: &str) -> Vec<Vec<String>> {
     content.lines().filter(|line| !line.trim().is_empty()).map(split_csv_line).collect()
 }
@@ -465,8 +491,10 @@ fn split_csv_line(line: &str) -> Vec<String> {
     fields
 }
 
+/// 按扩展名判断是否默认按 CSV 读取。
 fn looks_like_csv(path: &Path) -> bool { path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("csv")) }
 
+/// 把单元格文本裁剪到预览长度，超出部分用省略号。
 fn clip_cell(value: &str) -> String {
     let trimmed = value.trim();
     let mut chars = trimmed.chars();
@@ -474,68 +502,77 @@ fn clip_cell(value: &str) -> String {
     if chars.next().is_some() { format!("{head}…") } else { head }
 }
 
-fn head_lines(text: &str, limit: usize) -> String {
+/// 取前 limit 行组成预览，超长时追加省略标记。
+fn head_lines(text: &str, limit: usize, truncated: bool) -> String {
     let mut lines = text.lines();
     let mut preview = lines.by_ref().take(limit).collect::<Vec<_>>().join("\n");
-    if lines.next().is_some() {
-        preview.push_str("\n...");
+    if truncated || lines.next().is_some() {
+        if !text.is_empty() {
+            preview.push('\n');
+        }
+        preview.push_str("...");
     }
     preview
 }
 
-fn read_text_file(path: &Path) -> Result<String, String> {
-    fs::read_to_string(path)
-        .map(|mut content| {
-            let prefix = content.len() - content.trim_start_matches('﻿').len();
-            if prefix > 0 {
-                content.drain(..prefix);
-            }
-            content
-        })
-        .map_err(|err| format!("读取文件失败: {}: {err}", path.display()))
+/// 读取文本文件并跳过非 UTF-8 行，返回内容与警告。
+fn read_text_file(path: &Path) -> Result<(String, Option<String>), String> {
+    let bytes = fs::read(path).map_err(|err| format!("读取文件失败: {}: {err}", path.display()))?;
+    let (content, skipped) = decode_utf8_lines(bytes);
+    let warning = (skipped > 0).then(|| format!("已跳过 {skipped} 行非 UTF-8 文本。"));
+    Ok((content, warning))
 }
 
-fn read_preview(reader: impl Read) -> std::io::Result<String> {
-    // 预览不能因单行超长或大文件而读入全部内容；运行时仍读取并验证完整 UTF-8 输入。
+/// 只读前 MAX_PREVIEW_BYTES 内的完整行，返回文本与是否截断。
+fn read_preview(reader: impl Read) -> std::io::Result<(String, usize)> {
+    // 预览只解码完整行，避免把字节上限截断的半行当成坏行。
+    /// 预览读取的字节上限：16 KiB，只解码完整行。
     const MAX_PREVIEW_BYTES: usize = 16 * 1024;
     let mut bytes = Vec::new();
     reader.take((MAX_PREVIEW_BYTES + 1) as u64).read_to_end(&mut bytes)?;
     let truncated = bytes.len() > MAX_PREVIEW_BYTES;
-    bytes.truncate(MAX_PREVIEW_BYTES);
-    let content = String::from_utf8_lossy(&bytes);
-    let mut lines = content.trim_start_matches('﻿').lines();
-    let mut preview = lines.by_ref().take(10).collect::<Vec<_>>().join("\n");
-    if truncated || lines.next().is_some() {
-        preview.push_str("\n...");
+    if truncated {
+        let complete_len = bytes[..MAX_PREVIEW_BYTES]
+            .iter()
+            .rposition(|&byte| byte == b'\n')
+            .map_or(0, |end| end + 1);
+        bytes.truncate(complete_len);
     }
-    Ok(preview)
+    let (content, skipped) = decode_utf8_lines(bytes);
+    Ok((head_lines(&content, 10, truncated), skipped))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn temp_file(name: &str, content: &str) -> PathBuf {
-        let path = std::env::temp_dir().join(format!("tswn_openbox_source_{name}.txt"));
+    fn temp_file(name: &str, content: impl AsRef<[u8]>) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("tswn_openbox_source_{}_{name}.txt", std::process::id()));
         fs::write(&path, content).unwrap();
         path
     }
 
     #[test]
     fn preview_caps_reading_even_for_a_single_huge_line() {
-        let mut reader = std::io::Cursor::new("名".repeat(100_000).into_bytes());
-        let preview = read_preview(&mut reader).unwrap();
+        let mut reader = std::io::Cursor::new(format!("甲\n{}", "名".repeat(100_000)).into_bytes());
+        let (preview, skipped) = read_preview(&mut reader).unwrap();
         assert!(reader.position() <= 16 * 1024 + 1);
-        assert!(preview.ends_with("\n..."));
-        assert!(preview.len() < 17 * 1024);
+        assert_eq!(preview, "甲\n...");
+        assert_eq!(skipped, 0);
     }
 
     #[test]
     fn preview_handles_bom_crlf_and_exactly_ten_lines() {
-        assert_eq!(read_preview("\u{feff}甲\r\n乙\r\n".as_bytes()).unwrap(), "甲\n乙");
+        assert_eq!(
+            read_preview("\u{feff}甲\r\n乙\r\n".as_bytes()).unwrap(),
+            ("甲\n乙".to_owned(), 0)
+        );
         let ten = (0..10).map(|i| i.to_string()).collect::<Vec<_>>().join("\n");
-        assert_eq!(read_preview(ten.as_bytes()).unwrap(), ten);
-        assert_eq!(read_preview(format!("{ten}\n10").as_bytes()).unwrap(), format!("{ten}\n..."));
+        assert_eq!(read_preview(ten.as_bytes()).unwrap(), (ten.clone(), 0));
+        assert_eq!(
+            read_preview(format!("{ten}\n10").as_bytes()).unwrap(),
+            (format!("{ten}\n..."), 0)
+        );
     }
 
     #[test]
@@ -608,15 +645,27 @@ mod tests {
     fn file_mode_reads_whole_lines_until_csv_is_enabled() {
         let mut source = TextSource::inline("");
         source.from_file = true;
-        source.file_path = Some(temp_file("plain", "甲\n乙\n"));
+        let plain = temp_file("plain", ["甲\n".as_bytes(), b"bad\xff\n", "乙\n".as_bytes()].concat());
+        source.file_path = Some(plain.clone());
+        source.refresh_preview();
+        assert_eq!(source.preview, "甲\n乙");
+        assert!(source.warning.as_deref().unwrap().contains("已跳过 1 行"));
         assert_eq!(source.read_all().unwrap(), "甲\n乙\n");
+        fs::remove_file(plain).unwrap();
 
-        source.file_path = Some(temp_file("columns", "\u{feff}甲,1\n乙,2\n"));
+        let columns = temp_file(
+            "columns",
+            ["\u{feff}甲,1\n".as_bytes(), b"bad\xff,9\n", "乙,2\n".as_bytes()].concat(),
+        );
+        source.file_path = Some(columns.clone());
         source.csv = CsvOptions {
             enabled: true,
             column: 1,
             ..CsvOptions::default()
         };
+        source.refresh_preview();
+        assert_eq!(source.preview, "1\n2");
         assert_eq!(source.read_all().unwrap(), "1\n2");
+        fs::remove_file(columns).unwrap();
     }
 }

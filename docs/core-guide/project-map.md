@@ -21,7 +21,7 @@ flowchart TD
         CA[tswn_capi]
         OB[tswn_openbox_backend]
         DS[tswn_ds4]
-        LR[lane ranker / ladder]
+        LR[lane ranker]
         PW[tswn_pwp]
     end
     CORE[tswn_core：构建、Runtime、会话、编码]
@@ -56,7 +56,6 @@ flowchart TD
 | `tswn_openbox_backend` | 共用业务计算、进度、结果、预设 | GUI、CLI、DS4 | 任务结构 → 增量结果和文件 |
 | `tswn_ds4` | 单人/配对模型、ABCP5 编排、实战筛选、缓存 | 筛号工作流 | 工作目录 → 排序与历史结果 |
 | `tswn_lane_ranker` | lane 两两胜率、迭代排名、校准和管理服务 | 内部排名工具 | SQLite / HTTP → 排名与审计 |
-| `tswn_ladder` | 匹配、战斗、ELO/handicap 和周期更新 | 天梯运营 | PostgreSQL → 回写与历史 |
 | `tswn_pwp` | 状态采样、分片校验、校准、训练包导出 | 学习数据处理 | 对局输入 → Parquet / 编码包 |
 | `tswn_test` | 共享行为测试和 golden/corpus 验收 | 项目开发者 | 固定输入 → 行为差分 |
 | `tswn_name_ranker` | 独立单号排名与校准服务 | 内部单号研究 | 专用资源 / SQLite → 排名 |
@@ -76,7 +75,7 @@ flowchart TD
 ## 同样叫“评分”，计算来源可以不同
 
 - core 的胜率和 profile 评分通过实际战斗统计得到。
-- lane ranker 与 ladder 在战斗结果之上使用各自排名策略。
+- lane ranker 在战斗结果之上使用自己的排名策略。
 - DS4 包含已有系数模型，以及对外部 ABCP5 的调用；实战筛选再交给 core。
 - PWP 已提供数据与编码链路，模型训练、推理和在线接入是接下来的独立工作。
 

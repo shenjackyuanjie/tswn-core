@@ -3,19 +3,25 @@
 //! 每套固定 1124 项，依次对应常数、46 个线性项及带四处省略项的二次上三角。
 //! 位置解释由 engine 的索引表统一定义，不能仅重排系数字面量或更换特征顺序。
 
+/// 每套 DS4 系数的固定长度：常数 1 项 + 46 个线性项 + 带四处省略的二次上三角，共 1124 项。
 pub const MODEL_SIZE: usize = 1124;
 
+/// BC 模型系数表。
 mod bc;
 pub use bc::MODEL_BC;
 
+/// FZ 模型系数表。
 mod fz;
 pub use fz::MODEL_FZ;
 
+/// WC 模型系数表。
 mod wc;
 pub use wc::MODEL_WC;
 
+/// FS 模型系数表。
 mod fs;
 pub use fs::MODEL_FS;
 
+/// PJ 模型系数表。
 mod pj;
 pub use pj::MODEL_PJ;

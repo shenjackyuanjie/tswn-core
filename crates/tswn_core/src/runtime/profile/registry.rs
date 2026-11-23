@@ -1,5 +1,6 @@
 use super::*;
 
+/// 组装默认游戏规则的导入配置：注册表、bed2 kind 与使魔 overlay，以及默认 handler 绑定。
 pub fn default_custom_runtime_import_config() -> Result<CustomRuntimeImportConfig<'static>, DefaultCustomRuntimeProfileError> {
     let mut builder = ExtensionRegistryBuilder::default();
     let summon = builder.register_skill(
@@ -270,10 +271,15 @@ pub fn default_custom_runtime_import_config() -> Result<CustomRuntimeImportConfi
         BuiltinActiveSkill::RinickIceAge,
         BuiltinActiveSkill::RinickYuriControl,
     ] {
-        builder.register_skill(
+        let hooks = match builtin_skill {
+            BuiltinActiveSkill::RinickIceAge | BuiltinActiveSkill::RinickYuriControl => ProcMask::NONE,
+            _ => ProcMask::PRE_ACTION,
+        };
+        builder.register_skill_with_hooks(
             "core",
             builtin_skill.local_name(),
             builtin_skill.export_name(),
+            hooks,
             builtin_skill.target_policy(),
             SkillPriority(builtin_skill.legacy_key() as i32),
         )?;

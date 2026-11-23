@@ -6,6 +6,7 @@
 
 use super::*;
 
+/// 按 group_id 对请求补算胜率：跳过已存边，缺失项按动态队列或静态分块并行计算，按百条检查点保存并返回新算条数。
 pub(super) fn compute_rate_pairs_by_id_request(
     db: &Db,
     lane_size: usize,
@@ -186,6 +187,7 @@ pub(super) fn compute_rate_pairs_by_id_request(
     Ok(computed.len())
 }
 
+/// 为严格 Python 校准准备必需胜率：训练池两两边加阻塞行对训练池的边，缺失则并行补算；候选不足 2 即中止。
 pub(super) fn ensure_required_winrates_for_strict_python(
     db: &Db,
     lane_size: usize,
@@ -416,6 +418,7 @@ pub(super) fn ensure_required_winrates_for_strict_python(
     Ok(computed.len())
 }
 
+/// 用独立连接读取已存胜率对，规范为升序 group_id 对集合。
 pub(super) fn load_existing_rate_pairs_for_python(db: &Db) -> anyhow::Result<HashSet<(GroupId, GroupId)>> {
     let conn = Connection::open(db.path()).with_context(|| format!("open sqlite database: {}", db.path()))?;
     let mut stmt = conn.prepare("SELECT group_a, group_b FROM group_rates WHERE samples > 0 AND win_rate_a IS NOT NULL")?;
@@ -430,8 +433,10 @@ pub(super) fn load_existing_rate_pairs_for_python(db: &Db) -> anyhow::Result<Has
     Ok(out)
 }
 
+/// 把一对 group_id 规范为升序，作为缓存与去重键。
 pub(super) fn ordered_group_id_pair(a: GroupId, b: GroupId) -> (GroupId, GroupId) { if a <= b { (a, b) } else { (b, a) } }
 
+/// 确定校准补算的外层 worker 数：显式值按总量裁剪，0 表示按系统并行度自动。
 pub(super) fn resolve_calibration_rate_pair_workers(requested_outer_workers: usize, total: usize) -> usize {
     if requested_outer_workers > 0 {
         return requested_outer_workers.max(1).min(total.max(1));
@@ -440,6 +445,7 @@ pub(super) fn resolve_calibration_rate_pair_workers(requested_outer_workers: usi
     available.max(1).min(total.max(1))
 }
 
+/// 把外层 worker 数格式化为 auto(n)/static(n) 标签。
 pub(super) fn format_calibration_outer_workers(requested_outer_workers: usize, actual_workers: usize) -> String {
     if requested_outer_workers == 0 {
         format!("auto({actual_workers})")
@@ -448,6 +454,7 @@ pub(super) fn format_calibration_outer_workers(requested_outer_workers: usize, a
     }
 }
 
+/// 把内层线程数格式化为进度标签。
 pub(super) fn format_calibration_inner_workers(inner_workers: u32) -> String {
     if inner_workers == 0 {
         "auto(0)".to_string()
@@ -456,10 +463,13 @@ pub(super) fn format_calibration_inner_workers(inner_workers: u32) -> String {
     }
 }
 
+/// 判断是否上报校准补算进度：每 10 对或最后一对。
 pub(super) fn should_report_calibration_rate_progress(done: usize, total: usize) -> bool { done == total || done % 10 == 0 }
 
+/// 校准补算的检查点累积条数：满 100 条或强制时落库。
 pub(super) const RATE_PERSIST_CHECKPOINT_SIZE: usize = 100;
 
+/// 按检查点大小批量保存已算胜率并清空待写缓冲。
 pub(super) fn persist_rate_checkpoint(
     db: &Db,
     pending: &mut Vec<(GroupId, GroupId, f64)>,
@@ -474,6 +484,7 @@ pub(super) fn persist_rate_checkpoint(
     Ok(())
 }
 
+/// 按当前进度写入 lane_progress，含速率、耗时与 ETA。
 pub(super) fn report_calibration_rate_progress(
     db: &Db,
     lane_size: usize,
@@ -509,6 +520,7 @@ pub(super) fn report_calibration_rate_progress(
     )
 }
 
+/// 把秒数格式化为 s/m/h 进度文本。
 pub(super) fn format_calibration_duration(seconds: f64) -> String {
     if seconds < 60.0 {
         format!("{seconds:.1}s")

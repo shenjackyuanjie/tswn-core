@@ -1,6 +1,7 @@
 use super::*;
 
 impl CombatRuntime {
+    /// 按击杀 hook 计划分派僵尸与融合击杀技能，其余条目以死亡目标为选中目标执行。
     pub fn drain_plain_kill_skill_plan_into(&mut self, plan: &SkillHookPlan, killed_target: EntityIdx, updates: &mut RunUpdates) {
         for entry in &plan.entries {
             let export_name = self.registry.skill(entry.skill_id).map(|skill| skill.export_name.as_str());
@@ -36,6 +37,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 取用玩家对击杀被动的决策：非决策模式返回 `None`；有待处理决策时返回其放行结果，否则挂起请求并触发 `PassivePause`。
     fn consume_kill_passive_decision(
         &mut self,
         entry: &SkillHookPlanEntry,
@@ -70,6 +72,7 @@ impl CombatRuntime {
         Some(decision.activate && decision.success)
     }
 
+    /// 僵尸被动：达标时把死亡目标转化为同名亡灵；返回 true 表示中止后续击杀条目。
     pub fn drain_plain_zombie_kill_skill_into(
         &mut self,
         caster: EntityIdx,
@@ -141,6 +144,7 @@ impl CombatRuntime {
         true
     }
 
+    /// 融合被动的击杀入口：达标时把死亡目标融合进施法者。
     pub fn drain_plain_merge_kill_skill_into(
         &mut self,
         caster: EntityIdx,
@@ -160,6 +164,7 @@ impl CombatRuntime {
         self.apply_plain_merge_into(caster, killed_target, updates)
     }
 
+    /// 把目标标记为僵尸尸体，供亡灵转化与展示使用。
     pub fn mark_zombie_corpse(&mut self, target: EntityIdx) {
         let target = self
             .entities

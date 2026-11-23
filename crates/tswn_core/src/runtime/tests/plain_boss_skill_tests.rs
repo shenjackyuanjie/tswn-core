@@ -4,6 +4,7 @@ use crate::namerena::BossActionSkill;
 use crate::runtime::combat::PlainAttackOnDamage;
 use crate::runtime::lang::{get_lang, keys};
 
+/// 构造注册了 boss kind 与相关技能的 (PlayerKindId, ExtensionRegistry)。
 fn boss_test_registry() -> (PlayerKindId, ExtensionRegistry) {
     let mut builder = ExtensionRegistryBuilder::default();
     let boss_kind = builder
@@ -108,6 +109,7 @@ fn yuri_runtime() -> CombatRuntime {
     ))
 }
 
+/// 向实体 0 追加一条马里奥 boss 成长状态（grow/fire_level）。
 fn add_mario_growth(runtime: &mut CombatRuntime, grow: i32, fire_level: u32) {
     assert!(
         runtime.entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(StateEntry::mario_boss(
@@ -119,6 +121,7 @@ fn add_mario_growth(runtime: &mut CombatRuntime, grow: i32, fire_level: u32) {
     );
 }
 
+/// 读取实体 0 的马里奥 boss 成长状态值 (grow, fire_level)。
 fn mario_growth_value(runtime: &CombatRuntime) -> Option<(i32, u32)> {
     runtime
         .entities
@@ -129,6 +132,7 @@ fn mario_growth_value(runtime: &CombatRuntime) -> Option<(i32, u32)> {
         .and_then(StateEntry::mario_boss_value)
 }
 
+/// 推进 RNG 直到 r127 低于给定 level。
 fn advance_until_r127_below(runtime: &mut CombatRuntime, level: u32) {
     while {
         let mut probe = runtime.rng.clone();
@@ -138,6 +142,7 @@ fn advance_until_r127_below(runtime: &mut CombatRuntime, level: u32) {
     }
 }
 
+/// 推进 RNG 直到下一个 u8 低于给定 max。
 fn advance_until_next_u8_below(runtime: &mut CombatRuntime, max: u8) {
     while {
         let mut probe = runtime.rng.clone();
@@ -147,6 +152,7 @@ fn advance_until_next_u8_below(runtime: &mut CombatRuntime, max: u8) {
     }
 }
 
+/// 提取 RunUpdates 中所有消息字符串。
 fn messages_of(updates: &RunUpdates) -> Vec<String> { updates.updates.iter().map(|update| update.message.to_string()).collect() }
 
 /// 推进 RNG，直到 Boss `k4` 扫描依次消耗的 r127 都不通过概率。
@@ -211,7 +217,9 @@ enemy-b"
             !leaves,
             "damage={damages} minion={has_minion}"
         );
-        assert_eq!(runtime.entities.get(actor).unwrap().runtime.hp > 0, !leaves);
+        let actor_runtime = &runtime.entities.get(actor).unwrap().runtime;
+        assert!(actor_runtime.hp > 0);
+        assert_eq!(actor_runtime.alive, !leaves);
         assert_eq!(runtime.saitama_boss_state(actor).unwrap().0, if leaves { 0 } else { 1 });
     }
 }
@@ -289,6 +297,81 @@ fn covid_pneumonia_can_heal_above_max_hp_but_not_a_dead_source() {
 }
 
 #[test]
+fn lazy_public_fight_keeps_vite_templates_and_separate_skip_updates() {
+    use crate::cli_api::battle::{BattleOptions, battle_replay};
+
+    let replay = battle_replay("lazy@!\n\nBob\nAlice", BattleOptions::default()).unwrap();
+    let first = &replay.frames[0];
+    let infection = first.updates.iter().find(|update| update.message_template == "[1]感染了[懒癌]").unwrap();
+    let flare = first.updates.iter().find(|update| update.message_template == "[1][懒癌]发作").unwrap();
+    assert_eq!(infection.target_id, flare.target_id);
+    assert_eq!(infection.caster_id, flare.caster_id);
+    assert_eq!(flare.message_rendered, "Alice[懒癌]发作");
+    assert!(
+        first
+            .updates
+            .iter()
+            .any(|update| update.hp_delta == Some(-63) && update.target_id == flare.target_id)
+    );
+
+    let skip = replay
+        .frames
+        .iter()
+        .find(|frame| frame.updates.iter().any(|u| u.message_template == "这回合什么也没做"))
+        .unwrap();
+    let visible = skip.updates.iter().filter(|update| !update.is_next_line).collect::<Vec<_>>();
+    assert_eq!(visible.len(), 2);
+    assert_eq!(visible[0].message_template, "[0]去[无畏契约]打排位了");
+    assert_eq!(visible[1].message_template, "这回合什么也没做");
+    for update in visible {
+        assert_eq!(update.caster_id, infection.caster_id);
+        assert_eq!(update.target_id, None);
+        assert_eq!((update.score, update.delay0, update.delay1), (0, 1000, 100));
+    }
+}
+
+#[test]
+fn charmed_laziness_can_infect_itself_through_being_hit() {
+    use crate::cli_api::battle::{BattleOptions, battle_replay};
+
+    let replay = battle_replay("yuri@!\n\nlazy@!", BattleOptions::default()).unwrap();
+    let frame = &replay.frames[3];
+    let lazy = frame.states.iter().find(|state| state.id_key_name == "lazy@!").unwrap();
+    let kind_and_score: Vec<_> = frame
+        .updates
+        .iter()
+        .filter(|update| !update.is_next_line)
+        .map(|update| (update.message_template.as_str(), update.score))
+        .collect();
+    assert_eq!(
+        kind_and_score,
+        [
+            ("[0]发起攻击", 0),
+            ("[1]受到[2]点伤害", 54),
+            ("[1]感染了[懒癌]", 0),
+            ("[1][懒癌]发作", 0),
+            ("[1]受到[2]点伤害", 60),
+        ]
+    );
+    assert_eq!((lazy.hp, lazy.move_point, lazy.magic_point), (210, 161, 29));
+    let yuri = replay.initial_states.iter().find(|state| state.id_key_name == "yuri@!").unwrap();
+    assert_eq!(replay.winner_ids, [yuri.id]);
+}
+
+#[test]
+fn lazy_skip_samples_the_charmed_sources_effective_team() {
+    let raw = "yuri@!\n\nparity4a\n\nparity4b\n\nlazy@!\nparity4c";
+    let mut runner = RuntimeRunner::new_from_namerena_raw(raw.to_owned()).unwrap();
+    let seventh = (0..64).filter_map(|_| runner.run_round().frame).nth(6).expect("应到达感染者的跳回合帧");
+    let events: Vec<_> = seventh.updates.updates.iter().filter(|u| u.message != "\n").collect();
+    assert_eq!(events[0].message, "[0]刷起了[抖音]");
+    assert_eq!(events[1].message, "这回合什么也没做");
+    assert_eq!(events[2].message, "[1][懒癌]发作");
+    assert_eq!(events[3].score, 57);
+    assert_eq!((runner.runtime.rng.i, runner.runtime.rng.j), (27, 83));
+}
+
+#[test]
 fn lazy_flare_keeps_running_after_its_source_is_defeated() {
     for source_alive in [true, false] {
         let mut runner = RuntimeRunner::new_from_namerena_raw(
@@ -313,7 +396,7 @@ enemy-b"
         }
 
         let frame = runtime.run_state_hooks(target, ProcMask::POST_ACTION).expect("感染者仍会在行动后发作");
-        assert!(messages_of(&frame.updates).iter().any(|message| message.contains("懒癌发作")));
+        assert!(messages_of(&frame.updates).contains(&"[1][懒癌]发作".to_owned()));
         assert!(runtime.entities.get(target).unwrap().runtime.hp < 10_000);
         assert_eq!(runtime.lazy_boss_at_boost(boss), Some(2.0), "发作并非懒癌的当前普攻");
     }
@@ -618,6 +701,7 @@ fn conan_runtime(heroes: usize, minions: usize) -> CombatRuntime {
     CombatRuntime::from_template(PreparedCombatTemplate::with_registry(templates, builder.build()))
 }
 
+/// 最多跑 64 回合直到产生可见帧并返回该 RoundOutcome（柯南对决）。
 fn next_conan_duel_frame(runner: &mut RuntimeRunner) -> RoundOutcome {
     (0..64)
         .map(|_| runner.run_round())
@@ -971,6 +1055,7 @@ fn boss_aokiji_defend_heal_caps_at_max_hp_but_message_keeps_absorbed_amount() {
     assert_eq!(updates.updates[1].param, Some(100));
 }
 
+/// 构造 boss（青雉法师）对局的 CombatRuntime。
 fn mage_aokiji_runtime() -> CombatRuntime {
     let (boss_kind, registry) = boss_test_registry();
     CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
@@ -1015,6 +1100,7 @@ fn boss_ice_skill_kind_reaches_aokiji_absorb() {
     assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 1000);
 }
 
+/// 按 attacker 构造 boss 对青雉的 CombatRuntime。
 fn boss_vs_aokiji_runtime(attacker: &str) -> CombatRuntime {
     let (boss_kind, registry) = boss_test_registry();
     CombatRuntime::from_template(PreparedCombatTemplate::with_registry(

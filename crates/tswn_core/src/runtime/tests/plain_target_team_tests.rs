@@ -1,6 +1,7 @@
 use super::*;
 use crate::runtime::control::TargetWisdom;
 
+/// 按第三队人数构造多队目标选择 fixture：actor/ally 同队、两个 chosen 为敌，另加第三队。
 fn fixture(third_team_size: usize) -> CombatRuntime {
     let config = default_custom_runtime_import_config().unwrap();
     let skills = [BuiltinActiveSkill::Fire, BuiltinActiveSkill::Quake, BuiltinActiveSkill::Rapid]
@@ -333,6 +334,7 @@ fn invalid_target_team_cannot_fall_back_to_other_players() {
     );
 }
 
+/// 按技能类型返回自动多目标选择池（Quake/Rapid）。
 fn automatic_multihit_pool(runtime: &mut CombatRuntime, skill: BuiltinActiveSkill, smart: bool) -> Vec<EntityIdx> {
     let actor = EntityIdx(0);
     match skill {

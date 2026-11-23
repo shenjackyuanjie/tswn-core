@@ -1,6 +1,6 @@
 # Runtime 压力差异输入
 
-这里保存压力 strict-diff 首次发现的原始输入；无论后续是否闭环都保留归档，避免 case 随 `target` 清理而丢失。
+这里保存压力 strict-diff 首次发现的原始输入；这些输入纳入版本控制，`target` 清理不影响本目录，已闭环与未闭环的输入都保留在此。
 
 本批输入来自 `tests/sqp6000.txt`，使用真正的 Runtime 路径运行；规模为六种模式各 200 个，共 1200 个。TS/JS 实现是正确性 oracle。首轮发现 8 个差异；全部闭环后重新运行同一规模，又发现并归档 1 个差异：
 
@@ -89,7 +89,7 @@
 维护规则：
 
 - 新发现且尚未闭环的压力差异，先把原始 input 原样放入本目录并更新上表。
-- 修复完成后，把该 input 接入长期 Runtime strict-diff 回归；不得只删除本目录中的记录。
+- 修复完成后，把该 input 接入长期 Runtime strict-diff 回归，记录随回归一并保留。
 - 只有 oracle、Runtime 输出、RNG/帧序列全部一致，才可把状态改为“已闭环”。
 - `golden.json` 冻结删除旧对象模型前的 37 项 legacy 基线；每例记录有效输入 SHA-256、`eval_rq`、胜者队伍、回合数、总分、最终 RC4 和逐回合 canonical digest。87 项 JS exact trace 继续内嵌在共享 suite 中，JSON 同时固定两部分的数量为 87 + 37。
 - 当前语料用于只读比较；历史 `freeze_runtime_golden` 二进制已删除，不能再使用旧重建命令。本轮维护不重生成输入或 golden。确需改变 oracle 语义时，先单独审查再生工具、输入来源与新预期，再审查基线差异并运行 `python scripts/check_runtime_release.py --corpus`；实际测试范围由当前 corpus 目标决定。

@@ -129,8 +129,11 @@ impl CombatRuntime {
                 .entities
                 .get_mut(owner)
                 .unwrap_or_else(|| panic!("runtime summon share owner disappeared: {}", owner.0));
+            // 饥饿退场的一拳不在名单里，但对象仍存活，血祭分摊仍可真正击倒他。
+            let object_alive = owner_entity.runtime.alive
+                || (owner_entity.runtime.hp > 0 && owner_entity.states.entry(PLAIN_SAITAMA_BOSS_STATE_KEY).is_some());
             owner_entity.runtime.hp = (owner_entity.runtime.hp - shared_damage).max(0);
-            owner_entity.runtime.hp == 0 && owner_entity.runtime.alive
+            owner_entity.runtime.hp == 0 && object_alive
         };
         updates.add(RuntimeFrame::legacy_damage_update(
             caster.0 as usize,
@@ -165,6 +168,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 取出召唤蓝图模板：确保最小代蓝图存在；开启继承时把 owner 的防御/抗性同步到蓝图并重算派生属性。
     fn plain_summon_blueprint(&mut self, actor: EntityIdx) -> PlayerTemplate {
         self.ensure_plain_minion_blueprint(actor, crate::namerena::MinionKind::Summon);
         let slot = self
@@ -191,12 +195,14 @@ impl CombatRuntime {
         template
     }
 
+    /// 解析默认召唤物实体槽的 ID。
     fn plain_summon_entity_slot(&self) -> EntitySlotId {
         self.registry
             .entity_slot_id_by_export_name(DEFAULT_CORE_SUMMON_ENTITY_EXPORT)
             .expect("default runtime profile must reserve core summoned entity slot")
     }
 
+    /// 按开关设置召唤蓝图中分摊伤害固定 lane 的等级（开为 1、关为 0）。
     fn set_plain_summon_share_level(&self, skills: &mut SkillLoadout, enabled: bool) {
         let lane = (0..skills.len())
             .find(|lane| skills.fixed_lane_key_at(*lane) == Some(crate::namerena::SUMMON_SHARE_DAMAGE_SKILL_KEY));
@@ -209,6 +215,7 @@ impl CombatRuntime {
         );
     }
 
+    /// 用新蓝图复位已记住的召唤物：沿用既有身份与 root owner，按复用开关继承技能/属性，重设伤害分享等级并重建运行态。
     fn reset_plain_summon(
         &mut self,
         actor: EntityIdx,
@@ -269,6 +276,7 @@ impl CombatRuntime {
         self.world.revive_alive(summoned, team);
     }
 
+    /// 为使魔分配唯一名字：以根实体名为基础，追加实体槽中的自增计数。
     pub fn allocate_plain_minion_name(&mut self, actor: EntityIdx) -> String {
         let root = self.plain_minion_name_root(actor);
         let counter_slot = self
@@ -294,6 +302,7 @@ impl CombatRuntime {
         format!("{root_name}?{next}")
     }
 
+    /// 沿 owner 链找到最小代名字的根实体：首个战斗使魔或链尾自身。
     fn plain_minion_name_root(&self, start: EntityIdx) -> EntityIdx {
         let mut current = start;
         loop {

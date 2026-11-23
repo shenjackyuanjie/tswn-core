@@ -15,10 +15,13 @@ use std::sync::{
 use std::time::{Duration, Instant};
 use tswn_openbox::backend::{ProgressEvent, live::LiveFeed};
 
+/// 单次轮询最多处理的实时事件数：256。
 const MAX_EVENTS_PER_POLL: usize = 256;
+/// 运行中请求重绘的间隔：100 毫秒。
 const RUNNING_REPAINT_INTERVAL: Duration = Duration::from_millis(100);
 
 impl OpenboxApp {
+    /// 请求停止当前任务：置取消令牌并将状态改为停止中。
     pub fn stop_current_task(&mut self) {
         if let Some(token) = &self.cancel_token {
             token.store(true, Ordering::Relaxed);
@@ -27,6 +30,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 在命名线程中执行任务并捕获 panic，异常时以完成事件反馈错误。
     pub(super) fn spawn_worker(&mut self, task: impl FnOnce(&LiveFeed) + Send + 'static) {
         let feed = LiveFeed::default();
         self.live_feed = Some(feed.clone());
@@ -39,6 +43,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 开始新任务：重置进度、创建取消令牌并清空实时馈送。
     pub fn begin_task(&mut self) {
         self.live_feed = None;
         self.pending_live = Default::default();
@@ -55,6 +60,7 @@ impl OpenboxApp {
         self.status = "运行中".to_string();
     }
 
+    /// 启动前失败：复位运行状态并记录错误信息。
     pub fn fail_before_start(&mut self, err: String) {
         self.running = false;
         self.cancel_requested = false;
@@ -90,6 +96,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 轮询后端事件并驱动界面重绘。
     pub fn poll_events(&mut self, ctx: &egui::Context) {
         if self.pending_live.events.is_empty()
             && self.pending_live.done.is_none()
@@ -153,6 +160,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 根据已完成数量刷新进度与速度统计。
     pub fn update_progress_stats(&mut self) {
         let Some(started_at) = self.started_at else {
             return;
@@ -173,12 +181,14 @@ impl OpenboxApp {
         };
     }
 
+    /// 向当前工具的日志追加一条普通日志。
     pub fn append_log(&mut self, text: &str) {
         let index = self.task_tool as usize;
         self.logs[index].append(text, LogKind::Plain);
     }
 }
 
+/// 把秒数格式化为 x s / x m x s / x h x m x s；非有限值显示 --。
 fn format_duration(secs: f64) -> String {
     if secs.is_nan() || secs.is_infinite() || secs < 0.0 {
         return "--".to_string();

@@ -1,6 +1,6 @@
 # tswn_openbox
 
-当前版本：`0.5.3`
+当前版本为 [`0.5.4`](CHANGELOG.md#054---2026-11-21)。
 
 `tswn_openbox` 是一个带 GUI 的本地交互面板，把常用 `tswn-cli` 工作流做成点击即用的界面。目标是能跑、无使用门槛、界面简洁。
 
@@ -18,7 +18,7 @@
 ## 编译口径
 
 部署/线上产物统一用 `--release` 且启用 `no_debug,mimalloc_alloc`；`debug` 和
-`release-fast` 只用于本地开发，不要部署。
+`release-fast` 只用于本地开发与测试。
 
 - GUI：`cargo build --release -p tswn_openbox --bin tswn_openbox --features "no_debug,mimalloc_alloc"`
 - CLI：`cargo build --release -p tswn_openbox --no-default-features --features "no_debug,mimalloc_alloc" --bin openbox-cli`
@@ -62,7 +62,7 @@ cargo run --release -p tswn_openbox --no-default-features --features "no_debug,m
 自动释放内嵌默认资源），技能榜阈值默认读 `./setting/score_now.toml`。
 数据行走 stdout，进度与状态走 stderr，方便管道与重定向。
 
-以下五个子命令与 GUI 除 `DS4` 外的五个工具页一一对应；DS4 保留独立的统一 `tswn_ds4` CLI 出口：
+`to-diy`、`namer-pf`、`cqd`（别名 `cqp`）、`pair` 和 `base` 对应 GUI 工具页。CLI 另有 [名字筛选 `filter`](#名字筛选)，DS4 使用独立的 `tswn_ds4` 命令。
 
 ```powershell
 # to-diy：-r 单号默认追加详情日志；--no-details 关闭；-f 批量不输出详情；--old / --minions 同 GUI
@@ -86,6 +86,9 @@ openbox-cli pair -l targets.txt -p players.txt --teammates mates.toml --detail t
 
 # base：单个原始名字的 128 字节 roll 与技能槽（不支持 +diy / +ol / 武器）
 openbox-cli base -r "mario@team"
+
+# filter：逐行筛选，同时设定火球熟练度和防御下限
+openbox-cli filter -f names.txt -o result.txt --skill-sklfire 60 --addr-def 90
 ```
 
 与 GUI 的刻意差异（均为 CLI 合理性考虑）：高亮颜色降级为普通行；
@@ -185,11 +188,13 @@ cargo run -p tswn_openbox --bin tswn_openbox --features ui_capture -- --capture-
 - 直接在面板中输入。
 - 勾选“从文件中读取”后选择文件。
 
-从文件读取时，界面最多展示前 10 行结果预览，运行时会读取完整文件。普通文本预览只读取文件开头；CSV 预览需要读取并解析完整文件。所有多行显示框不自动换行，内容过长时使用横向滚动。
+普通文本预览最多显示文件前 16 KiB 内的 10 条完整行。CSV 预览会读取并解析完整文件，展示前 10 行提取结果。运行任务时会重新读取完整文件。多行框支持横向滚动。
+
+Openbox 和 `openbox-cli` 读取文本时会去掉文件开头的 UTF-8 BOM，整行跳过包含无效 UTF-8 的内容。其余行保留原文和换行。界面在文件输入处显示本次预览或读取跳过的行数，`openbox-cli` 将文件路径和跳过的行数写到 stderr。靶子和队友预设也使用相同的读取规则。
 
 选好文件后可打开「高级选项」按 CSV 提取一列：`.csv` 扩展名（不区分大小写）会自动启用，其他文件默认关闭，也可手动切换。点表格列头/单元格或填写「取第几列」选列；「从第 N 行开始」按非空行计数，常见表头填 `2`；「包含第一行/第二行」相对于起始行每两行分组，可只取交替的数据行。关闭 CSV 时仍按整行输入。
 
-CSV 使用手写的逗号分隔、逐行解析，支持单行双引号字段及 `""` 转义，**不支持字段内换行或完整 RFC 4180 校验**。空行、空值和缺少所选列的行会被跳过；非空文件筛选后没有可用内容时提示错误。提取结果仍按每行一组名字交给后端。
+CSV 先跳过无效 UTF-8 行，再按剩余的非空行计算起始行与交替行筛选。解析支持单行双引号字段和 `""` 转义。空值及缺少所选列的行会被跳过，非空文件筛选后没有可用内容时提示错误。提取结果按每行一组名字交给后端。
 
 ## 输出
 
@@ -514,11 +519,11 @@ crates\tswn_openbox\src\SarasaMonoSC-Regular.ttf
 3. 按需开启 ABCP5、三人组和 Openbox 实战筛选；基础分类、SP1、八类三人阈值及归档选项在“更多设置”中。
 4. 点击运行。界面先保存配置，再在后台调用 DS4 Rust API；右侧显示阶段日志和本轮统计，底部按钮可打开结果目录。
 
-ABCP5 与三人流程需要工作目录的 `abcp5/` 模型和运行库，实战筛选直接使用内置 Rust 后端。运行按整轮完成，暂不提供中途取消；请等待历史状态归档后再关闭窗口。阶段进度不代表耗时比例。
+ABCP5 与三人流程需要工作目录的 `abcp5/` 模型和运行库，实战筛选直接使用内置 Rust 后端。运行按整轮完成，暂不提供中途取消；请等待历史状态归档后再关闭窗口。阶段进度按阶段计数，与各阶段耗时比例无关。
 
-配置读写保留额外字段；手动改换目录后，应先读取配置，防止把另一个目录的设置覆盖进来。默认增量去重会复用 `file/` 中的历史，重新评估模型或阈值时应使用新工作目录。
+配置读写保留额外字段；手动改换目录后先读取配置：未读取就写入会把另一个目录的设置覆盖进来。默认增量去重会复用 `file/` 中的历史，重新评估模型或阈值时应使用新工作目录。
 
-页面按目录、基础分类、配对、后续筛选和结果使用不同强调色。悬停字段查看对应上游参数说明；点击 ⓘ 可固定流程、阈值、历史、三人组合、模型诊断或实战筛选帮助。基础分类明确按“评分或潜力任一达标”保留，技能参数标为“技能容差”（越大越宽松），避免误当作最低分数。
+页面按目录、基础分类、配对、后续筛选和结果使用不同强调色。悬停字段查看对应上游参数说明；点击 ⓘ 可固定流程、阈值、历史、三人组合、模型诊断或实战筛选帮助。基础分类明确按“评分或潜力任一达标”保留，技能参数标为“技能容差”（数值越大越宽松，不是最低分数）。
 
 使用真实 DS4 样例校验深浅主题界面，每次生成主页面、更多设置和固定帮助三张截图：
 
@@ -577,7 +582,7 @@ stdout 是该路径的日志行（可用于新旧输出哈希对账），stderr 
 
 `filter` 从 UTF-8 文件逐行读取单个名字，所有筛选条件同时满足时将名字写入指定文件；空行跳过，输出文件会覆盖。至少需要一个条件。
 
-遇到非 UTF-8 内容时，默认报告首个错误的行号并退出。对于混合编码的名单，可显式添加 `--skip-invalid-utf8`，整行跳过无法按 UTF-8 解码的名字，并在 stderr 报告数量；其他行保持原有 Unicode 文本，不自动猜测编码或替换乱码。要保留所有名字，应先修正输入文件编码。
+`filter` 默认整行跳过非 UTF-8 内容，并在 stderr 报告跳过的行数。升级时请从脚本里删掉原有的 `--skip-invalid-utf8` 参数。
 
 ```text
 openbox-cli filter -f names.txt -o result.txt --skill-sklfire 60 --addr-def 90

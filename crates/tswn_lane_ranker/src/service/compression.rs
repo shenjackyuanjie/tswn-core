@@ -7,6 +7,7 @@
 use super::*;
 
 #[derive(Debug, Clone, serde::Deserialize)]
+/// Python 压缩求解器返回的指标集合：偏差、RMSE、仿射斜率与权重结构诊断。
 pub(super) struct InheritedCompressionMetrics {
     pub(super) big_mean_abs_diff: f64,
     pub(super) big_max_abs_diff: f64,
@@ -71,6 +72,7 @@ pub(super) struct InheritedCompressionMetrics {
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
+/// 压缩求解器的完整响应：选号、各阶段权重、指标与替换/删除路径。
 pub(super) struct InheritedCompressionSolverResponse {
     pub(super) status: String,
     pub(super) browser_initial_indices: Vec<usize>,
@@ -118,6 +120,7 @@ pub(super) struct InheritedCompressionSolverResponse {
     pub(super) regularization_path: Vec<serde_json::Value>,
 }
 
+/// 校验一组靶子索引的可行性：不重复、候选合法、账号唯一、战队上限；返回首个错误文本。
 pub(super) fn inherited_target_feasibility_error(
     indices: &[usize],
     candidates: &[TargetCandidate],
@@ -157,6 +160,7 @@ pub(super) fn inherited_target_feasibility_error(
     None
 }
 
+/// 把大靶质量与胜率矩阵写入临时 JSON 并调用内嵌 Python 求解，随后校验状态、长度、约束、权重血缘与守恒；失败时保留临时目录供审计。
 pub(super) fn run_inherited_big_target_compression_solver(
     big_weights: &[f64],
     reference_indices: &[usize],
@@ -165,7 +169,9 @@ pub(super) fn run_inherited_big_target_compression_solver(
     candidates: &[TargetCandidate],
     rate_map: &HashMap<(crate::model::GroupId, crate::model::GroupId), f64>,
 ) -> anyhow::Result<InheritedCompressionSolverResponse> {
+    /// 压缩后的目标数量：50。
     const TARGET_TOTAL: usize = 50;
+    /// 同一合并战队的靶子数上限：5。
     const OWNER_CAP: usize = 5;
     if big_weights.len() != candidates.len() {
         anyhow::bail!("大靶权重与候选数不一致：{} vs {}", big_weights.len(), candidates.len(),);

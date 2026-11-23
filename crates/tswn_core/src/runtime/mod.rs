@@ -102,6 +102,8 @@ pub use slot::{BattleSlotStorage, EntitySlotStorage, SlotError, SlotValue, Templ
 pub use trace::{RngCheckpoint, RuntimeTrace, TraceAction, TraceFrame};
 pub use world::WorldArena;
 
+/// 上游原版评分会话；默认导出继续使用支持 Clever 的扩展会话。
+pub use batch::score_test as upstream_score_test;
 pub use batch::test_session::{ScoreTestProgress, ScoreTestSession, TestSkillFrequency};
 pub use batch::{
     RuntimeBatchError, RuntimeBatchSummary, prepared_runtime_win_rate, prepared_runtime_win_rate_range,

@@ -8,13 +8,13 @@
 //! - 技能等级支持 `"40+30"` 相加与 `"2*22"` 相乘两种字符串写法。
 
 use std::collections::HashMap;
-use std::fs;
 use std::path::Path;
 
 use serde::Deserialize;
 
 use tswn_core::cli_api;
 use tswn_core::namerena::skill_name_to_id;
+use tswn_core::text_input::read_text_file;
 
 use super::score::NamerPfScores;
 
@@ -41,6 +41,7 @@ pub(super) struct SkillBoardLine {
     pub score: f64,
 }
 
+/// 技能榜中的单个技能：规范 key、中文名与等级。
 #[derive(Debug, Clone)]
 struct BuiltSkill {
     key: String,
@@ -48,10 +49,14 @@ struct BuiltSkill {
     level: u64,
 }
 
+/// 白板技能的固定 key。
 const LESS_SKILL_KEY: &str = "lessskl";
+/// 白板技能的中文显示名。
 const LESS_SKILL_CN_NAME: &str = "白板";
+/// 判定“白板组”的等级上限：全组技能等级都小于它时按白板号阈值筛选。
 const LESS_SKILL_MAX_LEVEL: u64 = 30;
 
+/// 按技能 id 排列的中文名表，用于把导出 JSON 里的技能 id 显示为中文。
 const SKILL_CN_NAMES: [&str; 35] = [
     "火球", "冰冻", "雷击", "地裂", "吸血", "投毒", "连击", "会心", "瘟疫", "命轮", "狂暴", "魅惑", "加速", "减速", "诅咒",
     "治愈", "苏生", "净化", "铁壁", "蓄力", "聚气", "潜行", "血祭", "分身", "幻术", "防御", "守护", "反弹", "护符", "护盾",
@@ -61,12 +66,13 @@ const SKILL_CN_NAMES: [&str; 35] = [
 impl SkillBoardConfig {
     /// 从 TOML 文件加载技能榜阈值。
     pub(super) fn load(path: &Path) -> Result<Self, String> {
-        let raw = fs::read_to_string(path).map_err(|err| format!("读取技能榜配置失败: {}: {err}", path.display()))?;
+        let raw = read_text_file(path).map_err(|err| format!("读取技能榜配置失败: {}: {err}", path.display()))?;
         let entries = toml::from_str::<HashMap<String, SkillBoardThreshold>>(&raw)
             .map_err(|err| format!("解析技能榜配置失败: {}: {err}", path.display()))?;
         Ok(Self { entries })
     }
 
+    /// 查询技能的阈值配置；key 未命中时回退为小写形式再查一次。
     fn threshold_for(&self, skill_key: &str) -> Option<SkillBoardThreshold> {
         self.entries
             .get(skill_key)
@@ -85,6 +91,7 @@ pub(super) fn evaluate_skill_board(
     evaluate_skill_board_for_skills(&name_skills, scores, config)
 }
 
+/// 对每个上榜技能按各指标阈值筛选，产出技能榜行列表。
 fn evaluate_skill_board_for_skills(
     name_skills: &[Vec<BuiltSkill>],
     scores: &NamerPfScores,
@@ -105,6 +112,7 @@ fn evaluate_skill_board_for_skills(
     lines
 }
 
+/// 汇总各名字组的最高等级技能；全组都低于白板上限时追加白板项。
 fn board_skills_for_names(name_skills: &[Vec<BuiltSkill>]) -> Vec<BuiltSkill> {
     let mut board_skills = highest_skills(name_skills);
     if is_less_skill_group(name_skills) {
@@ -117,6 +125,7 @@ fn board_skills_for_names(name_skills: &[Vec<BuiltSkill>]) -> Vec<BuiltSkill> {
     board_skills
 }
 
+/// 判断是否全部技能等级都低于白板上限（要求组非空）。
 fn is_less_skill_group(name_skills: &[Vec<BuiltSkill>]) -> bool {
     !name_skills.is_empty()
         && name_skills
@@ -125,6 +134,7 @@ fn is_less_skill_group(name_skills: &[Vec<BuiltSkill>]) -> bool {
             .all(|skill| skill.level < LESS_SKILL_MAX_LEVEL)
 }
 
+/// 分数达到阈值时追加一行 `<中文名><指标>` 的技能榜行。
 fn push_metric_line(
     lines: &mut Vec<SkillBoardLine>,
     skill: &BuiltSkill,
@@ -140,6 +150,7 @@ fn push_metric_line(
     }
 }
 
+/// 总分与各分项均达到阈值时追加“全能”行。
 fn push_all_line(lines: &mut Vec<SkillBoardLine>, skill: &BuiltSkill, scores: &NamerPfScores, threshold: Option<u64>) {
     if threshold.is_some_and(|limit| {
         scores.sum >= limit as f64 && scores.pp >= 8000.0 && scores.pd >= 9000.0 && scores.qp >= 6000.0 && scores.qd >= 7000.0
@@ -151,6 +162,7 @@ fn push_all_line(lines: &mut Vec<SkillBoardLine>, skill: &BuiltSkill, scores: &N
     }
 }
 
+/// 取全组最高等级（大于 0）的技能，同等级按 key 排序去重。
 fn highest_skills(name_skills: &[Vec<BuiltSkill>]) -> Vec<BuiltSkill> {
     let mut skills = name_skills.iter().flat_map(|skills| skills.iter().cloned()).collect::<Vec<_>>();
     let Some(max_level) = skills.iter().map(|skill| skill.level).max() else {
@@ -162,11 +174,13 @@ fn highest_skills(name_skills: &[Vec<BuiltSkill>]) -> Vec<BuiltSkill> {
     skills
 }
 
+/// 把名字导出为 diy 后解析其中的技能对象，得到技能列表。
 fn skills_from_name(raw: &str) -> Option<Vec<BuiltSkill>> {
     let diy = cli_api::to_diy(raw, true, false).ok()?;
     Some(extract_skill_object(&diy).map(parse_skill_object).unwrap_or_default())
 }
 
+/// 从 diy 文本中定位技能 JSON 对象的起止范围，跳过字符串与转义。
 fn extract_skill_object(diy: &str) -> Option<&str> {
     let start = diy.find("]{")? + 1;
     let mut depth = 0usize;
@@ -200,6 +214,7 @@ fn extract_skill_object(diy: &str) -> Option<&str> {
     end.map(|end| &diy[start..end])
 }
 
+/// 解析技能 JSON 对象为技能列表；无法识别或越界的技能 id 跳过。
 fn parse_skill_object(raw: &str) -> Vec<BuiltSkill> {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) else {
         return Vec::new();
@@ -228,6 +243,7 @@ fn parse_skill_object(raw: &str) -> Vec<BuiltSkill> {
     skills
 }
 
+/// 解析技能等级：数字直取，字符串支持 `a+b` 与 `a*b`，其余按 0。
 fn parse_skill_level(value: &serde_json::Value) -> u64 {
     if let Some(level) = value.as_u64() {
         return level;
@@ -244,8 +260,10 @@ fn parse_skill_level(value: &serde_json::Value) -> u64 {
     parse_u64(raw)
 }
 
+/// 解析 u64，失败按 0。
 fn parse_u64(raw: &str) -> u64 { raw.trim().parse().unwrap_or(0) }
 
+/// 把技能 key 规范为小写 `skl` 前缀形式。
 fn canonical_skill_key(raw: &str) -> String {
     let lower = raw.trim().to_ascii_lowercase();
     if lower.starts_with("skl") {

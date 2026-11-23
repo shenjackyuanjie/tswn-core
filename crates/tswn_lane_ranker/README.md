@@ -18,7 +18,7 @@ cargo run -p tswn_lane_ranker
 
 Rust 侧负责读取已保存结果、补算缺失胜率、调用 Python 求解器并保存审计结果。嵌入的 [严格校准器](tools/strict_python_calibrator.py) 和 [靶子求解器](tools/target_milp_solver.py) 在独立工作目录执行，需要可用的 Python 环境与 NumPy、pandas、SciPy、scikit-learn；普通 Rust 单元测试不代表这两条完整数值流程已验收。
 
-当前默认 Raw 校准池阈值为：单人 lane `48.0`，多人 lane `48.7`；Correct 假设替换槽位为：单人 `10`，多人 `5`。这些属于可调整的默认策略，维护时同步实际调用方和页面说明，不用只比较返回常量的测试冻结配置。
+当前默认 Raw 校准池阈值为：单人 lane `48.0`，多人 lane `48.7`；Correct 假设替换槽位为：单人 `10`，多人 `5`。这些属于可调整的默认策略；维护时同步实际调用方和页面说明，对应测试验证调用方的实际行为，不比较返回常量。
 
 ## 内部结构
 

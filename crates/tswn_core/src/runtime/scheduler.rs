@@ -18,6 +18,7 @@ use crate::runtime::world::WorldArena;
 use crate::{rc4::RC4, runtime::MOVE_POINT_THRESHOLD};
 use smallvec::SmallVec;
 
+/// 调度器选出的一次行动：行动者、目标与行动量。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ActionPlan {
     pub actor: EntityIdx,
@@ -25,6 +26,7 @@ pub struct ActionPlan {
     pub amount: i32,
 }
 
+/// 技能 hook 计划条目：owner、技能、目标策略、优先级与固定 lane。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SkillHookPlanEntry {
     pub owner: EntityIdx,
@@ -36,6 +38,7 @@ pub struct SkillHookPlanEntry {
     pub registration_order: RegistrationOrder,
 }
 
+/// 一个 owner 在某个 hook 下的技能执行计划。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillHookPlan {
     pub owner: EntityIdx,
@@ -54,6 +57,7 @@ pub(crate) struct SkillPostActionPlans {
     pub(crate) late: SmallVec<[SkillHookPlanEntry; 2]>,
 }
 
+/// 状态 hook 计划条目；同时携带编译期与运行期两种注册序。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StateHookPlanEntry {
     pub owner: EntityIdx,
@@ -64,6 +68,7 @@ pub struct StateHookPlanEntry {
     pub runtime_registration_order: u64,
 }
 
+/// 一个 owner 在某个 hook 下的状态执行计划。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateHookPlan {
     pub hook: ProcMask,
@@ -71,6 +76,7 @@ pub struct StateHookPlan {
     pub entries: SmallVec<[StateHookPlanEntry; 2]>,
 }
 
+/// 调度模式：最小模板轮转，或对齐原版的速度行动条。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum ActionSchedulerMode {
     #[default]
@@ -78,6 +84,7 @@ pub enum ActionSchedulerMode {
     LegacyStep,
 }
 
+/// 阶段调度器：推进行动条选出行动者，并构造技能/状态 hook 计划。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PhaseScheduler {
     action_mode: ActionSchedulerMode,
@@ -85,6 +92,7 @@ pub struct PhaseScheduler {
 }
 
 impl Default for PhaseScheduler {
+    /// 默认调度器：最小回合模式，无待处理冰冻解除事件。
     fn default() -> Self {
         Self {
             action_mode: ActionSchedulerMode::Minimal,
@@ -96,6 +104,7 @@ impl Default for PhaseScheduler {
 impl PhaseScheduler {
     pub(crate) fn model_ice_events(&self) -> Vec<EntityIdx> { self.ice_release_events.to_vec() }
 
+    /// 从实体推断调度模式并构造调度器。
     pub fn from_entities(entities: &EntityArena) -> Self {
         Self {
             action_mode: Self::infer_action_mode(entities),
@@ -103,18 +112,24 @@ impl PhaseScheduler {
         }
     }
 
+    /// 当前调度模式。
     pub const fn action_mode(&self) -> ActionSchedulerMode { self.action_mode }
 
+    /// 手动设置调度模式。
     pub const fn set_action_mode(&mut self, action_mode: ActionSchedulerMode) { self.action_mode = action_mode; }
 
+    /// 按当前实体重新推断调度模式。
     pub fn reset_action_mode_from_entities(&mut self, entities: &EntityArena) {
         self.action_mode = Self::infer_action_mode(entities);
     }
 
+    /// 是否使用对齐原版的速度行动条。
     pub const fn uses_legacy_step_scheduler(&self) -> bool { matches!(self.action_mode, ActionSchedulerMode::LegacyStep) }
 
+    /// 取走本次选行动期间记录的冰冻解除事件。
     pub fn take_ice_release_events(&mut self) -> SmallVec<[EntityIdx; 4]> { std::mem::take(&mut self.ice_release_events) }
 
+    /// 由实体推断调度模式：出现非默认类型且非 Boss/加成的实体时走最小模式，否则按是否存在正速度选 legacy 速度条。
     fn infer_action_mode(entities: &EntityArena) -> ActionSchedulerMode {
         let mut has_speed = false;
         for (_, entity) in entities.iter() {
@@ -135,6 +150,7 @@ impl PhaseScheduler {
         }
     }
 
+    /// 推进行动条选出本回合行动者与目标；无人达到阈值时返回 None。
     pub fn select_action(
         &mut self,
         world: &mut WorldArena,
@@ -258,6 +274,7 @@ impl PhaseScheduler {
         None
     }
 
+    /// 最小模式选行动：下一行动者攻击其首个存活敌人。
     pub fn select_minimal_action(&mut self, world: &mut WorldArena, entities: &EntityArena) -> Option<ActionPlan> {
         let actor = world.next_actor(entities)?;
         let target = world.first_alive_enemy(actor, entities)?;
@@ -265,6 +282,7 @@ impl PhaseScheduler {
         Some(ActionPlan { actor, target, amount })
     }
 
+    /// 构造 owner 在指定 hook 下的技能执行计划。
     pub fn skill_hook_plan(
         &self,
         entities: &EntityArena,
@@ -334,6 +352,7 @@ impl PhaseScheduler {
         }
     }
 
+    /// 按 POST_ACTION 的 early / late 阶段过滤技能计划。
     pub fn skill_post_action_hook_plan(
         &self,
         entities: &EntityArena,
@@ -437,6 +456,7 @@ impl PhaseScheduler {
         }
     }
 
+    /// 取延后到状态之后执行的 POST_ACTION 条目，按状态游标排序。
     pub fn deferred_skill_post_action_entries(
         &self,
         entities: &EntityArena,
@@ -467,6 +487,7 @@ impl PhaseScheduler {
             .collect()
     }
 
+    /// 构造 owner 在指定 hook 下的状态执行计划。
     pub fn state_hook_plan(&self, entities: &EntityArena, owner: EntityIdx, hook: ProcMask) -> StateHookPlan {
         let entity = entities
             .get(owner)
@@ -487,16 +508,27 @@ impl PhaseScheduler {
             if !entry.hook_mask.intersects(hook) {
                 continue;
             }
-            entries.push(StateHookPlanEntry {
+            let planned = StateHookPlanEntry {
                 owner,
                 state_id: entry.extension_state_id,
                 legacy_order_key: entry.legacy_order_key,
-                priority: entry.priority_for_hook(hook),
+                priority: entry.plan_priority_for_hook(hook, entities),
                 registration_order: entry.registration_order,
                 runtime_registration_order,
-            });
+            };
+            if matches!(hook, ProcMask::PRE_ACTION | ProcMask::POST_ACTION)
+                && entry.is_boss_infection(entities)
+                && let crate::runtime::StatePayload::CovidInfection { entries: strains, .. } = &entry.payload
+            {
+                entries.extend(strains.iter().map(|strain| StateHookPlanEntry {
+                    runtime_registration_order: strain.registration_order.unwrap_or(runtime_registration_order),
+                    ..planned
+                }));
+            } else {
+                entries.push(planned);
+            }
         }
-        entries.sort_by_key(|entry| (entry.priority, entry.registration_order));
+        entries.sort_by_key(|entry| (entry.priority, entry.registration_order, entry.runtime_registration_order));
         StateHookPlan {
             hook,
             store_generation: entity.states.generation(),

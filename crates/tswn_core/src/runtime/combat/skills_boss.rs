@@ -96,6 +96,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 读取马里奥 Boss 状态中记录的火系技能等级；没有该状态时返回 0。
     fn plain_mario_fire_level(&self, actor: EntityIdx) -> u32 {
         self.entities
             .get(actor)
@@ -150,12 +151,10 @@ impl CombatRuntime {
         if targets.is_empty() {
             return;
         }
-        updates.add(RunUpdate::new_lang(
-            keys::SKL_AOKIJI_ICE_AGE,
-            actor.0 as usize,
-            targets[0].0 as usize,
-            1,
-        ));
+        updates.add_with(|| {
+            RunUpdate::new_lang(keys::SKL_AOKIJI_ICE_AGE, actor.0 as usize, targets[0].0 as usize, 1)
+                .with_animation_targets(targets.iter().map(|target| target.0 as usize))
+        });
         let atp = self
             .entities
             .get(actor)
@@ -192,12 +191,10 @@ impl CombatRuntime {
         if targets.is_empty() {
             return;
         }
-        updates.add(RunUpdate::new_lang(
-            keys::SKL_IKARUGA_ATTACK,
-            actor.0 as usize,
-            targets[0].0 as usize,
-            1,
-        ));
+        updates.add_with(|| {
+            RunUpdate::new_lang(keys::SKL_IKARUGA_ATTACK, actor.0 as usize, targets[0].0 as usize, 1)
+                .with_animation_targets(targets.iter().map(|target| target.0 as usize))
+        });
         let atp = self
             .entities
             .get(actor)
@@ -296,6 +293,7 @@ impl CombatRuntime {
         scored.into_iter().map(|(target, _)| target).collect()
     }
 
+    /// 设置柯南的推理阶段值；推理状态必须已存在，否则 panic。
     fn set_conan_thinking(&mut self, actor: EntityIdx, value: i32) {
         let entity = self
             .entities
@@ -325,22 +323,16 @@ impl CombatRuntime {
         if thinking == -1 && targets.len() == 1 {
             thinking = 1;
             self.set_conan_thinking(actor, thinking);
-            updates.add(RunUpdate::new_lang(
-                keys::SKL_CONAN_KILL_UNKNOWN,
-                actor.0 as usize,
-                actor.0 as usize,
-                0,
-            ));
+            updates.add_with(|| {
+                RunUpdate::new_lang(keys::SKL_CONAN_KILL_UNKNOWN, actor.0 as usize, actor.0 as usize, 0).without_replay_target()
+            });
             updates.add_newline();
         }
         if thinking > 0 {
             self.set_conan_thinking(actor, thinking - 1);
-            updates.add(RunUpdate::new_lang(
-                keys::SKL_CONAN_THINKING,
-                actor.0 as usize,
-                actor.0 as usize,
-                0,
-            ));
+            updates.add_with(|| {
+                RunUpdate::new_lang(keys::SKL_CONAN_THINKING, actor.0 as usize, actor.0 as usize, 0).without_replay_target()
+            });
             return;
         }
 
@@ -355,38 +347,31 @@ impl CombatRuntime {
             .unwrap_or_else(|| panic!("unknown runtime conan target: {}", target.0))
             .runtime
             .hp = 0;
-        let kill_score = (old_hp + 80).max(0) as u32;
-        if targets.len() == 1 && thinking == 0 {
-            updates.add(RunUpdate::new_lang(
-                keys::SKL_CONAN_THINKING_FINISH,
-                actor.0 as usize,
-                actor.0 as usize,
-                0,
-            ));
-            let mut only_truth = RunUpdate::new_lang(keys::SKL_CONAN_THINKING_FINISH2, actor.0 as usize, actor.0 as usize, 0);
-            only_truth.delay1 = 2000;
-            updates.add(only_truth);
-            updates.add(RunUpdate::new_lang(
-                keys::SKL_CONAN_THINKING_FINISH3,
-                actor.0 as usize,
-                actor.0 as usize,
-                0,
-            ));
-            updates.add(RunUpdate::new_lang(
-                keys::SKL_CONAN_KILL_LAST,
-                actor.0 as usize,
-                target.0 as usize,
-                kill_score,
-            ));
+        let kill_key = if targets.len() == 1 && thinking == 0 {
+            updates.add_with(|| {
+                RunUpdate::new_lang(keys::SKL_CONAN_THINKING_FINISH, actor.0 as usize, actor.0 as usize, 0)
+                    .without_replay_target()
+            });
+            updates.add_with(|| {
+                let mut only_truth = RunUpdate::new_lang(keys::SKL_CONAN_THINKING_FINISH2, actor.0 as usize, actor.0 as usize, 0)
+                    .without_replay_target();
+                only_truth.delay1 = 2000;
+                only_truth
+            });
+            updates.add_with(|| {
+                RunUpdate::new_lang(keys::SKL_CONAN_THINKING_FINISH3, actor.0 as usize, actor.0 as usize, 0)
+                    .without_replay_target()
+            });
+            keys::SKL_CONAN_KILL_LAST
         } else {
             self.set_conan_thinking(actor, 1);
-            updates.add(RunUpdate::new_lang(
-                keys::SKL_CONAN_KILL,
-                actor.0 as usize,
-                target.0 as usize,
-                kill_score,
-            ));
-        }
+            keys::SKL_CONAN_KILL
+        };
+        // 处决本身结算体力；后续击倒只播放退场效果，死亡钩子仍按原顺序执行。
+        updates.add_with(|| {
+            let kill_score = (old_hp + 80).max(0) as u32;
+            RunUpdate::new_lang(kill_key, actor.0 as usize, target.0 as usize, kill_score).with_execution_damage(old_hp)
+        });
         let target_team = self
             .entities
             .get(target)
@@ -439,48 +424,26 @@ impl CombatRuntime {
                 "runtime mario state should be inserted"
             );
         }
+        let announcement = |key| RunUpdate::new_lang(key, actor.0 as usize, actor.0 as usize, 0).without_replay_target();
         match next_grow {
             1 => {
-                updates.add(RunUpdate::new_lang(
-                    keys::BOSS_MARIO_GROW_10,
-                    actor.0 as usize,
-                    actor.0 as usize,
-                    0,
-                ));
+                updates.add_with(|| announcement(keys::BOSS_MARIO_GROW_10));
                 entity.refresh_runtime_stats_from_template();
-                updates.add(RunUpdate::new_lang(
-                    keys::BOSS_MARIO_GROW_11,
-                    actor.0 as usize,
-                    actor.0 as usize,
-                    0,
-                ));
+                updates.add_with(|| announcement(keys::BOSS_MARIO_GROW_11));
             }
             2 => {
-                updates.add(RunUpdate::new_lang(
-                    keys::BOSS_MARIO_GROW_20,
-                    actor.0 as usize,
-                    actor.0 as usize,
-                    0,
-                ));
-                updates.add(RunUpdate::new_lang(
-                    keys::BOSS_MARIO_GROW_21,
-                    actor.0 as usize,
-                    actor.0 as usize,
-                    0,
-                ));
+                updates.add_with(|| announcement(keys::BOSS_MARIO_GROW_20));
+                updates.add_with(|| announcement(keys::BOSS_MARIO_GROW_21));
             }
             _ => {
-                updates.add(RunUpdate::new_lang(
-                    keys::BOSS_MARIO_GROW_30,
-                    actor.0 as usize,
-                    actor.0 as usize,
-                    0,
-                ));
+                updates.add_with(|| announcement(keys::BOSS_MARIO_GROW_30));
                 let lives = entity.runtime.mario_reraise_lives.unwrap_or(0) + 1;
                 entity.runtime.mario_reraise_lives = Some(lives);
-                let mut life_update = RunUpdate::new_lang(keys::BOSS_MARIO_LIFE, actor.0 as usize, actor.0 as usize, 0);
-                life_update.param = Some(lives);
-                updates.add(life_update);
+                updates.add_with(|| {
+                    let mut life_update = announcement(keys::BOSS_MARIO_LIFE);
+                    life_update.param = Some(lives);
+                    life_update
+                });
             }
         }
         entity.runtime.move_state.speed_points += 2000;
@@ -534,9 +497,12 @@ impl CombatRuntime {
             revive_update.delay0 = 3000;
             revive_update
         });
-        let mut life_update = RunUpdate::new_lang(keys::BOSS_MARIO_LIFE, target.0 as usize, target.0 as usize, 0);
-        life_update.param = Some(remaining);
-        updates.add(life_update);
+        updates.add_with(|| {
+            let mut life_update =
+                RunUpdate::new_lang(keys::BOSS_MARIO_LIFE, target.0 as usize, target.0 as usize, 0).without_replay_target();
+            life_update.param = Some(remaining);
+            life_update
+        });
         true
     }
 

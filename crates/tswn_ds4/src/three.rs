@@ -19,6 +19,7 @@ use crate::error::{Ds4Error, Ds4Result};
 use crate::model::coeffs::{MODEL_BC, MODEL_FS, MODEL_FZ, MODEL_PJ, MODEL_WC};
 use crate::model::engine::{NameFeature, PositionTables, gradient, init_pos_tables};
 
+/// 三方组合模式：FFC/WFC/FWC/WWC/RWC/RRH/WRH/PRH，各自对应单评模式与配对类型的组合。
 #[derive(Debug, Clone, Copy)]
 pub enum ThreeMode {
     Ffc,
@@ -32,6 +33,7 @@ pub enum ThreeMode {
 }
 
 impl ThreeMode {
+    /// 全部三方模式，顺序与显示名一致。
     pub const ALL: [Self; 8] = [
         Self::Ffc,
         Self::Wfc,
@@ -43,6 +45,7 @@ impl ThreeMode {
         Self::Wrh,
     ];
 
+    /// 返回三方模式的显示名（大写形式）。
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Ffc => "FFC",
@@ -56,6 +59,7 @@ impl ThreeMode {
         }
     }
 
+    /// 返回该三方模式对应的单评模式。
     pub const fn single_mode(self) -> SingleMode {
         match self {
             Self::Ffc | Self::Fwc => SingleMode::Fz,
@@ -65,6 +69,7 @@ impl ThreeMode {
         }
     }
 
+    /// 返回该三方模式对应的配对类型（FC/WC/RH）。
     pub const fn pair_type(self) -> &'static str {
         match self {
             Self::Ffc | Self::Wfc => "FC",
@@ -73,6 +78,7 @@ impl ThreeMode {
         }
     }
 
+    /// 返回该三方模式三名成员各自的单评模式，顺序为单人、二人首、二人次。
     fn member_modes(self) -> [SingleMode; 3] {
         let single = self.single_mode();
         match self.pair_type() {
@@ -84,6 +90,7 @@ impl ThreeMode {
 }
 
 #[derive(Clone)]
+/// 三人评分中的单个成员：特征、原始 name_base、初始分与梯度。
 struct Member {
     feature: NameFeature,
     original_base: [u8; 128],
@@ -92,16 +99,20 @@ struct Member {
 }
 
 #[derive(Clone)]
+/// 二人组成员对，两名成员按模式顺序持有特征与梯度。
 struct Pair {
     first: Member,
     second: Member,
 }
 
+/// 惰性初始化并返回进程级位置索引表。
 fn position_tables() -> &'static PositionTables {
+    /// position_tables 的进程级缓存，首次调用时初始化。
     static TABLES: OnceLock<PositionTables> = OnceLock::new();
     TABLES.get_or_init(init_pos_tables)
 }
 
+/// 按单评模式返回对应的 1124 项系数表。
 fn model(mode: SingleMode) -> &'static [f64; 1124] {
     match mode {
         SingleMode::Bc => &MODEL_BC,
@@ -112,6 +123,7 @@ fn model(mode: SingleMode) -> &'static [f64; 1124] {
     }
 }
 
+/// 由名称构造 Member：解析特征并预计算梯度。
 fn member(name: &str, score_init: f64, mode: SingleMode) -> Ds4Result<Member> {
     let feature = NameFeature::from_full_name(name)?;
     let original_base = feature.name_base;
@@ -125,6 +137,7 @@ fn member(name: &str, score_init: f64, mode: SingleMode) -> Ds4Result<Member> {
     })
 }
 
+/// 读取单人评分文件为 Member 列表；文件不存在时返回空表。
 fn read_singles(path: &Path, mode: SingleMode) -> Ds4Result<Vec<Member>> {
     if !path.exists() {
         return Ok(Vec::new());
@@ -148,6 +161,7 @@ fn read_singles(path: &Path, mode: SingleMode) -> Ds4Result<Vec<Member>> {
     Ok(rows)
 }
 
+/// 读取二人评分文件为 Pair 列表，应用交叉 name_base 合并并重算梯度。
 fn read_pairs(path: &Path, modes: [SingleMode; 3]) -> Ds4Result<Vec<Pair>> {
     if !path.exists() {
         return Ok(Vec::new());
@@ -184,6 +198,7 @@ fn read_pairs(path: &Path, modes: [SingleMode; 3]) -> Ds4Result<Vec<Pair>> {
     Ok(rows)
 }
 
+/// 用梯度与二阶项把基准特征增量到新特征得到得分；未过门控返回 0。
 fn score_member(base: &Member, new: &[f64; 46], mode: SingleMode, gate: bool) -> f64 {
     if !gate {
         return 0.0;
@@ -204,6 +219,7 @@ fn score_member(base: &Member, new: &[f64; 46], mode: SingleMode, gate: bool) ->
     score
 }
 
+/// 各单评模式的门控判定，与模型口径一致。
 fn gate(mode: SingleMode, x: &[f64; 46]) -> bool {
     match mode {
         SingleMode::Bc => x[29] >= 25.0,
@@ -213,6 +229,7 @@ fn gate(mode: SingleMode, x: &[f64; 46]) -> bool {
     }
 }
 
+/// 计算三人组合的增量总分并格式化输出行；低于筛值或与成员重名时返回 None。
 fn score_triple(single: &Member, pair: &Pair, modes: [SingleMode; 3], sieve: i32, rh_y_uses_x_gate: bool) -> Option<String> {
     if single.feature.name == pair.first.feature.name || single.feature.name == pair.second.feature.name {
         return None;
@@ -254,6 +271,7 @@ fn score_triple(single: &Member, pair: &Pair, modes: [SingleMode; 3], sieve: i32
     })
 }
 
+/// 以指定三方模式增量运行：结合 tmp 新数据与 file 历史数据执行增量预测，返回处理行数。
 pub fn run_incremental(root: &Path, mode: ThreeMode, sieve: i32, threads: usize) -> Ds4Result<usize> {
     let single = mode.single_mode().as_str();
     let pair = mode.pair_type();

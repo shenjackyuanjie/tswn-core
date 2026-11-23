@@ -1,5 +1,6 @@
 use super::*;
 
+/// 构造注册了暗杀技能的 CombatRuntime，并返回 (runtime, 暗杀 SkillId)。
 fn assassinate_runtime() -> (CombatRuntime, SkillId) {
     let mut builder = ExtensionRegistryBuilder::default();
     let assassinate = builder

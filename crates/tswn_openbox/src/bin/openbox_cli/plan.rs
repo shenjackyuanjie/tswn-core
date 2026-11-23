@@ -20,6 +20,7 @@ pub(super) struct MetricSpec {
 }
 
 impl MetricSpec {
+    /// 返回指标的显示名。
     pub(super) fn metric_label(&self) -> &'static str { self.metric.label() }
 }
 

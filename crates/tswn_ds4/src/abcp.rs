@@ -14,14 +14,19 @@ use crate::error::{Ds4Error, Ds4Result};
 use crate::model::engine::NameFeature;
 use crate::output::{AtomicFileWriter, append_file, write_bytes_atomic};
 
+/// 参与 ABCP5 预测的二人配对类型，同时决定缓存与 out 文件名。
 const PAIR_TYPES: [&str; 3] = ["FC", "WC", "RH"];
 
+/// 解析 ABCP5 资源目录：优先环境变量 TSWN_DS4_ABCP_DIR，否则取 root/abcp5。
 fn model_dir(root: &Path) -> PathBuf {
     std::env::var_os("TSWN_DS4_ABCP_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| root.join("abcp5"))
 }
 
+/// 调用外部 ABCP5 预测器（`abcp5.exe`、`model4.onnx`、`scale.txt`）为 input 中的名字打分并原子写入 output，返回结果行数。
+/// input 无有效行时直接写空输出并返回 0；预测失败时按 threads、threads/2、threads/4、1 依次降档重试，
+/// 每次尝试覆盖中间输出，诊断信息累积写入 output 同名的 `.failure.txt`。
 pub fn predict(root: &Path, input: &Path, output: &Path, sieve: i32, threads: usize) -> Ds4Result<usize> {
     let mut has_input = false;
     for line in BufReader::new(fs::File::open(input)?).lines() {
@@ -88,16 +93,19 @@ pub fn predict(root: &Path, input: &Path, output: &Path, sieve: i32, threads: us
     )))
 }
 
+/// 生成降档重试的线程序列：threads、threads/2、threads/4、1，去重且至少为 1。
 fn thread_attempts(threads: usize) -> Vec<usize> {
     let mut attempts = vec![threads.max(1), (threads / 2).max(1), (threads / 4).max(1), 1];
     attempts.dedup();
     attempts
 }
 
+/// 用指定 sieve 与线程数准备三方配对（three pairs）的预测输入，返回处理的记录数。
 pub fn prepare_three_pairs(root: &Path, sieve: i32, threads: usize) -> Ds4Result<usize> {
     prepare_three_pairs_with(root, |input, output| predict(root, input, output, sieve, threads))
 }
 
+/// 用注入的预测函数准备三人配对输入：按缓存跳过已评测组合，分类成功后才更新缓存。
 fn prepare_three_pairs_with(root: &Path, mut predict: impl FnMut(&Path, &Path) -> Ds4Result<usize>) -> Ds4Result<usize> {
     let work = root.join("tmp").join("abcp5_three");
     fs::create_dir_all(&work)?;
@@ -138,10 +146,12 @@ fn prepare_three_pairs_with(root: &Path, mut predict: impl FnMut(&Path, &Path) -
     Ok(count)
 }
 
+/// 用指定 sieve 与线程数对最终配对集合执行 ABCP 预测，返回预测结果行数。
 pub fn predict_final_pairs(root: &Path, sieve: i32, threads: usize) -> Ds4Result<usize> {
     predict_final_pairs_with(root, |input, output| predict(root, input, output, sieve, threads))
 }
 
+/// 最终配对预测：汇总三类二人、跳过缓存、追加结果并排序，同时输出去分数版本。
 fn predict_final_pairs_with(root: &Path, mut predict: impl FnMut(&Path, &Path) -> Ds4Result<usize>) -> Ds4Result<usize> {
     let dir = root.join("abcp5");
     fs::create_dir_all(&dir)?;
@@ -182,6 +192,7 @@ fn predict_final_pairs_with(root: &Path, mut predict: impl FnMut(&Path, &Path) -
     Ok(count)
 }
 
+/// 读取已评测组合缓存为集合；文件不存在时返回空集。
 fn load_cache(path: &Path) -> Ds4Result<HashSet<String>> {
     match fs::File::open(path) {
         Ok(file) => Ok(BufReader::new(file).lines().collect::<Result<HashSet<_>, _>>()?),
@@ -190,6 +201,7 @@ fn load_cache(path: &Path) -> Ds4Result<HashSet<String>> {
     }
 }
 
+/// 向缓存文件追加组合名，必要时创建父目录。
 fn append_cache(path: &Path, names: &[String]) -> Ds4Result<()> {
     fs::create_dir_all(path.parent().expect("缓存目录"))?;
     let mut writer = std::io::BufWriter::new(fs::OpenOptions::new().create(true).append(true).open(path)?);
@@ -200,6 +212,7 @@ fn append_cache(path: &Path, names: &[String]) -> Ds4Result<()> {
     Ok(())
 }
 
+/// 按分数降序重排预测结果并原子重写；无法解析的行丢弃。
 fn sort_predictions(path: &Path) -> Ds4Result<()> {
     let mut rows = Vec::new();
     if path.exists() {
@@ -220,6 +233,7 @@ fn sort_predictions(path: &Path) -> Ds4Result<()> {
     writer.commit()
 }
 
+/// 遍历评分文件中的二人组合名，跳过空行与无效行。
 fn for_each_pair_name(path: &Path, mut visit: impl FnMut(&str) -> Ds4Result<()>) -> Ds4Result<()> {
     if !path.exists() {
         return Ok(());
@@ -236,6 +250,7 @@ fn for_each_pair_name(path: &Path, mut visit: impl FnMut(&str) -> Ds4Result<()>)
     Ok(())
 }
 
+/// 把 ABCP5 预测的二人按特征门控分类写入 FC/WC/RH 三人输入文件。
 fn classify_pairs(predicted: &Path, tmp: &Path) -> Ds4Result<()> {
     let mut outputs = [
         AtomicFileWriter::new(&tmp.join("new_three_FC.txt"))?,
@@ -287,10 +302,12 @@ fn classify_pairs(predicted: &Path, tmp: &Path) -> Ds4Result<()> {
     Ok(())
 }
 
+/// 计算 C++ 兼容的 CFZ 分（x[1..7] 线性组合），用于二人成员排序。
 fn cfz(feature: &NameFeature) -> i32 {
     ((feature.x[1] - feature.x[2] + feature.x[3] + feature.x[5] - feature.x[6]) * 2.0 + feature.x[4] + feature.x[7]) as i32
 }
 
+/// FS 特征门控判定：按 x[31]、x[32] 与交叉项的线性组合是否达到 50.0，决定样本是否通过 FS 筛选。
 pub fn fs_gate(x: &[f64; 46]) -> bool { x[31] * 2.0 + x[32] + 0.01 * x[31] * x[19] + 0.01 * x[31] * x[36] >= 50.0 }
 
 #[cfg(test)]

@@ -15,12 +15,16 @@ use crate::model::{
 };
 use crate::parser::ParsedGroup;
 use crate::team::TeamDsu;
+/// 组合与成员的增删查及屏蔽状态。
 mod groups;
+/// lane 结果、进度与状态读写。
 mod results;
+/// 建表与兼容列迁移。
 mod schema;
 
 pub use groups::InsertGroupOutcome;
 
+/// SQLite 数据库句柄：Mutex 保护的连接与文件路径，供排名、队伍与服务层复用。
 #[derive(Clone)]
 pub struct Db {
     conn: Arc<Mutex<Connection>>,
@@ -28,6 +32,7 @@ pub struct Db {
 }
 
 impl Db {
+    /// 打开（或创建）SQLite 数据库，启用外键约束并返回句柄。
     pub fn open(path: &str) -> anyhow::Result<Self> {
         let conn = Connection::open(path).with_context(|| format!("open sqlite database: {path}"))?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
@@ -39,8 +44,10 @@ impl Db {
         Ok(db)
     }
 
+    /// 返回数据库文件路径。
     pub fn path(&self) -> &str { self.path.as_str() }
 
+    /// 以 lane 规模与类型创建排队中的任务，返回任务 ID。
     pub fn create_job(&self, lane_size: usize, kind: &str) -> anyhow::Result<JobId> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -51,6 +58,7 @@ impl Db {
         Ok(conn.last_insert_rowid())
     }
 
+    /// 更新任务状态与可选错误信息，并刷新时间戳。
     pub fn set_job_status(&self, job_id: JobId, status: &str, error: Option<&str>) -> anyhow::Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -60,6 +68,7 @@ impl Db {
         Ok(())
     }
 
+    /// 按 ID 查询任务；不存在时返回 None。
     pub fn job(&self, job_id: JobId) -> anyhow::Result<Option<LaneJob>> {
         let conn = self.conn.lock().unwrap();
         let job = conn
@@ -80,6 +89,7 @@ impl Db {
         Ok(job)
     }
 
+    /// 从 teams 表加载队伍并查集。
     pub fn load_team_dsu(&self) -> anyhow::Result<TeamDsu> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare("SELECT name, parent FROM teams")?;
@@ -91,6 +101,7 @@ impl Db {
         Ok(TeamDsu::from_pairs(pairs))
     }
 
+    /// 在单个事务中整体替换 teams 表的并查集数据。
     pub fn save_team_dsu(&self, dsu: &TeamDsu) -> anyhow::Result<()> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;

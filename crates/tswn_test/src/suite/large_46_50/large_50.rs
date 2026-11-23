@@ -4,6 +4,7 @@ use super::*;
 ///
 /// 使用完整规范化回放而非去重后的消息集合，总分固定为 3912，并检查轮数预算。
 pub fn large_50<E: crate::EngineAdapter>() {
+    /// large_50 用例的内嵌对局输入。
     const CASE: &str = r#"我力 7#W2ib8D@仙蛊屋
 万我 68#huMG43@仙蛊屋
 

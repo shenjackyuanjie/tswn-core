@@ -14,6 +14,7 @@ use tsify::Ts;
 use tswn_core::cli_api::battle::{BattleOptions, BattlePlayerState, BattleReplayFrame, BattleSession, BattleUpdate};
 use wasm_bindgen::prelude::*;
 
+/// 把 core 玩家状态转换为 wasm 侧 PlayerState。
 fn state_from_core(state: &BattlePlayerState) -> PlayerState {
     PlayerState {
         id: state.id,
@@ -54,6 +55,7 @@ fn state_from_core(state: &BattlePlayerState) -> PlayerState {
         status_labels: state.status_labels.clone(),
     }
 }
+/// 把语气字符串映射为 MessageTone。
 fn tone(value: &str) -> MessageTone {
     match value {
         "damage" => MessageTone::Damage,
@@ -63,14 +65,17 @@ fn tone(value: &str) -> MessageTone {
         _ => MessageTone::Normal,
     }
 }
+/// 把 core 更新转换为 UpdateView（legacy 展示口径）。
 fn update_from_core(update: BattleUpdate) -> UpdateView {
+    let update = update.into_legacy_display();
+    let (caster_id, target_id) = update.legacy_ids();
+    let hp_delta = update.legacy_hp_delta();
     UpdateView {
         score: update.score,
         delay0: update.delay0,
         delay1: update.delay1,
-        caster_id: update.caster_id.unwrap_or(0),
-        // 旧 Fight API 的 target_id 是数字；这些无目标起手历史上填的是自身 ID。
-        target_id: update.target_id.or(update.caster_id).unwrap_or(0),
+        caster_id,
+        target_id,
         target_ids: update.target_ids,
         update_type: match update.update_type {
             "win" => UpdateTypeView::Win,
@@ -81,10 +86,11 @@ fn update_from_core(update: BattleUpdate) -> UpdateView {
         message_template: update.message_template,
         message_rendered: update.message_rendered,
         param: update.param,
-        hp_delta: update.hp_delta,
+        hp_delta,
         tone: tone(update.tone),
     }
 }
+/// 把 core 回放帧转换为 RoundFrame。
 fn frame_from_core(frame: BattleReplayFrame) -> RoundFrame {
     RoundFrame {
         finished: frame.finished,
@@ -143,6 +149,7 @@ pub struct FightSession {
     capture_replay: bool,
 }
 impl FightSession {
+    /// 内部构造：从原始输入与选项创建战斗会话（不安装 panic hook）。
     pub fn new_internal(raw_input: String, options: FightOptions) -> WasmResult<Self> {
         let session = BattleSession::new(
             &raw_input,
@@ -218,26 +225,36 @@ impl FightSession {
 
 #[wasm_bindgen]
 impl FightSession {
+    /// JS 构造函数：创建战斗会话并安装 panic hook。
     #[wasm_bindgen(constructor)]
     pub fn new(raw_input: String, options: Option<Ts<FightOptions>>) -> WasmResult<FightSession> {
         crate::install_panic_hook();
         let options = ts_in(options)?;
         Self::new_internal(raw_input, options)
     }
+    /// 玩家元数据列表。
     pub fn players(&self) -> WasmResult<Vec<Ts<PlayerMeta>>> { ts_out_vec(&self.players) }
+    /// 当前玩家状态列表。
     pub fn state(&self) -> WasmResult<Vec<Ts<PlayerState>>> { ts_out_vec(&self.state_vec()) }
+    /// 是否正常结束。
     pub fn is_finished(&self) -> bool { self.session.is_finished() }
+    /// 是否已终止（含截断）。
     pub fn is_done(&self) -> bool { self.session.is_done() }
+    /// 胜者 ID 列表。
     pub fn winner_ids(&self) -> WasmResult<Ts<WinnerIds>> { ts_out(&self.winner_ids_value()) }
+    /// 推进一个可见回合并返回该帧。
     pub fn step(&mut self) -> WasmResult<Ts<RoundFrame>> { self.step_internal().and_then(|frame| ts_out(&frame)) }
+    /// 运行到结束（可限制轮数），返回完整回放。
     pub fn run_to_end(&mut self, limit: Option<usize>) -> WasmResult<Ts<FightReplay>> {
         self.run_to_end_internal(limit).and_then(|replay| ts_out(&replay))
     }
 }
 
+/// 一次性执行战斗并返回完整回放。
 pub fn fight_impl(raw_input: String, options: FightOptions) -> WasmResult<FightReplay> {
     FightSession::new_internal(raw_input, options)?.run_to_end_internal(None)
 }
+/// 一次性执行战斗并返回摘要。
 pub fn fight_summary_impl(raw_input: String, options: FightOptions) -> WasmResult<FightSummary> {
     let mut session = FightSession::new_internal(raw_input, options)?;
     let replay = session.run_to_end_internal(None)?;
@@ -476,6 +493,38 @@ seed:7@!"#;
         assert!(legacy.is_done() && legacy.is_finished());
         assert!(legacy.step_internal().unwrap().updates.is_empty());
         assert_eq!(legacy.session.result(), canonical.result());
+    }
+
+    #[test]
+    fn boss_replay_additions_preserve_legacy_update_fields() {
+        for (raw, message, raw_caster, raw_target, raw_delay0, raw_delay1) in [
+            ("thanos@!\n\nfighter25", "[1]消失了", 1, 3, 1000, 100),
+            ("aokiji@!\n\na\nb", "[0]使用[冰河时代]", 0, 2, 1000, 100),
+            ("conan@!\n\nmario@!", "[1]", 0, 1, 1000, 100),
+            ("conan@!\n\nmario@!", "真相只有一个", 0, 0, 1000, 2000),
+            ("conan@!\n\nmario@!", "[0]满血复活", 1, 1, 3000, 100),
+            ("slime@!\n\nAlice", "[0]攻击力上升", 1, 1, 1000, 100),
+            (
+                "mario@!\n\nparity17a\nparity17b\n\nparity17c",
+                "[1]从[铁壁]中解除",
+                3,
+                3,
+                1000,
+                100,
+            ),
+        ] {
+            let replay = fight_impl(raw.to_owned(), FightOptions::default()).unwrap();
+            let update = replay
+                .frames
+                .iter()
+                .flat_map(|frame| &frame.updates)
+                .find(|update| update.message_template == message)
+                .unwrap();
+            assert_eq!((update.caster_id, update.target_id), (raw_caster, raw_target), "{message}");
+            assert_eq!((update.delay0, update.delay1), (raw_delay0, raw_delay1), "{message}");
+            assert!(update.target_ids.is_empty());
+            assert_eq!((update.param, update.hp_delta), (None, None), "{message}");
+        }
     }
 
     #[test]

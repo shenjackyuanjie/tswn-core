@@ -21,6 +21,7 @@ use super::score::BatchRateSummary;
 use super::score::{eval_rq, outer_thread_spec};
 use super::types::{BatchRateInput, ProgressEvent};
 
+/// matchup 分块窗口：4096，控制单批驻留内存。
 const MATCHUP_WINDOW: usize = 4096;
 
 /// 同步执行候选组对靶子的批量胜率，借 send 传回日志、进度及 Done(Result)。
@@ -35,6 +36,7 @@ pub fn run_batch_rate_observed(input: BatchRateInput, send: impl Fn(ProgressEven
     run_batch_rate_windowed(input, send, observer, MATCHUP_WINDOW);
 }
 
+/// 按窗口分批执行批量胜率：解析靶子与选手，逐块计算并汇总输出。
 fn run_batch_rate_windowed(input: BatchRateInput, send: impl Fn(ProgressEvent), observer: ResultObserver<'_>, window: usize) {
     let (target_groups, target_factors) = if input.target_factor_enabled {
         match parse_factored_target_groups(&input.target_text) {
@@ -310,6 +312,7 @@ fn run_batch_rate_windowed(input: BatchRateInput, send: impl Fn(ProgressEvent), 
     send(ProgressEvent::Done(Ok(final_message)));
 }
 
+/// 一个候选组的批量结果：标签、汇总、权重与逐靶子明细。
 struct BatchRateJobResult {
     label: String,
     summary: BatchRateSummary,
@@ -317,10 +320,12 @@ struct BatchRateJobResult {
     detail_rates: Vec<(f64, String)>,
 }
 
+/// 把多行组文本拆为去空行的成员列表。
 fn group_lines(group: &str) -> Vec<String> {
     group.lines().map(str::trim).filter(|name| !name.is_empty()).map(str::to_owned).collect()
 }
 
+/// 按文件阈值写出该组结果行（Log/JSONL/Pure）。
 fn emit_batch_rate_result(
     result: &BatchRateJobResult,
     input: &BatchRateInput,

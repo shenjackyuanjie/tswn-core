@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime::update::RunUpdateHp;
 
 /// `SklS11` 强化提示里的属性名，按语言包 `detail` 的槽位顺序拆分得到。
 const WEAPON_S11_ATTR_NAMES: [&str; 7] = ["攻", "防", "速", "敏", "魔", "抗", "智"];
@@ -129,7 +130,7 @@ impl CombatRuntime {
     /// 0.5.5 `RinickModifierPreAction.aN`：行动前清除自身负向状态。
     ///
     /// 解除消息只在体力大于 0 时输出，火伤状态没有解除文本；只要产生了解除消息，
-    /// 「使用[属性修改器]」就会被插回本段更新开头，并在末尾补一个换行。
+    /// 「使用\[属性修改器\]」就会被插回本段更新开头，并在末尾补一个换行。
     /// 身份分支的隐身技能以更高优先级覆盖了强制分身返回值，因此这里不复刻该分支。
     pub fn run_plain_rinick_modifier_pre_action(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
         use crate::runtime::lang::keys;
@@ -191,7 +192,7 @@ impl CombatRuntime {
         if updates.capture_updates {
             updates.updates.insert(
                 insert_at,
-                crate::runtime::update::RunUpdate::new_lang(keys::WEAPON_R_MODIFIER_USE, actor.0 as usize, actor.0 as usize, 60),
+                RunUpdate::new_lang(keys::WEAPON_R_MODIFIER_USE, actor.0 as usize, actor.0 as usize, 60).without_target(),
             );
         }
         for (had_state, message) in [
@@ -243,50 +244,29 @@ impl CombatRuntime {
             entity.states.clear_legacy_key(legacy_order_key);
         }
 
-        let factor = entity.template.clone_build.as_ref().map_or(0.0, |build| build.name_factor());
-        let scale = |value: u32, divisor: f64| (f64::from(value) * (1.0 - factor / divisor)).round() as i32;
-        let mut q = raw;
-        let mut floored = [false; 7];
-        for index in 0..7 {
-            if q[index] < 63 {
-                q[index] = 63;
-                floored[index] = true;
-            }
+        let mut attrs = raw;
+        let factor = entity.template.clone_build.as_ref().map_or(0.0, CloneBuildData::name_factor);
+        let stats = CloneBuildData::derive_rinick_floor(&mut attrs, factor);
+        if let Some(build) = &mut entity.template.clone_build {
+            build.attrs = attrs;
         }
-        let panel = |index: usize, divisor: f64| {
-            if floored[index] { 63 } else { scale(q[index], divisor) }
-        };
-        let wisdom = panel(6, 80.0);
-        let stats = CloneDerivedStats {
-            max_hp: q[7] as i32,
-            attack: panel(0, 128.0),
-            magic: panel(4, 128.0),
-            wisdom,
-            speed: if floored[2] { 223 } else { scale(q[2], 128.0) + 160 },
-            defense: panel(1, 128.0),
-            resistance: panel(5, 128.0),
-            agility: panel(3, 128.0),
-            at_boost_bits: entity.template.at_boost_bits,
-            at_boost_millionths: entity.template.at_boost_millionths,
-            // legacy 的 `ci()` 在 `ar` 抬升前计算总和，而 `ar` 会把 63 永久写回 `q`；
-            // 这里直接按收敛后的值记录。
-            attr_sum: q[..7].iter().sum(),
-            atk_sum: (q[0] as i32 - q[1] as i32 + q[2] as i32 + q[4] as i32 - q[5] as i32) * 2 + q[3] as i32 + q[6] as i32,
-            attract_bits: 32768.0_f64.to_bits(),
-        };
         entity.apply_derived_stats(stats);
-        entity.template.magic_point = wisdom >> 1;
-        let max_hp = entity.template.max_hp;
-        entity.refresh_runtime_stats_from_template();
+        entity.template.magic_point = entity.runtime.wisdom >> 1;
+        let max_hp = stats.max_hp;
         entity.runtime.hp = max_hp;
-        entity.runtime.magic_point = wisdom >> 1;
+        entity.runtime.magic_point = entity.template.magic_point;
 
-        let mut revive_update =
-            crate::runtime::update::RunUpdate::new_lang(keys::BOSS_MARIO_REVIVE, target.0 as usize, target.0 as usize, 0);
+        let mut revive_update = RunUpdate::new_lang(keys::BOSS_MARIO_REVIVE, target.0 as usize, target.0 as usize, 0)
+            .without_target()
+            .with_hp_changes([RunUpdateHp {
+                player: target.0 as usize,
+                before: 0,
+                after: max_hp,
+            }]);
         revive_update.delay0 = 3000;
         updates.add(revive_update);
         let mut life_update =
-            crate::runtime::update::RunUpdate::new_lang(keys::BOSS_MARIO_LIFE, target.0 as usize, target.0 as usize, 0);
+            RunUpdate::new_lang(keys::BOSS_MARIO_LIFE, target.0 as usize, target.0 as usize, 0).without_replay_target();
         life_update.param = Some(remaining);
         updates.add(life_update);
         self.spawn_plain_rinick_clones_into(target, updates);
@@ -303,13 +283,12 @@ impl CombatRuntime {
         let owner_team = self.plain_effective_team(owner);
         let mut total_alive = 0i64;
         let mut team_alive = 0i64;
-        for (_, entity) in self.entities.iter() {
-            if entity.runtime.hp <= 0 {
-                continue;
-            }
-            total_alive += 1;
-            if entity.runtime.team == owner_team {
-                team_alive += 1;
+        for &index in self.world.flat_alive() {
+            if let Some(entity) = self.entities.get(index) {
+                total_alive += 1;
+                if entity.runtime.team == owner_team {
+                    team_alive += 1;
+                }
             }
         }
         let count = ((total_alive - team_alive) >> 1) - team_alive;
@@ -327,7 +306,7 @@ impl CombatRuntime {
             .expect("default runtime profile must register core minion counter slot");
 
         let owner_move_points = self.rng.r255() as i32 * 4 + 1024;
-        let (owner_name, owner_display_name, clone_build, clone_skills, covid_mask) = {
+        let (owner_name, owner_display_name, owner_clan, clone_build, clone_skills, covid_mask) = {
             let entity = self
                 .entities
                 .get_mut(owner)
@@ -347,6 +326,7 @@ impl CombatRuntime {
             (
                 entity.template.name.clone(),
                 entity.template.display_name.clone(),
+                entity.template.clan_name.clone(),
                 clone_build,
                 clone_skills,
                 entity.template.covid_mask,
@@ -354,16 +334,11 @@ impl CombatRuntime {
         };
 
         updates.add_newline();
-        updates.add(crate::runtime::update::RunUpdate::new_lang(
-            keys::WEAPON_R_MODIFIER_USE,
-            owner.0 as usize,
-            owner.0 as usize,
-            60,
-        ));
+        updates.add(RunUpdate::new_lang(keys::WEAPON_R_MODIFIER_USE, owner.0 as usize, owner.0 as usize, 60).without_target());
 
         for _ in 0..count {
             let clone_move_points = self.rng.r255() as i32 * 4 + 1024;
-            let clone_build = clone_build.child();
+            let clone_build = clone_build.rinick_child();
             let stats = clone_build.derive_stats();
             let next_minion_index = match self
                 .entities
@@ -383,14 +358,16 @@ impl CombatRuntime {
                 .set(counter_slot, SlotValue::U64(next_minion_index + 1))
                 .expect("runtime core minion counter slot must exist");
             let next_entity = self.entities.len();
+            let clone_name = format!("{owner_name}?{next_minion_index}");
             let mut template = PlayerTemplate::with_kind(
                 next_entity + 1,
-                format!("{owner_name}?{next_minion_index}"),
+                clone_name.clone(),
                 clone_kind,
                 owner_team,
                 stats.max_hp.max(1),
                 stats.attack.max(0),
             )
+            .with_identity_names(format!("{clone_name}@{owner_clan}"), owner_clan.clone())
             .with_display_name(owner_display_name.clone())
             .with_magic(stats.magic.max(0))
             .with_magic_point((stats.wisdom >> 1).max(0))
@@ -404,6 +381,7 @@ impl CombatRuntime {
             .with_skill_loadout(clone_skills.clone());
             template.clone_build = Some(clone_build);
             template.covid_mask = covid_mask;
+            template.rinick = Some(Box::default());
             updates.add_newline();
             self.effects.push(QueuedEffect::SpawnWithMessage {
                 caster: owner,

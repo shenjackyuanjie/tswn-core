@@ -1,5 +1,6 @@
 use super::*;
 
+/// 按等级构造注册了自动复活技能（DIE hook）的 CombatRuntime。
 fn reraise_runtime(level: u32) -> CombatRuntime {
     let mut builder = ExtensionRegistryBuilder::default();
     let reraise = builder
@@ -25,6 +26,7 @@ fn reraise_runtime(level: u32) -> CombatRuntime {
     runtime
 }
 
+/// 构造一份 PassiveDecision，activate 与 success 同取 success。
 fn decision(actor: usize, skill: &str, success: bool) -> PassiveDecision {
     PassiveDecision {
         actor,
@@ -52,6 +54,22 @@ fn reraise_is_automatic_in_manual_battles_and_uses_core_rng() {
         assert!(runtime.control.pending_passive().is_none());
         assert_rng_state_eq(&runtime.rng, &expected_rng);
     }
+}
+
+#[test]
+fn plain_reraise_restores_the_rolled_hp_even_above_max_hp() {
+    let mut runtime = reraise_runtime(128);
+    let owner = EntityIdx(1);
+    runtime.entities.get_mut(owner).unwrap().template.max_hp = 1;
+    let mut expected_rng = runtime.rng.clone();
+    expected_rng.r127();
+    let hp = expected_rng.r16() as i32;
+    assert!(hp > 1);
+
+    runtime.drain_die_hooks_into(owner, &mut RunUpdates::new());
+
+    assert_eq!(runtime.entities.get(owner).unwrap().runtime.hp, hp);
+    assert_rng_state_eq(&runtime.rng, &expected_rng);
 }
 
 #[test]

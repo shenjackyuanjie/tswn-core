@@ -9,7 +9,7 @@
 //! | --- | --- | --- |
 //! | [`BattleSession`] | 规范的逐帧对局 | 按需 `next_frame`，返回 core DTO |
 //! | [`battle_replay`] | 完整回放 | 同步收集整场 |
-//! | [`WinRateSession`] | 大批胜率与进度 | 主动分批 step，调用方负责让出事件循环 |
+//! | [`WinRateSession`] / [`ScoreTestSession`] | 大批胜率或交互评分 | 主动分批 step，调用方负责调度 |
 //! | [`win_rate_sync`] | 小批同步胜率 | 调用完成前不让出事件循环 |
 //! | [`FightSession`] / [`fight()`] | 兼容旧页面的字段投影 | 保留已有页面使用的接口形状 |
 //! | [`name_to_png_bytes`] / [`to_diy`] | 图标及输入格式导出 | 同步 helper |
@@ -50,13 +50,21 @@
 //! 打包、网页运行、Node/Bun 验证和资源路径见
 //! [WASM 使用说明](https://github.com/shenjackyuanjie/tswn-core/tree/main/crates/tswn_wasm)。
 
+/// 对局会话的 wasm 绑定。
 mod battle;
+/// tsify 边界转换辅助。
 mod convert;
+/// wasm 层错误类型与构造函数。
 mod error;
+/// 回放帧、状态与更新的视图转换。
 mod fight;
+/// 向 JS 暴露的数据模型。
 mod model;
+/// 旧版 UpdateView 的状态标签兼容。
 mod render;
+/// 评分测试会话导出。
 mod score_test;
+/// 分批胜率会话导出。
 mod win_rate;
 
 use std::sync::Once;
@@ -77,23 +85,29 @@ pub use score_test::ScoreTestSession;
 use wasm_bindgen::prelude::*;
 pub use win_rate::WinRateSession;
 
+/// 确保 panic hook 只安装一次。
 static PANIC_HOOK: Once = Once::new();
 
 /// 仅安装一次控制台 panic hook；用于诊断，不提供 catch 或业务错误转换。
 pub fn install_panic_hook() { PANIC_HOOK.call_once(console_error_panic_hook::set_once); }
 
+/// WASM 模块入口：安装 panic hook。
 #[wasm_bindgen(start)]
 pub fn wasm_start() { install_panic_hook(); }
 
+/// 返回本 crate 的版本号。
 #[wasm_bindgen]
 pub fn version() -> String { env!("CARGO_PKG_VERSION").to_string() }
 
+/// 返回 tswn_core 的版本号。
 #[wasm_bindgen]
 pub fn core_version() -> String { tswn_core::version().to_string() }
 
+/// 返回普通对局的默认评估口径。
 #[wasm_bindgen]
 pub fn default_eval_rq() -> f64 { tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ }
 
+/// 返回胜率计算的评估口径。
 #[wasm_bindgen]
 pub fn win_rate_eval_rq() -> f64 { tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ }
 
@@ -201,6 +215,7 @@ pub fn team_win_rate_summary(
         .and_then(|result| ts_out(&result))
 }
 
+/// 计算 target 对多个 against 的胜率汇总，可指定总轮数与 eval_rq。
 #[wasm_bindgen]
 pub fn group_win_rate_summary(
     target: String,
@@ -249,6 +264,7 @@ pub fn namer_pf(
         .and_then(|results| ts_out_vec(&results))
 }
 
+/// 批量计算选手组对靶子组的平均胜率，按标签返回汇总。
 #[wasm_bindgen]
 pub fn batch_rate(
     target_groups: Vec<String>,
@@ -298,6 +314,7 @@ pub fn batch_rate_factored(
     .and_then(|results| ts_out_vec(&results))
 }
 
+/// 计算选手与队友组合的配对表现，返回逐项结果。
 #[wasm_bindgen]
 pub fn pair_rate(
     target_groups: Vec<String>,
@@ -351,12 +368,14 @@ pub fn pair_rate_factored(
     .and_then(|results| ts_out_vec(&results))
 }
 
+/// 用默认 custom runtime 运行一次规范化对局，返回标准化运行结果。
 #[wasm_bindgen]
 pub fn default_custom_runtime_normalized_run(raw_input: String, max_rounds: usize) -> WasmResult<Ts<RuntimeNormalizedRunView>> {
     install_panic_hook();
     default_custom_runtime_normalized_run_impl(raw_input, max_rounds).and_then(|run| ts_out(&run))
 }
 
+/// 调用 core 默认 custom Runtime 规范回放，并转换为 JS 视图。
 fn default_custom_runtime_normalized_run_impl(raw_input: String, max_rounds: usize) -> WasmResult<RuntimeNormalizedRunView> {
     tswn_core::cli_api::default_custom_runtime_normalized_run(&raw_input, max_rounds)
         .map(tswn_core::cli_api::JsonRuntimeNormalizedRun::from)
@@ -399,7 +418,7 @@ pub fn battle_replay_with_actions(
 /// 卡牌前端的兼容入口：入参校验与 [`battle_replay_with_actions`] 相同，运行时语义更宽松。
 ///
 /// 点名的技能放不出来（未装备、MP 不足）时降级为普通攻击，并在战报里写
-/// 「[1]的指定技能无法生效，改为普通攻击」；选不出目标时暂停并保留这一手。
+/// 「\[1\]的指定技能无法生效，改为普通攻击」；选不出目标时暂停并保留这一手。
 /// 非法三元组、编号越界与不存在的行动者仍然抛 INVALID_ARGUMENT。
 #[wasm_bindgen(unchecked_return_type = "BattleReplay")]
 pub fn battle_replay_forced(
@@ -417,9 +436,11 @@ fn planned_actions(actions: &[u32]) -> WasmResult<Vec<PlannedAction>> {
     tswn_core::runtime::decode_actions(actions).map_err(error::invalid_argument)
 }
 
+/// 返回 forced action 的命中计数（诊断用）。
 #[wasm_bindgen]
 pub fn forced_hits() -> u32 { tswn_core::runtime::forced_action::hits() }
 
+/// 返回 forced action 的触发计数（诊断用）。
 #[wasm_bindgen]
 pub fn forced_taken() -> u32 { tswn_core::runtime::forced_action::taken() }
 

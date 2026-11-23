@@ -7,6 +7,7 @@
 use tswn_core::runtime::update::{RunUpdate, UpdateType};
 use tswn_core::runtime::{EntityIdx, RuntimeRunner};
 
+/// 把实体 id 解析为 diff 中使用的显示名；找不到时退化为 `#id`。
 fn runtime_plr_name_diff(runner: &RuntimeRunner, id: usize) -> String {
     let Ok(entity_id) = u32::try_from(id) else {
         return format!("#{id}");
@@ -19,6 +20,7 @@ fn runtime_plr_name_diff(runner: &RuntimeRunner, id: usize) -> String {
         .unwrap_or_else(|| format!("#{id}"))
 }
 
+/// 把单条 `RunUpdate` 格式化为 diff 行文本：施法者、目标，以及参数或目标列表。
 fn fmt_runtime_update_diff(runner: &RuntimeRunner, update: &RunUpdate) -> String {
     let caster = runtime_plr_name_diff(runner, update.caster);
     let target = runtime_plr_name_diff(runner, update.target);
@@ -38,6 +40,7 @@ fn fmt_runtime_update_diff(runner: &RuntimeRunner, update: &RunUpdate) -> String
     update.message.replace("[0]", &caster).replace("[1]", &target).replace("[2]", &targets)
 }
 
+/// 规整 diff 行：去掉内部计数器与方括号标记后 trim。
 fn normalize_diff_trace_line(line: String) -> String {
     line.replace("[s_counter]", "")
         .replace("[s_dmg160]", "")
@@ -49,6 +52,7 @@ fn normalize_diff_trace_line(line: String) -> String {
         .to_string()
 }
 
+/// 推进最多 max_rounds 个回合并收集 diff 行，返回 (行, 回合数, 总分数)；normalize 控制是否规整行文本。
 pub(super) fn collect_runtime_diff_lines(
     runner: &mut RuntimeRunner,
     max_rounds: usize,

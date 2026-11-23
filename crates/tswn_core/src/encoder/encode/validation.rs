@@ -23,6 +23,7 @@ pub(super) fn dim_path(dim: &str) -> String {
     name.to_owned()
 }
 
+/// 取指定维度在 profile 中的容量上限。
 fn profile_limit(profile: &ProfileSpec, dim: &str) -> usize {
     let index = CAPACITY_DIMS.iter().position(|candidate| *candidate == dim).expect("capacity dim");
     profile.dims()[index]
@@ -31,6 +32,7 @@ fn profile_limit(profile: &ProfileSpec, dim: &str) -> usize {
 impl FeatureEncoder {
     // ---------------------------------------------------------------- 校验
 
+    /// 编码前校验模型态：schema 版本、未定胜负与各项容量，返回容量度量。
     /// 状态校验：schema、终局门禁、输入队伍、实体唯一性、全部引用域、压缩标志保留位、
     /// 载荷 kind 与分支匹配、槽语义白名单、容量预检。
     ///

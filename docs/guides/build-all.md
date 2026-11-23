@@ -101,7 +101,7 @@ cargo build -p tswn_openbox --release --features no_debug,mimalloc_alloc
 
 ### PGO 状态
 
-CLI 的独立 PGO 流程可使用 `python scripts/pgo_build.py --kind cli`，要求匹配 rustc 的 LLVM 大版本，且训练需在本机单线程运行。性能结论需重新按同机 A/B 测量，历史收益不作为当前保证。
+CLI 的独立 PGO 流程可使用 `python scripts/pgo_build.py --kind cli`，要求匹配 rustc 的 LLVM 大版本，且训练需在本机单线程运行。性能结论需重新按同机 A/B 测量；历史收益对应采集时的构建与机器。
 
 Openbox 资源已迁到 `crates/tswn_openbox_backend/assets/`，但 `pgo_build.py` 的 Openbox 训练靶子仍指向旧的 `crates/tswn_openbox/assets/targets/`。因此在脚本适配前，全量打包推荐普通 `--release`；`build_all.py --pgo` 会同时启用 CLI 和 Openbox 的 PGO，不作为当前完整打包的推荐命令。约束见 [性能准则](../perf/guides/performance.md#pgo-构建)。
 

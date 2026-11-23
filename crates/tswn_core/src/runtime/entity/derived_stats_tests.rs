@@ -1,5 +1,6 @@
 use super::*;
 
+/// 测试辅助：构造一份除速度外固定的分身派生统计，供 apply / refresh 用例使用。
 fn derived_stats(speed: i32) -> CloneDerivedStats {
     CloneDerivedStats {
         max_hp: 157,

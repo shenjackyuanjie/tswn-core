@@ -4,6 +4,7 @@ use super::*;
 
 // 期望值按规格的 owner 域和源行独立构造，不能只与同一个编码器的另一次输出比较。
 
+/// 构造复核用模型态：清空槽位与状态，仅保留两个实体。
 fn review_state() -> BattleModelState {
     use crate::runtime::model_state::{ModelSkill, ModelSkillBoost, ModelSkills};
     let mut state = battle_state(0);
@@ -53,6 +54,7 @@ fn review_state() -> BattleModelState {
     state
 }
 
+/// 构造带指定 payload 与运行序的状态条目。
 fn review_entry(payload: ModelPayload, runtime_order: u64) -> crate::runtime::model_state::ModelStateEntry {
     crate::runtime::model_state::ModelStateEntry {
         legacy_order_key: 1,
@@ -65,6 +67,7 @@ fn review_entry(payload: ModelPayload, runtime_order: u64) -> crate::runtime::mo
     }
 }
 
+/// 构造带模板的模型槽。
 fn review_blueprint(slot_id: u32, template: ModelTemplate) -> crate::runtime::model_state::ModelSlot {
     crate::runtime::model_state::ModelSlot {
         slot_id,
@@ -75,6 +78,7 @@ fn review_blueprint(slot_id: u32, template: ModelTemplate) -> crate::runtime::mo
     }
 }
 
+/// 按 (scope, owner, field, ordinal) 四元组在 extra_index 中定位行号。
 fn review_extra_row(batch: &EncodedBatch, expected: [i32; 4]) -> usize {
     let indices = batch.i32_all("extra_index").unwrap();
     let mask = batch.u8_all("extra_mask").unwrap();
@@ -88,12 +92,14 @@ fn review_extra_row(batch: &EncodedBatch, expected: [i32; 4]) -> usize {
     rows[0]
 }
 
+/// 按四元组取 extra_bits 的 u64 原始值。
 fn review_raw(batch: &EncodedBatch, key: [i32; 4]) -> u64 {
     let row = review_extra_row(batch, key);
     let bits = batch.u32_all("extra_bits").unwrap();
     u64::from(bits[row * 2]) | (u64::from(bits[row * 2 + 1]) << 32)
 }
 
+/// 构造克隆构建计划，用于 raw 字段测试。
 fn review_plan() -> crate::runtime::entity::CloneBuildData {
     use crate::runtime::entity::{CloneBuildData, CloneStatAdjustments, ScoreCloneSkillBoostPlan};
     CloneBuildData {

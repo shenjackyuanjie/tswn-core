@@ -6,12 +6,16 @@ fn passive_decision_skill(export_name: &str) -> bool {
 }
 use smallvec::SmallVec;
 
+/// 内置静态 handler 的能力声明：不需要读取队友或敌人。
 const NO_EXTENSION_CAPABILITIES: &[ExtensionCapability] = &[];
+/// 内置静态 handler 的能力声明：需要读取队友（如保护）。
 const READ_ALLIES_CAPABILITY: &[ExtensionCapability] = &[ExtensionCapability::ReadAllies];
+/// 内置静态 handler 的能力声明：需要同时读取队友与敌人（如各类 Boss 感染状态）。
 const READ_ALLIES_AND_ENEMIES_CAPABILITIES: &[ExtensionCapability] =
     &[ExtensionCapability::ReadAllies, ExtensionCapability::ReadEnemies];
 
 impl CombatRuntime {
+    /// 从准备模板构造 CombatRuntime，派生实体、世界、调度器与各类 handler 表。
     pub fn from_template(template: PreparedCombatTemplate) -> Self {
         let PreparedCombatTemplate {
             players,
@@ -50,15 +54,19 @@ impl CombatRuntime {
     }
 
     #[cfg(not(feature = "no_debug"))]
+    /// 开启 trace 收集；仅在未启用 no_debug 的构建中存在。
     pub fn enable_trace(&mut self) { self.trace = Some(RuntimeTrace::default()); }
 
     #[cfg(not(feature = "no_debug"))]
+    /// 读取已收集的 trace；未开启时为 None。
     pub fn trace(&self) -> Option<&RuntimeTrace> { self.trace.as_ref() }
 
+    /// 按需复制共享处理器表，避免搜索克隆互相影响。
     pub fn set_effect_handler(&mut self, id: EffectHandlerId, handler: EffectHandlerFn) {
         Arc::make_mut(&mut self.effect_handlers).set(id, handler);
     }
 
+    /// 绑定 effect handler 并声明其上下文能力。
     pub fn set_effect_handler_with_capabilities(
         &mut self,
         id: EffectHandlerId,
@@ -68,10 +76,12 @@ impl CombatRuntime {
         Arc::make_mut(&mut self.effect_handlers).set_with_capabilities(id, handler, capabilities);
     }
 
+    /// 按需复制共享处理器表，避免搜索克隆互相影响。
     pub fn set_skill_handler(&mut self, id: SkillId, handler: SkillHandlerFn) {
         Arc::make_mut(&mut self.skill_handlers).set(id, handler);
     }
 
+    /// 绑定 skill handler 并声明其上下文能力。
     pub fn set_skill_handler_with_capabilities(
         &mut self,
         id: SkillId,
@@ -81,10 +91,12 @@ impl CombatRuntime {
         Arc::make_mut(&mut self.skill_handlers).set_with_capabilities(id, handler, capabilities);
     }
 
+    /// 按需复制共享处理器表，避免搜索克隆互相影响。
     pub fn set_state_handler(&mut self, id: StateId, handler: StateHandlerFn) {
         Arc::make_mut(&mut self.state_handlers).set(id, handler);
     }
 
+    /// 绑定 state handler 并声明其上下文能力。
     pub fn set_state_handler_with_capabilities(
         &mut self,
         id: StateId,
@@ -94,14 +106,17 @@ impl CombatRuntime {
         Arc::make_mut(&mut self.state_handlers).set_with_capabilities(id, handler, capabilities);
     }
 
+    /// 绑定回放渲染器；ID 越界会 panic。
     pub fn set_replay_renderer(&mut self, id: ReplayRendererId, renderer: ReplayRendererFn) {
         Arc::make_mut(&mut self.replay_renderers).set(id, renderer);
     }
 
+    /// 按需复制共享处理器表，避免搜索克隆互相影响。
     pub fn set_show_renderer(&mut self, id: ShowRendererId, renderer: ShowRendererFn) {
         Arc::make_mut(&mut self.show_renderers).set(id, renderer);
     }
 
+    /// 检查实体与模板槽使用的技能是否都有可用 handler。
     pub fn validate_ready(&self) -> Result<(), RuntimeReadyError> {
         let mut missing_skill_handlers = Vec::new();
         for (entity_idx, entity) in self.entities.iter() {
@@ -127,6 +142,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 收集一组技能中缺失 handler 的条目，并按来源合并同类项。
     pub fn collect_missing_skill_handlers(
         &self,
         skills: &[SkillId],
@@ -157,10 +173,12 @@ impl CombatRuntime {
         }
     }
 
+    /// 该技能是否由内置静态分发处理，无需注册 handler。
     pub fn skill_uses_builtin_static_dispatch(&self, skill_id: SkillId) -> bool {
         self.builtin_static_skill_handler(skill_id).is_some()
     }
 
+    /// 按技能导出名返回内置静态 skill handler 及其能力要求；未命中内置表时返回 `None`。
     fn builtin_static_skill_handler(&self, skill_id: SkillId) -> Option<(SkillHandlerFn, &'static [ExtensionCapability])> {
         let export_name = self.registry.skill(skill_id)?.export_name.as_str();
         match export_name {
@@ -181,10 +199,12 @@ impl CombatRuntime {
         }
     }
 
+    /// 该状态是否由内置静态分发处理，无需注册 handler。
     pub fn state_uses_builtin_static_dispatch(&self, state_id: StateId) -> bool {
         self.builtin_static_state_handler(state_id).is_some()
     }
 
+    /// 按状态导出名返回内置静态 state handler 及其能力要求；未命中内置表时返回 `None`。
     fn builtin_static_state_handler(&self, state_id: StateId) -> Option<(StateHandlerFn, &'static [ExtensionCapability])> {
         let export_name = self.registry.state(state_id)?.export_name.as_str();
         match export_name {
@@ -201,6 +221,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 按注册顺序调用回放渲染器，收集产出的事件。
     pub fn render_replay_frame(&self, frame: &RuntimeFrame) -> Vec<RenderedReplay> {
         self.registry
             .replay_renderers_in_order()
@@ -214,6 +235,7 @@ impl CombatRuntime {
             .collect()
     }
 
+    /// 按注册顺序调用展示渲染器，收集产出的事件。
     pub fn render_show_frame(&self, frame: &RuntimeFrame) -> Vec<RenderedShow> {
         self.registry
             .show_renderers_in_order()
@@ -227,21 +249,25 @@ impl CombatRuntime {
             .collect()
     }
 
+    /// 构造并执行一个 hook 的技能计划；有产出时返回帧。
     pub fn run_skill_hooks(&mut self, owner: EntityIdx, hook: ProcMask) -> Option<RuntimeFrame> {
         let plan = self.scheduler.skill_hook_plan(&self.entities, &self.registry, owner, hook);
         self.flush_skill_hook_plan(&plan)
     }
 
+    /// 执行既定技能计划；有产出时返回帧。
     pub fn flush_skill_hook_plan(&mut self, plan: &SkillHookPlan) -> Option<RuntimeFrame> {
         let mut updates = RunUpdates::new();
         self.drain_skill_hook_plan_into(plan, &mut updates);
         updates.had_updates().then_some(RuntimeFrame { updates })
     }
 
+    /// 把技能计划写入调用方给定的更新序列。
     pub fn drain_skill_hook_plan_into(&mut self, plan: &SkillHookPlan, updates: &mut RunUpdates) {
         self.drain_skill_hook_plan_with_selected_target_into(plan, updates, None);
     }
 
+    /// 带选中目标执行技能计划。
     pub fn drain_skill_hook_plan_with_selected_target_into(
         &mut self,
         plan: &SkillHookPlan,
@@ -392,6 +418,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 带受击值执行技能计划，供 PRE_DEFEND / POST_DEFEND 使用。
     pub fn drain_skill_hook_plan_with_defend_value_into(
         &mut self,
         plan: &SkillHookPlan,
@@ -401,6 +428,7 @@ impl CombatRuntime {
         self.drain_skill_hook_plan_with_defend_value_and_on_damage_into(plan, updates, defend_value, PlainAttackOnDamage::None);
     }
 
+    /// 带受击值与普攻附带效果执行技能计划。
     pub fn drain_skill_hook_plan_with_defend_value_and_on_damage_into(
         &mut self,
         plan: &SkillHookPlan,
@@ -508,21 +536,25 @@ impl CombatRuntime {
         self.drain_effects_into(updates);
     }
 
+    /// 构造并执行一个 hook 的状态计划；有产出时返回帧。
     pub fn run_state_hooks(&mut self, owner: EntityIdx, hook: ProcMask) -> Option<RuntimeFrame> {
         let plan = self.scheduler.state_hook_plan(&self.entities, owner, hook);
         self.flush_state_hook_plan(&plan)
     }
 
+    /// 执行既定状态计划；有产出时返回帧。
     pub fn flush_state_hook_plan(&mut self, plan: &StateHookPlan) -> Option<RuntimeFrame> {
         let mut updates = RunUpdates::new();
         self.drain_state_hook_plan_into(plan, &mut updates);
         updates.had_updates().then_some(RuntimeFrame { updates })
     }
 
+    /// 把状态计划写入调用方给定的更新序列；返回是否产生更新。
     pub fn drain_state_hook_plan_into(&mut self, plan: &StateHookPlan, updates: &mut RunUpdates) -> bool {
         self.drain_state_hook_plan_with_action_smart_into(plan, updates, None)
     }
 
+    /// 执行单个状态 hook 条目；返回是否产生更新。
     pub fn drain_state_hook_entry_into(&mut self, hook: ProcMask, entry: StateHookPlanEntry, updates: &mut RunUpdates) -> bool {
         self.drain_state_hook_entry_with_deferred_clears_into(hook, entry, updates, None)
     }
@@ -592,22 +624,39 @@ impl CombatRuntime {
         }
     }
 
+    /// 带行动聪明判定执行状态计划；PRE_ACTION 状态可借此接管本次行动。
     pub fn drain_state_hook_plan_with_action_smart_into(
         &mut self,
         plan: &StateHookPlan,
         updates: &mut RunUpdates,
         action_smart: Option<bool>,
     ) -> bool {
+        self.drain_state_hook_plan_with_pre_action_order_into(plan, updates, action_smart, None)
+    }
+
+    pub(super) fn drain_state_hook_plan_with_pre_action_order_into(
+        &mut self,
+        plan: &StateHookPlan,
+        updates: &mut RunUpdates,
+        action_smart: Option<bool>,
+        forced_order: Option<u64>,
+    ) -> bool {
+        let fold_boss_infections = action_smart.is_some()
+            && plan.hook == ProcMask::PRE_ACTION
+            && self.scheduler.uses_legacy_step_scheduler()
+            && (forced_order.is_some() || self.has_boss_infection_pre_actions(plan));
+        let mut proposed_infection_action = None;
         let mut action_intercepted = false;
         let mut rebuilt_entries = None::<SmallVec<[StateHookPlanEntry; 2]>>;
         let mut store_generation = plan.store_generation;
         let mut cursor = 0usize;
-        let mut executed_legacy_keys = SmallVec::<[u32; 8]>::new();
+        let mut executed = SmallVec::<[(u32, u64); 8]>::new();
+        let identity = |entry: &StateHookPlanEntry| (entry.legacy_order_key, entry.runtime_registration_order);
         loop {
             let entry = rebuilt_entries.as_ref().unwrap_or(&plan.entries).get(cursor).copied();
             let Some(entry) = entry else { break };
             cursor += 1;
-            if executed_legacy_keys.contains(&entry.legacy_order_key) {
+            if executed.contains(&identity(&entry)) {
                 continue;
             }
             if self
@@ -623,7 +672,7 @@ impl CombatRuntime {
                     .as_ref()
                     .expect("刚重建的状态计划必须存在")
                     .iter()
-                    .position(|candidate| !executed_legacy_keys.contains(&candidate.legacy_order_key))
+                    .position(|candidate| !executed.contains(&identity(candidate)))
                     .unwrap_or_else(|| rebuilt_entries.as_ref().expect("刚重建的状态计划必须存在").len());
                 continue;
             }
@@ -631,6 +680,7 @@ impl CombatRuntime {
             let Some(state_id) = entry.state_id else {
                 continue;
             };
+            let fold_infection = fold_boss_infections && self.is_builtin_infection_pre_action(&entry);
             let (handler, capabilities) = if let Some(static_handler) = self.builtin_static_state_handler(state_id) {
                 static_handler
             } else {
@@ -658,10 +708,19 @@ impl CombatRuntime {
                 } else {
                     context
                 };
-                handler(&mut context, &entry);
-                action_intercepted |= context.action_intercepted();
+                if fold_infection {
+                    // 原版按登记顺序折叠前置钩子，前一提案不能跳过后一抽样。
+                    if let Some(execute) = propose_boss_infection_pre_action(&mut context, &entry)
+                        && forced_order.is_none_or(|order| entry.runtime_registration_order > order)
+                    {
+                        proposed_infection_action = Some((entry, execute));
+                    }
+                } else {
+                    handler(&mut context, &entry);
+                    action_intercepted |= context.action_intercepted();
+                }
             }
-            executed_legacy_keys.push(entry.legacy_order_key);
+            executed.push(identity(&entry));
             self.drain_effects_into(updates);
             let current_generation = self.entities.get(entry.owner).map(|entity| entity.states.generation());
             if current_generation != Some(store_generation) {
@@ -672,13 +731,58 @@ impl CombatRuntime {
                     .as_ref()
                     .expect("刚重建的状态计划必须存在")
                     .iter()
-                    .position(|candidate| !executed_legacy_keys.contains(&candidate.legacy_order_key))
+                    .position(|candidate| !executed.contains(&identity(candidate)))
                     .unwrap_or_else(|| rebuilt_entries.as_ref().expect("刚重建的状态计划必须存在").len());
+            }
+        }
+        if let Some((entry, execute)) = proposed_infection_action {
+            // 只有最终提案才选敌并行动；冻结仍阻止行动，但不退回已做完的前置抽样。
+            if self.entities.get(entry.owner).is_some_and(|owner| !owner.states.is_frozen()) {
+                let mut context = StateContext::new(
+                    &mut self.entities,
+                    &mut self.world,
+                    &self.template_slots,
+                    &mut self.slots,
+                    &mut self.effects,
+                    updates,
+                    &mut self.rng,
+                    entry,
+                    plan.hook,
+                    READ_ALLIES_AND_ENEMIES_CAPABILITIES,
+                )
+                .with_action_smart(action_smart.expect("mixed boss infections require the action smart roll"));
+                execute(&mut context, &entry);
+                action_intercepted |= context.action_intercepted();
+                self.drain_effects_into(updates);
             }
         }
         action_intercepted
     }
 
+    /// 计划中是否包含 Boss 版新冠感染的 PRE_ACTION 条目；混合感染执行时据此要求携带 action smart 判定。
+    fn has_boss_infection_pre_actions(&self, plan: &StateHookPlan) -> bool {
+        plan.entries
+            .iter()
+            .any(|entry| entry.legacy_order_key == PLAIN_COVID_INFECTION_STATE_KEY && self.is_builtin_infection_pre_action(entry))
+    }
+
+    /// 判断状态条目是否为 Boss 版新冠或懒感染的内置 PRE_ACTION 条目。
+    fn is_builtin_infection_pre_action(&self, entry: &StateHookPlanEntry) -> bool {
+        let export = match entry.legacy_order_key {
+            PLAIN_COVID_INFECTION_STATE_KEY => DEFAULT_CORE_COVID_INFECTION_STATE_EXPORT,
+            PLAIN_LAZY_INFECTION_STATE_KEY => DEFAULT_CORE_LAZY_INFECTION_STATE_EXPORT,
+            _ => return false,
+        };
+        entry.state_id.is_some()
+            && entry.state_id == self.registry.state_id_by_export_name(export)
+            && self
+                .entities
+                .get(entry.owner)
+                .and_then(|owner| owner.states.entry(entry.legacy_order_key))
+                .is_some_and(|state| state.is_boss_infection(&self.entities))
+    }
+
+    /// 带受击值执行单个状态条目，供 PRE_DEFEND / POST_DEFEND 使用。
     pub fn drain_state_hook_entry_with_defend_value_into(
         &mut self,
         hook: ProcMask,
@@ -725,6 +829,7 @@ impl CombatRuntime {
         self.drain_effects_into(updates);
     }
 
+    /// 带受击值执行状态计划。
     pub fn drain_state_hook_plan_with_defend_value_into(
         &mut self,
         plan: &StateHookPlan,

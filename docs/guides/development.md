@@ -13,11 +13,11 @@
 | 界面与共用评分后端 | [Openbox](../../crates/tswn_openbox/README.md)：GUI/CLI 在 `tswn_openbox`，评分、预设与资源在 `tswn_openbox_backend`，DS4 可直接复用后端 |
 | DS4 批处理 | [tswn_ds4](../../crates/tswn_ds4/README.md)：流程、输入/历史文件、单人/配对模型与外部 ABCP5 适配 |
 | 胜率训练数据 | [tswn_pwp](../../crates/tswn_pwp/README.md)：生成、校验、校准、manifest 与安全离线导出；张量字段映射仍只在 core encoder 内实现 |
-| 排名与周期更新 | [lane ranker](../../crates/tswn_lane_ranker/README.md)、[ladder](../../crates/tswn_ladder/README.md)：分别使用 SQLite 与 PostgreSQL，数据库集成验证和普通单元测试分开 |
+| 排名服务 | [lane ranker](../../crates/tswn_lane_ranker/README.md)：SQLite 排名、校准与管理，数据库集成验证和普通单元测试分开 |
 | 跨 crate 与冻结回归 | `tswn_test`：集成测试、JS exact trace 与压力 golden；基线维护说明见 [runtime_stress](../../crates/tswn_test/cases/runtime_stress/README.md) |
 | 自动化与分析 | [scripts](../../scripts/README.md)：构建打包、差分、真实绑定验收、性能测量与只读数据 loader |
 
-`tswn_name_ranker` 依赖独立校准数据，在 workspace 的 `exclude` 中，不作为常规 workspace 验收的一部分。不要因为它不参与默认构建就删除其源码或数据约定。
+`tswn_name_ranker` 是独立的单号排名服务，自带校准资源与独立构建流程；它在 workspace 的 `exclude` 中，不参与主 workspace 构建与常规验收，源码与数据约定独立维护。
 
 ## 验证怎么选
 

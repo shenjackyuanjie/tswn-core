@@ -1,6 +1,8 @@
 use crate::rc4::RC4;
 
+/// 属性项数（8 项）。
 const ATTR_COUNT: usize = 8;
+/// HP 在属性数组中的下标。
 const HP_INDEX: usize = 7;
 
 /// 0.5.5 `$.r1()`：桂月奖杯生效的阵营。
@@ -50,6 +52,7 @@ const XUAN_YUE_CLANS: [&str; 22] = [
     "geometrydash",
 ];
 
+/// 武器种类：通用、S11、死亡笔记、BossEx、Rinick 修改器、桂月、玄月、无武器。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WeaponKind {
     Generic,
@@ -77,6 +80,7 @@ const RINICK_IDENTITY_LEVEL_POSITIONS: [usize; 9] = [0, 2, 15, 18, 27, 28, 32, 3
 /// `k1` 中第一个非 `ActionSkill` 的键；属性修改器会给它们额外加 16 级。
 const RINICK_FIRST_PASSIVE_SKILL_KEY: usize = 25;
 
+/// 武器构建态：种子、属性加成、技能因子与种类。
 #[derive(Debug, Clone)]
 pub(crate) struct WeaponBuild {
     seed: Vec<u8>,
@@ -89,10 +93,13 @@ pub(crate) struct WeaponBuild {
 }
 
 impl WeaponBuild {
+    /// 取武器种类。
     pub(crate) fn kind(&self) -> WeaponKind { self.kind }
 
+    /// 是否走 Rinick 身份分支（角色名恰为 Rinick 的属性修改器）。
     pub(crate) fn is_rinick_identity(&self) -> bool { self.identity }
 
+    /// 按武器名、队伍名与 id 名解析武器；diy 数据与空名不产生武器。
     pub(crate) fn parse(name: &str, clan_name: &str, id_key_name: &str) -> Option<Self> {
         // 0.5.5 中 `+diy...` 直接作为自定义数据，不会创建武器。
         if name.is_empty() || name.starts_with("diy") {
@@ -182,21 +189,11 @@ impl WeaponBuild {
         })
     }
 
+    /// 升级前处理：BossEx 强化 HP 三元组，其余按种类强化名字三元组。
     pub(crate) fn pre_upgrade(&mut self, raw_name_base: &[u8; 128], name_base: &mut [u8; 128]) {
         if self.kind == WeaponKind::BossEx {
-            // 0.5.5 `BossWeapon.cB`：与增益后的名字比较，差值不足 `32` 时补 `32`。
-            for offset in 7..10 {
-                let weapon = self.seed[offset] as i32;
-                let name = name_base[offset] as i32;
-                let delta = weapon - name;
-                name_base[offset] = if delta > 0 {
-                    (name + delta) as u8
-                } else if name < 32 {
-                    (name + 32) as u8
-                } else {
-                    name as u8
-                };
-            }
+            // BossEx 还强化 HP 名字三元组，但这组三槽不计入技能因子。
+            self.adjust_name_triplet(raw_name_base, name_base, 7);
         }
         if !self.kind.adjusts_name_triplets() {
             return;
@@ -208,22 +205,31 @@ impl WeaponBuild {
         self.skill_factor = ((480 - delta_sum) / 6).max(0);
     }
 
+    /// 按武器种子调整单个名字三元组，返回调整量。
     fn adjust_name_triplet(&self, raw_name_base: &[u8; 128], name_base: &mut [u8; 128], offset: usize) -> i32 {
         let left = self.seed[offset] as i32 - raw_name_base[offset] as i32;
         let middle = self.seed[offset + 1] as i32 - raw_name_base[offset + 1] as i32;
         let right = self.seed[offset + 2] as i32 - raw_name_base[offset + 2] as i32;
-        if left > 0 && middle > 0 && right > 0 {
-            let target = offset + ((left + middle + right + 999) / 3) as usize;
-            if target < name_base.len() && target < self.seed.len() {
-                let delta = (self.seed[target] as i32 - name_base[target] as i32) / 2 + 1;
-                if delta > 0 {
-                    name_base[target] = (name_base[target] as i32 + delta) as u8;
+        if self.kind == WeaponKind::BossEx {
+            for (slot, &weapon) in name_base[offset..offset + 3].iter_mut().zip(&self.seed[offset..offset + 3]) {
+                if weapon > *slot {
+                    *slot = weapon;
+                } else if *slot < 32 {
+                    *slot += 32;
                 }
+            }
+        } else if left > 0 && middle > 0 && right > 0 {
+            // 原版用差值之和对 3 取余，在三元组内选一槽强化。
+            let target = offset + ((left + middle + right) % 3) as usize;
+            let delta = (self.seed[target] as i32 - name_base[target] as i32) / 2 + 1;
+            if delta > 0 {
+                name_base[target] = (name_base[target] as i32 + delta) as u8;
             }
         }
         left.abs() + middle.abs() + right.abs()
     }
 
+    /// 升级后处理：按武器种类应用属性加成与技能因子；桂月 / 玄月 / 无武器不参与。
     pub(crate) fn post_upgrade(
         &self,
         attrs: &mut [u32; 8],

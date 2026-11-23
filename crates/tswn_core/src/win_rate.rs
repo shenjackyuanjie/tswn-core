@@ -25,9 +25,11 @@ use crate::runtime::{
     runtime_groups_win_rate_timed,
 };
 
+/// WASM 分支的默认胜率 worker 数：固定单线程。
 #[cfg(target_family = "wasm")]
 fn platform_default_win_rate_workers() -> usize { 1 }
 
+/// 原生分支的默认胜率 worker 数：可用并行度上调约 25%，获取失败退化为 1。
 #[cfg(not(target_family = "wasm"))]
 fn platform_default_win_rate_workers() -> usize {
     std::thread::available_parallelism()
@@ -35,9 +37,11 @@ fn platform_default_win_rate_workers() -> usize {
         .unwrap_or(1)
 }
 
+/// WASM 分支的 worker 上限：固定为 1。
 #[cfg(target_family = "wasm")]
 fn platform_limit_win_rate_workers(_workers: usize) -> usize { 1 }
 
+/// 原生分支的 worker 上限：不小于 1。
 #[cfg(not(target_family = "wasm"))]
 fn platform_limit_win_rate_workers(workers: usize) -> usize { workers.max(1) }
 

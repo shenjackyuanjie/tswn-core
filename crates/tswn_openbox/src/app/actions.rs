@@ -17,6 +17,7 @@ use super::widgets::OptionalFileOutput;
 use tswn_openbox::presets::{load_selected_target_text, load_selected_teammate_text};
 
 impl OpenboxApp {
+    /// 读取 DIY 输入并启动 to-diy 后台任务；读取失败时记录错误且不启动。
     pub fn start_to_diy(&mut self) {
         let raw = match self.to_diy.names.read_all() {
             Ok(raw) => raw,
@@ -57,6 +58,7 @@ impl OpenboxApp {
         });
     }
 
+    /// 读取名字输入并启动 namer-pf 后台任务；读取失败时记录错误且不启动。
     pub fn start_namer_pf(&mut self) {
         let raw = match self.namer_pf.names.read_all() {
             Ok(raw) => raw,
@@ -153,6 +155,7 @@ impl OpenboxApp {
         });
     }
 
+    /// 按手动或预设靶子读取输入并启动批量胜率任务；读取失败时记录错误且不启动。
     pub fn start_batch_rate(&mut self) {
         let (target_text, target_double_plus, target_factor_enabled) = if self.batch_rate.manual_targets {
             match self.batch_rate.targets.read_all() {
@@ -232,6 +235,7 @@ impl OpenboxApp {
         });
     }
 
+    /// 读取输入并启动配对任务；读取失败时记录错误且不启动。
     pub fn start_pair(&mut self) {
         let (target_text, target_factor_enabled) = if self.pair.manual_targets {
             match self.pair.targets.read_all() {
@@ -258,14 +262,17 @@ impl OpenboxApp {
                 return;
             }
         };
-        let teammate_text =
-            match read_teammate_text(&self.pair.teammates, &self.pair.teammate_presets, self.pair.manual_teammates) {
-                Ok(raw) => raw,
-                Err(err) => {
-                    self.fail_before_start(err);
-                    return;
-                }
-            };
+        let teammate_text = match read_teammate_text(
+            &mut self.pair.teammates,
+            &self.pair.teammate_presets,
+            self.pair.manual_teammates,
+        ) {
+            Ok(raw) => raw,
+            Err(err) => {
+                self.fail_before_start(err);
+                return;
+            }
+        };
         let head = if self.pair.manual_teammates {
             self.pair.head
         } else {
@@ -339,6 +346,7 @@ impl OpenboxApp {
         });
     }
 
+    /// 校验名字非空后启动 base 任务；其余格式校验交由后端给出与 CLI 一致的提示。
     pub fn start_base(&mut self) {
         if self.base.name.trim().is_empty() {
             self.fail_before_start("base 需要一个名字。".to_string());
@@ -355,6 +363,7 @@ impl OpenboxApp {
 }
 
 impl OpenboxApp {
+    /// 取出当前任务的取消令牌；未启动任务时直接 panic。
     fn cancel_token(&self) -> Arc<AtomicBool> {
         self.cancel_token.as_ref().expect("cancel token should be set after begin_task").clone()
     }
@@ -369,6 +378,7 @@ fn namer_pf_unfiltered(state: &NamerPfState) -> bool {
         && state.metrics.iter().all(|metric| !metric.screen && !metric.file_output.enabled)
 }
 
+/// 解析输出文件选择：启用但未选路径时返回错误。
 fn resolve_output_path(output: &OptionalFileOutput) -> Result<Option<std::path::PathBuf>, String> {
     match output.selected_path() {
         Some(path) => Ok(Some(path)),
@@ -377,8 +387,9 @@ fn resolve_output_path(output: &OptionalFileOutput) -> Result<Option<std::path::
     }
 }
 
+/// 读取队友文本：手动模式读输入源，否则加载所选预设。
 fn read_teammate_text(
-    manual_source: &super::source::TextSource,
+    manual_source: &mut super::source::TextSource,
     presets: &tswn_openbox::presets::TeammatePresetState,
     manual_teammates: bool,
 ) -> Result<String, String> {
@@ -389,6 +400,7 @@ fn read_teammate_text(
     }
 }
 
+/// 按计数模式返回场数：精确度预设或手动值（至少 1）。
 fn bench_count(mode: CountMode, accuracy: super::state::AccuracyPreset, manual_count: usize) -> usize {
     match mode {
         CountMode::Accuracy => accuracy.count(),
@@ -396,10 +408,13 @@ fn bench_count(mode: CountMode, accuracy: super::state::AccuracyPreset, manual_c
     }
 }
 
+/// 把线程设置转换为 Option：自动模式返回 None。
 fn bench_threads(auto_threads: bool, threads: usize) -> Option<usize> { if auto_threads { None } else { non_zero(threads) } }
 
+/// 把 0 转换为 None，其余原样返回。
 fn non_zero(value: usize) -> Option<usize> { if value == 0 { None } else { Some(value) } }
 
+/// 解析可选浮点并校验闭区间范围；空值返回 None。
 fn parse_optional_f64_in_range(raw: &str, field_name: &str, range: RangeInclusive<f64>) -> Result<Option<f64>, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -414,6 +429,7 @@ fn parse_optional_f64_in_range(raw: &str, field_name: &str, range: RangeInclusiv
     Ok(Some(value))
 }
 
+/// 解析可选浮点并校验下限；空值返回 None。
 fn parse_optional_f64_at_least(raw: &str, field_name: &str, min: f64) -> Result<Option<f64>, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -426,6 +442,7 @@ fn parse_optional_f64_at_least(raw: &str, field_name: &str, min: f64) -> Result<
     Ok(Some(value))
 }
 
+/// 解析有限浮点，失败时返回中文提示。
 fn parse_f64(raw: &str, field_name: &str) -> Result<f64, String> {
     let value = raw.parse::<f64>().map_err(|_| format!("{field_name} 需要是数字。"))?;
     if !value.is_finite() {

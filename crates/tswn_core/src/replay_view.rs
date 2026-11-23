@@ -10,16 +10,24 @@ use std::collections::{HashMap, HashSet};
 
 use crate::runtime::PlrId;
 use crate::runtime::lang::{get_lang, keys};
-use crate::runtime::update::{RunUpdate, UpdateType};
+use crate::runtime::update::{RunUpdate, RunUpdateHp, UpdateType};
 
+/// 胜利更新的首段播放延时（毫秒）。
 pub const WIN_UPDATE_DELAY0_MS: i32 = 3000;
+/// 默认文本颜色。
 pub const DEFAULT_TEXT_COLOR: &str = "0077BB";
+/// 状态退出文本的颜色。
 pub const STATUS_EXIT_TEXT_COLOR: &str = "bb7700";
+/// 帧内首个可见片段的延迟（毫秒）。
 const FRAME_FIRST_DELAY_MS: i32 = 900;
+/// 瞬发区域技能所在行首个片段的延迟（毫秒）。
 const QUICK_AREA_ROW_FIRST_DELAY_MS: i32 = 150;
+/// 展示 HP 变化的片段延迟（毫秒）。
 const HP_CHANGE_DELAY_MS: i32 = 600;
+/// 其余片段的默认延迟（毫秒）。
 const DEFAULT_CLIP_DELAY_MS: i32 = 500;
 
+/// 片段语气：普通、伤害、恢复、击倒与状态退出。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReplayTone {
     Normal,
@@ -29,6 +37,7 @@ pub enum ReplayTone {
     StatusExit,
 }
 
+/// 文本片段类型：纯文本、高亮、玩家引用与数值。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReplayTextPartKind {
     Text,
@@ -66,12 +75,14 @@ pub struct ReplayClip<S> {
     pub winner: bool,
 }
 
+/// 一行展示内容：是否缩进，以及该行按序播放的片段。
 #[derive(Debug, Clone)]
 pub struct ReplayRow<S> {
     pub indent: bool,
     pub clips: Vec<ReplayClip<S>>,
 }
 
+/// 一帧的展示投影：全部行与各片段延时之和。
 #[derive(Debug, Clone)]
 pub struct ReplayViewFrame<S> {
     pub rows: Vec<ReplayRow<S>>,
@@ -84,12 +95,19 @@ pub struct ReplayViewFrame<S> {
 /// 不应通过内部可变性改写原快照。默认实现不保存护盾；需要显示护盾的适配器应同时实现
 /// `shield` 和 `with_shield`，否则片段间的护盾协调不会生效。
 pub trait ReplayState: Clone {
+    /// 玩家 id，同一帧内应唯一。
     fn id(&self) -> PlrId;
+    /// 当前 HP。
     fn hp(&self) -> i32;
+    /// 最大 HP；为 0 时跳过 HP 差值应用。
     fn max_hp(&self) -> i32;
+    /// 是否存活。
     fn alive(&self) -> bool;
+    /// 当前护盾；默认 0 表示不显示护盾。
     fn shield(&self) -> i32 { 0 }
+    /// 返回设置护盾后的新快照；默认实现丢弃护盾。
     fn with_shield(&self, _shield: i32) -> Self { self.clone() }
+    /// 返回设置 HP 与存活状态的新快照，保留其他字段。
     fn with_hp_alive(&self, hp: i32, alive: bool) -> Self;
 }
 
@@ -128,6 +146,7 @@ pub fn render_update_message(update: &RunUpdate, names: &HashMap<PlrId, String>)
     message.replace("[2]", &param)
 }
 
+/// 按 id 取显示名；缺失时退化为 id 字符串。
 fn render_name(id: PlrId, names: &HashMap<PlrId, String>) -> String { names.get(&id).cloned().unwrap_or_else(|| id.to_string()) }
 
 /// 根据伤害或恢复语气提取有符号 HP 变化，其他语气返回 `None`。
@@ -143,6 +162,7 @@ pub fn hp_delta_for_tone(tone: ReplayTone, update: &RunUpdate) -> Option<i32> {
     }
 }
 
+/// 取更新中的 HP 变化量：百分比伤害取 score，其余取 param 或 score。
 fn hp_delta_value(update: &RunUpdate) -> u32 {
     if is_percent_hp_damage_update(update) {
         update.score
@@ -151,10 +171,12 @@ fn hp_delta_value(update: &RunUpdate) -> u32 {
     }
 }
 
+/// 是否百分比体力减少消息。
 pub(crate) fn is_percent_hp_damage_update(update: &RunUpdate) -> bool {
     update.message.contains("体力减少") && update.message.contains("[2]%")
 }
 
+/// 语气到文本颜色的映射；仅状态退出使用专用颜色，其余走默认色。
 pub fn replay_tone_color(tone: ReplayTone) -> &'static str {
     match tone {
         ReplayTone::StatusExit => STATUS_EXIT_TEXT_COLOR,
@@ -187,6 +209,7 @@ pub fn build_replay_view_frame<S: ReplayState>(
     let frame_state_map = state_map(frame_states);
     let state_order = frame_states.iter().map(ReplayState::id).collect::<Vec<_>>();
     let mut total_delay = 0;
+    let mut next_boss_delay = 0;
     let mut quick_area_skill_active = false;
     let mut frame_has_visible_clip = false;
     let mut current_row_has_visible_clip = false;
@@ -247,23 +270,41 @@ pub fn build_replay_view_frame<S: ReplayState>(
         sync_visible_shields(&parts, &mut running, &frame_state_map);
         let after = running.clone();
         let show_hp = parts.iter().any(|part| part.show_hp);
-        let delay = clip_delay(
+        let mut delay = clip_delay(
             frame_has_visible_clip,
             current_row_has_visible_clip,
             quick_area_skill_active,
             show_hp,
-        );
+        )
+        .max(next_boss_delay);
+        // 只有原版的这两处 Boss 演出等待覆盖片段节奏：真相台词停在下一条之前，复活等待在本条之前。
+        next_boss_delay = if update.message == get_lang(keys::SKL_CONAN_THINKING_FINISH2) {
+            update.delay1
+        } else {
+            0
+        };
+        if update.message == get_lang(keys::BOSS_MARIO_REVIVE) && update.hp_changes.is_some() {
+            delay = delay.max(update.delay0);
+        }
         total_delay += delay;
         frame_has_visible_clip = true;
         current_row_has_visible_clip = true;
 
+        let caster = update.caster_id();
+        let mut target_ids = update_participant_ids(update);
+        if let Some(animation_targets) = &update.animation_targets {
+            for &id in animation_targets.iter() {
+                push_unique_id(&mut target_ids, id);
+            }
+        }
+        target_ids.retain(|id| Some(*id) != caster);
         current_row.clips.push(ReplayClip {
             delay,
             color: replay_tone_color(event.tone).to_string(),
             tone: event.tone,
             parts,
-            caster_ids: vec![update.caster],
-            target_ids: update_participant_ids(update).into_iter().filter(|id| *id != update.caster).collect(),
+            caster_ids: caster.into_iter().collect(),
+            target_ids,
             sidebar_states: states_from_map(&after, &state_order),
             sidebar_previous_states: states_from_map(&before, &state_order),
             winner: false,
@@ -303,10 +344,12 @@ pub fn build_replay_view_frame<S: ReplayState>(
     ReplayViewFrame { rows, total_delay }
 }
 
+/// 把状态列表按 id 建立映射。
 fn state_map<S: ReplayState>(states: &[S]) -> HashMap<PlrId, S> {
     states.iter().map(|state| (state.id(), state.clone())).collect()
 }
 
+/// 按给定 id 顺序从映射取状态：去重并跳过缺失项。
 fn states_from_map<S: ReplayState>(running: &HashMap<PlrId, S>, state_order: &[PlrId]) -> Vec<S> {
     let mut emitted = HashSet::new();
     let mut states = Vec::with_capacity(running.len());
@@ -326,10 +369,13 @@ fn states_from_map<S: ReplayState>(running: &HashMap<PlrId, S>, state_order: &[P
     states
 }
 
+/// 收集更新的参与者 id（施法者、目标与目标列表），去重保序。
 fn update_participant_ids(update: &RunUpdate) -> Vec<PlrId> {
     let mut ids = Vec::new();
-    push_unique_id(&mut ids, update.caster);
-    if let Some(target) = update.target_id() {
+    if let Some(caster) = update.caster_id() {
+        push_unique_id(&mut ids, caster);
+    }
+    if let Some(target) = update.replay_target_id() {
         push_unique_id(&mut ids, target);
     }
     for id in &update.targets {
@@ -338,12 +384,14 @@ fn update_participant_ids(update: &RunUpdate) -> Vec<PlrId> {
     ids
 }
 
+/// 向量内不存在时才追加 id。
 fn push_unique_id(ids: &mut Vec<PlrId>, id: PlrId) {
     if !ids.contains(&id) {
         ids.push(id);
     }
 }
 
+/// 把帧内存活但运行态缺失的参与者补回运行态（复活 / 复苏场景）。
 fn sync_reappeared_participants<S: ReplayState>(
     update: &RunUpdate,
     running: &mut HashMap<PlrId, S>,
@@ -364,6 +412,7 @@ fn sync_reappeared_participants<S: ReplayState>(
     }
 }
 
+/// 按帧末净值协调运行态护盾，仅在玩家文字片段上推进。
 fn sync_visible_shields<S: ReplayState>(
     parts: &[ReplayTextPart],
     running: &mut HashMap<PlrId, S>,
@@ -384,6 +433,7 @@ fn sync_visible_shields<S: ReplayState>(
     }
 }
 
+/// 是否需要在击倒 / 恢复类更新之外补回重新出现的参与者。
 fn should_sync_reappeared_participants(update: &RunUpdate, tone: ReplayTone) -> bool {
     !matches!(tone, ReplayTone::Knockout | ReplayTone::Recover)
         && !is_reraise_update(update)
@@ -391,12 +441,15 @@ fn should_sync_reappeared_participants(update: &RunUpdate, tone: ReplayTone) -> 
         && update.message != get_lang(keys::SKL_SLIME_SPAWN)
 }
 
+/// 是否护身符抵挡死亡的消息。
 fn is_reraise_update(update: &RunUpdate) -> bool {
     update.message.contains("[护身符]") && update.message.contains("抵挡了一次死亡")
 }
 
+/// 是否复活消息。
 fn is_revive_update(update: &RunUpdate) -> bool { update.message.contains("复活") }
 
+/// 把 HP 变化应用到运行态：负值截到 0，正值不超过上限。
 fn apply_hp_delta<S: ReplayState>(running: &mut HashMap<PlrId, S>, id: PlrId, hp_delta: i32) {
     let Some(state) = running.get(&id) else {
         return;
@@ -414,6 +467,7 @@ fn apply_hp_delta<S: ReplayState>(running: &mut HashMap<PlrId, S>, id: PlrId, hp
     running.insert(id, state.with_hp_alive(hp, hp > 0));
 }
 
+/// 交换施法者与目标的 HP，各自受自身上限约束。
 fn apply_hp_swap<S: ReplayState>(running: &mut HashMap<PlrId, S>, caster_id: PlrId, target_id: PlrId) {
     let Some(caster) = running.get(&caster_id).cloned() else {
         return;
@@ -433,6 +487,7 @@ fn apply_hp_swap<S: ReplayState>(running: &mut HashMap<PlrId, S>, caster_id: Plr
     running.insert(target_id, target.with_hp_alive(target_new_hp, target_new_hp > 0));
 }
 
+/// 把运行态标记为死亡（HP 0 且非存活）。
 fn apply_death_update<S: ReplayState>(running: &mut HashMap<PlrId, S>, id: PlrId) {
     let Some(state) = running.get(&id) else {
         return;
@@ -440,6 +495,7 @@ fn apply_death_update<S: ReplayState>(running: &mut HashMap<PlrId, S>, id: PlrId
     running.insert(id, state.with_hp_alive(0, false));
 }
 
+/// 取玩家更新前后的 HP，并返回是否发生变化或新出现。
 fn hp_pair<S: ReplayState>(player_id: PlrId, before: &HashMap<PlrId, S>, after: &HashMap<PlrId, S>) -> (i32, i32, bool) {
     let hp_after = after.get(&player_id).map(ReplayState::hp);
     let is_new_entity = !before.contains_key(&player_id) && hp_after.is_some();
@@ -448,6 +504,7 @@ fn hp_pair<S: ReplayState>(player_id: PlrId, before: &HashMap<PlrId, S>, after: 
     (hp_before, hp_after, is_new_entity || hp_before != hp_after)
 }
 
+/// 取更新的数据部分文本：param、score 或目标名列表。
 fn data_for_update(update: &RunUpdate, player_names: &HashMap<PlrId, String>) -> String {
     if let Some(param) = update.param {
         return param.to_string();
@@ -463,6 +520,7 @@ fn data_for_update(update: &RunUpdate, player_names: &HashMap<PlrId, String>) ->
         .join(",")
 }
 
+/// 构造带默认值的文本片段。
 fn text_part(kind: ReplayTextPartKind, text: String) -> ReplayTextPart {
     ReplayTextPart {
         kind,
@@ -476,6 +534,7 @@ fn text_part(kind: ReplayTextPartKind, text: String) -> ReplayTextPart {
     }
 }
 
+/// 把文本按 `[...]` 拆分为普通与高亮片段。
 fn push_plain_and_highlight_parts(parts: &mut Vec<ReplayTextPart>, text: &str) {
     let mut rest = text;
     while let Some(start) = rest.find('[') {
@@ -497,19 +556,24 @@ fn push_plain_and_highlight_parts(parts: &mut Vec<ReplayTextPart>, text: &str) {
     }
 }
 
-fn push_player_part<S: ReplayState>(
-    parts: &mut Vec<ReplayTextPart>,
+/// 构造玩家文字片段：附带前后 HP、死亡特效，精确载荷优先。
+fn build_player_part<S: ReplayState>(
     player_id: PlrId,
     before: &HashMap<PlrId, S>,
     after: &HashMap<PlrId, S>,
     player_names: &HashMap<PlrId, String>,
     death_effect_allowed: bool,
     force_show_hp: bool,
-) {
-    let (hp_before, hp_after, hp_changed) = hp_pair(player_id, before, after);
+    exact: Option<&RunUpdateHp>,
+) -> ReplayTextPart {
+    // 刚出现的精确载荷可能没有旧 sidebar 状态；玩家文字仍使用实际记录的前后值。
+    let (hp_before, hp_after, hp_changed) = match exact {
+        Some(change) => (change.before, change.after, change.before != change.after),
+        None => hp_pair(player_id, before, after),
+    };
     let death_effect = death_effect_allowed && hp_after == 0;
-    let show_hp = force_show_hp || (hp_changed && !death_effect);
-    parts.push(ReplayTextPart {
+    let show_hp = force_show_hp || exact.is_some() || (hp_changed && !death_effect);
+    ReplayTextPart {
         kind: ReplayTextPartKind::Player,
         text: render_name(player_id, player_names),
         player_id: Some(player_id),
@@ -518,29 +582,36 @@ fn push_player_part<S: ReplayState>(
         hp_after,
         death_effect,
         emoji: None,
-    });
+    }
 }
 
+/// 追加数据片段。
 fn push_data_part(parts: &mut Vec<ReplayTextPart>, value: &str) {
     parts.push(text_part(ReplayTextPartKind::Data, value.to_string()));
 }
 
+/// 是否灭霸响指（化灰）消息。
 pub(crate) fn is_thanos_dust_update(update: &RunUpdate) -> bool { update.message == get_lang(keys::SKL_THANOS_DUST) }
 
+/// 是否触发死亡特效的消息（化灰 / 击倒 / 消失）。
 fn is_death_effect_update(update: &RunUpdate) -> bool {
     is_thanos_dust_update(update)
         || update.message.contains("\u{88ab}\u{51fb}\u{5012}")
         || update.message.contains("\u{6d88}\u{5931}")
 }
 
+/// 是否“[0]还剩[2]点血”HP 标记消息。
 fn is_hp_marker_update(update: &RunUpdate) -> bool { update.message == "[0]还剩[2]点血" }
 
+/// 是否体力值互换消息。
 fn is_hp_swap_update(update: &RunUpdate) -> bool {
     update.message.contains("\u{4f53}\u{529b}\u{503c}\u{4e0e}") && update.message.contains("\u{4e92}\u{6362}")
 }
 
+/// 是否实体转化消息（[2]变成了[1]）。
 fn is_entity_conversion_update(update: &RunUpdate) -> bool { update.message == "[2]变成了[1]" && !update.targets.is_empty() }
 
+/// 为单条更新构建全部文本片段。
 fn build_clip_parts<S: ReplayState>(
     update: &RunUpdate,
     before: &HashMap<PlrId, S>,
@@ -551,13 +622,8 @@ fn build_clip_parts<S: ReplayState>(
     let data = data_for_update(update, player_names);
     let death_effect_allowed = is_death_effect_update(update);
     let force_hp_marker = is_hp_marker_update(update);
-    let force_show_hp = |id| {
-        is_hp_swap_update(update)
-            || update
-                .hp_changes
-                .as_deref()
-                .is_some_and(|changes| changes.iter().any(|change| change.player == id))
-    };
+    let hp_swap = is_hp_swap_update(update);
+    let exact_hp = |id| update.hp_changes.as_deref()?.iter().find(|change| change.player == id);
     let entity_conversion = is_entity_conversion_update(update);
 
     let mut rest = update.message.as_ref();
@@ -572,33 +638,41 @@ fn build_clip_parts<S: ReplayState>(
         let token = &after_open[..end];
         match token {
             "0" => {
-                push_player_part(
-                    &mut parts,
+                parts.push(build_player_part(
                     update.caster,
                     before,
                     after,
                     player_names,
                     death_effect_allowed,
-                    force_hp_marker || force_show_hp(update.caster),
-                );
+                    force_hp_marker || hp_swap,
+                    exact_hp(update.caster),
+                ));
             }
             "1" => {
-                push_player_part(
-                    &mut parts,
+                parts.push(build_player_part(
                     update.target,
                     before,
                     after,
                     player_names,
                     death_effect_allowed,
-                    force_show_hp(update.target),
-                );
+                    hp_swap,
+                    exact_hp(update.target),
+                ));
             }
             "2" if entity_conversion => {
                 for (index, player_id) in update.targets.iter().enumerate() {
                     if index > 0 {
                         parts.push(text_part(ReplayTextPartKind::Text, ",".to_string()));
                     }
-                    push_player_part(&mut parts, *player_id, before, after, player_names, false, false);
+                    parts.push(build_player_part(
+                        *player_id,
+                        before,
+                        after,
+                        player_names,
+                        false,
+                        false,
+                        exact_hp(*player_id),
+                    ));
                 }
             }
             "2" => push_data_part(&mut parts, &data),
@@ -609,16 +683,25 @@ fn build_clip_parts<S: ReplayState>(
         rest = &after_open[end + 1..];
     }
     push_plain_and_highlight_parts(&mut parts, rest);
+    // 生命之轮的精确换血带原版表情令牌，正文保持纯文本。
+    if update.message == get_lang(keys::SKL_EXCHANGED)
+        && update.hp_changes.is_some()
+        && let Some(part) = parts.last_mut()
+    {
+        part.emoji = Some("s_exchange".to_string());
+    }
 
     parts
 }
 
+/// 是否瞬发区域技能（雷击 / 地裂）相关的消息或渲染文本。
 fn is_quick_area_skill_update(update: &RunUpdate, rendered: &str) -> bool {
     ["[雷击术]", "[地裂术]", "使用雷击术", "使用地裂术"]
         .iter()
         .any(|token| update.message.contains(token) || rendered.contains(token))
 }
 
+/// 按帧 / 行可见性、瞬发技能与 HP 展示计算片段延迟。
 fn clip_delay(
     frame_has_visible_clip: bool,
     current_row_has_visible_clip: bool,

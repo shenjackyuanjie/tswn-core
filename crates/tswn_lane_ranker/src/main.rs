@@ -18,15 +18,25 @@
 //! 环境变量、校准依赖和模块说明见
 //! [lane ranker README](https://github.com/shenjackyuanjie/tswn-core/tree/main/crates/tswn_lane_ranker)。
 
+/// SQLite 存储门面：连接、表访问与应用级任务状态。
 mod db;
+/// 领域模型：组合、lane 结果、进度与任务行类型。
 mod model;
+/// Correct 校准与严格 Python 验证入口。
 mod pairwise;
+/// 组合输入文本解析。
 mod parser;
+/// Raw/Golden 排名与自动封存编排。
 mod ranker;
+/// 应用服务与后台任务调度。
 mod service;
+/// 技能等效值与名字特征计算。
 mod skill_eq;
+/// 队伍合并查找（DSU）结构。
 mod team;
+/// Axum HTTP 接口与路由。
 mod web;
+/// core 胜率批量计算封装。
 mod winrate;
 
 use std::net::SocketAddr;
@@ -37,6 +47,7 @@ use ranker::RankerConfig;
 use service::AppService;
 
 #[tokio::main]
+/// 服务入口：初始化日志、按环境变量打开数据库与绑定地址，组装路由并启动 Axum。
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 

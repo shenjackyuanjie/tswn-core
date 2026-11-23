@@ -3,6 +3,7 @@
 //! 当前只记录最近一次选中行动者时的 Runtime 回合游标，不表示可见帧号。
 //! prepared runner 复位时调用 [`BattleScratch::clear`]，不把上一局游标带入下一局。
 
+/// 一场战斗内的临时行动标记；复位时清空，不跨对局保留。
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct BattleScratch {
     pub selected_actor_round: u64,
@@ -10,5 +11,6 @@ pub struct BattleScratch {
 }
 
 impl BattleScratch {
+    /// 同时清除行动游标和 Clever 候选，避免跨局残留。
     pub fn clear(&mut self) { *self = Self::default(); }
 }

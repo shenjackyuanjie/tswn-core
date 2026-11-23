@@ -1,8 +1,10 @@
 //! 深浅主题共用的语义配色，状态始终同时保留文字。
 
+/// 渲染小号弱化提示文本。
 pub(super) fn hint(ui: &mut egui::Ui, text: &str) -> egui::Response { ui.label(egui::RichText::new(text).size(13.0)) }
 
 #[derive(Clone, Copy)]
+/// 语义配色：信息/成功/警告/强调/紫。
 pub(super) struct Palette {
     pub info: egui::Color32,
     pub success: egui::Color32,
@@ -12,6 +14,7 @@ pub(super) struct Palette {
 }
 
 impl Palette {
+    /// 按当前明暗模式取对应色板。
     pub fn of(ui: &egui::Ui) -> Self {
         let rgb = egui::Color32::from_rgb;
         if ui.visuals().dark_mode {
@@ -33,6 +36,7 @@ impl Palette {
         }
     }
 
+    /// 按任务状态文本返回主题色。
     pub fn status(self, status: &str) -> egui::Color32 {
         match status {
             "完成" => self.success,
@@ -42,6 +46,7 @@ impl Palette {
         }
     }
 
+    /// 按工具名返回主题色。
     pub fn tool(self, tool: &str) -> egui::Color32 {
         match tool {
             "to-diy" => self.success,

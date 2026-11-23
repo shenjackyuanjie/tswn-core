@@ -1,5 +1,6 @@
 use super::*;
 
+/// 测试辅助：构造一个带 seed 的双队私名 runner，供模型状态投影用例使用。
 fn runner() -> RuntimeRunner {
     RuntimeRunner::new_from_namerena_raw("private-left@red\n\nprivate-right@blue\nseed:private-seed".into()).unwrap()
 }
@@ -70,6 +71,7 @@ fn preserves_hidden_payloads_registration_order_and_compressed_states() {
         },
         StatePayload::CovidInfection {
             entries: vec![CovidInfectionEntry {
+                registration_order: None,
                 boss: EntityIdx(1),
                 mutation: 7,
                 days: 2,

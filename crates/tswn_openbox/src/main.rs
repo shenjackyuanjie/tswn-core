@@ -7,8 +7,10 @@
 
 #![cfg_attr(all(windows, not(test)), windows_subsystem = "windows")]
 
+/// GUI 应用模块。
 mod app;
 
+/// 入口：请求截图校验时走一次性驱动，否则启动主界面。
 fn main() -> eframe::Result<()> {
     #[cfg(feature = "ui_capture")]
     if let Some(result) = app::capture::run_if_requested() {

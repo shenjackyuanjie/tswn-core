@@ -5,7 +5,7 @@ use crate::rc4::RC4;
 use super::weapon::{WeaponBuild, WeaponKind};
 use super::{
     NAME_MAX_LEN, NamerenaInput, PlayerClass, PlayerOverlay, PlayerSpec, PlayerStats, SkillBoost, SkillLoadoutSpec, TEAM_MAX_LEN,
-    boss_append_attr, boss_default_skill_levels, boss_display_name, median,
+    boss_append_attr, boss_combat_identity_override, boss_combat_name, boss_default_skill_levels, boss_display_name, median,
 };
 
 /// 属性修改器身份的冷数据；普通构建结果不分配此载荷。
@@ -18,6 +18,8 @@ pub struct PreparedRinickData {
     pub clone_skills: Option<SkillLoadoutSpec>,
 }
 
+/// 一名玩家的完整构建结果：身份、八围、状态、技能表与各类机制标记。
+/// 不含本场战斗 RNG，可重复用于初始化多个对局。
 #[derive(Debug, Clone)]
 pub struct PreparedPlayer {
     pub id: usize,
@@ -56,6 +58,7 @@ pub struct PreparedRoster {
     pub groups: Vec<Vec<usize>>,
 }
 
+/// 召唤物种类：幻影、使魔与丧尸。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MinionKind {
     Shadow,
@@ -63,6 +66,8 @@ pub enum MinionKind {
     Zombie,
 }
 
+/// 召唤物蓝图：按主人单独构建的玩家数据，外加召唤语义标记
+/// （预留 ID 数、重铸时是否复用技能/状态、是否继承主人 DEF/RES）。
 #[derive(Debug, Clone)]
 pub struct PreparedMinionBlueprint {
     pub player: PreparedPlayer,
@@ -73,9 +78,11 @@ pub struct PreparedMinionBlueprint {
     pub inherit_owner_def_res: bool,
 }
 
+/// 构建阵容的错误类型；当前没有可构造变体，Result 仅为保留既有接口形状。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PreparedRosterError {}
 
+/// 单个玩家的构建中间态：名字、类别、名字基串与武器等，finish 后产出 `PreparedPlayer`。
 #[derive(Debug, Clone)]
 struct PlayerBuild {
     id: usize,
@@ -138,13 +145,24 @@ impl PreparedRoster {
 }
 
 impl PreparedPlayer {
+    /// Boss 的战斗名（归一化后），其余返回原名。
+    pub(crate) fn combat_name(&self) -> &str {
+        if self.class == PlayerClass::Boss {
+            boss_combat_name(&self.name)
+        } else {
+            &self.name
+        }
+    }
+
+    /// 按类型为该玩家生成召唤物蓝图：名字追加 `?<kind>` 后缀、按 Normal 类重新构建，
+    /// 名字系数归零；使魔在 overlay 要求时继承主人的 DEF 与 RES。
     pub fn minion_blueprint(&self, kind: MinionKind, eval_rq: f64) -> PreparedMinionBlueprint {
         let (suffix, display_name) = match kind {
             MinionKind::Shadow => ("shadow", "幻影"),
             MinionKind::Summon => ("summon", "使魔"),
             MinionKind::Zombie => ("zombie", "丧尸"),
         };
-        let name = format!("{}?{suffix}", self.name);
+        let name = format!("{}?{suffix}", self.combat_name());
         let spec = PlayerSpec {
             raw: format!("{name}@{}", self.clan_name),
             name: name.clone(),
@@ -223,6 +241,7 @@ impl PreparedPlayer {
         }
     }
 
+    /// 按小兵类型取对应 overlay，不存在返回 None。
     fn minion_overlay(&self, kind: MinionKind) -> Option<&crate::namerena::MinionOverlay> {
         let overlay = self.overlay.as_ref()?;
         match kind {
@@ -242,16 +261,22 @@ pub(crate) fn score_profile_team_rng(team: &str) -> RC4 {
 }
 
 impl PlayerBuild {
+    /// 从 `PlayerSpec` 构造构建态：校验长度上限、准备名字键与 RNG。
     fn new(id: usize, spec: &PlayerSpec, eval_rq: f64) -> Self {
         debug_assert!(spec.name.len() <= NAME_MAX_LEN);
         debug_assert!(spec.team.as_ref().is_none_or(|team| team.len() <= TEAM_MAX_LEN));
         let clan_name = spec.team.clone().unwrap_or_else(|| spec.name.clone());
+        let combat_name = if spec.class == PlayerClass::Boss {
+            boss_combat_name(&spec.name)
+        } else {
+            &spec.name
+        };
         let mut name_key = [0u8; NAME_MAX_LEN + 1];
-        name_key[1..1 + spec.name.len()].copy_from_slice(spec.name.as_bytes());
+        name_key[1..1 + combat_name.len()].copy_from_slice(combat_name.as_bytes());
         let mut team_key = [0u8; TEAM_MAX_LEN + 1];
         team_key[1..1 + clan_name.len()].copy_from_slice(clan_name.as_bytes());
         let mut rand = RC4::new(&team_key[..1 + clan_name.len()], 1);
-        rand.update(&name_key[..1 + spec.name.len()], 2);
+        rand.update(&name_key[..1 + combat_name.len()], 2);
         let mut name_base = map_name_base(&rand);
         let normal_raw_name_base = name_base;
         let mut raw_name_base = name_base;
@@ -297,7 +322,7 @@ impl PlayerBuild {
             PlayerClass::Test1 | PlayerClass::Test2 | PlayerClass::TestEx => 0.0,
             _ if spec.overlay.as_ref().is_some_and(|overlay| !overlay.name_factor_enabled) => 0.0,
             _ => {
-                let name = crate::namerena::eval_name::eval_str_common_with_rq(&spec.name, true, eval_rq);
+                let name = crate::namerena::eval_name::eval_str_common_with_rq(combat_name, true, eval_rq);
                 let team = crate::namerena::eval_name::eval_str_common_with_rq(&clan_name, true, eval_rq);
                 name.max(team - 6.0)
             }
@@ -320,8 +345,9 @@ impl PlayerBuild {
             .weapon
             .as_deref()
             .or_else(|| spec.overlay.as_ref().and_then(|overlay| overlay.weapon.as_deref()));
+        let combat_identity = boss_combat_identity_override(&id_key_name).unwrap_or(&id_key_name);
         let weapon = (!has_diy)
-            .then(|| weapon_name.and_then(|name| WeaponBuild::parse(name, &clan_name, &id_key_name)))
+            .then(|| weapon_name.and_then(|name| WeaponBuild::parse(name, &clan_name, combat_identity)))
             .flatten();
         // 原版从武器名判断口罩，不要求命中特殊武器表。
         let covid_mask = weapon.is_some() && weapon_name.is_some_and(|name| name.ends_with("mask") || name.ends_with("口罩"));
@@ -343,6 +369,7 @@ impl PlayerBuild {
         }
     }
 
+    /// 按另一玩家的 raw 名字基串强化自身名字基串；TestEx 不参与强化。
     fn upgrade(&mut self, other: &Self) {
         if self.class == PlayerClass::TestEx {
             return;
@@ -363,6 +390,7 @@ impl PlayerBuild {
         }
     }
 
+    /// 收尾构建：武器前置强化、属性中位数换算与技能装载，产出 `PreparedPlayer`。
     fn finish(mut self) -> PreparedPlayer {
         if let Some(weapon) = &mut self.weapon {
             weapon.pre_upgrade(&self.raw_name_base, &mut self.name_base);
@@ -420,13 +448,17 @@ impl PlayerBuild {
         if let Some(weapon) = &self.weapon {
             if rinick_identity {
                 rinick_revive_attrs = Some(attrs);
-                // 分身 `az()` 会重新解析武器并走非身份分支的 `b6()`（0 级抬到 4、其余折半），
+                // 分身 `az()` 会重新解析武器并走非身份分支的 `b6()`（0 级抬到 4、其余翻倍），
                 // 但它的 `E` 列表为空，`bs()` 里所有强化标记都视为未强化；随后才做末位翻倍
                 // 与槽位强化。这里按同一顺序生成快照。
                 let mut clone_levels = levels;
                 for &key in &self.action_order {
                     let key = key as usize;
-                    clone_levels[key] = if clone_levels[key] == 0 { 4 } else { clone_levels[key] / 2 };
+                    clone_levels[key] = if clone_levels[key] == 0 {
+                        4
+                    } else {
+                        clone_levels[key].saturating_mul(2)
+                    };
                 }
                 let mut clone_boosted = [false; 40];
                 let mut clone_boosts: [Option<SkillBoost>; 40] = std::array::from_fn(|_| None);
@@ -606,6 +638,7 @@ fn apply_plain_slot_boosts(
     }
 }
 
+/// 对同组玩家按比较序应用互相强化；enabled 为 false 时只排序不强化。
 fn apply_team_upgrades(players: &mut [PlayerBuild], groups: &mut [Vec<usize>], enabled: bool) {
     for group in groups {
         group.sort_by(|left, right| compare_builds(&players[*left], &players[*right]));
@@ -627,10 +660,15 @@ fn apply_team_upgrades(players: &mut [PlayerBuild], groups: &mut [Vec<usize>], e
     }
 }
 
+/// 构建态排序：Boss 身份优先，其次按 id。
 fn compare_builds(left: &PlayerBuild, right: &PlayerBuild) -> Ordering {
-    left.id_key_name.cmp(&right.id_key_name).then_with(|| left.id.cmp(&right.id))
+    boss_combat_identity_override(&left.id_key_name)
+        .unwrap_or(&left.id_key_name)
+        .cmp(boss_combat_identity_override(&right.id_key_name).unwrap_or(&right.id_key_name))
+        .then_with(|| left.id.cmp(&right.id))
 }
 
+/// 同时取两个下标的可变引用（按大小序拆分切片避免借用冲突）。
 fn two_mut(values: &mut [PlayerBuild], left: usize, right: usize) -> (&mut PlayerBuild, &mut PlayerBuild) {
     if left < right {
         let (before, after) = values.split_at_mut(right);
@@ -641,6 +679,7 @@ fn two_mut(values: &mut [PlayerBuild], left: usize, right: usize) -> (&mut Playe
     }
 }
 
+/// 把 RNG 状态映射为可用名字基串（过滤区间并压缩到 0..63）。
 fn map_name_base(rand: &RC4) -> [u8; 128] {
     let mut output = [0u8; 128];
     let mut index = 0;
@@ -655,6 +694,7 @@ fn map_name_base(rand: &RC4) -> [u8; 128] {
     output
 }
 
+/// 按队伍与名字派生 RC4：先以队伍键初始化，再用名字键更新。
 fn name_rng(team: &str, name: &str) -> RC4 {
     let mut team_key = [0u8; TEAM_MAX_LEN + 1];
     team_key[1..1 + team.len()].copy_from_slice(team.as_bytes());
@@ -665,6 +705,7 @@ fn name_rng(team: &str, name: &str) -> RC4 {
     rng
 }
 
+/// 把 8 项属性与名字系数换算为 `PlayerStats`。
 pub(crate) fn status_from_attrs(attrs: [u32; 8], name_factor: f64, alive: bool) -> PlayerStats {
     let scale = |value: i32, factor: i32| (value as f64 * (1.0 - name_factor / factor as f64)).round() as i32;
     let attr_sum = attrs[..7].iter().sum();

@@ -14,8 +14,10 @@ use tswn_core::cli_api::battle::BattleSession as CoreBattleSession;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(typescript_custom_section)]
+/// 对局相关导出类型的 TypeScript 声明（自定义 section）。
 const BATTLE_TYPES: &str = include_str!("battle_types.d.ts");
 
+/// 把 DTO 序列化为 JSON 兼容的 JsValue。
 pub(crate) fn dto_to_js<T: Serialize + ?Sized>(dto: &T) -> WasmResult<JsValue> {
     dto.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
         .map_err(|error| internal_error(error.to_string()))
@@ -80,16 +82,23 @@ impl BattleSession {
     pub fn submit_action(&mut self, actor: u32, skill: u32, packed_mp: u32) -> WasmResult<()> {
         self.inner.submit_action(actor as usize, skill, packed_mp).map_err(cli_api_error)
     }
+    /// 当前战斗状态（序列化为 JS 值）。
     #[wasm_bindgen(unchecked_return_type = "BattleStatus")]
     pub fn status(&self) -> WasmResult<JsValue> { dto_to_js(&self.inner.status()) }
+    /// 停止原因；无原因时返回 JS null。
     #[wasm_bindgen(unchecked_return_type = "BattleStopReason | null")]
     pub fn stop_reason(&self) -> WasmResult<JsValue> { dto_to_js(&self.inner.stop_reason()) }
     /// 只表示正常结束或截断；失败应另查 is_failed，不属于正常结果。
     pub fn is_done(&self) -> bool { self.inner.is_done() }
+    /// 是否发生 sticky Runtime 失败。
     pub fn is_failed(&self) -> bool { self.inner.is_failed() }
+    /// 是否正常结束。
     pub fn is_finished(&self) -> bool { self.inner.is_finished() }
+    /// 是否被安全截断。
     pub fn is_truncated(&self) -> bool { self.inner.is_truncated() }
+    /// 已推进的回合数。
     pub fn rounds_advanced(&self) -> usize { self.inner.rounds_advanced() }
+    /// 已发出的可见帧数。
     pub fn frames_emitted(&self) -> usize { self.inner.frames_emitted() }
     #[wasm_bindgen(unchecked_return_type = "BattleResult | null")]
     /// 读取正常 terminal 结果，运行中或失败时返回 JS null。

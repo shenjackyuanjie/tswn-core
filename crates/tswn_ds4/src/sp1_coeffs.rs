@@ -5,20 +5,26 @@
 
 #![allow(clippy::excessive_precision)]
 
+/// QP 主模型系数表。
 mod qp0;
 pub use qp0::MODEL_QP0;
 
+/// QD 主模型系数表。
 mod qd0;
 pub use qd0::MODEL_QD0;
 
+/// PP 主模型系数表。
 mod pp0;
 pub use pp0::MODEL_PP0;
 
+/// PD 主模型系数表。
 mod pd0;
 pub use pd0::MODEL_PD0;
 
+/// CQD 主模型系数表。
 mod cqd0;
 pub use cqd0::MODEL_CQD0;
 
+/// CQD 第三套补充分支系数表。
 mod cqd3;
 pub use cqd3::MODEL_CQD3;

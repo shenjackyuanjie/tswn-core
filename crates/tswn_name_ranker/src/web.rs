@@ -19,6 +19,7 @@ use axum::{
 use serde_json::json;
 use std::sync::Arc;
 use tower_http::services::ServeDir;
+/// 用给定服务构造 axum Router（健康检查、名字、靶子与排名等路由）。
 pub fn router(service: Service) -> Router {
     Router::new()
         .route("/api/health", get(|| async { Json(json!({"ok":true})) }))
@@ -36,32 +37,40 @@ pub fn router(service: Service) -> Router {
         .nest_service("/", ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/static")))
         .with_state(Arc::new(service))
 }
+/// 返回全部名字行。
 async fn names(State(s): State<Arc<Service>>) -> Result<Json<serde_json::Value>, ApiError> {
     Ok(Json(serde_json::to_value(
         s.db.names()?.into_iter().map(|x| x.0).collect::<Vec<_>>(),
     )?))
 }
+/// 添加一批名字，返回新增数量。
 async fn add_names(State(s): State<Arc<Service>>, Json(r): Json<TextRequest>) -> Result<Json<serde_json::Value>, ApiError> {
     Ok(Json(json!({"added":s.add_names(&r.text)?})))
 }
+/// 返回已标记展开的名字列表。
 async fn expansions(State(s): State<Arc<Service>>) -> Result<Json<serde_json::Value>, ApiError> {
     Ok(Json(json!({"names":s.db.expanded_names()?})))
 }
+/// 把文本中的名字标记为展开，返回变更数。
 async fn add_expansions(State(s): State<Arc<Service>>, Json(r): Json<TextRequest>) -> Result<Json<serde_json::Value>, ApiError> {
     Ok(Json(json!({"changed":s.set_names_expanded(&r.text,true)?})))
 }
+/// 取消名字的展开标记，返回变更数。
 async fn remove_expansions(
     State(s): State<Arc<Service>>,
     Json(r): Json<TextRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     Ok(Json(json!({"changed":s.set_names_expanded(&r.text,false)?})))
 }
+/// 对单个名字执行一次测量。
 async fn measure_one(State(s): State<Arc<Service>>, Json(r): Json<TextRequest>) -> Result<Json<serde_json::Value>, ApiError> {
     Ok(Json(json!({"measured": s.measure_one(&r.text)?})))
 }
+/// 导入靶子文本，返回导入条数。
 async fn import_targets(State(s): State<Arc<Service>>, Json(r): Json<TextRequest>) -> Result<Json<serde_json::Value>, ApiError> {
     Ok(Json(json!({"imported":s.import_targets(&r.text)?})))
 }
+/// 把重算请求入队；空请求体使用默认参数。
 async fn recompute(State(s): State<Arc<Service>>, body: Bytes) -> Result<Json<serde_json::Value>, ApiError> {
     let r = if body.is_empty() {
         RecomputeRequest::default()
@@ -71,10 +80,13 @@ async fn recompute(State(s): State<Arc<Service>>, body: Bytes) -> Result<Json<se
     s.queue(r)?;
     Ok(Json(json!({"queued":true})))
 }
+/// 返回当前运行状态快照。
 async fn status(State(s): State<Arc<Service>>) -> Json<crate::model::Status> { Json(s.status.lock().unwrap().clone()) }
+/// 返回排名结果明细。
 async fn results(State(s): State<Arc<Service>>) -> Result<Json<serde_json::Value>, ApiError> {
     Ok(Json(serde_json::to_value(s.result_details()?)?))
 }
+/// 以文本附件形式导出排名结果明细。
 async fn export_results(State(s): State<Arc<Service>>) -> Result<impl IntoResponse, ApiError> {
     Ok((
         [
@@ -87,11 +99,13 @@ async fn export_results(State(s): State<Arc<Service>>) -> Result<impl IntoRespon
         s.export_results()?,
     ))
 }
+/// HTTP 层错误包装：把 anyhow::Error 转换为统一错误响应。
 pub struct ApiError(anyhow::Error);
 impl<E: Into<anyhow::Error>> From<E> for ApiError {
     fn from(e: E) -> Self { Self(e.into()) }
 }
 impl IntoResponse for ApiError {
+    /// 把应用错误统一映射为 500 与 JSON error 字段。
     fn into_response(self) -> Response {
         (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":self.0.to_string()}))).into_response()
     }

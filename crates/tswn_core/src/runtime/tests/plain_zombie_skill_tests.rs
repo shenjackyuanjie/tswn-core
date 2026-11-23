@@ -1,5 +1,6 @@
 use super::*;
 
+/// 按等级/目标 kind/是否带蓝图构造注册了僵尸技能的 CombatRuntime。
 fn zombie_runtime(level: u32, target_kind: PlayerKindId, with_blueprint: bool) -> CombatRuntime {
     let config = default_custom_runtime_import_config().expect("default runtime profile should build");
     let registry = config.registry;

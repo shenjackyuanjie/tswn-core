@@ -4,7 +4,9 @@
 
 use super::*;
 
+/// 基础回放 fixture：内嵌简单对局，逐行比对 JS 回放。
 pub fn simple_fight<E: crate::EngineAdapter>() {
+    /// 简单对局 fixture 的内嵌输入。
     const FIGHT_SIMPLE_CASE: &str = r###"aaa
 bbb
 ccc
@@ -102,6 +104,7 @@ bbb发起攻击, 诅咒使伤害加倍, fff受到134点伤害
     assert_eq!(actual_lines, expected_lines);
 }
 
+/// 简单对局的分数累计回归 fixture。
 pub fn simple_fight_scores<E: crate::EngineAdapter>() {
     let input = "aaa\nbbb\nccc\nddd\neee\nfff";
     let mut runner = E::new_from_raw(input.to_string()).unwrap();
@@ -116,6 +119,7 @@ pub fn simple_fight_scores<E: crate::EngineAdapter>() {
     assert_eq!(total, 2521, "total battle score mismatch");
 }
 
+/// 小 seed 对局的分数回归 fixture。
 pub fn small_seed_scores<E: crate::EngineAdapter>() {
     let input = "aaaaa\nbbbbb\nseed:tester@!";
     let mut runner = E::new_from_raw(input.to_string()).unwrap();
@@ -126,6 +130,7 @@ pub fn small_seed_scores<E: crate::EngineAdapter>() {
     assert_eq!(by_name["bbbbb"], 172);
 }
 
+/// d8c6 开局与 JS 追踪逐行一致的 fixture。
 pub fn case_d8c6_opening_matches_js_trace<E: crate::EngineAdapter>() {
     let raw_input = "最光辉的时刻 #8ftphKKCk@Shabby_fish\n营救任务 #tmOaPuIoM@Shabby_fish".to_string();
     let mut runner = E::new_from_raw(raw_input).unwrap();
@@ -141,6 +146,7 @@ pub fn case_d8c6_opening_matches_js_trace<E: crate::EngineAdapter>() {
     );
 }
 
+/// large_67 召灵开局与 JS 追踪一致的 fixture。
 pub fn case_large_67_summon_opening_matches_js_trace<E: crate::EngineAdapter>() {
     let raw_input = "Stupefy #rkISERW8@Shabby_fish\n日落·日出 #Pd3J7shds@Shabby_fish".to_string();
     let mut runner = E::new_from_raw(raw_input).unwrap();

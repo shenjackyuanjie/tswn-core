@@ -4,6 +4,7 @@ use super::*;
 ///
 /// 断言完整规范化日志及预算内结束；输入与期望都保持内嵌，不依赖外部生成步骤。
 pub fn large_64<E: crate::EngineAdapter>() {
+    /// large_64 用例的内嵌对局输入。
     const CASE: &str = r#"三猴一体 vFz1cu21MCaW@TigerStar
 涵虚不等式 PFVKEUPBU@TigerStar
 

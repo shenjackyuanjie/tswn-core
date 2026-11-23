@@ -2,6 +2,7 @@
 
 use super::*;
 
+/// 压成位标记的 legacy 状态类别：护盾、保护、垂死、尸体与使魔。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompressedLegacyState {
     Shield,
@@ -12,11 +13,15 @@ pub enum CompressedLegacyState {
 }
 
 impl CompressedLegacyState {
+    /// 把压缩状态类别换算为位标记（`1 << 序号`）。
     fn bit(self) -> u8 { 1 << self as u8 }
 }
 
+/// 调度器快速否定位：存在冰冻类状态。
 const SCHEDULER_STATE_ICE: u8 = 1 << 0;
+/// 调度器快速否定位：存在影响速度类的状态。
 const SCHEDULER_STATE_SPEED: u8 = 1 << 1;
+/// 调度器关心的全部状态位。
 const SCHEDULER_STATE_ALL: u8 = SCHEDULER_STATE_ICE | SCHEDULER_STATE_SPEED;
 
 /// [`StatePayload`] 的种类标记，用于对状态表做"肯定不存在"的快速否定判断。
@@ -46,6 +51,7 @@ pub enum StatePayloadKind {
 }
 
 impl StatePayloadKind {
+    /// 该种类对应的位图位，用于 `may_contain` 快速否定。
     #[inline]
     pub const fn bit(self) -> u32 { 1 << self as u32 }
 
@@ -88,6 +94,7 @@ fn scheduler_state_flags(payload: &StatePayload) -> u8 {
     }
 }
 
+/// 实体的状态存储：条目、hook 掩码、注册序与查询缓存。
 #[derive(Debug, Default, Clone)]
 pub struct StateStore {
     entries: SmallVec<[StateEntry; 8]>,
@@ -96,6 +103,9 @@ pub struct StateStore {
     /// 与 `entries` 同下标保存运行期注册顺序，常见状态数不超过内联容量。
     runtime_registration_orders: SmallVec<[u64; 8]>,
     next_runtime_registration_order: u64,
+    /// 蓄力本次入列时的游标；蓄力保存在专用字段，不占普通状态登记槽。
+    charge_post_action_cursor: u64,
+    assassinate_pre_action_cursor: u64,
     compressed_legacy_states: u8,
     /// 调度器只关心冻结和速度类状态；无对应位时可跳过完整 entries 扫描。
     scheduler_state_flags: u8,
@@ -104,12 +114,15 @@ pub struct StateStore {
 }
 
 impl PartialEq for StateStore {
+    /// 状态存储相等：比较条目、hook 掩码、代数、注册序与压缩位标记等全部持久字段。
     fn eq(&self, other: &Self) -> bool {
         self.entries == other.entries
             && self.hook_mask == other.hook_mask
             && self.generation == other.generation
             && self.runtime_registration_orders == other.runtime_registration_orders
             && self.next_runtime_registration_order == other.next_runtime_registration_order
+            && self.charge_post_action_cursor == other.charge_post_action_cursor
+            && self.assassinate_pre_action_cursor == other.assassinate_pre_action_cursor
             && self.compressed_legacy_states == other.compressed_legacy_states
     }
 }
@@ -119,6 +132,7 @@ impl Eq for StateStore {}
 impl StateStore {
     pub(crate) fn model_compressed_flags(&self) -> u8 { self.compressed_legacy_states }
 
+    /// 按登记顺序返回状态条目。
     pub fn entries(&self) -> &[StateEntry] { &self.entries }
 
     /// 恢复场前状态并复用现有 SmallVec 容量，避免通用 Clone 反复切换内联/堆存储。
@@ -130,6 +144,8 @@ impl StateStore {
         self.runtime_registration_orders.clear();
         self.runtime_registration_orders.extend_from_slice(&prepared.runtime_registration_orders);
         self.next_runtime_registration_order = prepared.next_runtime_registration_order;
+        self.charge_post_action_cursor = prepared.charge_post_action_cursor;
+        self.assassinate_pre_action_cursor = prepared.assassinate_pre_action_cursor;
         self.compressed_legacy_states = prepared.compressed_legacy_states;
         self.scheduler_state_flags = prepared.scheduler_state_flags;
         self.payload_kinds = prepared.payload_kinds;
@@ -144,11 +160,14 @@ impl StateStore {
             self.runtime_registration_orders.clear();
         }
         self.next_runtime_registration_order = 0;
+        self.charge_post_action_cursor = 0;
+        self.assassinate_pre_action_cursor = 0;
         self.compressed_legacy_states = 0;
         self.scheduler_state_flags = 0;
         self.payload_kinds = 0;
     }
 
+    /// 全部条目 hook 掩码的并集。
     pub fn hook_mask(&self) -> ProcMask { self.hook_mask }
 
     /// 状态表里是否**可能**存在该种类的 payload。
@@ -157,10 +176,32 @@ impl StateStore {
     #[inline]
     pub fn may_contain(&self, kind: StatePayloadKind) -> bool { self.payload_kinds & kind.bit() != 0 }
 
+    /// 状态表代数；条目结构变化时递增。
     pub fn generation(&self) -> u32 { self.generation }
 
+    /// 下一个运行期注册序号，供 POST_ACTION 期间追加登记。
     pub fn post_action_registration_cursor(&self) -> u64 { self.next_runtime_registration_order }
 
+    pub(crate) fn reserve_runtime_registration_order(&mut self) -> u64 {
+        let order = self.next_runtime_registration_order;
+        self.next_runtime_registration_order = order.wrapping_add(1);
+        self.generation = self.generation.wrapping_add(1);
+        order
+    }
+
+    pub(in crate::runtime::entity) fn register_charge_post_action(&mut self) {
+        self.charge_post_action_cursor = self.next_runtime_registration_order;
+    }
+
+    pub(crate) fn charge_post_action_cursor(&self) -> u64 { self.charge_post_action_cursor }
+
+    pub(crate) fn register_assassinate_pre_action(&mut self) {
+        self.assassinate_pre_action_cursor = self.reserve_runtime_registration_order();
+    }
+
+    pub(crate) fn assassinate_pre_action_cursor(&self) -> u64 { self.assassinate_pre_action_cursor }
+
+    /// 按兼容键查运行期注册顺序；键不存在返回 None。
     pub fn runtime_registration_order(&self, legacy_order_key: u32) -> Option<u64> {
         let index = self.entries.iter().position(|entry| entry.legacy_order_key == legacy_order_key)?;
         self.runtime_registration_orders.get(index).copied()
@@ -172,6 +213,7 @@ impl StateStore {
     /// 逐条走 [`Self::runtime_registration_order`] 会退化成 O(n^2)。
     pub fn runtime_registration_orders(&self) -> &[u64] { &self.runtime_registration_orders }
 
+    /// 登记压缩状态位并占用一个注册序号；已设置返回 false。
     pub fn register_compressed_legacy_state(&mut self, state: CompressedLegacyState) -> bool {
         let bit = state.bit();
         if self.compressed_legacy_states & bit != 0 {
@@ -184,6 +226,7 @@ impl StateStore {
         true
     }
 
+    /// 清除压缩状态位；此前未设置返回 false。
     pub fn clear_compressed_legacy_state(&mut self, state: CompressedLegacyState) -> bool {
         let bit = state.bit();
         if self.compressed_legacy_states & bit == 0 {
@@ -193,27 +236,34 @@ impl StateStore {
         true
     }
 
+    /// 是否被冰冻而无法行动。
     pub fn is_frozen(&self) -> bool {
         self.scheduler_state_flags & SCHEDULER_STATE_ICE != 0
             && self.entries.iter().any(|entry| matches!(&entry.payload, StatePayload::Ice { .. }))
     }
 
+    /// 应用疾走、缓慢与懒羊羊传染后的有效速度。
     pub fn effective_speed(&self, base_speed: i32) -> i32 {
         if self.scheduler_state_flags & SCHEDULER_STATE_SPEED == 0 {
             return base_speed;
         }
         let mut speed = base_speed;
+        let mut lazy_infections = 0;
         for entry in &self.entries {
             match &entry.payload {
                 StatePayload::Haste { effective_faster, .. } => speed *= *effective_faster,
                 StatePayload::Slow { .. } => speed /= 2,
-                StatePayload::LazyInfection { .. } => speed /= 2,
+                StatePayload::LazyInfection { .. } => lazy_infections += 1,
                 _ => {}
             }
+        }
+        for _ in 0..lazy_infections {
+            speed /= 2;
         }
         speed
     }
 
+    /// 把待生效的疾走加速提交为有效值，让本回合之后开始生效。
     pub fn refresh_effective_haste_faster(&mut self) {
         let mut changed = false;
         for entry in &mut self.entries {
@@ -235,6 +285,7 @@ impl StateStore {
         }
     }
 
+    /// 应用诅咒倍率后的攻击总和。
     pub fn effective_atk_sum(&self, base_atk_sum: i32) -> i32 {
         if !self.may_contain(StatePayloadKind::Curse) {
             return base_atk_sum;
@@ -248,6 +299,7 @@ impl StateStore {
         })
     }
 
+    /// 应用铁壁层数后的吸引力。
     pub fn effective_attract(&self, base_attract: f64) -> f64 {
         if !self.may_contain(StatePayloadKind::Iron) {
             return base_attract;
@@ -258,10 +310,12 @@ impl StateStore {
         })
     }
 
+    /// 按兼容键查状态条目。
     pub fn entry(&self, legacy_order_key: u32) -> Option<&StateEntry> {
         self.entries.iter().find(|entry| entry.legacy_order_key == legacy_order_key)
     }
 
+    /// 按兼容键取可变条目；取得后查询缓存退化为保守全集。
     pub fn entry_mut(&mut self, legacy_order_key: u32) -> Option<&mut StateEntry> {
         let index = self.entries.iter().position(|entry| entry.legacy_order_key == legacy_order_key)?;
         // 调用方可通过公开可变引用替换 payload；升为保守全集，确保快路只会少命中而不会误跳过。
@@ -270,14 +324,17 @@ impl StateStore {
         self.entries.get_mut(index)
     }
 
+    /// 读取火焰精通倍率；状态不存在时为 0。
     pub fn fire_mag(&self, legacy_order_key: u32) -> f64 {
         self.entry(legacy_order_key).and_then(StateEntry::fire_mag_value).unwrap_or(0.0)
     }
 
+    /// 读取冰冻剩余步数；没有冰冻状态返回 None。
     pub fn ice_frozen_step(&self, legacy_order_key: u32) -> Option<i32> {
         self.entry(legacy_order_key).and_then(StateEntry::ice_value)
     }
 
+    /// 累加冰冻步数；尚无冰冻状态时新建条目。
     pub fn add_ice_frozen_step(&mut self, legacy_order_key: u32, frozen_step: i32) {
         if let Some(entry) = self.entry_mut(legacy_order_key) {
             let current = match &entry.payload {
@@ -294,6 +351,7 @@ impl StateStore {
         self.add_entry(StateEntry::ice(legacy_order_key, frozen_step));
     }
 
+    /// 行动前结算冰冻：返回 (剩余步数, 本次是否解除冰冻)。
     pub fn apply_ice_pre_step(&mut self, step: i32, move_points: i32) -> (i32, bool) {
         if step <= 0 || self.scheduler_state_flags & SCHEDULER_STATE_ICE == 0 {
             return (step, false);
@@ -327,6 +385,7 @@ impl StateStore {
         (step, false)
     }
 
+    /// 累加火焰精通半步；尚无该状态时新建条目。
     pub fn add_fire_mag_half_step(&mut self, legacy_order_key: u32) {
         if let Some(idx) = self.entries.iter().position(|entry| entry.legacy_order_key == legacy_order_key)
             && let Some(entry) = self.entries.get_mut(idx)
@@ -364,10 +423,12 @@ impl StateStore {
         self.add_entry(StateEntry::fire_mag(legacy_order_key, 1));
     }
 
+    /// 设置护盾值，负值按 0；键不存在返回 false。
     pub fn set_shield_value(&mut self, legacy_order_key: u32, shield: i32) -> bool {
         self.set_payload(legacy_order_key, StatePayload::ShieldValue(shield.max(0)))
     }
 
+    /// 替换指定键的载荷并刷新缓存；键不存在返回 false。
     pub fn set_payload(&mut self, legacy_order_key: u32, payload: StatePayload) -> bool {
         let Some(index) = self.entries.iter().position(|entry| entry.legacy_order_key == legacy_order_key) else {
             return false;
@@ -378,8 +439,10 @@ impl StateStore {
         true
     }
 
+    /// 添加一个空 legacy 状态条目；同键已存在返回 false。
     pub fn add_legacy_key(&mut self, legacy_order_key: u32) -> bool { self.add_entry(StateEntry::legacy(legacy_order_key)) }
 
+    /// 添加状态条目并更新缓存；同键已存在返回 false。
     pub fn add_entry(&mut self, entry: StateEntry) -> bool {
         if self.entries.iter().any(|current| current.legacy_order_key == entry.legacy_order_key) {
             return false;
@@ -396,6 +459,7 @@ impl StateStore {
         true
     }
 
+    /// 按兼容键移除条目并刷新缓存；键不存在返回 false。
     pub fn clear_legacy_key(&mut self, legacy_order_key: u32) -> bool {
         let Some(idx) = self.entries.iter().position(|entry| entry.legacy_order_key == legacy_order_key) else {
             return false;
@@ -408,6 +472,7 @@ impl StateStore {
         true
     }
 
+    /// 清除全部正面状态，返回按优先级与注册序排序的解除消息。
     pub fn clear_positive_states_with_ordered_messages(&mut self, owner_alive: bool) -> Vec<(i32, &'static str)> {
         let mut messages = Vec::new();
         let mut to_remove = Vec::new();
@@ -433,12 +498,14 @@ impl StateStore {
         messages.into_iter().map(|(priority, _, _, message)| (priority, message)).collect()
     }
 
+    /// 按优先级与注册序排序的全部条目。
     pub fn entries_in_hook_order(&self) -> SmallVec<[&StateEntry; 8]> {
         let mut entries: SmallVec<[&StateEntry; 8]> = self.entries.iter().collect();
         entries.sort_by_key(|entry| (entry.priority, entry.registration_order));
         entries
     }
 
+    /// 过滤出参与指定 hook 的条目，按该 hook 的优先级排序。
     pub fn entries_in_hook_order_for(&self, hook: ProcMask) -> SmallVec<[&StateEntry; 8]> {
         let mut entries: SmallVec<[&StateEntry; 8]> =
             self.entries.iter().filter(|entry| entry.hook_mask.intersects(hook)).collect();
@@ -446,6 +513,7 @@ impl StateStore {
         entries
     }
 
+    /// 由全部条目重建缓存元数据：聚合 hook 掩码、调度器状态位与载荷种类位图。
     fn rebuild_cached_metadata(&mut self) {
         let mut hook_mask = ProcMask::default();
         let mut state_flags = 0u8;

@@ -11,7 +11,7 @@ export function parseScoreTestInput(raw) {
   // 单独的 ! 是强化指令，不作为被测名字；同名两行沿用引擎的单挑规则。
   const enhanced = body.split("\n")[0].trim() === "!";
   const input = (enhanced ? body.split("\n").slice(1).join("\n") : body).trim();
-  if (!input || input.split(/\n\s*\n/).length !== 1 || input.split("\n").some(line => line.trim() === "!test!")) {
+  if (!input || input.split(/\n\s*\n/).length !== 1 || input.split("\n").some(line => ["!", "!test!"].includes(line.trim()) || /^seed:/i.test(line.trimStart()))) {
     throw new Error("!test! 后请输入一个名字或同一队伍的名字，名字之间不要用空行分队。");
   }
   const names = input.split("\n").map(line => line.trim()).filter(Boolean);

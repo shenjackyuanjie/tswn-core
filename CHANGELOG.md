@@ -2,24 +2,26 @@
 
 本文件记录跨 crate 的维护与兼容性变更；各 crate 的版本发布历史仍以对应 CHANGELOG 为准。
 
-## 未发布 · 2026-11-20 Vite Boss 对齐
+## tswn_wasm 0.5.13 · 2026-11-21
 
-- 对照 Vite 工厂的全部 13 个 Boss，补齐柯南、二代史莱姆、青雉、一拳超人、新冠、生命之轮与灭霸的已确认行为差异；不新增角色，保留实验体兼容输入。
-- 规范回放使用灰烬、满血复活、分裂和交换实际发生时的体力；保持旧 C / WASM 兼容值。验证、已知差距和上游适配范围见 [对抗性复查报告](docs/reviews/2026-11-20-vite-boss-parity.md)。
+- 完整回放页支持 `!test!` 普通／强化评分与单挑。Worker 在累计 1,000 和 10,000 场时展示评分及技能／动作频率，可随时停止。
+- WASM 导出可步进的 `ScoreTestSession`；事件采集仅在新会话中启用，现有普通批量评分和 CLI 不变。见 [WASM 更新日志](crates/tswn_wasm/CHANGELOG.md#0513---2026-11-21)。
 
-## 未发布 · 2026-11-19 Boss 行为复核
+## tswn_core 0.7.2 · 2026-11-21
 
-- 修复生命之轮同名误触发、Boss 诅咒免疫、斑鸠智慧、一拳超人退场与行动值、新冠肺炎回血和懒癌持续发作。新增灭霸响指与史莱姆分裂的组合随机流回归。
-- 覆盖全部 14 个已注册角色；核对范围、未对齐的口罩与回放载荷见 [Boss 行为复核](docs/reviews/2026-11-19-boss-behavior-audit.md)，细节见 [核心更新日志](crates/tswn_core/CHANGELOG.md#boss-行为复核)。
+- 新增饥饿离场即获胜的 `SAITAMA@!`，补齐 Rinick 属性修改器及其隐藏 Boss 别名。灭霸、生命之轮、感染联动、反弹、状态解除和终局行动按原版复查。
+- Boss 组队样例的 1,000 场胜负与原版一致。另逐场验证 3,684 个名字对 13 个原版 Boss 和 Rinick 的 51,576,000 场单挑。基线、样本和复现口径见 [胜率复查](docs/reviews/2026-11-21-boss-win-rate-parity.md)。
+- 规范回放补全体力、目标及动画载荷，Python 和 WASM 同步声明相应字段，旧接口保留数值投影。原版对照和历史压力用例见 [战报复查](docs/reviews/2026-11-20-vite-boss-replay.md)与[续轮复查](docs/reviews/2026-11-20-vite-boss-followup.md)。
+- 固定阵容批量胜率复用 profile seed 密钥缓冲、小队身份串和场前状态，在存活队伍变动时重新判胜。9 组普通 1v1、5 组普通 2v2 共 458,752 局的逐 seed 对照一致。
+- CLI 文件和 stdin 读取默认整行跳过非 UTF-8 内容，并报告跳过行数。完整变更见 [核心更新日志](crates/tswn_core/CHANGELOG.md#072---2026-11-21)。
+
+## Openbox 0.5.4 · 2026-11-21
+
+- Openbox、`openbox-cli` 和 `tswn-cli` 读取文本时统一整行跳过无效 UTF-8，`tswn-cli` 的标准输入也适用。`openbox-cli filter` 已移除原 `--skip-invalid-utf8` 参数。见 [Openbox 更新日志](crates/tswn_openbox/CHANGELOG.md#054---2026-11-21) 和 [后端更新日志](crates/tswn_openbox_backend/CHANGELOG.md#054---2026-11-21)。
 
 ## Openbox 0.5.3 · 2026-11-19
 
 - Pair 按完整队伍计算组队加成，ToDIY 导出使用 `++` 分隔成员。其余变更见 [Openbox 更新日志](crates/tswn_openbox/CHANGELOG.md#053---2026-11-19) 和 [后端更新日志](crates/tswn_openbox_backend/CHANGELOG.md#053---2026-11-19)。
-
-## 未发布 · 2026-11-19 固定阵容胜率加速
-
-- 批量胜率复用 profile seed 的密钥缓冲、小队身份串和场前状态。免回放战斗在存活队伍变动时才重新判胜。
-- 9 组普通 1v1、5 组普通 2v2 共 458,752 局的逐 seed 对照一致。测速口径与结果见 [核心更新日志](crates/tswn_core/CHANGELOG.md#固定阵容胜率)。
 
 ## tswn_core 0.7.1 · 2026-11-19
 
@@ -69,12 +71,12 @@
 
 | 模块 | 当前版本 | 日志 |
 | --- | --- | --- |
-| `tswn_core` | 0.7.1 | [更新日志](crates/tswn_core/CHANGELOG.md) |
+| `tswn_core` | 0.7.2 | [更新日志](crates/tswn_core/CHANGELOG.md) |
 | `tswn_capi` | 0.6.3 | [更新日志](crates/tswn_capi/CHANGELOG.md) |
 | `tswn_py` | 0.5.4 | [更新日志](crates/tswn_py/CHANGELOG.md) |
-| `tswn_wasm` | 0.5.12 | [更新日志](crates/tswn_wasm/CHANGELOG.md) |
-| `tswn_openbox` | 0.5.3 | [更新日志](crates/tswn_openbox/CHANGELOG.md) |
-| `tswn_openbox_backend` | 0.5.3 | [更新日志](crates/tswn_openbox_backend/CHANGELOG.md) |
+| `tswn_wasm` | 0.5.13 | [更新日志](crates/tswn_wasm/CHANGELOG.md) |
+| `tswn_openbox` | 0.5.4 | [更新日志](crates/tswn_openbox/CHANGELOG.md) |
+| `tswn_openbox_backend` | 0.5.4 | [更新日志](crates/tswn_openbox_backend/CHANGELOG.md) |
 | `tswn_lane_ranker` | 0.1.0 | [更新日志](crates/tswn_lane_ranker/CHANGELOG.md) |
 | `tswn_name_ranker` | 0.1.0 | [更新日志](crates/tswn_name_ranker/CHANGELOG.md) |
 | `tswn_ladder` | 0.2.0 | [更新日志](crates/tswn_ladder/CHANGELOG.md) |

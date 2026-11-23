@@ -9,7 +9,9 @@ use std::time::{Duration, Instant};
 
 use super::common::format_duration;
 
+/// 进度条的字符宽度。
 pub(super) const PROGRESS_BAR_WIDTH: usize = 30;
+/// ETA 估算使用的滑动窗口大小（按最近完成的玩家数）。
 pub(super) const SLIDING_WINDOW: usize = 5;
 
 /// 批量评估共用的终端进度条（`batch-rate` 与 `pair` 的外层循环都在用）。
@@ -27,6 +29,7 @@ pub(super) struct BatchProgress {
 }
 
 impl BatchProgress {
+    /// 构造进度条：仅在 stderr 为终端时启用，并按总玩家数预分配耗时样本。
     pub(super) fn new(total_players: usize, targets_per_player: usize) -> Self {
         Self {
             enabled: io::stderr().is_terminal(),

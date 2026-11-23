@@ -6,8 +6,8 @@
 
 ## 当前状态
 
-- 核心 crate 当前版本为 `tswn_core 0.7.1`。本版加快普通 1v1、2v2 批量胜率计算，并保持逐 seed 战斗结果一致。版本明细见 [核心更新日志](crates/tswn_core/CHANGELOG.md#071---2026-11-19)。
-- 主分支继续减少固定阵容胜率计算的 seed 准备与判胜开销。普通 1v1、2v2 继续逐 seed 对齐，详见 [未发布的胜率优化](crates/tswn_core/CHANGELOG.md#固定阵容胜率)。
+- 核心 crate 当前版本为 `tswn_core 0.7.2`，补齐 Rinick 属性修改器，并对齐 Boss 联动与批量胜负。版本明细见 [核心更新日志](crates/tswn_core/CHANGELOG.md#072---2026-11-21)。
+- 固定阵容胜率批处理复用 seed 缓冲、队伍身份和场前状态。Boss 单挑按原版胜率模式逐场比较，覆盖 51,576,000 场。验证范围见 [胜率复查](docs/reviews/2026-11-21-boss-win-rate-parity.md)。
 - CLI 已覆盖普通对战、JSONL 流式日志、runtime diff 输出、benchmark、图标导出、DIY/OL overlay 导出等常用入口。
 - 仓库内同时维护 Python、WASM、C ABI、Openbox GUI/CLI，以及 `ds4` 数据处理与 `tswn-pwp` 胜率数据集/特征编码工具。
 - 当前仍处在“行为兼容 + 差分追踪 + 性能整理”的开发状态，不是只提供稳定 SDK 的纯发布仓库。
@@ -25,7 +25,6 @@ crates/
   tswn_openbox/      图形界面工具与 openbox-cli
   tswn_openbox_backend/  GUI/CLI 共用后端与预设资源
   tswn_lane_ranker/  lane 排名工具
-  tswn_ladder/       天梯工具
   tswn_pwp/          胜率数据集、校准与离线训练包（binary `tswn-pwp`）
   tswn_ds4/          ds4 相关数据处理和兼容实验
 
@@ -54,7 +53,7 @@ cargo +nightly fmt --check
 cargo build -p tswn_core --bin tswn-cli --release --features "no_debug,mimalloc_alloc"
 ```
 
-说明：`debug` / `release-fast` 只用于本地开发与测试，**不要部署**；线上统一
+说明：`debug` / `release-fast` 只用于本地开发与测试；线上统一
 `--release` 且启用 `no_debug,mimalloc_alloc`。`tswn_core` 默认 feature 已包含
 `mimalloc_alloc`，但命令里仍显式写出，避免默认 feature 变化时口径漂移。
 
@@ -68,12 +67,11 @@ cargo build -p tswn_core --bin tswn-cli --release --features "no_debug,mimalloc_
 | `tswn-cli` | `cargo build --release -p tswn_core --bin tswn-cli --features "no_debug,mimalloc_alloc"` |
 | `tswn_openbox` GUI | `cargo build --release -p tswn_openbox --bin tswn_openbox --features "no_debug,mimalloc_alloc"` |
 | `openbox-cli` | `cargo build --release -p tswn_openbox --no-default-features --features "no_debug,mimalloc_alloc" --bin openbox-cli` |
-| `tswn_ladder` | `cargo build --release -p tswn_ladder --features "no_debug,mimalloc_alloc"` |
 | `tswn_py` | `cargo build --release -p tswn_py --features "no_debug,mimalloc_alloc"` |
 
 `tswn_py` 的依赖已固定启用 `tswn_core` 的这两个 feature，同时提供同名转发
-feature，所以统一命令可以直接用于它。不要用 `target/debug` / `target/release-fast`
-的二进制部署；部署前检查 `target/release` 的时间戳，并确认对应 fingerprint 的
+feature，所以统一命令可以直接用于它。部署使用 `target/release` 的二进制；部署前检查
+`target/release` 的时间戳，并确认对应 fingerprint 的
 features 含 `no_debug` 与 `mimalloc_alloc`。
 
 运行主 CLI：
@@ -99,6 +97,7 @@ python scripts/check_runtime_release.py --corpus
 ## 重要入口
 
 - `tswn-cli`: 日常调试和用户入口。
+- WASM 完整回放和 `!test!` 评分：`uv run scripts/serve_wasm.py`，见 [网页示例](crates/tswn_wasm/examples/README.md#test-交互评分)。
 - Openbox GUI：`cargo run -p tswn_openbox --bin tswn_openbox`。
 - Openbox 无头 CLI：`cargo run -p tswn_openbox --no-default-features --features mimalloc_alloc --bin openbox-cli -- --help`。
 - `python track.py test`: 主 Runtime corpus 跟踪器的短命令转发入口。
@@ -129,7 +128,7 @@ python scripts/check_runtime_release.py --corpus
 - [`crates/tswn_wasm/README.md`](crates/tswn_wasm/README.md): WASM 绑定说明。
 - [`crates/tswn_capi/README.md`](crates/tswn_capi/README.md): C API 说明。
 - [Openbox 使用说明](crates/tswn_openbox/README.md)：GUI、无头 CLI 与共享后端。
-- [lane 排名服务](crates/tswn_lane_ranker/README.md) 与 [天梯更新器](crates/tswn_ladder/README.md)：数据库、数值工具和验证边界。
+- [lane 排名服务](crates/tswn_lane_ranker/README.md)：数据库、数值工具和验证边界。
 - [独立单号排名服务](crates/tswn_name_ranker/README.md)：校准资源、独立构建与 HTTP 配置。
 - [DS4 批处理](crates/tswn_ds4/README.md)：单人/配对评分、历史缓存与外部 ABCP5。
 - [胜率数据集与离线特征编码](crates/tswn_pwp/README.md)：`tswn-pwp` 生成、校验、校准和编码入口。

@@ -1,6 +1,7 @@
 use super::*;
 
 impl CombatRuntime {
+    /// 按选中的内置主动技能分派到对应技能实现；能力作用域限定于实际施法者。
     pub fn drain_plain_builtin_skill_into(
         &mut self,
         actor: EntityIdx,
@@ -136,10 +137,12 @@ impl CombatRuntime {
         }
     }
 
+    /// 默认选敌：按聪明与否的配额在存活敌人中抽取并评分排序。
     pub fn select_plain_default_enemy_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         self.select_plain_default_enemy_targets_with_count(actor, smart, if smart { 3 } else { 2 })
     }
 
+    /// 默认选敌并显式指定抽取配额；配额为 0 时返回空列表。
     pub fn select_plain_default_enemy_targets_with_count(
         &mut self,
         actor: EntityIdx,
@@ -225,6 +228,7 @@ impl CombatRuntime {
         scored.into_iter().map(|(target, _)| target).collect()
     }
 
+    /// 默认选敌评分：聪明按血量与吸引力，普通掷随机加吸引力。
     pub fn score_plain_default_enemy_target(&mut self, target: EntityIdx, smart: bool) -> f64 {
         let entity = self
             .entities
@@ -237,6 +241,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 火球术：队列为空时直接结算火焰攻击，否则入队后统一结算。
     pub fn drain_plain_fire_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         if self.effects.is_empty() {
             self.drain_fire_attack_effect_into(actor, target, PLAIN_FIRE_STATE_KEY, updates);
@@ -251,6 +256,7 @@ impl CombatRuntime {
         self.drain_effects_into(updates);
     }
 
+    /// 雷击术：3 到 6 段攻击，每段命中递减 10，威力按 0.36 折算。
     pub fn drain_plain_thunder_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[雷击术]",
@@ -318,6 +324,7 @@ impl CombatRuntime {
         self.control.finish_thunder();
     }
 
+    /// 地裂术：随机取 4 或 5 个目标，威力按目标数分摊。
     pub fn drain_plain_quake_skill_into(&mut self, actor: EntityIdx, mut targets: PreparedTargetList, updates: &mut RunUpdates) {
         if targets.is_empty() {
             return;
@@ -356,6 +363,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 吸血攻击：1.3 倍魔法威力并附加吸血效果。
     pub fn drain_plain_absorb_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         let atp = self
             .entities
@@ -381,6 +389,7 @@ impl CombatRuntime {
         );
     }
 
+    /// 投毒：按魔法威力攻击并附加中毒效果。
     pub fn drain_plain_poison_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         let atp = self
             .entities
@@ -405,6 +414,7 @@ impl CombatRuntime {
         );
     }
 
+    /// 会心一击：三段物理取样取最高值攻击。
     pub fn drain_plain_critical_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         let actor_runtime = &mut self
             .entities
@@ -424,6 +434,7 @@ impl CombatRuntime {
         self.drain_plain_attack_with_atp_into(actor, target, false, atp, updates);
     }
 
+    /// 狂暴选目标：聪明时排除已狂暴目标与战斗使魔。
     pub fn select_plain_berserk_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         self.select_plain_filtered_enemy_targets(
             actor,
@@ -443,6 +454,7 @@ impl CombatRuntime {
         )
     }
 
+    /// 狂暴选目标评分：已狂暴或已魅惑的目标评分打折。
     pub fn score_plain_berserk_target(&mut self, target: EntityIdx, smart: bool) -> f64 {
         let mut score = self.score_plain_default_enemy_target(target, smart);
         let target_entity = self
@@ -460,6 +472,7 @@ impl CombatRuntime {
         score
     }
 
+    /// 狂暴术：魔法威力攻击并附加狂暴效果。
     pub fn drain_plain_berserk_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         let atp = self
             .entities
@@ -484,6 +497,7 @@ impl CombatRuntime {
         );
     }
 
+    /// 加速选目标：同队存活成员，聪明时有体力下限与状态重叠限制。
     pub fn select_plain_haste_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let candidates = self.world.team_alive(actor_team).unwrap_or_default();
@@ -533,6 +547,7 @@ impl CombatRuntime {
         scored.into_iter().map(|(target, _)| target).collect()
     }
 
+    /// 加速选目标评分：已疾走的目标评分减为四分之一。
     pub fn score_plain_haste_target(&mut self, target: EntityIdx, smart: bool) -> f64 {
         if !smart {
             return self.rng.rFFFF() as f64;
@@ -556,6 +571,7 @@ impl CombatRuntime {
         score
     }
 
+    /// 加速术：推进施法者行动点，并给目标附加或延长疾走状态。
     pub fn drain_plain_haste_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[加速术]",
@@ -612,6 +628,7 @@ impl CombatRuntime {
                 "runtime haste state disappeared during extension"
             );
         } else {
+            target_entity.refresh_runtime_stats_from_template();
             assert!(
                 target_entity.states.add_entry(StateEntry::haste_with_effective_faster(
                     PLAIN_HASTE_STATE_KEY,
@@ -632,6 +649,7 @@ impl CombatRuntime {
         ));
     }
 
+    /// 铁壁：按魔法与蓄力计算保护值与步数，并扣除 256 行动点。
     pub fn drain_plain_iron_skill_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
         let (magic, charge_active) = {
             let owner = self
@@ -689,6 +707,7 @@ impl CombatRuntime {
         ));
     }
 
+    /// 连击选目标：聪明抽 5 个、普通抽 3 个敌人并按评分排序。
     pub fn select_plain_rapid_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive();
@@ -755,6 +774,7 @@ impl CombatRuntime {
         scored.into_iter().map(|(target, _)| target).collect()
     }
 
+    /// 连击：2 或 3 轮攻击，同一目标再次命中时威力衰减。
     pub fn drain_plain_rapid_skill_into(&mut self, actor: EntityIdx, mut targets: PreparedTargetList, updates: &mut RunUpdates) {
         if targets.is_empty() {
             return;
@@ -790,13 +810,138 @@ impl CombatRuntime {
                     if round == 0.0 { 0 } else { 1 },
                 ));
                 let damage = self.drain_plain_attack_with_atp_into(actor, target, false, atp, updates);
-                if damage <= 0 {
+                // 原版 group.die 判胜时直接退出连击，不追加换行、也不抽取下一目标。
+                if damage <= 0 || self.plain_battle_has_ended() {
                     return;
                 }
                 updates.add_newline();
             }
             position = (position + self.rng.r3() as usize) % targets.len();
             round += 1.0;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 测试辅助：推进至多 128 步并跳过纯空帧，返回下一可见批次及其胜者编号。
+    fn next_visible_batch(runner: &mut RuntimeRunner) -> (RuntimeFrame, Option<usize>) {
+        (0..128)
+            .filter_map(|_| {
+                let outcome = runner.run_round();
+                outcome.frame.map(|frame| (frame, outcome.winner_team))
+            })
+            .find(|(frame, _)| frame.updates.updates.iter().any(|update| !update.message.trim().is_empty()))
+            .expect("应在跳过纯空帧后产生下一可见批次")
+    }
+
+    /// 测试辅助：抽取帧中非空消息的 `(message, score)` 列表。
+    fn visible_events(frame: &RuntimeFrame) -> Vec<(&str, u32)> {
+        frame
+            .updates
+            .updates
+            .iter()
+            .filter(|update| !update.message.trim().is_empty())
+            .map(|update| (update.message.as_ref(), update.score))
+            .collect()
+    }
+
+    /// 测试辅助：断言 RC4 游标与 `main_val` 的 FNV-1a 散列和期望值一致。
+    fn assert_rapid_rng(runner: &RuntimeRunner, cursor: (u32, u32), expected_permutation: u64, context: &str) {
+        let rng = &runner.runtime().rng;
+        assert_eq!((rng.i, rng.j), cursor, "{context}");
+        let permutation = rng.main_val.iter().fold(0xcbf2_9ce4_8422_2325_u64, |digest, &byte| {
+            (digest ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+        });
+        assert_eq!(permutation, expected_permutation, "{context}");
+    }
+
+    #[test]
+    fn rapid_stops_on_the_winning_hit_before_drawing_next_target() {
+        // 原版 group.die 判胜时直接离开 Rapid.act，连带使魔消失后也一样。
+        for (raw, batch, damage, cursor, permutation, sonic_state, linked_summon) in [
+            (
+                "sonic@!\n\nalice",
+                2,
+                115,
+                (108, 17),
+                0x1371_d5ff_5e3a_a133,
+                (256, 977, 14),
+                false,
+            ),
+            (
+                "sonic@!\n\nBob",
+                4,
+                94,
+                (137, 72),
+                0x389e_6c08_1d26_0b4f,
+                (299, 4295, 33),
+                false,
+            ),
+            (
+                "saitama@!\n\nsonic@!\n\nalice",
+                22,
+                90,
+                (225, 42),
+                0xa6c2_0d32_1117_7029,
+                (299, 3645, 29),
+                true,
+            ),
+        ] {
+            let mut runner = RuntimeRunner::new_from_namerena_raw(raw.to_owned()).unwrap();
+            for _ in 1..batch {
+                let (_, winner) = next_visible_batch(&mut runner);
+                assert_eq!(winner, None, "{raw}");
+            }
+            let (frame, winner) = next_visible_batch(&mut runner);
+            let players = runner.player_snapshots();
+            let sonic = players.iter().find(|player| player.id_key_name == "sonic@!").unwrap();
+            assert_eq!(winner, Some(sonic.team_index), "{raw}");
+            assert_eq!(runner.alive_player_ids(), [sonic.id], "{raw}");
+            assert_eq!((sonic.hp, sonic.move_point, sonic.magic_point), sonic_state, "{raw}");
+
+            let mut events = vec![("[0]发起攻击", 0), ("[1]受到[2]点伤害", damage), ("[1]被击倒了", 50)];
+            if linked_summon {
+                events.push(("[1]消失了", 50));
+                let summon = players.iter().find(|player| player.id_key_name == "alice?0@alice").unwrap();
+                assert_eq!((summon.alive, summon.hp), (false, 0), "{raw}");
+            }
+            assert_eq!(visible_events(&frame), events, "{raw}");
+            assert_rapid_rng(&runner, cursor, permutation, raw);
+            assert_eq!(
+                frame.updates.updates.last().unwrap().message.as_ref(),
+                events.last().unwrap().0,
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn rapid_continues_after_a_nonterminal_knockout_or_revive() {
+        let mut runner = RuntimeRunner::new_from_namerena_raw("sonic@!\n\nAlice\n\nmario@!".to_owned()).unwrap();
+        for batch in 1..=19 {
+            let (frame, winner) = next_visible_batch(&mut runner);
+            assert_eq!(winner, None);
+            let (damage, hp, cursor, permutation) = match batch {
+                12 => (30, 356, (177, 119), 0x5aa7_4049_efc3_9355),
+                19 => (17, 369, (124, 235), 0x5efc_7fa0_31e9_aa5d),
+                _ => continue,
+            };
+            let events = visible_events(&frame);
+            let last_hit = [("[0][连击]", 1), ("[1]受到[2]点伤害", damage)];
+            let (earlier, last) = events.split_at(events.len() - last_hit.len());
+            assert!(earlier.contains(&("[1]被击倒了", 50)));
+            assert_eq!(earlier.contains(&("[0]满血复活", 0)), batch == 19);
+            assert_eq!(last, last_hit);
+            let mario = runner
+                .player_snapshots()
+                .into_iter()
+                .find(|player| player.id_key_name == "mario@!")
+                .unwrap();
+            assert_eq!((mario.alive, mario.hp), (true, hp));
+            assert_rapid_rng(&runner, cursor, permutation, "非终局连击");
         }
     }
 }

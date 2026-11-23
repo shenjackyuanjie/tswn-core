@@ -1,6 +1,7 @@
 use super::*;
 
 impl PreparedBattleSeed {
+    /// seed 快照中记录的输入分组。
     pub fn input_groups(&self) -> &[Vec<EntityIdx>] { &self.input_groups }
 
     /// 把本轮已排好的输入分组交给 runner，并接管 runner 上一轮的向量作为下次复用缓冲。
@@ -54,6 +55,8 @@ impl PreparedBattleSeed {
         }
 
         let blueprint_slots = runtime.registry.seed_blueprint_slots();
+        let boss_kind = runtime.registry.player_kind_id_by_export_name(DEFAULT_CORE_BOSS_KIND_EXPORT);
+        let boost_kind = runtime.registry.player_kind_id_by_export_name(DEFAULT_CORE_BOOST_KIND_EXPORT);
         for (index, (&team, &speed_points)) in teams.iter().zip(speed_points).enumerate() {
             let entity_idx = PreparedBattleInit::entity_idx(index);
             let entity = runtime
@@ -62,7 +65,8 @@ impl PreparedBattleSeed {
                 .unwrap_or_else(|| panic!("runtime entity disappeared during seed reset: {}", entity_idx.0));
             entity.template.team = team;
             entity.runtime.team = team;
-            if entity.template.kind != PlayerTemplate::DEFAULT_KIND {
+            let kind = entity.template.kind;
+            if kind != PlayerTemplate::DEFAULT_KIND && Some(kind) != boss_kind && Some(kind) != boost_kind {
                 continue;
             }
             entity.template.move_state.speed_points = speed_points;
@@ -75,10 +79,12 @@ impl PreparedBattleSeed {
         Ok(())
     }
 
+    /// 把 seed 的各队编号与行动点写回已复位的 runtime 实体。
     fn apply_entities(&self, runtime: &mut CombatRuntime) -> Result<(), RuntimeBattleInitError> {
         Self::apply_entity_seed_values(&self.teams, &self.speed_points, runtime)
     }
 
+    /// 把 seed 状态应用到已复位的 Runtime，并重置行动模式。
     pub fn apply(self, runtime: &mut CombatRuntime) -> Result<(), RuntimeBattleInitError> {
         self.apply_entities(runtime)?;
 
@@ -174,6 +180,13 @@ impl CombatRuntime {
             None => {}
         }
 
+        if let Some(entity) = self.entities.get(actor)
+            && entity.template.rinick.is_some()
+            && entity.runtime.root_owner != actor
+        {
+            return self.preview_plain_minion_blueprint(entity.runtime.root_owner, kind);
+        }
+
         let lazy_slot = self
             .registry
             .entity_slot_id_by_export_name(DEFAULT_CORE_LAZY_BLUEPRINT_RQ_ENTITY_EXPORT)
@@ -209,9 +222,8 @@ impl CombatRuntime {
             // JS 的 clone/minion 会把 `?N` 写到展示名，但内部名仍保留
             // `?shadow` / `?summon`。`id_key_name` 保存的是这份内部身份，
             // 这里继续拿它生成下一层蓝图，不能误用战报名。
-            let base_name = entity
-                .template
-                .id_key_name
+            let base_name = boss_combat_identity_override(&entity.template.id_key_name)
+                .unwrap_or(&entity.template.id_key_name)
                 .strip_suffix(&format!("@{}", entity.template.clan_name))
                 .unwrap_or(&entity.template.name)
                 .to_owned();

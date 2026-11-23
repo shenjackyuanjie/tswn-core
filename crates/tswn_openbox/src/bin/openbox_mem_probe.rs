@@ -4,9 +4,11 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use tswn_core::text_input::read_text_file;
 use tswn_openbox::backend::{BatchRateInput, CommonBenchOptions, OutputMode, ProgressEvent, run_batch_rate};
 
 #[derive(Default)]
+/// 内存探针的事件计数：日志字节、高亮、进度与完成事件。
 struct Stats {
     logs: usize,
     log_bytes: usize,
@@ -17,6 +19,7 @@ struct Stats {
     total: usize,
 }
 
+/// 探针入口：读取受限输入，执行批量胜率并按间隔报告 RSS 与事件统计。
 fn main() {
     let args = Args::parse();
     let players = read_limited_lines(&args.players, args.limit);
@@ -121,6 +124,7 @@ fn main() {
     cancel.store(true, Ordering::Relaxed);
 }
 
+/// 探针参数：输入文件、行数限制、场数、线程与报告间隔。
 struct Args {
     players: PathBuf,
     targets: PathBuf,
@@ -134,6 +138,7 @@ struct Args {
 }
 
 impl Args {
+    /// 解析命令行参数，未提供时使用内置默认值。
     fn parse() -> Self {
         let mut args = std::env::args().skip(1);
         let mut parsed = Self {
@@ -170,6 +175,7 @@ impl Args {
     }
 }
 
+/// 解析可选行数：all/none/0 表示不限制。
 fn parse_optional_usize(raw: String) -> Option<usize> {
     match raw.as_str() {
         "all" | "none" | "0" => None,
@@ -177,8 +183,9 @@ fn parse_optional_usize(raw: String) -> Option<usize> {
     }
 }
 
+/// 按行数上限读取文件，并规范为以换行结尾的文本。
 fn read_limited_lines(path: &PathBuf, limit: Option<usize>) -> String {
-    let content = std::fs::read_to_string(path).unwrap_or_else(|err| panic!("read failed {}: {err}", path.display()));
+    let content = read_text_file(path).unwrap_or_else(|err| panic!("read failed {}: {err}", path.display()));
     let mut out = content
         .lines()
         .filter(|line| !line.trim().is_empty())
@@ -189,6 +196,7 @@ fn read_limited_lines(path: &PathBuf, limit: Option<usize>) -> String {
     out
 }
 
+/// 向 stderr 打印一行进度与内存报告。
 fn report(started: Instant, stats: &Stats) {
     eprintln!(
         "t={:.6}s rss_kb={} progress={}/{} events={} logs={} log_kb={} highlights={}",
@@ -203,6 +211,7 @@ fn report(started: Instant, stats: &Stats) {
     );
 }
 
+/// Windows 下用 powershell 读取进程工作集（KB）。
 #[cfg(windows)]
 fn current_rss_kb() -> u64 {
     let pid = std::process::id();
@@ -217,6 +226,7 @@ fn current_rss_kb() -> u64 {
         .unwrap_or(0)
 }
 
+/// 非 Windows 下读取 /proc/self/status 的 VmRSS（KB）。
 #[cfg(not(windows))]
 fn current_rss_kb() -> u64 {
     std::fs::read_to_string("/proc/self/status")

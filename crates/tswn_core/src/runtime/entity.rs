@@ -31,10 +31,14 @@ pub use runtime::*;
 pub use skill_loadout::*;
 pub use state::*;
 
+/// 默认 at_boost 倍率 1.0 的百万分比表示，用于整数比较与导出。
 const DEFAULT_AT_BOOST_MILLIONTHS: i64 = 1_000_000;
+/// 默认 at_boost 倍率 1.0 的 f64 位模式，是派生统计的零修正基准。
 const DEFAULT_AT_BOOST_BITS: u64 = 1.0_f64.to_bits();
+/// 本体衰减系数（约 0.78）：生成子分身时前七维八围按它向上取整折算。
 const CLONE_ATTR_DECAY: f64 = 0.7799999713897705;
 
+/// 把 at_boost 倍率换算为百万分比整数，用于整数比较与导出。
 pub fn at_boost_to_millionths(at_boost: f64) -> i64 { (at_boost * DEFAULT_AT_BOOST_MILLIONTHS as f64).round() as i64 }
 
 /// 分身相对本体模板的逐项修正量；字段公开供状态导出读取，不表示可变。
@@ -54,6 +58,7 @@ pub struct CloneStatAdjustments {
     pub attract_delta_bits: u64,
 }
 
+/// 分身派生属性：原始属性按名字系数缩放并叠加修正量后的最终八围与汇总值。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CloneDerivedStats {
     pub max_hp: i32,
@@ -90,6 +95,7 @@ pub struct CloneBuildData {
 }
 
 impl CloneBuildData {
+    /// 从 legacy `PlayerStats` 反推逐项修正量，构造分身构造数据。
     pub fn from_legacy(attrs: [u32; 8], weapon_attr_bonus: [i32; 8], name_factor: f64, status: &PlayerStats) -> Self {
         let raw = Self::derive_raw(attrs, name_factor);
         Self {
@@ -159,6 +165,7 @@ impl CloneBuildData {
 
     pub(crate) fn score_skill_boost_plan(&self) -> Option<&ScoreCloneSkillBoostPlan> { self.score_skill_boost_plan.as_ref() }
 
+    /// 本体衰减：前七维按衰减系数向上取整，第八维减半。
     pub fn decay_owner(&mut self) {
         for attr in &mut self.attrs[..7] {
             *attr = ((*attr as f64) * CLONE_ATTR_DECAY).ceil() as u32;
@@ -166,6 +173,7 @@ impl CloneBuildData {
         self.attrs[7] = ((self.attrs[7] as f64) * 0.5).ceil() as u32;
     }
 
+    /// 生成子分身：叠加武器加成，并把名字系数切换为子因子。
     pub fn child(&self) -> Self {
         let mut child = self.clone();
         for (attr, bonus) in child.attrs.iter_mut().zip(child.weapon_attr_bonus) {
@@ -176,6 +184,39 @@ impl CloneBuildData {
         child
     }
 
+    pub(crate) fn rinick_child(&self) -> Self {
+        let mut child = self.clone();
+        child.attrs[..7].fill(63);
+        child.attrs[7] = child.attrs[7].max(324);
+        child.weapon_attr_bonus = [0; 8];
+        child.name_factor_bits = child.child_name_factor_bits;
+        child
+    }
+
+    pub(crate) fn derive_rinick_floor(attrs: &mut [u32; 8], name_factor: f64) -> CloneDerivedStats {
+        let mut stats = Self::derive_raw(*attrs, name_factor);
+        for (index, (attr, panel)) in attrs
+            .iter_mut()
+            .zip([
+                &mut stats.attack,
+                &mut stats.defense,
+                &mut stats.speed,
+                &mut stats.agility,
+                &mut stats.magic,
+                &mut stats.resistance,
+                &mut stats.wisdom,
+            ])
+            .enumerate()
+        {
+            if *attr < 63 {
+                *attr = 63;
+                *panel = if index == 2 { 223 } else { 63 };
+            }
+        }
+        stats
+    }
+
+    /// 逐项取较大的原始属性合并；任一属性变化返回 true。
     pub fn merge_attrs_from(&mut self, source: &Self) -> bool {
         let mut changed = false;
         for (owner_attr, source_attr) in self.attrs.iter_mut().zip(source.attrs) {
@@ -187,11 +228,13 @@ impl CloneBuildData {
         changed
     }
 
+    /// 用 owner 的原始防御与抗性刷新召唤物蓝图对应属性。
     pub fn refresh_summon_owner_attrs(&mut self, owner: &Self) {
         self.attrs[1] = owner.attrs[1];
         self.attrs[5] = owner.attrs[5];
     }
 
+    /// 计算叠加修正量后的派生属性；属性总和不允许为负。
     pub fn derive_stats(&self) -> CloneDerivedStats {
         let raw = Self::derive_raw(self.attrs, f64::from_bits(self.name_factor_bits));
         let attr_sum = i64::from(raw.attr_sum) + self.adjustments.attr_sum;
@@ -226,6 +269,7 @@ impl CloneBuildData {
     /// 返回构造召唤物蓝图所需的 owner 原始八围。
     pub(crate) fn attrs(&self) -> [u32; 8] { self.attrs }
 
+    /// 由原始八围与名字系数计算分身派生统计：按各自除数缩放八围并补速度基准，汇总 `attr_sum` 与 `atk_sum`，倍率取默认值。
     fn derive_raw(attrs: [u32; 8], name_factor: f64) -> CloneDerivedStats {
         let scale = |value: u32, divisor: f64| ((value as f64) * (1.0 - name_factor / divisor)).round() as i32;
         let attr_sum = attrs[..7].iter().sum();
@@ -250,15 +294,18 @@ impl CloneBuildData {
     }
 }
 
-/// 属性修改器身份的冷快照；复活属性和分身技能允许独立提供。
+/// 属性修改器的冷快照；复活属性和分身技能允许独立提供，子分身仅保留属性修正标记。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RinickTemplateData {
     /// 复活时重建八围的原始属性 `q[0..8]`。
     pub revive_attrs: Option<[u32; 8]>,
-    /// 复活后生成分身所用的独立技能表快照。
+    /// 生成分身所用的非身份技能表快照。
     pub clone_skills: Option<SkillLoadout>,
 }
 
+/// 运行时实体的构造基底：身份、属性、技能表、策略与分身/修改器数据。
+///
+/// 吞噬、分身衰减与派生属性更新会改写其中的热字段。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerTemplate {
     pub id: PlrId,
@@ -302,12 +349,15 @@ pub struct PlayerTemplate {
 }
 
 impl PlayerTemplate {
+    /// 未注册玩家类型使用的默认 kind ID。
     pub const DEFAULT_KIND: PlayerKindId = PlayerKindId(u32::MAX);
 
+    /// 用最小参数构造模板：默认 kind、其余属性为零；max_hp 必须为正、attack 非负。
     pub fn new(id: PlrId, name: impl Into<String>, team: usize, max_hp: i32, attack: i32) -> Self {
         Self::with_kind(id, name, Self::DEFAULT_KIND, team, max_hp, attack)
     }
 
+    /// 指定玩家类型构造模板；约束与 [`Self::new`] 相同。
     pub fn with_kind(id: PlrId, name: impl Into<String>, kind: PlayerKindId, team: usize, max_hp: i32, attack: i32) -> Self {
         assert!(max_hp > 0, "runtime player max_hp must be positive");
         assert!(attack >= 0, "runtime player attack must be non-negative");
@@ -398,6 +448,7 @@ impl PlayerTemplate {
         }
     }
 
+    /// 设置展示名，不影响机制使用的 `name`。
     pub fn with_display_name(mut self, display_name: impl Into<String>) -> Self {
         self.display_name = display_name.into();
         self
@@ -421,34 +472,40 @@ impl PlayerTemplate {
         self.clan_name = clan_name;
     }
 
+    /// 记录生成前预留的玩家 ID 数量，供实体编号稳定。
     pub fn with_reserved_player_ids_before_spawn(mut self, count: u32) -> Self {
         self.reserved_player_ids_before_spawn = count;
         self
     }
 
+    /// 设置魔法攻击力；必须非负。
     pub fn with_magic(mut self, magic: i32) -> Self {
         assert!(magic >= 0, "runtime player magic must be non-negative");
         self.magic = magic;
         self
     }
 
+    /// 设置当前魔法值。
     pub fn with_magic_point(mut self, magic_point: i32) -> Self {
         self.magic_point = magic_point;
         self
     }
 
+    /// 设置智慧；必须非负。
     pub fn with_wisdom(mut self, wisdom: i32) -> Self {
         assert!(wisdom >= 0, "runtime player wisdom must be non-negative");
         self.wisdom = wisdom;
         self
     }
 
+    /// 设置速度；必须非负。
     pub fn with_speed(mut self, speed: i32) -> Self {
         assert!(speed >= 0, "runtime player speed must be non-negative");
         self.speed = speed;
         self
     }
 
+    /// 以百万分比设置攻击倍率；必须非负。
     pub fn with_at_boost_millionths(mut self, at_boost_millionths: i64) -> Self {
         assert!(
             at_boost_millionths >= 0,
@@ -459,6 +516,7 @@ impl PlayerTemplate {
         self
     }
 
+    /// 以倍率设置攻击加成；必须为非负有限值。
     pub fn with_at_boost(mut self, at_boost: f64) -> Self {
         assert!(
             at_boost.is_finite() && at_boost >= 0.0,
@@ -469,6 +527,7 @@ impl PlayerTemplate {
         self
     }
 
+    /// 设置评分用的属性总和、攻击总和与吸引力；attract 必须有限。
     pub fn with_target_score_stats(mut self, attr_sum: u32, atk_sum: i32, attract: f64) -> Self {
         assert!(attract.is_finite(), "runtime player attract must be finite");
         self.attr_sum = attr_sum;
@@ -477,6 +536,7 @@ impl PlayerTemplate {
         self
     }
 
+    /// 设置防御与抗性；两者必须非负。
     pub fn with_def_res(mut self, defense: i32, resistance: i32) -> Self {
         assert!(defense >= 0, "runtime player defense must be non-negative");
         assert!(resistance >= 0, "runtime player resistance must be non-negative");
@@ -485,22 +545,26 @@ impl PlayerTemplate {
         self
     }
 
+    /// 设置敏捷；必须非负。
     pub fn with_agility(mut self, agility: i32) -> Self {
         assert!(agility >= 0, "runtime player agility must be non-negative");
         self.agility = agility;
         self
     }
 
+    /// 替换整个技能装载。
     pub fn with_skill_loadout(mut self, skills: SkillLoadout) -> Self {
         self.skills = skills;
         self
     }
 
+    /// 注入常驻蓄力标记；该标记不提供攻击倍率且无法解除。
     pub fn with_permanent_charge(mut self, permanent_charge: bool) -> Self {
         self.permanent_charge = permanent_charge;
         self
     }
 
+    /// 应用派生属性到模板；各项按合法区间截断（HP 至少 1，其余非负）。
     pub fn apply_derived_stats(&mut self, stats: CloneDerivedStats) {
         self.max_hp = stats.max_hp.max(1);
         self.attack = stats.attack.max(0);
@@ -549,6 +613,7 @@ impl PlayerTemplate {
         self.clone_build.clone_from(&prepared.clone_build);
     }
 
+    /// 复用来源模板的全部战斗属性与分身数据，用于召唤物重施。
     pub fn reuse_summon_stats_from(&mut self, source: &Self) {
         self.max_hp = source.max_hp;
         self.attack = source.attack;
@@ -567,30 +632,36 @@ impl PlayerTemplate {
         self.clone_build = source.clone_build.clone();
     }
 
+    /// 用技能 ID 列表构造默认装载。
     pub fn with_skills(self, skills: impl IntoIterator<Item = SkillId>) -> Self {
         self.with_skill_loadout(SkillLoadout::from_skills(skills))
     }
 
+    /// 设置初始移动状态。
     pub fn with_move_state(mut self, move_state: MoveState) -> Self {
         self.move_state = move_state;
         self
     }
 
+    /// 设置初始行动点。
     pub fn with_speed_points(mut self, speed_points: i32) -> Self {
         self.move_state.speed_points = speed_points;
         self
     }
 
+    /// 设置个体策略覆盖，优先于注册表中的玩家类型策略。
     pub fn with_policy_overrides(mut self, policy_overrides: PlayerPolicyOverrides) -> Self {
         self.policy_overrides = policy_overrides;
         self
     }
 
+    /// 覆盖伤害共享策略。
     pub fn with_damage_share_policy(mut self, damage_share: DamageSharePolicy) -> Self {
         self.policy_overrides.damage_share = Some(damage_share);
         self
     }
 
+    /// 计算生效策略：注册表策略叠加个体覆盖。
     pub fn effective_policies(&self, registry: &ExtensionRegistry) -> PlayerKindPolicies {
         let policies = registry
             .player_kind(self.kind)

@@ -59,8 +59,10 @@ impl Vocabulary {
         Ok(())
     }
 
+    /// 词条数量。
     pub fn len(&self) -> usize { self.entries.len() }
 
+    /// 是否为空词表。
     pub fn is_empty(&self) -> bool { self.entries.is_empty() }
 
     /// 查表；未知原值报 [`EncodeError::UnknownCategory`]，不折叠为 PAD。

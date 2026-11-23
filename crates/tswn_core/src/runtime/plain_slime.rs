@@ -57,13 +57,23 @@ impl CombatRuntime {
         entity.states.register_compressed_legacy_state(CompressedLegacyState::Corpse);
         entity.runtime.corpse = RuntimeCorpseKind::Slime;
 
-        let (name, clan_name, team, root_owner) = {
+        let (name, clan_name, team, root_owner, name_dens) = {
             let entity = self.entities.get(target).unwrap();
             (
                 entity.template.name.clone(),
                 entity.template.clan_name.clone(),
                 entity.runtime.team,
                 entity.runtime.root_owner,
+                entity
+                    .template
+                    .clone_build
+                    .as_ref()
+                    .map(CloneBuildData::child_name_factor)
+                    .unwrap_or_else(|| {
+                        use crate::namerena::eval_name::{DEFAULT_EVAL_RQ, eval_str_common_with_rq};
+                        eval_str_common_with_rq(&entity.template.name, true, DEFAULT_EVAL_RQ)
+                            .max(eval_str_common_with_rq(&entity.template.clan_name, true, DEFAULT_EVAL_RQ) - 6.0)
+                    }),
             )
         };
         let child_generation = generation + 1;
@@ -71,8 +81,8 @@ impl CombatRuntime {
         updates.add_newline();
         updates.add_with(|| RunUpdate::new_lang(keys::SKL_SLIME_SPAWN, target.0 as usize, target.0 as usize, 0).without_target());
 
-        let first = self.spawn_plain_slime_child(&name, &clan_name, team, root_owner, child_generation);
-        let second = self.spawn_plain_slime_child(&name, &clan_name, team, root_owner, child_generation);
+        let first = self.spawn_plain_slime_child(&name, &clan_name, team, root_owner, child_generation, name_dens);
+        let second = self.spawn_plain_slime_child(&name, &clan_name, team, root_owner, child_generation, name_dens);
 
         updates.add_with(|| {
             RunUpdate::new_lang(keys::SKL_SLIME_SPAWNED, first.0 as usize, second.0 as usize, 0).with_hp_changes(
@@ -89,6 +99,7 @@ impl CombatRuntime {
         true
     }
 
+    /// 按名字基数与代际生成一个史莱姆子体：分配最小代名字、按代际折算属性与状态，第二代起附带 32 级减半与治疗技能。
     fn spawn_plain_slime_child(
         &mut self,
         name: &str,
@@ -96,16 +107,10 @@ impl CombatRuntime {
         team: usize,
         root_owner: EntityIdx,
         generation: u32,
+        name_dens: f64,
     ) -> EntityIdx {
         let (name_base, _) = PreparedBattleInit::plain_minion_name_base(clan_name, name);
         let attrs = slime_child_attrs(&name_base, generation);
-        // legacy 在 updateStates() 里按 nameDens 缩放子体七围（体力不缩放）：
-        // nameDens = max(evalStr(baseName), evalStr(clanName) - 6)，与主名单的 name_factor 同源。
-        let name_dens =
-            crate::namerena::eval_name::eval_str_common_with_rq(name, true, crate::namerena::eval_name::DEFAULT_EVAL_RQ).max(
-                crate::namerena::eval_name::eval_str_common_with_rq(clan_name, true, crate::namerena::eval_name::DEFAULT_EVAL_RQ)
-                    - 6.0,
-            );
         let status = PreparedBattleInit::plain_minion_status_with_factor(attrs, name_dens);
         let allocated = self.allocate_plain_minion_name(root_owner);
         let id_key_name = if clan_name.is_empty() {
@@ -128,7 +133,7 @@ impl CombatRuntime {
         } else {
             SkillLoadout::default()
         };
-        let template = PlayerTemplate::new(0, name.to_owned(), team, status.max_hp, status.attack)
+        let mut template = PlayerTemplate::new(0, name.to_owned(), team, status.max_hp, status.attack)
             .with_identity_names(id_key_name, clan_name.to_owned())
             .with_display_name(get_lang(keys::BOSS_NAME_SLIME))
             .with_magic(status.magic)
@@ -141,6 +146,8 @@ impl CombatRuntime {
             .with_target_score_stats(status.attr_sum, status.atk_sum, status.attract)
             .with_speed_points(self.rng.r255() as i32 * 4)
             .with_skill_loadout(skills);
+        // 吞噬比较原始八围，而不是子体已经按名字系数缩放的战斗属性。
+        template.clone_build = Some(CloneBuildData::from_legacy(attrs, [0; 8], name_dens, &status));
         // 子体不属于任何战斗召唤物，owner 停在自身；root owner 仍指向原始史莱姆，
         // 供模型输入映射与以后可能的命名计数使用。
         let child = self

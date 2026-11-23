@@ -11,6 +11,8 @@ use std::path::Path;
 use tswn_core::cli_api;
 use tswn_core::namerena::{NamerenaInput, PreparedRoster};
 
+/// 执行 `to-diy` 导出：`batch` 时按输入顺序逐行输出每个输入的 DIY/OL 文本，
+/// 否则只处理第一个输入并可在 stdout 附赠属性详情；`out_file` 存在时改写该文件。
 pub fn run(names: &[String], batch: bool, out_file: Option<&Path>, old: bool, minions: bool, details: bool) {
     let mut out = match open_output(out_file) {
         Ok(out) => out,
@@ -32,6 +34,7 @@ pub fn run(names: &[String], batch: bool, out_file: Option<&Path>, old: bool, mi
     }
 }
 
+/// 构建单个玩家并打印原始信息与导出详情；构建失败时打印错误并退出进程。
 fn print_player_details(out: &mut dyn io::Write, raw: &str) {
     let input = match NamerenaInput::from_raw_groups(&[vec![raw.to_owned()]]) {
         Ok(input) => input,
@@ -111,6 +114,7 @@ fn extract_diy_skill_object(diy: &str) -> Option<&str> {
     None
 }
 
+/// 选择输出目标：给定路径写文件，否则写 stdout。
 fn open_output(path: Option<&Path>) -> io::Result<Box<dyn io::Write>> {
     match path {
         Some(path) => open_file(path).map(|file| Box::new(file) as Box<dyn io::Write>),
@@ -118,6 +122,7 @@ fn open_output(path: Option<&Path>) -> io::Result<Box<dyn io::Write>> {
     }
 }
 
+/// 打开输出文件：路径为目录时报错；已存在则截断写，不存在则独占创建。
 fn open_file(path: &Path) -> io::Result<File> {
     if path.exists() && path.is_dir() {
         return Err(io::Error::new(
@@ -132,6 +137,7 @@ fn open_file(path: &Path) -> io::Result<File> {
     }
 }
 
+/// 导出 diy 文本；失败时打印错误并退出进程。
 fn export_or_exit(raw: &str, old: bool, minions: bool) -> String {
     match cli_api::to_diy(raw, old, minions) {
         Ok(export) => export,

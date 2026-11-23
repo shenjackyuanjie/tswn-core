@@ -6,6 +6,7 @@
 
 use super::*;
 
+/// 为 lane_results 按需补齐兼容列：列已存在则跳过，否则执行 ALTER ADD COLUMN；列名与类型由本模块固定提供。
 pub(super) fn ensure_lane_result_column(conn: &Connection, name: &str, definition: &str) -> anyhow::Result<()> {
     let mut stmt = conn.prepare("PRAGMA table_info(lane_results)")?;
     let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
@@ -20,6 +21,7 @@ pub(super) fn ensure_lane_result_column(conn: &Connection, name: &str, definitio
     Ok(())
 }
 
+/// 为 correct_target_trace_weights 按需补齐兼容列，规则同 lane_results。
 pub(super) fn ensure_correct_target_trace_weight_column(conn: &Connection, name: &str, definition: &str) -> anyhow::Result<()> {
     let mut stmt = conn.prepare("PRAGMA table_info(correct_target_trace_weights)")?;
     let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
@@ -35,6 +37,7 @@ pub(super) fn ensure_correct_target_trace_weight_column(conn: &Connection, name:
     Ok(())
 }
 impl Db {
+    /// 创建全部表与索引，并补齐旧数据库缺失的兼容列。
     pub(super) fn init(&self) -> anyhow::Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute_batch(

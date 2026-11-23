@@ -33,12 +33,14 @@ use super::parsed::{BenchThreadMode, NamerPfMetric, NamerPfMetricSpec, PairDetai
     subcommand_required = true,
     arg_required_else_help = true
 )]
+/// 顶层 clap 命令结构：唯一字段是子命令，`main` 据此分派到各入口。
 pub(super) struct Cli {
     /// 顶层 CLI 子命令。
     #[command(subcommand)]
     command: CliCommand,
 }
 
+/// 顶层子命令枚举：fight、runtime、bench、icon、to-diy 等 CLI 入口。
 #[derive(Debug, Subcommand)]
 enum CliCommand {
     /// 运行普通对战。
@@ -109,6 +111,7 @@ enum CliCommand {
     ToDiy(ToDiyCommand),
 }
 
+/// `fight` 子命令参数：输入来源、jsonl 逐条输出与回合预算。
 #[derive(Debug, Args)]
 struct FightCommand {
     /// 普通对战输入来源参数。
@@ -122,6 +125,7 @@ struct FightCommand {
     max_rounds: usize,
 }
 
+/// `runtime diff` 子命令参数：仅含原始对战输入来源。
 #[derive(Debug, Args)]
 struct FightDiffCommand {
     /// 原始对战输入来源参数。
@@ -129,6 +133,7 @@ struct FightDiffCommand {
     input: InputArgs,
 }
 
+/// `runtime` 子命令参数：包裹具体 runtime 子命令。
 #[derive(Debug, Args)]
 struct RuntimeCommand {
     /// runtime 子命令。
@@ -136,6 +141,7 @@ struct RuntimeCommand {
     command: RuntimeSubcommand,
 }
 
+/// runtime 子命令枚举：diff 与 normalized-run。
 #[derive(Debug, Subcommand)]
 enum RuntimeSubcommand {
     /// 按主 Runtime 诊断格式输出对局。
@@ -150,6 +156,7 @@ enum RuntimeSubcommand {
     NormalizedRun(RuntimeNormalizedRunCommand),
 }
 
+/// `runtime normalized-run` 参数：输入来源与最多推进回合数。
 #[derive(Debug, Args)]
 struct RuntimeNormalizedRunCommand {
     /// runtime 输入来源参数。
@@ -161,6 +168,7 @@ struct RuntimeNormalizedRunCommand {
     max_rounds: usize,
 }
 
+/// `bench` 子命令参数：包裹具体 bench 子命令。
 #[derive(Debug, Args)]
 struct BenchCommand {
     /// 基准测试子命令。
@@ -168,6 +176,7 @@ struct BenchCommand {
     command: BenchSubcommand,
 }
 
+/// bench 子命令枚举：auto、win-rate、group-win-rate、batch-rate、pair、namer-pf 等。
 #[derive(Debug, Subcommand)]
 enum BenchSubcommand {
     /// 自动检测输入组数并运行评分或胜率测试。
@@ -251,6 +260,7 @@ enum BenchSubcommand {
     Pair(BenchPairCommand),
 }
 
+/// `bench auto` 参数：输入来源加公共 bench 选项，按组数自动选择评分或胜率。
 #[derive(Debug, Args)]
 struct BenchAutoCommand {
     /// 基准测试输入来源参数。
@@ -262,6 +272,7 @@ struct BenchAutoCommand {
     options: BenchOptions,
 }
 
+/// `bench win-rate` 参数：两队文本（raw 与 file 二选一）加公共 bench 选项。
 #[derive(Debug, Args)]
 struct BenchWinRateCommand {
     /// 使用提供的两队文本作为输入，支持 `\n` 换行；支持 `-r/--raw`。
@@ -297,6 +308,7 @@ struct BenchWinRateCommand {
     double_plus: bool,
 }
 
+/// `bench group-win-rate` 参数：目标组与可重复传入的对手组。
 #[derive(Debug, Args)]
 struct BenchGroupWinRateCommand {
     /// 目标组，格式与普通输入中的单组相同；支持 `-l/--target`。
@@ -321,6 +333,7 @@ struct BenchGroupWinRateCommand {
     keep_rq: bool,
 }
 
+/// `bench batch-rate` 参数：靶子与选手列表文件及组分隔符选项。
 #[derive(Debug, Args)]
 struct BenchBatchRateCommand {
     /// 靶子列表文件；默认每行一组、组内用 + 分隔。使用 --target-factored 时读取带权 TOML。
@@ -396,6 +409,7 @@ struct BenchBatchRateCommand {
     wr_precision: usize,
 }
 
+/// `bench pair` 参数：靶子与选手列表文件及组分隔符选项。
 #[derive(Debug, Args)]
 struct BenchPairCommand {
     /// 靶子列表文件；默认每行一组、组内用 + 分隔。使用 --target-factored 时读取带权 TOML。
@@ -504,6 +518,7 @@ struct BenchPairCommand {
     wr_precision: usize,
 }
 
+/// `namer-pf` 子命令参数：名字组输入与评分选项。
 #[derive(Debug, Args)]
 struct NamerPfCommand {
     /// 输入来源参数；每行一个名字组，组内可用 `+` 分隔。
@@ -554,6 +569,7 @@ struct NamerPfCommand {
     skill_board_out: Option<PathBuf>,
 }
 
+/// pair 详情输出粒度枚举：None/Every/Top，由 CLI 参数值解析得到。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum PairDetailArg {
     None,
@@ -571,6 +587,7 @@ impl From<PairDetailArg> for PairDetailMode {
     }
 }
 
+/// bench 公共参数：场数、线程模式等，供各 bench 子命令 flatten 复用。
 #[derive(Debug, Args)]
 struct BenchOptions {
     /// 运行场数。
@@ -625,6 +642,7 @@ struct InputArgs {
     file: Option<PathBuf>,
 }
 
+/// `icon` 子命令参数：包裹具体 icon 子命令。
 #[derive(Debug, Args)]
 struct IconCommand {
     /// 图标相关子命令。
@@ -632,6 +650,7 @@ struct IconCommand {
     command: IconSubcommand,
 }
 
+/// icon 子命令枚举：show 与 save。
 #[derive(Debug, Subcommand)]
 enum IconSubcommand {
     /// 输出玩家图标信息和终端渲染预览。
@@ -658,6 +677,7 @@ enum IconSubcommand {
     Save(IconSaveCommand),
 }
 
+/// `icon show` 参数：至少一个玩家名。
 #[derive(Debug, Args)]
 struct IconNames {
     /// 玩家名字列表。
@@ -665,6 +685,7 @@ struct IconNames {
     names: Vec<String>,
 }
 
+/// `icon save` 参数：输出目录与玩家名列表。
 #[derive(Debug, Args)]
 struct IconSaveCommand {
     /// 输出目录。
@@ -675,6 +696,7 @@ struct IconSaveCommand {
     names: Vec<String>,
 }
 
+/// `to-diy` 子命令参数：玩家名（raw 或 file）与导出选项。
 #[derive(Debug, Args)]
 struct ToDiyCommand {
     /// 玩家名字（namerena raw 格式）。

@@ -2,6 +2,7 @@ use super::*;
 
 use crate::runtime::lang::{get_lang, keys};
 
+/// 构造注册了三把武器技能 (s11 等) 的 (registry, 三个 SkillId)。
 fn weapon_registry() -> (ExtensionRegistry, SkillId, SkillId, SkillId) {
     let mut builder = ExtensionRegistryBuilder::default();
     let s11 = builder
@@ -48,6 +49,7 @@ fn tune_weapon_rng<T>(runtime: &mut CombatRuntime, mut accept: impl FnMut(&mut R
     panic!("no rng offset satisfies the weapon test predicate");
 }
 
+/// 过滤掉 NextLine 类型后提取消息字符串切片。
 fn non_next_line_messages(updates: &RunUpdates) -> Vec<&str> {
     updates
         .updates
@@ -57,6 +59,7 @@ fn non_next_line_messages(updates: &RunUpdates) -> Vec<&str> {
         .collect()
 }
 
+/// 用给定八围构造一份零修正的 CloneBuildData。
 fn clone_build_with_attrs(attrs: [u32; 8]) -> CloneBuildData {
     CloneBuildData {
         attrs,
@@ -79,6 +82,83 @@ fn clone_build_with_attrs(attrs: [u32; 8]) -> CloneBuildData {
         },
         score_skill_boost_plan: None,
     }
+}
+
+/// 用指定武器字符串构造公开武器对局的 RuntimeRunner。
+fn public_weapon_duel(weapon: &str) -> RuntimeRunner {
+    let config = default_custom_runtime_import_config().unwrap();
+    RuntimeRunner::from_custom_mixed_namerena_raw(format!("b\n\na+{weapon}"), config).unwrap()
+}
+
+/// 最多跑 64 回合直到产生可见帧并返回该 RoundOutcome。
+fn next_weapon_duel_frame(runner: &mut RuntimeRunner) -> RoundOutcome {
+    (0..64)
+        .map(|_| runner.run_round())
+        .find(|outcome| outcome.frame.is_some())
+        .expect("应产生可见回合")
+}
+
+/// 读取 runner 当前 RNG 的 (i, j, 下一个 u8 窥探值)。
+fn weapon_duel_rng(runner: &RuntimeRunner) -> (u32, u32, u8) {
+    let rng = &runner.runtime().rng;
+    (rng.i, rng.j, rng.peek_next_u8())
+}
+
+#[test]
+fn public_generic_weapon_triplet_changes_defense_and_damage() {
+    for (weapon, speed, points) in [("防尘口罩", 212, 660), ("A", 218, 750)] {
+        let mut runner = public_weapon_duel(weapon);
+        let wearer = EntityIdx(1);
+        let defense = runner.runtime().entities.get(wearer).unwrap().runtime.defense;
+        assert_eq!(weapon_duel_rng(&runner), (15, 91, 219));
+        next_weapon_duel_frame(&mut runner);
+        next_weapon_duel_frame(&mut runner);
+
+        // 中文口罩和无口罩后缀的英文武器在原版都将防御提升到 54。
+        let frame = next_weapon_duel_frame(&mut runner).frame.unwrap();
+        let hit = &frame.updates.updates[1];
+        assert_eq!((hit.target, hit.score), (wearer.0 as usize, 55), "{weapon}");
+        assert_eq!(weapon_duel_rng(&runner), (115, 116, 28));
+        let state = &runner.runtime().entities.get(wearer).unwrap().runtime;
+        assert_eq!(
+            (defense, state.hp, state.speed, state.move_state.speed_points, state.magic_point),
+            (54, 205, speed, points, 18)
+        );
+    }
+}
+
+#[test]
+fn public_generic_mask_controls_keep_their_own_weapon_stats() {
+    for (weapon, hp, defense, damage) in [("mask", 276, 57, 48), ("fabricmask", 279, 48, 52), ("saber", 260, 48, 52)] {
+        let mut runner = public_weapon_duel(weapon);
+        let state = &runner.runtime().entities.get(EntityIdx(1)).unwrap().runtime;
+        assert_eq!((state.hp, state.defense), (hp, defense), "{weapon}");
+        next_weapon_duel_frame(&mut runner);
+        let frame = next_weapon_duel_frame(&mut runner).frame.unwrap();
+        assert_eq!(frame.updates.updates[1].score, damage, "{weapon}");
+        let state = &runner.runtime().entities.get(EntityIdx(1)).unwrap().runtime;
+        assert_eq!(state.hp, hp - damage as i32, "{weapon}");
+    }
+}
+
+#[test]
+fn public_boss_ex_weapon_upgrades_the_full_attribute_triplets() {
+    let mut runner = public_weapon_duel("saber!");
+    let state = &runner.runtime().entities.get(EntityIdx(1)).unwrap().runtime;
+    let panel = (
+        state.hp,
+        state.speed,
+        state.defense,
+        state.agility,
+        state.wisdom,
+        state.magic_point,
+    );
+    assert_eq!(weapon_duel_rng(&runner), (15, 91, 219));
+
+    let frame = next_weapon_duel_frame(&mut runner).frame.unwrap();
+    assert_eq!(frame.updates.updates[1].score, 49);
+    assert_eq!(weapon_duel_rng(&runner), (51, 125, 18));
+    assert_eq!(panel, (293, 207, 59, 61, 48, 24));
 }
 
 #[test]
@@ -603,6 +683,7 @@ fn gui_yue_permanent_charge_stays_active_without_attack_boost() {
     assert_eq!(owner.runtime.at_boost_millionths, 2_700_000);
 }
 
+/// 构造注册了冰河世纪/尤里控制等技能的 (registry, 两个 SkillId)。
 fn rinick_weapon_registry() -> (ExtensionRegistry, SkillId, SkillId) {
     let mut builder = ExtensionRegistryBuilder::default();
     let ice_age = builder
@@ -635,6 +716,7 @@ fn rinick_weapon_registry() -> (ExtensionRegistry, SkillId, SkillId) {
     (builder.build(), ice_age, yuri_control)
 }
 
+/// 按给定技能构造 rinick 武器场景的 CombatRuntime。
 fn rinick_weapon_runtime(skill: SkillId) -> CombatRuntime {
     let (registry, _, _) = rinick_weapon_registry();
     CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
@@ -707,6 +789,7 @@ fn rinick_yuri_control_scan_selects_enemy_and_charms_through_builtin_drain() {
     assert_eq!(updates.updates[0].message, get_lang(keys::SKL_YURI_CONTROL));
 }
 
+/// 构造 rinick 身份测试用的 ExtensionRegistry（含随从计数实体槽）。
 fn rinick_identity_registry() -> ExtensionRegistry {
     let mut builder = ExtensionRegistryBuilder::default();
     builder
@@ -724,6 +807,7 @@ fn rinick_identity_registry() -> ExtensionRegistry {
     builder.build()
 }
 
+/// 按 id/name/team/八围构造带 Rinick 标识的 PlayerTemplate。
 fn rinick_identity_template(id: PlrId, name: &str, team: usize, raw: [u32; 8]) -> PlayerTemplate {
     let mut template = PlayerTemplate::new(id, name, team, raw[7] as i32, 10)
         .with_display_name(format!("{name}@Rinick"))
@@ -835,8 +919,8 @@ fn rinick_reraise_rebuilds_floored_attrs_and_consumes_one_life() {
     assert_eq!(entity.template.wisdom, 80);
     assert_eq!(entity.template.magic_point, 40);
     assert_eq!(entity.runtime.magic_point, 40);
-    assert_eq!(entity.runtime.attr_sum, 63 * 5 + 70 + 80);
-    assert_eq!(entity.runtime.atk_sum, (63 - 63 + 63 + 63 - 70) * 2 + 63 + 80);
+    assert_eq!(entity.runtime.attr_sum, raw[..7].iter().sum::<u32>());
+    assert_eq!(entity.runtime.atk_sum, (20 - 30 + 40 + 60 - 70) * 2 + 50 + 80);
     assert_eq!(entity.states.entry(PLAIN_ICE_STATE_KEY), None);
     // 两人局不存在人数劣势，不会召唤分身。
     assert_eq!(runtime.entities.len(), 2);
@@ -913,8 +997,8 @@ fn rinick_reraise_spawns_clones_when_outnumbered() {
     assert_eq!(clone_entity.runtime.move_state.speed_points, clone_move_points);
     assert_eq!(clone_entity.runtime.hp, 400);
     assert_eq!(clone_entity.template.max_hp, 400);
-    assert_eq!(clone_entity.template.wisdom, 80);
-    assert_eq!(clone_entity.template.magic_point, 40);
+    assert_eq!(clone_entity.template.wisdom, 63);
+    assert_eq!(clone_entity.template.magic_point, 31);
     assert_eq!(
         updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
         vec![
@@ -926,6 +1010,33 @@ fn rinick_reraise_spawns_clones_when_outnumbered() {
             get_lang(keys::SKL_CLONED),
         ]
     );
+}
+
+#[test]
+fn rinick_boss_alias_and_weapon_input_share_seed_and_battle_state() {
+    let opponents = "\n\nra0x0\nra0x1\nra0x2\nra0x3\nra0x4\nra0x5\nseed:42@!";
+    let mut original = RuntimeRunner::new_from_namerena_raw(format!("Rinick+属性修改器{opponents}")).unwrap();
+    let mut boss = RuntimeRunner::new_from_namerena_raw(format!("Rinick属性修改器@!{opponents}")).unwrap();
+    for _ in 0..20_000 {
+        assert_rng_state_eq(&boss.runtime.rng, &original.runtime.rng);
+        assert_eq!(boss.runtime.world.flat_alive(), original.runtime.world.flat_alive());
+        for &index in boss.runtime.world.flat_alive() {
+            let left = boss.runtime.entities.get(index).unwrap();
+            let right = original.runtime.entities.get(index).unwrap();
+            assert_eq!(left.template, right.template);
+            assert_eq!(left.runtime.hp, right.runtime.hp);
+            assert_eq!(left.runtime.magic_point, right.runtime.magic_point);
+            assert_eq!(left.runtime.move_state, right.runtime.move_state);
+            assert_eq!(left.runtime.rinick_reraise_lives, right.runtime.rinick_reraise_lives);
+        }
+        if original.have_winner() {
+            assert_eq!(boss.runtime.world.winner_team(), original.runtime.world.winner_team());
+            return;
+        }
+        boss.main_round();
+        original.main_round();
+    }
+    panic!("属性修改器别名对局未能在回合上限内结束");
 }
 
 #[test]

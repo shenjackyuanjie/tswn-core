@@ -31,11 +31,17 @@ use crate::parser::{parse_group, parse_member_team};
 use crate::ranker::{RankerConfig, recompute_lane_until_stable};
 use crate::winrate::compute_rate_without_db;
 
+/// 内嵌的靶子 MILP 求解 Python 脚本文本。
 const TARGET_MILP_SOLVER: &str = include_str!("../tools/target_milp_solver.py");
+/// 服务层胜率检查点累积条数：满 100 条或强制时落库。
 const RATE_PERSIST_CHECKPOINT_SIZE: usize = 100;
+/// 继承大靶子的压缩协议与 Python 求解器调用。
 mod compression;
+/// 组合导入、屏蔽与手动胜率批处理。
 mod groups;
+/// 后台排名与约束选择任务的启动和状态更新。
 mod jobs;
+/// 靶子候选、胜率补算、导出与审计。
 mod targets;
 
 use compression::*;
@@ -43,6 +49,7 @@ use groups::*;
 use jobs::*;
 use targets::*;
 
+/// 应用服务：持有数据库句柄与排名配置，供 HTTP 层与 worker 复用。
 #[derive(Clone)]
 pub struct AppService {
     pub db: Db,
@@ -50,8 +57,10 @@ pub struct AppService {
 }
 
 impl AppService {
+    /// 用数据库与排名配置构造服务。
     pub fn new(db: Db, config: RankerConfig) -> Self { Self { db, config } }
 
+    /// 按给定配置把一批 lane 加入重算队列，返回实际入队的 lane。
     pub fn queue_recompute_lanes_with_config(&self, lanes: Vec<usize>, config: RankerConfig) -> anyhow::Result<Vec<usize>> {
         let mut queued = Vec::new();
 
@@ -94,6 +103,7 @@ impl AppService {
         Ok(queued)
     }
 
+    /// 把单个 lane 加入重算队列，可带粘性与并发参数。
     pub fn queue_recompute_lane(
         &self,
         lane: usize,
@@ -112,6 +122,7 @@ impl AppService {
         Ok(RecomputeLaneResponse { queued_lanes })
     }
 
+    /// 把单个 lane 加入约束选择队列，返回生效的请求参数。
     pub fn queue_constrained_selection_lane(
         &self,
         lane: usize,
@@ -161,6 +172,7 @@ impl AppService {
         })
     }
 
+    /// 校验指定 lane 的两两强度结果，返回校验详情 JSON。
     pub fn validate_pair_strength_lane(
         &self,
         lane: usize,
@@ -180,6 +192,7 @@ impl AppService {
         validate_saved_pair_strength_results(&self.db, lane, &config, threshold)
     }
 
+    /// 按请求覆盖生成运行配置：外层 worker 与 skip_archived 可覆盖，内层固定为 1。
     fn config_with_run_options(
         &self,
         outer_workers: Option<usize>,

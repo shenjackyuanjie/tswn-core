@@ -175,7 +175,7 @@ python scripts/read_encoded_batches.py target/winprob-encoded
 逐批返回只读内存映射的 `features` 和 `labels`，无需 PyArrow；需要关系计算旁路时显式传入
 `include_exact=True`。该读取器只加载已编码数组，不重写 bit、引用或归一化逻辑。
 示例名字池不保证观测到所有罕见机制，因此可能不足以发布完整契约；生成器能保存的 Boss 专属载荷
-也不等于当前 encoder 已支持这些载荷，详见契约的 `support` 声明。
+超出当前 encoder 的支持范围，详见契约的 `support` 声明。
 
 ## Python 读取
 

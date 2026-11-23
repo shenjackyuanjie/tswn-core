@@ -261,6 +261,7 @@ fn parquet_preserves_rare_payloads_and_full_integer_precision() {
         StatePayload::CovidBoss { mutation: 9 },
         StatePayload::CovidInfection {
             entries: vec![CovidInfectionEntry {
+                registration_order: None,
                 boss: EntityIdx(1),
                 mutation: 9,
                 days: 5,

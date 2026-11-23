@@ -16,18 +16,29 @@ use super::widgets::{
     bench_output_controls, count_mode_controls, optional_file_output_controls, pick_named_output_file, thread_controls,
 };
 
+/// 工具页整体外边距。
 const GROUP_MARGIN: i8 = 8;
+/// 分区组框的水平内边距。
 const SECTION_MARGIN_X: i8 = 8;
+/// 分区组框的垂直内边距。
 const SECTION_MARGIN_Y: i8 = 6;
+/// 分区之间的垂直间距。
 const SECTION_GAP: f32 = 5.0;
+/// 日志分区与上方内容的间距。
 const LOG_SECTION_GAP: f32 = 6.0;
+/// namer-pf 表格指标名列宽。
 const NAMER_PF_METRIC_LABEL_WIDTH: f32 = 48.0;
+/// namer-pf 表格开关列宽。
 const NAMER_PF_TOGGLE_WIDTH: f32 = 58.0;
+/// namer-pf 表格阈值输入列宽。
 const NAMER_PF_VALUE_WIDTH: f32 = 132.0;
+/// namer-pf 表格高亮列宽。
 const NAMER_PF_HIGHLIGHT_WIDTH: f32 = 116.0;
+/// namer-pf 表格操作列宽。
 const NAMER_PF_ACTION_WIDTH: f32 = 112.0;
 
 impl OpenboxApp {
+    /// 绘制 to-diy 工具界面。
     pub fn show_diy_ui(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
         tool_header(ui, "to-diy", "名字转 DIY / 召唤物 DIY", Some(&mut self.more_settings_open));
@@ -47,6 +58,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 绘制 namer-pf 工具界面。
     pub fn namer_pf_ui(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
         tool_header(ui, "namer-pf", "批量评分并筛选名字", Some(&mut self.more_settings_open));
@@ -72,6 +84,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 绘制批量胜率（cqd/cqp）工具界面。
     pub fn batch_rate_ui(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
         tool_header(ui, "cqd/cqp", "计算选手对靶子的平均胜率", Some(&mut self.more_settings_open));
@@ -109,6 +122,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 绘制 pair 工具界面。
     pub fn pair_ui(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
         tool_header(ui, "pair", "计算选手与队友组合表现", Some(&mut self.more_settings_open));
@@ -143,6 +157,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 绘制 base 工具界面。
     pub fn base_ui(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
         // base 只有一个名字输入，没有可调的设置项，因此不给“更多设置”入口。
@@ -177,6 +192,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 绘制更多设置窗口；未打开时直接返回。
     pub fn more_settings_window(&mut self, ctx: &egui::Context) {
         if !self.more_settings_open {
             return;
@@ -213,6 +229,7 @@ impl OpenboxApp {
         self.more_settings_open = open;
     }
 
+    /// to-diy 更多设置：基础开关与输出文件。
     fn show_diy_more_settings(&mut self, ui: &mut egui::Ui) {
         section(ui, "基础选项", |ui| {
             to_diy_basic_controls(ui, self);
@@ -223,6 +240,7 @@ impl OpenboxApp {
         });
     }
 
+    /// namer-pf 更多设置：计算方式、指标表与输出。
     fn namer_pf_more_settings(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
         section(ui, "计算设置", |ui| {
@@ -252,6 +270,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 批量胜率更多设置：计算方式、靶子与输出。
     fn batch_rate_more_settings(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
         section(ui, "计算设置", |ui| {
@@ -300,6 +319,7 @@ impl OpenboxApp {
         }
     }
 
+    /// pair 更多设置：计算方式、靶子/队友与详情。
     fn pair_more_settings(&mut self, ui: &mut egui::Ui) {
         let requested_help = Cell::new(None);
         section(ui, "计算设置", |ui| {
@@ -373,6 +393,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 绘制当前工具页的日志与结果区。
     pub fn log_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         // 每页各自持有日志与结果；任务事件由 `task_tool` 决定写入哪一页。
         let page = self.tool as usize;
@@ -559,8 +580,10 @@ impl OpenboxApp {
     }
 }
 
+/// 按行数估算紧凑日志区高度，限制在 4–20 行与 360 像素内。
 fn compact_log_text_height(line_count: usize) -> f32 { (line_count.clamp(4, 20) as f32 * 17.0 + 12.0).min(360.0) }
 
+/// 工具页标题行：标题、副标题与更多设置按钮。
 pub(super) fn tool_header(ui: &mut egui::Ui, title: &str, subtitle: &str, more_settings_open: Option<&mut bool>) {
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
@@ -578,6 +601,7 @@ pub(super) fn tool_header(ui: &mut egui::Ui, title: &str, subtitle: &str, more_s
     ui.add_space(4.0);
 }
 
+/// 绘制一个分组框并返回内容返回值。
 fn section<R>(ui: &mut egui::Ui, title: &str, add_contents: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let inner = egui::Frame::group(ui.style())
         .inner_margin(egui::Margin::symmetric(SECTION_MARGIN_X, SECTION_MARGIN_Y))
@@ -591,6 +615,7 @@ fn section<R>(ui: &mut egui::Ui, title: &str, add_contents: impl FnOnce(&mut egu
     inner
 }
 
+/// 带帮助图标的分组框；点击把主题写入 requested_help。
 fn section_with_help<R>(
     ui: &mut egui::Ui,
     title: &str,
@@ -613,6 +638,7 @@ fn section_with_help<R>(
     inner
 }
 
+/// to-diy 基础开关：旧 +diy 与召唤物diy 互斥。
 fn to_diy_basic_controls(ui: &mut egui::Ui, app: &mut OpenboxApp) {
     ui.horizontal(|ui| {
         if ui.checkbox(&mut app.to_diy.old, "旧 +diy").changed() && app.to_diy.old {
@@ -624,6 +650,7 @@ fn to_diy_basic_controls(ui: &mut egui::Ui, app: &mut OpenboxApp) {
     });
 }
 
+/// 高亮增量输入框与帮助图标。
 fn highlight_delta_control(ui: &mut egui::Ui, value: &mut String, requested_help: &Cell<Option<HelpTopic>>) {
     ui.horizontal(|ui| {
         ui.label("高亮超强名字");
@@ -632,6 +659,7 @@ fn highlight_delta_control(ui: &mut egui::Ui, value: &mut String, requested_help
     });
 }
 
+/// 靶子预设下拉选择与错误提示。
 fn target_preset_controls(ui: &mut egui::Ui, state: &mut tswn_openbox::presets::TargetPresetState) {
     ui.horizontal(|ui| {
         ui.label("靶子");
@@ -651,6 +679,7 @@ fn target_preset_controls(ui: &mut egui::Ui, state: &mut tswn_openbox::presets::
     }
 }
 
+/// 队友预设下拉选择（显示保留数量）与可选帮助图标。
 fn teammate_preset_controls(
     ui: &mut egui::Ui,
     state: &mut tswn_openbox::presets::TeammatePresetState,
@@ -687,6 +716,7 @@ fn teammate_preset_controls(
     }
 }
 
+/// cqp 详情模式单选与阈值输入。
 fn pair_detail_controls(ui: &mut egui::Ui, app: &mut OpenboxApp, requested_help: &Cell<Option<HelpTopic>>) {
     ui.horizontal(|ui| {
         ui.radio_value(&mut app.pair.detail_mode, PairDetailMode::None, "不显示cqp");
@@ -702,6 +732,7 @@ fn pair_detail_controls(ui: &mut egui::Ui, app: &mut OpenboxApp, requested_help:
     }
 }
 
+/// 精确度预设单选，选中即切到精确度计数模式。
 fn main_accuracy_controls(
     ui: &mut egui::Ui,
     mode: &mut CountMode,
@@ -720,6 +751,7 @@ fn main_accuracy_controls(
     });
 }
 
+/// namer-pf 指标表：全选、表头与逐行控件。
 fn namer_pf_metric_controls_clean(ui: &mut egui::Ui, app: &mut OpenboxApp, show_highlight: bool) {
     let all_selected = app.namer_pf.metrics.iter().all(|metric| metric.screen && metric.file_output.enabled)
         && app.namer_pf.skill_board.screen
@@ -800,6 +832,7 @@ fn namer_pf_metric_controls_clean(ui: &mut egui::Ui, app: &mut OpenboxApp, show_
     namer_pf_path_row(ui, path_label);
 }
 
+/// namer-pf 指标表表头，按需显示高亮列。
 fn namer_pf_metric_header(ui: &mut egui::Ui, show_highlight: bool) {
     ui.horizontal(|ui| {
         namer_pf_fixed_label_cell(ui, "", NAMER_PF_METRIC_LABEL_WIDTH);
@@ -814,12 +847,15 @@ fn namer_pf_metric_header(ui: &mut egui::Ui, show_highlight: bool) {
     });
 }
 
+/// 指标名列单元格（固定宽度）。
 fn namer_pf_label_cell(ui: &mut egui::Ui, text: &str) { namer_pf_fixed_label_cell(ui, text, NAMER_PF_METRIC_LABEL_WIDTH); }
 
+/// 指定宽度的标签单元格。
 fn namer_pf_fixed_label_cell(ui: &mut egui::Ui, text: &str, width: f32) {
     ui.add_sized([width, ui.spacing().interact_size.y], egui::Label::new(text));
 }
 
+/// 复选单元格。
 fn namer_pf_checkbox_cell(ui: &mut egui::Ui, value: &mut bool) {
     ui.add_sized(
         [NAMER_PF_TOGGLE_WIDTH, ui.spacing().interact_size.y],
@@ -827,12 +863,15 @@ fn namer_pf_checkbox_cell(ui: &mut egui::Ui, value: &mut bool) {
     );
 }
 
+/// 文本输入单元格（默认宽度）。
 fn namer_pf_text_cell(ui: &mut egui::Ui, text: &mut String) { namer_pf_text_cell_width(ui, text, NAMER_PF_VALUE_WIDTH); }
 
+/// 指定宽度的文本输入单元格。
 fn namer_pf_text_cell_width(ui: &mut egui::Ui, text: &mut String, width: f32) {
     ui.add_sized([width, ui.spacing().interact_size.y], egui::TextEdit::singleline(text));
 }
 
+/// 操作列固定宽度布局容器。
 fn namer_pf_action_cell(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui)) {
     ui.allocate_ui_with_layout(
         egui::vec2(NAMER_PF_ACTION_WIDTH, ui.spacing().interact_size.y),
@@ -841,6 +880,7 @@ fn namer_pf_action_cell(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::
     );
 }
 
+/// 整行显示可换行的路径文本。
 fn namer_pf_path_row(ui: &mut egui::Ui, text: String) {
     ui.scope(|ui| {
         ui.set_width(ui.available_width());

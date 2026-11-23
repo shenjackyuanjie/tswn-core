@@ -17,6 +17,7 @@ use crate::model::engine::{NameFeature, PositionTables, base_score, init_pos_tab
 use crate::output::AtomicFileWriter;
 use crate::sp1_coeffs::{MODEL_CQD0, MODEL_CQD3, MODEL_PD0, MODEL_PP0, MODEL_QD0, MODEL_QP0};
 
+/// SP1 评分模式：qp/qd/pp/pd/cqd 五种口径。
 #[derive(Debug, Clone, Copy)]
 pub enum Sp1Mode {
     Qp,
@@ -27,8 +28,10 @@ pub enum Sp1Mode {
 }
 
 impl Sp1Mode {
+    /// 全部 SP1 模式，顺序 qp/qd/pp/pd/cqd。
     pub const ALL: [Self; 5] = [Self::Qp, Self::Qd, Self::Pp, Self::Pd, Self::Cqd];
 
+    /// 返回模式的 CLI 字符串名。
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Qp => "qp",
@@ -39,6 +42,7 @@ impl Sp1Mode {
         }
     }
 
+    /// 返回该 SP1 模式对应的 1124 项系数表（CQD 使用主模型）。
     fn model(self) -> &'static [f64; 1124] {
         match self {
             Self::Qp => &MODEL_QP0,
@@ -49,6 +53,7 @@ impl Sp1Mode {
         }
     }
 
+    /// 返回该模式在 score_now 表中的技能列索引；PD/CQD 不支持技能筛选。
     fn skill_column(self) -> Option<usize> {
         match self {
             Self::Qp => Some(1),
@@ -59,9 +64,11 @@ impl Sp1Mode {
     }
 }
 
+/// 36×3 的当前分数表，数据来自 root 下的 score_now.txt 或内置默认值。
 pub struct ScoreNow([[i32; 3]; 36]);
 
 impl ScoreNow {
+    /// 从 root 下的 score_now.txt 加载分数表；文件缺失时回退到内置数据。
     pub fn load(root: &Path) -> Ds4Result<Self> {
         let source = if root.join("score_now.txt").exists() {
             fs::read_to_string(root.join("score_now.txt"))?
@@ -89,6 +96,7 @@ impl ScoreNow {
     }
 }
 
+/// 以指定 SP1 模式与 ScoreNow 基准评分输入文件，可选额外写出技能输出，返回写入行数。
 pub fn score_file(
     input: &Path,
     output: &Path,
@@ -150,9 +158,11 @@ pub fn score_file(
     Ok(retained)
 }
 
+/// 评分单个名字：构建 SP1 特征并求基分，CQD 在 x[32] 达标时取第三套分支的更高分并乘 100。
 fn score_one(name: &str, mode: Sp1Mode) -> Ds4Result<(f64, Vec<usize>)> {
     let feature = NameFeature::from_full_name(name)?;
     let (x, skills) = sp1_features(&feature);
+    /// score_one 的进程级位置索引表缓存。
     static TABLES: OnceLock<PositionTables> = OnceLock::new();
     let (pos, pos2) = TABLES.get_or_init(init_pos_tables);
     let mut score = base_score(&x, mode.model(), pos, pos2).max(0.0);
@@ -165,6 +175,7 @@ fn score_one(name: &str, mode: Sp1Mode) -> Ds4Result<(f64, Vec<usize>)> {
     Ok((score, skills))
 }
 
+/// 由名称特征生成 SP1 口径的 46 维特征与候选技能列表。
 fn sp1_features(feature: &NameFeature) -> ([f64; 46], Vec<usize>) {
     let mut x = feature.x;
     x[8..].fill(0.0);

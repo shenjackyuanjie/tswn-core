@@ -7,6 +7,7 @@ use anyhow::Context;
 
 use crate::model::StoredGroup;
 
+/// 不经过数据库直接计算两个分组对战的 a 方胜率，返回百分比。
 pub fn compute_rate_without_db(a: &StoredGroup, b: &StoredGroup, samples: usize, inner_workers: u32) -> anyhow::Result<f64> {
     let groups = vec![a.members.clone(), b.members.clone()];
     let summary = tswn_core::win_rate::groups_win_rate(

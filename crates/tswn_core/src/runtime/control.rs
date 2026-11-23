@@ -56,6 +56,7 @@ pub enum ForcedAction {
 }
 
 impl ForcedAction {
+    /// 引擎接管行动的类型名，与线格式取值一致。
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Berserk => "berserk",
@@ -78,10 +79,13 @@ pub enum DamageDecisionPhase {
 }
 
 impl DamageDecisionPhase {
+    /// 向前端询问各阶段决策的顺序。
     pub const ASK_ORDER: [Self; 4] = [Self::Evade, Self::Reflect, Self::Protect, Self::Defend];
+    /// 引擎实际结算各阶段的顺序。
     pub const RESOLVE_ORDER: [Self; 4] = [Self::Reflect, Self::Protect, Self::Evade, Self::Defend];
 }
 
+/// 一次伤害解析的决策批次：已询问阶段与回避预演结果。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DamageDecisionBatch {
     pub id: u64,
@@ -92,6 +96,7 @@ pub struct DamageDecisionBatch {
     pub evade: Option<EvadeDecision>,
 }
 
+/// 一条回避决策：是否发动、是否成功、是否强命。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EvadeDecision {
     pub activate: bool,
@@ -112,6 +117,7 @@ pub struct ThunderContext {
 }
 
 impl DamageDecisionBatch {
+    /// 构造一个空决策批次。
     pub fn new(id: u64, attacker: PlrId, target: PlrId) -> Self {
         Self {
             id,
@@ -122,14 +128,17 @@ impl DamageDecisionBatch {
         }
     }
 
+    /// 登记一个被询问的阶段；重复登记去重。
     pub fn record(&mut self, phase: DamageDecisionPhase) {
         if !self.requested.contains(&phase) {
             self.requested.push(phase);
         }
     }
 
+    /// 写入本批次的回避预演结果。
     pub fn set_evade(&mut self, decision: EvadeDecision) { self.evade = Some(decision); }
 
+    /// 取走本批次的回避预演结果。
     pub fn take_evade(&mut self) -> Option<EvadeDecision> { self.evade.take() }
 }
 
@@ -203,6 +212,7 @@ pub enum PlannedActionError {
 }
 
 impl fmt::Display for PlannedActionError {
+    /// 显示脚本指令错误：区分未装备技能、MP 不足与选不出目标三类。
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::SkillNotEquipped { actor, skill } => {
@@ -348,8 +358,10 @@ impl BattleControl {
         self.awaiting = None;
     }
 
+    /// 首支受控队伍；未设置时为 None。
     pub fn controlled_team(&self) -> Option<usize> { self.controlled_teams.first().copied() }
 
+    /// 全部受控队伍。
     pub fn controlled_teams(&self) -> &[usize] { &self.controlled_teams }
 
     /// 表示「双方本体与分身都由玩家控制」的特殊队伍编号，沿用 `u32::MAX` 线格式。
@@ -361,10 +373,12 @@ impl BattleControl {
             .iter()
             .any(|controlled| *controlled == Self::CONTROLLED_ALL_TEAMS || *controlled == team)
     }
+    /// 追加一条指令；是否指定目标队伍决定本次索敌口径。
     pub fn queue(&mut self, action: PlannedAction) {
         self.queue.push((action, TargetWisdom::for_action(action.target_team.is_some(), true)));
     }
 
+    /// 批量追加指令，保持给定顺序。
     pub fn queue_all(&mut self, actions: impl IntoIterator<Item = PlannedAction>) {
         for action in actions {
             self.queue(action);
@@ -402,6 +416,7 @@ impl BattleControl {
         }
     }
 
+    /// 清空尚未消费的指令。
     pub fn clear_queue(&mut self) { self.queue.clear(); }
 
     /// 复位到“无脚本、无受控队伍、无暂停”的初始状态；复用 runner 开始下一场时调用。
@@ -415,8 +430,10 @@ impl BattleControl {
         self.awaiting = Some((actor, forced_action, smart));
     }
 
+    /// 正在等待玩家指令的单位；非暂停边界为 None。
     pub fn awaiting(&self) -> Option<PlrId> { self.awaiting.map(|(actor, _, _)| actor) }
 
+    /// 暂停边界上引擎仍将接管的行动类型。
     pub fn awaiting_forced_action(&self) -> Option<ForcedAction> { self.awaiting.and_then(|(_, forced, _)| forced) }
 
     pub(crate) fn awaiting_smart(&self, actor: PlrId) -> bool { matches!(self.awaiting, Some((id, _, true)) if id == actor) }
@@ -432,12 +449,16 @@ impl BattleControl {
         self.evade_indices.clear();
     }
 
+    /// 开关被动决策模式；关闭时被动按服务器判定自动执行。
     pub fn set_passive_decision_mode(&mut self, enabled: bool) { self.passive_decision_mode = enabled; }
 
+    /// 是否处于被动决策模式。
     pub fn passive_decision_mode(&self) -> bool { self.passive_decision_mode }
 
+    /// 设置即时对局的自动技能概率倍率。
     pub fn set_skill_multiplier(&mut self, multiplier: f64) { self.skill_multiplier = Some(multiplier); }
 
+    /// 当前生效的技能概率倍率；非决策模式恒为 1。
     pub fn skill_multiplier(&self) -> f64 {
         if self.passive_decision_mode {
             self.skill_multiplier.unwrap_or(1.0)
@@ -446,10 +467,13 @@ impl BattleControl {
         }
     }
 
+    /// 设置受控是否延伸到场上召唤物。
     pub fn set_controlled_minions(&mut self, enabled: bool) { self.controlled_minions = enabled; }
 
+    /// 受控是否延伸到场上召唤物。
     pub fn controlled_minions(&self) -> bool { self.controlled_minions }
 
+    /// 按触发顺序取走下一条被动决策。
     pub fn next_passive_decision(&mut self) -> Option<PassiveDecision> {
         let decision = self.passive_decisions.get(self.passive_cursor).cloned()?;
         self.passive_cursor += 1;
@@ -465,12 +489,16 @@ impl BattleControl {
         self.next_passive_decision()
     }
 
+    /// 登记一个待调用方确认的被动请求。
     pub fn set_pending_passive(&mut self, request: PassiveRequest) { self.pending_passive = Some(request); }
 
+    /// 取走待确认的被动请求。
     pub fn take_pending_passive(&mut self) -> Option<PassiveRequest> { self.pending_passive.take() }
 
+    /// 查看待确认的被动请求，不移除。
     pub fn pending_passive(&self) -> Option<&PassiveRequest> { self.pending_passive.as_ref() }
 
+    /// 当前雷击的暂停上下文；不在雷击内为 None。
     pub fn thunder_context(&self) -> Option<ThunderContext> { self.thunder }
 
     pub(crate) fn begin_thunder(&mut self, attacker: PlrId, target: PlrId) {
@@ -498,11 +526,12 @@ impl BattleControl {
 
     pub(crate) fn finish_thunder(&mut self) { self.thunder = None; }
 
-    /// Preserve updates already emitted before a passive pause unwinds the round.
+    /// 保留被动暂停解除回合前已产生的更新。
     pub fn set_pending_updates(&mut self, updates: &crate::runtime::update::RunUpdates) {
         self.pending_updates = Some(updates.clone());
     }
 
+    /// 取走被动暂停前已经产生的更新。
     pub fn take_pending_updates(&mut self) -> Option<crate::runtime::update::RunUpdates> { self.pending_updates.take() }
 
     /// 没有被动决策或回放的攻击仍保留原来的批次编号序列。
@@ -512,12 +541,14 @@ impl BattleControl {
         self.next_damage_batch_id
     }
 
+    /// 开始一个新的伤害决策批次并返回其 ID。
     pub fn begin_damage_batch(&mut self, attacker: PlrId, target: PlrId) -> u64 {
         let id = self.advance_damage_batch_id();
         self.damage_batches.push(DamageDecisionBatch::new(id, attacker, target));
         id
     }
 
+    /// 复用栈顶同双方的批次，否则新建；返回批次 ID。
     pub fn ensure_damage_batch(&mut self, attacker: PlrId, target: PlrId) -> u64 {
         if let Some(batch) = self.damage_batches.last()
             && batch.attacker == attacker
@@ -528,8 +559,10 @@ impl BattleControl {
         self.begin_damage_batch(attacker, target)
     }
 
+    /// 当前最近的伤害决策批次。
     pub fn damage_batch(&self) -> Option<&DamageDecisionBatch> { self.damage_batches.last() }
 
+    /// 结束指定批次；被覆盖而未执行的回避记为失败回执。
     pub fn finish_damage_batch(&mut self, id: u64) -> bool {
         if self.damage_batches.last().is_some_and(|batch| batch.id == id) {
             self.damage_batches.pop();
@@ -543,12 +576,14 @@ impl BattleControl {
         }
     }
 
+    /// 在当前批次登记一个阶段并返回批次 ID；无批次时返回 None。
     pub fn record_damage_phase(&mut self, phase: DamageDecisionPhase) -> Option<u64> {
         let batch = self.damage_batches.last_mut()?;
         batch.record(phase);
         Some(batch.id)
     }
 
+    /// 在当前批次写入回避决策并登记回执索引，返回批次 ID。
     pub fn set_evade_decision(&mut self, decision: EvadeDecision) -> Option<u64> {
         let batch = self.damage_batches.last_mut()?;
         batch.set_evade(decision);
@@ -559,6 +594,7 @@ impl BattleControl {
         Some(id)
     }
 
+    /// 取走当前批次的回避决策并写入执行回执。
     pub fn take_evade_decision(&mut self) -> Option<EvadeDecision> {
         let batch = self.damage_batches.last_mut()?;
         let decision = batch.take_evade()?;
@@ -576,6 +612,7 @@ impl BattleControl {
         }
     }
 
+    /// 按被动决策索引查回避执行回执；未结算为 None。
     pub fn evade_result(&self, decision_index: usize) -> Option<bool> { self.evade_results.get(&decision_index).copied() }
 
     /// 记录一条指令的执行失败；会话层据此返回 `INVALID_ARGUMENT`。
@@ -587,8 +624,10 @@ impl BattleControl {
     /// 取走并清空该实体的药水加成记录。
     pub fn take_active_potion(&mut self, actor: PlrId) -> Option<(u8, i32)> { self.active_potions.remove(&actor) }
 
+    /// 记录一条指令执行失败，供会话层映射错误码。
     pub fn set_error(&mut self, error: PlannedActionError) { self.error = Some(error); }
 
+    /// 取走并清除已记录的指令失败。
     pub fn take_error(&mut self) -> Option<PlannedActionError> { self.error.take() }
 }
 
@@ -602,6 +641,7 @@ impl CombatRuntime {
     /// 排队一条外部指令，可与 [`Self::set_controlled_team`] 配合逐次驱动对局。
     pub fn queue_planned_action(&mut self, action: PlannedAction) { self.control.queue(action); }
 
+    /// 批量排队外部指令，保持给定顺序。
     pub fn queue_planned_actions(&mut self, actions: impl IntoIterator<Item = PlannedAction>) { self.control.queue_all(actions); }
 
     /// 当前在等玩家指令的单位；非暂停边界为 `None`。

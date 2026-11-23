@@ -3,31 +3,52 @@
 //! 定义 `OpenboxApp`（`eframe::App` 实现）的顶层布局，负责安装字体、
 //! 组织工具栏与左侧输入面板、中央日志面板，并将各工具 UI 分发给子模块渲染。
 
+/// 任务启动/停止与参数读取动作。
 mod actions;
 #[cfg(feature = "ui_capture")]
 pub mod capture;
+/// DS4 工具面板与设置。
 mod ds4;
+/// DS4 运行说明文本。
 mod ds4_help;
+/// 帮助窗口渲染。
 mod help;
+/// 工具图标绘制。
 mod icons;
+/// 日志面板与容量限制。
 mod log;
+/// 结果表格与明细视图。
 mod results;
+/// UI 设置持久化。
 mod settings;
+/// 输入源选择与预览。
 mod source;
+/// 应用状态与工具枚举。
 mod state;
+/// 配色与通用样式助手。
 mod style;
+/// 后台任务事件轮询。
 mod task;
+/// 各工具的参数 UI。
 mod view;
+/// 复用的小控件。
 mod widgets;
 pub use state::{OpenboxApp, Tool};
 
+/// 内嵌 CJK 等宽字体名。
 const SARASA_FONT_NAME: &str = "SarasaMonoSC";
+/// 内嵌 Sarasa Mono SC 字体字节。
 const SARASA_MONO_SC: &[u8] = include_bytes!("SarasaMonoSC-Regular.ttf");
+/// 面板统一外边距。
 const PANEL_MARGIN: i8 = 8;
+/// 顶栏上下预留空间。
 const TOP_BAR_VERTICAL_SPACE: f32 = 2.0;
+/// 运行/停止按钮高度。
 const RUN_BUTTON_HEIGHT: f32 = 38.0;
+/// 输入面板为底部运行区预留的高度。
 const INPUT_FOOTER_RESERVED_HEIGHT: f32 = 56.0;
 
+/// 启动 egui/eframe 桌面应用：配置原生窗口选项并进入 Openbox 主界面。
 pub fn run() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -51,6 +72,7 @@ pub fn run() -> eframe::Result<()> {
 }
 
 impl eframe::App for OpenboxApp {
+    /// 每帧布局：轮询任务事件，组织顶栏、左侧输入面板与中央日志，并绘制各类弹窗。
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         ctx.set_theme(self.theme_preference);
@@ -101,13 +123,17 @@ impl eframe::App for OpenboxApp {
         show_about_window(&ctx, &mut self.about_open);
     }
 
+    /// 退出时把 UI 设置写入存储。
     fn save(&mut self, storage: &mut dyn eframe::Storage) { self.save_ui_settings(storage); }
 
+    /// 自动保存间隔：5 秒。
     fn auto_save_interval(&self) -> std::time::Duration { std::time::Duration::from_secs(5) }
 
+    /// 允许 eframe 持久化 egui 内存。
     fn persist_egui_memory(&self) -> bool { true }
 }
 
+/// 输入面板底部运行/停止按钮：运行中显示停止，空闲时按当前工具启动任务。
 fn run_footer_ui(ui: &mut egui::Ui, app: &mut OpenboxApp) {
     ui.add_space(2.0);
     let palette = style::Palette::of(ui);
@@ -164,6 +190,7 @@ fn run_footer_ui(ui: &mut egui::Ui, app: &mut OpenboxApp) {
     }
 }
 
+/// 顶栏：标题、工具切换、主题切换、关于与状态徽标。
 fn top_bar_ui(ui: &mut egui::Ui, app: &mut OpenboxApp, ctx: &egui::Context) {
     ui.add_space(TOP_BAR_VERTICAL_SPACE);
     ui.horizontal(|ui| {
@@ -205,11 +232,13 @@ fn top_bar_ui(ui: &mut egui::Ui, app: &mut OpenboxApp, ctx: &egui::Context) {
     ui.add_space(TOP_BAR_VERTICAL_SPACE);
 }
 
+/// 按状态着色的文本徽标。
 fn status_pill(ui: &mut egui::Ui, app: &OpenboxApp) {
     let color = style::Palette::of(ui).status(&app.status);
     ui.label(egui::RichText::new(&app.status).color(color).strong());
 }
 
+/// 关于弹窗：版本信息与项目主页。
 fn show_about_window(ctx: &egui::Context, open: &mut bool) {
     let mut is_open = *open;
     egui::Window::new("关于")
@@ -235,6 +264,7 @@ fn show_about_window(ctx: &egui::Context, open: &mut bool) {
     *open = is_open;
 }
 
+/// 关于窗口中的一行名称/版本。
 fn version_row(ui: &mut egui::Ui, name: &str, version: &str) {
     ui.horizontal(|ui| {
         ui.label(name);
@@ -244,6 +274,7 @@ fn version_row(ui: &mut egui::Ui, name: &str, version: &str) {
     });
 }
 
+/// 亮/暗/跟随系统三选一主题切换，返回是否发生变化。
 fn theme_switcher(ui: &mut egui::Ui, theme_preference: &mut egui::ThemePreference) -> bool {
     let mut changed = false;
     ui.scope(|ui| {
@@ -260,6 +291,7 @@ fn theme_switcher(ui: &mut egui::Ui, theme_preference: &mut egui::ThemePreferenc
     changed
 }
 
+/// 单个主题按钮，选中时高亮；点击后更新偏好并返回 true。
 fn theme_button(
     ui: &mut egui::Ui,
     theme_preference: &mut egui::ThemePreference,
@@ -297,8 +329,10 @@ fn theme_button(
     }
 }
 
+/// 安装内嵌 CJK 与系统 Emoji 字体到上下文。
 fn install_cjk_fonts(ctx: &egui::Context) { ctx.set_fonts(openbox_font_definitions()); }
 
+/// 构造字体定义：内嵌字体置首，系统 Emoji 依次追加。
 fn openbox_font_definitions() -> egui::FontDefinitions {
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert(
@@ -317,6 +351,7 @@ fn openbox_font_definitions() -> egui::FontDefinitions {
     fonts
 }
 
+/// 按平台候选路径安装系统 Emoji 字体，返回成功安装的字体名。
 fn install_system_emoji_fonts(fonts: &mut egui::FontDefinitions) -> Vec<String> {
     let candidates = [
         (
@@ -342,6 +377,7 @@ fn install_system_emoji_fonts(fonts: &mut egui::FontDefinitions) -> Vec<String> 
     installed
 }
 
+/// 安装候选路径中第一个可读的字体文件。
 fn install_first_existing_font(fonts: &mut egui::FontDefinitions, name: &str, paths: &[&str]) -> bool {
     for path in paths {
         if let Ok(bytes) = std::fs::read(path) {
@@ -354,6 +390,7 @@ fn install_first_existing_font(fonts: &mut egui::FontDefinitions, name: &str, pa
     false
 }
 
+/// 统一设置间距、交互尺寸与文字样式。
 fn configure_ui_style(ctx: &egui::Context) {
     ctx.all_styles_mut(|style| {
         style.spacing.item_spacing = egui::vec2(6.0, 4.0);

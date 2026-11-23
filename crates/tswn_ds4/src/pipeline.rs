@@ -85,6 +85,7 @@ pub enum RunStage {
 }
 
 impl RunStage {
+    /// 返回阶段的展示名（进度标签）。
     pub fn label(self) -> &'static str {
         match self {
             Self::Input => "合并输入、队伍筛选与去重",
@@ -98,8 +99,10 @@ impl RunStage {
         }
     }
 
+    /// 返回已完成阶段的数量（按枚举序号）。
     pub fn completed(self) -> usize { self as usize }
 
+    /// 阶段总数，用作进度分母。
     pub const TOTAL: usize = Self::Complete as usize;
 }
 
@@ -123,10 +126,12 @@ pub fn run_with_progress(root: &Path, config: &Config, mut progress: impl FnMut(
     run_with_store_observed(&store, config, &mut progress)
 }
 
+/// 用给定 store 与 config 执行完整流水线（合并输入、去重、各模式评分、配对与归档），返回运行报告。
 pub fn run_full_with_store(store: &Store, config: &Config) -> Ds4Result<FullRunReport> {
     run_with_store_observed(store, config, &mut |_| {})
 }
 
+/// 带进度回调的流水线核心：按 team_name 有无分派 DS4 分支或基础分支，进入每阶段前调用 progress。
 fn run_with_store_observed(store: &Store, config: &Config, progress: &mut dyn FnMut(RunStage)) -> Ds4Result<FullRunReport> {
     progress(RunStage::Input);
     if let Some(team_name) = &config.team_name {
@@ -156,6 +161,7 @@ fn run_with_store_observed(store: &Store, config: &Config, progress: &mut dyn Fn
     })
 }
 
+/// team_name 分支：筛选属于该 team 的输入并去重，随后执行单人、SP1、配对、三人、ABCP5、Openbox 与归档。
 fn run_ds4_with_store(
     store: &Store,
     config: &Config,
@@ -293,6 +299,7 @@ fn run_ds4_with_store(
     })
 }
 
+/// 构造以 score_number 列为键、0 基排序并附带分数输出的 SortOptions。
 fn sort_by_score(score_number: usize) -> SortOptions {
     SortOptions {
         score_number,
@@ -301,6 +308,7 @@ fn sort_by_score(score_number: usize) -> SortOptions {
     }
 }
 
+/// 遍历五种 SP1 模式评分去重后的输入，按配置追加技能筛选结果，返回各模式写入行数。
 fn run_sp1_scoring(store: &Store, config: &Config) -> Ds4Result<[usize; 5]> {
     let score_now = ScoreNow::load(store.root())?;
     let mut counts = [0; 5];
@@ -334,6 +342,7 @@ fn run_sp1_scoring(store: &Store, config: &Config) -> Ds4Result<[usize; 5]> {
     Ok(counts)
 }
 
+/// 把 tmp 中各 SP1 新结果追加进 file 历史并按分数重排。
 fn archive_sp1(store: &Store, config: &Config) -> Ds4Result<()> {
     for (index, mode) in Sp1Mode::ALL.into_iter().enumerate() {
         if config.sp1[index].enabled {
@@ -346,6 +355,7 @@ fn archive_sp1(store: &Store, config: &Config) -> Ds4Result<()> {
     Ok(())
 }
 
+/// copy_to_new 启用时把 SP1 新结果复制到 new 目录并重排。
 fn copy_sp1_to_new(store: &Store, config: &Config) -> Ds4Result<()> {
     for (index, mode) in Sp1Mode::ALL.into_iter().enumerate() {
         if config.sp1[index].enabled {
@@ -358,11 +368,13 @@ fn copy_sp1_to_new(store: &Store, config: &Config) -> Ds4Result<()> {
     Ok(())
 }
 
+/// 以 root 创建 store 并执行第一阶段流水线，返回阶段报告。
 pub fn run_stage1(root: &Path, config: &Config) -> Ds4Result<Stage1Report> {
     let store = Store::new(root.to_path_buf());
     run_stage1_with_store(&store, config)
 }
 
+/// 在既有 store 上执行第一阶段：准备目录、合并输入并按配置去重，返回阶段报告。
 pub fn run_stage1_with_store(store: &Store, config: &Config) -> Ds4Result<Stage1Report> {
     prepare_dirs(store)?;
     reset_tmp(store)?;
@@ -385,6 +397,7 @@ pub fn run_stage1_with_store(store: &Store, config: &Config) -> Ds4Result<Stage1
     Ok(Stage1Report { merged_files, dedup })
 }
 
+/// 对去重后的输入依次执行五套单人模型评分，返回各模式通过行数。
 fn run_single_scoring(store: &Store, config: &Config) -> Ds4Result<SingleReport> {
     let input = store.tmp_new_dup_file();
     let bc_count = bc::score_file_bc_with_threads(
@@ -432,6 +445,7 @@ fn run_single_scoring(store: &Store, config: &Config) -> Ds4Result<SingleReport>
     })
 }
 
+/// 按两列口径重排 tmp 中各单人模式的结果文件。
 fn sort_tmp_single(store: &Store) -> Ds4Result<()> {
     let by_score = SortOptions {
         score_number: 2,
@@ -445,6 +459,7 @@ fn sort_tmp_single(store: &Store) -> Ds4Result<()> {
     Ok(())
 }
 
+/// 按配置执行 FC/WC/RH 增量配对（新×新、新×旧等批次），结果累加写入 out 并返回行数。
 fn run_pairing(store: &Store, config: &Config) -> Ds4Result<PairReport> {
     let mut fc_count = 0usize;
     if config.pair_fc.enabled {
@@ -532,6 +547,7 @@ fn run_pairing(store: &Store, config: &Config) -> Ds4Result<PairReport> {
     })
 }
 
+/// 把 tmp 的去重输入与各模式评分结果追加发布到 file 历史目录。
 fn copy_to_file_store(store: &Store) -> Ds4Result<()> {
     append_file(&store.tmp_new_dup_file(), &store.file_old())?;
     for mode in SingleMode::ALL {
@@ -540,6 +556,7 @@ fn copy_to_file_store(store: &Store) -> Ds4Result<()> {
     Ok(())
 }
 
+/// 分别按分数与潜力分重排 file 目录中各模式历史文件，并生成对应 ptt 文件。
 fn sort_file_store(store: &Store) -> Ds4Result<()> {
     let by_score = SortOptions {
         score_number: 2,
@@ -559,9 +576,9 @@ fn sort_file_store(store: &Store) -> Ds4Result<()> {
     Ok(())
 }
 
+/// copy_to_new 启用时把 tmp 的去重输入与各模式结果复制到 new 目录。
 fn copy_to_new_store(store: &Store) -> Ds4Result<()> {
     let new_all = store.new_dir().join("new.txt");
-    append_file(&store.tmp_new_dup_file(), &new_all)?;
     append_file(&store.tmp_new_dup_file(), &new_all)?;
     for mode in SingleMode::ALL {
         append_file(&store.tmp_new_mode_file(mode), &store.new_mode_file(mode))?;
@@ -569,6 +586,7 @@ fn copy_to_new_store(store: &Store) -> Ds4Result<()> {
     Ok(())
 }
 
+/// 分别按分数与潜力分重排 new 目录结果并生成 ptt 文件。
 fn sort_new_store(store: &Store) -> Ds4Result<()> {
     let by_score = SortOptions {
         score_number: 2,
@@ -588,6 +606,7 @@ fn sort_new_store(store: &Store) -> Ds4Result<()> {
     Ok(())
 }
 
+/// 创建工作目录及 input/file/new/out/tmp 各子目录。
 fn prepare_dirs(store: &Store) -> Ds4Result<()> {
     fs::create_dir_all(store.root())?;
     fs::create_dir_all(store.input_dir())?;
@@ -598,6 +617,7 @@ fn prepare_dirs(store: &Store) -> Ds4Result<()> {
     Ok(())
 }
 
+/// 删除并重建 tmp 目录，写入占位空输入文件。
 fn reset_tmp(store: &Store) -> Ds4Result<()> {
     if store.tmp_dir().exists() {
         fs::remove_dir_all(store.tmp_dir())?;

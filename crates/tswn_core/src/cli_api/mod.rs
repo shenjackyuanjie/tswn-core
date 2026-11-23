@@ -14,7 +14,9 @@
 //! 调用同步执行，包装层负责宿主调度、资源生命周期和 UI 更新。
 
 pub mod battle;
+/// 评分与胜率家族 API 的实现。
 mod bench;
+/// to-diy 导出与组文本解析实现。
 mod parse;
 
 pub use crate::runtime::{PlannedAction, PlannedActionError, PlannedSkill};
@@ -45,6 +47,7 @@ pub enum CliApiErrorCode {
     InternalError,
 }
 impl CliApiErrorCode {
+    /// 错误码的 SCREAMING_SNAKE_CASE 稳定字符串；序列化与跨语言匹配共用。
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::InvalidInput => "INVALID_INPUT",
@@ -67,6 +70,7 @@ pub enum CliApiError {
     Internal(String),
 }
 impl CliApiError {
+    /// 把错误映射为跨语言错误分类。
     pub fn code(&self) -> CliApiErrorCode {
         match self {
             Self::InvalidInput(_) => CliApiErrorCode::InvalidInput,
@@ -144,6 +148,7 @@ pub struct ScoreResult {
     pub fight_nanos: u128,
 }
 
+/// 规范化 runtime 运行记录的 JSON 投影：逐回合 outcome、胜者队伍、guard 耗尽标记与总分。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct JsonRuntimeNormalizedRun {
     pub rounds: Vec<JsonRuntimeNormalizedOutcome>,
@@ -152,6 +157,7 @@ pub struct JsonRuntimeNormalizedRun {
     pub total_score: u64,
 }
 
+/// 单回合末的规范化状态快照：RNG 位置、实体属性、存活与排序、行动边界和更新帧。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct JsonRuntimeNormalizedOutcome {
     pub winner_team: Option<usize>,
@@ -174,6 +180,7 @@ pub struct JsonRuntimeNormalizedOutcome {
     pub frames: Vec<JsonRuntimeUpdateFrame>,
 }
 
+/// 一次行动边界的 JSON 记录：回合、行动者、目标与数值。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct JsonRuntimeActionBoundary {
     pub round: u64,
@@ -182,6 +189,7 @@ pub struct JsonRuntimeActionBoundary {
     pub amount: i32,
 }
 
+/// 一条更新消息的 JSON 记录：文本、施法与目标、分数、展示延迟和类型名。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct JsonRuntimeUpdateFrame {
     pub message: String,
@@ -256,6 +264,7 @@ impl From<NormalizedUpdateFrame> for JsonRuntimeUpdateFrame {
     }
 }
 
+/// 把 [`UpdateType`] 映射为 JSON 输出使用的稳定字符串。
 pub fn runtime_update_type_name(value: UpdateType) -> &'static str {
     match value {
         UpdateType::Win => "win",
@@ -287,6 +296,7 @@ pub struct BatchRateResult {
     pub fight_nanos: u128,
 }
 
+/// pair 明细中的单个队友组合：队友名字与乘权后的分数。
 #[derive(Debug, Clone, PartialEq)]
 pub struct PairRateEntry {
     pub name: String,
@@ -322,6 +332,7 @@ pub struct IconInfo {
     pub colors_consumed: usize,
 }
 
+/// 评分模式：Normal 与 Bang，决定导出与评分使用的修饰符。
 #[derive(Debug, Clone, Copy)]
 pub(super) enum ScoreMode {
     Normal,
@@ -329,6 +340,7 @@ pub(super) enum ScoreMode {
 }
 
 impl ScoreMode {
+    /// 模式对应的修饰符字符串。
     fn modifier(self) -> &'static str {
         match self {
             Self::Normal => "\u{0002}",
@@ -337,6 +349,7 @@ impl ScoreMode {
     }
 }
 
+/// namer-pf 的四个评分维度。
 #[derive(Debug, Clone, Copy)]
 pub(super) enum NamerPfMode {
     Pp,
@@ -346,8 +359,10 @@ pub(super) enum NamerPfMode {
 }
 
 impl NamerPfMode {
+    /// 全部评分维度，按固定顺序。
     const ALL: [Self; 4] = [Self::Pp, Self::Pd, Self::Qp, Self::Qd];
 
+    /// 维度的稳定字符串标签。
     fn label(self) -> &'static str {
         match self {
             Self::Pp => "pp",
@@ -357,6 +372,7 @@ impl NamerPfMode {
         }
     }
 
+    /// 维度对应的 (修饰符, 是否目标同名) 参数。
     fn score_params(self) -> (&'static str, bool) {
         match self {
             Self::Pp => ("\u{0002}", false),
@@ -367,6 +383,7 @@ impl NamerPfMode {
     }
 }
 
+/// 批量胜率汇总：平均/聚合胜率、计数、耗时与有效/跳过对阵数。
 #[derive(Debug, Clone, Copy, Default)]
 pub(super) struct BatchSummary {
     avg: f64,
@@ -556,6 +573,8 @@ pub fn pair_rate(
         .collect()
 }
 
+/// 带权靶子的批量胜率：每个玩家组对全部靶子按权重求平均，并按输入顺序返回。
+/// `target_groups` 与 `target_factors` 长度必须一致，`player_labels` 需与玩家组一一对应。
 pub fn batch_rate_factored(
     target_groups: &[String],
     target_factors: &[f64],
@@ -635,6 +654,7 @@ pub fn pair_rate_factored(
         .collect()
 }
 
+/// 导出单个名字的 DIY/OL 文本；`old` 旧格式与 `minions` 召唤物不能同时为 true。
 pub fn to_diy(name: &str, old: bool, minions: bool) -> CliApiResult<String> { parse::export_player(name, old, minions) }
 
 /// 导出 DIY，使用指定的分隔符连接同一输出行的成员。
@@ -652,10 +672,12 @@ pub fn to_diy_prepared(player: &crate::namerena::PreparedPlayer, old: bool, mini
     Ok(parse::export_built_player(player, old, minions))
 }
 
+/// 按输入顺序批量导出 DIY/OL 文本；任一名字失败即整体返回错误。
 pub fn to_diy_batch(names: &[String], old: bool, minions: bool) -> CliApiResult<Vec<String>> {
     names.iter().map(|name| parse::export_player(name, old, minions)).collect()
 }
 
+/// 读取名字图标的结构化信息（边框、形状、前景/背景色），不渲染像素。
 pub fn icon_info(name: &str) -> IconInfo {
     let icon = icon_from_raw_name(name);
     IconInfo {
@@ -669,6 +691,8 @@ pub fn icon_info(name: &str) -> IconInfo {
     }
 }
 
+/// 把行文本按 `+`（`double_plus` 时为 `++`）拆成同输出行的成员，
+/// 每个非空行展开为一个组，成员间用换行连接；空行与空成员被忽略。
 pub fn parse_group_lines(content: &str, double_plus: bool) -> Vec<String> {
     content
         .lines()
@@ -685,15 +709,19 @@ pub fn parse_group_lines(content: &str, double_plus: bool) -> Vec<String> {
         .collect()
 }
 
+/// 用自定义 import 配置从混合 namerena 文本构造 `RuntimeRunner`；
+/// 配置缺失或解析失败时返回带上下文的错误。
 pub fn custom_runtime_mixed_runner(raw: &str, config: CustomRuntimeImportConfig<'_>) -> CliApiResult<RuntimeRunner> {
     RuntimeRunner::from_custom_mixed_namerena_raw(raw.to_owned(), config).map_err(custom_runtime_import_error)
 }
 
+/// 用仓库默认自定义 profile 的 [`custom_runtime_mixed_runner`]。
 pub fn default_custom_runtime_mixed_runner(raw: &str) -> CliApiResult<RuntimeRunner> {
     let config = default_custom_runtime_import_config().map_err(default_custom_runtime_profile_error)?;
     custom_runtime_mixed_runner(raw, config)
 }
 
+/// 跑自定义 runtime 对局并返回逐回合规范化记录；`max_rounds` 必须为正。
 pub fn custom_runtime_normalized_run(
     raw: &str,
     max_rounds: usize,
@@ -704,6 +732,7 @@ pub fn custom_runtime_normalized_run(
     Ok(runner.run_until_winner_normalized_rounds(max_rounds))
 }
 
+/// 用默认自定义 profile 的 [`custom_runtime_normalized_run`]。
 pub fn default_custom_runtime_normalized_run(raw: &str, max_rounds: usize) -> CliApiResult<RuntimeNormalizedRun> {
     ensure_runtime_max_rounds(max_rounds)?;
     let mut runner = default_custom_runtime_mixed_runner(raw)?;
@@ -720,8 +749,10 @@ pub fn battle_replay_with_actions(raw: &str, options: BattleOptions, actions: &[
     battle::battle_replay_with_actions(raw, options, actions)
 }
 
+/// 构造 `InvalidInput` 错误。
 pub(super) fn invalid_input(message: impl Into<String>) -> CliApiError { CliApiError::InvalidInput(message.into()) }
 
+/// 校验带权靶子：组非空、权重长度匹配且均为有限正数。
 fn validate_factored_targets(target_groups: &[String], target_factors: &[f64], api: &str) -> CliApiResult<()> {
     if target_groups.is_empty() {
         return Err(invalid_input(format!("{api} requires at least one target group")));
@@ -735,8 +766,10 @@ fn validate_factored_targets(target_groups: &[String], target_factors: &[f64], a
     Ok(())
 }
 
+/// 把 runtime 批量错误映射为 `CliApiError::Runtime`。
 fn runtime_batch_error(error: crate::runtime::RuntimeBatchError) -> CliApiError { CliApiError::Runtime(error.to_string()) }
 
+/// 把 custom runtime 导入错误映射为输入错误。
 fn custom_runtime_import_error(error: crate::runtime::CustomRuntimeImportError) -> CliApiError {
     match error {
         crate::runtime::CustomRuntimeImportError::NotReady(error) => invalid_input(error.to_string()),
@@ -744,10 +777,12 @@ fn custom_runtime_import_error(error: crate::runtime::CustomRuntimeImportError) 
     }
 }
 
+/// 把默认 custom runtime profile 错误映射为输入错误。
 fn default_custom_runtime_profile_error(error: crate::runtime::DefaultCustomRuntimeProfileError) -> CliApiError {
     invalid_input(format!("default custom runtime profile failed: {error:?}"))
 }
 
+/// 校验回合上限为正数。
 fn ensure_runtime_max_rounds(max_rounds: usize) -> CliApiResult<()> {
     if max_rounds == 0 {
         Err(invalid_input("runtime max_rounds must be positive"))
@@ -756,6 +791,7 @@ fn ensure_runtime_max_rounds(max_rounds: usize) -> CliApiResult<()> {
     }
 }
 
+/// 校验胜率组数至少为两个非空组。
 fn ensure_win_rate_group_count(groups: &[Vec<String>]) -> CliApiResult<()> {
     let group_count = groups.iter().filter(|g| !g.is_empty()).count();
     if group_count < 2 {
@@ -765,6 +801,7 @@ fn ensure_win_rate_group_count(groups: &[Vec<String>]) -> CliApiResult<()> {
     }
 }
 
+/// 按是否保留 rq 选择默认或胜率专用 eval_rq。
 fn win_rate_eval_rq(keep_rq: bool) -> f64 {
     if keep_rq {
         eval_name::DEFAULT_EVAL_RQ
@@ -773,6 +810,7 @@ fn win_rate_eval_rq(keep_rq: bool) -> f64 {
     }
 }
 
+/// 解析评分模式字符串，兼容 pp/pd/qp/qd 别名。
 fn parse_score_mode(mode: &str) -> CliApiResult<ScoreMode> {
     match mode {
         "normal" | "pp" | "pd" => Ok(ScoreMode::Normal),
@@ -781,6 +819,7 @@ fn parse_score_mode(mode: &str) -> CliApiResult<ScoreMode> {
     }
 }
 
+/// 归一化用户传入的评分维度列表：缺省或为空时取全部，并按固定顺序去重。
 fn normalize_namer_pf_modes(modes: Option<Vec<String>>) -> CliApiResult<Vec<NamerPfMode>> {
     let Some(raw_modes) = modes else {
         return Ok(NamerPfMode::ALL.to_vec());

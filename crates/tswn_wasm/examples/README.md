@@ -52,6 +52,21 @@
 - 页面与角色详情面板跟随明暗主题切换。深色模式的名字（侧栏 `.name`、正文 `.actor-name`）保持原有蓝灰底色但不描边，只靠底色与页面区分，死亡名字和状态标签保持可读；像素图标保留原图配色，通过浅色衬底区分原图的深色描边。
 - `show-wasm.js` 通过 `createBattleStreamSource()` 创建 `BattleSession`；页面先展示初始状态，再由 `BattleStreamController` 按需获取 core 提供的 `rows/clips/parts`。
 
+#### `!test!` 交互评分
+
+在完整回放页的输入框中，将 `!test!` 写在首个非空行，随后输入名字。不同名字连续输入视为同一队，不支持空行分队或自定义 seed。
+
+| 模式 | 示例（`\n` 表示换行） |
+| --- | --- |
+| 普通评分（`pp`，2 对 2） | `!test!\nalpha` |
+| 普通单挑（`pd`，1 对 1） | `!test!\nalpha\nalpha` |
+| 强化评分（`qp`，2 对 2） | `!test!\n!\nalpha` |
+| 强化单挑（`qd`，1 对 1） | `!test!\n!\nalpha\nalpha` |
+
+单名评分会为被测角色配一名陪测队友，对阵两名陪测角色；单挑只保留一个被测角色。强化只改变陪测角色，不改变被测名字的属性或出招策略。
+
+页面用独立 Worker 计算 10000 场，在累计 1000 场和 10000 场时展示评分和技能／动作频率。频率是被测角色本体每百场产生的对应消息次数，可能超过 100%。点击「停止测试」可中止计算并保留已显示的结果；开始新对局也会停止旧测试。
+
 #### 控制栏快捷键
 
 右下角控制栏支持以下快捷键。字母键不区分大小写，仅在焦点不位于输入框、文本域或可编辑元素，且没有按下 Ctrl、Alt、Meta 修饰键时生效。
@@ -84,7 +99,9 @@ const url = `index.html?input=${input}`;
 
 ## 运行方式
 
-推荐先构建 wasm 分发目录：
+在源码仓库根目录执行 `uv run scripts/serve_wasm.py` 即可构建并启动本地网页。已经拿到分发包时，可从下文的静态服务器步骤开始。
+
+如需单独生成分发目录，执行：
 
 ```powershell
 uv run scripts/build_wasm.py --release
@@ -99,11 +116,10 @@ crates/tswn_wasm/dist/wasm/
   examples/
 ```
 
-随后在输出目录下启动一个本地静态服务器，例如：
+进入包含 `pkg/` 和 `examples/` 的分发目录，启动本地静态服务器：
 
 ```powershell
-cd crates/tswn_wasm/dist/wasm
-python -m http.server 8000
+python -m http.server 8000 --bind 127.0.0.1
 ```
 
 然后在浏览器打开：

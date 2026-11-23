@@ -1,5 +1,6 @@
 use super::*;
 
+/// 把 namerena raw 输入经 build 构造成 runner，再套用 prepared battle init。
 pub(super) fn runtime_runner_from_raw<E: std::fmt::Debug>(
     raw_input: &str,
     build: impl FnOnce(&[Vec<String>]) -> Result<RuntimeRunner, E>,

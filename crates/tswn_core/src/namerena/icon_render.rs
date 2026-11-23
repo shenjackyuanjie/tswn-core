@@ -58,10 +58,33 @@
 //! - Base64 编码器为标准 RFC 4648 实现，避免额外依赖
 //! - 混合算法复现 HTML Canvas `source-over` 混合模式
 
-use super::icon::{IconResult, icon_from_raw_name};
+use super::icon::{IconResult, icon_from_name, parse_sglname};
 
+/// 图标精灵位图数据。
 mod sprite_data;
 use sprite_data::{BORDERS_DARK, BORDERS_OPACITY, SHAPES};
+
+/// Boss 固定徽章名称表（按字典序排布以供二分检索）。
+// 原版 Vite（rinick.github.io 的 2ab0f562）的单帧 16×16 GIF，经浏览器 Canvas 解码后按名字排序保存 RGBA；
+// Rust 的 PNG 与无 png_render 的像素接口共享这份数据，不需要运行时 GIF 解码。
+const BOSS_ICONS: [&str; 13] = [
+    "aokiji", "conan", "covid", "ikaruga", "lazy", "mario", "mosquito", "saitama", "slime", "sonic", "thanos", "wheel", "yuri",
+];
+/// Boss 徽章的 RGBA 位图数据，每个图标 1024 字节。
+const BOSS_RGBA: &[u8; BOSS_ICONS.len() * 1024] = include_bytes!("icon_render/boss_rgba.bin");
+
+/// 按 raw 名取 Boss 固定徽章 RGBA：要求 `@!` 修饰且名称在表内。
+fn boss_icon(raw_name: &str) -> Option<&'static [u8]> {
+    let (name, modifiers) = raw_name.split_once('@')?;
+    if modifiers.split(['@', '+']).next()? != "!" {
+        return None;
+    }
+    let index = BOSS_ICONS.binary_search(&name).ok()?;
+    Some(&BOSS_RGBA[index * 1024..(index + 1) * 1024])
+}
+
+/// 此独立名字会使用原版固定像素而非生成调色板。
+pub fn has_boss_icon(raw_name: &str) -> bool { boss_icon(raw_name).is_some() }
 
 // ── 合成 ───────────────────────────────────────────────────────────────
 
@@ -140,15 +163,18 @@ pub fn render_icon_vec(icon: &IconResult) -> Vec<u8> {
 
 /// 将 `IconResult` 渲染为 16×16 RGBA PNG (以原始字节返回)。
 #[cfg(feature = "png_render")]
-pub fn render_icon_png(icon: &IconResult) -> Vec<u8> {
-    let flat = render_icon_vec(icon);
+pub fn render_icon_png(icon: &IconResult) -> Vec<u8> { encode_rgba_png(&render_icon_vec(icon)) }
+
+/// 把 16x16 RGBA 像素编码为 PNG。
+#[cfg(feature = "png_render")]
+fn encode_rgba_png(flat: &[u8]) -> Vec<u8> {
     let mut out = Vec::new();
     let mut encoder = png::Encoder::new(&mut out, 16, 16);
     encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);
     encoder
         .write_header()
-        .and_then(|mut w| w.write_image_data(&flat))
+        .and_then(|mut w| w.write_image_data(flat))
         .expect("PNG encoding should never fail for a valid image");
     out
 }
@@ -165,17 +191,22 @@ pub fn render_icon_b64(icon: &IconResult) -> String {
 
 /// 便捷包装器: 通过玩家名称渲染 → PNG 字节。
 #[cfg(feature = "png_render")]
-pub fn render_icon_png_from_name(name: &str) -> Vec<u8> { render_icon_png(&icon_from_raw_name(name)) }
+pub fn render_icon_png_from_name(name: &str) -> Vec<u8> { encode_rgba_png(&render_icon_vec_from_name(name)) }
 
 /// 便捷包装器: 通过玩家名称渲染 → base64 data URL。
 #[cfg(feature = "png_render")]
-pub fn render_icon_b64_from_name(name: &str) -> String { render_icon_b64(&icon_from_raw_name(name)) }
+pub fn render_icon_b64_from_name(name: &str) -> String {
+    format!("data:image/png;base64,{}", base64_encode(&render_icon_png_from_name(name)))
+}
 
 /// 便捷包装器: 通过玩家名称渲染 → RGBA 像素数据 (1024 字节)。
-pub fn render_icon_vec_from_name(name: &str) -> Vec<u8> { render_icon_vec(&icon_from_raw_name(name)) }
+pub fn render_icon_vec_from_name(name: &str) -> Vec<u8> {
+    boss_icon(name).map_or_else(|| render_icon_vec(&icon_from_name(parse_sglname(name))), <[_]>::to_vec)
+}
 
 // ── 内部辅助函数 ──────────────────────────────────────────────────────────
 
+/// 标准 base64 编码（含 `=` 填充）。
 /// 标准 RFC 4648 base64 编码器 — 避免额外的 crate 依赖。
 fn base64_encode(data: &[u8]) -> String {
     const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -193,5 +224,6 @@ fn base64_encode(data: &[u8]) -> String {
     out
 }
 
+/// 渲染结果的位图比对测试。
 #[cfg(all(test, feature = "png_render"))]
 mod test;

@@ -42,18 +42,21 @@ pub struct ValueStats {
 }
 
 #[derive(Debug, Default, Clone)]
+/// 一个数值序列：原始值（分位数用）与可选直方图。
 struct Series {
     values: Vec<f64>,
     histogram: BTreeMap<u64, usize>,
 }
 
 impl Series {
+    /// 记录一个整数值及其直方图计数。
     fn push(&mut self, value: u64) {
         self.values.push(value as f64);
         *self.histogram.entry(value).or_default() += 1;
     }
     /// 连续量只保留分位数，不记录逐值直方图。
     fn push_continuous(&mut self, value: f64) { self.values.push(value); }
+    /// 排序后计算分位数与汇总；空序列返回默认值。
     fn finish(mut self) -> ValueStats {
         if self.values.is_empty() {
             return ValueStats::default();
@@ -76,6 +79,7 @@ impl Series {
     }
 }
 
+/// 对局级统计：总数、完成、截断、失败与按切分计数。
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BattleStats {
     pub total: usize,
@@ -94,6 +98,7 @@ pub struct BattleStats {
     pub truncated_by_team_count: BTreeMap<usize, usize>,
 }
 
+/// 样本级统计：总数、按切分计数、初始状态数与进度分布。
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SampleStats {
     pub total: usize,
@@ -110,6 +115,7 @@ pub struct SampleStats {
     pub skill_count: ValueStats,
 }
 
+/// 内容统计：技能 ID、状态载荷 kind 与实体模板 kind 的频次。
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContentStats {
     /// 稳定 1-based 技能 ID 频次；不是 fixed_lane 或 legacy key。
@@ -142,6 +148,7 @@ pub struct CapacityStats {
     pub dims: BTreeMap<String, CapacityDimStats>,
 }
 
+/// 数据集统计：对局、样本、内容与容量四个维度。
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DatasetStats {
     pub battles: BattleStats,
@@ -339,6 +346,7 @@ pub fn print_report(stats: &DatasetStats, top: usize) {
     }
 }
 
+/// 取计数最高的前 top 项，计数相同按键升序。
 fn top_of<K: std::fmt::Debug + Clone + Ord>(map: &BTreeMap<K, usize>, top: usize) -> Vec<(K, usize)> {
     let mut items: Vec<_> = map.iter().map(|(key, count)| (key.clone(), *count)).collect();
     items.sort_by(|left, right| right.1.cmp(&left.1).then(left.0.cmp(&right.0)));
@@ -359,6 +367,7 @@ pub struct StatsArgs {
     pub top: usize,
 }
 
+/// 执行 stats：收集统计，按参数写出 JSON 并打印报告。
 pub fn run(args: &StatsArgs) -> Result<()> {
     let stats = collect(&args.out)?;
     if let Some(path) = &args.json_out {

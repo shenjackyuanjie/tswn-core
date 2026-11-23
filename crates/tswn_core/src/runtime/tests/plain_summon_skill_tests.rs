@@ -1,5 +1,6 @@
 use super::*;
 
+/// 用自定义混合输入构建召唤场景的 CombatRuntime。
 pub(super) fn summon_runtime() -> CombatRuntime {
     let raw = "Stupefy #rkISERW8@Shabby_fish\n日落·日出 #Pd3J7shds@Shabby_fish";
     let config = default_custom_runtime_import_config().expect("default runtime profile should build");
@@ -8,6 +9,7 @@ pub(super) fn summon_runtime() -> CombatRuntime {
         .runtime
 }
 
+/// 读取召唤体上 share-damage 技能 lane 的等级。
 fn summon_share_level(runtime: &CombatRuntime, summoned: EntityIdx) -> u32 {
     let skills = &runtime.entities.get(summoned).unwrap().template.skills;
     let lane = (0..skills.len())

@@ -28,6 +28,7 @@ pub struct PyPreparedRunner {
 
 #[pymethods]
 impl PyPreparedRunner {
+    /// 用创建模板时的 eval_rq 累计 n 场胜率；显式传入不同 eval_rq 时返回参数错误。
     #[pyo3(signature = (n, eval_rq=None, thread=0))]
     pub fn win_rate(&self, n: usize, eval_rq: Option<f64>, thread: u32) -> PyResult<f64> {
         if let Some(eval_rq) = eval_rq
@@ -40,10 +41,12 @@ impl PyPreparedRunner {
         crate::run_prepared_win_rate(&self.inner, n, thread)
     }
 
+    /// 创建模板时固定的评估口径。
     #[getter]
     pub fn eval_rq(&self) -> f64 { self.eval_rq }
 }
 
+/// 包装 Core 的 PreparedRunner；`eval_rq` 固定为 `DEFAULT_EVAL_RQ`，不随构造参数变化。
 impl From<CorePreparedRunner> for PyPreparedRunner {
     fn from(value: CorePreparedRunner) -> Self {
         Self {
@@ -66,6 +69,7 @@ pub struct PyRunner {
 #[pymethods]
 impl PyRunner {
     #[staticmethod]
+    /// 由 namerena 原始文本构造 Runner。
     fn new_from_namerena_raw(raw_str: String) -> PyResult<Self> {
         Ok(Self {
             inner: Runner::new_from_namerena_raw(raw_str).map_err(error::PyRunnerError::new)?,
@@ -73,11 +77,13 @@ impl PyRunner {
     }
 
     #[staticmethod]
+    /// 把原始文本拆分为分组与展示标签。
     fn split_namerena_into_groups(raw_str: String) -> (Vec<Vec<String>>, Vec<String>) {
         Runner::split_namerena_into_groups(raw_str)
     }
 
     #[staticmethod]
+    /// 由分组与 seed 构造 Runner。
     fn new_from_groups_with_seed(groups: Vec<Vec<String>>, seed: Vec<String>) -> PyResult<Self> {
         Ok(Self {
             inner: Runner::new_from_groups_with_seed(&groups, &seed).map_err(error::PyRunnerError::new)?,
@@ -85,6 +91,7 @@ impl PyRunner {
     }
 
     #[staticmethod]
+    /// 由分组、seed 与 eval_rq 构造 Runner。
     fn new_from_groups_with_seed_and_eval_rq(groups: Vec<Vec<String>>, seed: Vec<String>, eval_rq: f64) -> PyResult<Self> {
         Ok(Self {
             inner: Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, eval_rq).map_err(error::PyRunnerError::new)?,
@@ -92,6 +99,7 @@ impl PyRunner {
     }
 
     #[staticmethod]
+    /// 预构建分组，返回可复用的 PyPreparedRunner。
     fn prepare_groups(groups: Vec<Vec<String>>) -> PyResult<PyPreparedRunner> {
         Runner::prepare_groups(&groups)
             .map(|inner| PyPreparedRunner {
@@ -102,6 +110,7 @@ impl PyRunner {
     }
 
     #[staticmethod]
+    /// 按指定 eval_rq 预构建分组。
     fn prepare_groups_with_eval_rq(groups: Vec<Vec<String>>, eval_rq: f64) -> PyResult<PyPreparedRunner> {
         Runner::prepare_groups_with_eval_rq(&groups, eval_rq)
             .map(|inner| PyPreparedRunner { inner, eval_rq })
@@ -109,6 +118,7 @@ impl PyRunner {
     }
 
     #[staticmethod]
+    /// 由预构建结果与 seed 构造 Runner。
     fn new_from_prepared_with_seed(prepared: &PyPreparedRunner, seed: Vec<String>) -> PyResult<Self> {
         Ok(Self {
             inner: Runner::new_from_prepared_with_seed(&prepared.inner, &seed).map_err(error::PyRunnerError::new)?,
@@ -191,9 +201,11 @@ pub struct PyRunUpdates {
 
 #[pymethods]
 impl PyRunUpdates {
+    /// 构造捕获更新的回合集合。
     #[new]
     pub fn new() -> Self { Self::default() }
 
+    /// 构造不捕获更新的回合集合。
     #[staticmethod]
     pub fn new_no_capture() -> Self {
         Self {
@@ -201,26 +213,35 @@ impl PyRunUpdates {
         }
     }
 
+    /// 清空当前回合集合（等价于 reset）。
     pub fn clear(&mut self) { self.inner.reset(); }
 
+    /// 重置回合集合到初始状态。
     pub fn reset(&mut self) { self.inner.reset(); }
 
+    /// 回合集合 ID。
     #[getter]
     pub fn get_id(&self) -> u64 { self.inner.id }
 
+    /// 是否处于捕获更新模式。
     #[getter]
     pub fn get_capture_updates(&self) -> bool { self.inner.capture_updates }
 
+    /// 本轮捕获的更新列表。
     #[getter]
     pub fn get_updates(&self) -> Vec<PyRunUpdate> { self.inner.updates.iter().cloned().map(|u| u.into()).collect() }
 
+    /// 更新结束事件涉及的实体 ID 列表。
     #[getter]
     pub fn get_on_update_end(&self) -> Vec<PlrId> { self.inner.on_update_end.to_vec() }
 
+    /// 更新条数。
     pub fn len(&self) -> usize { self.inner.updates.len() }
 
+    /// 是否没有更新。
     pub fn is_empty(&self) -> bool { self.inner.updates.is_empty() }
 
+    /// 是否曾经产生过更新。
     pub fn had_updates(&self) -> bool { self.inner.had_updates() }
 }
 
@@ -252,42 +273,57 @@ impl From<PyRunUpdate> for RunUpdate {
 
 #[pymethods]
 impl PyRunUpdate {
+    /// 更新的分数。
     #[getter]
     pub fn get_score(&self) -> u32 { self.inner.score }
 
+    /// 更新的附加参数（可空）。
     #[getter]
     pub fn get_param(&self) -> Option<u32> { self.inner.param }
 
+    /// 更新的第一段延迟。
     #[getter]
     pub fn get_delay0(&self) -> i32 { self.inner.delay0 }
 
+    /// 更新的第二段延迟。
     #[getter]
     pub fn get_delay1(&self) -> i32 { self.inner.delay1 }
 
+    /// 更新的原始消息模板。
     #[getter]
     pub fn get_message(&self) -> String { self.inner.message.to_string() }
 
+    /// 施法者 ID。
     #[getter]
     pub fn get_caster_id(&self) -> PlrId { self.inner.caster }
 
+    /// 主目标 ID。
     #[getter]
     pub fn get_target_id(&self) -> PlrId { self.inner.target }
 
+    /// 全部目标 ID 列表。
     #[getter]
     pub fn get_targets(&self) -> smallvec::SmallVec<[PlrId; 2]> { self.inner.targets.clone() }
 
+    /// 目标列表是否为空。
     pub fn target_is_empty(&self) -> bool { self.inner.targets.is_empty() }
 
+    /// 更新类型的调试字符串。
     pub fn get_update_type(&self) -> String { format!("{:?}", self.inner.update_type) }
 
+    /// 是否为 Win 类型更新。
     pub fn is_win(&self) -> bool { self.inner.update_type == UpdateType::Win }
 
+    /// 是否为 None 类型更新。
     pub fn is_none(&self) -> bool { self.inner.update_type == UpdateType::None }
 
+    /// 是否为 NextLine 换行更新。
     pub fn is_next_line(&self) -> bool { self.inner.update_type == UpdateType::NextLine }
 
+    /// 展开占位符后的消息文本。
     pub fn msg(&self) -> String { self.inner.msg() }
 
+    /// 把更新转换为 Python dict；rendered 控制消息是否展开。
     #[pyo3(signature = (rendered=true))]
     pub fn to_dict(&self, py: Python<'_>, rendered: bool) -> PyResult<Py<PyAny>> {
         let names = std::collections::HashMap::new();

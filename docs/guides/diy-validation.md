@@ -98,7 +98,7 @@ cargo test -p tswn_core --lib plain_raw_import_tests
 当前确定的限制与边界：
 
 - **武器行为不能完整还原**：提供 attrs 或 skills 的 DIY / OL 会关闭武器构造，导出器也不输出武器信息。即使八围可被保存，武器技能或运行期行为仍可能不同，见 [build.rs](../../crates/tswn_core/src/namerena/build.rs#L309-L319)。
-- **加成由当前元数据表示**：`SkillBoost` 保留 Normal / LastBoost / SlotBoost；原生构造在技能已有 boosted 标记时跳过重复末端加成，见 [build.rs](../../crates/tswn_core/src/namerena/build.rs#L539-L578)。不要沿用旧 `Skill.diy_boost` 对象字段或把旧“双 boost 丢失”统计当作当前缺陷结论。
+- **加成由当前元数据表示**：`SkillBoost` 保留 Normal / LastBoost / SlotBoost；原生构造在技能已有 boosted 标记时跳过重复末端加成，见 [build.rs](../../crates/tswn_core/src/namerena/build.rs#L539-L578)。旧 `Skill.diy_boost` 对象字段与“双 boost 丢失”统计属于历史记录，不反映当前构造行为。
 - **模板导出有范围**：`to-diy --minions` 导出当前可生成或显式配置的 shadow / summon / zombie 模板，并省略 0 等级技能；它不是任意运行期实体与状态的存档格式。
 
 ## 6. 历史验证记录
@@ -110,7 +110,7 @@ cargo test -p tswn_core --lib plain_raw_import_tests
 | sqp6000 对战比对 | 64 / 64 通过 |
 | sqp5900 对战比对 | 498 / 500 通过（99.6%） |
 
-这些数字不是当前版本的验收结果；本页不再宣称当前“全部通过”或 40 槽位完整 action order 往返。恢复采样脚本后，应重新生成报告，并记录提交版本、样本库、rq、seed、分组、忽略字段与命令。
+这些数字是历史工作流在当时的验收结果，反映采集时的实现与输出，当前版本需要重新采样验证；当前“全部通过”与 40 槽位完整 action order 往返也需重新确认。恢复采样脚本后，应重新生成报告，并记录提交版本、样本库、rq、seed、分组、忽略字段与命令。
 
 旧脚本写入 `target/diy_roundtrip/summary.json` 及每 case 的输入、初始状态、对战日志和差异文件。这种留存结构仍有价值；迁移时应改用当前 JSONL / DTO，不再解析人类可读行。
 

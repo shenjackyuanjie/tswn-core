@@ -8,12 +8,12 @@
 //! 把这一层从命令树定义里拆开后，后续调整输入规则时就不需要在几百行 `clap`
 //! 声明之间来回定位辅助函数。
 
-use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 use clap::CommandFactory;
 use clap::error::ErrorKind;
+use tswn_core::text_input::{decode_utf8_lines, read_text_file};
 
 use super::cli::Cli;
 use super::parsed::{NamerPfMetric, NamerPfMetricSpec};
@@ -21,23 +21,25 @@ use super::parsed::{NamerPfMetric, NamerPfMetricSpec};
 /// 从标准输入读取完整的 namerena 原始输入。
 ///
 /// CLI 的 `fight` / `bench auto` / `namer-pf` 都允许省略 `--raw` 和 `--file`，
-/// 此时这里就是最终兜底。读取完成后会统一去掉 UTF-8 BOM，并拒绝纯空白输入。
+/// 此时这里就是最终兜底。跳过非 UTF-8 行后，拒绝空输入或纯空白输入。
 pub(super) fn read_stdin() -> Result<String, clap::Error> {
-    let mut raw = String::new();
+    let mut bytes = Vec::new();
     io::stdin()
-        .read_to_string(&mut raw)
+        .read_to_end(&mut bytes)
         .map_err(|err| cli_error(format!("读取 stdin 失败: {err}")))?;
-    let raw = strip_utf8_bom(&raw).to_string();
+    let (raw, skipped) = decode_utf8_lines(bytes);
+    if skipped > 0 {
+        eprintln!("stdin：已跳过 {skipped} 行非 UTF-8 文本。");
+    }
     if raw.trim().is_empty() {
         return Err(cli_error("未提供 raw_namerena 输入"));
     }
     Ok(raw)
 }
 
-/// 从指定文件读取完整文本输入，并统一处理 BOM。
+/// 从指定文件读取完整文本输入，去掉 BOM 并跳过非 UTF-8 行。
 pub(super) fn read_file(path: &Path) -> Result<String, clap::Error> {
-    let content = fs::read_to_string(path).map_err(|err| cli_error(format!("读取文件失败: {err}")))?;
-    Ok(strip_utf8_bom(&content).to_string())
+    read_text_file(path).map_err(|err| cli_error(format!("读取文件失败: {}: {err}", path.display())))
 }
 
 /// 将命令行里的字面量 `\n` 还原成真实换行。
@@ -105,9 +107,6 @@ pub(super) fn parse_wr_precision(raw: &str) -> Result<usize, String> {
 pub(super) fn cli_error(message: impl Into<String>) -> clap::Error {
     Cli::command().error(ErrorKind::ValueValidation, message.into())
 }
-
-/// 去除 UTF-8 BOM (U+FEFF) 前缀。
-pub(super) fn strip_utf8_bom(s: &str) -> &str { s.strip_prefix('\u{feff}').unwrap_or(s) }
 
 /// 解析 `to-diy --file` 输入。
 ///
@@ -292,6 +291,7 @@ pub(super) fn parse_player_groups_with_labels(content: &str, double_plus: bool) 
     (groups, labels)
 }
 
+/// 把一行按分隔符拆出的成员 trim 后用换行连接，转为单组多行文本。
 fn parse_group_line(line: &str, separator: &str) -> String { line.split(separator).map(str::trim).collect::<Vec<_>>().join("\n") }
 
 #[cfg(test)]

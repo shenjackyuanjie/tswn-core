@@ -4,6 +4,7 @@ use super::*;
 ///
 /// 比较完整规范化事件行和总分 550；角色是否获胜由冻结日志中的结尾行为约束。
 pub fn large_46<E: crate::EngineAdapter>() {
+    /// large_46 用例的内嵌对局输入。
     const CASE: &str = r#"Momomomo #YAORzaY@Arcadia
 泠珞 itVMnXnsL@807139
 

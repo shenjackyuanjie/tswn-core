@@ -33,8 +33,10 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
+use tswn_core::text_input::read_text_file;
 use tswn_openbox::backend::{CommonBenchOptions, OutputMode, PairDetailMode, PairInput, ProgressEvent, run_pair};
 
+/// 用法说明文本。
 const USAGE: &str = "\
 用法: openbox_pair_probe [选项]
 
@@ -51,6 +53,7 @@ const USAGE: &str = "\
   -h, --help                   打印本说明
 ";
 
+/// 探针参数：三个输入文件、场数、线程、head 与明细模式。
 struct Args {
     players: PathBuf,
     teammates: PathBuf,
@@ -65,6 +68,7 @@ struct Args {
 }
 
 impl Args {
+    /// 解析命令行；--help 时打印用法并返回 None。
     fn parse() -> Result<Option<Self>, String> {
         let mut args = std::env::args().skip(1);
         let mut parsed = Self {
@@ -116,8 +120,9 @@ impl Args {
     }
 }
 
+/// 读取整个文本文件，失败时返回中文错误。
 fn read_all(path: &Path) -> Result<String, String> {
-    std::fs::read_to_string(path).map_err(|err| format!("读取失败 {}: {err}", path.display()))
+    read_text_file(path).map_err(|err| format!("读取失败 {}: {err}", path.display()))
 }
 
 /// 按输入文件的“组”数估算矩阵规模。
@@ -134,6 +139,7 @@ fn group_count(path: &Path, factored: bool) -> Result<usize, String> {
     Ok(count)
 }
 
+/// 探针入口：解析参数、读取输入并执行 pair 流程。
 fn main() {
     let args = match Args::parse() {
         Ok(Some(args)) => args,

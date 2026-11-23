@@ -13,6 +13,7 @@ use tswn_core::encoder::{
 
 use crate::storage;
 
+/// build-manifest 子命令参数：校准报告路径与输出位置。
 #[derive(Debug, Clone, clap::Args)]
 pub struct BuildManifestArgs {
     /// calibrate 输出的有标签 train 校准报告。
@@ -23,6 +24,7 @@ pub struct BuildManifestArgs {
     pub out: PathBuf,
 }
 
+/// 执行 build-manifest：读取有标签 train 校准报告，写出完整 EncoderManifest JSON。
 pub fn run(args: &BuildManifestArgs) -> Result<()> {
     let report: CalibrationReport = storage::read_json(&args.calibration).context("读取校准报告")?;
     ensure!(

@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
 impl From<&SkillLoadout> for ModelSkills {
+    /// 把技能表投影为模型技能：lane、当前/构建等级、强化与各类顺序原样导出。
     fn from(value: &SkillLoadout) -> Self {
         use crate::namerena::SkillBoost;
         Self {
@@ -66,6 +67,7 @@ impl From<&SkillLoadout> for ModelSkills {
 }
 
 impl ModelSlot {
+    /// 把槽值投影为模型槽：布尔与整数直接落地，玩家模板递归投影，未审计的文本槽报错。
     fn project(slot_id: u32, value: &SlotValue, clans: &mut Vec<String>) -> Result<Self, ModelStateError> {
         let mut slot = Self {
             slot_id,
@@ -291,10 +293,12 @@ impl BattleModelState {
     }
 }
 
+/// 模型状态格式版本；结构不兼容变更时递增。
 pub const MODEL_STATE_SCHEMA_VERSION: u32 = 1;
 
 /// 编号空间固定为 1–50；当前 47 个处理器沿用注册顺序，48–50 预留。
 pub const MODEL_SKILL_ID_LIMIT: u32 = 50;
+/// 模型状态的稳定技能导出名表；数组顺序即 1-based skill_id。
 pub const MODEL_SKILL_EXPORTS: [&str; 47] = [
     "custom.summon",
     "custom.summon.fire",
@@ -345,13 +349,16 @@ pub const MODEL_SKILL_EXPORTS: [&str; 47] = [
     "core.weapon.rinick-yuri-control",
 ];
 
+/// 模型状态导出或校验失败的描述性错误。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelStateError(pub String);
 impl std::fmt::Display for ModelStateError {
+    /// 显示模型状态错误：原样输出内部描述文本。
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str(&self.0) }
 }
 impl std::error::Error for ModelStateError {}
 
+/// 一回合边界的完整机制状态快照，供学习数据与特征编码使用。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BattleModelState {
     pub schema_version: u32,
@@ -367,6 +374,7 @@ pub struct BattleModelState {
     pub ice_release_events: Vec<EntityIdx>,
 }
 
+/// 单个实体的模型投影：模板、运行态、状态条目与实体槽。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelEntity {
     pub id: EntityIdx,
@@ -380,6 +388,7 @@ pub struct ModelEntity {
     pub slots: Vec<ModelSlot>,
 }
 
+/// 世界视图投影：行动序、队伍名册、存活列表与胜者。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelWorld {
     pub round_order: Vec<EntityIdx>,
@@ -391,6 +400,7 @@ pub struct ModelWorld {
     pub winner_team: Option<usize>,
 }
 
+/// 身份投影：阵营分组、Boss 类型与免疫阈值；不保存名字文本。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelIdentity {
     /// 仅表达阵营相等关系，不保存阵营文本或哈希。
@@ -400,12 +410,14 @@ pub struct ModelIdentity {
     pub boost_immune_threshold: u32,
     pub immunity: Vec<ModelImmunity>,
 }
+/// 一条状态免疫项：状态名与生效阈值。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelImmunity {
     pub status: String,
     pub threshold: i32,
 }
 
+/// 一个技能 lane 的投影：稳定 ID、当前/构建等级、强化与固定键。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelSkill {
     /// 默认注册表的稳定 1-based 技能 ID；不是 fixed_lane 或 legacy_key。
@@ -416,17 +428,20 @@ pub struct ModelSkill {
     pub boosted: bool,
     pub fixed_lane_key: usize,
 }
+/// 技能强化投影：类型、基线等级与附加量。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelSkillBoost {
     pub kind: String,
     pub base: u32,
     pub extra: u32,
 }
+/// 延后 POST_ACTION 条目投影：状态游标与固定 lane。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelDeferredSkill {
     pub state_cursor: u64,
     pub fixed_lane: usize,
 }
+/// 技能表投影：各 lane 与各阶段遍历顺序。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelSkills {
     pub lanes: Vec<ModelSkill>,
@@ -436,6 +451,7 @@ pub struct ModelSkills {
     pub post_damage_order: Vec<usize>,
     pub post_action_after_states: Vec<ModelDeferredSkill>,
 }
+/// 槽值投影：布尔、整数或模板；未审计的文本槽会拒绝导出。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelSlot {
     pub slot_id: u32,
@@ -444,6 +460,7 @@ pub struct ModelSlot {
     pub u64_value: Option<u64>,
     pub template: Option<ModelTemplate>,
 }
+/// 状态条目投影：hook、优先级、两种注册序与载荷。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelStateEntry {
     pub legacy_order_key: u32,
@@ -455,6 +472,7 @@ pub struct ModelStateEntry {
     pub payload: ModelPayload,
 }
 
+/// 模板投影：身份、属性、技能表、策略与分身数据。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelTemplate {
     pub identity: ModelIdentity,
@@ -486,6 +504,7 @@ pub struct ModelTemplate {
 }
 
 impl ModelTemplate {
+    /// 把玩家模板投影为模型模板：阵营名归并为分组下标，并解析 Boss 身份、免疫表等冷数据。
     fn project(value: &PlayerTemplate, clans: &mut Vec<String>) -> Self {
         let clan_group = clans.iter().position(|name| name == &value.clan_name).unwrap_or_else(|| {
             clans.push(value.clan_name.clone());
@@ -544,6 +563,7 @@ impl ModelTemplate {
     }
 }
 
+/// 状态载荷投影：按 `kind` 只填充对应字段，其余保持 None。
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelPayload {
     pub kind: String,
@@ -565,17 +585,20 @@ pub struct ModelPayload {
     pub mario_boss: Option<MarioBossPayload>,
 }
 
+/// 冰冻载荷投影。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IcePayload {
     pub frozen_step: i32,
 }
 
+/// 诅咒载荷投影：概率与伤害倍率。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CursePayload {
     pub prob: i32,
     pub multiply: i32,
 }
 
+/// 中毒载荷投影：来源、目标、威力与剩余计数。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PoisonPayload {
     pub caster: Option<u32>,
@@ -584,6 +607,7 @@ pub struct PoisonPayload {
     pub count: i32,
 }
 
+/// 疾走载荷投影：加速、有效加速与剩余步数。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HastePayload {
     pub faster: i32,
@@ -591,11 +615,13 @@ pub struct HastePayload {
     pub step: i32,
 }
 
+/// 狂暴载荷投影。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BerserkPayload {
     pub step: i32,
 }
 
+/// 魅惑载荷投影：组、有效/来源队伍、目标与步数。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CharmPayload {
     pub group_id: usize,
@@ -605,22 +631,26 @@ pub struct CharmPayload {
     pub step: i32,
 }
 
+/// 迟缓载荷投影。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SlowPayload {
     pub step: i32,
 }
 
+/// 铁壁载荷投影：保护值与剩余步数。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IronPayload {
     pub protect: i32,
     pub step: i32,
 }
 
+/// 新冠 Boss 变异载荷投影。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CovidBossPayload {
     pub mutation: i32,
 }
 
+/// 新冠传染载荷投影：传染记录、变异集合与康复标记。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CovidInfectionPayload {
     pub entries: Vec<CovidInfectionEntry>,
@@ -628,6 +658,7 @@ pub struct CovidInfectionPayload {
     pub recovered: bool,
 }
 
+/// 一拳超人 Boss 载荷投影：回合、累计伤害、攻击者与召唤物。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SaitamaBossPayload {
     pub turns: i32,
@@ -636,16 +667,19 @@ pub struct SaitamaBossPayload {
     pub minions: Vec<EntityIdx>,
 }
 
+/// 懒癌 Boss 攻击加成载荷投影。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LazyBossPayload {
     pub at_boost_bits: u64,
 }
 
+/// 懒癌传染载荷投影：来源 Boss。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LazyInfectionPayload {
     pub boss: EntityIdx,
 }
 
+/// 马里奥成长载荷投影：蘑菇层数与火球术等级。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MarioBossPayload {
     pub grow: i32,
@@ -653,6 +687,7 @@ pub struct MarioBossPayload {
 }
 
 impl From<&StatePayload> for ModelPayload {
+    /// 把状态载荷投影为模型载荷：按种类填写对应字段，未知种类归为默认。
     fn from(value: &StatePayload) -> Self {
         let mut result = Self::default();
         match value {
@@ -789,12 +824,14 @@ impl From<&StatePayload> for ModelPayload {
     }
 }
 
+/// 反击投影：待反击标记与上次目标。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelCounter {
     pub pending: bool,
     pub last_target: Option<EntityIdx>,
 }
 
+/// 实体运行态投影；不含引擎内部的注册游标等簿记字段。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelPlayerRuntime {
     pub hp: i32,
@@ -833,6 +870,7 @@ pub struct ModelPlayerRuntime {
 }
 
 impl From<&PlayerRuntime> for ModelPlayerRuntime {
+    /// 把运行态投影为模型运行态：八围、倍率位模式与各类运行期结构逐字段导出。
     fn from(value: &PlayerRuntime) -> Self {
         Self {
             hp: value.hp,

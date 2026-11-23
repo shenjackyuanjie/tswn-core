@@ -4,6 +4,7 @@ use super::*;
 ///
 /// 对泛型引擎比较完整规范化日志及总分 1078，不依赖引擎内部状态布局。
 pub fn large_43<E: crate::EngineAdapter>() {
+    /// large_43 用例的内嵌对局输入。
     const CASE: &str = r####"豹山惟助 PFOQXFYL@TigerStar
 
 泠珞 itVMnXnsL@807139

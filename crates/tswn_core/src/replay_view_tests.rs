@@ -6,6 +6,7 @@ use crate::runtime::PlrId;
 use crate::runtime::update::RunUpdate;
 use std::collections::HashMap;
 
+/// 测试用的最小 `ReplayState` 实现。
 #[derive(Clone)]
 struct TestState {
     id: PlrId,
@@ -16,16 +17,22 @@ struct TestState {
 }
 
 impl ReplayState for TestState {
+    /// 取测试状态 id。
     fn id(&self) -> PlrId { self.id }
 
+    /// 取测试状态 HP。
     fn hp(&self) -> i32 { self.hp }
 
+    /// 取测试状态最大 HP。
     fn max_hp(&self) -> i32 { self.max_hp }
 
+    /// 取测试状态存活标记。
     fn alive(&self) -> bool { self.alive }
 
+    /// 取测试状态护盾。
     fn shield(&self) -> i32 { self.shield }
 
+    /// 返回设置护盾后的副本；死亡时护盾归零。
     fn with_shield(&self, shield: i32) -> Self {
         Self {
             shield: if self.alive { shield } else { 0 },
@@ -33,6 +40,7 @@ impl ReplayState for TestState {
         }
     }
 
+    /// 返回设置 HP 与存活状态的副本；死亡时护盾归零。
     fn with_hp_alive(&self, hp: i32, alive: bool) -> Self {
         Self {
             hp,
@@ -43,8 +51,10 @@ impl ReplayState for TestState {
     }
 }
 
+/// 构造 id -> 名字的测试映射。
 fn names() -> HashMap<PlrId, String> { [(0, "caster".to_string()), (1, "target".to_string())].into() }
 
+/// 构造指定 id 与 HP 的测试状态。
 fn state(id: PlrId, hp: i32) -> TestState {
     TestState {
         id,
@@ -55,10 +65,12 @@ fn state(id: PlrId, hp: i32) -> TestState {
     }
 }
 
+/// 取片段中的唯一玩家片段，供测试断言。
 fn player_part(clip: &ReplayClip<TestState>) -> &ReplayTextPart {
     clip.parts.iter().find(|part| part.kind == ReplayTextPartKind::Player).unwrap()
 }
 
+/// 取全部玩家片段，供测试断言。
 fn player_parts(clip: &ReplayClip<TestState>) -> Vec<&ReplayTextPart> {
     clip.parts.iter().filter(|part| part.kind == ReplayTextPartKind::Player).collect()
 }
@@ -261,6 +273,31 @@ fn new_entity_uses_current_hp_as_before_hp() {
     assert!(player_part.show_hp);
     assert_eq!((player_part.hp_before, player_part.hp_after), (60, 60));
     assert!(!player_part.death_effect);
+}
+
+#[test]
+fn exact_hp_for_new_entity_does_not_invent_a_sidebar_before_state() {
+    // 受控同批出场边界：旧快照没有新实体，帧末快照也已不是该事件时的体力。
+    let update = RunUpdate::new("[1]出现了", 0, 1, 0).with_hp_changes([crate::runtime::update::RunUpdateHp {
+        player: 1,
+        before: 17,
+        after: 60,
+    }]);
+    let events = [ReplayEventView {
+        update: &update,
+        tone: ReplayTone::Normal,
+        message_rendered: "target出现了",
+    }];
+    let view = build_replay_view_frame(&events, &[state(0, 100)], &[state(0, 100), state(1, 0)], &names(), false, &[]);
+    let clip = &view.rows[0].clips[0];
+    let part = player_part(clip);
+    assert_eq!((part.hp_before, part.hp_after, part.show_hp), (17, 60, true));
+    assert_eq!(
+        clip.sidebar_previous_states.iter().map(|state| state.id).collect::<Vec<_>>(),
+        [0]
+    );
+    assert_eq!(clip.sidebar_states[1].hp, 60);
+    assert!(clip.sidebar_states[1].alive);
 }
 
 #[test]

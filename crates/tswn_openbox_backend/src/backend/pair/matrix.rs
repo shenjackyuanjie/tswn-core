@@ -9,6 +9,7 @@ use tswn_core::runtime::{RuntimeCqpMatchup, runtime_cqp_matchups_observed};
 
 use super::super::parse::{first_duplicate_name_in_matchup, normalized_group_players};
 
+/// 配队矩阵的输入快照：选手、队友、靶子、权重与运行参数。
 pub(super) struct PairMatrixInput<'a> {
     pub players: &'a [String],
     pub teammates: &'a [String],
@@ -24,18 +25,21 @@ pub(super) struct PairMatrixInput<'a> {
 }
 
 #[derive(Default)]
+/// 单个 matchup 的加权累加器：加权胜率、权重和与有效计数。
 struct PairAccumulator {
     weighted_rate: f64,
     factor: f64,
     valid: usize,
 }
 
+/// 矩阵单元格类型：镜像（同分 50）、跳过或待请求下标。
 enum Slot {
     Mirror,
     Skip,
     Request(usize),
 }
 
+/// 以默认窗口执行配队矩阵。
 pub(super) fn run_pair_matrix(
     input: &PairMatrixInput<'_>,
     on_progress: impl FnMut(usize),
@@ -44,6 +48,7 @@ pub(super) fn run_pair_matrix(
     run_pair_matrix_windowed(input, 4096, on_progress, on_player)
 }
 
+/// 带逐对回调的矩阵执行，用于发布结构化增量。
 pub(super) fn run_pair_matrix_observed(
     input: &PairMatrixInput<'_>,
     on_progress: impl FnMut(usize),
@@ -53,6 +58,7 @@ pub(super) fn run_pair_matrix_observed(
     run_pair_matrix_inner(input, 4096, on_progress, on_player, Some(on_pair))
 }
 
+/// 指定窗口大小的矩阵执行。
 fn run_pair_matrix_windowed(
     input: &PairMatrixInput<'_>,
     window_size: usize,
@@ -62,6 +68,7 @@ fn run_pair_matrix_windowed(
     run_pair_matrix_inner(input, window_size, on_progress, on_player, None)
 }
 
+/// 矩阵核心：按窗口遍历选手×队友×靶子，处理镜像/跳过并回调进度与结果。
 fn run_pair_matrix_inner(
     input: &PairMatrixInput<'_>,
     window_size: usize,

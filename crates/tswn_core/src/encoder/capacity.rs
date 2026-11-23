@@ -34,6 +34,7 @@ pub struct EncoderProfile {
 }
 
 impl EncoderProfile {
+    /// 按维度名取容量上限；维度名不在 [`CAPACITY_DIMS`] 时 panic。
     pub fn limit(&self, dim: &str) -> usize {
         match dim {
             "e" => self.e_max,
@@ -79,6 +80,7 @@ pub struct CapacityMeasure {
 }
 
 impl CapacityMeasure {
+    /// 按维度名取计量值；维度名不在 [`CAPACITY_DIMS`] 时 panic。
     pub fn value(&self, dim: &str) -> usize {
         match dim {
             "e" => self.e,

@@ -2,7 +2,7 @@
 
 ## 项目结构与模块
 
-这是一个 Rust workspace。核心战斗与 CLI 位于 `crates/tswn_core/`；跨语言与界面适配分别在 `tswn_capi`、`tswn_py`、`tswn_wasm`、`tswn_openbox`，排名与对战工具在 `tswn_*ranker`、`tswn_ladder`。共享或集成测试主要在 `crates/tswn_test/`，输入样例在 `tests/`，设计与构建说明在 `docs/`，自动化脚本在 `scripts/`。修改功能时优先将测试放在所属 crate 的模块内；跨 crate 行为放入 `tswn_test`。
+这是一个 Rust workspace。核心战斗与 CLI 位于 `crates/tswn_core/`；跨语言与界面适配分别在 `tswn_capi`、`tswn_py`、`tswn_wasm`、`tswn_openbox`，排名工具在 `tswn_*ranker`。共享或集成测试主要在 `crates/tswn_test/`，输入样例在 `tests/`，设计与构建说明在 `docs/`，自动化脚本在 `scripts/`。修改功能时优先将测试放在所属 crate 的模块内；跨 crate 行为放入 `tswn_test`。
 
 ## 仓库 skill
 
@@ -26,7 +26,7 @@
 
 ## 测试要求
 
-使用 Rust 内置测试框架（`#[test]`）。修复缺陷应先添加可复现测试；涉及 runtime 或解析语义时，覆盖边界条件与已有 case。提交前运行受影响 crate 的测试；影响核心逻辑时运行 `cargo test -p tswn_core`，跨模块变更再运行 `cargo test`。除非有意更新语义，不要重生成 `crates/tswn_test/cases/` 中的 golden/corpus 基线。
+使用 Rust 内置测试框架（`#[test]`）。修复 `tswn_core` 的对齐缺陷（与 legacy / JS 行为的偏差）时，先添加可复现测试再修复；其他缺陷直接修复。涉及 runtime 或解析语义时，覆盖边界条件与已有 case。提交前运行受影响 crate 的测试；影响核心逻辑时运行 `cargo test -p tswn_core`，跨模块变更再运行 `cargo test`。除非有意更新语义，不要重生成 `crates/tswn_test/cases/` 中的 golden/corpus 基线。
 
 测试应验证实际输入输出、状态变化、边界条件或资源管理。目录摆放、源码写法、架构选择、已移除入口及固定配置的维护约束留在对应文档，不单独增加“防止以后重新这么做”或冻结实现的测试。已发生缺陷的行为回归、公共接口兼容性与数据格式验证不属于这类维护约束。
 
@@ -41,7 +41,7 @@
 - `github`：`git@github.com:shenjackyuanjie/tswn-core.git`
 - `gitea`：`ssh://git@git.shenjack.top:5101/shenjack/tswn-core.git`
 
-**推送任何一个分支或 main 时，两个 remote 都要推**，不要只推 GitHub：
+**推送任何一个分支或 main 时，两个 remote 都要推**（只推一边会让两个远端分叉）：
 
 ```powershell
 git push github <branch>
@@ -54,4 +54,4 @@ main 与 tag 同理（例如 `git push github main; git push gitea main`）。�
 
 ## Clever 独立发布约定
 
-本工作目录的 Clever 引擎和前端以这里发布到 KODU16/tswn-core-clever main 的修改为准，不自动跟随或合并上游主仓库。功能修改完成后验证并发布 Clever main，前端与 WASM 必须由同一提交构建。前端地址及同步机制见 docs/clever-search.md。本 fork 仅发布 origin，不推送 shenjackyuanjie 的 github/gitea remote；上文双 remote 规则适用于上游仓库。
+本工作目录的 Clever 引擎和前端以这里发布到 KODU16/tswn-core-clever main 的修改为准，仅在用户明确要求时同步上游主仓库，并保留 Clever 扩展。功能修改完成后验证并发布 Clever main，前端与 WASM 必须由同一提交构建。前端地址及同步机制见 docs/clever-search.md。本 fork 仅发布 origin，不推送 shenjackyuanjie 的 github/gitea remote；上文双 remote 规则适用于上游仓库。

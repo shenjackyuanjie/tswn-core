@@ -38,6 +38,7 @@
 //! [Python 绑定说明](https://github.com/shenjackyuanjie/tswn-core/tree/main/crates/tswn_py)。
 //! Cargo doc 用于阅读 Rust 适配实现，Python 签名由 `.pyi` 与运行时 help 提供。
 
+/// 同步战斗会话与计划行动的 Python 绑定。
 mod battle;
 pub mod cli_api;
 pub mod wrapper;
@@ -51,6 +52,7 @@ use pyo3::{
 };
 use tswn_core::{PreparedRunner, Runner};
 
+/// 校验至少存在两支非空队伍，否则抛出 ValueError。
 fn ensure_win_rate_group_count(groups: &[Vec<String>]) -> PyResult<()> {
     let group_count = groups.iter().filter(|g| !g.is_empty()).count();
     if group_count < 2 {

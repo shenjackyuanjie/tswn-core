@@ -1,6 +1,8 @@
 use super::*;
 
+/// 泛型回放 fixture：内嵌 large_05 对局输入，跑完整战斗并逐行比对冻结 JS 回放。
 pub fn large_05<E: crate::EngineAdapter>() {
+    /// large_05 用例的内嵌对局输入。
     const CASE: &str = r####"「OS」#c1#bFc71OCDuO35@mwh_425
 GordonALYJDXORPTER@nan425
 "铁胆"哈拉文领主-ksbGnquBbq-@新纪元425

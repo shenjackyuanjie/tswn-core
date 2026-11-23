@@ -1,9 +1,11 @@
 use super::*;
 
+/// 蓄力技能的行动后处理：推进蓄力步数，归零时撤销倍率。
 pub fn run_charge_post_action_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     context.tick_owner_charge_post_action().expect("charge post_action owner should exist");
 }
 
+/// 聚气技能：激活聚气运行时并播报开始与攻击力上升两条消息。
 pub fn run_accumulate_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     if !context.activate_owner_accumulate_runtime().expect("accumulate owner should exist") {
         return;
@@ -24,6 +26,7 @@ pub fn run_accumulate_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEnt
     ));
 }
 
+/// 护盾状态的 POST_DEFEND：按剩余盾值抵减伤害，破盾时保留完整伤害。
 pub fn run_shield_post_defend_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let Some(StatePayload::ShieldValue(shield)) = context.owner_state_payload(entry.legacy_order_key) else {
         return;
@@ -44,6 +47,7 @@ pub fn run_shield_post_defend_state(context: &mut StateContext<'_>, entry: &Stat
     }
 }
 
+/// 诅咒状态的 POST_DEFEND：按概率把本次伤害乘以诅咒倍率。
 pub fn run_curse_post_defend_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let Some(StatePayload::Curse { prob, multiply }) = context.owner_state_payload(entry.legacy_order_key) else {
         return;
@@ -66,6 +70,7 @@ pub fn run_curse_post_defend_state(context: &mut StateContext<'_>, entry: &State
     }
 }
 
+/// 中毒状态的 POST_ACTION：按剩余层数分摊毒性伤害并递减层数，归零解除。
 pub fn run_poison_post_action_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let Some(StatePayload::Poison {
         caster,
@@ -122,6 +127,7 @@ pub fn run_poison_post_action_state(context: &mut StateContext<'_>, entry: &Stat
         .expect("poison state payload should still exist");
 }
 
+/// 疾走状态的 POST_ACTION：递减步数，归零时播报解除。
 pub fn run_haste_post_action_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let Some(StatePayload::Haste {
         faster,
@@ -144,6 +150,7 @@ pub fn run_haste_post_action_state(context: &mut StateContext<'_>, entry: &State
     );
 }
 
+/// 魅惑状态的 POST_ACTION：递减步数，归零时播报解除。
 pub fn run_charm_post_action_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let Some(StatePayload::Charm {
         group_id,
@@ -170,6 +177,7 @@ pub fn run_charm_post_action_state(context: &mut StateContext<'_>, entry: &State
     );
 }
 
+/// 迟缓状态的 POST_ACTION：递减步数，归零时播报解除。
 pub fn run_slow_post_action_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let Some(StatePayload::Slow { step }) = context.owner_state_payload(entry.legacy_order_key) else {
         return;
@@ -177,11 +185,91 @@ pub fn run_slow_post_action_state(context: &mut StateContext<'_>, entry: &StateH
     run_timed_release_post_action_state(context, entry, StatePayload::Slow { step: step - 1 }, step, "[1]从[迟缓]中解除");
 }
 
+/// 原版的变异抽样属于前置钩子，即使这次最终由懒癌接管也照常执行。
+fn roll_covid_mutations(
+    context: &mut StateContext<'_>,
+    entries: &mut [CovidInfectionEntry],
+    mutation_set: &mut smallvec::SmallVec<[i32; 4]>,
+) -> bool {
+    let mut changed = false;
+    for infection in entries {
+        if context.rng_next_u8() < 64 {
+            let mutation = context.rng_r127() as i32;
+            changed |= infection.mutation != mutation;
+            infection.mutation = mutation;
+            if !mutation_set.contains(&mutation) {
+                mutation_set.push(mutation);
+                changed = true;
+            }
+        }
+    }
+    changed
+}
+
+/// 按注册序在新冠感染条目中定位本次钩子对应的毒株下标。
+fn planned_covid_strain(
+    context: &StateContext<'_>,
+    entry: &StateHookPlanEntry,
+    entries: &[CovidInfectionEntry],
+) -> Option<usize> {
+    let owner = context.owner()?;
+    let original_order = owner.states.runtime_registration_order(entry.legacy_order_key)?;
+    entries
+        .iter()
+        .position(|strain| strain.registration_order.unwrap_or(original_order) == entry.runtime_registration_order)
+}
+
+pub(crate) fn propose_boss_infection_pre_action(
+    context: &mut StateContext<'_>,
+    entry: &StateHookPlanEntry,
+) -> Option<StateHandlerFn> {
+    match context.owner_state_payload(entry.legacy_order_key)? {
+        StatePayload::CovidInfection {
+            mut entries,
+            mut mutation_set,
+            recovered,
+        } if !entries.is_empty() => {
+            let index = planned_covid_strain(context, entry, &entries)?;
+            if roll_covid_mutations(context, &mut entries[index..=index], &mut mutation_set) {
+                context
+                    .set_owner_state_payload_without_refresh(
+                        entry.legacy_order_key,
+                        StatePayload::CovidInfection {
+                            entries,
+                            mutation_set,
+                            recovered,
+                        },
+                    )
+                    .expect("runtime covid state payload must still exist");
+            }
+            Some(execute_proposed_covid_pre_action)
+        }
+        StatePayload::LazyInfection { .. } if roll_lazy_pre_action(context) => Some(execute_proposed_lazy_pre_action),
+        _ => None,
+    }
+}
+
+/// 提议路径的新冠 PRE_ACTION 执行入口：变异已在前置钩子掷过，直接进入实现体。
+fn execute_proposed_covid_pre_action(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+    run_covid_infection_state_impl(context, entry, true);
+}
+
+/// 提议路径的懒癌 PRE_ACTION 执行入口：发作概率已判定过，直接进入实现体。
+fn execute_proposed_lazy_pre_action(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+    run_lazy_infection_state_impl(context, entry, true);
+}
+
+/// 新冠传染状态：推进病程，按变异抽样决定发作、重症或解除。
 pub fn run_covid_infection_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+    run_covid_infection_state_impl(context, entry, false);
+}
+
+/// 新冠传染状态实现：PRE_ACTION 按变异抽样决定发作或接管动作，POST_ACTION 推入新冠肺炎效果；`proposed` 表示变异已在前置钩子处理。
+fn run_covid_infection_state_impl(context: &mut StateContext<'_>, entry: &StateHookPlanEntry, proposed: bool) {
     let Some(StatePayload::CovidInfection {
         mut entries,
         mut mutation_set,
-        mut recovered,
+        recovered,
     }) = context.owner_state_payload(entry.legacy_order_key)
     else {
         return;
@@ -194,23 +282,36 @@ pub fn run_covid_infection_state(context: &mut StateContext<'_>, entry: &StateHo
         let smart = context
             .action_smart()
             .expect("runtime covid PRE_ACTION state must receive the action smart roll");
-        for infection in &mut entries {
-            if context.rng_next_u8() < 64 {
-                let mutation = context.rng_r127() as i32;
-                infection.mutation = mutation;
-                if !mutation_set.contains(&mutation) {
-                    mutation_set.push(mutation);
-                }
-            }
+        if !proposed {
+            roll_covid_mutations(context, &mut entries, &mut mutation_set);
         }
 
-        let last_idx = entries.len() - 1;
+        // 冻结检查在变异前钩子之后、选敌和替代动作之前。
+        if context.owner().is_some_and(|owner| owner.states.is_frozen()) {
+            context
+                .set_owner_state_payload_without_refresh(
+                    entry.legacy_order_key,
+                    StatePayload::CovidInfection {
+                        entries,
+                        mutation_set,
+                        recovered,
+                    },
+                )
+                .expect("runtime covid state payload must still exist");
+            return;
+        }
+
+        let last_idx = if proposed {
+            planned_covid_strain(context, entry, &entries).expect("runtime covid proposal must have a strain")
+        } else {
+            entries.len() - 1
+        };
         let boss = entries[last_idx].boss;
         let mutation = entries[last_idx].mutation;
         let days = entries[last_idx].days;
         let all_alive = context.flat_alive().expect("runtime covid state must read the complete alive list");
 
-        let boss_team = context.entity(boss).expect("runtime covid boss must exist").runtime.team;
+        let boss_team = context.effective_team(boss).expect("runtime covid boss must exist");
         let skip_indices = all_alive
             .iter()
             .enumerate()
@@ -222,8 +323,7 @@ pub fn run_covid_infection_state(context: &mut StateContext<'_>, entry: &StateHo
         let select_count = if smart { 3 } else { 2 };
         let mut selected = Vec::with_capacity(select_count);
         let mut duplicate_count = 0usize;
-        let invalid_count = -(select_count as i32);
-        while duplicate_count <= select_count && invalid_count <= select_count as i32 {
+        while duplicate_count <= select_count {
             let picked = if skip_indices.is_empty() {
                 context.rng_pick_entity(&all_alive)
             } else {
@@ -293,7 +393,7 @@ pub fn run_covid_infection_state(context: &mut StateContext<'_>, entry: &StateHo
                     }
                 };
                 context
-                    .set_owner_state_payload(
+                    .set_owner_state_payload_without_refresh(
                         entry.legacy_order_key,
                         StatePayload::CovidInfection {
                             entries,
@@ -310,18 +410,18 @@ pub fn run_covid_infection_state(context: &mut StateContext<'_>, entry: &StateHo
 
         entries[last_idx].days += i32::from(context.rng_next_u8() & 3);
         let message = if entries[last_idx].days > 2 {
-            "[1]在重症监护室无法行动"
+            crate::runtime::lang::keys::SKL_COVID_ICU
         } else {
-            "[1]在家中自我隔离"
+            crate::runtime::lang::keys::SKL_COVID_STAY_HOME
         };
-        context.add_update(crate::runtime::update::RunUpdate::new(
+        context.add_update(crate::runtime::update::RunUpdate::new_lang(
             message,
             boss.0 as usize,
             owner.0 as usize,
             0,
         ));
         context
-            .set_owner_state_payload(
+            .set_owner_state_payload_without_refresh(
                 entry.legacy_order_key,
                 StatePayload::CovidInfection {
                     entries,
@@ -335,47 +435,40 @@ pub fn run_covid_infection_state(context: &mut StateContext<'_>, entry: &StateHo
     }
 
     if context.hook().intersects(ProcMask::POST_ACTION) {
-        let owner = context.owner_idx();
-        let alive = context.owner().is_some_and(|entity| entity.runtime.alive);
-        for infection in &entries {
-            if alive && infection.days > 1 {
-                context.push(QueuedEffect::CovidPneumonia {
-                    owner,
-                    boss: infection.boss,
-                    mutation: infection.mutation,
-                });
-            }
-        }
-        entries.retain(|infection| infection.days <= 6);
-        if entries.is_empty() && !recovered {
-            recovered = true;
-        }
-        context
-            .set_owner_state_payload(
-                entry.legacy_order_key,
-                StatePayload::CovidInfection {
-                    entries,
-                    mutation_set,
-                    recovered,
-                },
-            )
-            .expect("runtime covid state payload must still exist");
+        let order = context
+            .owner_has_boss_infection(entry.legacy_order_key)
+            .then_some(entry.runtime_registration_order);
+        context.push(QueuedEffect::CovidPneumonia {
+            owner: context.owner_idx(),
+            order,
+        });
     }
 }
 
+/// 懒癌发作判定：128 分之一的概率，且本体当前可行动。
+fn roll_lazy_pre_action(context: &mut StateContext<'_>) -> bool {
+    context.rng_next_u8() < 128 && context.owner().is_some_and(|owner| owner.is_active())
+}
+
+/// 懒癌传染状态：按概率跳回合或发作，退场时解除。
 pub fn run_lazy_infection_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+    run_lazy_infection_state_impl(context, entry, false);
+}
+
+/// 懒癌传染状态实现：PRE_ACTION 掷概率后选目标跳回合或发作；`proposed` 表示概率已在前置钩子判定过。
+fn run_lazy_infection_state_impl(context: &mut StateContext<'_>, entry: &StateHookPlanEntry, proposed: bool) {
     let Some(StatePayload::LazyInfection { boss }) = context.owner_state_payload(entry.legacy_order_key) else {
         return;
     };
     if context.hook().intersects(ProcMask::PRE_ACTION) {
-        if context.rng_next_u8() >= 128 {
+        if !proposed && !roll_lazy_pre_action(context) {
             return;
         }
         let smart = context
             .action_smart()
             .expect("runtime lazy PRE_ACTION state must receive the action smart roll");
         let all_alive = context.flat_alive().expect("runtime lazy state must read the complete alive list");
-        let boss_team = context.entity(boss).expect("runtime lazy boss must exist").runtime.team;
+        let boss_team = context.effective_team(boss).expect("runtime lazy boss must exist");
         let skip_indices = all_alive
             .iter()
             .enumerate()
@@ -413,22 +506,12 @@ pub fn run_lazy_infection_state(context: &mut StateContext<'_>, entry: &StateHoo
                 let _ = context.rng_r_ffff();
             }
         }
-        let activity = match context.rng_next_u8() {
-            0..=49 => "Steam",
-            50..=99 => "守望先锋",
-            100..=149 => "文明6",
-            150..=189 => "英雄联盟",
-            190..=229 => "微博",
-            _ => "朋友圈",
-        };
-        let owner = context.owner_idx();
-        let owner_name = context.owner().expect("runtime lazy owner must exist").template.display_name.clone();
-        context.add_update(crate::runtime::update::RunUpdate::new(
-            format!("{owner_name}打开了{activity}, 这回合什么也没做"),
-            owner.0 as usize,
-            owner.0 as usize,
-            0,
-        ));
+        use crate::runtime::lang::{keys, lazy_activity_key};
+        let activity = lazy_activity_key(context.rng_next_u8());
+        let owner = context.owner_idx().0 as usize;
+        for key in [activity, keys::SKL_LAZY_SKIP_TURN_0] {
+            context.add_update(crate::runtime::update::RunUpdate::new_lang(key, owner, owner, 0).without_target());
+        }
         context.intercept_action();
         return;
     }
@@ -442,6 +525,7 @@ pub fn run_lazy_infection_state(context: &mut StateContext<'_>, entry: &StateHoo
     }
 }
 
+/// 一拳超人 Boss 状态的 POST_DEFEND：累计受伤与攻击者，伤害按百分之一结算。
 pub fn run_saitama_boss_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     if context.hook() != ProcMask::POST_DEFEND {
         return;
@@ -465,7 +549,11 @@ pub fn run_saitama_boss_state(context: &mut StateContext<'_>, entry: &StateHookP
         if !minions.contains(&caster) {
             minions.push(caster);
         }
-        caster_entity.runtime.owner
+        if caster_entity.runtime.is_combat_minion() {
+            caster_entity.runtime.owner
+        } else {
+            caster_entity.runtime.root_owner
+        }
     } else {
         caster
     };
@@ -486,6 +574,7 @@ pub fn run_saitama_boss_state(context: &mut StateContext<'_>, entry: &StateHookP
     context.set_defend_damage(damage / 100);
 }
 
+/// 计时解除类状态的 POST_ACTION 收尾：步数归零时写回载荷并播报解除消息（含一拳超人的特殊发帧条件）。
 fn run_timed_release_post_action_state(
     context: &mut StateContext<'_>,
     entry: &StateHookPlanEntry,
@@ -504,11 +593,23 @@ fn run_timed_release_post_action_state(
     context
         .set_owner_state_payload_without_refresh(entry.legacy_order_key, next_payload)
         .expect("timed state payload should still exist");
-    context
-        .defer_owner_state_clear(entry.legacy_order_key)
-        .expect("timed state payload should still exist");
-    let alive = context.owner().map(|owner| owner.runtime.alive).unwrap_or(false);
-    if alive {
+    let should_emit_release = context.owner().is_some_and(|owner| {
+        // 一拳超人饥饿时只移出场上名单，原版仍按正体力判断自然解除能否发帧。
+        // 终局退场不会进入行动后链，这里只补非终局退场的发帧。
+        owner.runtime.alive
+            || (owner.runtime.hp > 0 && owner.runtime.flags.contains(PlayerKindFlags::BOSS) && owner.template.name == "saitama")
+    });
+    if release_message == "[1]从[魅惑]中解除"
+        && (context.owner_has_boss_infection(PLAIN_COVID_INFECTION_STATE_KEY)
+            || context.owner_has_boss_infection(PLAIN_LAZY_INFECTION_STATE_KEY))
+    {
+        context.clear_owner_state(entry.legacy_order_key).expect("charm state should still exist");
+    } else {
+        context
+            .defer_owner_state_clear(entry.legacy_order_key)
+            .expect("timed state payload should still exist");
+    }
+    if should_emit_release {
         context.add_newline();
         context.add_update(crate::runtime::update::RunUpdate::new(
             release_message,
@@ -519,6 +620,7 @@ fn run_timed_release_post_action_state(
     }
 }
 
+/// 铁壁状态的 POST_DEFEND：按保护值削减伤害并递减步数。
 pub fn run_iron_post_defend_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let Some(StatePayload::Iron { protect, step }) = context.owner_state_payload(entry.legacy_order_key) else {
         return;
@@ -562,6 +664,7 @@ pub fn run_iron_post_defend_state(context: &mut StateContext<'_>, entry: &StateH
     ));
 }
 
+/// 铁壁状态的 POST_ACTION 推进：原地递减步数，到期时延后清理状态并结算剩余免伤。
 fn run_iron_post_action_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry, protect: i32, step: i32) {
     if step <= 0 {
         context
@@ -605,4 +708,180 @@ fn run_iron_post_action_state(context: &mut StateContext<'_>, entry: &StateHookP
         context.owner_idx().0 as usize,
         0,
     ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lazy_boss_flare_and_timed_releases_follow_application_order() {
+        for (raw, batch, expected) in [
+            (
+                "yuri@!\n\nlazy@!",
+                6,
+                &[
+                    "[0]刷起了[抖音]",
+                    "这回合什么也没做",
+                    "[1]从[魅惑]中解除",
+                    "[1][懒癌]发作",
+                    "[1]受到[2]点伤害",
+                ][..],
+            ),
+            (
+                "yuri@!\n\nlazy@!",
+                12,
+                &[
+                    "[0]发起攻击",
+                    "[1]受到[2]点伤害",
+                    "[1][懒癌]发作",
+                    "[1]受到[2]点伤害",
+                    "[1]被击倒了",
+                ],
+            ),
+            (
+                "lazy@!\n\nparity17a\nparity17b\n\nparity17c",
+                12,
+                &[
+                    "[0]去[无畏契约]打排位了",
+                    "这回合什么也没做",
+                    "[1][懒癌]发作",
+                    "[1]受到[2]点伤害",
+                    "[1]从[疾走]中解除",
+                ],
+            ),
+            (
+                "yuri@!\n\nparity4a\n\nparity4b\n\nlazy@!\nparity4c",
+                25,
+                &[
+                    "[0]使用[减速术]",
+                    "[1]进入[迟缓]状态",
+                    "[1][懒癌]发作",
+                    "[1]受到[2]点伤害",
+                    "[1]被击倒了",
+                ],
+            ),
+            (
+                "yuri@!\n\nparity4a\n\nparity4b\n\nlazy@!\nparity4c",
+                32,
+                &[
+                    "[0]发起攻击",
+                    "[0][回避]了攻击",
+                    "[1][懒癌]发作",
+                    "[1]受到[2]点伤害",
+                    "[1]从[迟缓]中解除",
+                ],
+            ),
+        ] {
+            let mut runner = RuntimeRunner::new_from_namerena_raw(raw.to_owned()).unwrap();
+            let frame = (0..2048)
+                .filter_map(|_| runner.run_round().frame)
+                .filter(|frame| frame.updates.updates.iter().any(|update| !update.message.trim().is_empty()))
+                .nth(batch - 1)
+                .expect("应有原版可见批次");
+            let messages = frame
+                .updates
+                .updates
+                .iter()
+                .map(|update| update.message.as_ref())
+                .filter(|message| !message.trim().is_empty())
+                .collect::<Vec<_>>();
+            assert_eq!(messages, expected, "{raw:?} 第 {batch} 批");
+        }
+    }
+
+    #[test]
+    fn saitama_releases_charm_after_nonterminal_hunger_retirement() {
+        let mut runner = RuntimeRunner::new_from_namerena_raw("yuri@!\n\nsaitama@!\nparity18a\nparity18b".to_owned()).unwrap();
+        let saitama = runner.input_groups[1][0].0 as usize;
+        let (outcome, frame) = (0..2048)
+            .map(|_| runner.run_round())
+            .filter_map(|mut outcome| outcome.frame.take().map(|frame| (outcome, frame)))
+            .nth(37)
+            .expect("原版第 38 批应出现一拳超人退场");
+        let messages = frame
+            .updates
+            .updates
+            .iter()
+            .filter(|update| !update.message.trim().is_empty())
+            .map(|update| update.message.as_ref())
+            .collect::<Vec<_>>();
+        assert_eq!(messages, ["[0]觉得有点饿", "[0]离开了战场", "[1]从[魅惑]中解除"]);
+        assert!(outcome.winner_team.is_none());
+        let boss = runner.player_snapshot(saitama).unwrap();
+        assert_eq!(boss.hp, 389);
+        assert!(!boss.alive);
+        let rng = &runner.runtime.rng;
+        let digest = rng.main_val.iter().fold(2_166_136_261u32, |hash, &byte| {
+            (hash ^ u32::from(byte)).wrapping_mul(16_777_619)
+        });
+        assert_eq!((rng.i, rng.j, digest), (30, 152, 817_248_267));
+    }
+
+    #[test]
+    fn lazy_state_from_an_ordinary_player_preserves_legacy_release_order() {
+        let mut runner = RuntimeRunner::new_from_namerena_raw("lazy\n\ncarrier".to_owned()).unwrap();
+        let source = runner.input_groups[0][0];
+        let carrier = runner.input_groups[1][0];
+        let runtime = &mut runner.runtime;
+        let mut updates = RunUpdates::new();
+        // 扩展可由普通同名角色直接施加懒癌载荷，仍应使用旧顺序。
+        assert!(runtime.infect_with_lazy_into(source, carrier, &mut updates));
+        let haste = runtime.registry.state_id_by_export_name(DEFAULT_CORE_HASTE_STATE_EXPORT).unwrap();
+        assert!(runtime.entities.get_mut(carrier).unwrap().states.add_entry(StateEntry::haste(
+            PLAIN_HASTE_STATE_KEY,
+            haste,
+            2,
+            1,
+            SkillPriority(100),
+        )));
+        let plan = runtime.scheduler.state_hook_plan(&runtime.entities, carrier, ProcMask::POST_ACTION);
+        let mut updates = RunUpdates::new();
+        runtime.drain_state_hook_plan_into(&plan, &mut updates);
+        let messages = updates
+            .updates
+            .iter()
+            .map(|update| update.message.as_ref())
+            .filter(|message| !message.trim().is_empty())
+            .collect::<Vec<_>>();
+        assert_eq!(&messages[..2], &["[1]从[疾走]中解除", "[1][懒癌]发作"]);
+    }
+
+    #[test]
+    fn mixed_boss_infection_pre_action_executes_only_the_last_proposal() {
+        use crate::cli_api::battle::{BattleOptions, battle_replay};
+
+        for (raw, expected) in [
+            (
+                "lazy@!\nrecheck0a\n\ncovid@!\nrecheck0b",
+                &[
+                    ("[1]在家中自我隔离", 0),
+                    ("[1][懒癌]发作", 0),
+                    ("[1]受到[2]点伤害[s_dmg120]", 135),
+                    ("[1][肺炎]发作", 0),
+                    ("[1]受到[2]点伤害", 117),
+                    ("[1]被击倒了", 50),
+                    ("[1]回复体力[2]点", 0),
+                ][..],
+            ),
+            (
+                "lazy@!\nrecheck4a\n\ncovid@!\nrecheck4b",
+                &[
+                    ("[0]去[无畏契约]打排位了", 0),
+                    ("这回合什么也没做", 0),
+                    ("[1][懒癌]发作", 0),
+                    ("[1]受到[2]点伤害", 51),
+                ][..],
+            ),
+        ] {
+            let replay = battle_replay(raw, BattleOptions::default()).unwrap();
+            let visible: Vec<_> = replay.frames[9]
+                .updates
+                .iter()
+                .filter(|update| !update.is_next_line)
+                .map(|update| (update.message_template.as_str(), update.score))
+                .collect();
+            assert_eq!(visible, expected, "{raw:?}");
+        }
+    }
 }

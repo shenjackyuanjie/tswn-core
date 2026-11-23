@@ -1,5 +1,6 @@
 //! 仅供兼容旧版 UpdateView DTO 的状态标签。
 
+/// 追加去重后的非空 token。
 fn push_unique_token(tokens: &mut Vec<String>, token: &str) {
     if token.is_empty() || tokens.iter().any(|existing| existing == token) {
         return;
@@ -7,6 +8,7 @@ fn push_unique_token(tokens: &mut Vec<String>, token: &str) {
     tokens.push(token.to_string());
 }
 
+/// 收集模板中 prefix…suffix 之间的 token。
 fn collect_between(tokens: &mut Vec<String>, template: &str, prefix: &str, suffix: &str) {
     let mut rest = template;
     while let Some(start) = rest.find(prefix) {
@@ -20,6 +22,7 @@ fn collect_between(tokens: &mut Vec<String>, template: &str, prefix: &str, suffi
     }
 }
 
+/// 从消息模板中提取状态变化相关的中文标记片段。
 pub fn status_change_tokens(template: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     collect_between(&mut tokens, template, "从[", "]中解除");

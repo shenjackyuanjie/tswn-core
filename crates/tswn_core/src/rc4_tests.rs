@@ -1,5 +1,6 @@
 use super::*;
 
+/// 参考实现的密钥调度：按 rounds 轮标准 KSA，供与优化实现对照。
 fn reference_key_scheduling(mut state: [u8; VAL_LEN], keys: &[u8], rounds: usize) -> [u8; VAL_LEN] {
     let key_len = keys.len();
     for _ in 0..rounds {
@@ -12,6 +13,7 @@ fn reference_key_scheduling(mut state: [u8; VAL_LEN], keys: &[u8], rounds: usize
     state
 }
 
+/// 参考实现的 RC4 单字节输出，供与优化实现对照。
 fn reference_next_u8(state: &mut [u8; VAL_LEN], i: &mut u32, j: &mut u32) -> u8 {
     *i = i.wrapping_add(1) & 255;
     *j = j.wrapping_add(state[*i as usize] as u32) & 255;

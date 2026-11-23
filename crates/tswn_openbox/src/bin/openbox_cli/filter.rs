@@ -4,6 +4,7 @@ use tswn_core::namerena::{BuiltinSkillRef, NamerenaInput, PreparedPlayer, Prepar
 use tswn_core::runtime::BuiltinActiveSkill;
 
 #[derive(Debug)]
+/// filter 执行计划：输入文本、输出路径与条件列表。
 pub(super) struct FilterPlan {
     pub raw: String,
     pub output: PathBuf,
@@ -11,6 +12,7 @@ pub(super) struct FilterPlan {
 }
 
 #[derive(Debug)]
+/// 条件可作用的字段：技能/等效技能/属性/七围/八围。
 enum Field {
     Skill(usize),
     EffectiveSkill(usize),
@@ -20,6 +22,7 @@ enum Field {
 }
 
 #[derive(Debug)]
+/// 单条过滤条件：字段、阈值与比较方向。
 pub(super) struct Condition {
     field: Field,
     threshold: f64,
@@ -51,6 +54,7 @@ fn parse_skill(skill: &str) -> Result<usize, String> {
 }
 
 impl Condition {
+    /// 解析 `字段=值` 形式的筛选条件；格式或字段非法时返回中文错误。
     pub fn parse(spec: &str) -> Result<Self, String> {
         let (name, value) = spec.split_once('=').ok_or_else(|| format!("无效筛选条件: {spec}"))?;
         let field = if let Some(skill) = name.strip_prefix("skill-") {
@@ -89,6 +93,7 @@ impl Condition {
         })
     }
 
+    /// 判断玩家是否满足该条件。
     fn matches(&self, player: &PreparedPlayer) -> bool {
         let sum: u32 = player.attrs[..7].iter().map(|v| v + 36).sum();
         let actual = match self.field {
@@ -140,6 +145,7 @@ fn effective_skill_level(player: &PreparedPlayer, id: usize) -> f64 {
     effective
 }
 
+/// 逐行构建玩家，按条件过滤后写出到输出文件。
 pub(super) fn run(plan: FilterPlan) -> Result<(), String> {
     let mut output = String::new();
     for line in plan.raw.lines().map(str::trim).filter(|line| !line.is_empty()) {

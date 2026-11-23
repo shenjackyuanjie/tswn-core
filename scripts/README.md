@@ -121,7 +121,16 @@ python scripts/pgo_build.py --kind cli --train-runs 8000
 
 默认训练覆盖 fixed30 与 score；默认 CLI 工作目录为 `target/pgo/cli/`，合并结果为其中的 `merged.profdata`。`--skip-train` 用于复用已有 profile，不替代新输入/新编译配置的训练。`llvm-profdata` 的 LLVM 大版本必须与 rustc 一致，脚本会检查。
 
-**Openbox 状态**：脚本的训练靶子仍指向迁移前的 `crates/tswn_openbox/assets/targets/`，实际资源在 `crates/tswn_openbox_backend/assets/targets/`。适配前不要把 `--kind openbox` 或包含 Openbox 的 `build_all.py --pgo` 当作可直接使用的发布流程；普通 `--release` 构建不受此限制。历史收益与当前 A/B 验证要求见 [性能准则](../docs/perf/guides/performance.md#pgo-构建)。
+**Openbox 状态**：脚本的训练靶子仍指向迁移前的 `crates/tswn_openbox/assets/targets/`，实际资源在 `crates/tswn_openbox_backend/assets/targets/`。脚本适配完成前，Openbox 的 PGO 训练路径不可用；普通 `--release` 构建不受此限制。历史收益与当前 A/B 验证要求见 [性能准则](../docs/perf/guides/performance.md#pgo-构建)。
+
+## serve_wasm.py
+
+复用 `build_wasm.py` 构建 release WASM，在 `127.0.0.1` 启动两个示例页面，并自动打开完整回放页。需要 Python 3.11 或更高版本及 [WASM 构建依赖](../crates/tswn_wasm/README.md#构建)。
+
+```powershell
+uv run scripts/serve_wasm.py
+uv run scripts/serve_wasm.py --port 8080 --no-open
+```
 
 ## build_wasm.py
 

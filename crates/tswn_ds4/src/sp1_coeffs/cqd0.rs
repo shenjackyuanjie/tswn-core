@@ -1,5 +1,6 @@
 //! MODEL_CQD0 系数，保留原始字面量与顺序。
 
+/// CQD0 SP1 系数，长度 `MODEL_SIZE`，字面量与顺序同原始实现。
 #[rustfmt::skip]
 pub const MODEL_CQD0: [f64; 1124] = [
     -183.075217459512, 0.054123476382,

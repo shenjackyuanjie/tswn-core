@@ -4,6 +4,7 @@ use super::*;
 ///
 /// 只规范化样式与召唤物数字后缀，保留伤害文本；总分固定为 6584，并要求预算内结束。
 pub fn large_44<E: crate::EngineAdapter>() {
+    /// large_44 用例的内嵌对局输入。
     const CASE: &str = r####"虚蚓嬉申杆@Shabby_fish
 曾搪激归汗@Hell
 seed:1129 R1-#9-3@!

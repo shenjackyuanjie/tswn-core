@@ -56,6 +56,13 @@ impl ScoreTestSession {
             ));
         }
         let target = &groups[1];
+        // 与上游交互评分一致，拒绝把指令或 seed 当作被测名字。
+        if target.iter().any(|name| {
+            matches!(name.trim(), "!" | "!test!")
+                || name.trim_start().get(..5).is_some_and(|prefix| prefix.eq_ignore_ascii_case("seed:"))
+        }) {
+            return Err(CliApiError::InvalidInput("评分需要一组名字；不能指定指令或 seed。".into()));
+        }
         let groups = ScoreMatchGroups::new(target, if enhanced { "!" } else { "\u{0002}" });
         let config = default_custom_runtime_import_config().map_err(|e| CliApiError::RunnerInit(format!("{e:?}")))?;
         let prepared = PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(

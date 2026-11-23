@@ -36,15 +36,21 @@
 //! UTF-8 长度校验、UTF-16 字符评估和实际技能等级各有度量语义。
 //! 解析规则同时承载角色身份、随机材料与输入兼容信息。
 
+/// 玩家构建管线：从 `PlayerSpec` 到 `PreparedPlayer`。
 mod build;
 pub mod eval_name;
 pub mod icon;
 pub mod icon_render;
+/// raw 输入解析与玩家分类。
 mod input;
 pub mod overlay;
+/// Boss 名称与身份的特殊规则。
 mod rules;
+/// 技能装载（`SkillLoadoutSpec`）构建。
 mod skill;
+/// 属性到 `PlayerStats` 的换算。
 mod stats;
+/// 武器解析与名字三元组强化。
 mod weapon;
 
 pub(crate) use build::score_profile_team_rng;
@@ -54,12 +60,13 @@ pub use input::{
     NAME_MAX_LEN, NamerenaInput, PlayerClass, PlayerSpec, PlayerSpecError, SEED_PREFIX, TEAM_MAX_LEN, is_seed_line,
     raw_namerena_to_id_name,
 };
-pub(crate) use input::{raw_namerena_to_id_name_into, trim_js_line_end};
+pub(crate) use input::{RINICK_MODIFIER_BOSS_ALIAS, raw_namerena_to_id_name_into, trim_js_line_end};
 pub use overlay::{EffectiveSkillWeight, MinionOverlay, PlayerOverlay};
 pub use rules::{
     BOOST_NAMES, BOSS_NAMES, BossActionSkill, boost_value, boss_action_prob_count, boss_action_skills, boss_append_attr,
     boss_default_skill_levels, boss_display_name, boss_immune_threshold, boss_uses_skill_attack, median,
 };
+pub(crate) use rules::{SAITAMA_RETIREMENT_WINNER, boss_combat_identity_override, boss_combat_name};
 pub use skill::{
     BuiltinSkillRef, CLASSIFIED_SKILL_SLOT_COUNT, ClassifiedSkillRef, PHANTOM_POSSESS_SKILL_KEY, SUMMON_EXPLODE_SKILL_KEY,
     SUMMON_FIRE1_SKILL_KEY, SUMMON_FIRE2_SKILL_KEY, SUMMON_MINION_NORMAL_SKILL_KEY_BASE, SUMMON_SHARE_DAMAGE_SKILL_KEY,

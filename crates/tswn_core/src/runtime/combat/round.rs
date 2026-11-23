@@ -6,6 +6,7 @@ use crate::runtime::forced_action::ForcedFallback;
 /// 卡牌兼容模式的降级战报；前端按这句话判断「点名的技能没生效」。
 pub const FORCED_FALLBACK_MESSAGE: &str = "[1]的指定技能无法生效，改为普通攻击";
 
+/// 组装 [`RoundOutcome`]：行动计划、可见帧与胜者队伍。
 fn round_outcome(action: Option<ActionPlan>, frame: Option<RuntimeFrame>, winner_team: Option<usize>) -> RoundOutcome {
     RoundOutcome {
         action,
@@ -22,6 +23,7 @@ struct PlannedTargeting {
 }
 
 impl PlannedTargeting {
+    /// 按计划技能、指定队伍、智慧模式与 smart 推导瞄准策略：是否自动施放、是否全程跟随 smart、智慧关闭时是否无智慧重试。
     fn for_action(skill: PlannedSkill, team: Option<usize>, wisdom: TargetWisdom, smart: bool) -> Self {
         let ally_skill = matches!(
             skill,
@@ -37,6 +39,7 @@ impl PlannedTargeting {
 }
 
 impl CombatRuntime {
+    /// 推进一个最小回合并返回 outcome；没有可见内容时继续推进直到产生。
     pub fn run_minimal_round(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture::<true, _>(round_outcome) }
 
     pub(crate) fn run_minimal_round_no_capture(&mut self) -> RoundOutcome {
@@ -51,6 +54,7 @@ impl CombatRuntime {
         self.run_minimal_round_with_capture::<false, _>(|_, _, winner| winner)
     }
 
+    /// 循环推进最小回合直到产出 outcome；未捕获模式下每轮同步胜者并提前返回。
     fn run_minimal_round_with_capture<const CAPTURE_UPDATES: bool, O>(
         &mut self,
         build: impl Fn(Option<ActionPlan>, Option<RuntimeFrame>, Option<usize>) -> O,
@@ -65,10 +69,12 @@ impl CombatRuntime {
         }
     }
 
+    /// 尝试推进一个最小回合；未选出行动时返回 None。
     pub fn run_minimal_round_once(&mut self) -> Option<RoundOutcome> {
         self.run_minimal_round_once_with_capture::<true, _>(round_outcome)
     }
 
+    /// 尝试推进一个最小回合：同步胜者、选出行动并补发冰冻解除事件；未选出行动时直接收尾当前批次。
     fn run_minimal_round_once_with_capture<const CAPTURE_UPDATES: bool, O>(
         &mut self,
         build: impl FnOnce(Option<ActionPlan>, Option<RuntimeFrame>, Option<usize>) -> O,
@@ -163,7 +169,11 @@ impl CombatRuntime {
         let actor = self.entities.get(action.actor).expect("runtime pre-action state owner missing");
         let state_intercepted_action = actor.states.hook_mask().intersects(ProcMask::PRE_ACTION) && {
             let state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::PRE_ACTION);
-            self.drain_state_hook_plan_with_action_smart_into(&state_plan, &mut updates, Some(smart))
+            let forced_order = plain_skill_pre_action
+                .forced_skill
+                .as_ref()
+                .map(|_| actor.states.assassinate_pre_action_cursor());
+            self.drain_state_hook_plan_with_pre_action_order_into(&state_plan, &mut updates, Some(smart), forced_order)
         };
         let mut prepared_plain_action = None;
         if legacy_plain_action && !state_intercepted_action {
@@ -251,7 +261,7 @@ impl CombatRuntime {
         );
         let terminal_plain_action = if state_intercepted_action {
             // PRE_ACTION 状态钩子接管本次行动后，legacy 仍会继续执行恢复和完整的行动后链。
-            legacy_plain_action && !self.has_alive_enemy_or_pending_spawn(action.actor)
+            legacy_plain_action && self.plain_battle_has_ended()
         } else if builtin_plain_action {
             match prepared_plain_action.take() {
                 Some(PreparedPlainAction::BuiltinSkill(prepared)) => {
@@ -262,7 +272,7 @@ impl CombatRuntime {
                 }
                 _ => unreachable!("builtin action marker must retain the prepared action"),
             }
-            legacy_plain_action && !self.has_alive_enemy_or_pending_spawn(action.actor)
+            legacy_plain_action && self.plain_battle_has_ended()
         } else {
             self.drain_action_damage_phase_into(action.actor, ProcMask::PRE_DAMAGE, &mut updates);
             match prepared_plain_action.take() {
@@ -303,8 +313,10 @@ impl CombatRuntime {
                     self.drain_effects_into(&mut updates);
                 }
             }
-            let terminal_plain_action = legacy_plain_action && !self.has_alive_enemy_or_pending_spawn(action.actor);
-            self.drain_action_damage_phase_into(action.actor, ProcMask::POST_DAMAGE, &mut updates);
+            let terminal_plain_action = legacy_plain_action && self.plain_battle_has_ended();
+            if !terminal_plain_action {
+                self.drain_action_damage_phase_into(action.actor, ProcMask::POST_DAMAGE, &mut updates);
+            }
             terminal_plain_action
         };
         if !terminal_plain_action {
@@ -318,8 +330,10 @@ impl CombatRuntime {
                 updates.add_newline();
             }
             self.drain_post_action_chain_into(action.actor, &mut updates);
+            if !legacy_plain_action || !self.plain_battle_has_ended() {
+                self.drain_plain_update_end_into(&mut updates);
+            }
         }
-        self.drain_plain_update_end_into(&mut updates);
         #[cfg(not(feature = "no_debug"))]
         if debug_tick {
             let actor = self
@@ -370,6 +384,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 排空 POST_ACTION 链：先早阶段技能，再按注册序交错延迟技能与状态条目，蓄力早于新冠时先撤销到期倍率，最后统一清理并执行尾阶段技能。
     fn drain_post_action_chain_into(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
         let actor = self.entities.get(owner).expect("runtime post-action owner missing");
         let skills = &actor.template.skills;
@@ -389,6 +404,23 @@ impl CombatRuntime {
         }
 
         let state_plan = self.scheduler.state_hook_plan(&self.entities, owner, ProcMask::POST_ACTION);
+        let owner_entity = self.entities.get(owner).expect("runtime post-action owner missing");
+        // 蓄力早于真实新冠感染登记时，先撤销到期倍率，再按原版结算肺炎。
+        // 只把已核实的蓄力/肺炎组合移入状态链；其余晚阶段和普通局不变。
+        let covid_key = crate::runtime::profile::PLAIN_COVID_INFECTION_STATE_KEY;
+        let charge_before_covid = if owner_entity.runtime.charge.post_action_active
+            && owner_entity
+                .states
+                .entry(covid_key)
+                .is_some_and(|entry| entry.is_boss_infection(&self.entities))
+        {
+            self.registry
+                .skill_id_by_export_name(BuiltinActiveSkill::Charge.export_name())
+                .map(|charge| (owner_entity.states.charge_post_action_cursor(), charge))
+        } else {
+            None
+        };
+        let mut charge_ran = None;
         let deferred_entries = &skill_plans.deferred;
         let mut deferred_idx = 0usize;
         let mut deferred_owner_state_clears = Vec::new();
@@ -406,6 +438,15 @@ impl CombatRuntime {
             let owner_alive = self.entities.get(owner).is_some_and(|entity| entity.runtime.alive);
             if !owner_alive && self.world.alive_group_count() <= 1 {
                 break;
+            }
+            if state_entry.legacy_order_key == covid_key
+                && let Some((cursor, charge)) = charge_before_covid
+                && cursor <= state_entry.runtime_registration_order
+            {
+                for entry in skill_plans.late.iter().filter(|entry| entry.skill_id == charge) {
+                    self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, std::slice::from_ref(entry), updates);
+                    charge_ran = Some(charge);
+                }
             }
             self.drain_state_hook_entry_with_deferred_clears_into(
                 ProcMask::POST_ACTION,
@@ -431,9 +472,13 @@ impl CombatRuntime {
         if skills_after_states.hook_generation() != skill_plans.generation {
             skill_plans = self.scheduler.skill_post_action_plans(skills_after_states, &self.registry, owner);
         }
+        if let Some(charge) = charge_ran {
+            skill_plans.late.retain(|entry| entry.skill_id != charge);
+        }
         self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, &skill_plans.late, updates);
     }
 
+    /// 用既定行动与更新收尾一个回合，同步胜者并产出 outcome。
     pub fn finish_round(&mut self, action: Option<ActionPlan>, updates: RunUpdates) -> RoundOutcome {
         if updates.capture_updates {
             self.finish_round_with_capture::<true, _>(action, updates, round_outcome)
@@ -464,6 +509,7 @@ impl CombatRuntime {
         build(action, frame, winner_team)
     }
 
+    /// 掷一次聪明判定：智慧高于随机掷值视为聪明。
     pub fn roll_actor_smart(&mut self, actor: EntityIdx) -> bool {
         let smart_byte = self.rng.next_u8();
         let smart_roll = (smart_byte & 63) as i32;
@@ -471,6 +517,7 @@ impl CombatRuntime {
     }
 
     #[cfg(not(feature = "no_debug"))]
+    /// 调试探针：当前行动者是否匹配探针指定的名称或编号。
     pub fn probe_plain_action_matches(&self, actor: EntityIdx) -> bool {
         crate::debug::probe_action()
             .map(|needle| {
@@ -481,6 +528,7 @@ impl CombatRuntime {
             .unwrap_or(false)
     }
 
+    /// 为行动者准备本回合行动：优先消费外部脚本指令，否则按规则选择技能。
     pub fn prepare_plain_action(
         &mut self,
         actor: EntityIdx,
@@ -942,6 +990,7 @@ impl CombatRuntime {
         )
     }
 
+    /// 指定敌队时的普攻选目：切换到该敌队的 duel 视图取样后过滤回该队；未指定队时走普通选目。
     fn select_targeted_basic(&mut self, actor: EntityIdx, smart: bool, team: Option<usize>) -> Option<EntityIdx> {
         let Some(team) = team else {
             return self.select_plain_default_attack_target(actor, false);
@@ -957,6 +1006,7 @@ impl CombatRuntime {
         selected.filter(|id| self.entities.get(*id).is_some_and(|e| e.runtime.team == team))
     }
 
+    /// 计划内置技能的目标列表：按 [`PlannedTargeting`] 取样，空结果且允许无智慧重试时按旧指令再取样一次，保持随机流可重演。
     fn planned_builtin_targets(
         &mut self,
         actor: EntityIdx,
@@ -972,6 +1022,7 @@ impl CombatRuntime {
         targets
     }
 
+    /// 指定敌队时的计划技能选目：duel 视图取样后过滤回该队；地裂与连击在首目标确定后按全场视图补足后续候选。
     fn select_targeted_planned_targets(
         &mut self,
         actor: EntityIdx,
@@ -1105,6 +1156,7 @@ impl CombatRuntime {
         self.preview_action_targets(actor, skill, team, targeting)
     }
 
+    /// 预览一次计划行动的目标：克隆 RNG 试取样后还原随机流；实体缺失或指定敌队不受支持时报无有效目标，未装备技能报 `SkillNotEquipped`。
     fn preview_action_targets(
         &mut self,
         actor: EntityIdx,
@@ -1252,7 +1304,7 @@ impl CombatRuntime {
             .runtime
             .get_at(false, &mut self.rng)
             * 1.2000000476837158;
-        self.drain_plain_attack_with_atp_into(actor, target, false, atp, updates);
+        self.drain_plain_attack_with_atp_and_covid_into(actor, target, false, atp, None, updates);
     }
 
     pub fn drain_plain_berserk_forced_action_state_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
@@ -1397,6 +1449,7 @@ impl CombatRuntime {
         None
     }
 
+    /// 按内置技能类型选择目标并组装行动：自身类技能目标为施法者，武器技能目标留空到结算时解析；空目标且该技能不允许空目标时放弃。
     fn prepare_plain_builtin_skill_action(
         &mut self,
         actor: EntityIdx,
@@ -1467,6 +1520,7 @@ impl CombatRuntime {
         Some(PreparedBuiltinSkillAction { selected, targets })
     }
 
+    /// 有效技能抽样：按行动权重与一次 24 位样本选出技能，权重下限 128 的部分留给普攻，redistribution 压缩不可用区间；中签后再过允许判定并准备目标。
     fn draw_effective_skill(&mut self, actor: EntityIdx, smart: bool) -> Option<PreparedBuiltinSkillAction> {
         let loadout = &self.entities.get(actor).unwrap().template.skills;
         let redistribution = loadout.effective_skill_redistribution();
@@ -1496,6 +1550,7 @@ impl CombatRuntime {
         self.prepare_plain_builtin_skill_action(actor, smart, selected)
     }
 
+    /// compact 权重路径的技能抽样：普通技能视为抽样池，带 cut 的动态技能按尝试概率依次消耗池份额；候选找不到目标时按样本相对位置移除后继续抽样。
     fn draw_compact_effective_skill(&mut self, actor: EntityIdx, smart: bool) -> Option<PreparedBuiltinSkillAction> {
         let loadout = &self.entities.get(actor).unwrap().template.skills;
         let mut ordinary = smallvec::SmallVec::<[(SelectedBuiltinSkill, f64); 8]>::new();
@@ -1602,6 +1657,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 计算技能的尝试概率：S11 由智慧与武器等级决定，死亡笔记由存活标记与敌我关系决定，其余按权重封顶 128 归一，玄月恒为 0。
     fn effective_skill_attempt_probability(
         &self,
         actor: EntityIdx,
@@ -1637,6 +1693,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 返回行动者死亡笔记标记中仍然存活的实体；标记不存在或已死亡时返回 `None`。
     fn death_note_live_mark(&self, actor: EntityIdx) -> Option<EntityIdx> {
         self.entities
             .get(actor)?
@@ -1649,6 +1706,7 @@ impl CombatRuntime {
         self.registry.builtin_active_skill(skill_id)
     }
 
+    /// 行动抽样准入门槛：按技能类型检查当前是否允许尝试，如蓄力、吸收、钢铁、蓄劲、暗杀与召唤各有 gate。
     fn plain_action_skill_allowed(&self, actor: EntityIdx, builtin_skill: BuiltinActiveSkill, _level: u32, smart: bool) -> bool {
         #[cfg(not(feature = "no_debug"))]
         let probe_action = self.probe_plain_action_matches(actor);
@@ -1911,6 +1969,7 @@ impl CombatRuntime {
 mod damage_phase_cache_tests {
     use super::*;
 
+    /// 测试钩子：上报一条 `post damage` 消息，分数取技能 ID。
     fn mark(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
         context.add_update(crate::runtime::update::RunUpdate::new("post damage", 0, 0, entry.skill_id.0));
     }

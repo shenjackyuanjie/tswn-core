@@ -5,6 +5,7 @@
 //! 这里只服务可复现采样，不从系统取熵，也不把派生 seed 当作保密令牌。
 use sha2::{Digest, Sha256};
 
+/// 对带长度前缀的字节片段序列计算 SHA-256 摘要。
 pub fn digest(parts: &[&[u8]]) -> [u8; 32] {
     let mut hash = Sha256::new();
     for part in parts {
@@ -14,19 +15,23 @@ pub fn digest(parts: &[&[u8]]) -> [u8; 32] {
     hash.finalize().into()
 }
 
+/// 把字节序列格式化为小写十六进制字符串。
 pub fn hex(value: &[u8]) -> String { value.iter().map(|byte| format!("{byte:02x}")).collect() }
 
+/// 确定性随机源：由密钥与计数器派生，跨平台与跨版本稳定。
 pub struct Random {
     key: [u8; 32],
     counter: u64,
 }
 impl Random {
+    /// 由字节片段派生密钥构造随机源。
     pub fn new(parts: &[&[u8]]) -> Self {
         Self {
             key: digest(parts),
             counter: 0,
         }
     }
+    /// 返回 [0, upper) 内的均匀随机下标；用拒绝采样消除取模偏差。
     pub fn index(&mut self, upper: usize) -> usize {
         assert!(upper > 0);
         let upper = upper as u64;
@@ -40,6 +45,7 @@ impl Random {
             }
         }
     }
+    /// 原地 Fisher-Yates 洗牌。
     pub fn shuffle<T>(&mut self, values: &mut [T]) {
         for index in (1..values.len()).rev() {
             let other = self.index(index + 1);
@@ -68,6 +74,7 @@ impl Random {
     }
 }
 
+/// 由主种子、对局 ID 与场次序号派生战斗种子字符串。
 pub fn battle_seed(master: &str, matchup_id: &str, battle_id: u64) -> String {
     format!(
         "seed:{}",
@@ -80,6 +87,7 @@ pub fn battle_seed(master: &str, matchup_id: &str, battle_id: u64) -> String {
     )
 }
 
+/// 由对局 ID 确定性地派生数据切分：train/validation/test。
 pub fn split(matchup_id: &str) -> &'static str {
     let hash = digest(&[b"split-v1", matchup_id.as_bytes()]);
     match u64::from_le_bytes(hash[..8].try_into().unwrap()) % 10_000 {

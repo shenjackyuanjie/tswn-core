@@ -1,11 +1,17 @@
 use std::fmt;
 
-use super::PlayerOverlay;
+use super::{BOOST_NAMES, BOSS_NAMES, PlayerOverlay};
 
+/// 单个名字的最大字节数（UTF-8）。
 pub const NAME_MAX_LEN: usize = 256;
+/// 单个阵营名的最大字节数（UTF-8）。
 pub const TEAM_MAX_LEN: usize = 256;
+/// seed 行前缀；匹配区分大小写。
 pub const SEED_PREFIX: &str = "seed:";
+/// Rinick 属性修改器的 Boss 别名输入。
+pub(crate) const RINICK_MODIFIER_BOSS_ALIAS: &str = "Rinick属性修改器@!";
 
+/// 名字的身份分类：普通、分身、Boss、加成、seed 与各类测试身份。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlayerClass {
     Normal,
@@ -32,6 +38,7 @@ pub struct PlayerSpec {
     pub class: PlayerClass,
 }
 
+/// 单个名字输入解析错误：名字或阵营超长、`effective_skills` overlay 非法。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlayerSpecError {
     NameTooLong { len: usize, max: usize },
@@ -72,7 +79,8 @@ impl PlayerSpec {
     /// 对局级空输入检查由高层 API 负责。
     pub fn parse(raw: &str) -> Result<Self, PlayerSpecError> {
         let raw = trim_js_line_end(raw);
-        let (identity, suffix) = raw.split_once('+').map_or((raw, None), |(identity, suffix)| (identity, Some(suffix)));
+        let input = canonical_player_input(raw);
+        let (identity, suffix) = input.split_once('+').map_or((input, None), |(identity, suffix)| (identity, Some(suffix)));
         let (name, team) = identity
             .split_once('@')
             .map_or((identity, None), |(name, team)| (name, Some(trim_js_line_end(team))));
@@ -142,6 +150,7 @@ impl PlayerSpec {
         })
     }
 
+    /// 把本条目的 raw 归一为 ID 名：去掉武器与 overlay 后缀、按规则处理阵营。
     pub fn id_name(&self) -> String { raw_namerena_to_id_name(&self.raw) }
 }
 
@@ -167,11 +176,14 @@ impl NamerenaInput {
         Self::from_raw_groups_with_seed(&raw_groups, seed)
     }
 
+    /// 从已按空行分组的 raw 行构建输入，并从中提取 seed 行；
+    /// 只含 seed 的组会被丢弃，任一玩家长度超限返回错误。
     pub fn from_raw_groups(raw_groups: &[Vec<String>]) -> Result<Self, PlayerSpecError> {
         let seed = raw_groups.iter().flatten().filter(|line| is_seed_line(line)).cloned().collect();
         Self::from_raw_groups_with_seed(raw_groups, seed)
     }
 
+    /// 从 raw 组与种子行构造 `NamerenaInput`：seed 行不进入玩家组，空组丢弃。
     fn from_raw_groups_with_seed(raw_groups: &[Vec<String>], seed: Vec<String>) -> Result<Self, PlayerSpecError> {
         let mut groups = Vec::with_capacity(raw_groups.len());
         for raw_group in raw_groups {
@@ -189,16 +201,20 @@ impl NamerenaInput {
     }
 }
 
+/// 判断一行是否为 seed 行（[`SEED_PREFIX`] 开头）。
 pub fn is_seed_line(raw: &str) -> bool { raw.starts_with(SEED_PREFIX) }
 
+/// 把 raw namerena 文本转换为 ID 名：去武器后缀，无阵营或阵营与名字相同/含 `:` 时只用名字。
 pub fn raw_namerena_to_id_name(raw: &str) -> String {
     let mut output = String::new();
     raw_namerena_to_id_name_into(raw, &mut output);
     output
 }
 
+/// 把 raw 玩家输入归一化为 `名字@队伍` 形式的 id 名称写入 output。
 pub(crate) fn raw_namerena_to_id_name_into(raw: &str, output: &mut String) {
     output.clear();
+    let raw = canonical_player_input(raw);
     let no_weapon = raw.split_once('+').map_or(raw, |(left, _)| left);
     let Some((name, team)) = no_weapon.split_once('@') else {
         output.push_str(no_weapon);
@@ -213,24 +229,16 @@ pub(crate) fn raw_namerena_to_id_name_into(raw: &str, output: &mut String) {
     }
 }
 
+/// 规范化玩家输入：Boss 别名替换为规范写法。
+fn canonical_player_input(raw: &str) -> &str {
+    match raw {
+        RINICK_MODIFIER_BOSS_ALIAS => "Rinick+属性修改器",
+        _ => raw,
+    }
+}
+
+/// 按名字与队伍后缀分类玩家：Boss / Boost / Seed / TestEx / Test1 / Test2 / Normal。
 fn classify(name: &str, team: Option<&str>) -> PlayerClass {
-    const BOSS_NAMES: [&str; 14] = [
-        "mario",
-        "sonic",
-        "mosquito",
-        "yuri",
-        "slime",
-        "ikaruga",
-        "conan",
-        "aokiji",
-        "lazy",
-        "covid",
-        "saitama",
-        "testsubject",
-        "thanos",
-        "wheel",
-    ];
-    const BOOST_NAMES: [&str; 3] = ["云剑狄卡敢", "云剑穸跄祇", "田一人"];
     match team {
         Some("!") if BOSS_NAMES.contains(&name) => PlayerClass::Boss,
         Some("!") if BOOST_NAMES.contains(&name) => PlayerClass::Boost,
@@ -243,6 +251,7 @@ fn classify(name: &str, team: Option<&str>) -> PlayerClass {
     }
 }
 
+/// 按空行把行列表切分为多个组。
 fn split_blank_line_groups(lines: Vec<String>) -> Vec<Vec<String>> {
     let mut groups = Vec::new();
     let mut current = Vec::new();
@@ -261,6 +270,7 @@ fn split_blank_line_groups(lines: Vec<String>) -> Vec<Vec<String>> {
     groups
 }
 
+/// 按引号外的 `+` 切分字符串。
 fn split_by_plus_outside_quotes(raw: &str) -> Vec<String> {
     let mut segments = Vec::new();
     let mut start = 0usize;
@@ -286,16 +296,20 @@ fn split_by_plus_outside_quotes(raw: &str) -> Vec<String> {
     segments
 }
 
+/// JS 正则 `\s` 语义的空白字符判定。
 fn is_js_regex_space(ch: char) -> bool {
     matches!(ch as u32, 9..=13 | 32 | 160 | 5760 | 8192..=8202 | 8232..=8233 | 8239 | 8287 | 12288 | 65279)
 }
 
+/// 名字 trim 使用的空白字符集（与行尾 trim 的差别在 NEL 处理）。
 fn is_js_trim_name_char(ch: char) -> bool {
     matches!(ch as u32, 9..=13 | 32 | 133 | 160 | 5760 | 8192..=8202 | 8232..=8233 | 8239 | 8287 | 12288 | 65279)
 }
 
+/// 按 JS 行尾空白语义 trim 行尾。
 pub(crate) fn trim_js_line_end(value: &str) -> &str { value.trim_end_matches(is_js_regex_space) }
 
+/// 按 JS 名字 trim 语义 trim 两端，并处理 NEL 边界字符。
 fn trim_js_name_like(value: &str) -> &str {
     let trimmed = value.trim_matches(is_js_regex_space);
     let start = if trimmed.starts_with('\u{0085}') {

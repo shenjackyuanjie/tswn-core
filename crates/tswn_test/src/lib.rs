@@ -46,13 +46,16 @@ pub struct EventSnapshot {
 /// 普通用例只需要消息/分数/胜者，冻结 stress 比较另外要求胜者队伍和 RC4 游标可用。
 /// 构造失败以文本错误返回，推进阶段的机制错误如何呈现由适配器决定。
 pub trait EngineAdapter {
+    /// 适配器持有的对局状态类型。
     type Runner;
 
     /// 消费完整对战文本并构建独立 runner，输入解释失败返回便于断言的错误文本。
     fn new_from_raw(raw: String) -> Result<Self::Runner, String>;
     /// 可变推进一轮并移出本轮快照；空向量不表示已经产生胜者，调用方仍须查询 have_winner。
     fn main_round(runner: &mut Self::Runner) -> Vec<EventSnapshot>;
+    /// 当前 runner 是否已产生胜者。
     fn have_winner(runner: &Self::Runner) -> bool;
+    /// 胜者名字列表；无胜者时返回空表。
     fn winner_names(runner: &Self::Runner) -> Vec<String>;
 
     /// 返回引擎胜者的队伍编号；默认不支持，需比较 stress golden 的适配器必须覆盖。

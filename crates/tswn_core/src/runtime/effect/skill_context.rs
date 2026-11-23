@@ -27,6 +27,7 @@ pub struct SkillContext<'a> {
 }
 
 impl<'a> SkillContext<'a> {
+    /// 从 hook 计划条目构造上下文；`entry.owner` 即本上下文的 owner。
     pub fn new(
         entities: &'a mut EntityArena,
         world: &'a mut WorldArena,
@@ -58,43 +59,54 @@ impl<'a> SkillContext<'a> {
         }
     }
 
+    /// 附加受击值视图，供 PRE_DEFEND / POST_DEFEND hook 读写。
     pub fn with_defend_value(mut self, defend_value: &'a mut RuntimeDefendValue) -> Self {
         self.defend_value = Some(defend_value);
         self
     }
 
+    /// 附加本次普攻附带的伤害效果。
     pub fn with_defend_on_damage(mut self, on_damage: PlainAttackOnDamage) -> Self {
         self.defend_on_damage = on_damage;
         self
     }
 
+    /// 记录本回合选中的目标。
     pub fn with_selected_target(mut self, selected_target: EntityIdx) -> Self {
         self.selected_target = Some(selected_target);
         self
     }
 
+    /// 标记本次调用是否为强制被动（外部决策已决定发动）。
     pub fn with_force_passive(mut self, force_passive: bool) -> Self {
         self.force_passive = force_passive;
         self
     }
 
+    /// 是否处于强制被动模式。
     pub fn force_passive(&self) -> bool { self.force_passive }
 
+    /// 设置技能概率缩放倍率，影响 roll_automatic_skill。
     pub fn with_skill_multiplier(mut self, multiplier: f64) -> Self {
         self.skill_multiplier = multiplier;
         self
     }
 
+    /// 按等级与范围掷自动技能概率，应用当前缩放倍率。
     pub fn roll_automatic_skill(&mut self, level: u32, range: u32) -> bool {
         crate::runtime::control::roll_scaled_skill(self.rng, level, range, self.skill_multiplier)
     }
 
+    /// owner 的实体下标。
     pub fn owner_idx(&self) -> EntityIdx { self.owner }
 
+    /// 本回合选中的目标（如有）。
     pub fn selected_target(&self) -> Option<EntityIdx> { self.selected_target }
 
+    /// owner 实体记录；实体已不存在时返回 None。
     pub fn owner(&self) -> Option<&EntityRecord> { self.entities.get(self.owner) }
 
+    /// 读取条目对应固定 lane 的技能等级；条目 owner 必须与上下文 owner 一致。
     pub fn skill_level(&self, entry: &SkillHookPlanEntry) -> u32 {
         assert_eq!(
             entry.owner, self.owner,
@@ -105,12 +117,16 @@ impl<'a> SkillContext<'a> {
             .unwrap_or_else(|| panic!("runtime skill level missing for fixed lane {}", entry.fixed_lane))
     }
 
+    /// owner 的蓄力运行时状态。
     pub fn owner_charge_runtime(&self) -> Option<ChargeRuntime> { self.owner().map(|entity| entity.runtime.charge) }
 
+    /// owner 的累积运行时状态。
     pub fn owner_accumulate_runtime(&self) -> Option<AccumulateRuntime> { self.owner().map(|entity| entity.runtime.accumulate) }
 
+    /// owner 当前护盾值。
     pub fn owner_shield(&self) -> Option<i32> { self.owner().map(|entity| entity.runtime.shield) }
 
+    /// 设置 owner 护盾；正值会登记护盾状态，负值按 0 处理。
     pub fn set_owner_shield(&mut self, shield: i32) -> Result<(), EffectContextError> {
         let Some(owner) = self.entities.get_mut(self.owner) else {
             return Err(EffectContextError::UnknownEntity(self.owner));
@@ -122,6 +138,7 @@ impl<'a> SkillContext<'a> {
         Ok(())
     }
 
+    /// 激活 owner 的蓄力状态。
     pub fn activate_owner_charge_runtime(&mut self) -> Result<(), EffectContextError> {
         let Some(owner) = self.entities.get_mut(self.owner) else {
             return Err(EffectContextError::UnknownEntity(self.owner));
@@ -130,6 +147,7 @@ impl<'a> SkillContext<'a> {
         Ok(())
     }
 
+    /// 行动后推进蓄力计数，返回蓄力是否仍在生效。
     pub fn tick_owner_charge_post_action(&mut self) -> Result<bool, EffectContextError> {
         let Some(owner) = self.entities.get_mut(self.owner) else {
             return Err(EffectContextError::UnknownEntity(self.owner));
@@ -137,6 +155,7 @@ impl<'a> SkillContext<'a> {
         Ok(owner.tick_charge_post_action())
     }
 
+    /// 清除蓄力，返回清除前蓄力是否生效。
     pub fn clear_owner_charge_runtime(&mut self) -> Result<bool, EffectContextError> {
         let Some(owner) = self.entities.get_mut(self.owner) else {
             return Err(EffectContextError::UnknownEntity(self.owner));
@@ -144,6 +163,7 @@ impl<'a> SkillContext<'a> {
         Ok(owner.clear_charge_runtime())
     }
 
+    /// 激活 owner 的累积状态，返回激活前是否已激活。
     pub fn activate_owner_accumulate_runtime(&mut self) -> Result<bool, EffectContextError> {
         let Some(owner) = self.entities.get_mut(self.owner) else {
             return Err(EffectContextError::UnknownEntity(self.owner));
@@ -151,6 +171,7 @@ impl<'a> SkillContext<'a> {
         Ok(owner.activate_accumulate_runtime())
     }
 
+    /// 清除累积，返回清除前累积是否生效。
     pub fn clear_owner_accumulate_runtime(&mut self) -> Result<bool, EffectContextError> {
         let Some(owner) = self.entities.get_mut(self.owner) else {
             return Err(EffectContextError::UnknownEntity(self.owner));
@@ -158,6 +179,7 @@ impl<'a> SkillContext<'a> {
         Ok(owner.clear_accumulate_runtime())
     }
 
+    /// 清除 owner 的正面运行时消息，返回 (顺序键, 文案键) 列表。
     pub fn clear_owner_positive_runtime_messages(&mut self) -> Result<Vec<(i32, &'static str)>, EffectContextError> {
         let Some(owner) = self.entities.get_mut(self.owner) else {
             return Err(EffectContextError::UnknownEntity(self.owner));
@@ -165,6 +187,7 @@ impl<'a> SkillContext<'a> {
         Ok(owner.clear_positive_runtime_messages())
     }
 
+    /// 清除 owner 的正面状态消息，返回 (顺序键, 文案键) 列表。
     pub fn clear_owner_positive_state_messages(&mut self) -> Result<Vec<(i32, &'static str)>, EffectContextError> {
         let Some(owner) = self.entities.get_mut(self.owner) else {
             return Err(EffectContextError::UnknownEntity(self.owner));
@@ -172,6 +195,7 @@ impl<'a> SkillContext<'a> {
         Ok(owner.clear_positive_state_messages())
     }
 
+    /// 清除 owner 的全部正面消息，返回 (顺序键, 文案键) 列表。
     pub fn clear_owner_positive_messages(&mut self) -> Result<Vec<(i32, &'static str)>, EffectContextError> {
         let Some(owner) = self.entities.get_mut(self.owner) else {
             return Err(EffectContextError::UnknownEntity(self.owner));
@@ -179,8 +203,10 @@ impl<'a> SkillContext<'a> {
         Ok(owner.clear_positive_messages())
     }
 
+    /// 在场实体总数。
     pub fn entity_count(&self) -> usize { self.entities.len() }
 
+    /// 读取任意实体；读取 owner 以外的实体时按队友/敌方检查能力。
     pub fn entity(&self, entity: EntityIdx) -> Result<&EntityRecord, EffectContextError> {
         let observed = self.entities.get(entity).ok_or(EffectContextError::UnknownEntity(entity))?;
         if entity == self.owner {
@@ -197,16 +223,19 @@ impl<'a> SkillContext<'a> {
         Ok(observed)
     }
 
+    /// 读取对局级槽；需要 ReadBattleSlots 能力。
     pub fn battle_slot(&self, id: crate::runtime::BattleSlotId) -> Result<Option<&SlotValue>, EffectContextError> {
         self.require(ExtensionCapability::ReadBattleSlots)?;
         Ok(self.slots.get(id))
     }
 
+    /// 读取模板级槽；需要 ReadTemplateSlots 能力。
     pub fn template_slot(&self, id: TemplateSlotId) -> Result<Option<&SlotValue>, EffectContextError> {
         self.require(ExtensionCapability::ReadTemplateSlots)?;
         Ok(self.template_slots.get(id))
     }
 
+    /// 写入实体槽；需要 MutateEntitySlots 能力。
     pub fn set_entity_slot(&mut self, entity: EntityIdx, slot: EntitySlotId, value: SlotValue) -> Result<(), EffectContextError> {
         self.require(ExtensionCapability::MutateEntitySlots)?;
         let Some(entity) = self.entities.get_mut(entity) else {
@@ -216,32 +245,45 @@ impl<'a> SkillContext<'a> {
         Ok(())
     }
 
+    /// 入队一个优先执行的效果。
     pub fn push_nested(&mut self, effect: QueuedEffect) { self.queue.push_nested(effect); }
 
+    /// 追加一条展示更新。
     pub fn add_update(&mut self, update: RunUpdate) { self.updates.add(update); }
 
+    /// 追加一条普通防御消息。
     pub fn add_plain_defense_with(&mut self, caster: usize, target: usize) {
         self.updates.add_plain_defense_with(caster, target);
     }
 
+    /// 追加换行分隔。
     pub fn add_newline(&mut self) { self.updates.add_newline(); }
 
+    /// 最近一条非换行更新，用于在既有消息上续写。
     pub fn last_non_newline_update(&self) -> Option<&RunUpdate> { self.updates.last_non_newline_update() }
 
+    /// 取一个随机字节。
     pub fn rng_next_u8(&mut self) -> u8 { self.rng.next_u8() }
 
+    /// 取 [0, max) 内的随机整数。
     pub fn rng_next_i32(&mut self, max: i32) -> i32 { self.rng.next_i32(max) }
 
+    /// 各 50% 概率的真值。
     pub fn rng_c50(&mut self) -> bool { self.rng.c50() }
 
+    /// 取 [0, 255] 内的随机值。
     pub fn rng_r255(&mut self) -> u32 { self.rng.r255() }
 
+    /// 取 [0, 127] 内的随机值。
     pub fn rng_r127(&mut self) -> u32 { self.rng.r127() }
 
+    /// 取 [0, 63] 内的随机值。
     pub fn rng_r63(&mut self) -> u32 { self.rng.r63() }
 
+    /// 取 [0, 16] 内的随机值。
     pub fn rng_r16(&mut self) -> u32 { self.rng.r16() }
 
+    /// 复活 owner：技能等级减半，体力置为给定值（至少 1）并恢复存活。
     pub fn reraise_owner(&mut self, entry: &SkillHookPlanEntry, hp: i32) -> Result<(), EffectContextError> {
         assert_eq!(
             entry.owner, self.owner,
@@ -258,11 +300,12 @@ impl<'a> SkillContext<'a> {
             "runtime reraise fixed lane disappeared: {}",
             entry.fixed_lane
         );
-        owner.runtime.hp = hp.max(1).min(owner.template.max_hp);
+        owner.runtime.hp = hp.max(1);
         owner.runtime.alive = true;
         Ok(())
     }
 
+    /// 尝试支付 owner 的 MP：未激活或不足返回 false，成功则扣除并返回 true。
     pub fn owner_mp_ready(&mut self) -> Result<bool, EffectContextError> {
         let active = self
             .entities
@@ -299,17 +342,20 @@ impl<'a> SkillContext<'a> {
         crate::runtime::forced_action::attack_multiplier(root.0)
     }
 
+    /// 取 owner 的攻击威力（物理或魔法），消费一次随机取样。
     pub fn owner_attack_power(&mut self, use_magic: bool) -> Result<f64, EffectContextError> {
         let owner = self.entities.get(self.owner).ok_or(EffectContextError::UnknownEntity(self.owner))?;
         Ok(owner.runtime.get_at(use_magic, self.rng))
     }
 
+    /// 受击值中的攻击者当前是否活跃。
     pub fn defend_caster_active(&self) -> Result<bool, EffectContextError> {
         let caster = self.defend_caster().ok_or(EffectContextError::UnknownEntity(self.owner))?;
         let caster = self.entities.get(caster).ok_or(EffectContextError::UnknownEntity(caster))?;
         Ok(caster.runtime.active())
     }
 
+    /// 按等级重选 owner 的保护目标并维护双向链接；需要 ReadAllies 能力。
     pub fn refresh_owner_protect_target(
         &mut self,
         level: u32,
@@ -472,16 +518,22 @@ impl<'a> SkillContext<'a> {
         Ok(next_target)
     }
 
+    /// 同步胜负视图，返回已产生的胜者队伍（如有）。
     pub fn sync_winner(&mut self) -> Option<usize> { self.world.sync_winner(self.entities) }
 
+    /// 受击值中的攻击威力（PRE_DEFEND 阶段为浮点 ATP）。
     pub fn defend_atp(&self) -> Option<f64> { self.defend_value.as_ref().and_then(|value| value.atp()) }
 
+    /// 受击值是否标记为魔法攻击。
     pub fn defend_is_magic(&self) -> Option<bool> { self.defend_value.as_ref().and_then(|value| value.is_magic()) }
 
+    /// 受击值携带的伤害类型。
     pub fn defend_kind(&self) -> Option<DamageKind> { self.defend_value.as_ref().map(|value| value.kind()) }
 
+    /// 受击值附带的普攻伤害效果。
     pub fn defend_on_damage(&self) -> PlainAttackOnDamage { self.defend_on_damage }
 
+    /// 改写攻击威力；仅在 PRE_DEFEND 阶段可用，其他阶段调用会 panic。
     pub fn set_defend_atp(&mut self, atp: f64) {
         let Some(value) = self.defend_value.as_deref_mut() else {
             panic!("runtime defend atp is only available during PRE_DEFEND hooks");
@@ -489,8 +541,10 @@ impl<'a> SkillContext<'a> {
         value.set_atp(atp);
     }
 
+    /// 受击值中的整数伤害（POST_DEFEND 阶段）。
     pub fn defend_damage(&self) -> Option<i32> { self.defend_value.as_ref().and_then(|value| value.damage()) }
 
+    /// 改写整数伤害；仅在 POST_DEFEND 阶段可用，其他阶段调用会 panic。
     pub fn set_defend_damage(&mut self, damage: i32) {
         let Some(value) = self.defend_value.as_deref_mut() else {
             panic!("runtime defend damage is only available during POST_DEFEND hooks");
@@ -498,14 +552,18 @@ impl<'a> SkillContext<'a> {
         value.set_damage(damage);
     }
 
+    /// 受击值中的攻击者下标。
     pub fn defend_caster(&self) -> Option<EntityIdx> { self.defend_value.as_ref().map(|value| value.caster()) }
 
+    /// 受击值中的目标下标。
     pub fn defend_target(&self) -> Option<EntityIdx> { self.defend_value.as_ref().map(|value| value.target()) }
 
+    /// 克隆读取 owner 指定顺序键的状态载荷；状态不存在返回 None。
     pub fn owner_state_payload(&self, legacy_order_key: u32) -> Option<StatePayload> {
         self.owner()?.states.entry(legacy_order_key).map(|entry| entry.payload.clone())
     }
 
+    /// 写入 owner 的状态载荷并刷新派生数值；顺序键不存在返回错误。
     pub fn set_owner_state_payload(&mut self, legacy_order_key: u32, payload: StatePayload) -> Result<(), EffectContextError> {
         let Some(owner) = self.entities.get_mut(self.owner) else {
             return Err(EffectContextError::UnknownEntity(self.owner));
@@ -517,6 +575,7 @@ impl<'a> SkillContext<'a> {
         Ok(())
     }
 
+    /// 校验上下文是否持有指定扩展能力；缺失时返回 [`EffectContextError::MissingCapability`]。
     fn require(&self, capability: ExtensionCapability) -> Result<(), EffectContextError> {
         if self.capabilities.contains(&capability) {
             Ok(())

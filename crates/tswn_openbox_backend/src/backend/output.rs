@@ -9,6 +9,8 @@ use std::fs::{self, File};
 use std::io::Write as _;
 use std::path::Path;
 
+use tswn_core::text_input::read_text_file;
+
 use super::types::OutputMode;
 
 /// 创建或截断输出文件，必要时创建父目录；目录路径和缺失文件名均返回错误。
@@ -27,6 +29,7 @@ pub(super) fn create_output_file(path: &Path) -> Result<File, String> {
     File::create(path).map_err(|err| format!("打开输出文件失败: {}: {err}", path.display()))
 }
 
+/// 收尾输出文件：先刷新，再按输出模式排序分数行。
 pub(super) fn finalize_sorted_output_file(mut output: Option<File>, path: Option<&Path>, mode: OutputMode) -> Result<(), String> {
     let Some(path) = path else {
         return Ok(());
@@ -38,11 +41,12 @@ pub(super) fn finalize_sorted_output_file(mut output: Option<File>, path: Option
     sort_score_output_file(path, mode)
 }
 
+/// 按输出模式重排分数行并重写文件；Pure 模式跳过。
 fn sort_score_output_file(path: &Path, mode: OutputMode) -> Result<(), String> {
     if mode == OutputMode::Pure {
         return Ok(());
     }
-    let content = fs::read_to_string(path).map_err(|err| format!("读取输出文件失败: {}: {err}", path.display()))?;
+    let content = read_text_file(path).map_err(|err| format!("读取输出文件失败: {}: {err}", path.display()))?;
     let lines = sorted_score_lines(&content, mode);
     let file = create_output_file(path)?;
     let mut writer = std::io::BufWriter::new(file);
@@ -52,6 +56,7 @@ fn sort_score_output_file(path: &Path, mode: OutputMode) -> Result<(), String> {
     writer.flush().map_err(|err| format!("刷新排序输出文件失败: {}: {err}", path.display()))
 }
 
+/// 按分数降序排序行，同分按文本比较；无法解析分数的行排后。
 fn sorted_score_lines(content: &str, mode: OutputMode) -> Vec<&str> {
     // 每行只解析一次；JSONL 不再在 O(N log N) 次比较中重复分配并解析 JSON。
     let mut lines: Vec<_> = content
@@ -68,6 +73,7 @@ fn sorted_score_lines(content: &str, mode: OutputMode) -> Vec<&str> {
     lines.into_iter().map(|(line, _)| line).collect()
 }
 
+/// 从一行输出中取排序用分数：Log 取首字段，JSONL 取 avg_win_rate/score。
 fn score_output_line_value(line: &str, mode: OutputMode) -> Option<f64> {
     match mode {
         OutputMode::Log => line.split_whitespace().next()?.parse().ok(),
@@ -82,6 +88,7 @@ fn score_output_line_value(line: &str, mode: OutputMode) -> Option<f64> {
     }
 }
 
+/// 有输出文件时写入并返回完成提示，否则原样返回文本。
 pub(super) fn finish_output(output_file: Option<&Path>, out: String) -> Result<String, String> {
     match output_file {
         Some(path) => {

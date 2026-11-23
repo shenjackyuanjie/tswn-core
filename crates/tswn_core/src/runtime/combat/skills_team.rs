@@ -1,6 +1,7 @@
 use super::*;
 
 impl CombatRuntime {
+    /// 实体的有效队伍：被魅惑时按魅惑指定的队伍，否则取运行时队伍。
     pub fn plain_effective_team(&self, actor: EntityIdx) -> usize {
         let actor_entity = self
             .entities
@@ -47,6 +48,7 @@ impl CombatRuntime {
             .collect()
     }
 
+    /// 魅惑选目标：敌方存活者，聪明时排除已带深层魅惑的目标。
     pub fn select_plain_charm_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         #[cfg(not(feature = "no_debug"))]
         let before = (self.rng.i, self.rng.j);
@@ -117,6 +119,7 @@ impl CombatRuntime {
         targets
     }
 
+    /// 魅惑选目标评分：已中魅惑或狂暴的目标评分减半。
     pub fn score_plain_charm_target(&mut self, target: EntityIdx, smart: bool) -> f64 {
         let entity = self
             .entities
@@ -152,6 +155,7 @@ impl CombatRuntime {
         score
     }
 
+    /// 魅惑技能：按魔法命中判定，命中后把目标划入施法者有效队伍。
     pub fn drain_plain_charm_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         #[cfg(not(feature = "no_debug"))]
         if crate::debug::probe_charm().is_some() {
@@ -290,6 +294,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 治疗选目标：同队存活且未满血的成员，聪明时要求差距超过 80。
     pub fn select_plain_heal_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let candidates = self.world.team_alive(actor_team).unwrap_or_default();
@@ -378,6 +383,7 @@ impl CombatRuntime {
         scored.into_iter().map(|(target, _)| target).collect()
     }
 
+    /// 治疗选目标评分：按缺失体力与负面状态数加权，普通掷随机。
     pub fn score_plain_heal_target(&mut self, target: EntityIdx, smart: bool) -> f64 {
         if !smart {
             return self.rng.rFFFF() as f64;
@@ -407,6 +413,7 @@ impl CombatRuntime {
         damaged as f64 * entity.runtime.attr_sum.max(1) as f64
     }
 
+    /// 治疗技能：按魔法威力回复体力，同时清除目标全部负面状态。
     pub fn drain_plain_heal_skill_into(
         &mut self,
         actor: EntityIdx,
@@ -554,6 +561,7 @@ impl CombatRuntime {
         );
     }
 
+    /// 驱散选目标：敌方存活者，按共用评分排序。
     pub fn select_plain_disperse_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive();
@@ -604,6 +612,7 @@ impl CombatRuntime {
         scored.into_iter().map(|(target, _)| target).collect()
     }
 
+    /// 驱散技能：入队一次驱散攻击并立即结算。
     pub fn drain_plain_disperse_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         self.effects.push(QueuedEffect::DisperseAttack { caster: actor, target });
         self.drain_effects_into(updates);
