@@ -105,6 +105,8 @@ pub struct RunUpdateHp {
 /// - 延迟时间（用于 web 端动画）
 #[derive(Debug, Clone)]
 pub struct RunUpdate {
+    /// 纯台词事件；发动、伤害和状态效果均为 false。
+    pub dialogue: bool,
     /// 视觉分值（用于 UI 展示，影响动画强度）。
     pub score: u32,
     /// 可选数值参数，对应消息中 `[2]` 的纯数字情形（优先于 targets 列表）。
@@ -138,9 +140,16 @@ pub struct RunUpdate {
 }
 
 impl RunUpdate {
+    /// 标记纯台词，由显示层使用独立背景，不改变结算与计分。
+    pub(crate) fn as_dialogue(mut self) -> Self {
+        self.dialogue = true;
+        self
+    }
+
     /// 创建一个空白占位帧（`UpdateType::None`）。
     pub fn new_dummy() -> RunUpdate {
         RunUpdate {
+            dialogue: false,
             score: 0,
             param: None,
             delay0: 0,
@@ -164,6 +173,7 @@ impl RunUpdate {
     /// 用于在战斗日志中插入视觉换行，对应 JS 的 `RunUpdate_init(null, ...)` 形式。
     pub fn new_newline() -> RunUpdate {
         RunUpdate {
+            dialogue: false,
             score: 0,
             param: None,
             delay0: 0,
@@ -191,6 +201,7 @@ impl RunUpdate {
     /// - `score`：UI 显示分值。
     pub fn new(msg: impl Into<Cow<'static, str>>, caster: PlrId, target: PlrId, score: u32) -> Self {
         RunUpdate {
+            dialogue: false,
             score,
             param: None,
             delay0: DEFAULT_DELAY0_MS,

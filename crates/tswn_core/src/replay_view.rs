@@ -30,6 +30,8 @@ const DEFAULT_CLIP_DELAY_MS: i32 = 500;
 /// 片段语气：普通、伤害、恢复、击倒与状态退出。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReplayTone {
+    /// 独立台词，仅影响文字背景。
+    Dialogue,
     Normal,
     Damage,
     Recover,
@@ -301,7 +303,7 @@ pub fn build_replay_view_frame<S: ReplayState>(
         current_row.clips.push(ReplayClip {
             delay,
             color: replay_tone_color(event.tone).to_string(),
-            tone: event.tone,
+            tone: if update.dialogue { ReplayTone::Dialogue } else { event.tone },
             parts,
             caster_ids: caster.into_iter().collect(),
             target_ids,

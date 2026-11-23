@@ -285,6 +285,18 @@
     font-weight: normal;
 }
 
+/* 只给显式标记的纯台词描底，技能发动和效果日志不使用此样式。 */
+.msg.dialogue {
+    display: inline-block;
+    max-width: 100%;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: #eeeeee;
+    color: #414141;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
 /* [解除]/[中止]/[打消] 独立中括号标红 */
 .status-change-token {
     color: var(--status-exit);

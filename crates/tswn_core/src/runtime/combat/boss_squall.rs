@@ -2,6 +2,15 @@
 use super::*;
 use crate::runtime::update::{RunUpdate, RunUpdateHp};
 
+/// 取自本地聊天记录的测试/模型相关原句，只用于演出台词。
+const SAMPLE_QUOTES: [&str; 5] = [
+    "其实不是判断出来，其实就是测出来的",
+    "我提一嘴，不要对模型的准确性抱有任何信心",
+    "我还没有进行漏率的检查",
+    "只是拟合模型",
+    "转换不成实际战力的话看着烧心",
+];
+
 /// 技能编号固定用于调度与验证，不追加普通技能熟练度或随机扫描项。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ResearchSkill {
@@ -19,6 +28,21 @@ enum ResearchSkill {
 mod tests;
 
 impl CombatRuntime {
+    /// 派生独立的演出随机数，读取当前检查点但不消费战斗 RNG，也不窥视后续随机序列。
+    fn next_squall_sample_quote(&mut self, actor: EntityIdx) -> &'static str {
+        let s = self.entities.get(actor).unwrap().runtime.squall.as_ref().unwrap();
+        let mut value = ((self.rng.i as u64) << 32)
+            ^ (self.rng.j as u64)
+            ^ u64::from(s.turn).wrapping_mul(0x9e3779b97f4a7c15)
+            ^ u64::from(actor.0);
+        value = (value ^ (value >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+        value = (value ^ (value >> 27)).wrapping_mul(0x94d049bb133111eb);
+        value ^= value >> 31;
+        let index = s.last_sample_quote.map_or((value % 5) as u8, |last| (last + 1 + (value % 4) as u8) % 5);
+        self.entities.get_mut(actor).unwrap().runtime.squall.as_mut().unwrap().last_sample_quote = Some(index);
+        SAMPLE_QUOTES[index as usize]
+    }
+
     /// 每条发动文案后立即插入独立台词段，效果明细随后沿用原版战报。
     fn squall_say(
         &self,
@@ -30,7 +54,11 @@ impl CombatRuntime {
         updates.add_newline();
         updates.add(RunUpdate::new(message, actor.0 as usize, actor.0 as usize, 1).without_replay_target());
         updates.add_newline();
-        updates.add(RunUpdate::new(quote, actor.0 as usize, actor.0 as usize, 0).without_replay_target());
+        updates.add(
+            RunUpdate::new(quote, actor.0 as usize, actor.0 as usize, 0)
+                .as_dialogue()
+                .without_replay_target(),
+        );
         updates.add_newline();
     }
 
@@ -290,12 +318,8 @@ impl CombatRuntime {
             }
             let burned = s.burned;
             if sample {
-                self.squall_say(
-                    boss,
-                    "[0]开始测试，获得1层测试样本",
-                    "你这个分数很高，但实际打下来不是这么回事。",
-                    updates,
-                );
+                let quote = self.next_squall_sample_quote(boss);
+                self.squall_say(boss, "[0]开始测试，获得1层测试样本", quote, updates);
             }
             if burned {
                 let loss = (self.entities.get(boss).unwrap().template.max_hp + 99) / 100;

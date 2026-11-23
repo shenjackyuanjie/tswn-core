@@ -919,6 +919,9 @@ fn update_from_runtime(update: &RunUpdate, names: &HashMap<PlrId, String>, displ
 
 /// 按更新类型与消息内容把更新分类为回放 tone。
 fn classify_tone(update: &crate::RunUpdate) -> ReplayTone {
+    if update.dialogue {
+        return ReplayTone::Dialogue;
+    }
     if matches!(update.update_type, UpdateType::Win) {
         return ReplayTone::Knockout;
     }
@@ -956,6 +959,7 @@ fn update_type_name(value: UpdateType) -> &'static str {
 /// `ReplayTone` 到稳定字符串名。
 fn tone_name(value: ReplayTone) -> &'static str {
     match value {
+        ReplayTone::Dialogue => "dialogue",
         ReplayTone::Normal => "normal",
         ReplayTone::Damage => "damage",
         ReplayTone::Recover => "recover",
@@ -967,6 +971,7 @@ fn tone_name(value: ReplayTone) -> &'static str {
 /// 稳定字符串名解析回 `ReplayTone`，未知值按 Normal。
 fn tone_from_name(value: &str) -> ReplayTone {
     match value {
+        "dialogue" => ReplayTone::Dialogue,
         "damage" => ReplayTone::Damage,
         "recover" => ReplayTone::Recover,
         "knockout" => ReplayTone::Knockout,

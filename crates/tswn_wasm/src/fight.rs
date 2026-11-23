@@ -58,6 +58,7 @@ fn state_from_core(state: &BattlePlayerState) -> PlayerState {
 /// 把语气字符串映射为 MessageTone。
 fn tone(value: &str) -> MessageTone {
     match value {
+        "dialogue" => MessageTone::Dialogue,
         "damage" => MessageTone::Damage,
         "recover" => MessageTone::Recover,
         "knockout" => MessageTone::Knockout,

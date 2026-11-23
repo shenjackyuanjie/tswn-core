@@ -50,14 +50,43 @@ fn samples_use_real_enemy_actions_cap_at_six_and_put_quote_next() {
     }
     assert_eq!(rt.entities.get(boss).unwrap().runtime.squall.as_ref().unwrap().samples, 6);
     let m = messages(&u);
+    for update in &u.updates {
+        if SAMPLE_QUOTES.contains(&update.message.as_ref()) {
+            assert!(update.dialogue);
+        }
+        if update.message.contains("开始测试") {
+            assert!(!update.dialogue);
+        }
+    }
     for (i, line) in m.iter().enumerate() {
         if line.contains("开始测试") {
-            assert_eq!(m[i + 1], "你这个分数很高，但实际打下来不是这么回事。");
+            assert!(SAMPLE_QUOTES.contains(&m[i + 1]));
         }
     }
     let before = u.updates.len();
     rt.finish_squall_action(Some(boss), &mut u);
     assert_eq!(u.updates.len(), before);
+}
+
+#[test]
+fn sample_quotes_vary_without_consuming_combat_randomness() {
+    let (mut runner, boss, _) = battle();
+    let rt = runner.runtime_mut();
+    let before = rt.rng.clone();
+    let mut seen = std::collections::HashSet::new();
+    let mut previous = None;
+    for turn in 0..100 {
+        rt.entities.get_mut(boss).unwrap().runtime.squall.as_mut().unwrap().turn = turn;
+        let quote = rt.next_squall_sample_quote(boss);
+        assert!(SAMPLE_QUOTES.contains(&quote));
+        assert_ne!(Some(quote), previous);
+        previous = Some(quote);
+        seen.insert(quote);
+    }
+    assert_eq!(seen.len(), 5);
+    assert_eq!(rt.rng.i, before.i);
+    assert_eq!(rt.rng.j, before.j);
+    assert_eq!(rt.rng.main_val, before.main_val);
 }
 
 #[test]

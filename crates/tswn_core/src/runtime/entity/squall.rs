@@ -4,6 +4,8 @@ use super::super::EntityIdx;
 #[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SquallRuntime {
     pub samples: u8,
+    /// 上一次采样台词，用于避免连续重复，不参与战斗数值。
+    pub last_sample_quote: Option<u8>,
     pub turn: u32,
     pub observed: bool,
     pub marked: Option<EntityIdx>,
