@@ -2,6 +2,10 @@
 
 本文件记录跨 crate 的维护与兼容性变更；各 crate 的版本发布历史仍以对应 CHANGELOG 为准。
 
+## 未发布 · 2026-11-23 Boss 吞噬对齐
+
+- 吞噬 Boss 时按原版技能槽序转移等级，修复蚊、索尼克等八个 Boss 的技能等级错位。两场多 Boss 对局已加入 CLI 回归测试。见 [核心更新日志](crates/tswn_core/CHANGELOG.md#unreleased)。
+
 ## tswn_wasm 0.5.13 · 2026-11-21
 
 - 完整回放页支持 `!test!` 普通／强化评分与单挑。Worker 在累计 1,000 和 10,000 场时展示评分及技能／动作频率，可随时停止。

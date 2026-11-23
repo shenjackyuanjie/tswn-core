@@ -169,6 +169,49 @@ fn thanos_public_snap_does_not_attribute_linked_minion_exit_to_owner() {
 }
 
 #[test]
+fn devouring_sonic_transfers_levels_by_original_skill_slot() {
+    let name = "uPzzfGZHkH86WCN@XJ联队";
+    let fight = frames(&format!("{name}\n\nslime@!\nsonic@!\nmosquito@!\nthanos@!"));
+    let merge = &fight[20];
+    let (devour, _) = event(merge, "[0][吞噬]了[1]");
+    assert_eq!(state(merge, &devour["caster_id"])["id_key_name"], name);
+    assert_eq!(state(merge, &devour["target_id"])["id_key_name"], "sonic@!");
+
+    let attack = &fight[24];
+    let (thunder, _) = event(attack, "[0]使用[雷击术]");
+    assert_eq!(thunder["caster_id"], devour["caster_id"]);
+    assert_eq!(state(attack, &thunder["target_id"])["id_key_name"], "mosquito@!");
+
+    let last = fight.last().unwrap();
+    let winners = last["winner_ids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|id| state(last, id))
+        .filter(|player| player["alive"] == true)
+        .map(|player| (player["id_key_name"].as_str().unwrap(), player["hp"].as_i64().unwrap()))
+        .collect::<Vec<_>>();
+    assert_eq!(winners, [("mosquito@!", 58), ("thanos@!", 280), ("slime@!", 203)]);
+}
+
+#[test]
+fn devouring_mosquito_raises_fireball_by_original_skill_slot() {
+    let fight = frames("Aivu QYQWWCJIDBGO@nan \n\nlazy@!\nmario@!\nmosquito@!");
+    let merge = &fight[7];
+    let (devour, _) = event(merge, "[0][吞噬]了[1]");
+    assert_eq!(state(merge, &devour["target_id"])["id_key_name"], "mosquito@!");
+
+    let attack = &fight[27];
+    let (fireball, _) = event(attack, "[0]使用[火球术]");
+    assert_eq!(fireball["caster_id"], devour["caster_id"]);
+    assert_eq!(state(attack, &fireball["target_id"])["id_key_name"], "mario@!");
+    let last = fight.last().unwrap();
+    assert_eq!(state(last, &fireball["target_id"])["hp"], 110);
+    assert_eq!(state(last, &devour["caster_id"])["alive"], false);
+    assert!(last["winner_ids"].as_array().unwrap().contains(&fireball["target_id"]));
+}
+
+#[test]
 fn boss_group_skill_start_reports_ordered_animation_targets() {
     for (raw, index, message) in [
         ("aokiji@!\n\na\nb", 0, "[0]使用[冰河时代]"),

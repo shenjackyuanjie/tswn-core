@@ -109,6 +109,96 @@ fn yuri_runtime() -> CombatRuntime {
     ))
 }
 
+#[test]
+fn merge_from_bosses_transfers_levels_by_position_and_raw_stats() {
+    // 原版 0.5.5 中清零 Aivu 的前三槽，记录击杀 Boss 后 64 级吞噬的结果。
+    let cases = [
+        ("aokiji@!", 0, [0, 70, 80], [56, 63, 58, 58, 57, 56, 61, 394]),
+        ("conan@!", 0, [0, 0, 0], [33, 62, 45, 43, 60, 61, 56, 361]),
+        ("covid@!", 0, [0, 0, 0], [32, 62, 45, 56, 52, 59, 56, 361]),
+        ("ikaruga@!", 0, [0, 48, 0], [54, 60, 51, 53, 58, 60, 59, 463]),
+        ("lazy@!", 0, [0, 0, 0], [32, 96, 45, 42, 52, 94, 56, 372]),
+        ("mario@!", 0, [63, 0, 0], [52, 57, 45, 54, 58, 56, 56, 386]),
+        ("mario@!", 2, [63, 120, 0], [52, 57, 45, 54, 58, 56, 56, 386]),
+        ("mosquito@!", 0, [100, 0, 0], [44, 50, 48, 749, 52, 54, 56, 361]),
+        ("saitama@!", 0, [0, 0, 0], [93, 93, 93, 93, 93, 93, 56, 399]),
+        ("SAITAMA@!", 0, [0, 0, 0], [93, 93, 93, 93, 93, 93, 56, 399]),
+        ("slime@!", 0, [0, 0, 0], [39, 57, 53, 42, 52, 54, 62, 361]),
+        ("sonic@!", 0, [48, 48, 48], [43, 47, 1028, 43, 52, 54, 56, 361]),
+        ("thanos@!", 0, [80, 0, 0], [78, 61, 52, 71, 52, 62, 57, 385]),
+        ("wheel@!", 0, [48, 0, 0], [55, 162, 45, 42, 52, 99, 56, 361]),
+        ("yuri@!", 0, [256, 48, 48], [36, 63, 53, 46, 55, 56, 56, 361]),
+        ("Rinick+属性修改器", 0, [8, 8, 8], [63, 63, 63, 63, 63, 63, 63, 361]),
+        // 扩展 Boss 与覆盖技能的 Boss 沿用各自配置的技能表。
+        ("testsubject@!", 0, [0, 0, 0], [80, 80, 80, 80, 80, 80, 80, 361]),
+        (
+            r#"mosquito@!+ol:{"skills":{"fire":75}}"#,
+            0,
+            [75, 0, 0],
+            [44, 50, 48, 749, 52, 54, 56, 361],
+        ),
+    ];
+    for (name, growth, levels, attrs) in cases {
+        for (mp, move_points, expected_resources) in [
+            (5, 100, (58, 1100, 0, 0)),
+            (58, 1000, (58, 1000, 58, 1000)),
+            (59, 1001, (59, 1001, 58, 1000)),
+        ] {
+            let mut runner = RuntimeRunner::new_from_namerena_raw(format!("Aivu QYQWWCJIDBGO@nan\n\n{name}")).unwrap();
+            let runtime = runner.runtime_mut();
+            let caster = runtime.entities.iter().find(|(_, p)| p.template.name.starts_with("Aivu")).unwrap().0;
+            let target = runtime.entities.iter().find(|(idx, _)| *idx != caster).unwrap().0;
+            for _ in 0..growth {
+                runtime.drain_plain_mario_get_into(target, &mut RunUpdates::new());
+            }
+            let caster_entity = runtime.entities.get_mut(caster).unwrap();
+            caster_entity.runtime.magic_point = mp;
+            caster_entity.runtime.move_state.speed_points = move_points;
+            let skills = &mut caster_entity.template.skills;
+            let lanes = <[usize; 3]>::try_from(&skills.merge_lane_order()[..3]).unwrap();
+            let merge_lane = skills.merge_lane_order()[31];
+            for lane in lanes {
+                skills.set_level_at(lane, 0);
+            }
+            skills.set_level_at(merge_lane, 64);
+            let target_entity = runtime.entities.get_mut(target).unwrap();
+            target_entity.runtime.hp = 0;
+            target_entity.runtime.magic_point = 58;
+            target_entity.runtime.move_state.speed_points = 1000;
+
+            let mut expected_rng = runtime.rng.clone();
+            expected_rng.r63();
+            let mut updates = RunUpdates::new();
+            assert!(
+                runtime.drain_plain_merge_kill_skill_into(caster, merge_lane, target, &mut updates, false),
+                "{name}"
+            );
+            let caster = runtime.entities.get(caster).unwrap();
+            let target = &runtime.entities.get(target).unwrap().runtime;
+            assert_eq!(
+                lanes.map(|lane| caster.template.skills.level_at(lane).unwrap()),
+                levels,
+                "{name}"
+            );
+            assert_eq!(caster.template.clone_build.as_ref().unwrap().attrs(), attrs, "{name}");
+            assert_eq!(caster.runtime.hp, 361, "{name}");
+            assert_eq!(
+                (
+                    caster.runtime.magic_point,
+                    caster.runtime.move_state.speed_points,
+                    target.magic_point,
+                    target.move_state.speed_points,
+                ),
+                expected_resources,
+                "{name}"
+            );
+            assert_eq!(target.corpse, RuntimeCorpseKind::Merge, "{name}");
+            assert_eq!(messages_of(&updates), ["\n", "[0][吞噬]了[1]", "[0]属性上升"], "{name}");
+            assert_rng_state_eq(&runtime.rng, &expected_rng);
+        }
+    }
+}
+
 /// 向实体 0 追加一条马里奥 boss 成长状态（grow/fire_level）。
 fn add_mario_growth(runtime: &mut CombatRuntime, grow: i32, fire_level: u32) {
     assert!(

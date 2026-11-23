@@ -340,6 +340,8 @@ pub struct PlayerTemplate {
     pub permanent_charge: bool,
     /// 防止新冠接触传播的武器后缀标记，不改变武器原有数值。
     pub(crate) covid_mask: bool,
+    /// 未覆盖技能表的原版 Boss 使用专属槽位顺序参与吞噬。
+    pub(crate) native_boss_skills: bool,
     /// 使魔复活重施时是否沿用死亡对象上的当前技能表。
     pub reuse_skills_on_recast: bool,
     /// 使魔复活重施时是否沿用死亡对象上的持久属性。
@@ -392,6 +394,7 @@ impl PlayerTemplate {
             rinick: None,
             permanent_charge: false,
             covid_mask: false,
+            native_boss_skills: false,
             reuse_skills_on_recast: false,
             reuse_stats_on_recast: false,
             inherit_owner_def_res: false,
@@ -442,6 +445,7 @@ impl PlayerTemplate {
             rinick: None,
             permanent_charge: false,
             covid_mask: false,
+            native_boss_skills: false,
             reuse_skills_on_recast: false,
             reuse_stats_on_recast: false,
             inherit_owner_def_res: false,

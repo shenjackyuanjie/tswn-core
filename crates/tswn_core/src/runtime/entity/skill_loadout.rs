@@ -878,14 +878,7 @@ impl SkillLoadout {
             MergePolicy::FixedLane | MergePolicy::FixedLaneHalfResources => {
                 // legacy 的 Merge 只会按双方 `slot_skill` 的位置配对；store 中额外注册的
                 // 分摊伤害等技能不属于固定槽位，不能挤进普通技能槽位。
-                let lane_count = self.merge_lane_order.len().min(source.merge_lane_order.len());
-                (0..lane_count)
-                    .map(|position| {
-                        let owner_idx = self.merge_lane_order[position];
-                        let source_idx = source.merge_lane_order[position];
-                        self.merge_level_at(owner_idx, source.levels[source_idx])
-                    })
-                    .fold(false, |changed, lane_changed| changed || lane_changed)
+                self.merge_slot_levels_from(source.merge_lane_order.iter().map(|&lane| source.levels[lane]))
             }
             MergePolicy::DropUnmappedSkills => {
                 let mut changed = false;
@@ -900,6 +893,15 @@ impl SkillLoadout {
                 changed
             }
         }
+    }
+
+    /// 按固定槽位顺序合并来源等级，双方都存在的槽位才参与比较。
+    pub(crate) fn merge_slot_levels_from(&mut self, source_levels: impl IntoIterator<Item = u32>) -> bool {
+        let mut changed = false;
+        for (position, level) in source_levels.into_iter().take(self.merge_lane_order.len()).enumerate() {
+            changed |= self.merge_level_at(self.merge_lane_order[position], level);
+        }
+        changed
     }
 
     /// 把来源等级合并到指定 lane：仅在提升时写入；从 0 抬到正等级时重排行动序与 POST_DAMAGE 序，并作废 hook 缓存。

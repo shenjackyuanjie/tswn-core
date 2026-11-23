@@ -4,7 +4,59 @@ use crate::namerena::BossActionSkill;
 use crate::runtime::lang::keys;
 use crate::runtime::update::RunUpdateHp;
 
+#[derive(Clone, Copy)]
+enum BossMergeSlot {
+    Normal(usize),
+    Action(BossActionSkill),
+    Unleveled,
+}
+
 impl CombatRuntime {
+    /// 吞噬按原版 Boss 技能数组的位置取等级，包含不参与主动扫描的 0 级槽。
+    pub(super) fn plain_boss_merge_levels(&self, target: EntityIdx) -> Option<smallvec::SmallVec<[u32; 3]>> {
+        use BossActionSkill::{Fire, IceAge, IkarugaAttack, MarioGet, YuriControl};
+        use BossMergeSlot::{Action, Normal, Unleveled};
+
+        let template = &self.entities.get(target)?.template;
+        if !template.native_boss_skills {
+            return None;
+        }
+        let name = crate::namerena::boss_combat_name(&template.name);
+        let slots: &[BossMergeSlot] = match name {
+            "aokiji" => &[Unleveled, Action(IceAge), Normal(1)],
+            "ikaruga" => &[Unleveled, Action(IkarugaAttack)],
+            "mario" => &[Action(MarioGet), Action(Fire), Unleveled],
+            "mosquito" => &[Normal(4)],
+            "sonic" => &[Normal(6), Normal(7), Normal(30)],
+            "thanos" => &[Normal(29)],
+            "wheel" => &[Normal(30)],
+            "yuri" => &[Action(YuriControl), Normal(25), Normal(27)],
+            "covid" | "lazy" | "saitama" | "slime" => &[Unleveled],
+            "conan" => &[],
+            _ => return None,
+        };
+        let skills = &template.skills;
+        Some(
+            slots
+                .iter()
+                .map(|&slot| match slot {
+                    Normal(key) => skills
+                        .levels()
+                        .iter()
+                        .enumerate()
+                        .find_map(|(lane, &level)| (skills.fixed_lane_key_at(lane) == Some(key)).then_some(level))
+                        .unwrap_or(0),
+                    Action(Fire) => self.plain_mario_fire_level(target),
+                    Action(skill) => crate::namerena::boss_action_skills(name)
+                        .iter()
+                        .find(|&&(action, _)| action == skill)
+                        .map_or(0, |&(_, level)| level),
+                    Unleveled => 0,
+                })
+                .collect(),
+        )
+    }
+
     /// 0.5.5 Boss `k4` 扫描：按插入顺序尝试各主动技能的概率与目标。
     ///
     /// 每个技能先调用 `au`（无条件消耗随机字节，马里奥采菇与吸血术的

@@ -157,6 +157,7 @@ impl PreparedBattleInit {
             entity.template.skills.prepare_hook_cache(&runtime.registry);
             entity.template.clone_build = prepared_template.clone_build;
             entity.template.covid_mask = prepared_template.covid_mask;
+            entity.template.native_boss_skills = prepared_template.native_boss_skills;
             entity.template.rinick = prepared_template.rinick;
             if score_profile_reset {
                 entity
@@ -310,6 +311,11 @@ impl PreparedBattleInit {
         }
         let mut template = Self::template_from_namerena_player(player, player.id, team, skills.clone());
         template.kind = kind;
+        template.native_boss_skills = player.class == crate::namerena::PlayerClass::Boss
+            && player
+                .overlay
+                .as_ref()
+                .is_none_or(|overlay| overlay.skills.is_none() && overlay.effective_skills.is_none());
         template.clone_build = Some(clone_build);
         template.rinick = player.rinick.as_ref().map(|data| {
             Box::new(crate::runtime::RinickTemplateData {
