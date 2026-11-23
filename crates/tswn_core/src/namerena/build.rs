@@ -549,6 +549,13 @@ impl PlayerBuild {
             status = status_from_attrs(attrs, 0.0, true);
             status.speed = 106;
         }
+        // 被子是后排 Boss：500 HP、其余 100，速度同样不追加 160 点。
+        if self.class == PlayerClass::Boss && self.name == "quilt" {
+            self.name_factor = 0.0;
+            attrs = [100, 100, 100, 100, 100, 100, 100, 500];
+            status = status_from_attrs(attrs, 0.0, true);
+            status.speed = 100;
+        }
         let mut skills = overlay_skills.map_or_else(
             || SkillLoadoutSpec::standard(&levels, &boosted, &boosts, &self.action_order),
             |skills| SkillLoadoutSpec::player_overlay(skills, effective_skills),

@@ -3,7 +3,8 @@ import { escapeHtml } from "./show-utils.js";
 export const SCORE_TEST_TOTAL = 10000;
 export const SCORE_TEST_CHECKPOINTS = [1000, 10000];
 
-/** !test! 是首行指令，不作为参战名字；普通输入不进入评分路径。 */
+/** !test! 是首行指令，不作为参战名字；普通输入不进入评分路径。
+ *  空行分隔多组时改为胜率测试：各组轮流作为被测方，对其余各组算胜率。 */
 export function parseScoreTestInput(raw) {
   const lines = raw.trim().replace(/\r\n?/g, "\n").split("\n");
   if (lines[0].trim() !== "!test!") return null;
@@ -11,12 +12,16 @@ export function parseScoreTestInput(raw) {
   // 单独的 ! 是强化指令，不作为被测名字；同名两行沿用引擎的单挑规则。
   const enhanced = body.split("\n")[0].trim() === "!";
   const input = (enhanced ? body.split("\n").slice(1).join("\n") : body).trim();
-  if (!input || input.split(/\n\s*\n/).length !== 1 || input.split("\n").some(line => ["!", "!test!"].includes(line.trim()) || /^seed:/i.test(line.trimStart()))) {
-    throw new Error("!test! 后请输入一个名字或同一队伍的名字，名字之间不要用空行分队。");
+  if (!input || input.split("\n").some(line => ["!", "!test!"].includes(line.trim()) || /^seed:/i.test(line.trimStart()))) {
+    throw new Error("!test! 后请输入名字；空行分隔多组时按组互相计算胜率。");
   }
-  const names = input.split("\n").map(line => line.trim()).filter(Boolean);
+  const groups = input.split(/\n\s*\n/).map(group => group.split("\n").map(line => line.trim()).filter(Boolean)).filter(group => group.length > 0);
+  if (groups.length > 1) {
+    return { input, enhanced, groups, label: (enhanced ? "强化" : "普通") + "胜率测试" };
+  }
+  const names = groups[0] ?? [];
   const duel = names.length === 2 && names[0] === names[1];
-  return { input, enhanced, label: (enhanced ? "强化" : "普通") + (duel ? "单挑" : "评分") };
+  return { input, enhanced, groups, label: (enhanced ? "强化" : "普通") + (duel ? "单挑" : "评分") };
 }
 
 /** 仅输出两个累计检查点；每次 step 的一场都由所选策略执行。 */

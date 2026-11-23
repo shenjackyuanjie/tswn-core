@@ -38,7 +38,7 @@ impl CombatRuntime {
                     self.select_plain_default_enemy_targets_with_count(actor, smart, if smart { 6 } else { 5 })
                 }
                 BossActionSkill::YuriControl => self.select_plain_yuri_control_targets(actor, smart),
-                BossActionSkill::MarioGet | BossActionSkill::Squall => PreparedTargetList::new(),
+                BossActionSkill::MarioGet | BossActionSkill::Squall | BossActionSkill::Quilt => PreparedTargetList::new(),
                 // `SklSaitama.au` 的基础概率在等级 0 时恒为 false，`aa` 不会执行。
                 BossActionSkill::Saitama => continue,
             };
@@ -109,6 +109,7 @@ impl CombatRuntime {
     pub fn drain_plain_boss_skill_into(&mut self, actor: EntityIdx, prepared: PreparedBossSkillAction, updates: &mut RunUpdates) {
         match prepared.selected {
             BossActionSkill::Squall => self.drain_squall_action_into(actor, updates),
+            BossActionSkill::Quilt => self.drain_quilt_action_into(actor, updates),
             BossActionSkill::Fire => {
                 let target = prepared.targets[0];
                 self.drain_plain_fire_skill_into(actor, target, updates);

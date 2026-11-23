@@ -595,6 +595,17 @@ impl CombatRuntime {
                 targets: PreparedTargetList::new(),
             }));
         }
+        // 被子的行动完全由专属脚本决定：不扫描普攻，也不消耗概率随机数。
+        if self
+            .entities
+            .get(actor)
+            .is_some_and(|e| e.template.name == crate::runtime::combat::boss_quilt::ID)
+        {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Quilt,
+                targets: PreparedTargetList::new(),
+            }));
+        }
         if self.scratch.search_turn.is_some() {
             return self.prepare_search_action(actor, smart);
         }

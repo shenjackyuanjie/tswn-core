@@ -7,6 +7,8 @@ enum PlainBossDefend {
     Aokiji,
     /// 斑鸠：吸收奇数伤害。
     Ikaruga,
+    /// 被子：本体不可被选中，直接命中一律不造成伤害；只有衍生物的伤害传导才会扣血。
+    Quilt,
 }
 
 impl CombatRuntime {
@@ -557,6 +559,7 @@ impl CombatRuntime {
         match entity.template.name.as_str() {
             "aokiji" => Some((SkillPriority(10_000), PlainBossDefend::Aokiji)),
             "ikaruga" => Some((SkillPriority(20_000), PlainBossDefend::Ikaruga)),
+            "quilt" => Some((SkillPriority(30_000), PlainBossDefend::Quilt)),
             _ => None,
         }
     }
@@ -592,6 +595,7 @@ impl CombatRuntime {
                 DamageKind::Physical => defend_value.set_damage(0),
                 DamageKind::Default => {}
             },
+            PlainBossDefend::Quilt => defend_value.set_damage(0),
             PlainBossDefend::Ikaruga => {
                 if damage & 1 == 1 {
                     updates.add_with(|| {
@@ -698,6 +702,15 @@ impl CombatRuntime {
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
         self.record_squall_damage(caster, target, actual_damage);
+        // 被子的衍生物只把一半伤害传导给本体；本体自身不再二次分摊。
+        if actual_damage > 0
+            && let Some(owner) = self.quilt_share_owner(target)
+        {
+            let shared = actual_damage / 2;
+            if shared > 0 && self.apply_damage_into(caster, owner, shared, updates) {
+                self.drain_plain_lethal_damage_into(caster, owner, updates);
+            }
+        }
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         // 原版 damage 先调用命中回调（含火球免疫随机数），再由 onDamaged 登记反击。
         if amount > 0
