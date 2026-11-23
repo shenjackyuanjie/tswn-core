@@ -314,7 +314,10 @@ fn status_labels(entity: &EntityRecord) -> Vec<String> {
             push_status_label(&mut labels, format!("蓄势 +{}%", s.amplify));
         }
         if s.exposed {
-            push_status_label(&mut labels, "红温复查");
+            push_status_label(&mut labels, "我错了");
+        }
+        if s.red {
+            push_status_label(&mut labels, "红温");
         }
         if s.burned {
             push_status_label(&mut labels, "烧库");

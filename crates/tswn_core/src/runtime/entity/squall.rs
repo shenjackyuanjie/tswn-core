@@ -18,6 +18,9 @@ pub struct SquallRuntime {
     pub amplify: u16,
     pub exposed: bool,
     pub burned: bool,
+    /// 是否已进入红温；整场持续，不占普通状态槽，净化无法解除。
+    #[serde(default)]
+    pub red: bool,
     pub pruning: Vec<EntityIdx>,
     pub prune_at: u32,
     pub taunt: Option<(EntityIdx, EntityIdx, u32)>,

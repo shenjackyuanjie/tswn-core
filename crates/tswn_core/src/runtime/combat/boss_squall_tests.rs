@@ -270,6 +270,67 @@ fn delayed_pruning_only_marks_summons_and_can_be_dispelled() {
 }
 
 #[test]
+fn red_starts_below_half_hp_once_and_cannot_be_dispelled() {
+    let (mut runner, boss, _) = battle();
+    let rt = runner.runtime_mut();
+    let mut u = RunUpdates::new();
+    // 恰好 50% HP 不触发，必须严格低于一半。
+    rt.entities.get_mut(boss).unwrap().runtime.hp = 180;
+    rt.try_squall_red(boss, &mut u);
+    assert!(!rt.entities.get(boss).unwrap().runtime.squall.as_ref().unwrap().red);
+    assert_eq!(rt.entities.get(boss).unwrap().runtime.attack, 106);
+    assert_eq!(u.updates.len(), 0);
+    rt.entities.get_mut(boss).unwrap().runtime.hp = 179;
+    rt.try_squall_red(boss, &mut u);
+    let e = rt.entities.get(boss).unwrap();
+    assert!(e.runtime.squall.as_ref().unwrap().red);
+    assert_eq!(
+        [
+            e.runtime.attack,
+            e.runtime.defense,
+            e.runtime.speed,
+            e.runtime.agility,
+            e.runtime.magic,
+            e.runtime.resistance,
+            e.runtime.wisdom
+        ],
+        [159; 7]
+    );
+    assert_eq!(e.template.attack, 159);
+    let m = messages(&u);
+    assert!(m.contains(&"[0]进入[红温]"));
+    assert!(m.iter().any(|line| line.contains("全属性上升50%")));
+    assert!(u.updates.iter().any(|update| update.dialogue && update.message == RED_QUOTE));
+    // 只触发一次，重复检查不会叠加倍率。
+    rt.try_squall_red(boss, &mut u);
+    assert_eq!(rt.entities.get(boss).unwrap().runtime.attack, 159);
+    // 普通状态重算和净化都不会撤销红温。
+    rt.entities.get_mut(boss).unwrap().refresh_runtime_stats_from_template();
+    assert_eq!(rt.entities.get(boss).unwrap().runtime.attack, 159);
+    rt.dispel_squall_effects(boss, &mut u);
+    let e = rt.entities.get(boss).unwrap();
+    assert!(e.runtime.squall.as_ref().unwrap().red);
+    assert_eq!(e.runtime.attack, 159);
+}
+
+#[test]
+fn red_triggers_from_action_end_hook_when_hp_drops() {
+    let (mut runner, boss, enemies) = battle();
+    let rt = runner.runtime_mut();
+    rt.entities.get_mut(boss).unwrap().runtime.hp = 120;
+    let mut u = RunUpdates::new();
+    rt.finish_squall_action(Some(enemies[0]), &mut u);
+    let e = rt.entities.get(boss).unwrap();
+    assert!(e.runtime.squall.as_ref().unwrap().red);
+    assert_eq!(e.runtime.speed, 159);
+    // 红温不属于普通状态，后续行动与净化都不会撤销它。
+    rt.begin_squall_action(boss, &mut u);
+    rt.dispel_squall_effects(boss, &mut u);
+    assert!(rt.entities.get(boss).unwrap().runtime.squall.as_ref().unwrap().red);
+    assert_eq!(rt.entities.get(boss).unwrap().runtime.speed, 159);
+}
+
+#[test]
 fn capture_and_fast_completion_have_identical_final_state() {
     let (mut captured, _, _) = battle();
     let (mut fast, _, _) = battle();

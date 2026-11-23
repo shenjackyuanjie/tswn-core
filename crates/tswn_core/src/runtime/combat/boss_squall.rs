@@ -11,6 +11,9 @@ const SAMPLE_QUOTES: [&str; 5] = [
     "转换不成实际战力的话看着烧心",
 ];
 
+/// 红温台词取自本地聊天记录中唯一出现“红温”的原话，发送于 2026-11-06 00:50:43。
+const RED_QUOTE: &str = "我已经要被 6.1sol 整红温了";
+
 /// 技能编号固定用于调度与验证，不追加普通技能熟练度或随机扫描项。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ResearchSkill {
@@ -154,6 +157,7 @@ impl CombatRuntime {
         if iron_ended {
             updates.add(RunUpdate::new("[0]的[蓄力铁壁]解除了", actor.0 as usize, actor.0 as usize, 0));
         }
+        self.try_squall_red(actor, updates);
         self.try_squall_burn(actor, updates);
         if !prune.is_empty() {
             // 发动行与台词仍成对展示；每个目标的回避、护盾和致死独立结算。
@@ -214,6 +218,43 @@ impl CombatRuntime {
             let factor = if s.iron_until > s.turn { 0.6 } else { 1.0 } * if s.exposed { 1.25 } else { 1.0 };
             value.set_damage((f64::from(damage) * factor).ceil() as i32);
         }
+    }
+
+    /// HP 首次低于 50% 时一次性进入红温：全属性永久提高 50%，持续整场，净化不能解除。
+    fn try_squall_red(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+        let Some(e) = self.entities.get_mut(actor) else {
+            return;
+        };
+        if !e.runtime.active() || i64::from(e.runtime.hp) * 2 >= i64::from(e.template.max_hp) {
+            return;
+        }
+        let Some(s) = &mut e.runtime.squall else {
+            return;
+        };
+        if s.red {
+            return;
+        }
+        s.red = true;
+        // 同时修改基底，普通状态重算后也保留红温的永久增幅；不登记为普通状态，净化无从解除。
+        for (runtime, template) in [
+            (&mut e.runtime.attack, &mut e.template.attack),
+            (&mut e.runtime.defense, &mut e.template.defense),
+            (&mut e.runtime.speed, &mut e.template.speed),
+            (&mut e.runtime.agility, &mut e.template.agility),
+            (&mut e.runtime.magic, &mut e.template.magic),
+            (&mut e.runtime.resistance, &mut e.template.resistance),
+            (&mut e.runtime.wisdom, &mut e.template.wisdom),
+        ] {
+            *runtime = *runtime * 3 / 2;
+            *template = *template * 3 / 2;
+        }
+        self.squall_say(actor, "[0]进入[红温]", RED_QUOTE, updates);
+        updates.add(RunUpdate::new(
+            "[0]的全属性上升50%，且无法被净化解除",
+            actor.0 as usize,
+            actor.0 as usize,
+            0,
+        ));
     }
 
     /// 阶段转换只触发一次，先清空样本再加成；不锁血，也不拦截致死伤害。
@@ -285,6 +326,7 @@ impl CombatRuntime {
             if invalid_pair {
                 self.clear_squall_taunt(boss, updates);
             }
+            self.try_squall_red(boss, updates);
             self.try_squall_burn(boss, updates);
             let Some(actor) = actor else {
                 continue;
@@ -423,7 +465,7 @@ impl CombatRuntime {
                 updates,
             );
             updates.add(RunUpdate::new(
-                format!("[0]失去{}层[测试样本]，陷入[红温复查]", lost),
+                format!("[0]失去{}层[测试样本]，陷入[我错了]", lost),
                 actor.0 as usize,
                 actor.0 as usize,
                 0,
