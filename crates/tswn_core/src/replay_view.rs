@@ -6,6 +6,7 @@
 //! 部分中间值由消息与边界快照推导；完整机制检查点由 Runtime 边界数据表达。
 //! delay 使用毫秒，服务于片段播放节奏。
 
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 use crate::runtime::PlrId;
@@ -126,28 +127,26 @@ pub struct ReplayEventView<'a> {
 /// 缺失玩家名回退为十进制 ID；数据依次选择 `param`、目标列表或 `score`。
 /// 保留技能等其他方括号标记，不对输出执行 HTML 转义，界面层仍需按文本渲染。
 pub fn render_update_message(update: &RunUpdate, names: &HashMap<PlrId, String>) -> String {
-    let mut message = update.message.to_string();
-    message = message.replace("[0]", &render_name(update.caster, names));
-    message = message.replace("[1]", &render_name(update.target, names));
-
-    let param = if let Some(value) = update.param {
-        value.to_string()
-    } else if update.targets.is_empty() {
-        update.score.to_string()
+    let mut message = Cow::Borrowed(update.message.as_ref());
+    // 逐步检查替换后的文本：名字本身可以含后续占位符，保留 [0] → [1] → [2] 的顺序。
+    for (token, id) in [("[0]", update.caster), ("[1]", update.target)] {
+        if message.contains(token) {
+            message = Cow::Owned(message.replace(token, &render_name(id, names)));
+        }
+    }
+    if message.contains("[2]") {
+        message.replace("[2]", &data_for_update(update, names))
     } else {
-        update
-            .targets
-            .iter()
-            .map(|target| render_name(*target, names))
-            .collect::<Vec<String>>()
-            .join(",")
-    };
-
-    message.replace("[2]", &param)
+        message.into_owned()
+    }
 }
 
 /// 按 id 取显示名；缺失时退化为 id 字符串。
-fn render_name(id: PlrId, names: &HashMap<PlrId, String>) -> String { names.get(&id).cloned().unwrap_or_else(|| id.to_string()) }
+fn render_name(id: PlrId, names: &HashMap<PlrId, String>) -> Cow<'_, str> {
+    names
+        .get(&id)
+        .map_or_else(|| Cow::Owned(id.to_string()), |name| Cow::Borrowed(name.as_str()))
+}
 
 /// 根据伤害或恢复语气提取有符号 HP 变化，其他语气返回 `None`。
 ///
@@ -329,11 +328,7 @@ pub fn build_replay_view_frame<S: ReplayState>(
 
     if finished {
         total_delay += WIN_UPDATE_DELAY0_MS;
-        let names = winner_ids
-            .iter()
-            .map(|id| render_name(*id, player_names))
-            .collect::<Vec<String>>()
-            .join("、");
+        let names = winner_ids.iter().map(|id| render_name(*id, player_names)).collect::<Vec<_>>().join("、");
         rows.push(ReplayRow {
             indent: false,
             clips: vec![ReplayClip {
@@ -510,7 +505,7 @@ fn data_for_update(update: &RunUpdate, player_names: &HashMap<PlrId, String>) ->
         .targets
         .iter()
         .map(|id| render_name(*id, player_names))
-        .collect::<Vec<String>>()
+        .collect::<Vec<_>>()
         .join(",")
 }
 
@@ -569,7 +564,7 @@ fn build_player_part<S: ReplayState>(
     let show_hp = force_show_hp || exact.is_some() || (hp_changed && !death_effect);
     ReplayTextPart {
         kind: ReplayTextPartKind::Player,
-        text: render_name(player_id, player_names),
+        text: render_name(player_id, player_names).into_owned(),
         player_id: Some(player_id),
         show_hp,
         hp_before,
@@ -613,7 +608,7 @@ fn build_clip_parts<S: ReplayState>(
     player_names: &HashMap<PlrId, String>,
 ) -> Vec<ReplayTextPart> {
     let mut parts = Vec::new();
-    let data = data_for_update(update, player_names);
+    let mut data = None;
     let death_effect_allowed = is_death_effect_update(update);
     let force_hp_marker = is_hp_marker_update(update);
     let hp_swap = is_hp_swap_update(update);
@@ -669,7 +664,7 @@ fn build_clip_parts<S: ReplayState>(
                     ));
                 }
             }
-            "2" => push_data_part(&mut parts, &data),
+            "2" => push_data_part(&mut parts, data.get_or_insert_with(|| data_for_update(update, player_names))),
             _ => {
                 parts.push(text_part(ReplayTextPartKind::Highlight, token.to_string()));
             }

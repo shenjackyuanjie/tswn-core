@@ -1,6 +1,6 @@
 use super::{
     ReplayClip, ReplayEventView, ReplayState, ReplayTextPart, ReplayTextPartKind, ReplayTone, STATUS_EXIT_TEXT_COLOR,
-    build_replay_view_frame,
+    build_replay_view_frame, render_update_message,
 };
 use crate::runtime::PlrId;
 use crate::runtime::update::RunUpdate;
@@ -73,6 +73,18 @@ fn player_part(clip: &ReplayClip<TestState>) -> &ReplayTextPart {
 /// 取全部玩家片段，供测试断言。
 fn player_parts(clip: &ReplayClip<TestState>) -> Vec<&ReplayTextPart> {
     clip.parts.iter().filter(|part| part.kind == ReplayTextPartKind::Player).collect()
+}
+
+#[test]
+fn rendered_message_preserves_order_of_placeholder_expansion() {
+    let names = [(0, "甲[1]".to_owned()), (1, "乙[0][2]".to_owned())].into();
+    let mut numeric = RunUpdate::new("[0]→[1] [2]", 0, 1, 99);
+    numeric.param = Some(12);
+    numeric.targets.push(42);
+    assert_eq!(render_update_message(&numeric, &names), "甲乙[0]12→乙[0]12 12");
+    let mut list = RunUpdate::new("[2]", 0, 1, 99);
+    list.targets.extend([1, 42]);
+    assert_eq!(render_update_message(&list, &names), "乙[0][2],42");
 }
 
 #[test]

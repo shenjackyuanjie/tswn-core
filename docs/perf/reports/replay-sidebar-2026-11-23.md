@@ -20,13 +20,19 @@ Windows 10 build 19045、Ryzen 7 5800X、Rust 1.100.0；同机单进程串行配
 
 总体五组变化为 −26.66%、−29.07%、−32.14%、−25.65%、−25.35%。这是会话回放耗时，不包含 JSON 序列化，也不代表无回放的胜率吞吐。每组的场数、终局摘要、可见帧与推进回合数一致。另用发布版 CLI 对拍上述 132 场完整 JSONL，共 3,986 行逐字节一致。
 
+## 后续：战报按需插值
+
+以侧栏优化提交 `39246065` 为基线：模板只在实际出现占位符时查询名字或格式化数字与目标列表。不预先复制模板，也不构造未使用的数据片段。按替换后的文本依次处理 `[0]`、`[1]`、`[2]`，因此名字本身含占位符时，原有展开顺序仍然成立。
+
+同样使用五组配对和每档 1,000 场。相对侧栏优化版，总体耗时配对中位数再降 **5.13%**（3/5 组较快）；无图标降 **5.73%**（5/5），有图标降 **4.71%**（3/5）。总体五组为 −12.57%、−6.67%、−5.13%、+1.26%、+1.55%，增量小于侧栏优化，且波动较大。这两轮基线不同，不直接相加。132 场 JSONL 跟原始基线仍逐字节一致。
+
 ## 复测
 
 在独立产物目录分别构建基线和候选，用同一份固定输入目录：
 
 ```powershell
-cargo build --locked --release --features no_debug,mimalloc_alloc -p tswn_core --example perf_maintenance
-perf_maintenance.exe --encoder-iters 1 --session-iters 1000 --warmup 10 --input-dir crates/tswn_test/cases/runtime_stress
+cargo build --locked --release --features no_debug,mimalloc_alloc -p tswn_core --example perf_maintenance --target-dir target/replay-ab
+& ./target/replay-ab/release/examples/perf_maintenance.exe --encoder-iters 1 --session-iters 1000 --warmup 10 --input-dir crates/tswn_test/cases/runtime_stress
 ```
 
 输入与口径见 [perf_maintenance](../../../crates/tswn_core/examples/perf_maintenance.rs)。
