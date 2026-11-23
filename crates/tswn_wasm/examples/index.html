@@ -78,6 +78,26 @@
                     <div class="input-note">默认双方采用所选策略。搜索预算：最多 16 次续局采样 / 128 调度轮 / 4 个入围候选，另有短续局初筛。</div>
                     <label><input type="checkbox" id="scoreLegacyOpponents"> 评分验证：仅被测侧及队友使用 Clever，对手使用原版</label>
                     <div class="input-note">仅对 Clever 评分生效；不勾选时双方均使用 Clever。与全员原版评分比较，评分差即提升量。</div>
+                    <label class="boss-picker"><input type="checkbox" id="bossChallenge"> 挑战 Boss </label>
+                    <select id="bossSelect" class="boss-select" disabled>
+                        <option value="quilt">被子</option>
+                        <option value="Squall">Squall</option>
+                        <option value="thanos">灭霸</option>
+                        <option value="wheel">生命之轮</option>
+                        <option value="mario">马里奥</option>
+                        <option value="sonic">索尼克</option>
+                        <option value="mosquito">蚊</option>
+                        <option value="yuri">尤里</option>
+                        <option value="slime">史莱姆</option>
+                        <option value="ikaruga">斑鸠</option>
+                        <option value="conan">柯南</option>
+                        <option value="aokiji">青雉</option>
+                        <option value="lazy">懒癌</option>
+                        <option value="covid">新冠病毒</option>
+                        <option value="saitama">一拳超人</option>
+                        <option value="testsubject">实验体 #C8</option>
+                    </select>
+                    <div class="input-note">勾选后无需在名字里写 xx@!，开始时会自动把所选 Boss 作为对手加入战斗。</div>
                 </div>
                 <div class="input-note" style="padding: 0 16px">评分：首行 !test!，随后输入名字为普通评分；同名连续两行是普通单挑。在 !test! 后单独加一行 !，切换为强化评分／强化单挑。使用所选策略测试 10000 场，仅展示 10% / 100% 及技能频率。</div>
                 <div id="textdiv">

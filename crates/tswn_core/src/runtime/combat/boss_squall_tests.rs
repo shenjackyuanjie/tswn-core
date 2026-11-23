@@ -178,7 +178,7 @@ fn team_creates_two_distinct_limited_helpers_that_can_act() {
     assert_eq!(helpers.len(), 2);
     for helper in helpers {
         let e = rt.entities.get(helper).unwrap();
-        assert_eq!(e.template.max_hp, 43);
+        assert_eq!(e.template.max_hp, 54);
         assert_eq!(e.runtime.root_owner, boss);
         assert!(e.runtime.is_minion());
         assert!(e.runtime.squall.is_none());
@@ -197,7 +197,7 @@ fn healing_is_limited_and_uses_actual_recovery_and_amplify_cap() {
     for i in 1..=3 {
         rt.entities.get_mut(boss).unwrap().runtime.hp = 100;
         rt.squall_heal(boss, &mut u);
-        assert_eq!(rt.entities.get(boss).unwrap().runtime.hp, 143);
+        assert_eq!(rt.entities.get(boss).unwrap().runtime.hp, 154);
         assert_eq!(rt.entities.get(boss).unwrap().runtime.squall.as_ref().unwrap().heal_count, i);
     }
     let s = rt.entities.get_mut(boss).unwrap().runtime.squall.as_mut().unwrap();
@@ -236,13 +236,13 @@ fn burn_is_once_preserves_base_stats_and_can_kill_itself() {
     let mut u = RunUpdates::new();
     rt.try_squall_burn(boss, &mut u);
     let e = rt.entities.get(boss).unwrap();
-    assert_eq!(e.runtime.attack, 144);
-    assert_eq!(e.runtime.speed, 156);
+    assert_eq!(e.runtime.attack, 150);
+    assert_eq!(e.runtime.speed, 163);
     assert_eq!(e.runtime.squall.as_ref().unwrap().samples, 0);
     rt.try_squall_burn(boss, &mut u);
-    assert_eq!(rt.entities.get(boss).unwrap().runtime.attack, 144);
+    assert_eq!(rt.entities.get(boss).unwrap().runtime.attack, 150);
     rt.entities.get_mut(boss).unwrap().refresh_runtime_stats_from_template();
-    assert_eq!(rt.entities.get(boss).unwrap().runtime.attack, 144);
+    assert_eq!(rt.entities.get(boss).unwrap().runtime.attack, 150);
     rt.entities.get_mut(boss).unwrap().runtime.hp = 3;
     rt.finish_squall_action(Some(boss), &mut u);
     assert!(!rt.entities.get(boss).unwrap().runtime.alive);

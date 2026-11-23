@@ -277,8 +277,8 @@ impl CombatRuntime {
         let samples = s.samples;
         s.samples = 0;
         // 同时修改基底，普通状态重算后也保留最终阶段的永久增幅。
-        let power = 100 + i32::from(samples) * 6;
-        let speed = 100 + i32::from(samples) * 8;
+        let power = 100 + i32::from(samples) * 7;
+        let speed = 100 + i32::from(samples) * 9;
         e.runtime.attack = e.runtime.attack * power / 100;
         e.template.attack = e.template.attack * power / 100;
         e.runtime.magic = e.runtime.magic * power / 100;
@@ -296,8 +296,8 @@ impl CombatRuntime {
         updates.add(RunUpdate::new(
             format!(
                 "[0]的攻击、魔力上升{}%，速度上升{}%",
-                u32::from(samples) * 6,
-                u32::from(samples) * 8
+                u32::from(samples) * 7,
+                u32::from(samples) * 9
             ),
             actor.0 as usize,
             actor.0 as usize,
@@ -526,7 +526,7 @@ impl CombatRuntime {
                         if !self.squall_can_continue(actor) {
                             break;
                         }
-                        self.squall_attack(actor, target, 2.440000057220459 / divisor * 0.6 * amp, updates);
+                        self.squall_attack(actor, target, 2.440000057220459 / divisor * 0.7 * amp, updates);
                     }
                 }
             }
@@ -563,7 +563,7 @@ impl CombatRuntime {
                 self.squall_enemies(actor, false).first().copied()
             };
             if let Some(t) = t {
-                self.squall_attack(actor, t, 0.55 * amp, updates);
+                self.squall_attack(actor, t, 0.62 * amp, updates);
             }
         }
     }
@@ -620,7 +620,7 @@ impl CombatRuntime {
             updates,
         );
         let owner = self.entities.get(actor).unwrap();
-        let hp = (owner.template.max_hp * 12 / 100).max(1);
+        let hp = (owner.template.max_hp * 15 / 100).max(1);
         let team = owner.runtime.team;
         let kind = self
             .registry
@@ -711,7 +711,7 @@ impl CombatRuntime {
     fn squall_heal(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
         let e = self.entities.get_mut(actor).unwrap();
         let before = e.runtime.hp;
-        e.runtime.hp = (before + e.template.max_hp * 12 / 100).min(e.template.max_hp);
+        e.runtime.hp = (before + e.template.max_hp * 15 / 100).min(e.template.max_hp);
         let healed = e.runtime.hp - before;
         // 每次只解除一个负面条目，并重算其影响的属性与控制关系。
         let key = e
@@ -736,7 +736,7 @@ impl CombatRuntime {
         let s = e.runtime.squall.as_mut().unwrap();
         s.next_skill[5] = s.turn + 4;
         s.heal_count += 1;
-        s.amplify = (s.amplify + 25).min(100);
+        s.amplify = (s.amplify + 30).min(100);
         self.squall_say(actor, "[0]使用[聚气治愈，续航才是王道]", "聚气治愈的续航才是王道。", updates);
         let mut line = RunUpdate::new("[0]回复体力[2]点", actor.0 as usize, actor.0 as usize, 0);
         line.param = Some(healed as u32);

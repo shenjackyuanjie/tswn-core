@@ -90,6 +90,15 @@ const strategySelect = document.querySelector("#strategySelect");
 /** @type {HTMLInputElement} 评分验证需显式勾选，普通对局不读取此选项。 */
 const scoreLegacyOpponents = document.querySelector("#scoreLegacyOpponents");
 scoreLegacyOpponents.checked = false;
+/** @type {HTMLInputElement} 挑战 Boss：勾选后自动把所选 Boss 追加为对手，无需手写 xx@!。 */
+const bossChallenge = document.querySelector("#bossChallenge");
+/** @type {HTMLSelectElement} */
+const bossSelect = document.querySelector("#bossSelect");
+bossChallenge.checked = false;
+bossSelect.disabled = true;
+bossChallenge.addEventListener("change", () => {
+  bossSelect.disabled = !bossChallenge.checked;
+});
 strategySelect.value = new URLSearchParams(window.location.search).get("strategy") === "legacy" ? "legacy" : "search";
 /** @type {HTMLButtonElement} */
 const startBtn = document.querySelector("#startBtn");
@@ -668,6 +677,13 @@ function startScoreTest(input, { persistInput }) {
   }
 }
 
+/** 勾选“挑战 Boss”时把所选 Boss 作为独立对手组追加到输入，省去手写 xx@!。 */
+function withChallengeBoss(raw) {
+  if (!bossChallenge.checked) return raw;
+  const boss = bossSelect.value.trim();
+  return boss ? `${raw}\n\n${boss}@!` : raw;
+}
+
 async function startBattle({ persistInput = true } = {}) {
   const clickStartedAt = performance.now();
   const rawInput = inputName.value.trim();
@@ -679,7 +695,8 @@ async function startBattle({ persistInput = true } = {}) {
   let scoreInput;
   try { scoreInput = parseScoreTestInput(rawInput); }
   catch (error) { setInputStatus(formatError(error), true); openInputEditor(); return; }
-  const inputError = validateReplayInput(scoreInput?.input ?? rawInput);
+  const battleInput = scoreInput == null ? withChallengeBoss(rawInput) : rawInput;
+  const inputError = validateReplayInput(scoreInput?.input ?? battleInput);
   if (inputError) {
     setInputStatus(inputError, true);
     openInputEditor();
@@ -705,7 +722,7 @@ async function startBattle({ persistInput = true } = {}) {
 
   let source = null;
   try {
-    source = await createBattleStreamSource(rawInput, versionInfo, coreVersionInfo, modulePathInfo, { metrics: battleMetrics, strategy: strategySelect.value });
+    source = await createBattleStreamSource(battleInput, versionInfo, coreVersionInfo, modulePathInfo, { metrics: battleMetrics, strategy: strategySelect.value });
     if (generation !== battleGenerationToken) { source.dispose(); return; }
     currentBattle = {
       raw_input: source.raw_input, seed_line: source.seed_line, strategy: strategySelect.value,
