@@ -580,7 +580,6 @@ fn sort_file_store(store: &Store) -> Ds4Result<()> {
 fn copy_to_new_store(store: &Store) -> Ds4Result<()> {
     let new_all = store.new_dir().join("new.txt");
     append_file(&store.tmp_new_dup_file(), &new_all)?;
-    append_file(&store.tmp_new_dup_file(), &new_all)?;
     for mode in SingleMode::ALL {
         append_file(&store.tmp_new_mode_file(mode), &store.new_mode_file(mode))?;
     }
