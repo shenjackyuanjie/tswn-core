@@ -549,6 +549,13 @@ impl PlayerBuild {
             status = status_from_attrs(attrs, 0.0, true);
             status.speed = 106;
         }
+        // smdd（曙光）与 Squall 同为 106 固定属性，速度不追加 160 点。
+        if self.class == PlayerClass::Boss && self.name == "smdd" {
+            self.name_factor = 0.0;
+            attrs = [106, 106, 106, 106, 106, 106, 106, 360];
+            status = status_from_attrs(attrs, 0.0, true);
+            status.speed = 106;
+        }
         // 被子是后排 Boss：500 HP、其余 100，速度同样不追加 160 点。
         if self.class == PlayerClass::Boss && self.name == "quilt" {
             self.name_factor = 0.0;

@@ -201,16 +201,17 @@ pub fn render_icon_b64_from_name(name: &str) -> String {
 
 /// 便捷包装器: 通过玩家名称渲染 → RGBA 像素数据 (1024 字节)。
 pub fn render_icon_vec_from_name(name: &str) -> Vec<u8> {
-    // Squall Boss 与同名队伍角色共用程序生成图标，不占用原版固定像素表。
-    let name = if name
+    // Squall Boss 与同名队伍角色共用程序生成图标；smdd（曙光）固定使用 nan@nan 的图标。
+    let mapped = name
         .split_once('@')
-        .is_some_and(|(base, modifiers)| base == "Squall" && modifiers.split(['@', '+']).next() == Some("!"))
-    {
-        "Squall@Squall"
-    } else {
-        name
-    };
-    boss_icon(name).map_or_else(|| render_icon_vec(&icon_from_name(parse_sglname(name))), <[_]>::to_vec)
+        .filter(|(_, modifiers)| modifiers.split(['@', '+']).next() == Some("!"))
+        .and_then(|(base, _)| match base {
+            "Squall" => Some("Squall@Squall"),
+            "smdd" => Some("nan@nan"),
+            _ => None,
+        })
+        .unwrap_or(name);
+    boss_icon(mapped).map_or_else(|| render_icon_vec(&icon_from_name(parse_sglname(mapped))), <[_]>::to_vec)
 }
 
 // ── 内部辅助函数 ──────────────────────────────────────────────────────────

@@ -599,6 +599,17 @@ impl CombatRuntime {
                 targets: PreparedTargetList::new(),
             }));
         }
+        // smdd 同样走专属脚本，不消耗概率随机数。
+        if self
+            .entities
+            .get(actor)
+            .is_some_and(|e| e.template.name == crate::runtime::combat::boss_smdd::ID)
+        {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Smdd,
+                targets: PreparedTargetList::new(),
+            }));
+        }
         // 被子的行动完全由专属脚本决定：不扫描普攻，也不消耗概率随机数。
         if self
             .entities

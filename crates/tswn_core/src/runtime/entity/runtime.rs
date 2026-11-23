@@ -185,6 +185,9 @@ pub struct PlayerRuntime {
     pub squall_helper: Option<(EntityIdx, u8, u32)>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub squall_taunt: Option<(EntityIdx, u64)>,
+    /// smdd 的做局层数与技能冷却。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub smdd: Option<Box<SmddRuntime>>,
     /// 被子衍生物的行动计数与睡眠、钻被、得意等临时标记。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quilt_minion: Option<Box<QuiltMinionState>>,
@@ -257,6 +260,7 @@ impl PlayerRuntime {
                 .then(|| Box::new(SquallRuntime::default())),
             squall_helper: None,
             squall_taunt: None,
+            smdd: (flags.contains(PlayerKindFlags::BOSS) && template.name == "smdd").then(|| Box::new(SmddRuntime::default())),
             quilt_minion: None,
             corpse: RuntimeCorpseKind::None,
         }

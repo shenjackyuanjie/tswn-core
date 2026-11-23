@@ -4,7 +4,7 @@
 pub(crate) const SAITAMA_RETIREMENT_WINNER: &str = "SAITAMA";
 
 /// 内置 Boss 名字表；用于身份分类、默认技能与免疫规则查询。
-pub const BOSS_NAMES: [&str; 17] = [
+pub const BOSS_NAMES: [&str; 18] = [
     "mario",
     "sonic",
     "mosquito",
@@ -22,6 +22,7 @@ pub const BOSS_NAMES: [&str; 17] = [
     SAITAMA_RETIREMENT_WINNER,
     "Squall",
     "quilt",
+    "smdd",
 ];
 
 /// 加成角色名字表；对应 [`boost_value`] 的加成来源。
@@ -61,6 +62,7 @@ pub fn boss_display_name(name: &str) -> &str {
         "thanos" => "灭霸",
         "wheel" => "生命之轮",
         "quilt" => "被子",
+        "smdd" => "曙光",
         _ => name,
     }
 }
@@ -123,6 +125,8 @@ pub enum BossActionSkill {
     Squall,
     /// 被子的钻出被子、多重魂、占领与鱼我所欲也统一进入专属结算器。
     Quilt,
+    /// smdd 的十个做局技能统一进入专属结算器。
+    Smdd,
 }
 
 /// 按 0.5.5 中 `k4` 的插入顺序返回 Boss 主动技能及基础等级。

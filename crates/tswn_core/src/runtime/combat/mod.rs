@@ -12,6 +12,7 @@ use std::sync::Arc;
 mod abilities;
 mod attack;
 pub(crate) mod boss_quilt;
+pub(crate) mod boss_smdd;
 mod boss_squall;
 mod boss_thanos;
 mod boss_wheel;

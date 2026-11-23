@@ -898,6 +898,10 @@ impl CombatRuntime {
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
         self.record_squall_damage(caster, target, actual_damage);
+        if actual_damage > 0 {
+            // 曙光的「局」层数：被本体命中一次加一层。
+            self.record_smdd_hit(target);
+        }
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         // 被子的衍生物只把一半伤害传导给本体；本体那一行排在衍生物受击之后。
         if actual_damage > 0
