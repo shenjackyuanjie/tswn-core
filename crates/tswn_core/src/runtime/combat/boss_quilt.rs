@@ -280,6 +280,11 @@ impl CombatRuntime {
 
     fn quilt_owner_of(&self, idx: EntityIdx) -> Option<EntityIdx> { self.minion_state(idx).and_then(|state| state.owner) }
 
+    /// 衍生物是否处于睡5觉/钻被/猴儿冰冻的免伤回合。
+    pub(super) fn quilt_minion_sleeping(&self, idx: EntityIdx) -> bool {
+        self.minion_state(idx).is_some_and(|state| state.sleeping)
+    }
+
     fn has_ice_state(&self, idx: EntityIdx) -> bool {
         self.entities.get(idx).is_some_and(|entity| {
             entity
@@ -296,9 +301,6 @@ impl CombatRuntime {
             return;
         };
         if self.minion_state(actor).is_some_and(|state| state.sleeping) {
-            if let Some(entity) = self.entities.get_mut(actor) {
-                entity.runtime.shield = 0;
-            }
             if let Some(state) = self.minion_state_mut(actor) {
                 state.sleeping = false;
             }
@@ -313,9 +315,7 @@ impl CombatRuntime {
                 state.was_frozen = false;
                 state.sleeping = true;
             }
-            if let Some(entity) = self.entities.get_mut(actor) {
-                entity.runtime.shield = 9999;
-            }
+
             updates.add(RunUpdate::new("[0]钻进了被子里", actor.0 as usize, actor.0 as usize, 0));
             return;
         }
@@ -347,9 +347,7 @@ impl CombatRuntime {
         if let Some(state) = self.minion_state_mut(actor) {
             state.sleeping = true;
         }
-        if let Some(entity) = self.entities.get_mut(actor) {
-            entity.runtime.shield = 9999;
-        }
+
         updates.add(RunUpdate::new("[0]开始睡5觉", actor.0 as usize, actor.0 as usize, 0));
         updates.add_newline();
         updates.add(RunUpdate::new("[0]钻进了被子里", actor.0 as usize, actor.0 as usize, 0));
@@ -465,9 +463,7 @@ impl CombatRuntime {
                 state.pending_spawn = true;
                 state.sleeping = true;
             }
-            if let Some(entity) = self.entities.get_mut(actor) {
-                entity.runtime.shield = 9999;
-            }
+
             updates.add(RunUpdate::new(
                 "[0]上睡觉掀开被子全都是猴区",
                 actor.0 as usize,

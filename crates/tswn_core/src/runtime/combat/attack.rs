@@ -882,6 +882,8 @@ impl CombatRuntime {
         on_damage: PlainAttackOnDamage,
         updates: &mut RunUpdates,
     ) -> bool {
+        // 被子衍生物在睡5觉/钻被/猴儿冰冻期间固定 0 伤。
+        let amount = if self.quilt_minion_sleeping(target) { 0 } else { amount };
         // 0.5.5 `aF`：负数伤害表示 Boss 防御吸收，只回血并输出恢复消息，
         // 不触发 covid/lazy 扩散、命中回调或 POST_DAMAGE 链。
         if amount < 0 {
