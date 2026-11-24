@@ -45,7 +45,7 @@ impl CombatRuntime {
             self.yi_spawn_baixie(actor, updates);
             return;
         }
-        // 场上拜谢最多保留两个；不足两个且掷中时才再召唤，其余回合改为猴咦射日。
+        // 场上拜谢最多保留十个；不足十个且掷中时才再召唤，其余回合改为猴咦射日或普攻。
         let alive_baixie = self
             .entities
             .iter()
@@ -56,7 +56,7 @@ impl CombatRuntime {
                     && entity.runtime.is_minion()
             })
             .count();
-        if alive_baixie < 2 && self.rng.next_u8() % 4 == 0 {
+        if alive_baixie < 10 && self.rng.next_u8() % 4 == 0 {
             self.yi_say(actor, "[0]使用[咦拜涂地]", updates);
             self.yi_spawn_baixie(actor, updates);
         } else if self.rng.next_u8() % 2 == 0 {

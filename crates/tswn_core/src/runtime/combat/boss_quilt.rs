@@ -19,7 +19,7 @@ pub const MONKEY_NAME: &str = "猴区";
 /// 鱼显示名。
 pub const FISH_NAME: &str = "鱼";
 /// 猴区宣布占领此群所需的在场数量；比原来的 3 只翻倍。
-pub const OCCUPY_MONKEYS: usize = 6;
+pub const OCCUPY_MONKEYS: usize = 4;
 /// 场上猴区上限。
 pub const MONKEY_CAP: usize = 10;
 
