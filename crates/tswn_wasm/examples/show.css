@@ -120,4 +120,17 @@ body.highlight-active [data-player-id].hl-active.player-row .name {
     .rlist {
         display: none;
     }
+
+    /* 手机版：输入面板占满宽度，避免 calc(100vw - 2×sidebar) 变成负值把面板压成细条。 */
+    #inputPanel {
+        width: calc(100vw - 16px);
+        height: auto;
+        max-height: calc(100vh - 16px);
+    }
+
+    #inputPanel #textdiv {
+        height: 46vh;
+        min-height: 0;
+        flex: 1 1 auto;
+    }
 }

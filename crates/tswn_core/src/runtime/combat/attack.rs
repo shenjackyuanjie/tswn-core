@@ -923,7 +923,7 @@ impl CombatRuntime {
             self.record_tiger_damage(target, actual_damage);
         }
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
-        self.relay_quilt_damage(caster, target, actual_damage, updates);
+        self.relay_quilt_damage(caster, target, amount, updates);
         if amount == 0 {
             return false;
         }

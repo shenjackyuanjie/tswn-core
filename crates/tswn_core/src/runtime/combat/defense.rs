@@ -711,7 +711,7 @@ impl CombatRuntime {
         let was_alive = target_entity.runtime.alive;
         self.record_squall_damage(caster, target, actual_damage);
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
-        self.relay_quilt_damage(caster, target, actual_damage, updates);
+        self.relay_quilt_damage(caster, target, amount, updates);
         // 原版 damage 先调用命中回调（含火球免疫随机数），再由 onDamaged 登记反击。
         if amount > 0
             && let Some(key) = fire_state_key
@@ -748,7 +748,7 @@ impl CombatRuntime {
         let team = target_entity.runtime.team;
         self.record_squall_damage(caster, target, actual_damage);
         updates.add(replay(caster.0 as usize, target.0 as usize, amount));
-        self.relay_quilt_damage(caster, target, actual_damage, updates);
+        self.relay_quilt_damage(caster, target, amount, updates);
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         if killed {
             self.mark_dead_with_linked_minions_into(target, team, updates);
@@ -774,7 +774,7 @@ impl CombatRuntime {
         let was_alive = target_entity.runtime.alive;
         self.record_squall_damage(caster, target, actual_damage);
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
-        self.relay_quilt_damage(caster, target, actual_damage, updates);
+        self.relay_quilt_damage(caster, target, amount, updates);
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         was_alive
             && self
@@ -807,7 +807,7 @@ impl CombatRuntime {
         if amount > 0 {
             self.apply_disperse_hit_into(caster, target, updates);
         }
-        self.relay_quilt_damage(caster, target, actual_damage, updates);
+        self.relay_quilt_damage(caster, target, amount, updates);
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         was_alive
             && self

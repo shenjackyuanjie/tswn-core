@@ -179,3 +179,17 @@ fn fish_dives_then_spits_a_monkey() {
     rt.drain_quilt_minion_action_into(fish, enemies[0], &mut u);
     assert_eq!(rt.quilt_monkeys(boss).len(), before + 1);
 }
+
+#[test]
+fn overkill_damage_still_relays_half_of_the_incoming_hit() {
+    let (mut runner, boss, _) = battle();
+    let rt = runner.runtime_mut();
+    let mut u = RunUpdates::new();
+    rt.quilt_spawn(boss, Child::Monkey, &mut u);
+    let child = rt.quilt_monkeys(boss)[0];
+    rt.entities.get_mut(child).unwrap().runtime.hp = 1;
+    let before = rt.entities.get(boss).unwrap().runtime.hp;
+    rt.apply_plain_attack_damage_into(EntityIdx(0), child, 200, &mut u);
+    // 衍生物只剩 1 血，但被子仍按 200 的一半扣 100。
+    assert_eq!(rt.entities.get(boss).unwrap().runtime.hp, before - 100);
+}

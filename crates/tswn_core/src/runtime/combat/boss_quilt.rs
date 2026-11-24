@@ -70,9 +70,9 @@ impl CombatRuntime {
         amount
     }
 
-    /// 从衍生物实际损失的体力扣除一半，只有该入口绕开被子免伤。
-    pub(super) fn relay_quilt_damage(&mut self, caster: EntityIdx, target: EntityIdx, actual: i32, updates: &mut RunUpdates) {
-        let shared = actual / 2;
+    /// 按衍生物受到的伤害（而不是实际掉血）传导一半给本体；1 血吃 200 伤也会传导 100。
+    pub(super) fn relay_quilt_damage(&mut self, caster: EntityIdx, target: EntityIdx, amount: i32, updates: &mut RunUpdates) {
+        let shared = amount.max(0) / 2;
         if shared == 0 {
             return;
         }
