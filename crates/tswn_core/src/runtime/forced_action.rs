@@ -3,11 +3,12 @@
 //! 指令队列、暂停标记与药水状态属于 [`crate::runtime::control::BattleControl`]，
 //! 这里只保留机制层拿不到控制句柄、又必须按队伍查询的两项数据：受控队伍编号与能力卡。
 //! 会话层在每次推进前用 [`with_state`] 注入快照、退出即还原，避免借出状态跨对局泄漏。
-//! 能力作用域 [`AbilityScope`] 与随机攻击乘区按根角色隔离，嵌套反弹/反击退出后恢复原作用域。
+//! 能力作用域 `AbilityScope` 与随机攻击乘区按根角色隔离，嵌套反弹/反击退出后恢复原作用域。
 use std::cell::{Cell, RefCell};
 #[cfg(feature = "cards")]
 use std::collections::BTreeMap;
 
+/// 卡牌控制快照：受控队伍、能力卡与降级说明，推进期间借给 Runtime 使用。
 #[derive(Debug, Clone, Default)]
 pub struct ForcedState {
     /// 受控队伍编号快照；`usize::MAX` 表示双方本体与分身都由玩家控制。
@@ -28,11 +29,13 @@ thread_local! {
 
 /// 作用域守卫保证错误或 unwind 不会把当前会话的受控队伍、能力卡泄漏给另一场对局。
 pub fn with_state<R>(state: &mut ForcedState, f: impl FnOnce() -> R) -> R {
+    /// [`with_state`] 的作用域守卫：保存被借出的状态引用与替换前的快照。
     struct Restore<'a> {
         state: &'a mut ForcedState,
         previous: ForcedState,
     }
     impl Drop for Restore<'_> {
+        /// 守卫析构：把线程本地强制状态恢复为进入前的快照。
         fn drop(&mut self) { *self.state = ACTIVE.with(|cell| cell.replace(std::mem::take(&mut self.previous))); }
     }
     let previous = ACTIVE.with(|cell| cell.replace(std::mem::take(state)));
@@ -40,6 +43,7 @@ pub fn with_state<R>(state: &mut ForcedState, f: impl FnOnce() -> R) -> R {
     f()
 }
 
+/// 当前线程借出的受控队伍编号；未注入快照时为 None。
 pub fn controlled_team() -> Option<usize> { ACTIVE.with(|cell| cell.borrow().controlled_team) }
 
 /// 指定技能在运行时生效失败时的处理策略。
@@ -55,13 +59,16 @@ pub enum ForcedFallback {
     Fallback,
 }
 
+/// 当前的技能失败处理策略。
 pub fn fallback_mode() -> ForcedFallback { FALLBACK_MODE.with(Cell::get) }
 
 /// 作用域守卫：进入时切换策略，退出（含提前返回与 unwind）时还原，
 /// 避免兼容语义借给同一进程里的其他对局或会话。
 pub fn with_fallback_mode<R>(mode: ForcedFallback, f: impl FnOnce() -> R) -> R {
+    /// [`with_fallback_mode`] 的作用域守卫：保存进入前的失败处理策略。
     struct Restore(ForcedFallback);
     impl Drop for Restore {
+        /// 守卫析构：还原进入前的失败处理策略。
         fn drop(&mut self) { FALLBACK_MODE.with(|cell| cell.set(self.0)); }
     }
     let _restore = Restore(FALLBACK_MODE.with(|cell| cell.replace(mode)));
@@ -73,13 +80,16 @@ pub fn record_fallback(actor: u32, reason: &'static str) {
     ACTIVE.with(|cell| cell.borrow_mut().fallback = Some((actor, reason)));
 }
 
+/// 取走本次推进记录的一条降级说明（行动者与原因）。
 pub fn take_fallback() -> Option<(u32, &'static str)> { ACTIVE.with(|cell| cell.borrow_mut().fallback.take()) }
 
 /// 诊断计数：引擎实际走到「这一次行动要谁出招」的次数。
 pub fn hit() { HITS.with(|cell| cell.set(cell.get() + 1)); }
+/// 读取选行动请求的诊断计数。
 pub fn hits() -> u32 { HITS.with(|cell| cell.get()) }
 /// 诊断计数：脚本指令被真正取走使用的次数。
 pub fn note_taken() { TAKEN.with(|cell| cell.set(cell.get() + 1)); }
+/// 读取脚本指令被取走使用的诊断计数。
 pub fn taken() -> u32 { TAKEN.with(|cell| cell.get()) }
 
 /// 能力卡内核：编号表、开局解码、按队伍取值与作用域守卫。
@@ -128,6 +138,7 @@ mod ability {
         "summon-explode",
         "possess",
     ];
+    /// 按能力编号取技能导出名；编号越界返回 None。
     pub fn ability_export(id: usize) -> Option<String> {
         ABILITY_SKILLS.get(id).map(|name| {
             if *name == "possess" {
@@ -137,6 +148,7 @@ mod ability {
             }
         })
     }
+    /// 解码能力卡线格式；长度、编号、强度或重复项非法时报错。
     pub fn decode_abilities(packet: &[u32]) -> Result<BTreeMap<String, (u32, u32)>, &'static str> {
         if !packet.len().is_multiple_of(3) {
             return Err("ability packets must contain skill/cost/power triples");
@@ -155,6 +167,7 @@ mod ability {
         }
         Ok(out)
     }
+    /// 按队伍取某技能的 (减耗, 倍率)；未受控或未持卡返回 (0, 1.0)。
     pub fn ability_value(team: usize, skill: &str) -> (u32, f64) {
         ACTIVE.with(|cell| {
             let state = cell.borrow();
@@ -170,6 +183,7 @@ mod ability {
                 .map_or((0, 1.0), |(cost, power)| (*cost, *power as f64 / 10000.0))
         })
     }
+    /// 受控队伍持有的最大能力卡消耗；未受控为 0。
     pub fn max_ability_cost(team: usize) -> u32 {
         ACTIVE.with(|cell| {
             let state = cell.borrow();
@@ -186,17 +200,21 @@ mod ability {
     /// 技能内的随机攻击乘区按根角色隔离，嵌套反弹/反击退出后恢复原作用域。
     pub struct AbilityScope((u32, f64, u32));
     impl Drop for AbilityScope {
+        /// 作用域守卫析构：还原上一层的随机攻击乘区。
         fn drop(&mut self) { ABILITY_SCOPE.with(|cell| cell.set(self.0)); }
     }
+    /// 为根角色建立能力作用域；守卫退出时还原上一层作用域。
     pub fn scope_ability(root: u32, power: f64, cost: u32) -> AbilityScope {
         AbilityScope(ABILITY_SCOPE.with(|cell| cell.replace((root, power, cost))))
     }
+    /// 当前作用域内指定根角色的随机攻击乘区；非本作用域为 1.0。
     pub fn attack_multiplier(root: u32) -> f64 {
         ABILITY_SCOPE.with(|cell| {
             let (owner, power, _) = cell.get();
             if root == owner { power } else { 1.0 }
         })
     }
+    /// 当前作用域内指定根角色的 MP 减耗；非本作用域为 0。
     pub fn mp_reduction(root: u32) -> i32 {
         ABILITY_SCOPE.with(|cell| {
             let (owner, _, cost) = cell.get();

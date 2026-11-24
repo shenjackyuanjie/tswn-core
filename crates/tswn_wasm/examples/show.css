@@ -1,7 +1,7 @@
 /* 按原始层叠顺序组织主题、角色、正文与面板；保持分发入口不变。 */
 @import url("./show-base.css");
 @import url("./show-players.css");
-@import url("./show-replay.css");
+@import url("./show-replay.css?v=20261123squall2");
 @import url("./show-panels.css");
 
 .version-marker {
@@ -73,3 +73,51 @@ body.highlight-active [data-player-id].hl-active.player-row .name {
 .score-test-result th, .score-test-result td { padding: 8px 4px; border-bottom: 1px solid #8886; text-align: right; }
 .score-test-result th:first-child, .score-test-result td:first-child { text-align: left; }
 .score-test-result .input-note { line-height: 1.6; }
+
+/* 右侧设置栏：与左侧角色栏对称，中间输入面板保持原站的大框观感。 */
+.rlist {
+    inset: 0 0 0 auto;
+    border-right: none;
+    border-left: 1px solid var(--sky-1);
+}
+
+.side-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 16px;
+}
+
+.side-controls select {
+    width: 100%;
+}
+
+#inputPanel {
+    width: min(760px, calc(100vw - var(--sidebar-width) * 2 - 24px));
+    height: calc(100vh - 32px);
+    max-height: calc(100vh - 32px);
+}
+
+#inputPanel #textdiv {
+    height: auto;
+    flex: 1 1 auto;
+    min-height: 50vh;
+}
+
+@media (min-width: 901px) {
+    .hbody {
+        inset: 0 var(--sidebar-width) 0 var(--sidebar-width);
+    }
+
+    /* 右下角控制按钮贴最右侧，允许覆盖在设置栏上方。 */
+    .right-controls {
+        right: 12px;
+        z-index: 6;
+    }
+}
+
+@media (max-width: 900px) {
+    .rlist {
+        display: none;
+    }
+}

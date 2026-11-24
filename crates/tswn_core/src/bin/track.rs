@@ -7,6 +7,7 @@ use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
+/// `track` 入口：转发到子命令实现，错误打印到 stderr 并以退出码 1 结束。
 fn main() {
     if let Err(err) = try_main() {
         eprintln!("错误: {err}");
@@ -14,6 +15,7 @@ fn main() {
     }
 }
 
+/// 解析 `track` 子命令并转发执行：优先调用同目录的兄弟可执行文件，缺失时回退 `cargo run`，最终透传子进程退出码。
 fn try_main() -> Result<(), String> {
     let mut args = env::args().skip(1).collect::<Vec<String>>();
     if args.is_empty() || matches!(args[0].as_str(), "-h" | "--help") {
@@ -40,6 +42,7 @@ fn try_main() -> Result<(), String> {
     std::process::exit(status.code().unwrap_or(1));
 }
 
+/// 打印 `track` 用法与子命令对应关系。
 fn print_usage() {
     println!(
         r#"用法:
@@ -51,6 +54,7 @@ fn print_usage() {
     );
 }
 
+/// 在当前可执行文件同目录查找指定二进制（Windows 追加 `.exe`），存在则返回路径。
 fn sibling_executable(bin: &str) -> Option<PathBuf> {
     let current = env::current_exe().ok()?;
     let dir = current.parent()?;

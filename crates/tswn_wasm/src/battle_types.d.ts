@@ -3,7 +3,7 @@ export type BattleStatus = "running" | "finished" | "truncated";
 export type BattleStopReason = "winner" | "max_rounds" | "no_progress" | "paused";
 export type BattleMinionKind = "clone" | "summon" | "shadow" | "zombie";
 export type BattleUpdateType = "win" | "none" | "next_line";
-export type BattleTone = "normal" | "damage" | "recover" | "knockout" | "status_exit";
+export type BattleTone = "dialogue" | "normal" | "damage" | "recover" | "knockout" | "status_exit";
 export type BattleReplayTextPartKind = "text" | "highlight" | "player" | "data";
 export type BattleReplayOptions = BattleOptions;
 

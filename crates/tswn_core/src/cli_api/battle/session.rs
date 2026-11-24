@@ -18,6 +18,7 @@ use crate::runtime::{
 use super::dto::*;
 use crate::cli_api::CliApiResult;
 
+/// 按名字渲染图标 base64；未启用 PNG 构建时内部契约要求不可达，公开入口必须先拒绝 include_icons。
 #[cfg(not(feature = "png_render"))]
 fn render_icon_b64_from_name(_name: &str) -> String {
     // 仅守卫内部契约；公开构造先返回 UnsupportedOption，不返回空图或占位图。
@@ -393,6 +394,7 @@ impl BattleSession {
             .map_err(|message| crate::cli_api::CliApiError::InvalidArgument(message.into()))?;
         Ok(())
     }
+    /// 当前等待外部决策的被动请求；没有被动暂停时为 `None`。
     pub fn pending_passive(&self) -> Option<&crate::runtime::PassiveRequest> { self.pending_passive.as_ref() }
 
     /// 按被动脚本索引读取回避结算；None等待中，false未执行或被覆盖，true实际执行。
@@ -460,7 +462,9 @@ impl BattleSession {
     pub fn is_done(&self) -> bool { self.driver.stop_reason.is_some() }
     /// Runtime error 后为 true；后续推进返回相同错误，调用方应停止推进并释放会话。
     pub fn is_failed(&self) -> bool { self.driver.failure.is_some() }
+    /// 是否以胜者方式正常结束（对应 [`BattleStatus::Finished`]）。
     pub fn is_finished(&self) -> bool { self.status() == BattleStatus::Finished }
+    /// 是否因安全截断结束（对应 [`BattleStatus::Truncated`]）。
     pub fn is_truncated(&self) -> bool { self.status() == BattleStatus::Truncated }
     /// 已提交的 Runtime 回合数，包含无消息回合。
     /// `preview_controlled_pause` 开启时另计当前已进入的主动暂停回合，兼容 Python 契约。
@@ -603,6 +607,7 @@ impl BattleSession {
     }
 }
 
+/// 把 runner 的全部玩家快照转换为 `BattlePlayerState`，按开关决定是否带图标与技能，图标经缓存去重。
 pub(super) fn states_from_runner(
     runner: &RuntimeRunner,
     include_icons: bool,
@@ -665,12 +670,22 @@ fn special_group_icons(runner: &RuntimeRunner) -> Vec<Option<&str>> {
         .collect()
 }
 
+/// 解析玩家应使用的固定徽章 key：分裂子体回溯到源实体，特殊组名优先。
 fn battle_icon_key<'a>(runner: &'a RuntimeRunner, state: &BattlePlayerState, groups: &[Option<&'a str>]) -> Option<&'a str> {
     if groups.is_empty() {
         return None;
     }
     let entities = &runner.runtime().entities;
     let entity = entities.get(EntityIdx(state.id.try_into().ok()?))?;
+    // 被子衍生物与曙光的召唤物保留自己的徽章键，便于前端改用 emoji 图标。
+    let own_key = entity.template.id_key_name.as_str();
+    if own_key.starts_with("quilt-") || own_key == "smdd-leopard" || own_key.ends_with("@nan") {
+        return Some(own_key);
+    }
+    // 两个 XJ 联队的笑面虎统一使用 XJ联队@XJ联队 的图标，而不是同队徽章。
+    if own_key.ends_with("@XJ联队") {
+        return Some("XJ联队@XJ联队");
+    }
     // 分裂子体不属于常规召唤物，但必须继承源史莱姆的固定徽章。
     let root = if state.minion_kind.is_some() || entity.runtime.slime_split_generation.is_some_and(|generation| generation > 0) {
         entities.get(entity.runtime.root_owner)?
@@ -749,6 +764,7 @@ fn active_skill_snapshots(runner: &RuntimeRunner, id: PlrId) -> Vec<SkillSnapsho
     skills
 }
 
+/// 把单个 runtime 快照转换为 DTO 状态；include_icons 时才渲染图标。
 fn state_from_snapshot(snapshot: RuntimePlayerSnapshot, include_icons: bool) -> BattlePlayerState {
     let icon_key = snapshot.id_key_name.clone();
     let icon_png_base64 = include_icons.then(|| render_icon_b64_from_name(&icon_key));
@@ -795,6 +811,7 @@ fn state_from_snapshot(snapshot: RuntimePlayerSnapshot, include_icons: bool) -> 
     }
 }
 
+/// 用前后状态与 runner 更新构建一帧回放：转换更新行、侧边栏状态与胜负信息。
 pub(super) fn build_frame(
     updates: &RunUpdates,
     previous_states: &[BattlePlayerState],
@@ -841,6 +858,7 @@ pub(super) fn build_frame(
     }
 }
 
+/// 从状态列表构造 id -> 显示名映射；克隆体追加序号区分。
 fn player_names(states: &[BattlePlayerState]) -> HashMap<PlrId, String> {
     states
         .iter()
@@ -855,6 +873,7 @@ fn player_names(states: &[BattlePlayerState]) -> HashMap<PlrId, String> {
         .collect()
 }
 
+/// Boss 自我状态文案替换：仅在聚气后的攻击力上升等特定消息上生效，返回 (模板, 参数)。
 // 两个事件的 [0] 与 [1] 都指向同一人；仅校正规范模板，沿用原有文本渲染和片段。
 fn boss_self_status_display(update: &RunUpdate, previous: Option<&RunUpdate>) -> Option<(&'static str, i32)> {
     if update.caster != update.target || update.caster_id().is_none() || update.replay_target_id().is_none() {
@@ -876,6 +895,7 @@ fn boss_self_status_display(update: &RunUpdate, previous: Option<&RunUpdate>) ->
     }
 }
 
+/// 把单条 runtime 更新转换为回放更新：计算 tone、渲染文本与差值信息。
 fn update_from_runtime(update: &RunUpdate, names: &HashMap<PlrId, String>, display: Option<(&'static str, i32)>) -> BattleUpdate {
     let tone = classify_tone(update);
     let is_next_line = matches!(update.update_type, UpdateType::NextLine);
@@ -906,7 +926,11 @@ fn update_from_runtime(update: &RunUpdate, names: &HashMap<PlrId, String>, displ
     }
 }
 
+/// 按更新类型与消息内容把更新分类为回放 tone。
 fn classify_tone(update: &crate::RunUpdate) -> ReplayTone {
+    if update.dialogue {
+        return ReplayTone::Dialogue;
+    }
     if matches!(update.update_type, UpdateType::Win) {
         return ReplayTone::Knockout;
     }
@@ -925,12 +949,14 @@ fn classify_tone(update: &crate::RunUpdate) -> ReplayTone {
     }
 }
 
+/// 判断消息是否表示状态解除（识破/中止/打消等）。
 fn is_status_exit_message(message: &str) -> bool {
     ["中解除", "被识破", "被中止", "被打消", "属性被打消"]
         .iter()
         .any(|token| message.contains(token))
 }
 
+/// `UpdateType` 到稳定字符串名。
 fn update_type_name(value: UpdateType) -> &'static str {
     match value {
         UpdateType::Win => "win",
@@ -939,8 +965,10 @@ fn update_type_name(value: UpdateType) -> &'static str {
     }
 }
 
+/// `ReplayTone` 到稳定字符串名。
 fn tone_name(value: ReplayTone) -> &'static str {
     match value {
+        ReplayTone::Dialogue => "dialogue",
         ReplayTone::Normal => "normal",
         ReplayTone::Damage => "damage",
         ReplayTone::Recover => "recover",
@@ -949,8 +977,10 @@ fn tone_name(value: ReplayTone) -> &'static str {
     }
 }
 
+/// 稳定字符串名解析回 `ReplayTone`，未知值按 Normal。
 fn tone_from_name(value: &str) -> ReplayTone {
     match value {
+        "dialogue" => ReplayTone::Dialogue,
         "damage" => ReplayTone::Damage,
         "recover" => ReplayTone::Recover,
         "knockout" => ReplayTone::Knockout,
@@ -959,6 +989,7 @@ fn tone_from_name(value: &str) -> ReplayTone {
     }
 }
 
+/// core 回放行转换为 battle DTO 行。
 fn row_from_core(row: ReplayRow<BattlePlayerState>) -> BattleReplayRow {
     BattleReplayRow {
         indent: row.indent,
@@ -966,6 +997,7 @@ fn row_from_core(row: ReplayRow<BattlePlayerState>) -> BattleReplayRow {
     }
 }
 
+/// core 回放片段转换为 battle DTO 片段，tone 转为字符串名。
 fn clip_from_core(clip: ReplayClip<BattlePlayerState>) -> BattleReplayClip {
     BattleReplayClip {
         delay: clip.delay,
@@ -980,6 +1012,7 @@ fn clip_from_core(clip: ReplayClip<BattlePlayerState>) -> BattleReplayClip {
     }
 }
 
+/// core 文本片段转换为 battle DTO 片段，kind 转为字符串名。
 fn part_from_core(part: ReplayTextPart) -> BattleReplayTextPart {
     BattleReplayTextPart {
         kind: match part.kind {

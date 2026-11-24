@@ -7,6 +7,7 @@
 use super::*;
 
 impl AppService {
+    /// 批量添加分组：解析、去重、入库，并按需触发相关 lane 重算。
     pub fn add_groups(&self, req: AddGroupsRequest) -> anyhow::Result<AddGroupsResponse> {
         let AddGroupsRequest {
             groups,
@@ -69,6 +70,7 @@ impl AppService {
         })
     }
 
+    /// 批量录入手动胜率：仅计算数据库中已存在的组合，并写入 group_rates。
     pub fn add_manual_winrates(&self, req: AddWinratesRequest) -> anyhow::Result<AddWinratesResponse> {
         let AddWinratesRequest {
             groups,
@@ -293,6 +295,7 @@ impl AppService {
         })
     }
 
+    /// 按 ID 屏蔽或取消屏蔽单个分组；分组不存在时返回错误。
     pub fn set_group_blocked(&self, group_id: i64, blocked: bool, req: BlockGroupRequest) -> anyhow::Result<BlockGroupResponse> {
         let config = self.config_with_run_options(req.outer_workers, req.inner_workers, req.skip_archived)?;
         let Some((lane_size, canonical)) = self.db.set_group_blocked(group_id, blocked)? else {
@@ -309,6 +312,7 @@ impl AppService {
         })
     }
 
+    /// 按组合文本批量屏蔽或取消屏蔽分组。
     pub fn set_groups_blocked_by_text(
         &self,
         blocked: bool,
@@ -378,6 +382,7 @@ impl AppService {
         })
     }
 
+    /// 合并两个队伍并保存并查集，返回合并根与重新排队的 lane。
     pub fn merge_teams(&self, req: MergeTeamsRequest) -> anyhow::Result<MergeTeamsResponse> {
         let config = self.config_with_run_options(req.outer_workers, req.inner_workers, req.skip_archived)?;
 
@@ -396,6 +401,7 @@ impl AppService {
 }
 
 #[derive(Debug, Clone)]
+/// 一条待手动补算的胜率批次项：序号与两侧组合。
 pub(super) struct ManualWinratePair {
     pub(super) pair_index: usize,
     pub(super) group_a: StoredGroup,
@@ -403,6 +409,7 @@ pub(super) struct ManualWinratePair {
 }
 
 #[derive(Debug, Clone)]
+/// 手动补算完成的一行结果：序号、两侧名称/ID、lane 与胜率采样数。
 pub(super) struct ComputedManualWinrate {
     pub(super) pair_index: usize,
     pub(super) group_a: String,
@@ -415,6 +422,7 @@ pub(super) struct ComputedManualWinrate {
 }
 
 impl ComputedManualWinrate {
+    /// 由待算批次与计算结果构造导出行。
     pub(super) fn from_pair(pair: &ManualWinratePair, win_rate_a: f64, samples: usize) -> Self {
         Self {
             pair_index: pair.pair_index,
@@ -429,6 +437,7 @@ impl ComputedManualWinrate {
     }
 }
 
+/// 确定手动补算的外层 worker 数；总量为 0 时返回 0。
 pub(super) fn resolve_manual_winrate_workers(requested_outer_workers: usize, total: usize) -> usize {
     if total == 0 {
         return 0;
@@ -440,6 +449,7 @@ pub(super) fn resolve_manual_winrate_workers(requested_outer_workers: usize, tot
     thread::available_parallelism().map(|n| n.get()).unwrap_or(4).max(1).min(total.max(1))
 }
 
+/// 按检查点大小批量保存手动补算胜率并清空待写缓冲。
 pub(super) fn persist_service_rate_checkpoint(
     db: &Db,
     pending: &mut Vec<(crate::model::GroupId, crate::model::GroupId, f64)>,

@@ -24,6 +24,7 @@ fn fire_immunity_precedes_wheel_counter_in_public_battle() {
     );
 }
 
+/// 按给定等级构造注册了反击技能（POST_DAMAGE hook）的 CombatRuntime。
 fn counter_runtime(level: u32) -> CombatRuntime {
     let mut builder = ExtensionRegistryBuilder::default();
     let counter = builder

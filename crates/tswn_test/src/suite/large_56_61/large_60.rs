@@ -4,6 +4,7 @@ use super::*;
 ///
 /// 保留现有完整日志和总分 5043，不能把这份具体路径解释成所有蓄力都不会识破的通则。
 pub fn large_60<E: crate::EngineAdapter>() {
+    /// large_60 用例的内嵌对局输入。
     const CASE: &str = r#"Appassionata #PxCllhk@Unbound
 AlterGate SDBEOVSGr@candle
 lcNKsTae@coat

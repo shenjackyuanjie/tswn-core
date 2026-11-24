@@ -3,11 +3,17 @@ import assert from "node:assert/strict";
 import { parseScoreTestInput, runScoreTest, scoreCheckpointHtml } from "../examples/show-score-test.js";
 
 test("test directive strips the command and preserves full names", () => {
-  assert.deepEqual(parseScoreTestInput("\n !test!\r\n\r\n名字@队伍\r\n"), { input: "名字@队伍", enhanced: false, label: "普通评分" });
+  assert.deepEqual(parseScoreTestInput("\n !test!\r\n\r\n名字@队伍\r\n"), { input: "名字@队伍", enhanced: false, groups: [["名字@队伍"]], label: "普通评分" });
   assert.equal(parseScoreTestInput("alpha\nbeta"), null);
-  assert.deepEqual(parseScoreTestInput("!test!\nalpha\nbeta"), { input: "alpha\nbeta", enhanced: false, label: "普通评分" });
+  assert.deepEqual(parseScoreTestInput("!test!\nalpha\nbeta"), { input: "alpha\nbeta", enhanced: false, groups: [["alpha", "beta"]], label: "普通评分" });
   assert.throws(() => parseScoreTestInput("!test!"));
-  assert.throws(() => parseScoreTestInput("!test!\nalpha\n\nbeta"));
+  // 空行分隔多组时改为胜率测试，不再拒绝。
+  assert.deepEqual(parseScoreTestInput("!test!\nalpha\n\nbeta"), {
+    input: "alpha\n\nbeta",
+    enhanced: false,
+    groups: [["alpha"], ["beta"]],
+    label: "普通胜率测试",
+  });
 });
 
 // 直接检查用户输入经解析、Worker 所用调用函数后的模式参数和显示名称。

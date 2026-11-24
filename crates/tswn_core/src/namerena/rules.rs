@@ -1,8 +1,10 @@
 //! 名竞内置角色与数值规则。
 
+/// 埼玉退场判定使用的身份名。
 pub(crate) const SAITAMA_RETIREMENT_WINNER: &str = "SAITAMA";
 
-pub const BOSS_NAMES: [&str; 15] = [
+/// 内置 Boss 名字表；用于身份分类、默认技能与免疫规则查询。
+pub const BOSS_NAMES: [&str; 18] = [
     "mario",
     "sonic",
     "mosquito",
@@ -18,10 +20,15 @@ pub const BOSS_NAMES: [&str; 15] = [
     "thanos",
     "wheel",
     SAITAMA_RETIREMENT_WINNER,
+    "Squall",
+    "quilt",
+    "smdd",
 ];
 
+/// 加成角色名字表；对应 [`boost_value`] 的加成来源。
 pub const BOOST_NAMES: [&str; 3] = ["云剑狄卡敢", "云剑穸跄祇", "田一人"];
 
+/// Boss 战斗名归一化：埼玉统一为小写，其余原样返回。
 pub(crate) fn boss_combat_name(name: &str) -> &str {
     match name {
         SAITAMA_RETIREMENT_WINNER => "saitama",
@@ -29,6 +36,7 @@ pub(crate) fn boss_combat_name(name: &str) -> &str {
     }
 }
 
+/// Boss 身份覆盖：仅埼玉返回固定小写身份。
 pub(crate) fn boss_combat_identity_override(identity: &str) -> Option<&'static str> {
     match identity {
         "SAITAMA@!" => Some("saitama@!"),
@@ -36,6 +44,7 @@ pub(crate) fn boss_combat_identity_override(identity: &str) -> Option<&'static s
     }
 }
 
+/// Boss 的中文展示名；未知名按原名返回。
 pub fn boss_display_name(name: &str) -> &str {
     match name {
         "mario" => "马里奥",
@@ -52,6 +61,8 @@ pub fn boss_display_name(name: &str) -> &str {
         "testsubject" => "实验体 #C8",
         "thanos" => "灭霸",
         "wheel" => "生命之轮",
+        "quilt" => "被子",
+        "smdd" => "曙光",
         _ => name,
     }
 }
@@ -110,6 +121,12 @@ pub enum BossActionSkill {
     MarioGet,
     YuriControl,
     Saitama,
+    /// Squall 的科研技能与研究助手统一进入专属结算器。
+    Squall,
+    /// 被子的钻出被子、多重魂、占领与鱼我所欲也统一进入专属结算器。
+    Quilt,
+    /// smdd 的十个做局技能统一进入专属结算器。
+    Smdd,
 }
 
 /// 按 0.5.5 中 `k4` 的插入顺序返回 Boss 主动技能及基础等级。
@@ -129,6 +146,7 @@ pub fn boss_action_skills(name: &str) -> &'static [(BossActionSkill, u32)] {
     }
 }
 
+/// 加成角色的加成值；非加成角色返回 0。
 pub fn boost_value(name: &str) -> u32 {
     match name {
         "云剑狄卡敢" => 25,
@@ -141,6 +159,7 @@ pub fn boost_value(name: &str) -> u32 {
 /// 0.5.5 中 `k3` 使用 `SklAttack` 的 Boss；它们的默认攻击可以走魔法分支。
 pub fn boss_uses_skill_attack(name: &str) -> bool { matches!(boss_combat_name(name), "aokiji" | "ikaruga") }
 
+/// Boss 行动概率的抽样条目数；`covid` / `lazy` / `testsubject` 为 0，其余为 1。
 pub fn boss_action_prob_count(name: &str) -> usize {
     match boss_combat_name(name) {
         "covid" | "lazy" | "testsubject" => 0,
@@ -201,6 +220,7 @@ pub fn boss_immune_threshold(name: &str, key: &str) -> i32 {
     }
 }
 
+/// 三个可取中位数的值的中位数；用于属性派生等三值聚合场景。
 pub fn median<T>(x: T, y: T, z: T) -> T
 where
     T: Ord + Copy,
@@ -320,6 +340,10 @@ mod tests {
         assert_eq!(boss_immune_threshold("covid", "charm"), 192);
         assert_eq!(boss_immune_threshold("lazy", "curse"), 192);
         assert_eq!(boss_immune_threshold("aokiji", "charm"), 192);
+        // 科研 Boss 与其他 Boss 一样吃兜底免疫：净化按 84 抽样，控制类按 192。
+        assert_eq!(boss_immune_threshold("Squall", "disperse"), 84);
+        assert_eq!(boss_immune_threshold("Squall", "charm"), 192);
+        assert_eq!(boss_immune_threshold("Squall", "fire"), 84);
         assert_eq!(boss_immune_threshold("unknown", "charm"), 192);
     }
 }

@@ -4,6 +4,7 @@ use super::*;
 ///
 /// 保留名称本身并逐行比较日志，只移除样式标记，避免字节/字符处理差异被终局断言掩盖。
 pub fn large_65<E: crate::EngineAdapter>() {
+    /// large_65 用例的内嵌对局输入。
     const CASE: &str = r#"💛💜💛🤎🩵🧡🩷🩶💛💛🤎💙💜@新纪元
 失温滢霞.寂静蓝 `f.Gi\Z:R@四象柯
 seed:33554432@!

@@ -8,6 +8,7 @@ use std::collections::HashSet;
 
 use anyhow::{anyhow, bail};
 
+/// 解析后的分组：规范化键、展示文本、成员列表、lane 规模与队伍名。
 #[derive(Debug, Clone)]
 pub struct ParsedGroup {
     pub canonical: String,
@@ -17,6 +18,7 @@ pub struct ParsedGroup {
     pub team_name: String,
 }
 
+/// 解析一行组合文本（成员以 + 分隔，@ 后为队伍名）；空输入返回错误。
 pub fn parse_group(raw: &str) -> anyhow::Result<ParsedGroup> {
     let display_raw = raw.trim().to_string();
     if display_raw.is_empty() {
@@ -69,6 +71,7 @@ pub fn parse_group(raw: &str) -> anyhow::Result<ParsedGroup> {
     })
 }
 
+/// 从成员文本按最后一个 @ 切出 (名字, 队伍)；缺 @ 或任一侧为空时返回 None。
 pub fn parse_member_team(member: &str) -> Option<(&str, &str)> {
     let (name, team) = member.rsplit_once('@')?;
     if name.is_empty() || team.is_empty() {

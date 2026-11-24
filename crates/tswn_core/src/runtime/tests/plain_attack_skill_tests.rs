@@ -1,5 +1,6 @@
 use super::*;
 
+/// 用默认 profile 构造含反击/防御技能的 CombatRuntime，用于被动伤害顺序测试。
 fn passive_damage_order_runtime() -> CombatRuntime {
     let config = default_custom_runtime_import_config().expect("default runtime profile should build");
     let reflect = config
@@ -38,6 +39,7 @@ fn passive_damage_order_runtime() -> CombatRuntime {
     runtime
 }
 
+/// 构造一份 PassiveDecision（默认 success=false、无目标），供被动决策测试使用。
 fn passive_decision(actor: usize, skill: &str, activate: bool) -> crate::runtime::PassiveDecision {
     crate::runtime::PassiveDecision {
         actor,

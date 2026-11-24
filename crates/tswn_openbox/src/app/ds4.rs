@@ -20,6 +20,7 @@ use super::state::OpenboxApp;
 use super::style::Palette;
 use super::view::tool_header;
 
+/// DS4 工具的界面状态：工作目录、已加载的配置文档与提示消息。
 pub struct Ds4State {
     pub root: String,
     pub document: Value,
@@ -39,6 +40,7 @@ impl Default for Ds4State {
 }
 
 impl Ds4State {
+    /// 返回规范化后的工作目录路径；未填写时返回中文错误。
     fn root_path(&self) -> Result<PathBuf, String> {
         if self.root.trim().is_empty() {
             return Err("请先选择 DS4 工作目录。".into());
@@ -46,6 +48,7 @@ impl Ds4State {
         std::path::absolute(self.root.trim()).map_err(|err| err.to_string())
     }
 
+    /// 从工作目录下的 config.json 读取并解析配置；格式错误时返回中文提示。
     pub fn load(&mut self) -> Result<(), String> {
         let root = self.root_path()?;
         let path = root.join("config.json");
@@ -88,6 +91,7 @@ impl Ds4State {
         Ok(())
     }
 
+    /// 确认不会覆盖未读取的配置后，把当前文档写回 config.json 并用 from_json 校验，返回路径与解析结果。
     fn save(&mut self) -> Result<(PathBuf, Config), String> {
         let root = self.root_path()?;
         if root.join("config.json").exists() && self.loaded_root.as_ref() != Some(&root) {
@@ -104,6 +108,7 @@ impl Ds4State {
 }
 
 impl OpenboxApp {
+    /// 绘制 DS4 工作流说明界面（从名字到候选组合的步骤指引）。
     pub fn ds4_workflow_ui(&mut self, ui: &mut egui::Ui) {
         let palette = Palette::of(ui);
         let requested_help = Cell::new(None);
@@ -122,6 +127,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 绘制 DS4 主界面：目录选择、参数配置与运行控制。
     pub fn ds4_ui(&mut self, ui: &mut egui::Ui) {
         tool_header(ui, "DS4", "批量评分、增量配对与实战筛选", Some(&mut self.more_settings_open));
         let palette = Palette::of(ui);
@@ -264,6 +270,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 绘制 DS4 的更多设置窗口。
     pub fn ds4_more_settings(&mut self, ui: &mut egui::Ui) {
         let palette = Palette::of(ui);
         let requested_help = Cell::new(None);
@@ -308,6 +315,7 @@ impl OpenboxApp {
         }
     }
 
+    /// 保存当前配置并启动 DS4 后台任务；保存失败时记录错误且不启动。
     pub fn start_ds4(&mut self) {
         let (root, config) = match self.ds4.save() {
             Ok(value) => value,
@@ -362,6 +370,7 @@ impl OpenboxApp {
     }
 }
 
+/// 绘制一个带强调色边框的分组区块。
 fn colored_section(ui: &mut egui::Ui, title: &str, accent: egui::Color32, content: impl FnOnce(&mut egui::Ui)) {
     egui::Frame::group(ui.style())
         .fill(accent.gamma_multiply(0.055))
@@ -376,6 +385,7 @@ fn colored_section(ui: &mut egui::Ui, title: &str, accent: egui::Color32, conten
     ui.add_space(7.0);
 }
 
+/// 绘制小号着色徽标。
 fn badge(ui: &mut egui::Ui, text: &str, color: egui::Color32) {
     egui::Frame::new()
         .fill(color.gamma_multiply(0.15))
@@ -386,6 +396,7 @@ fn badge(ui: &mut egui::Ui, text: &str, color: egui::Color32) {
         });
 }
 
+/// 把 JSON 值当 0/1 开关渲染为复选框，变化时写回整数。
 fn toggle(ui: &mut egui::Ui, value: &mut Value, label: &str) -> egui::Response {
     let mut enabled = value.as_i64().unwrap_or(0) != 0;
     let response = ui.checkbox(&mut enabled, label);
@@ -395,6 +406,7 @@ fn toggle(ui: &mut egui::Ui, value: &mut Value, label: &str) -> egui::Response {
     response
 }
 
+/// 用拖拽值编辑 JSON 整数并限制范围，变化时写回。
 fn integer(ui: &mut egui::Ui, value: &mut Value, range: std::ops::RangeInclusive<i32>) -> egui::Response {
     let mut number = value.as_i64().and_then(|value| i32::try_from(value).ok()).unwrap_or(0);
     let response = ui.add(egui::DragValue::new(&mut number).range(range));
@@ -404,6 +416,7 @@ fn integer(ui: &mut egui::Ui, value: &mut Value, range: std::ops::RangeInclusive
     response
 }
 
+/// 渲染“启用开关 + 阈值”一行，绑定 value 的 enable/sieve 字段。
 fn threshold(ui: &mut egui::Ui, value: &mut Value, label: &str, help: &str) {
     ui.horizontal(|ui| {
         toggle(ui, &mut value["enable"], label).on_hover_text(help);
@@ -412,6 +425,7 @@ fn threshold(ui: &mut egui::Ui, value: &mut Value, label: &str, help: &str) {
     });
 }
 
+/// 用平台默认方式打开目录（explorer/open/xdg-open）。
 fn open_directory(path: &Path) -> Result<(), String> {
     let opener = if cfg!(windows) {
         "explorer"

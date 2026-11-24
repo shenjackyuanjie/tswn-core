@@ -31,17 +31,29 @@
 //! 当前已完成数据与编码链路；模型训练、推理和网页在线接入可沿此继续建设。
 //! 命令、目录格式、标签与 NumPy 读取器见
 //! [PWP README](https://github.com/shenjackyuanjie/tswn-core/tree/main/crates/tswn_pwp)。
+/// 规模基准采集。
 mod bench;
+/// 逐字段标量校准拟合。
 mod calibrate;
+/// 容量口径的再导出。
 mod capacity;
+/// 监督数据到训练张量的编码导出。
 mod encode;
+/// 可复现数据集生成。
 mod generate;
+/// 输入用例发现与阵容规范化。
 mod input;
+/// 编码契约（manifest）生成。
 mod manifest;
+/// 确定性随机数流。
 mod random;
+/// 帧边界分层抽样。
 mod sampling;
+/// 数据集分布统计。
 mod stats;
+/// JSON/Parquet I/O。
 mod storage;
+/// 已提交数据集校验。
 mod validate;
 
 use anyhow::Result;

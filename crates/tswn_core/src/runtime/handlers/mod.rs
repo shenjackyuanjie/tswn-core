@@ -12,6 +12,7 @@ mod states;
 pub use minions::*;
 pub use states::*;
 
+/// 召唤 handler 错误：上下文失败、模板槽缺失/非法，或重施目标仍然存活。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeSummonHandlerError {
     Context(EffectContextError),
@@ -21,9 +22,11 @@ pub enum RuntimeSummonHandlerError {
 }
 
 impl From<EffectContextError> for RuntimeSummonHandlerError {
+    /// 把上下文错误转换为 [`RuntimeSummonHandlerError::Context`] 变体。
     fn from(error: EffectContextError) -> Self { Self::Context(error) }
 }
 
+/// 使魔 handler 错误：上下文失败、模板槽或计数槽缺失/非法、计数溢出。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeMinionHandlerError {
     Context(EffectContextError),
@@ -34,9 +37,11 @@ pub enum RuntimeMinionHandlerError {
 }
 
 impl From<EffectContextError> for RuntimeMinionHandlerError {
+    /// 把上下文错误转换为 [`RuntimeMinionHandlerError::Context`] 变体。
     fn from(error: EffectContextError) -> Self { Self::Context(error) }
 }
 
+/// 从模板槽读取召唤蓝图，并按默认消息入队生成。
 pub fn push_summon_from_template_slot(
     context: &mut SkillContext<'_>,
     template_slot: TemplateSlotId,
@@ -44,6 +49,7 @@ pub fn push_summon_from_template_slot(
     push_summon_from_template_slot_with_message(context, template_slot, "出现一个新的[1]")
 }
 
+/// 从模板槽读取召唤蓝图，并按自定义消息入队生成。
 pub fn push_summon_from_template_slot_with_message(
     context: &mut SkillContext<'_>,
     template_slot: TemplateSlotId,
@@ -62,6 +68,7 @@ pub fn push_summon_from_template_slot_with_message(
     Ok(())
 }
 
+/// 重施召唤物：已记录且已死亡则复活，否则按默认消息生成并记录下标。
 pub fn push_summon_recast_from_entity_slot(
     context: &mut SkillContext<'_>,
     entity_slot: EntitySlotId,
@@ -78,6 +85,7 @@ pub fn push_summon_recast_from_entity_slot(
     )
 }
 
+/// 重施召唤物，生成与复活共用同一条消息。
 pub fn push_summon_recast_from_entity_slot_with_message(
     context: &mut SkillContext<'_>,
     entity_slot: EntitySlotId,
@@ -89,6 +97,7 @@ pub fn push_summon_recast_from_entity_slot_with_message(
     push_summon_recast_from_entity_slot_with_messages(context, entity_slot, summon_template, revive_hp, message.clone(), message)
 }
 
+/// 重施召唤物，可分别指定生成与复活消息。
 pub fn push_summon_recast_from_entity_slot_with_messages(
     context: &mut SkillContext<'_>,
     entity_slot: EntitySlotId,
@@ -131,6 +140,7 @@ pub fn push_summon_recast_from_entity_slot_with_messages(
     Ok(next_entity)
 }
 
+/// 从模板槽取蓝图后重施召唤物，可分别指定生成与复活消息。
 pub fn push_summon_recast_from_template_slot_with_messages(
     context: &mut SkillContext<'_>,
     entity_slot: EntitySlotId,
@@ -154,6 +164,7 @@ pub fn push_summon_recast_from_template_slot_with_messages(
     )
 }
 
+/// 从模板槽取蓝图后按默认消息重施召唤物。
 pub fn push_summon_recast_from_template_slot(
     context: &mut SkillContext<'_>,
     entity_slot: EntitySlotId,
@@ -170,6 +181,7 @@ pub fn push_summon_recast_from_template_slot(
     )
 }
 
+/// 从模板槽取蓝图后重施召唤物，生成与复活共用同一条消息。
 pub fn push_summon_recast_from_template_slot_with_message(
     context: &mut SkillContext<'_>,
     entity_slot: EntitySlotId,
@@ -181,6 +193,7 @@ pub fn push_summon_recast_from_template_slot_with_message(
     push_summon_recast_from_template_slot_with_messages(context, entity_slot, template_slot, revive_hp, message.clone(), message)
 }
 
+/// 血祭重施 handler：播报后生成或复活模板槽中的召唤物。
 pub fn run_summon_recast_from_template_slot_with_config(
     context: &mut SkillContext<'_>,
     entity_slot: EntitySlotId,
@@ -197,14 +210,17 @@ pub fn run_summon_recast_from_template_slot_with_config(
         .expect("summon recast handler should spawn or revive template-slot summon");
 }
 
+/// 血祭重施 handler 的默认槽位与复活体力绑定。
 pub fn run_summon_recast_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     run_summon_recast_from_template_slot_with_config(context, EntitySlotId(0), TemplateSlotId(0), 10);
 }
 
+/// 构造召唤物默认技能装载：两个火球加一个自爆，按给定行动序排列。
 pub fn summon_default_skill_loadout(fire_skill: SkillId, explode_skill: SkillId, active_order: [usize; 3]) -> SkillLoadout {
     SkillLoadout::from_skills([fire_skill, fire_skill, explode_skill]).with_active_order(active_order)
 }
 
+/// 入队一次召唤物火球攻击，附带火焰状态键。
 pub fn push_summon_fire(context: &mut SkillContext<'_>, target: EntityIdx, fire_state_key: u32) {
     context.push_nested(QueuedEffect::FireAttack {
         caster: context.owner_idx(),
@@ -213,6 +229,7 @@ pub fn push_summon_fire(context: &mut SkillContext<'_>, target: EntityIdx, fire_
     });
 }
 
+/// 召唤物火球技能 handler：对选中目标入队火球攻击。
 pub fn run_summon_fire_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     let Some(target) = context.selected_target() else {
         return;
@@ -220,6 +237,7 @@ pub fn run_summon_fire_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEn
     push_summon_fire(context, target, 91);
 }
 
+/// 入队一次召唤物自爆，附带火焰状态键。
 pub fn push_summon_explode(context: &mut SkillContext<'_>, target: EntityIdx, fire_state_key: u32) {
     context.push_nested(QueuedEffect::SummonExplode {
         caster: context.owner_idx(),
@@ -228,6 +246,7 @@ pub fn push_summon_explode(context: &mut SkillContext<'_>, target: EntityIdx, fi
     });
 }
 
+/// 召唤物自爆技能 handler：对选中目标入队自爆。
 pub fn run_summon_explode_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     let Some(target) = context.selected_target() else {
         return;
@@ -235,6 +254,7 @@ pub fn run_summon_explode_skill(context: &mut SkillContext<'_>, _: &SkillHookPla
     push_summon_explode(context, target, 91);
 }
 
+/// 入队一次驱散攻击。
 pub fn push_disperse_attack(context: &mut SkillContext<'_>, target: EntityIdx) {
     context.push_nested(QueuedEffect::DisperseAttack {
         caster: context.owner_idx(),
@@ -242,6 +262,7 @@ pub fn push_disperse_attack(context: &mut SkillContext<'_>, target: EntityIdx) {
     });
 }
 
+/// 驱散技能 handler：对选中目标入队驱散攻击。
 pub fn run_disperse_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     let Some(target) = context.selected_target() else {
         return;
@@ -249,6 +270,7 @@ pub fn run_disperse_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry
     push_disperse_attack(context, target);
 }
 
+/// 附体技能 handler：移除自身，并使选中目标进入狂暴状态。
 pub fn run_possess_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     let Some(target) = context.selected_target() else {
         return;
@@ -276,6 +298,7 @@ pub fn run_possess_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry)
     });
 }
 
+/// 驱散选目标评分：聪明按血量与吸引力计算，普通掷随机加吸引力；实体不存在返回负无穷。
 pub fn score_disperse_target(entities: &EntityArena, world: &WorldArena, target: EntityIdx, smart: bool, rng: &mut RC4) -> f64 {
     let Some(target_entity) = entities.get(target) else {
         return f64::MIN;
@@ -305,6 +328,7 @@ pub fn score_disperse_target(entities: &EntityArena, world: &WorldArena, target:
     score
 }
 
+/// 驱散的选目标逻辑：收集非同队存活者作为候选，按评分挑选后返回。
 pub fn select_disperse_targets(
     entities: &EntityArena,
     world: &WorldArena,
@@ -328,6 +352,7 @@ pub fn select_disperse_targets(
     select_disperse_targets_from_candidates(entities, world, &candidates, smart, rng)
 }
 
+/// 从候选集合中抽取驱散目标：smart 选 3 个、否则 2 个，重复与无效抽样有次数上限；多选时按评分降序返回。
 fn select_disperse_targets_from_candidates(
     entities: &EntityArena,
     world: &WorldArena,

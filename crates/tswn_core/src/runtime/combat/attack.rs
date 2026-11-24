@@ -15,12 +15,26 @@ impl CombatRuntime {
             .unwrap_or(false)
     }
 
+    /// 普攻默认选目标：在排除队友后抽样并按聪明口径评分，无候选返回 None。
     pub fn select_plain_default_attack_target(&mut self, actor: EntityIdx, smart: bool) -> Option<EntityIdx> {
         self.entities.get(actor)?;
         let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
             return None;
+        }
+        // 被子有存活召唤物时不可被选中：单独抽取，避免破坏原版连续跳过区间的假设。
+        if all_alive.iter().any(|idx| self.quilt_untargetable(*idx)) {
+            let candidates: smallvec::SmallVec<[EntityIdx; 8]> = all_alive
+                .iter()
+                .copied()
+                .filter(|idx| self.plain_effective_team(*idx) != actor_team && !self.quilt_untargetable(*idx))
+                .collect();
+            if candidates.is_empty() {
+                return None;
+            }
+            let index = usize::from(self.rng.next_u8()) % candidates.len();
+            return Some(candidates[index]);
         }
         let enemy_skip_indices = all_alive
             .iter()
@@ -304,6 +318,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 普通攻击结算：处理懒癌特殊分支，播报攻击消息并走伤害链。
     pub fn drain_plain_default_attack_into(
         &mut self,
         actor: EntityIdx,
@@ -374,6 +389,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 读取一拳超人的 (回合数, 累计伤害, 攻击者数, 召唤物数)；无状态返回 None。
     pub fn saitama_boss_state(&self, actor: EntityIdx) -> Option<(i32, i32, usize, usize)> {
         self.entities.get(actor)?.states.entries().iter().find_map(|entry| {
             let StatePayload::SaitamaBoss {
@@ -389,6 +405,7 @@ impl CombatRuntime {
         })
     }
 
+    /// 一拳超人行动：饥饿超阈退场，否则累计回合，第十回合起出拳并清场。
     pub fn drain_plain_saitama_action_into(
         &mut self,
         actor: EntityIdx,
@@ -470,6 +487,7 @@ impl CombatRuntime {
             .speed_points = 1700;
     }
 
+    /// 以给定威力发动普攻：默认伤害类型且无附带效果。
     pub fn drain_plain_attack_with_atp_into(
         &mut self,
         actor: EntityIdx,
@@ -491,6 +509,7 @@ impl CombatRuntime {
         )
     }
 
+    /// 以给定威力发动普攻，并指定附带伤害效果。
     pub fn drain_plain_attack_with_atp_and_on_damage_into(
         &mut self,
         actor: EntityIdx,
@@ -514,6 +533,7 @@ impl CombatRuntime {
         )
     }
 
+    /// 以给定威力发动普攻，并指定新冠传染来源。
     pub fn drain_plain_attack_with_atp_and_covid_into(
         &mut self,
         actor: EntityIdx,
@@ -535,6 +555,7 @@ impl CombatRuntime {
         )
     }
 
+    /// 以给定威力发动普攻，同时指定新冠来源与附带伤害效果。
     pub fn drain_plain_attack_with_atp_covid_and_on_damage_into(
         &mut self,
         actor: EntityIdx,
@@ -749,6 +770,7 @@ impl CombatRuntime {
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// 回避判定后的普攻结算：按防御折算伤害、过 POST_DEFEND 并落地。
     pub fn drain_plain_attack_after_dodge_into(
         &mut self,
         actor: EntityIdx,
@@ -804,6 +826,7 @@ impl CombatRuntime {
         amount
     }
 
+    /// 普攻伤害落地：应用伤害（含新冠来源与附带效果），若造成击杀则继续结算致死伤害链。
     fn settle_plain_attack_damage_into(
         &mut self,
         actor: EntityIdx,
@@ -818,6 +841,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 应用普攻伤害（默认类型，新冠来源取施法者自身）。
     pub fn apply_plain_attack_damage_into(
         &mut self,
         caster: EntityIdx,
@@ -829,6 +853,7 @@ impl CombatRuntime {
         self.apply_plain_attack_damage_with_covid_into(caster, target, amount, covid_source, updates)
     }
 
+    /// 应用普攻伤害并显式指定新冠来源。
     pub fn apply_plain_attack_damage_with_covid_into(
         &mut self,
         caster: EntityIdx,
@@ -847,6 +872,7 @@ impl CombatRuntime {
         )
     }
 
+    /// 应用普攻伤害，同时指定新冠来源与附带效果；负伤害转为吸收回复。
     pub fn apply_plain_attack_damage_with_covid_and_on_damage_into(
         &mut self,
         caster: EntityIdx,
@@ -856,6 +882,8 @@ impl CombatRuntime {
         on_damage: PlainAttackOnDamage,
         updates: &mut RunUpdates,
     ) -> bool {
+        // 被子衍生物在睡5觉/钻被/猴儿冰冻期间固定 0 伤。
+        let amount = if self.quilt_minion_sleeping(target) { 0 } else { amount };
         // 0.5.5 `aF`：负数伤害表示 Boss 防御吸收，只回血并输出恢复消息，
         // 不触发 covid/lazy 扩散、命中回调或 POST_DAMAGE 链。
         if amount < 0 {
@@ -866,9 +894,24 @@ impl CombatRuntime {
             .entities
             .get_mut(target)
             .unwrap_or_else(|| panic!("unknown runtime default attack target: {}", target.0));
+        let actual_damage = amount.max(0).min(target_entity.runtime.hp.max(0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
+        self.record_squall_damage(caster, target, actual_damage);
+        if actual_damage > 0 {
+            // 曙光的「局」层数：被本体命中一次加一层。
+            self.record_smdd_hit(target);
+        }
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        // 被子的衍生物只把一半伤害传导给本体；本体那一行排在衍生物受击之后。
+        if actual_damage > 0
+            && let Some(owner) = self.quilt_share_owner(target)
+        {
+            let shared = actual_damage / 2;
+            if shared > 0 && self.apply_legacy_damage_into(caster, owner, shared, updates) {
+                self.drain_plain_lethal_damage_into(caster, owner, updates);
+            }
+        }
         if amount == 0 {
             return false;
         }
@@ -905,6 +948,7 @@ impl CombatRuntime {
                 .is_some_and(|entity| entity.runtime.hp == 0 && entity.runtime.alive)
     }
 
+    /// 吸血效果：按伤害量回复施法者体力并播报恢复消息。
     pub fn apply_absorb_on_damage(&mut self, caster: EntityIdx, damage: i32, updates: &mut RunUpdates) {
         if damage <= 0 {
             return;
@@ -928,6 +972,7 @@ impl CombatRuntime {
         ));
     }
 
+    /// 狂暴效果：给目标附加或延长狂暴状态。
     pub fn apply_berserk_on_damage(&mut self, caster: EntityIdx, target: EntityIdx, damage: i32, updates: &mut RunUpdates) {
         if damage <= 0 {
             return;
@@ -977,6 +1022,7 @@ impl CombatRuntime {
         ));
     }
 
+    /// 诅咒效果：按概率给目标附加诅咒状态。
     pub fn apply_curse_on_damage(&mut self, caster: EntityIdx, target: EntityIdx, damage: i32, updates: &mut RunUpdates) {
         if damage <= 0 {
             return;

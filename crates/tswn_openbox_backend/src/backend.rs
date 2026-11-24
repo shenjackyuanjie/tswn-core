@@ -17,19 +17,30 @@
 //! `base` 是单名字的同步渲染入口 [`run_base`]：它不产生进度事件，GUI 把它放进
 //! 后台线程只为保持界面响应，文本本身与 `openbox-cli base` 完全一致。
 
+/// 单名字 base 渲染。
 mod base;
+/// 批量胜率执行。
 mod batch;
+/// JSONL 与数值格式化助手。
 mod format;
 pub mod live;
 #[cfg(test)]
 mod live_tests;
+/// namer-pf 评分执行。
 mod namer_pf;
+/// 输出文件收尾与排序。
 mod output;
+/// 搭档（pair）执行。
 mod pair;
+/// 输入分组解析。
 mod parse;
+/// 胜率汇总与 eval_rq 口径。
 mod score;
+/// 技能榜计算。
 mod skill_board;
+/// DIY 导出执行。
 mod to_diy;
+/// 共享输入/输出类型。
 mod types;
 
 pub use base::run_base;

@@ -1,6 +1,6 @@
 # 性能追踪与历史比较
 
-专项记录：[无武器路径成本简报与主线同步（2026-10-29）](reports/performance-branch-2026-10-29.md)。历史优化数字不代表合入新战斗逻辑后重新测得的收益。
+专项记录：[无武器路径成本简报与主线同步（2026-10-29）](reports/performance-branch-2026-10-29.md)。历史优化数字采集于合入新战斗逻辑之前的代码，当前收益需要按最新代码重新测量。
 
 本文用于长期记录 `tswn_core` 在 `tswn-cli bench win-rate` 路径上的性能结果，方便横向比较：
 
@@ -13,7 +13,7 @@
 - `0.3.2`
 - `0.4.0` Runtime
 
-本文保留历史测量，不表示当前版本的性能。当前复测命令见第 2 节，性能约束见 [性能准则](guides/performance.md)。历史记录重点对应：
+本文按版本记录历史测量结果；当前版本性能以第 2 节复测命令的测量为准，性能约束见 [性能准则](guides/performance.md)。历史记录重点对应：
 
 - `0.2.20` 在一轮结果一致性 / SBY diff 收口后，继续回收 `pre_action` / `Hide` / alive-group 热路径的性能回退
 - `0.3.1` 在补齐 WASM 查询接口后，按同口径补跑 benchmark，确认当时版本没有新异常，但相较 `0.2.20` 有一小段性能回退
@@ -26,7 +26,7 @@
 
 ## 1. 口径
 
-- 编译参数：正式留档使用 `--release --features no_debug`；日常快速试跑可用 `--profile release-fast --features no_debug`，但不要和长期表格混用。`0.4.0` 起原生默认 feature 包含 `mimalloc_alloc`；旧版本未启用 allocator 的历史数据保留原口径，不反向改写。
+- 编译参数：正式留档使用 `--release --features no_debug`；日常快速试跑可用 `--profile release-fast --features no_debug`；长期表格统一收录 `--release --features no_debug` 口径。`0.4.0` 起原生默认 feature 包含 `mimalloc_alloc`；旧版本未启用 allocator 的历史数据保留原口径，不反向改写。
 - CLI：`tswn-cli bench win-rate ... --perf`
 - 单线程：追加 `--single-thread`
 - 多线程：直接使用 CLI 默认线程策略

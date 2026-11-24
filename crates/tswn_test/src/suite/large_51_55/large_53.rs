@@ -4,6 +4,7 @@ use super::*;
 ///
 /// 以泛型适配器逐行比较完整日志和总分 2557，不把当前引擎输出重新生成基线。
 pub fn large_53<E: crate::EngineAdapter>() {
+    /// large_53 用例的内嵌对局输入。
     const CASE: &str = r#"我力 7#W2ib8D@仙蛊屋+123
 万我 68#huMG43@仙蛊屋+123
 Dianmu YKFMWRPXIMCQ@nan+234

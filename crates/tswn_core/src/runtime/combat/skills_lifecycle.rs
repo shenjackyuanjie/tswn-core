@@ -1,6 +1,7 @@
 use super::*;
 
 impl CombatRuntime {
+    /// 复活选目标：同队已死亡且非战斗使魔、无尸体标记的成员。
     pub fn select_plain_revive_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let candidates = self.world.team_roster(actor_team).unwrap_or_default();
@@ -42,6 +43,7 @@ impl CombatRuntime {
         scored.into_iter().map(|(target, _)| target).collect()
     }
 
+    /// 复活选目标评分：聪明时按属性总和，普通掷随机。
     pub fn score_plain_revive_target(&mut self, target: EntityIdx, smart: bool) -> f64 {
         if smart {
             self.entities
@@ -54,6 +56,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 复活技能：按魔法威力治疗死亡同队成员，技能等级减半。
     pub fn drain_plain_revive_skill_into(
         &mut self,
         actor: EntityIdx,
@@ -124,6 +127,7 @@ impl CombatRuntime {
         );
     }
 
+    /// 减速选目标：聪明时要求体力不低于 80 且未携带深层迟缓。
     pub fn select_plain_slow_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive();
@@ -176,6 +180,7 @@ impl CombatRuntime {
         scored.into_iter().map(|(target, _)| target).collect()
     }
 
+    /// 减速选目标评分：已中迟缓的目标评分减半。
     pub fn score_plain_slow_target(&mut self, target: EntityIdx, smart: bool) -> f64 {
         let entity = self
             .entities
@@ -205,6 +210,7 @@ impl CombatRuntime {
         score
     }
 
+    /// 减速技能：扣除目标行动点并附加或延长迟缓状态。
     pub fn drain_plain_slow_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[减速术]",
@@ -290,6 +296,7 @@ impl CombatRuntime {
         ));
     }
 
+    /// 幻术技能：生成幻影使魔，并按四分之三提升自身等级。
     pub fn drain_plain_shadow_skill_into(&mut self, actor: EntityIdx, fixed_lane: usize, updates: &mut RunUpdates) {
         self.ensure_plain_minion_blueprint(actor, crate::namerena::MinionKind::Shadow);
         let blueprint_slot = self
@@ -361,6 +368,7 @@ impl CombatRuntime {
         );
     }
 
+    /// 附体选目标：敌方存活者，无敌人时返回空列表。
     pub fn select_plain_possess_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive();
@@ -411,6 +419,7 @@ impl CombatRuntime {
         scored.into_iter().map(|(target, _)| target).collect()
     }
 
+    /// 附体选目标评分：聪明时按血量与攻击总和，普通掷随机加吸引力。
     pub fn score_plain_possess_target(&mut self, target: EntityIdx, smart: bool) -> f64 {
         let entity = self
             .entities
@@ -434,6 +443,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 附体技能：使目标进入狂暴，施法者自身死亡退场。
     pub fn drain_plain_possess_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[附体]",

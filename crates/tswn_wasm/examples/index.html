@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light dark">
     <meta name="darkreader-lock">
     <title>tswn_wasm Show Demo</title>
-    <link rel="stylesheet" href="./show.css?v=20261120test1">
+    <link rel="stylesheet" href="./show.css?v=20261123quilt1">
     <script>
         (() => {
             try {
@@ -67,19 +67,46 @@
                     </div>
                 </div>
             </section>
-        </div>
 
-        <div class="panels">
-            <div id="inputPanel" class="panel vertical">
-                <div class="paneltitle">名字竞技场</div>
-                <div style="padding: 12px 16px">
+            <aside class="hlist rlist" id="settingsSidebar">
+                <div class="plist-header">
+                    <div class="plist-title">对局设置</div>
+                    <div class="plist-subtitle">原站输入框之外的选项集中在这里，中间只保留名字输入。</div>
+                </div>
+                <div class="side-controls">
                     <label for="strategySelect">出招策略 </label>
                     <select id="strategySelect"><option value="search">Clever 搜索（当前实验版）</option><option value="legacy">原版策略（对照）</option></select>
                     <div class="input-note">默认双方采用所选策略。搜索预算：最多 16 次续局采样 / 128 调度轮 / 4 个入围候选，另有短续局初筛。</div>
                     <label><input type="checkbox" id="scoreLegacyOpponents"> 评分验证：仅被测侧及队友使用 Clever，对手使用原版</label>
                     <div class="input-note">仅对 Clever 评分生效；不勾选时双方均使用 Clever。与全员原版评分比较，评分差即提升量。</div>
+                    <label class="boss-picker"><input type="checkbox" id="bossChallenge"> 挑战 Boss </label>
+                    <select id="bossSelect" class="boss-select" disabled>
+                        <option value="quilt">被子</option>
+                        <option value="Squall">Squall</option>
+                        <option value="thanos">灭霸</option>
+                        <option value="wheel">生命之轮</option>
+                        <option value="mario">马里奥</option>
+                        <option value="sonic">索尼克</option>
+                        <option value="mosquito">蚊</option>
+                        <option value="yuri">尤里</option>
+                        <option value="slime">史莱姆</option>
+                        <option value="ikaruga">斑鸠</option>
+                        <option value="conan">柯南</option>
+                        <option value="aokiji">青雉</option>
+                        <option value="lazy">懒癌</option>
+                        <option value="covid">新冠病毒</option>
+                        <option value="saitama">一拳超人</option>
+                        <option value="testsubject">实验体 #C8</option>
+                    </select>
+                    <div class="input-note">勾选后无需在名字里写 xx@!，开始时会自动把所选 Boss 作为对手加入战斗。</div>
+                    <div class="input-note">评分：首行 !test!，随后输入名字为普通评分；同名连续两行是普通单挑。在 !test! 后单独加一行 !，切换为强化评分／强化单挑。使用所选策略测试 10000 场，仅展示 10% / 100% 及技能频率。</div>
                 </div>
-                <div class="input-note" style="padding: 0 16px">评分：首行 !test!，随后输入名字为普通评分；同名连续两行是普通单挑。在 !test! 后单独加一行 !，切换为强化评分／强化单挑。使用所选策略测试 10000 场，仅展示 10% / 100% 及技能频率。</div>
+            </aside>
+        </div>
+
+        <div class="panels">
+            <div id="inputPanel" class="panel vertical">
+                <div class="paneltitle">名字竞技场</div>
                 <div id="textdiv">
                     <textarea id="input_name" placeholder="每行输入一个名字&#10;&#10;组队对战时用空行隔开组队"></textarea>
                 </div>
@@ -87,6 +114,7 @@
                 <div class="panelfooter">
                     <div class="input-note">每行输入一个名字。</div>
                     <div class="input-note">组队战时用空行分组，效果与原站一致。</div>
+                    <div class="input-note">首行输入 !test! 后可评分：单名评分、同名两行单挑；再单独加一行 ! 可切换强化。固定 10000 场。</div>
                 </div>
                 <div class="goBar">
                     <button id="startBtn" class="goBtn">开 始</button>
@@ -184,7 +212,7 @@
 
     </div>
 
-    <script type="module" src="./show-theme-compat.js?v=20261120test1"></script>
-    <script type="module" src="./show.js?v=20261120search2"></script>
+    <script type="module" src="./show-theme-compat.js?v=20261123squall2"></script>
+    <script type="module" src="./show.js?v=20261123squall2"></script>
 </body>
 </html>

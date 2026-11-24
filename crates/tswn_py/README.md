@@ -22,7 +22,7 @@ cargo build --release -p tswn_py --features "no_debug,mimalloc_alloc"
 
 产物是 `target/release/libtswn_py.so`。`tswn_py` 的依赖已固定启用
 `tswn_core` 的 `no_debug,mimalloc_alloc`，同名转发 feature 只是让上面的统一命令
-可以直接使用；不要用 debug 或 release-fast 产物部署。
+可以直接使用；线上部署使用 `--release` 产物，debug 与 release-fast 用于本地开发。
 
 ## 分配器与跨制品指针
 

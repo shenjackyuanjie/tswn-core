@@ -12,6 +12,7 @@ use tswn_openbox::backend::OutputMode;
 use super::help::{HelpTopic, help_icon};
 use super::state::{AccuracyPreset, CountMode};
 
+/// 可选文件输出：启用开关与目标路径。
 #[derive(Debug, Clone, Default)]
 pub struct OptionalFileOutput {
     pub enabled: bool,
@@ -19,11 +20,14 @@ pub struct OptionalFileOutput {
 }
 
 impl OptionalFileOutput {
+    /// 启用时返回所选路径，否则返回 None。
     pub fn selected_path(&self) -> Option<PathBuf> { if self.enabled { self.path.clone() } else { None } }
 
+    /// 返回配置的路径（不论是否启用）。
     pub fn path(&self) -> Option<PathBuf> { self.path.clone() }
 }
 
+/// 基准输出配置：文件输出、输出模式、阈值与精度。
 #[derive(Debug, Clone)]
 pub struct BenchOutputConfig {
     pub file_output: OptionalFileOutput,
@@ -33,6 +37,7 @@ pub struct BenchOutputConfig {
     pub precision: usize,
 }
 
+/// 绘制可选文件输出控件（启用开关与路径选择）。
 pub fn optional_file_output_controls(ui: &mut egui::Ui, output: &mut OptionalFileOutput, default_name: &str) {
     ui.horizontal(|ui| {
         ui.checkbox(&mut output.enabled, "写入文件")
@@ -59,6 +64,7 @@ pub fn optional_file_output_controls(ui: &mut egui::Ui, output: &mut OptionalFil
     }
 }
 
+/// 绘制基准输出控件：输出模式、阈值与精度，按参数显示 JSONL 与精度选项。
 pub fn bench_output_controls(
     ui: &mut egui::Ui,
     output: &mut BenchOutputConfig,
@@ -112,6 +118,7 @@ pub fn bench_output_controls(
     });
 }
 
+/// 绘制精确度单选控件。
 pub fn accuracy_controls(ui: &mut egui::Ui, accuracy: &mut AccuracyPreset) {
     ui.horizontal(|ui| {
         ui.label("精确度");
@@ -121,6 +128,7 @@ pub fn accuracy_controls(ui: &mut egui::Ui, accuracy: &mut AccuracyPreset) {
     });
 }
 
+/// 绘制场数模式控件（按精确度档位或手动指定）。
 pub fn count_mode_controls(
     ui: &mut egui::Ui,
     mode: &mut CountMode,
@@ -144,6 +152,7 @@ pub fn count_mode_controls(
     }
 }
 
+/// 绘制线程数控件（自动或手动指定）。
 pub fn thread_controls(
     ui: &mut egui::Ui,
     auto_threads: &mut bool,
@@ -158,6 +167,7 @@ pub fn thread_controls(
     });
 }
 
+/// 绘制等宽字体的多行文本编辑器。
 pub fn multiline(ui: &mut egui::Ui, id: &'static str, text: &mut String, rows: usize) {
     egui::ScrollArea::both().id_salt(id).max_height(rows as f32 * 20.0).show(ui, |ui| {
         ui.add(
@@ -170,6 +180,7 @@ pub fn multiline(ui: &mut egui::Ui, id: &'static str, text: &mut String, rows: u
     });
 }
 
+/// 按默认文件名弹出保存对话框。
 fn pick_output_file(default_name: &str) -> Option<PathBuf> {
     rfd::FileDialog::new()
         .set_directory(current_dir())
@@ -177,8 +188,10 @@ fn pick_output_file(default_name: &str) -> Option<PathBuf> {
         .save_file()
 }
 
+/// 按默认文件名弹出输出文件选择对话框。
 pub fn pick_named_output_file(default_name: &str) -> Option<PathBuf> { pick_output_file(default_name) }
 
+/// 返回规范化的当前目录，失败时退到 “.”。
 fn current_dir() -> PathBuf {
     std::env::current_dir()
         .ok()

@@ -4,13 +4,16 @@
 
 use super::*;
 
+/// 多人对局（multi_2）的完整回放 fixture：锁定 JS 产物兼容性。
 pub fn fight_multi_2<E: crate::EngineAdapter>() {
+    /// multi_2 用例的 fixture：输入与冻结 JS 回放轨迹。
     const FIGHT_CASE: &str = include_str!("fixtures/fight_multi_2.md");
     let (raw_input, expected_lines) = parse_embedded_fight_case(
         FIGHT_CASE,
         "embedded fight case must contain a blank separator between input and trace",
         "embedded fight trace is empty",
     );
+    /// multi_2 用例的回合上限：2,000。
     const MAX_ROUNDS: usize = 2_000;
     let mut runner = E::new_from_raw(raw_input).unwrap();
     let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, MAX_ROUNDS, true);

@@ -171,16 +171,22 @@ pub struct SkillSnapshot {
 }
 
 impl ReplayState for BattlePlayerState {
+    /// 取玩家 id。
     fn id(&self) -> PlrId { self.id }
 
+    /// 取当前 HP。
     fn hp(&self) -> i32 { self.hp }
 
+    /// 取最大 HP。
     fn max_hp(&self) -> i32 { self.max_hp }
 
+    /// 是否存活。
     fn alive(&self) -> bool { self.alive }
 
+    /// 取当前护盾值。
     fn shield(&self) -> i32 { self.shield }
 
+    /// 返回设置护盾后的副本：死亡时护盾归零，负数截断为 0。
     fn with_shield(&self, shield: i32) -> Self {
         Self {
             shield: if self.alive { shield.max(0) } else { 0 },
@@ -189,6 +195,7 @@ impl ReplayState for BattlePlayerState {
         }
     }
 
+    /// 返回设置 HP 与存活状态后的副本，并联动更新 active 与护盾。
     fn with_hp_alive(&self, hp: i32, alive: bool) -> Self {
         Self {
             hp,
@@ -224,7 +231,7 @@ pub struct BattleUpdate {
     pub message_rendered: String,
     pub caster_id: Option<usize>,
     pub target_id: Option<usize>,
-    /// 替换消息占位符 [2] 的实体列表，不包含只参与动画的实体。
+    /// 替换消息占位符 \[2\] 的实体列表，不包含只参与动画的实体。
     pub target_ids: Vec<usize>,
     /// 原版群体动画的有序参与者，不是单体目标。
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -306,6 +313,7 @@ pub struct BattleReplayTextPart {
     pub emoji: Option<String>,
 }
 
+/// [`BattleOptions`] 的旧名，仅为兼容保留；新代码请改用 [`BattleOptions`]。
 #[deprecated(note = "use BattleOptions")]
 pub type BattleReplayOptions = BattleOptions;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

@@ -16,11 +16,13 @@ use crate::ops::sort::{SortOptions, sort_scored_file};
 use crate::pairing::{fc, rh, wc as pair_wc};
 use crate::pipeline;
 
+/// 解析后的命令行入口：承载一条待执行命令。
 #[derive(Debug, Clone)]
 pub struct Cli {
     pub command: Command,
 }
 
+/// tswn_ds4 支持的全部子命令：help/version、openbox-cqp 以及各类评分、配对与流水线模式。
 #[derive(Debug, Clone)]
 pub enum Command {
     Help,
@@ -51,6 +53,7 @@ pub enum Command {
     Pair(PairCli),
 }
 
+/// sort 子命令参数：输入/输出文件、分数列号、1 基排序键与是否附带输出分数。
 #[derive(Debug, Clone)]
 pub struct SortCli {
     pub input_file: PathBuf,
@@ -60,6 +63,7 @@ pub struct SortCli {
     pub output_score: bool,
 }
 
+/// score 子命令参数：单评模式、输入/输出文件、两道筛值与线程数。
 #[derive(Debug, Clone)]
 pub struct ScoreCli {
     pub mode: SingleMode,
@@ -70,6 +74,7 @@ pub struct ScoreCli {
     pub threads: usize,
 }
 
+/// 配对模式：fc/wc/rh 三种评分口径。
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum PairCliMode {
     Fc,
@@ -77,6 +82,7 @@ pub enum PairCliMode {
     Rh,
 }
 
+/// pair 子命令参数：配对模式、是否同类集合、左右输入输出文件、筛值与线程数。
 #[derive(Debug, Clone)]
 pub struct PairCli {
     pub mode: PairCliMode,
@@ -89,6 +95,7 @@ pub struct PairCli {
 }
 
 impl SortCli {
+    /// 把 SortCli 参数转换为 SortOptions（1 基排序键换算为 0 基）。
     pub fn to_sort_options(&self) -> SortOptions {
         SortOptions {
             score_number: self.score_number,
@@ -98,6 +105,7 @@ impl SortCli {
     }
 }
 
+/// 把命令行参数解析为 Cli；无参数时默认进入 run 模式，无法识别或冲突的选项返回 Cli 错误。
 pub fn parse_args<I>(args: I) -> Ds4Result<Cli>
 where
     I: IntoIterator<Item = String>,
@@ -142,6 +150,7 @@ where
     }
 }
 
+/// 解析 run/openbox-cqp 的 --root 与 --config，缺省 root 为当前目录。
 fn parse_run(args: Vec<String>) -> Ds4Result<Cli> {
     let mut root = std::env::current_dir()?;
     let mut config_path = None;
@@ -168,6 +177,7 @@ fn parse_run(args: Vec<String>) -> Ds4Result<Cli> {
     })
 }
 
+/// 解析 show-config 的 --root 与 --config。
 fn parse_show_config(args: Vec<String>) -> Ds4Result<Cli> {
     let mut root = std::env::current_dir()?;
     let mut config_path = None;
@@ -194,6 +204,7 @@ fn parse_show_config(args: Vec<String>) -> Ds4Result<Cli> {
     })
 }
 
+/// 解析 merge 的输入目录与输出文件两个位置参数。
 fn parse_merge(args: Vec<String>) -> Ds4Result<Cli> {
     if args.len() != 2 {
         return Err(Ds4Error::cli("merge usage: tswn_ds4 merge <input_dir> <output_file>"));
@@ -206,6 +217,7 @@ fn parse_merge(args: Vec<String>) -> Ds4Result<Cli> {
     })
 }
 
+/// 解析 dedup 的新文件、旧文件与输出文件三个位置参数。
 fn parse_dedup(args: Vec<String>) -> Ds4Result<Cli> {
     if args.len() != 3 {
         return Err(Ds4Error::cli("dedup usage: tswn_ds4 dedup <new_file> <old_file> <output_file>"));
@@ -219,6 +231,7 @@ fn parse_dedup(args: Vec<String>) -> Ds4Result<Cli> {
     })
 }
 
+/// 解析 sort 的位置参数，并校验分数列号与排序键范围。
 fn parse_sort(args: Vec<String>) -> Ds4Result<Cli> {
     if args.len() != 5 {
         return Err(Ds4Error::cli(
@@ -256,6 +269,7 @@ fn parse_sort(args: Vec<String>) -> Ds4Result<Cli> {
     })
 }
 
+/// 解析 score-* 的线程数与两道筛值，线程数至少为 1。
 fn parse_score(args: Vec<String>, mode: SingleMode) -> Ds4Result<Cli> {
     if args.len() != 5 {
         return Err(Ds4Error::cli(
@@ -283,6 +297,7 @@ fn parse_score(args: Vec<String>, mode: SingleMode) -> Ds4Result<Cli> {
     })
 }
 
+/// 解析 pair-* 参数；type 0 表示同集合、1 表示左右集合，线程数至少为 1。
 fn parse_pair(args: Vec<String>, mode: PairCliMode) -> Ds4Result<Cli> {
     if args.len() != 6 {
         return Err(Ds4Error::cli(
@@ -311,6 +326,7 @@ fn parse_pair(args: Vec<String>, mode: PairCliMode) -> Ds4Result<Cli> {
     })
 }
 
+/// 向 stdout 打印用法说明与命令列表。
 pub fn print_usage() {
     println!(
         r#"tswn_ds4 - DS4 rewrite CLI
@@ -344,6 +360,7 @@ NOTES:
     );
 }
 
+/// 按 --config 路径或 root 自动查找加载配置。
 fn load_config(root: &Path, config_path: Option<PathBuf>) -> Ds4Result<Config> {
     match config_path {
         Some(path) => Config::load_from_path(&path),
@@ -351,6 +368,7 @@ fn load_config(root: &Path, config_path: Option<PathBuf>) -> Ds4Result<Config> {
     }
 }
 
+/// 执行一条命令：按需加载配置并分派到对应子命令实现；Version 打印版本号，OpenboxCqp 加载配置后进入 openbox 配对流程。
 pub fn execute(args: impl IntoIterator<Item = String>) -> Ds4Result<()> {
     let cli = parse_args(args)?;
     match cli.command {

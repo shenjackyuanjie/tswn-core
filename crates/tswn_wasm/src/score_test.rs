@@ -25,6 +25,5 @@ impl ScoreTestSession {
 
     /// 推进一场。10000 场后不再推进，也不会重新开始下一轮。
     pub fn step(&mut self) -> WasmResult<()> { self.inner.step().map_err(cli_api_error) }
-
     pub fn progress(&self) -> WasmResult<JsValue> { dto_to_js(&self.inner.progress()) }
 }

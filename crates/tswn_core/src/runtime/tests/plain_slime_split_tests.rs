@@ -39,10 +39,13 @@ fn slime_runtime_with_reraise() -> CombatRuntime {
     ))
 }
 
+/// 提取 RunUpdates 中所有消息字符串。
 fn messages_of(updates: &RunUpdates) -> Vec<String> { updates.updates.iter().map(|update| update.message.to_string()).collect() }
 
+/// 把目标实体 hp 置 0（致死）。
 fn kill(runtime: &mut CombatRuntime, target: EntityIdx) { runtime.entities.get_mut(target).unwrap().runtime.hp = 0; }
 
+/// 收集指定分裂代数的子体实体索引。
 fn children_of(runtime: &CombatRuntime, generation: u32) -> Vec<EntityIdx> {
     runtime
         .entities

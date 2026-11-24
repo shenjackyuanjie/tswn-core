@@ -1,5 +1,6 @@
 use super::*;
 
+/// case_17 对局的泛型回放 fixture：比对冻结 JS 回放。
 pub fn case_17<E: crate::EngineAdapter>() {
     let expected: Vec<String> = vec![
         "aaaaa发起攻击",

@@ -60,6 +60,7 @@ struct CsvSample {
 }
 
 impl CsvSample {
+    /// 从内容构造取样：保留开头若干行，记录列数与总行数。
     fn of(content: &str) -> Self {
         let mut rows = Vec::new();
         let mut columns = 0;
@@ -79,6 +80,7 @@ impl CsvSample {
     }
 }
 
+/// 文本输入源：内联文本或从文件读取，附带预览与错误状态。
 #[derive(Debug, Clone)]
 pub struct TextSource {
     inline: String,
@@ -93,6 +95,7 @@ pub struct TextSource {
 }
 
 impl TextSource {
+    /// 用内联文本构造输入源。
     pub fn inline(text: impl Into<String>) -> Self {
         Self {
             inline: text.into(),
@@ -107,6 +110,7 @@ impl TextSource {
         }
     }
 
+    /// 绘制输入源控件：内联/文件切换、路径选择与内容预览。
     pub fn ui(&mut self, ui: &mut egui::Ui, label: &str, id: &'static str, rows: usize) {
         ui.horizontal(|ui| {
             ui.label(label);
@@ -196,6 +200,7 @@ impl TextSource {
         source
     }
 
+    /// 读取完整输入文本；文件模式下未选文件或读取失败时返回中文错误。
     pub fn read_all(&mut self) -> Result<String, String> {
         self.warning = None;
         if !self.from_file {
@@ -211,6 +216,7 @@ impl TextSource {
         }
     }
 
+    /// 绘制高级选项窗口：文件路径、警告、CSV 列与行选择。
     fn advanced_ui(&mut self, ui: &mut egui::Ui, id: &'static str) {
         let path_label = self
             .file_path
@@ -336,6 +342,7 @@ impl TextSource {
         }
     }
 
+    /// 弹出文件选择；换文件时按扩展名重置 CSV 选项并刷新预览。
     fn pick_file(&mut self) {
         if let Some(path) = rfd::FileDialog::new().pick_file() {
             // 换文件时按扩展名重新判断是否默认启用 CSV，用户仍可在高级选项里关掉。
@@ -349,6 +356,7 @@ impl TextSource {
         }
     }
 
+    /// 重读文件并更新预览文本、错误与警告。
     fn refresh_preview(&mut self) {
         self.warning = None;
         let Some(path) = self.file_path.clone() else {
@@ -393,6 +401,7 @@ impl TextSource {
         }
     }
 
+    /// CSV 启用时重读文件并刷新取样行。
     fn reload_sample(&mut self) {
         if !self.csv.enabled {
             return;
@@ -456,6 +465,7 @@ fn csv_row_selected(relative_index: usize, options: &CsvOptions) -> bool {
     }
 }
 
+/// 按非空行拆分为 CSV 行。
 fn csv_rows(content: &str) -> Vec<Vec<String>> {
     content.lines().filter(|line| !line.trim().is_empty()).map(split_csv_line).collect()
 }
@@ -481,8 +491,10 @@ fn split_csv_line(line: &str) -> Vec<String> {
     fields
 }
 
+/// 按扩展名判断是否默认按 CSV 读取。
 fn looks_like_csv(path: &Path) -> bool { path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("csv")) }
 
+/// 把单元格文本裁剪到预览长度，超出部分用省略号。
 fn clip_cell(value: &str) -> String {
     let trimmed = value.trim();
     let mut chars = trimmed.chars();
@@ -490,6 +502,7 @@ fn clip_cell(value: &str) -> String {
     if chars.next().is_some() { format!("{head}…") } else { head }
 }
 
+/// 取前 limit 行组成预览，超长时追加省略标记。
 fn head_lines(text: &str, limit: usize, truncated: bool) -> String {
     let mut lines = text.lines();
     let mut preview = lines.by_ref().take(limit).collect::<Vec<_>>().join("\n");
@@ -502,6 +515,7 @@ fn head_lines(text: &str, limit: usize, truncated: bool) -> String {
     preview
 }
 
+/// 读取文本文件并跳过非 UTF-8 行，返回内容与警告。
 fn read_text_file(path: &Path) -> Result<(String, Option<String>), String> {
     let bytes = fs::read(path).map_err(|err| format!("读取文件失败: {}: {err}", path.display()))?;
     let (content, skipped) = decode_utf8_lines(bytes);
@@ -509,8 +523,10 @@ fn read_text_file(path: &Path) -> Result<(String, Option<String>), String> {
     Ok((content, warning))
 }
 
+/// 只读前 MAX_PREVIEW_BYTES 内的完整行，返回文本与是否截断。
 fn read_preview(reader: impl Read) -> std::io::Result<(String, usize)> {
     // 预览只解码完整行，避免把字节上限截断的半行当成坏行。
+    /// 预览读取的字节上限：16 KiB，只解码完整行。
     const MAX_PREVIEW_BYTES: usize = 16 * 1024;
     let mut bytes = Vec::new();
     reader.take((MAX_PREVIEW_BYTES + 1) as u64).read_to_end(&mut bytes)?;

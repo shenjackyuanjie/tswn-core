@@ -1,5 +1,6 @@
 //! MODEL_PJ 系数，保留原始字面量与顺序。
 
+/// pj 模式评分系数，长度 `MODEL_SIZE`，字面量与顺序同 C++ 实现。
 #[rustfmt::skip]
 pub const MODEL_PJ: [f64; super::MODEL_SIZE] = [
     -7965.147233825060, 12.286262536698,

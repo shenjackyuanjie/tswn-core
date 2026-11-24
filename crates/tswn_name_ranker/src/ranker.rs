@@ -4,6 +4,7 @@
 //! 最多迭代 500 轮；选择稳定且参数变化足够小时停止，未收敛也返回诊断结果。
 //! 调用方须提供有限且足以得到正搭档强度的分数，零强度或非有限值会破坏对数计算。
 
+/// 拟合结果：各名字分数、系数、强度方差、迭代次数与是否收敛。
 #[derive(Debug)]
 pub struct FitResult {
     pub scores: Vec<f64>,
@@ -15,8 +16,11 @@ pub struct FitResult {
     pub correction_reliability: f64,
 }
 
+/// 搭档系数更新的弹性系数：0.35。
 const PARAMETER_ELASTICITY: f64 = 0.35;
+/// 参数更新的阻尼系数：0.25，限制单轮变化幅度。
 const PARAMETER_DAMPING: f64 = 0.25;
+/// 前四位搭档在轮廓加权中的权重：0.50/0.25/0.15/0.10。
 const PARAMETER_PROFILE_WEIGHTS: [f64; TOP_PARTNERS] = [0.50, 0.25, 0.15, 0.10];
 
 /// 拟合方阵并返回各行最终贡献分、搭档系数和收敛诊断，行列顺序与输入一致。
@@ -151,4 +155,5 @@ mod tests {
         assert!((geometric_mean - 1.0).abs() < 1e-9);
     }
 }
+/// 每个名字展示的搭档数量上限：4。
 pub const TOP_PARTNERS: usize = 4;

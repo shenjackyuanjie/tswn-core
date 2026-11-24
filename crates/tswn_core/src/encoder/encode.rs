@@ -33,12 +33,19 @@ use crate::runtime::model_state::{
 };
 use crate::runtime::{EntityIdx, ExtensionRegistry, PlrId, default_custom_runtime_import_config};
 
+/// 实体 / 模板数值字段的展开与存在性掩码。
 mod fields;
+/// 样本索引：实体行、模板行与 lane 行定位。
 mod index;
+/// 列表族（target / order 记录）编码。
 mod lists;
+/// slot 与 extra 原始字段族编码。
 mod slots_extra;
+/// 状态族编码。
 mod states;
+/// global / entity / template / lane 表族编码。
 mod tables;
+/// 容量与状态 schema 校验。
 mod validation;
 
 pub use fields::{ENTITY_NUM_SLOTS, IMMUNITY_AXIS, TEMPLATE_NUM_SLOTS, required_normalization};
@@ -52,6 +59,7 @@ use validation::dim_path;
 #[cfg(test)]
 mod tests;
 
+/// 惰性初始化的默认扩展规则注册表；注册表无效时直接 panic（内部契约破坏）。
 /// 默认规则注册表；词表派生只做一次。
 fn default_registry() -> &'static ExtensionRegistry {
     static REGISTRY: OnceLock<ExtensionRegistry> = OnceLock::new();
@@ -123,8 +131,10 @@ impl FeatureEncoder {
         })
     }
 
+    /// 本编码器绑定的 manifest：schema 版本、张量规格与支持域。
     pub fn manifest(&self) -> &EncoderManifest { &self.manifest }
 
+    /// 本编码器的容量档位，决定各维上限与批缓冲形状。
     pub fn profile(&self) -> &ProfileSpec { &self.profile }
 
     /// 分配一份单样本批缓冲并编码，成功后由调用方拥有全部张量。
@@ -181,6 +191,7 @@ impl FeatureEncoder {
 
     // ---------------------------------------------------------------- 数值助手
 
+    /// 按 manifest 归一化字段把原始值拟合并 clamp 为 f32；非有限值、缺字段或未拟合都报错。
     /// 逐字段 `N_f`；manifest 缺该字段或声明不是 fitted 时报错，不套用默认常数。
     fn fitted_value(&self, value: f64, path: &str, prefix: &str) -> Result<f32, EncodeError> {
         // 必须检查变换前的原值；否则 ±Inf 会被 clamp 伪装成有限的 ±4。
@@ -213,9 +224,11 @@ impl FeatureEncoder {
         to_f32_checked(normalize_fixed_count(value, divisor), &format!("{prefix}{path}"))
     }
 
+    /// 把原始 id 映射为词表内的稠密 id。
     fn dense_id(&self, domain: &'static str, raw: u32, path: &str) -> Result<i32, EncodeError> {
         self.vocabularies[domain].dense_id(raw, path)
     }
 }
 
+/// 把序号归一化到 [0,1]；长度为 1 时返回 0。
 fn normalize_position(ordinal: usize, length: usize) -> f32 { ordinal as f32 / length.saturating_sub(1).max(1) as f32 }

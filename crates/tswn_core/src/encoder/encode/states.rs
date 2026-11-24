@@ -7,6 +7,7 @@
 use super::*;
 
 impl FeatureEncoder {
+    /// 写入状态族：逐状态条目展开 payload 数值、引用与分组字段。
     pub(super) fn write_state_family(
         &self,
         state: &BattleModelState,
@@ -93,6 +94,7 @@ impl FeatureEncoder {
     }
 }
 
+/// 状态类型名到稳定数字 id；未知类型返回 None。
 fn state_kind_id(kind: &str) -> Option<i32> {
     Some(match kind {
         "none" => 1,
@@ -110,6 +112,7 @@ fn state_kind_id(kind: &str) -> Option<i32> {
     })
 }
 
+/// 按状态类型给出 8 个 payload 槽位对应的 manifest 路径，未用槽位为 unused。
 fn state_payload_paths(kind: &str) -> [&'static str; 8] {
     let mut paths = ["state.payload.unused"; 8];
     match kind {
@@ -142,8 +145,10 @@ fn state_payload_paths(kind: &str) -> [&'static str; 8] {
     paths
 }
 
+/// 状态 payload 拆解结果：数值、存在性、引用与分组四个平行数组。
 type PayloadValues = ([f64; 8], [bool; 8], [Option<EntityIdx>; 4], [Option<usize>; 3]);
 
+/// 把状态 payload 拆解为平行数组，槽位与 manifest 路径一一对应。
 fn state_payload_values(payload: &ModelPayload, prefix: &str) -> Result<PayloadValues, EncodeError> {
     let mut values = [0.0; 8];
     let mut presence = [false; 8];

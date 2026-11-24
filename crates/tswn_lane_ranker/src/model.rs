@@ -6,15 +6,19 @@
 
 use serde::{Deserialize, Serialize};
 
+/// 分组 ID，对应数据库 groups 表的 i64 主键。
 pub type GroupId = i64;
+/// 后台任务 ID，对应 lane_jobs 表的 i64 主键。
 pub type JobId = i64;
 
+/// 单个技能的名称与数值，用于序列化展示。
 #[derive(Debug, Clone, Serialize)]
 pub struct SkillValue {
     pub name: String,
     pub value: f64,
 }
 
+/// 数据库中的分组记录：ID、规范化键、原始展示文本、lane 规模、队伍名与屏蔽标记。
 #[derive(Debug, Clone, Serialize)]
 pub struct StoredGroup {
     pub id: GroupId,
@@ -27,6 +31,7 @@ pub struct StoredGroup {
     pub is_blocked: bool,
 }
 
+/// 排名图中的分组节点：承载分组与迭代统计（当前/累计 CQD、神迷系数、标准计数与极值）。
 #[derive(Debug, Clone)]
 pub struct RankNode {
     pub group: StoredGroup,
@@ -42,6 +47,7 @@ pub struct RankNode {
 }
 
 impl RankNode {
+    /// 以零统计创建排名节点。
     pub fn new(group: StoredGroup) -> Self {
         Self {
             group,
@@ -57,8 +63,10 @@ impl RankNode {
         }
     }
 
+    /// 返回平均 CQD；无观测时退回当前 cqd。
     pub fn avg_cqd(&self) -> f64 { if self.n == 0 { self.cqd } else { self.cqds / self.n as f64 } }
 
+    /// 返回 CQD 方差；无观测时为 0。
     pub fn variance_cqd(&self) -> f64 {
         if self.n == 0 {
             0.0
@@ -68,6 +76,7 @@ impl RankNode {
         }
     }
 
+    /// 返回 Golden 胜率（bz/odds_n）；无观测时为 0。
     pub fn golden_rate(&self) -> f64 {
         if self.odds_n == 0 {
             0.0
@@ -77,6 +86,7 @@ impl RankNode {
     }
 }
 
+/// lane 的一行排名结果：规模、分组、名次、规范化键与各项分数。
 #[derive(Debug, Clone, Serialize)]
 pub struct LaneResultRow {
     pub lane_size: usize,
@@ -175,6 +185,7 @@ pub struct LaneResultRow {
     pub is_blocked: bool,
 }
 
+/// lane 的运行进度：阶段、轮次、速率进度、踢出计数与消息。
 #[derive(Debug, Clone, Serialize)]
 pub struct LaneProgress {
     pub lane_size: usize,
@@ -187,6 +198,7 @@ pub struct LaneProgress {
     pub message: String,
 }
 
+/// lane 的状态：规模、状态串、分组数与可选进度。
 #[derive(Debug, Clone, Serialize)]
 pub struct LaneStatus {
     pub lane_size: usize,
@@ -195,6 +207,7 @@ pub struct LaneStatus {
     pub progress: Option<LaneProgress>,
 }
 
+/// 后台任务记录：ID、lane 规模、类型、状态与可选错误。
 #[derive(Debug, Clone, Serialize)]
 pub struct LaneJob {
     pub id: JobId,
@@ -204,6 +217,7 @@ pub struct LaneJob {
     pub error: Option<String>,
 }
 
+/// 屏蔽/取消屏蔽单个分组的请求参数。
 #[derive(Debug, Deserialize)]
 pub struct BlockGroupRequest {
     /// 外层 worker。0 或不填 = 自动 worker + 动态队列；>0 = 指定 worker 数 + 静态分块。
@@ -214,6 +228,7 @@ pub struct BlockGroupRequest {
     pub skip_archived: Option<bool>,
 }
 
+/// 屏蔽操作的结果：受影响分组与需要重新排队的 lane。
 #[derive(Debug, Serialize)]
 pub struct BlockGroupResponse {
     pub group_id: GroupId,
@@ -223,6 +238,7 @@ pub struct BlockGroupResponse {
     pub queued_lanes: Vec<usize>,
 }
 
+/// 按组合文本批量屏蔽/取消屏蔽的请求。
 #[derive(Debug, Deserialize)]
 pub struct BlockGroupsByTextRequest {
     /// 每个元素是一个组合，例如 "aaa@A+bbb@A"。顺序会被 canonical 化。
@@ -235,6 +251,7 @@ pub struct BlockGroupsByTextRequest {
     pub skip_archived: Option<bool>,
 }
 
+/// 批量屏蔽结果：生效、未生效、忽略项与重新排队的 lane。
 #[derive(Debug, Serialize)]
 pub struct BlockGroupsByTextResponse {
     pub blocked: Vec<String>,
@@ -243,6 +260,7 @@ pub struct BlockGroupsByTextResponse {
     pub queued_lanes: Vec<usize>,
 }
 
+/// 批量添加分组的请求：组合文本列表与并发参数。
 #[derive(Debug, Deserialize)]
 pub struct AddGroupsRequest {
     /// 每个元素是一个组合，例如 "aaa@A+bbb@A"。
@@ -256,12 +274,14 @@ pub struct AddGroupsRequest {
     pub skip_archived: Option<bool>,
 }
 
+/// 被忽略的分组及其原因。
 #[derive(Debug, Serialize)]
 pub struct IgnoredGroup {
     pub raw: String,
     pub reason: String,
 }
 
+/// 添加结果：新增、重复、忽略项与重新排队的 lane。
 #[derive(Debug, Serialize)]
 pub struct AddGroupsResponse {
     pub added: Vec<String>,
@@ -270,6 +290,7 @@ pub struct AddGroupsResponse {
     pub queued_lanes: Vec<usize>,
 }
 
+/// 批量录入胜率的请求：每两行组成一对组合。
 #[derive(Debug, Deserialize)]
 pub struct AddWinratesRequest {
     /// 每两行组成一组：第 1 行组合对战第 2 行组合，第 3 行组合对战第 4 行组合，以此类推。
@@ -281,6 +302,7 @@ pub struct AddWinratesRequest {
     pub inner_workers: Option<u32>,
 }
 
+/// 一条已计算并入库的胜率记录。
 #[derive(Debug, Clone, Serialize)]
 pub struct AddedWinrateRow {
     pub pair_index: usize,
@@ -295,6 +317,7 @@ pub struct AddedWinrateRow {
     pub stored: bool,
 }
 
+/// 被忽略的胜率 pair 及原因。
 #[derive(Debug, Clone, Serialize)]
 pub struct IgnoredWinratePair {
     pub pair_index: usize,
@@ -303,6 +326,7 @@ pub struct IgnoredWinratePair {
     pub reason: String,
 }
 
+/// 录入结果的统计与明细。
 #[derive(Debug, Serialize)]
 pub struct AddWinratesResponse {
     pub requested_pairs: usize,
@@ -315,6 +339,7 @@ pub struct AddWinratesResponse {
     pub mode: String,
 }
 
+/// 合并两个队伍的请求。
 #[derive(Debug, Deserialize)]
 pub struct MergeTeamsRequest {
     pub x: String,
@@ -327,12 +352,14 @@ pub struct MergeTeamsRequest {
     pub skip_archived: Option<bool>,
 }
 
+/// 合并结果：合并后的根队伍与重新排队的 lane。
 #[derive(Debug, Serialize)]
 pub struct MergeTeamsResponse {
     pub merged_root: String,
     pub queued_lanes: Vec<usize>,
 }
 
+/// 重算 lane 的请求：可选粘性与并发参数。
 #[derive(Debug, Deserialize)]
 pub struct RecomputeLaneRequest {
     /// 可选粘性。必须是正整数；不填则按 lane_size 使用默认值 10 * lane_size。
@@ -345,11 +372,13 @@ pub struct RecomputeLaneRequest {
     pub skip_archived: Option<bool>,
 }
 
+/// 重算请求的结果：进入队列的 lane。
 #[derive(Debug, Serialize)]
 pub struct RecomputeLaneResponse {
     pub queued_lanes: Vec<usize>,
 }
 
+/// 约束选择请求：校准池 Raw Score 门槛与并发参数。
 #[derive(Debug, Deserialize)]
 pub struct ConstrainedSelectionRequest {
     /// 外层 worker。0 或不填 = 自动 worker + 动态队列；>0 = 指定 worker 数 + 静态分块。
@@ -363,6 +392,7 @@ pub struct ConstrainedSelectionRequest {
     pub cqd_threshold: Option<f64>,
 }
 
+/// 约束选择结果：入队 lane 与生效门槛。
 #[derive(Debug, Serialize)]
 pub struct ConstrainedSelectionResponse {
     pub queued_lanes: Vec<usize>,
@@ -371,6 +401,7 @@ pub struct ConstrainedSelectionResponse {
     pub cqd_threshold: f64,
 }
 
+/// 靶子生成请求；保留旧版 50 靶 API 的兼容字段。
 #[derive(Debug, Deserialize)]
 pub struct TargetGenerationRequest {
     /// 兼容旧版 50 靶 API。direct trace 模式不再按 C-Score 截断。
@@ -379,6 +410,7 @@ pub struct TargetGenerationRequest {
     pub fixed_main_count: Option<usize>,
 }
 
+/// Correct 靶子轨迹的一行权重：引用域、分组与归一化权重。
 #[derive(Debug, Clone)]
 pub struct CorrectTargetTraceWeight {
     pub reference_scope: String,
@@ -400,6 +432,7 @@ pub struct CorrectTargetTraceWeight {
     pub source: String,
 }
 
+/// Correct 靶子轨迹：版本、评分模式、元数据 JSON 与权重行。
 #[derive(Debug, Clone)]
 pub struct CorrectTargetTrace {
     pub trace_version: String,
@@ -408,6 +441,7 @@ pub struct CorrectTargetTrace {
     pub weights: Vec<CorrectTargetTraceWeight>,
 }
 
+/// 生成的一行靶子：排名、权重与审计信息。
 #[derive(Debug, Clone, Serialize)]
 pub struct TargetGenerationRow {
     pub target_rank: usize,
@@ -449,6 +483,7 @@ pub struct TargetGenerationRow {
     pub player_keys: Vec<String>,
 }
 
+/// 引用审计行：排名、分组、规范化键与队伍信息。
 #[derive(Debug, Clone, Serialize)]
 pub struct TargetReferenceAuditRow {
     pub reference_rank: usize,
@@ -472,6 +507,7 @@ pub struct TargetReferenceAuditRow {
     pub simple_type_label: String,
 }
 
+/// 生成汇总：算法、轨迹版本、评分模式与保留数量等。
 #[derive(Debug, Clone, Serialize)]
 pub struct TargetGenerationSummary {
     pub algorithm: String,
@@ -552,6 +588,7 @@ pub struct TargetGenerationSummary {
     pub audit_p95_abs_diff: Option<f64>,
 }
 
+/// 生成结果：汇总、靶子配置文本与轨迹元数据。
 #[derive(Debug, Clone, Serialize)]
 pub struct TargetGenerationResponse {
     pub summary: TargetGenerationSummary,

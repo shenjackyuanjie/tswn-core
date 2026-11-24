@@ -7,7 +7,9 @@
 use crate::abcp_calibration::Candidate;
 use crate::model::{NameRow, ResultDetailRow, ResultPartnerRow, ResultRow, TargetRow};
 
+/// 特殊 ABCP 分数阈值：4500.0，超过该分的配对按特殊规则输出。
 pub const SPECIAL_ABCP_THRESHOLD: f64 = 4500.0;
+/// ABCP 输出阈值，与特殊阈值相同。
 pub const ABCP_OUTPUT_THRESHOLD: f64 = SPECIAL_ABCP_THRESHOLD;
 use anyhow::Context;
 use rusqlite::{Connection, params};
@@ -17,11 +19,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+/// SQLite 数据库句柄：Mutex 保护的连接，打开时启用 WAL 模式。
 #[derive(Clone)]
 pub struct Db {
     conn: Arc<Mutex<Connection>>,
 }
 impl Db {
+    /// 打开（或创建）数据库并启用 WAL 模式，返回句柄。
     pub fn open(path: &str) -> anyhow::Result<Self> {
         let conn = Connection::open(path).with_context(|| format!("打开数据库 {path}"))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
@@ -31,6 +35,7 @@ impl Db {
         db.init()?;
         Ok(db)
     }
+    /// 建表：names、targets、pair_scores、results、abcp_* 与扩展/归档表。
     fn init(&self) -> anyhow::Result<()> {
         self.conn.lock().unwrap().execute_batch(r#"
 CREATE TABLE IF NOT EXISTS names(id INTEGER PRIMARY KEY, raw TEXT NOT NULL UNIQUE, diy TEXT NOT NULL, text_type TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
@@ -68,12 +73,14 @@ INSERT OR IGNORE INTO abcp_complete_names(raw) SELECT name_b FROM abcp_scores;
         }
         Ok(())
     }
+    /// 插入名字（raw/diy/text_type）；已存在时返回 false。
     pub fn add_name(&self, raw: &str, diy: &str, typ: &str) -> anyhow::Result<bool> {
         Ok(self.conn.lock().unwrap().execute(
             "INSERT OR IGNORE INTO names(raw,diy,text_type) VALUES(?1,?2,?3)",
             params![raw, diy, typ],
         )? > 0)
     }
+    /// 读取文字类型版本号；未设置时返回 None。
     pub fn text_type_version(&self) -> anyhow::Result<Option<String>> {
         let conn = self.conn.lock().unwrap();
         Ok(conn
@@ -82,6 +89,7 @@ INSERT OR IGNORE INTO abcp_complete_names(raw) SELECT name_b FROM abcp_scores;
             })
             .ok())
     }
+    /// 在单个事务中批量更新文字类型并记录版本号。
     pub fn replace_text_types(&self, rows: &[(i64, String)], version: &str) -> anyhow::Result<()> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
@@ -95,11 +103,13 @@ INSERT OR IGNORE INTO abcp_complete_names(raw) SELECT name_b FROM abcp_scores;
         tx.commit()?;
         Ok(())
     }
+    /// 返回所有已展开名字的原始文本（按 raw 排序）。
     pub fn expanded_names(&self) -> anyhow::Result<Vec<String>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare("SELECT n.raw FROM expanded_names e JOIN names n ON n.id=e.name_id ORDER BY n.raw")?;
         Ok(stmt.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?)
     }
+    /// 批量设置名字的展开标记，返回实际变更数。
     pub fn set_names_expanded(&self, raws: &[String], expanded: bool) -> anyhow::Result<usize> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
@@ -115,6 +125,7 @@ INSERT OR IGNORE INTO abcp_complete_names(raw) SELECT name_b FROM abcp_scores;
         tx.commit()?;
         Ok(changed)
     }
+    /// 在单个事务中整体替换靶子表。
     pub fn replace_targets(&self, rows: &[(f64, String, String, String)]) -> anyhow::Result<()> {
         let mut c = self.conn.lock().unwrap();
         let tx = c.transaction()?;
@@ -130,6 +141,7 @@ INSERT OR IGNORE INTO abcp_complete_names(raw) SELECT name_b FROM abcp_scores;
         tx.commit()?;
         Ok(())
     }
+    /// 读取全部名字及其文字类型。
     pub fn names(&self) -> anyhow::Result<Vec<(NameRow, String)>> {
         let c = self.conn.lock().unwrap();
         let mut s = c.prepare("SELECT id,raw,text_type,diy FROM names ORDER BY id")?;
@@ -145,6 +157,7 @@ INSERT OR IGNORE INTO abcp_complete_names(raw) SELECT name_b FROM abcp_scores;
         })?;
         Ok(it.collect::<Result<_, _>>()?)
     }
+    /// 读取参与排名的名字；skip_archived 为 true 时排除已归档名字。
     pub fn names_for_run(&self, skip_archived: bool) -> anyhow::Result<Vec<(NameRow, String)>> {
         let c = self.conn.lock().unwrap();
         let sql = if skip_archived {
@@ -165,11 +178,13 @@ INSERT OR IGNORE INTO abcp_complete_names(raw) SELECT name_b FROM abcp_scores;
         })?;
         Ok(it.collect::<Result<_, _>>()?)
     }
+    /// 返回已归档名字的 ID 集合。
     pub fn archived_name_ids(&self) -> anyhow::Result<std::collections::HashSet<i64>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare("SELECT name_id FROM archived_names")?;
         Ok(stmt.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?)
     }
+    /// 归档一批名字（带原因与分数），返回新增归档数。
     pub fn archive_names(&self, rows: &[(i64, String, f64)]) -> anyhow::Result<usize> {
         let mut c = self.conn.lock().unwrap();
         let tx = c.transaction()?;
@@ -183,6 +198,7 @@ INSERT OR IGNORE INTO abcp_complete_names(raw) SELECT name_b FROM abcp_scores;
         tx.commit()?;
         Ok(added)
     }
+    /// 整体替换归档名单，返回写入行数。
     pub fn replace_archived_names(&self, rows: &[(i64, String, f64)]) -> anyhow::Result<usize> {
         let mut c = self.conn.lock().unwrap();
         let tx = c.transaction()?;
@@ -196,6 +212,7 @@ INSERT OR IGNORE INTO abcp_complete_names(raw) SELECT name_b FROM abcp_scores;
         tx.commit()?;
         Ok(rows.len())
     }
+    /// 读取全部靶子行。
     pub fn targets(&self) -> anyhow::Result<Vec<TargetRow>> {
         let c = self.conn.lock().unwrap();
         let mut s = c.prepare("SELECT weight,raw,left_name,right_name FROM targets ORDER BY id")?;
@@ -209,10 +226,12 @@ INSERT OR IGNORE INTO abcp_complete_names(raw) SELECT name_b FROM abcp_scores;
         })?;
         Ok(it.collect::<Result<_, _>>()?)
     }
+    /// 生成靶子签名（raw:weight 逐行拼接），作为配对分数缓存的键。
     pub fn signature(&self) -> anyhow::Result<String> {
         let ts = self.targets()?;
         Ok(ts.iter().map(|t| format!("{}:{:.12}", t.raw, t.weight)).collect::<Vec<_>>().join("\n"))
     }
+    /// 按 (a, b, 签名, 采样数) 查询缓存的配对分数；未命中返回 None。
     pub fn score(&self, a: i64, b: i64, sig: &str, samples: usize) -> anyhow::Result<Option<f64>> {
         let (a, b) = if a <= b { (a, b) } else { (b, a) };
         let c = self.conn.lock().unwrap();
@@ -221,6 +240,7 @@ INSERT OR IGNORE INTO abcp_complete_names(raw) SELECT name_b FROM abcp_scores;
         let mut q = s.query(params![a, b, sig, samples as i64])?;
         Ok(q.next()?.map(|r| r.get(0)).transpose()?)
     }
+    /// 在单个事务中批量写入配对分数缓存。
     pub fn save_scores_bulk(&self, rows: &[(i64, i64, f64)], samples: usize, sig: &str) -> anyhow::Result<()> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
@@ -231,6 +251,7 @@ INSERT OR IGNORE INTO abcp_complete_names(raw) SELECT name_b FROM abcp_scores;
         tx.commit()?;
         Ok(())
     }
+    /// 在单个事务中整体替换排名结果。
     pub fn replace_results(&self, rows: &[(i64, usize, f64, f64, f64)]) -> anyhow::Result<()> {
         let mut c = self.conn.lock().unwrap();
         let tx = c.transaction()?;
@@ -244,6 +265,7 @@ INSERT OR IGNORE INTO abcp_complete_names(raw) SELECT name_b FROM abcp_scores;
         tx.commit()?;
         Ok(())
     }
+    /// 读取结果明细（每行结果附合法搭档列表）。
     pub fn result_details(&self, legal: &std::collections::HashSet<(String, String)>) -> anyhow::Result<Vec<ResultDetailRow>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
@@ -315,6 +337,7 @@ INSERT OR IGNORE INTO abcp_complete_names(raw) SELECT name_b FROM abcp_scores;
             })
             .collect())
     }
+    /// 导出排名结果为文本。
     pub fn export_results(&self, legal: &std::collections::HashSet<(String, String)>) -> anyhow::Result<String> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare("SELECT n.id,r.rank,r.score,r.coefficient,n.text_type,n.raw FROM results r JOIN names n ON n.id=r.name_id ORDER BY r.rank")?;
@@ -362,6 +385,7 @@ INSERT OR IGNORE INTO abcp_complete_names(raw) SELECT name_b FROM abcp_scores;
         }
         Ok(out)
     }
+    /// 读取超过输出阈值的 ABCP 候选配对。
     pub fn abcp_candidates(&self) -> anyhow::Result<Vec<Candidate>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
@@ -381,6 +405,7 @@ INSERT OR IGNORE INTO abcp_complete_names(raw) SELECT name_b FROM abcp_scores;
             .collect::<Result<_, _>>()?)
     }
 
+    /// 读取尚未完成 ABCP 计算的名字。
     pub fn pending_abcp_names(&self) -> anyhow::Result<Vec<String>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
@@ -389,6 +414,7 @@ INSERT OR IGNORE INTO abcp_complete_names(raw) SELECT name_b FROM abcp_scores;
         Ok(stmt.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?)
     }
 
+    /// 在单个事务中保存 ABCP 配对分数并标记已完成的名字。
     pub fn save_abcp_results(
         &self,
         pairs: &[(String, String)],

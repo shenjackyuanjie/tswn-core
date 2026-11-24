@@ -38,7 +38,9 @@ impl CombatRuntime {
                     self.select_plain_default_enemy_targets_with_count(actor, smart, if smart { 6 } else { 5 })
                 }
                 BossActionSkill::YuriControl => self.select_plain_yuri_control_targets(actor, smart),
-                BossActionSkill::MarioGet => PreparedTargetList::new(),
+                BossActionSkill::MarioGet | BossActionSkill::Squall | BossActionSkill::Quilt | BossActionSkill::Smdd => {
+                    PreparedTargetList::new()
+                }
                 // `SklSaitama.au` 的基础概率在等级 0 时恒为 false，`aa` 不会执行。
                 BossActionSkill::Saitama => continue,
             };
@@ -96,6 +98,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 读取马里奥 Boss 状态中记录的火系技能等级；没有该状态时返回 0。
     fn plain_mario_fire_level(&self, actor: EntityIdx) -> u32 {
         self.entities
             .get(actor)
@@ -107,6 +110,9 @@ impl CombatRuntime {
     /// 结算扫描选中的 Boss 主动技能；通用技能沿用现有内置实现。
     pub fn drain_plain_boss_skill_into(&mut self, actor: EntityIdx, prepared: PreparedBossSkillAction, updates: &mut RunUpdates) {
         match prepared.selected {
+            BossActionSkill::Squall => self.drain_squall_action_into(actor, updates),
+            BossActionSkill::Quilt => self.drain_quilt_action_into(actor, updates),
+            BossActionSkill::Smdd => self.drain_smdd_action_into(actor, updates),
             BossActionSkill::Fire => {
                 let target = prepared.targets[0];
                 self.drain_plain_fire_skill_into(actor, target, updates);
@@ -292,6 +298,7 @@ impl CombatRuntime {
         scored.into_iter().map(|(target, _)| target).collect()
     }
 
+    /// 设置柯南的推理阶段值；推理状态必须已存在，否则 panic。
     fn set_conan_thinking(&mut self, actor: EntityIdx, value: i32) {
         let entity = self
             .entities

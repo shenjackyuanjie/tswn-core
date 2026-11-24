@@ -1,6 +1,7 @@
 use super::*;
 
 impl PreparedBattleInit {
+    /// 把 namerena 原始文本拆成输入分组与 seed 行：空行分队，纯 seed 组并入相邻队伍。
     pub fn split_namerena_raw(raw_input: String) -> (Vec<Vec<String>>, Vec<String>) {
         let raw_input = raw_input.replace("\r\n", "\n").replace('\r', "\n");
         let mut lines = raw_input.split('\n').map(trim_js_line_end).map(str::to_owned).collect::<Vec<_>>();
@@ -58,6 +59,7 @@ impl PreparedBattleInit {
         (groups, seed)
     }
 
+    /// 用默认 eval_rq 从原始分组构造完整初始状态。
     pub fn from_groups(
         raw_groups: &[Vec<String>],
         seed: &[String],
@@ -66,6 +68,7 @@ impl PreparedBattleInit {
         Self::from_groups_with_eval_rq(raw_groups, seed, crate::namerena::eval_name::DEFAULT_EVAL_RQ, registry)
     }
 
+    /// 按指定 eval_rq 从原始分组构造完整初始状态。
     pub fn from_groups_with_eval_rq(
         raw_groups: &[Vec<String>],
         seed: &[String],
@@ -75,10 +78,12 @@ impl PreparedBattleInit {
         Ok(PreparedBattleRoster::from_groups_with_eval_rq(raw_groups, eval_rq, registry)?.with_seed(seed))
     }
 
+    /// 输入分组对应的实体下标。
     pub fn input_groups(&self) -> &[Vec<EntityIdx>] { &self.input_groups }
 
     pub(crate) fn has_score_reuse_buffers(&self) -> bool { self.score_buffers.is_some() }
 
+    /// 把初始状态应用到 Runtime；实体数与准备值不一致时返回错误。
     pub fn apply(self, runtime: &mut CombatRuntime) -> Result<(), RuntimeBattleInitError> {
         self.apply_and_recover_seed(runtime).map(drop)
     }
@@ -240,6 +245,11 @@ impl PreparedBattleInit {
             &self.team_alive,
             &self.flat_alive,
         );
+        // 完成 Boss 类型与运行态覆盖后重建科研索引，避免把导入占位模板当作最终身份。
+        runtime.squall_bosses.clear();
+        runtime
+            .squall_bosses
+            .extend(runtime.entities.iter().filter_map(|(idx, e)| e.runtime.squall.is_some().then_some(idx)));
         runtime.rng.clone_from(&self.rng);
         runtime.scheduler.reset_action_mode_from_entities(&runtime.entities);
         let seed = PreparedBattleSeed {
@@ -370,6 +380,7 @@ impl PreparedBattleInit {
         }
     }
 
+    /// 由最小代蓝图构造使魔模板：按种类绑定玩家类型、导入技能，并带上克隆构建与复用开关。
     fn template_from_namerena_minion(
         blueprint: crate::namerena::PreparedMinionBlueprint,
         team: usize,
@@ -410,12 +421,14 @@ impl PreparedBattleInit {
         template
     }
 
+    /// 计算子分身名字系数：战斗名与队伍名的评估值取较大者，队伍值先减 6。
     fn namerena_child_clone_name_factor(player: &crate::namerena::PreparedPlayer, eval_rq: f64) -> f64 {
         let factor_name = crate::namerena::eval_name::eval_str_common_with_rq(player.combat_name(), true, eval_rq);
         let factor_team = crate::namerena::eval_name::eval_str_common_with_rq(&player.clan_name, true, eval_rq);
         factor_name.max(factor_team - 6.0)
     }
 
+    /// 由准备玩家构造基础模板：身份名、八围、行动点、技能与永久蓄力等逐项落地。
     fn template_from_namerena_player(
         player: &crate::namerena::PreparedPlayer,
         id: PlrId,

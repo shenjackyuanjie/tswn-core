@@ -4,7 +4,9 @@
 
 use super::*;
 
+/// 多人对局（multi_5）的完整回放 fixture：锁定 JS 产物兼容性。
 pub fn fight_multi_5<E: crate::EngineAdapter>() {
+    /// multi_5 用例的 fixture：输入与冻结 JS 回放轨迹。
     const FIGHT_CASE: &str = include_str!("fixtures/fight_multi_5.md");
     let (raw_input, expected_lines) = parse_embedded_fight_case(
         FIGHT_CASE,

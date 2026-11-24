@@ -13,6 +13,34 @@
 let wasmApi = null;
 const MODULE_CACHE_BUST = Date.now().toString(36);
 
+/** 被子衍生物与本体使用 emoji 图标，不再走默认的名字生成图标。 */
+const QUILT_EMOJI = [
+    ["quilt-monkey", "🐒"],
+    ["quilt-fish", "🐟"],
+    ["quilt", "🛏️"],
+    ["smdd-leopard", "🐆"],
+];
+const quiltEmojiCache = new Map();
+
+function quiltEmojiIcon(iconKey) {
+    const key = String(iconKey ?? "");
+    const hit = QUILT_EMOJI.find(([prefix]) => key === prefix || key.startsWith(`${prefix}@`));
+    if (!hit) return null;
+    if (quiltEmojiCache.has(hit[1])) return quiltEmojiCache.get(hit[1]);
+    const canvas = document.createElement("canvas");
+    canvas.width = 48;
+    canvas.height = 48;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = '40px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+    ctx.fillText(hit[1], 24, 26);
+    const url = canvas.toDataURL("image/png");
+    quiltEmojiCache.set(hit[1], url);
+    return url;
+}
+
 function withCacheBust(url) {
     const busted = new URL(url);
     busted.searchParams.set('v', MODULE_CACHE_BUST);
@@ -189,7 +217,7 @@ export async function createBattleStreamSource(rawInput, versionInfo, coreVersio
                 disposed = true;
                 release();
             },
-            loadIcon(iconKey) { return api.name_to_png_base64(iconKey); },
+            loadIcon(iconKey) { return quiltEmojiIcon(iconKey) ?? api.name_to_png_base64(iconKey); },
         };
     } catch (error) {
         release();

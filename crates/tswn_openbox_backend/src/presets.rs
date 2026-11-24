@@ -13,11 +13,17 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use tswn_core::text_input::read_text_file;
 
+/// 设置目录名：setting。
 const SETTING_DIR_NAME: &str = "setting";
+/// 设置文件名：settings.toml。
 const SETTINGS_FILE_NAME: &str = "settings.toml";
+/// score_now 文件名：score_now.toml。
 const SCORE_NOW_FILE_NAME: &str = "score_now.toml";
+/// 内嵌的默认 settings.toml 文本。
 const DEFAULT_SETTINGS_TOML: &str = include_str!("../assets/settings.toml");
+/// 内嵌的默认 score_now.toml 文本。
 const DEFAULT_SCORE_NOW_TOML: &str = include_str!("../assets/score_now.toml");
+/// 首次运行时补齐的内置资源清单（相对路径 + 内容）。
 const DEFAULT_SETTING_FILES: &[(&str, &str)] = &[
     (
         "teammates/teammate_fz.toml",
@@ -52,6 +58,7 @@ const DEFAULT_SETTING_FILES: &[(&str, &str)] = &[
     ("teammates/teammate_fs.txt", include_str!("../assets/teammates/teammate_fs.txt")),
 ];
 
+/// 靶子预设：ID、名称、文件路径与选项。
 #[derive(Debug, Clone)]
 pub struct TargetPreset {
     pub id: u64,
@@ -69,6 +76,7 @@ pub struct TargetPresetState {
     pub error: Option<String>,
 }
 
+/// 队友预设：取前 N 个、名称、文件路径与选项。
 #[derive(Debug, Clone)]
 pub struct TeammatePreset {
     pub head: usize,
@@ -86,6 +94,7 @@ pub struct TeammatePresetState {
 }
 
 impl TargetPresetState {
+    /// 加载靶子预设列表（默认选择第一项）。
     pub fn load() -> Self { Self::load_with_preferred_id(None) }
 
     /// 同步加载并写出缺失默认资源；优先选择存在的 preferred_id，否则选择第一项。
@@ -109,6 +118,7 @@ impl TargetPresetState {
         }
     }
 
+    /// 重新加载靶子预设，尽量保留此前的选择。
     pub fn reload(&mut self) {
         let next = Self::load();
         let previous_id = self.selected_id;
@@ -121,6 +131,7 @@ impl TargetPresetState {
         }
     }
 
+    /// 返回当前选中的靶子预设。
     pub fn selected(&self) -> Option<&TargetPreset> {
         let selected_id = self.selected_id?;
         self.items.iter().find(|item| item.id == selected_id)
@@ -128,6 +139,7 @@ impl TargetPresetState {
 }
 
 impl TeammatePresetState {
+    /// 加载队友预设列表（默认选择第一项）。
     pub fn load() -> Self {
         match load_setting_file().map(load_teammate_presets) {
             Ok(items) => Self {
@@ -143,6 +155,7 @@ impl TeammatePresetState {
         }
     }
 
+    /// 重新加载队友预设，尽量保留此前的选择。
     pub fn reload(&mut self) {
         let next = Self::load();
         let previous_index = self.selected_index;
@@ -153,6 +166,7 @@ impl TeammatePresetState {
             .or_else(|| (!self.items.is_empty()).then_some(0));
     }
 
+    /// 返回当前选中的队友预设。
     pub fn selected(&self) -> Option<&TeammatePreset> {
         let selected_index = self.selected_index?;
         self.items.get(selected_index)
@@ -160,12 +174,14 @@ impl TeammatePresetState {
 }
 
 #[derive(Debug)]
+/// 加载后的设置文件：设置目录与解析结果。
 struct LoadedSettingFile {
     setting_dir: PathBuf,
     config: OpenboxSettingFile,
 }
 
 #[derive(Debug, Deserialize)]
+/// settings.toml 的结构：靶子与队友预设列表。
 struct OpenboxSettingFile {
     #[serde(default)]
     targets: Vec<TargetPresetEntry>,
@@ -174,6 +190,7 @@ struct OpenboxSettingFile {
 }
 
 #[derive(Debug, Deserialize)]
+/// settings.toml 中的靶子预设条目。
 struct TargetPresetEntry {
     id: u64,
     name: String,
@@ -185,6 +202,7 @@ struct TargetPresetEntry {
 }
 
 #[derive(Debug, Deserialize)]
+/// settings.toml 中的队友预设条目。
 struct TeammatePresetEntry {
     head: usize,
     name: String,
@@ -193,6 +211,7 @@ struct TeammatePresetEntry {
     factor_enabled: bool,
 }
 
+/// 读取选中靶子预设的文本内容；未选择时返回中文错误。
 pub fn load_selected_target_text(state: &TargetPresetState) -> Result<String, String> {
     let preset = state.selected().ok_or_else(|| "请先选择靶子预设。".to_string())?;
     load_target_preset_text(preset)
@@ -202,6 +221,7 @@ pub fn load_selected_target_text(state: &TargetPresetState) -> Result<String, St
 /// 普通或带权格式由调用方解析。读取失败时返回含路径的错误。
 pub fn load_target_preset_text(preset: &TargetPreset) -> Result<String, String> { read_preset_text(&preset.path) }
 
+/// 读取选中队友预设的文本内容；未选择时返回中文错误。
 pub fn load_selected_teammate_text(state: &TeammatePresetState) -> Result<String, String> {
     let preset = state.selected().ok_or_else(|| "请先选择队友预设。".to_string())?;
     load_teammate_preset_text(preset)
@@ -210,10 +230,12 @@ pub fn load_selected_teammate_text(state: &TeammatePresetState) -> Result<String
 /// 同步读取指定队友文件，去除开头 BOM 并跳过非 UTF-8 行。格式由调用方解析。
 pub fn load_teammate_preset_text(preset: &TeammatePreset) -> Result<String, String> { read_preset_text(&preset.path) }
 
+/// 读取预设文本，失败时带上路径上下文。
 fn read_preset_text(path: &Path) -> Result<String, String> {
     read_text_file(path).map_err(|err| format!("读取预设失败: {}: {err}", path.display()))
 }
 
+/// 把设置条目转换为靶子预设，跳过空名并按设置目录解析相对路径。
 fn load_target_presets(loaded: LoadedSettingFile) -> Vec<TargetPreset> {
     let mut items = Vec::with_capacity(loaded.config.targets.len());
     for entry in loaded.config.targets {
@@ -231,6 +253,7 @@ fn load_target_presets(loaded: LoadedSettingFile) -> Vec<TargetPreset> {
     items
 }
 
+/// 把设置条目转换为队友预设，head 至少为 1。
 fn load_teammate_presets(loaded: LoadedSettingFile) -> Vec<TeammatePreset> {
     let mut items = Vec::with_capacity(loaded.config.teammate.len());
     for entry in loaded.config.teammate {
@@ -247,6 +270,7 @@ fn load_teammate_presets(loaded: LoadedSettingFile) -> Vec<TeammatePreset> {
     items
 }
 
+/// 按当前进程目录加载设置文件。
 fn load_setting_file() -> Result<LoadedSettingFile, String> { load_setting_file_from_root(&current_dir()?) }
 
 /// 从显式 root 的 setting 子目录加载靶子预设，不修改进程当前目录。
@@ -257,6 +281,7 @@ pub fn load_target_presets_from_root(root: &Path) -> Result<Vec<TargetPreset>, S
     load_setting_file_from_root(root).map(load_target_presets)
 }
 
+/// 从显式 root 加载设置文件；缺失时先写出默认资源。
 fn load_setting_file_from_root(root: &Path) -> Result<LoadedSettingFile, String> {
     let setting_dir = root.join(SETTING_DIR_NAME);
     let config_path = setting_dir.join(SETTINGS_FILE_NAME);
@@ -265,6 +290,7 @@ fn load_setting_file_from_root(root: &Path) -> Result<LoadedSettingFile, String>
     Ok(LoadedSettingFile { setting_dir, config })
 }
 
+/// 读取设置配置，缺失时写出默认目录树后再读。
 fn read_or_create_setting_file(setting_dir: &Path, config_path: &Path) -> Result<String, String> {
     match read_text_file(config_path) {
         Ok(raw) => {
@@ -280,11 +306,13 @@ fn read_or_create_setting_file(setting_dir: &Path, config_path: &Path) -> Result
 }
 
 // 只补缺失资源；升级或重新加载不能覆盖用户修改过的配置和靶子。
+/// 补齐内置资源并写入默认 settings.toml，不覆盖已有文件。
 fn write_default_setting_tree(setting_dir: &Path, config_path: &Path) -> Result<(), String> {
     ensure_default_setting_files(setting_dir)?;
     write_missing_file(config_path, DEFAULT_SETTINGS_TOML)
 }
 
+/// 按清单补齐缺失的内置资源文件。
 fn ensure_default_setting_files(setting_dir: &Path) -> Result<(), String> {
     for (relative_path, content) in DEFAULT_SETTING_FILES {
         write_missing_file(&setting_dir.join(relative_path), content)?;
@@ -292,6 +320,7 @@ fn ensure_default_setting_files(setting_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// 仅在文件不存在时写入内容，避免覆盖用户修改。
 fn write_missing_file(path: &Path, content: &str) -> Result<(), String> {
     // 常见的只读发布目录中，已有资源不需要写权限。
     if path.is_file() {
@@ -315,8 +344,10 @@ fn write_default_score_now_file(setting_dir: &Path) -> Result<(), String> {
     write_missing_file(&setting_dir.join(SCORE_NOW_FILE_NAME), DEFAULT_SCORE_NOW_TOML)
 }
 
+/// 读取当前目录，失败时返回中文错误。
 fn current_dir() -> Result<PathBuf, String> { std::env::current_dir().map_err(|err| format!("读取当前目录失败: {err}")) }
 
+/// 把相对路径解析到 base 之下；绝对路径原样返回。
 fn normalize_relative_path(base: &Path, file: &Path) -> PathBuf {
     if file.is_absolute() {
         file.to_path_buf()

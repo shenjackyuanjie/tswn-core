@@ -62,6 +62,7 @@ pub(super) fn first_duplicate_name_in_matchup(groups: &[&str]) -> Option<String>
     None
 }
 
+/// 判断两组文本的玩家集合是否相同：归一化为 id 名称后排序比较。
 pub(super) fn groups_have_same_players(left: &str, right: &str) -> bool {
     let mut left = normalized_group_players(left);
     let mut right = normalized_group_players(right);
@@ -70,6 +71,7 @@ pub(super) fn groups_have_same_players(left: &str, right: &str) -> bool {
     left == right
 }
 
+/// 把组文本逐行转换为归一化玩家名，忽略空行。
 fn normalized_group_players(group: &str) -> Vec<String> {
     group
         .lines()
@@ -172,9 +174,11 @@ fn open_prompt_reader() -> io::Result<BufReader<File>> {
     })
 }
 
+/// Windows 下打开控制台输入，用于输出文件已存在时的交互确认。
 #[cfg(windows)]
 fn open_tty_for_read() -> io::Result<File> { File::open("CONIN$") }
 
+/// Unix 下打开 /dev/tty，用于输出文件已存在时的交互确认。
 #[cfg(not(windows))]
 fn open_tty_for_read() -> io::Result<File> { File::open("/dev/tty") }
 
@@ -295,6 +299,7 @@ pub(super) fn sort_score_output_file(path: &Path, jsonl: bool, pure: bool) -> io
     fs::write(path, sorted)
 }
 
+/// 评分输出行的排序比较：按行内分数降序，分数相同按文本，无分数行排最后。
 fn compare_score_output_lines(left: &&str, right: &&str, jsonl: bool) -> std::cmp::Ordering {
     match (score_output_line_value(left, jsonl), score_output_line_value(right, jsonl)) {
         (Some(left_score), Some(right_score)) => right_score.total_cmp(&left_score).then_with(|| left.cmp(right)),
@@ -304,6 +309,7 @@ fn compare_score_output_lines(left: &&str, right: &&str, jsonl: bool) -> std::cm
     }
 }
 
+/// 从输出行提取排序用分数：纯文本取首个数字，JSONL 取 avg_win_rate 或 score 字段。
 fn score_output_line_value(line: &str, jsonl: bool) -> Option<f64> {
     if !jsonl {
         return line.split_whitespace().next()?.parse().ok();

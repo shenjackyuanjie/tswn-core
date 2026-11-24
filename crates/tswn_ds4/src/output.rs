@@ -24,6 +24,7 @@ pub struct AtomicFileWriter {
 }
 
 impl AtomicFileWriter {
+    /// 创建面向 final_path 的原子写入器：按需创建父目录，并暂存到同目录临时文件。
     pub fn new(final_path: &Path) -> Ds4Result<Self> {
         if let Some(parent) = final_path.parent() {
             fs::create_dir_all(parent)?;
@@ -46,6 +47,7 @@ impl AtomicFileWriter {
         })
     }
 
+    /// 借用内部缓冲写入器；commit 之后不再可用。
     pub fn writer(&mut self) -> &mut BufWriter<File> { self.writer.as_mut().expect("writer should exist before commit") }
 
     /// 消费写入器，先 flush/sync_all 再关闭暂存文件并替换目标。
@@ -72,12 +74,14 @@ impl Drop for AtomicFileWriter {
     }
 }
 
+/// 把字节内容通过临时文件原子写入 path。
 pub fn write_bytes_atomic(path: &Path, content: &[u8]) -> Ds4Result<()> {
     let mut writer = AtomicFileWriter::new(path)?;
     writer.writer().write_all(content)?;
     writer.commit()
 }
 
+/// 把 source 的内容追加写入 destination，按需创建父目录；destination 不存在时先创建。
 pub fn append_file(source: &Path, destination: &Path) -> Ds4Result<()> {
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent)?;

@@ -10,6 +10,7 @@ pub enum SkillBoost {
 }
 
 impl SkillBoost {
+    /// 计算最终等级：座位加成取 `base + boost`，末尾翻倍取 `base × 2`。
     pub fn final_level(&self) -> u32 {
         match self {
             Self::Normal(level) => *level,
@@ -18,6 +19,7 @@ impl SkillBoost {
         }
     }
 
+    /// 取不含任何加成的基级。
     pub fn base_level(&self) -> u32 {
         match self {
             Self::Normal(level) => *level,
@@ -25,6 +27,7 @@ impl SkillBoost {
         }
     }
 
+    /// 从当前最终等级反推衰减后的基级：座位加成减去 boost（至少 1），翻倍除以 2。
     pub fn decayed_base_from_level(&self, current_level: u32) -> u32 {
         match self {
             Self::Normal(_) => current_level,
@@ -33,6 +36,7 @@ impl SkillBoost {
         }
     }
 
+    /// 从衰减基级重建最终等级，与 [`decayed_base_from_level`](Self::decayed_base_from_level) 互逆。
     pub fn final_level_from_decayed_base(&self, decayed_base: u32) -> u32 {
         match self {
             Self::Normal(_) => decayed_base,
@@ -41,6 +45,8 @@ impl SkillBoost {
         }
     }
 
+    /// 解析 overlay 文本：纯数字为 `Normal`，`base+boost` 为座位加成，`2*base` 为末尾翻倍。
+    /// 无法识别时返回 `None`。
     pub fn parse(raw: &str) -> Option<Self> {
         let raw = raw.trim();
         if let Ok(value) = raw.parse::<u32>() {
@@ -61,19 +67,32 @@ impl SkillBoost {
     }
 }
 
+/// 玩家分类技能表的标准槽数。
 pub const CLASSIFIED_SKILL_SLOT_COUNT: usize = 44;
+/// 召唤火 1 在分类技能表中的键。
 pub const SUMMON_FIRE1_SKILL_KEY: usize = 40;
+/// 召唤火 2 在分类技能表中的键。
 pub const SUMMON_FIRE2_SKILL_KEY: usize = 41;
+/// 召唤爆炸在分类技能表中的键。
 pub const SUMMON_EXPLODE_SKILL_KEY: usize = 42;
+/// 幻影附体在分类技能表中的键。
 pub const PHANTOM_POSSESS_SKILL_KEY: usize = 43;
+/// 武器 S11 追加技能在分类技能表中的键。
 pub const WEAPON_S11_SKILL_KEY: usize = 44;
+/// 武器 DeathNote 追加技能在分类技能表中的键。
 pub const WEAPON_DEATH_NOTE_SKILL_KEY: usize = 45;
+/// 武器玄月反击追加技能在分类技能表中的键。
 pub const WEAPON_XUAN_YUE_COUNTER_SKILL_KEY: usize = 46;
+/// Rinick 身份分支的冰河世纪追加技能键。
 pub const WEAPON_RINICK_ICE_AGE_SKILL_KEY: usize = 47;
+/// Rinick 身份分支的尤里控制追加技能键。
 pub const WEAPON_RINICK_YURI_CONTROL_SKILL_KEY: usize = 48;
+/// 召唤物普通技能键的基址；实际键为 `基址 + 技能 id`。
 pub const SUMMON_MINION_NORMAL_SKILL_KEY_BASE: usize = 80;
+/// 召唤物分担伤害在分类技能表中的键。
 pub const SUMMON_SHARE_DAMAGE_SKILL_KEY: usize = 255;
 
+/// 内置技能引用：普通技能 id，以及召唤、附身、武器与身份分支等特殊技能。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltinSkillRef {
     Normal(usize),
@@ -90,6 +109,7 @@ pub enum BuiltinSkillRef {
     RinickYuriControl,
 }
 
+/// 分类技能引用：玩家侧普通技能，以及召唤火/爆炸与幻影附体等特殊键。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClassifiedSkillRef {
     Normal(usize),
@@ -100,6 +120,7 @@ pub enum ClassifiedSkillRef {
 }
 
 impl ClassifiedSkillRef {
+    /// 映射为玩家分类技能表中的键。
     pub fn player_key(self) -> usize {
         match self {
             Self::Normal(id) => id,
@@ -110,6 +131,7 @@ impl ClassifiedSkillRef {
         }
     }
 
+    /// 映射为召唤物分类技能表中的键：普通技能加基址，特殊键原样返回。
     pub fn summon_minion_key(self) -> usize {
         match self {
             Self::Normal(id) => SUMMON_MINION_NORMAL_SKILL_KEY_BASE + id,
@@ -117,6 +139,7 @@ impl ClassifiedSkillRef {
         }
     }
 
+    /// 映射为内置技能引用；两种召唤火合并为同一个内置召唤火。
     pub fn builtin(self) -> BuiltinSkillRef {
         match self {
             Self::Normal(id) => BuiltinSkillRef::Normal(id),
@@ -127,6 +150,7 @@ impl ClassifiedSkillRef {
     }
 }
 
+/// 技能表中的一项：槽位键、内置引用、等级与加成构成。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillEntrySpec {
     pub key: usize,
@@ -136,6 +160,7 @@ pub struct SkillEntrySpec {
     pub boost: Option<SkillBoost>,
 }
 
+/// 完整技能装载：全部条目、固定 lanes、各阶段行动顺序与权重配置。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SkillLoadoutSpec {
     pub entries: Vec<SkillEntrySpec>,
@@ -149,6 +174,7 @@ pub struct SkillLoadoutSpec {
     pub effective_skill_adjustment: Option<Vec<(usize, EffectiveSkillWeight)>>,
 }
 
+/// effective_skills 调整项的数量上限。
 pub(crate) const MAX_EFFECTIVE_SKILL_ADJUSTMENTS: usize = 10;
 
 /// 条件受战况影响较大的主动技，以及需要保留发动位置的分身。
@@ -185,6 +211,7 @@ const EFFECTIVE_SKILL_CONSUMPTION: [f64; 25] = [
 ];
 
 impl SkillLoadoutSpec {
+    /// 用等级 / 加成 / 行动序数组构造标准技能装载。
     pub(crate) fn standard(
         levels: &[u32; 40],
         boosted: &[bool; 40],
@@ -215,6 +242,7 @@ impl SkillLoadoutSpec {
         }
     }
 
+    /// 用 overlay 的技能与 effective 列表构造玩家技能装载；含分类技能时走分类条目。
     pub(crate) fn player_overlay(
         skills: &[(String, SkillBoost)],
         effective_skills: Option<&[(String, EffectiveSkillWeight)]>,
@@ -279,6 +307,7 @@ impl SkillLoadoutSpec {
         spec
     }
 
+    /// 按 active_order 与等级自动分配 effective_skills 权重。
     pub(crate) fn enable_auto_effective_skills(&mut self) {
         let mut weights = Vec::new();
         let mut adjustments = Vec::new();
@@ -321,6 +350,7 @@ impl SkillLoadoutSpec {
         self.effective_skill_redistribution = EffectiveSkillWeight::new(1.0);
     }
 
+    /// 用技能列表构造通用小兵 overlay。
     pub(crate) fn generic_minion_overlay(skills: &[(String, SkillBoost)]) -> Self {
         if skills.iter().any(|(name, _)| parse_prefixed_classified_skill_name(name).is_some()) {
             let mut entries = classified_player_entries();
@@ -357,6 +387,7 @@ impl SkillLoadoutSpec {
         Self::from_entries(entries, fixed_lanes.clone(), fixed_lanes)
     }
 
+    /// 用技能列表构造召唤小兵 overlay；share_damage 控制分担伤害技能。
     pub(crate) fn summon_overlay(skills: &[(String, SkillBoost)], share_damage: bool) -> Self {
         let classified = skills.iter().any(|(name, _)| parse_prefixed_classified_skill_name(name).is_some());
         let (mut entries, fixed_lanes) = if classified {
@@ -406,6 +437,7 @@ impl SkillLoadoutSpec {
         Self::from_entries(entries, fixed_lanes, active_order)
     }
 
+    /// 构造默认影子（附身）overlay。
     pub(crate) fn shadow_default(base_level: u32) -> Self {
         let boost = (base_level > 0).then_some(SkillBoost::LastBoost(base_level));
         Self::from_entries(
@@ -421,6 +453,7 @@ impl SkillLoadoutSpec {
         )
     }
 
+    /// 按槽位等级与行动序构造默认召唤 overlay。
     pub(crate) fn summon_default(slot_levels: [u32; 3], action_order: [usize; 3]) -> Self {
         let mut entries = vec![
             empty_entry(0, BuiltinSkillRef::SummonFire),
@@ -450,6 +483,7 @@ impl SkillLoadoutSpec {
         Self::from_entries(entries, vec![0, 1, 2], action_order.into_iter().collect())
     }
 
+    /// 从条目表构造技能装载：推导 active_order 与 post_damage 顺序。
     fn from_entries(entries: Vec<SkillEntrySpec>, fixed_lanes: Vec<usize>, active_order: Vec<usize>) -> Self {
         let keys_for_normal = |skill_key: usize| {
             entries
@@ -530,6 +564,7 @@ impl SkillLoadoutSpec {
     }
 }
 
+/// 构造 0 级空技能条目。
 fn empty_entry(key: usize, skill: BuiltinSkillRef) -> SkillEntrySpec {
     SkillEntrySpec {
         key,
@@ -540,14 +575,17 @@ fn empty_entry(key: usize, skill: BuiltinSkillRef) -> SkillEntrySpec {
     }
 }
 
+/// 把加成应用到条目：设置最终等级、boosted 与 boost。
 fn apply_boost(entry: &mut SkillEntrySpec, boost: &SkillBoost) {
     entry.level = boost.final_level();
     entry.boosted = !matches!(boost, SkillBoost::Normal(_));
     entry.boost = entry.boosted.then(|| boost.clone());
 }
 
+/// 普通玩家的 40 个空技能条目。
 fn normal_player_entries() -> Vec<SkillEntrySpec> { (0..40).map(|key| empty_entry(key, BuiltinSkillRef::Normal(key))).collect() }
 
+/// 分类玩家条目：普通 40 项加召唤 / 附身等固定键。
 fn classified_player_entries() -> Vec<SkillEntrySpec> {
     normal_player_entries()
         .into_iter()
@@ -560,6 +598,7 @@ fn classified_player_entries() -> Vec<SkillEntrySpec> {
         .collect()
 }
 
+/// 召唤小兵条目：40 个映射键加召唤 / 附身固定键。
 fn classified_summon_entries() -> Vec<SkillEntrySpec> {
     (0..40)
         .map(|id| empty_entry(SUMMON_MINION_NORMAL_SKILL_KEY_BASE + id, BuiltinSkillRef::Normal(id)))
@@ -572,6 +611,8 @@ fn classified_summon_entries() -> Vec<SkillEntrySpec> {
         .collect()
 }
 
+/// 技能名到数字 id：剥离 `skl` / `skill` 前缀后查表；
+/// 无法命中时接受小于 40 的纯数字 id，否则返回 `None`。
 pub fn skill_name_to_id(name: &str) -> Option<usize> {
     let normalized = normalize_skill_name(name);
     match normalized.as_str() {
@@ -615,6 +656,8 @@ pub fn skill_name_to_id(name: &str) -> Option<usize> {
     }
 }
 
+/// 数字 id 到导出名：命名表内返回 `skl<名字>`，
+/// 命名表之外返回 `skill<id>`。
 pub fn skill_name_for_export(skill_id: usize) -> String {
     let name = match skill_id {
         0 => "fire",
@@ -658,6 +701,7 @@ pub fn skill_name_for_export(skill_id: usize) -> String {
     format!("skl{name}")
 }
 
+/// 玩家分类键的导出名（如 `summon:sklfire1`）；非特殊键返回 `None`。
 pub fn classified_player_skill_name_for_export(skill_key: usize) -> Option<String> {
     match skill_key {
         SUMMON_FIRE1_SKILL_KEY => Some("summon:sklfire1".to_owned()),
@@ -668,6 +712,8 @@ pub fn classified_player_skill_name_for_export(skill_key: usize) -> Option<Strin
     }
 }
 
+/// 召唤物分类键的导出名：普通段转 `normal:<导出名>`，
+/// 其余键转玩家分类导出名。
 pub fn classified_summon_minion_skill_name_for_export(skill_key: usize) -> Option<String> {
     if (SUMMON_MINION_NORMAL_SKILL_KEY_BASE..SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 40).contains(&skill_key) {
         return Some(format!(
@@ -678,6 +724,8 @@ pub fn classified_summon_minion_skill_name_for_export(skill_key: usize) -> Optio
     classified_player_skill_name_for_export(skill_key)
 }
 
+/// 解析 `前缀:名字` 形式：`normal` / `summon` / `phantom` 三类前缀
+/// （含中文与别名）分别映射到对应分类引用。
 pub fn parse_prefixed_classified_skill_name(name: &str) -> Option<ClassifiedSkillRef> {
     let (prefix, name) = name.trim().split_once(':')?;
     match prefix.trim().to_ascii_lowercase().as_str() {
@@ -688,6 +736,7 @@ pub fn parse_prefixed_classified_skill_name(name: &str) -> Option<ClassifiedSkil
     }
 }
 
+/// 按前缀、召唤、幻影、普通技能的优先级从名字推断分类引用。
 pub fn player_classified_skill_ref_from_name(name: &str) -> Option<ClassifiedSkillRef> {
     parse_prefixed_classified_skill_name(name)
         .or_else(|| summon_slot_skill_ref_from_name(name))
@@ -695,12 +744,14 @@ pub fn player_classified_skill_ref_from_name(name: &str) -> Option<ClassifiedSki
         .or_else(|| skill_name_to_id(name).map(ClassifiedSkillRef::Normal))
 }
 
+/// 判断名字是否为分类玩家技能（前缀 / 召唤 / 附身）。
 fn is_player_classified_skill_name(name: &str) -> bool {
     parse_prefixed_classified_skill_name(name).is_some()
         || summon_slot_skill_ref_from_name(name).is_some()
         || phantom_skill_ref_from_name(name).is_some()
 }
 
+/// 召唤槽技能名（`sklfire1` / `sklfire2` / `sklexplode`，大小写不敏感）到分类引用。
 pub fn summon_slot_skill_ref_from_name(name: &str) -> Option<ClassifiedSkillRef> {
     match name.trim().to_ascii_lowercase().as_str() {
         "sklfire1" => Some(ClassifiedSkillRef::SummonFire1),
@@ -710,6 +761,7 @@ pub fn summon_slot_skill_ref_from_name(name: &str) -> Option<ClassifiedSkillRef>
     }
 }
 
+/// 幻影技能名（`possess` / `possession` / `附体`，大小写不敏感）到分类引用。
 pub fn phantom_skill_ref_from_name(name: &str) -> Option<ClassifiedSkillRef> {
     match normalize_skill_name(name).as_str() {
         "possess" | "possession" | "附体" => Some(ClassifiedSkillRef::PhantomPossess),
@@ -717,6 +769,7 @@ pub fn phantom_skill_ref_from_name(name: &str) -> Option<ClassifiedSkillRef> {
     }
 }
 
+/// 去掉 skl / skill 前缀并小写化。
 fn normalize_skill_name(name: &str) -> String {
     let lower = name.trim().to_ascii_lowercase();
     lower

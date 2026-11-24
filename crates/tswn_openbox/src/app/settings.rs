@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::results::{ColumnAlign, ResultsView, ViewMode};
 use super::{OpenboxApp, Tool};
 
+/// UI 设置在 eframe 存储中的键名。
 const UI_SETTINGS_KEY: &str = "tswn_openbox.ui_settings";
 
 /// 单个工具页的表格与卡片排版。
@@ -38,6 +39,7 @@ impl Default for ViewLayout {
 }
 
 impl ViewLayout {
+    /// 从当前视图快照出可持久化的排版。
     fn of(view: &ResultsView) -> Self {
         Self {
             column_widths: view.column_widths,
@@ -76,6 +78,7 @@ fn insert_base_page<T: Clone>(items: &[T], default: T) -> Vec<T> {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(default)]
+/// 持久化的 UI 偏好：主题、工具页、视图选择与各页排版。
 struct UiSettings {
     theme: egui::ThemePreference,
     tool: Tool,
@@ -108,6 +111,7 @@ impl Default for UiSettings {
 }
 
 impl OpenboxApp {
+    /// 从存储恢复 UI 偏好：逐字段校验，旧版本少一页时在 base 位补默认值。
     pub(super) fn from_storage(storage: Option<&dyn eframe::Storage>) -> Self {
         let mut app = Self::default();
         if let Some(settings) = storage.and_then(|storage| eframe::get_value::<UiSettings>(storage, UI_SETTINGS_KEY)) {
@@ -135,6 +139,7 @@ impl OpenboxApp {
         app
     }
 
+    /// 把当前主题、工具页与各页排版写回存储。
     pub(super) fn save_ui_settings(&self, storage: &mut dyn eframe::Storage) {
         let mut result_modes = Vec::with_capacity(self.views.len());
         let mut view_layouts = Vec::with_capacity(self.views.len());

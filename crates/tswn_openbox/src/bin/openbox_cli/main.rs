@@ -12,11 +12,17 @@
 //!   namer-pf / cqd / pair 在 worker 线程执行，主线程排空事件通道。
 //! - 未实现 GUI 的“停止”按钮：Ctrl+C 直接终止进程。
 
+/// 命令行参数与计划归一化。
 mod args;
+/// base 子命令执行。
 mod base;
+/// filter 子命令的条件与执行。
 mod filter;
+/// 参数字面量与阈值解析助手。
 mod input;
+/// 各子命令的执行计划结构。
 mod plan;
+/// 执行计划到后端输入的转换。
 mod tools;
 
 use std::io::{IsTerminal, Write as _};
@@ -33,6 +39,7 @@ const EVENT_CHANNEL_CAPACITY: usize = 4096;
 /// 进度行最小刷新间隔（ms）：短 matchup 每秒可完成数万次，不能让刷新反噬吞吐。
 const PROGRESS_MIN_INTERVAL_MS: u128 = 40;
 
+/// CLI 入口：解析参数、生成计划并驱动后端事件循环。
 fn main() {
     let cli = args::parse().unwrap_or_else(|err| err.exit());
     let job = cli.plan().unwrap_or_else(|err| err.exit());

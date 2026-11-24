@@ -1,9 +1,11 @@
 use super::*;
 
+/// 蓄力技能的行动后处理：推进蓄力步数，归零时撤销倍率。
 pub fn run_charge_post_action_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     context.tick_owner_charge_post_action().expect("charge post_action owner should exist");
 }
 
+/// 聚气技能：激活聚气运行时并播报开始与攻击力上升两条消息。
 pub fn run_accumulate_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     if !context.activate_owner_accumulate_runtime().expect("accumulate owner should exist") {
         return;
@@ -24,6 +26,7 @@ pub fn run_accumulate_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEnt
     ));
 }
 
+/// 护盾状态的 POST_DEFEND：按剩余盾值抵减伤害，破盾时保留完整伤害。
 pub fn run_shield_post_defend_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let Some(StatePayload::ShieldValue(shield)) = context.owner_state_payload(entry.legacy_order_key) else {
         return;
@@ -44,6 +47,7 @@ pub fn run_shield_post_defend_state(context: &mut StateContext<'_>, entry: &Stat
     }
 }
 
+/// 诅咒状态的 POST_DEFEND：按概率把本次伤害乘以诅咒倍率。
 pub fn run_curse_post_defend_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let Some(StatePayload::Curse { prob, multiply }) = context.owner_state_payload(entry.legacy_order_key) else {
         return;
@@ -66,6 +70,7 @@ pub fn run_curse_post_defend_state(context: &mut StateContext<'_>, entry: &State
     }
 }
 
+/// 中毒状态的 POST_ACTION：按剩余层数分摊毒性伤害并递减层数，归零解除。
 pub fn run_poison_post_action_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let Some(StatePayload::Poison {
         caster,
@@ -122,6 +127,7 @@ pub fn run_poison_post_action_state(context: &mut StateContext<'_>, entry: &Stat
         .expect("poison state payload should still exist");
 }
 
+/// 疾走状态的 POST_ACTION：递减步数，归零时播报解除。
 pub fn run_haste_post_action_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let Some(StatePayload::Haste {
         faster,
@@ -144,6 +150,7 @@ pub fn run_haste_post_action_state(context: &mut StateContext<'_>, entry: &State
     );
 }
 
+/// 魅惑状态的 POST_ACTION：递减步数，归零时播报解除。
 pub fn run_charm_post_action_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let Some(StatePayload::Charm {
         group_id,
@@ -170,6 +177,7 @@ pub fn run_charm_post_action_state(context: &mut StateContext<'_>, entry: &State
     );
 }
 
+/// 迟缓状态的 POST_ACTION：递减步数，归零时播报解除。
 pub fn run_slow_post_action_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let Some(StatePayload::Slow { step }) = context.owner_state_payload(entry.legacy_order_key) else {
         return;
@@ -198,6 +206,7 @@ fn roll_covid_mutations(
     changed
 }
 
+/// 按注册序在新冠感染条目中定位本次钩子对应的毒株下标。
 fn planned_covid_strain(
     context: &StateContext<'_>,
     entry: &StateHookPlanEntry,
@@ -240,18 +249,22 @@ pub(crate) fn propose_boss_infection_pre_action(
     }
 }
 
+/// 提议路径的新冠 PRE_ACTION 执行入口：变异已在前置钩子掷过，直接进入实现体。
 fn execute_proposed_covid_pre_action(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     run_covid_infection_state_impl(context, entry, true);
 }
 
+/// 提议路径的懒癌 PRE_ACTION 执行入口：发作概率已判定过，直接进入实现体。
 fn execute_proposed_lazy_pre_action(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     run_lazy_infection_state_impl(context, entry, true);
 }
 
+/// 新冠传染状态：推进病程，按变异抽样决定发作、重症或解除。
 pub fn run_covid_infection_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     run_covid_infection_state_impl(context, entry, false);
 }
 
+/// 新冠传染状态实现：PRE_ACTION 按变异抽样决定发作或接管动作，POST_ACTION 推入新冠肺炎效果；`proposed` 表示变异已在前置钩子处理。
 fn run_covid_infection_state_impl(context: &mut StateContext<'_>, entry: &StateHookPlanEntry, proposed: bool) {
     let Some(StatePayload::CovidInfection {
         mut entries,
@@ -432,14 +445,17 @@ fn run_covid_infection_state_impl(context: &mut StateContext<'_>, entry: &StateH
     }
 }
 
+/// 懒癌发作判定：128 分之一的概率，且本体当前可行动。
 fn roll_lazy_pre_action(context: &mut StateContext<'_>) -> bool {
     context.rng_next_u8() < 128 && context.owner().is_some_and(|owner| owner.is_active())
 }
 
+/// 懒癌传染状态：按概率跳回合或发作，退场时解除。
 pub fn run_lazy_infection_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     run_lazy_infection_state_impl(context, entry, false);
 }
 
+/// 懒癌传染状态实现：PRE_ACTION 掷概率后选目标跳回合或发作；`proposed` 表示概率已在前置钩子判定过。
 fn run_lazy_infection_state_impl(context: &mut StateContext<'_>, entry: &StateHookPlanEntry, proposed: bool) {
     let Some(StatePayload::LazyInfection { boss }) = context.owner_state_payload(entry.legacy_order_key) else {
         return;
@@ -509,6 +525,7 @@ fn run_lazy_infection_state_impl(context: &mut StateContext<'_>, entry: &StateHo
     }
 }
 
+/// 一拳超人 Boss 状态的 POST_DEFEND：累计受伤与攻击者，伤害按百分之一结算。
 pub fn run_saitama_boss_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     if context.hook() != ProcMask::POST_DEFEND {
         return;
@@ -557,6 +574,7 @@ pub fn run_saitama_boss_state(context: &mut StateContext<'_>, entry: &StateHookP
     context.set_defend_damage(damage / 100);
 }
 
+/// 计时解除类状态的 POST_ACTION 收尾：步数归零时写回载荷并播报解除消息（含一拳超人的特殊发帧条件）。
 fn run_timed_release_post_action_state(
     context: &mut StateContext<'_>,
     entry: &StateHookPlanEntry,
@@ -602,6 +620,7 @@ fn run_timed_release_post_action_state(
     }
 }
 
+/// 铁壁状态的 POST_DEFEND：按保护值削减伤害并递减步数。
 pub fn run_iron_post_defend_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let Some(StatePayload::Iron { protect, step }) = context.owner_state_payload(entry.legacy_order_key) else {
         return;
@@ -645,6 +664,7 @@ pub fn run_iron_post_defend_state(context: &mut StateContext<'_>, entry: &StateH
     ));
 }
 
+/// 铁壁状态的 POST_ACTION 推进：原地递减步数，到期时延后清理状态并结算剩余免伤。
 fn run_iron_post_action_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry, protect: i32, step: i32) {
     if step <= 0 {
         context

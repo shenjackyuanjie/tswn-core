@@ -7,10 +7,15 @@ enum PlainBossDefend {
     Aokiji,
     /// 斑鸠：吸收奇数伤害。
     Ikaruga,
+    /// 被子：本体不可被选中，直接命中一律不造成伤害；只有衍生物的伤害传导才会扣血。
+    Quilt,
 }
 
 impl CombatRuntime {
+    /// 驱散命中：清除目标正面状态并按档位扣除 MP。
     pub fn apply_disperse_hit_into(&mut self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
+        // 净化也能解除科研 Boss 的铁壁、蓄势、剪枝与嘲讽交换。
+        self.dispel_squall_effects(target, updates);
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime disperse target entity: {}", target.0);
         };
@@ -29,6 +34,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 致死钩子：走 die hook，未被救回时按条件触发 kill hook。
     pub fn drain_lethal_damage_hooks_into(&mut self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         self.drain_die_hooks_into(target, updates);
         if self.entities.get(target).is_some_and(|entity| entity.runtime.hp > 0) {
@@ -39,6 +45,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 施法者是否仍有存活敌人，或队列中等待生成的敌方单位。
     pub fn has_alive_enemy_or_pending_spawn(&self, caster: EntityIdx) -> bool {
         let caster_team = self
             .entities
@@ -59,6 +66,7 @@ impl CombatRuntime {
         self.has_pending_spawn_outside_team(caster_team)
     }
 
+    /// 效果队列中是否有由 `team` 之外的单位发起的待生成效果；判胜与击杀判定用它确认敌方仍有后续单位。
     fn has_pending_spawn_outside_team(&self, team: usize) -> bool {
         self.effects.iter().any(|effect| {
             let owner = match effect {
@@ -80,12 +88,14 @@ impl CombatRuntime {
                 .is_some_and(|winner| !self.has_pending_spawn_outside_team(winner))
     }
 
+    /// 是否应执行击杀回调：非自杀、施法者存活且仍有敌人。
     pub fn should_run_kill_hooks(&self, caster: EntityIdx, killed_target: EntityIdx) -> bool {
         caster != killed_target
             && self.entities.get(caster).is_some_and(|entity| entity.runtime.hp > 0)
             && self.has_alive_enemy_or_pending_spawn(caster)
     }
 
+    /// 执行目标的 PRE_DEFEND 技能与状态 hook。
     pub fn drain_pre_defend_hooks_into(
         &mut self,
         target: EntityIdx,
@@ -95,6 +105,7 @@ impl CombatRuntime {
         self.drain_pre_defend_hooks_with_on_damage_into(target, updates, defend_value, PlainAttackOnDamage::None);
     }
 
+    /// 执行 PRE_DEFEND hook，并附带本次普攻的伤害效果。
     pub fn drain_pre_defend_hooks_with_on_damage_into(
         &mut self,
         target: EntityIdx,
@@ -161,6 +172,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 读取 owner 的守护技能等级；实体缺失或未装备时用回退值。
     pub fn plain_protect_level(&self, owner: EntityIdx, fallback: u32) -> u32 {
         let Some(owner) = self.entities.get(owner) else {
             return fallback;
@@ -180,6 +192,7 @@ impl CombatRuntime {
             .unwrap_or(fallback)
     }
 
+    /// 直接调用守护技能的 POST_ACTION，不受延后分区过滤。
     pub fn drain_plain_protect_post_action_into(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
         // 守护触发时，JS 会直接调用 ProtectSkill.post_action；即使该技能是 Merge 中途注册、
         // 在常规 POST_ACTION 队列里处于延后位置，这次直接调用也不能被延后过滤掉。
@@ -196,6 +209,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 保护者在 PRE_DEFEND 中代为承受伤害；返回是否发生替身。
     pub fn drain_plain_protect_pre_defend_into(
         &mut self,
         target: EntityIdx,
@@ -377,12 +391,18 @@ impl CombatRuntime {
         }
     }
 
+    /// 执行目标的 POST_DEFEND 技能与状态 hook，含 Boss 专属防御。
     pub fn drain_post_defend_hooks_into(
         &mut self,
         target: EntityIdx,
         updates: &mut RunUpdates,
         defend_value: &mut RuntimeDefendValue,
     ) {
+        // 被子衍生物在睡5觉/钻被/猴儿冰冻期间固定 0 伤，不再借用超大护盾。
+        if self.quilt_minion_sleeping(target) {
+            defend_value.set_damage(0);
+            return;
+        }
         #[derive(Clone, Copy)]
         enum DefendHookPlanEntry {
             Skill(SkillHookPlanEntry),
@@ -508,8 +528,11 @@ impl CombatRuntime {
                 break;
             }
         }
+        // 科研铁壁和复查易伤应用于完成常规防御后的正伤害。
+        self.apply_squall_defense(target, defend_value);
     }
 
+    /// 常规护盾在 POST_DEFEND 中抵减伤害；护盾不足时清零且不抵消伤害。
     pub fn apply_runtime_shield_post_defend(&mut self, target: EntityIdx, defend_value: &mut RuntimeDefendValue) {
         let Some(damage) = defend_value.damage() else {
             return;
@@ -541,10 +564,12 @@ impl CombatRuntime {
         match entity.template.name.as_str() {
             "aokiji" => Some((SkillPriority(10_000), PlainBossDefend::Aokiji)),
             "ikaruga" => Some((SkillPriority(20_000), PlainBossDefend::Ikaruga)),
+            "quilt" => Some((SkillPriority(30_000), PlainBossDefend::Quilt)),
             _ => None,
         }
     }
 
+    /// 应用 Boss 专属防御：青雉把冰伤害转为吸收回复并上报防御文案、物理伤害归零；斑鸠把奇数伤害转为吸收回复。
     fn apply_plain_boss_defend(
         &mut self,
         target: EntityIdx,
@@ -575,6 +600,7 @@ impl CombatRuntime {
                 DamageKind::Physical => defend_value.set_damage(0),
                 DamageKind::Default => {}
             },
+            PlainBossDefend::Quilt => defend_value.set_damage(0),
             PlainBossDefend::Ikaruga => {
                 if damage & 1 == 1 {
                     updates.add_with(|| {
@@ -606,7 +632,10 @@ impl CombatRuntime {
         updates.add(update);
     }
 
+    /// 执行目标的死亡 hook：护身符、史莱姆分裂、马里奥复活等。
     pub fn drain_die_hooks_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) {
+        // 猴区的 HOUQU_BLAST 先于其它死亡钩子结算，分裂出的子体不再继续分裂。
+        self.drain_quilt_split_into(target, updates);
         // 史莱姆分裂的死亡钩子优先级为 0，先于马里奥复活（10）和通用死亡链；
         // 分裂不阻止本体死亡，因此继续走后续死亡流程。
         self.drain_plain_slime_split_into(target, updates);
@@ -625,6 +654,7 @@ impl CombatRuntime {
         self.drain_state_hook_plan_into(&die_state_plan, updates);
     }
 
+    /// 执行击杀者的 KILL hook。
     pub fn drain_kill_hooks_into(&mut self, caster: EntityIdx, killed_target: EntityIdx, updates: &mut RunUpdates) {
         let kill_skill_plan = self.scheduler.skill_hook_plan(&self.entities, &self.registry, caster, ProcMask::KILL);
         self.drain_plain_kill_skill_plan_into(&kill_skill_plan, killed_target, updates);
@@ -632,10 +662,12 @@ impl CombatRuntime {
         self.drain_state_hook_plan_into(&kill_state_plan, updates);
     }
 
+    /// 施加伤害并按需走致死链；目标本次被击倒时返回 true。
     pub fn apply_damage_into(&mut self, caster: EntityIdx, target: EntityIdx, amount: i32, updates: &mut RunUpdates) -> bool {
         self.apply_damage_with_replay_into(caster, target, amount, updates, RuntimeFrame::damage_update)
     }
 
+    /// 按原版口径施加伤害并播报受击消息。
     pub fn apply_legacy_damage_into(
         &mut self,
         caster: EntityIdx,
@@ -646,6 +678,7 @@ impl CombatRuntime {
         self.apply_damage_with_replay_into(caster, target, amount, updates, RuntimeFrame::legacy_damage_update)
     }
 
+    /// 普通角色普攻的伤害施加入口。
     pub fn apply_plain_legacy_damage_into(
         &mut self,
         caster: EntityIdx,
@@ -672,9 +705,20 @@ impl CombatRuntime {
             .entities
             .get_mut(target)
             .unwrap_or_else(|| panic!("unknown runtime plain legacy damage target entity: {}", target.0));
+        let actual_damage = amount.max(0).min(target_entity.runtime.hp.max(0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
+        self.record_squall_damage(caster, target, actual_damage);
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        // 被子的衍生物只把一半伤害传导给本体；本体那一行排在衍生物受击之后。
+        if actual_damage > 0
+            && let Some(owner) = self.quilt_share_owner(target)
+        {
+            let shared = actual_damage / 2;
+            if shared > 0 && self.apply_legacy_damage_into(caster, owner, shared, updates) {
+                self.drain_plain_lethal_damage_into(caster, owner, updates);
+            }
+        }
         // 原版 damage 先调用命中回调（含火球免疫随机数），再由 onDamaged 登记反击。
         if amount > 0
             && let Some(key) = fire_state_key
@@ -689,6 +733,7 @@ impl CombatRuntime {
                 .is_some_and(|entity| entity.runtime.hp == 0 && entity.runtime.alive)
     }
 
+    /// 施加伤害并允许调用方自定义受击消息。
     pub fn apply_damage_with_replay_into(
         &mut self,
         caster: EntityIdx,
@@ -700,12 +745,14 @@ impl CombatRuntime {
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime damage target entity: {}", target.0);
         };
+        let actual_damage = amount.max(0).min(target_entity.runtime.hp.max(0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let killed = target_entity.runtime.hp == 0 && target_entity.runtime.alive;
         if killed {
             target_entity.runtime.alive = false;
         }
         let team = target_entity.runtime.team;
+        self.record_squall_damage(caster, target, actual_damage);
         updates.add(replay(caster.0 as usize, target.0 as usize, amount));
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         if killed {
@@ -714,6 +761,7 @@ impl CombatRuntime {
         killed
     }
 
+    /// 施加毒性发作伤害。
     pub fn apply_poison_tick_damage_into(
         &mut self,
         caster: EntityIdx,
@@ -725,8 +773,10 @@ impl CombatRuntime {
             .entities
             .get_mut(target)
             .unwrap_or_else(|| panic!("unknown runtime poison target entity: {}", target.0));
+        let actual_damage = amount.max(0).min(target_entity.runtime.hp.max(0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
+        self.record_squall_damage(caster, target, actual_damage);
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         was_alive
@@ -736,6 +786,7 @@ impl CombatRuntime {
                 .is_some_and(|entity| entity.runtime.hp == 0 && entity.runtime.alive)
     }
 
+    /// 施加驱散攻击伤害。
     pub fn apply_disperse_attack_damage_into(
         &mut self,
         caster: EntityIdx,
@@ -750,8 +801,10 @@ impl CombatRuntime {
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime disperse damage target entity: {}", target.0);
         };
+        let actual_damage = amount.max(0).min(target_entity.runtime.hp.max(0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
+        self.record_squall_damage(caster, target, actual_damage);
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         if amount > 0 {
             self.apply_disperse_hit_into(caster, target, updates);
@@ -764,6 +817,7 @@ impl CombatRuntime {
                 .is_some_and(|entity| entity.runtime.hp == 0 && entity.runtime.alive)
     }
 
+    /// 中毒层数被清零时播报解除消息。
     pub fn emit_poison_release_if_cleared(&mut self, target: EntityIdx, updates: &mut RunUpdates) {
         let Some(target_entity) = self.entities.get(target) else {
             panic!("unknown runtime poison release target entity: {}", target.0);
@@ -843,6 +897,7 @@ impl CombatRuntime {
         self.control.record_damage_phase(crate::runtime::DamageDecisionPhase::Evade);
     }
 
+    /// 普通回避判定；强命技能直接判为命中。
     pub fn roll_plain_dodge(&mut self, target: EntityIdx, accuracy: i32, dodge_value: i32, unavoidable: bool) -> bool {
         self.roll_plain_dodge_with_updates(target, accuracy, dodge_value, unavoidable, None)
     }
@@ -890,6 +945,7 @@ impl CombatRuntime {
         PlayerRuntime::dodge(accuracy, dodge_value, &mut self.rng)
     }
 
+    /// 魔法攻击的回避判定，取施法者魔法命中与目标魔法闪避。
     pub fn magic_attack_dodged(&mut self, caster: EntityIdx, target: EntityIdx) -> bool {
         let Some(target_entity) = self.entities.get(target) else {
             panic!("unknown runtime magic attack dodge target entity: {}", target.0);
@@ -903,6 +959,7 @@ impl CombatRuntime {
         self.roll_plain_dodge(target, accuracy, dodge_value, false)
     }
 
+    /// 命中时给目标叠加火焰精通状态。
     pub fn apply_fire_on_damage(&mut self, target: EntityIdx, fire_state_key: u32) {
         let Some(target_entity) = self.entities.get(target) else {
             panic!("unknown runtime fire target entity: {}", target.0);
@@ -917,6 +974,7 @@ impl CombatRuntime {
         target_entity.states.add_fire_mag_half_step(fire_state_key);
     }
 
+    /// 命中时给目标施加或延长冰冻状态。
     pub fn apply_ice_on_damage(&mut self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         let Some(target_entity) = self.entities.get(target) else {
             panic!("unknown runtime ice target entity: {}", target.0);
@@ -942,6 +1000,7 @@ impl CombatRuntime {
         ));
     }
 
+    /// 目标对指定状态是否免疫：Boss 与加成角色按阈值判定。
     pub fn status_immune(&mut self, target: EntityIdx, status: &'static str) -> bool {
         let Some(target_entity) = self.entities.get(target) else {
             panic!("unknown runtime {status} immune target entity: {}", target.0);
@@ -956,10 +1015,13 @@ impl CombatRuntime {
         false
     }
 
+    /// 目标是否免疫冰冻。
     pub fn ice_immune(&mut self, target: EntityIdx) -> bool { self.status_immune(target, "ice") }
 
+    /// 目标是否免疫火焰。
     pub fn fire_immune(&mut self, target: EntityIdx) -> bool { self.status_immune(target, "fire") }
 
+    /// 不经过伤害直接击倒目标，走完整移出与连带清理；目标原本已死返回 false。
     pub fn kill_entity_without_damage_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) -> bool {
         let killed = self.kill_entity_without_damage_mark_only_into(target);
         if killed {
@@ -975,6 +1037,7 @@ impl CombatRuntime {
         killed
     }
 
+    /// 只把目标体力置零并返回原存活状态，不走死亡链。
     pub fn kill_entity_without_damage_mark_only_into(&mut self, target: EntityIdx) -> bool {
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime self-death target entity: {}", target.0);
@@ -984,6 +1047,7 @@ impl CombatRuntime {
         killed
     }
 
+    /// 标记目标死亡并清理链接使魔；有延迟自杀使魔时先移主后清使魔。
     pub fn mark_dead_with_linked_minions_into(&mut self, owner: EntityIdx, team: usize, updates: &mut RunUpdates) {
         let has_deferred_self_death_minion = self.entities.iter().any(|(idx, entity)| {
             idx != owner
@@ -1003,10 +1067,12 @@ impl CombatRuntime {
         }
     }
 
+    /// 清理 owner 的全部链接使魔。
     pub fn cleanup_linked_minions_for_owner(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
         self.cleanup_linked_minions_for_owner_except(owner, None, updates);
     }
 
+    /// 清理 owner 的分摊伤害使魔，可排除一个实体。
     pub fn cleanup_linked_share_minions_for_owner_except(
         &mut self,
         owner: EntityIdx,
@@ -1027,6 +1093,7 @@ impl CombatRuntime {
         });
     }
 
+    /// 清理 owner 的链接使魔，可排除一个实体。
     pub fn cleanup_linked_minions_for_owner_except(
         &mut self,
         owner: EntityIdx,
@@ -1036,6 +1103,7 @@ impl CombatRuntime {
         self.cleanup_linked_minions_for_owner_except_if(owner, excluded, false, updates, |_| true);
     }
 
+    /// 按条件清理 owner 的链接使魔，可排除实体并控制是否包含根 owner。
     pub fn cleanup_linked_minions_for_owner_except_if(
         &mut self,
         owner: EntityIdx,
@@ -1076,6 +1144,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 解析伤害的实际承受者：按归属策略取自身或根 owner。
     pub fn resolve_damage_target(&self, target: EntityIdx) -> EntityIdx {
         let target_entity = self
             .entities
@@ -1087,6 +1156,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 解析需要分摊伤害的其它实体列表。
     pub fn resolve_damage_share_targets(&self, target: EntityIdx, resolved_target: EntityIdx) -> Vec<EntityIdx> {
         let target_entity = self
             .entities
@@ -1112,6 +1182,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 调试断言：效果涉及的实体必须存在，否则 panic 并带上效果与角色名。
     pub fn ensure_effect_entity(&self, effect: &'static str, role: &'static str, entity: EntityIdx) {
         if self.entities.get(entity).is_none() {
             panic!("unknown runtime {effect} {role} entity: {}", entity.0);

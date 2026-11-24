@@ -1,7 +1,9 @@
 use super::*;
 
+/// 测试用减速状态的数值 key。
 const PLAIN_SLOW_STATE_KEY: u32 = 78;
 
+/// 构造注册了 haste 状态的 ExtensionRegistry，用于加速/减速调度测试。
 fn speed_state_registry() -> ExtensionRegistry {
     let mut builder = ExtensionRegistryBuilder::default();
     builder

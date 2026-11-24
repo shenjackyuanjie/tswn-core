@@ -21,6 +21,7 @@ pub struct StateEntry {
     pub payload: StatePayload,
 }
 
+/// 一条新冠传染记录：来源 Boss、变异值与已发病天数。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CovidInfectionEntry {
     pub boss: EntityIdx,
@@ -99,6 +100,7 @@ pub enum StatePayload {
 }
 
 impl StateEntry {
+    /// 构造只带兼容键的空状态条目。
     pub fn legacy(legacy_order_key: u32) -> Self {
         Self {
             legacy_order_key,
@@ -110,6 +112,7 @@ impl StateEntry {
         }
     }
 
+    /// 构造火焰精通状态，半步数乘以 0.5 得到倍率。
     pub fn fire_mag(legacy_order_key: u32, half_steps: i32) -> Self {
         Self {
             legacy_order_key,
@@ -121,6 +124,7 @@ impl StateEntry {
         }
     }
 
+    /// 构造冰冻状态。
     pub fn ice(legacy_order_key: u32, frozen_step: i32) -> Self {
         Self {
             legacy_order_key,
@@ -132,6 +136,7 @@ impl StateEntry {
         }
     }
 
+    /// 构造护盾状态，挂到 POST_DEFEND。
     pub fn shield(legacy_order_key: u32, state_id: StateId, shield: i32, priority: SkillPriority) -> Self {
         Self {
             legacy_order_key,
@@ -143,6 +148,7 @@ impl StateEntry {
         }
     }
 
+    /// 构造诅咒状态，挂到 POST_DEFEND。
     pub fn curse(legacy_order_key: u32, state_id: StateId, prob: i32, multiply: i32, priority: SkillPriority) -> Self {
         Self {
             legacy_order_key,
@@ -154,6 +160,7 @@ impl StateEntry {
         }
     }
 
+    /// 构造中毒状态，挂到 POST_ACTION；攻击威力以 bits 保存。
     pub fn poison(
         legacy_order_key: u32,
         state_id: StateId,
@@ -178,10 +185,12 @@ impl StateEntry {
         }
     }
 
+    /// 构造疾走状态，挂到 POST_ACTION；有效加速初值与 faster 相同。
     pub fn haste(legacy_order_key: u32, state_id: StateId, faster: i32, step: i32, priority: SkillPriority) -> Self {
         Self::haste_with_effective_faster(legacy_order_key, state_id, faster, faster, step, priority)
     }
 
+    /// 构造疾走状态并单独指定有效加速值。
     pub fn haste_with_effective_faster(
         legacy_order_key: u32,
         state_id: StateId,
@@ -204,6 +213,7 @@ impl StateEntry {
         }
     }
 
+    /// 构造狂暴状态。
     pub fn berserk(legacy_order_key: u32, step: i32) -> Self {
         Self {
             legacy_order_key,
@@ -215,6 +225,7 @@ impl StateEntry {
         }
     }
 
+    /// 构造魅惑状态，挂到 POST_ACTION。
     pub fn charm(
         legacy_order_key: u32,
         state_id: StateId,
@@ -241,6 +252,7 @@ impl StateEntry {
         }
     }
 
+    /// 构造缓慢状态，挂到 POST_ACTION。
     pub fn slow(legacy_order_key: u32, state_id: StateId, step: i32, priority: SkillPriority) -> Self {
         Self {
             legacy_order_key,
@@ -252,6 +264,7 @@ impl StateEntry {
         }
     }
 
+    /// 构造铁壁状态，同时挂到 POST_DEFEND 与 POST_ACTION。
     pub fn iron(legacy_order_key: u32, state_id: StateId, protect: i32, step: i32, priority: SkillPriority) -> Self {
         Self {
             legacy_order_key,
@@ -263,6 +276,7 @@ impl StateEntry {
         }
     }
 
+    /// 构造新冠 Boss 的变异标记状态，不挂 hook。
     pub fn covid_boss(legacy_order_key: u32, mutation: i32) -> Self {
         Self {
             legacy_order_key,
@@ -274,6 +288,7 @@ impl StateEntry {
         }
     }
 
+    /// 构造新冠传染状态，初始含一条来源记录。
     pub fn covid_infection(
         legacy_order_key: u32,
         state_id: StateId,
@@ -300,6 +315,7 @@ impl StateEntry {
         }
     }
 
+    /// 构造懒羊羊 Boss 的攻击加成状态，不挂 hook。
     pub fn lazy_boss(legacy_order_key: u32, at_boost: f64) -> Self {
         Self {
             legacy_order_key,
@@ -313,6 +329,7 @@ impl StateEntry {
         }
     }
 
+    /// 构造一拳超人 Boss 的饥饿计数状态，挂到 POST_DEFEND。
     pub fn saitama_boss(legacy_order_key: u32, state_id: StateId, priority: SkillPriority) -> Self {
         Self {
             legacy_order_key,
@@ -329,6 +346,7 @@ impl StateEntry {
         }
     }
 
+    /// 构造懒羊羊传染状态，挂到 PRE_ACTION 与 POST_ACTION。
     pub fn lazy_infection(legacy_order_key: u32, state_id: StateId, boss: EntityIdx, priority: SkillPriority) -> Self {
         Self {
             legacy_order_key,
@@ -353,6 +371,7 @@ impl StateEntry {
         }
     }
 
+    /// 读取马里奥成长的蘑菇层数与火球术等级。
     pub fn mario_boss_value(&self) -> Option<(i32, u32)> {
         match &self.payload {
             StatePayload::MarioBoss { grow, fire_level } => Some((*grow, *fire_level)),
@@ -360,6 +379,7 @@ impl StateEntry {
         }
     }
 
+    /// 读取火焰精通倍率；非该状态返回 None。
     pub fn fire_mag_value(&self) -> Option<f64> {
         match &self.payload {
             StatePayload::FireMagHalfSteps(half_steps) => Some(f64::from(*half_steps) * 0.5),
@@ -382,6 +402,7 @@ impl StateEntry {
         }
     }
 
+    /// 读取护盾值；非护盾状态返回 None。
     pub fn shield_value(&self) -> Option<i32> {
         match &self.payload {
             StatePayload::ShieldValue(shield) => Some(*shield),
@@ -404,6 +425,7 @@ impl StateEntry {
         }
     }
 
+    /// 读取疾走的 (加速, 步数)；非该状态返回 None。
     pub fn haste_value(&self) -> Option<(i32, i32)> {
         match &self.payload {
             StatePayload::Haste { faster, step, .. } => Some((*faster, *step)),
@@ -426,6 +448,7 @@ impl StateEntry {
         }
     }
 
+    /// 读取疾走的 (加速, 有效加速, 步数)；非该状态返回 None。
     pub fn haste_runtime_value(&self) -> Option<(i32, i32, i32)> {
         match &self.payload {
             StatePayload::Haste {
@@ -437,6 +460,7 @@ impl StateEntry {
         }
     }
 
+    /// 读取中毒的 (施法者, 目标, 攻击威力, 剩余计数)；非该状态返回 None。
     pub fn poison_value(&self) -> Option<(Option<u32>, Option<u32>, f64, i32)> {
         match &self.payload {
             StatePayload::Poison {
@@ -464,6 +488,7 @@ impl StateEntry {
         }
     }
 
+    /// 读取魅惑的 (组 ID, 有效队伍, 来源队伍, 目标, 步数)；非该状态返回 None。
     pub fn charm_value(&self) -> Option<(usize, Option<usize>, Option<usize>, Option<u32>, i32)> {
         match &self.payload {
             StatePayload::Charm {
@@ -492,6 +517,7 @@ impl StateEntry {
         }
     }
 
+    /// 读取缓慢剩余步数；非该状态返回 None。
     pub fn slow_value(&self) -> Option<i32> {
         match &self.payload {
             StatePayload::Slow { step } => Some(*step),
@@ -514,6 +540,7 @@ impl StateEntry {
         }
     }
 
+    /// 读取冰冻步数；非该状态返回 None。
     pub fn ice_value(&self) -> Option<i32> {
         match &self.payload {
             StatePayload::Ice { frozen_step } => Some(*frozen_step),
@@ -536,6 +563,7 @@ impl StateEntry {
         }
     }
 
+    /// 读取铁壁的 (保护值, 步数)；非该状态返回 None。
     pub fn iron_value(&self) -> Option<(i32, i32)> {
         match &self.payload {
             StatePayload::Iron { protect, step } => Some((*protect, *step)),
@@ -558,6 +586,7 @@ impl StateEntry {
         }
     }
 
+    /// 按目标 hook 计算该状态的生效优先级，未覆盖时返回登记优先级。
     pub fn priority_for_hook(&self, hook: ProcMask) -> SkillPriority {
         match &self.payload {
             StatePayload::Poison { .. } if hook.intersects(ProcMask::POST_ACTION) => SkillPriority(150),
@@ -615,6 +644,7 @@ impl StateEntry {
         self.priority_for_hook(hook)
     }
 
+    /// 正面状态解除时的 (排序键, 文案键)；无需播报时返回 None。
     pub fn positive_clear_message(&self, owner_alive: bool) -> Option<(i32, &'static str)> {
         match &self.payload {
             StatePayload::Haste { .. } if owner_alive => Some((300, "[1]从[疾走]中解除")),
@@ -652,6 +682,7 @@ impl StateEntry {
         )
     }
 
+    /// 是否为正面状态（护盾、疾走、铁壁、马里奥成长）。
     pub fn is_positive_state(&self) -> bool {
         match &self.payload {
             StatePayload::ShieldValue(shield) => *shield > 0,

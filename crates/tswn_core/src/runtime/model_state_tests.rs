@@ -1,5 +1,6 @@
 use super::*;
 
+/// 测试辅助：构造一个带 seed 的双队私名 runner，供模型状态投影用例使用。
 fn runner() -> RuntimeRunner {
     RuntimeRunner::new_from_namerena_raw("private-left@red\n\nprivate-right@blue\nseed:private-seed".into()).unwrap()
 }

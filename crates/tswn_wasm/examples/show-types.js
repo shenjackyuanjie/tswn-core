@@ -141,7 +141,7 @@
  * }} InvolvedSet
  *
  * 消息色调：
- * @typedef {'normal' | 'damage' | 'recover' | 'knockout' | 'status_exit'} MessageTone
+ * @typedef {'dialogue' | 'normal' | 'damage' | 'recover' | 'knockout' | 'status_exit'} MessageTone
  *
  * 播放速度模式：
  * @typedef {'normal' | 'fast' | 'turbo'} SpeedMode

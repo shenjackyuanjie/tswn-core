@@ -16,61 +16,115 @@ mod registry;
 pub use hooks::*;
 pub use registry::*;
 
+/// bed2 阵容成员使用的默认体力。
 pub const DEFAULT_BED2_HP: i32 = 3000;
+/// bed2 阵容成员使用的默认防御。
 pub const DEFAULT_BED2_DEFENSE: i32 = 99;
+/// bed2 阵容成员使用的默认抗性。
 pub const DEFAULT_BED2_RESISTANCE: i32 = 99;
 
+/// 防御技能的默认导出名。
 pub const DEFAULT_CORE_DEFEND_SKILL_EXPORT: &str = "core.skill.defend";
+/// 伤害反弹技能的默认导出名。
 pub const DEFAULT_CORE_REFLECT_SKILL_EXPORT: &str = "core.skill.reflect";
+/// 守护技能的默认导出名。
 pub const DEFAULT_CORE_PROTECT_SKILL_EXPORT: &str = "core.skill.protect";
+/// 护盾技能的默认导出名。
 pub const DEFAULT_CORE_SHIELD_SKILL_EXPORT: &str = "core.skill.shield";
+/// 垂死抗争技能的默认导出名。
 pub const DEFAULT_CORE_UPGRADE_SKILL_EXPORT: &str = "core.skill.upgrade";
+/// 隐匿技能的默认导出名。
 pub const DEFAULT_CORE_HIDE_SKILL_EXPORT: &str = "core.skill.hide";
+/// 反击技能的默认导出名。
 pub const DEFAULT_CORE_COUNTER_SKILL_EXPORT: &str = "core.skill.counter";
+/// 吞噬技能的默认导出名。
 pub const DEFAULT_CORE_MERGE_SKILL_EXPORT: &str = "core.skill.merge";
+/// 召唤亡灵技能的默认导出名。
 pub const DEFAULT_CORE_ZOMBIE_SKILL_EXPORT: &str = "core.skill.zombie";
+/// 护身符技能的默认导出名。
 pub const DEFAULT_CORE_RERAISE_SKILL_EXPORT: &str = "core.skill.reraise";
+/// 魅惑状态的默认导出名。
 pub const DEFAULT_CORE_CHARM_STATE_EXPORT: &str = "core.state.charm";
+/// 诅咒状态的默认导出名。
 pub const DEFAULT_CORE_CURSE_STATE_EXPORT: &str = "core.state.curse";
+/// 中毒状态的默认导出名。
 pub const DEFAULT_CORE_POISON_STATE_EXPORT: &str = "core.state.poison";
+/// 疾走状态的默认导出名。
 pub const DEFAULT_CORE_HASTE_STATE_EXPORT: &str = "core.state.haste";
+/// 迟缓状态的默认导出名。
 pub const DEFAULT_CORE_SLOW_STATE_EXPORT: &str = "core.state.slow";
+/// 铁壁状态的默认导出名。
 pub const DEFAULT_CORE_IRON_STATE_EXPORT: &str = "core.state.iron";
+/// 新冠传染状态的默认导出名。
 pub const DEFAULT_CORE_COVID_INFECTION_STATE_EXPORT: &str = "core.state.covid-infection";
+/// 懒癌传染状态的默认导出名。
 pub const DEFAULT_CORE_LAZY_INFECTION_STATE_EXPORT: &str = "core.state.lazy-infection";
+/// 一拳超人 Boss 状态的默认导出名。
 pub const DEFAULT_CORE_SAITAMA_BOSS_STATE_EXPORT: &str = "core.state.saitama-boss";
+/// 幻影玩家类型的默认导出名。
 pub const DEFAULT_CORE_SHADOW_KIND_EXPORT: &str = "core.kind.shadow";
+/// 召唤物玩家类型的默认导出名。
 pub const DEFAULT_CORE_SUMMON_KIND_EXPORT: &str = "core.kind.summon";
+/// 亡灵玩家类型的默认导出名。
 pub const DEFAULT_CORE_ZOMBIE_KIND_EXPORT: &str = "core.kind.zombie";
+/// 分身玩家类型的默认导出名。
 pub const DEFAULT_CORE_CLONE_KIND_EXPORT: &str = "core.kind.clone";
+/// Boss 玩家类型的默认导出名。
 pub const DEFAULT_CORE_BOSS_KIND_EXPORT: &str = "core.kind.boss";
+/// 加成玩家类型的默认导出名。
 pub const DEFAULT_CORE_BOOST_KIND_EXPORT: &str = "core.kind.boost";
+/// 幻影蓝图实体槽的默认导出名。
 pub const DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT: &str = "core.entity.shadow_blueprint";
+/// 召唤物蓝图实体槽的默认导出名。
 pub const DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT: &str = "core.entity.summon_blueprint";
+/// 亡灵蓝图实体槽的默认导出名。
 pub const DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT: &str = "core.entity.zombie_blueprint";
+/// 懒癌蓝图参数实体槽的默认导出名。
 pub const DEFAULT_CORE_LAZY_BLUEPRINT_RQ_ENTITY_EXPORT: &str = "core.entity.lazy_blueprint_rq";
+/// 已召唤实体记录槽的默认导出名。
 pub const DEFAULT_CORE_SUMMON_ENTITY_EXPORT: &str = "core.entity.summoned_entity";
+/// 使魔命名计数槽的默认导出名。
 pub const DEFAULT_CORE_MINION_COUNTER_ENTITY_EXPORT: &str = "core.entity.minion_counter";
+/// 召唤物自爆技能的默认导出名。
 pub const DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT: &str = "core.skill.summon-explode";
+/// 召唤物分摊伤害技能的默认导出名。
 pub const DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT: &str = "core.skill.summon-share-damage";
+/// 剁手刀武器技能的默认导出名。
 pub const DEFAULT_CORE_WEAPON_S11_SKILL_EXPORT: &str = "core.weapon.s11";
+/// 死亡笔记武器技能的默认导出名。
 pub const DEFAULT_CORE_WEAPON_DEATH_NOTE_SKILL_EXPORT: &str = "core.weapon.death-note";
+/// 玄月反击武器技能的默认导出名。
 pub const DEFAULT_CORE_WEAPON_XUAN_YUE_COUNTER_SKILL_EXPORT: &str = "core.weapon.xuan-yue-counter";
+/// Rinick 冰河时代武器技能的默认导出名。
 pub const DEFAULT_CORE_WEAPON_RINICK_ICE_AGE_SKILL_EXPORT: &str = "core.weapon.rinick-ice-age";
+/// Rinick 尤里控制武器技能的默认导出名。
 pub const DEFAULT_CORE_WEAPON_RINICK_YURI_CONTROL_SKILL_EXPORT: &str = "core.weapon.rinick-yuri-control";
+/// bed2 召唤技能的默认导出名。
 pub const DEFAULT_CUSTOM_BED2_SUMMON_SKILL_EXPORT: &str = "custom.summon";
+/// bed2 召唤物火球技能的默认导出名。
 pub const DEFAULT_CUSTOM_BED2_SUMMON_FIRE_SKILL_EXPORT: &str = "custom.summon.fire";
+/// bed2 召唤物自爆技能的默认导出名。
 pub const DEFAULT_CUSTOM_BED2_SUMMON_EXPLODE_SKILL_EXPORT: &str = "custom.summon.explode";
+/// bed2 已召唤实体记录槽的默认导出名。
 pub const DEFAULT_CUSTOM_BED2_SUMMON_ENTITY_EXPORT: &str = "custom.bed2.summoned_entity";
+/// bed2 召唤物模板槽的默认导出名。
 pub const DEFAULT_CUSTOM_BED2_SUMMON_TEMPLATE_EXPORT: &str = "custom.bed2.summon_template";
+/// bed2 幻影模板槽的默认导出名。
 pub const DEFAULT_CUSTOM_BED2_SHADOW_TEMPLATE_EXPORT: &str = "custom.bed2.shadow_template";
+/// bed2 亡灵模板槽的默认导出名。
 pub const DEFAULT_CUSTOM_BED2_ZOMBIE_TEMPLATE_EXPORT: &str = "custom.bed2.zombie_template";
+/// bed2 召唤物玩家类型的默认导出名。
 pub const DEFAULT_CUSTOM_BED2_SUMMON_KIND_EXPORT: &str = "custom.bed2.summon";
+/// bed2 幻影玩家类型的默认导出名。
 pub const DEFAULT_CUSTOM_BED2_SHADOW_KIND_EXPORT: &str = "custom.bed2.shadow";
+/// bed2 亡灵玩家类型的默认导出名。
 pub const DEFAULT_CUSTOM_BED2_ZOMBIE_KIND_EXPORT: &str = "custom.bed2.zombie";
+/// 使魔附体技能的默认导出名。
 pub const DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT: &str = "custom.minion.possess";
+/// 使魔技能导出名的公共前缀。
 pub const DEFAULT_CUSTOM_MINION_SKILL_EXPORT_PREFIX: &str = "custom.minion";
 
+/// 内置主动技能枚举，覆盖普通技能、召唤物技能与武器/修改器技能。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltinActiveSkill {
     Fire,
@@ -107,21 +161,37 @@ pub enum BuiltinActiveSkill {
     RinickYuriControl,
 }
 
+/// 火焰精通状态的 legacy 兼容键。
 pub const PLAIN_FIRE_STATE_KEY: u32 = 0;
+/// 冰冻状态的 legacy 兼容键。
 pub const PLAIN_ICE_STATE_KEY: u32 = 1;
+/// 狂暴状态的 legacy 兼容键。
 pub const PLAIN_BERSERK_STATE_KEY: u32 = 10;
+/// 诅咒状态的 legacy 兼容键。
 pub const PLAIN_CURSE_STATE_KEY: u32 = 73;
+/// 护盾状态的 legacy 兼容键。
 pub const PLAIN_SHIELD_STATE_KEY: u32 = 74;
+/// 中毒状态的 legacy 兼容键。
 pub const PLAIN_POISON_STATE_KEY: u32 = 75;
+/// 魅惑状态的 legacy 兼容键。
 pub const PLAIN_CHARM_STATE_KEY: u32 = 76;
+/// 疾走状态的 legacy 兼容键。
 pub const PLAIN_HASTE_STATE_KEY: u32 = 77;
+/// 迟缓状态的 legacy 兼容键。
 pub const PLAIN_SLOW_STATE_KEY: u32 = 78;
+/// 铁壁状态的 legacy 兼容键。
 pub const PLAIN_IRON_STATE_KEY: u32 = 79;
+/// 新冠 Boss 变异状态的 legacy 兼容键。
 pub const PLAIN_COVID_BOSS_STATE_KEY: u32 = 90;
+/// 新冠传染状态的 legacy 兼容键。
 pub const PLAIN_COVID_INFECTION_STATE_KEY: u32 = 91;
+/// 懒癌 Boss 加成状态的 legacy 兼容键。
 pub const PLAIN_LAZY_BOSS_STATE_KEY: u32 = 92;
+/// 懒癌传染状态的 legacy 兼容键。
 pub const PLAIN_LAZY_INFECTION_STATE_KEY: u32 = 93;
+/// 一拳超人 Boss状态的 legacy 兼容键。
 pub const PLAIN_SAITAMA_BOSS_STATE_KEY: u32 = 94;
+/// 马里奥成长状态的 legacy 兼容键。
 pub const PLAIN_MARIO_BOSS_STATE_KEY: u32 = 95;
 
 /// 默认规则会产生的 legacy state key，按原始值升序冻结给 encoder 分类词表。
@@ -145,6 +215,7 @@ pub const PLAIN_STATE_LEGACY_KEYS: [u32; 16] = [
 ];
 
 impl BuiltinActiveSkill {
+    /// 核心主动技能集合；集合顺序即模型技能编号。
     pub const CORE: [Self; 25] = [
         Self::Fire,
         Self::Ice,
@@ -173,6 +244,7 @@ impl BuiltinActiveSkill {
         Self::Shadow,
     ];
 
+    /// 全部内置主动技能，含武器与属性修改器技能。
     pub const ALL: [Self; 31] = [
         Self::Fire,
         Self::Ice,
@@ -207,6 +279,7 @@ impl BuiltinActiveSkill {
         Self::RinickYuriControl,
     ];
 
+    /// 原游戏中的技能兼容键，用于 score 与 legacy 输入。
     pub const fn legacy_key(self) -> usize {
         match self {
             Self::Fire => 0,
@@ -244,6 +317,7 @@ impl BuiltinActiveSkill {
         }
     }
 
+    /// 注册表内的本地名。
     pub const fn local_name(self) -> &'static str {
         match self {
             Self::Fire => "fire",
@@ -281,6 +355,7 @@ impl BuiltinActiveSkill {
         }
     }
 
+    /// 导出名，用于导入与跨版本查找。
     pub const fn export_name(self) -> &'static str {
         match self {
             Self::Fire => "core.skill.fire",
@@ -318,6 +393,7 @@ impl BuiltinActiveSkill {
         }
     }
 
+    /// 该技能的默认目标策略。
     pub const fn target_policy(self) -> TargetPolicy {
         match self {
             Self::Iron
@@ -334,8 +410,10 @@ impl BuiltinActiveSkill {
         }
     }
 
+    /// 按兼容键反查内置技能。
     pub fn from_legacy_key(key: usize) -> Option<Self> { Self::ALL.into_iter().find(|skill| skill.legacy_key() == key) }
 
+    /// 按导出名反查内置技能。
     pub fn from_export_name(export_name: &str) -> Option<Self> {
         if export_name == DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT {
             return Some(Self::SummonExplode);
@@ -344,6 +422,7 @@ impl BuiltinActiveSkill {
     }
 }
 
+/// 内置技能在注册表中的 ID 映射，以及 score 用的 hook 计划缓存。
 #[derive(Debug, Clone)]
 pub struct BuiltinSkillImportMap {
     plain_by_legacy_key: [Option<SkillId>; 35],
@@ -353,6 +432,7 @@ pub struct BuiltinSkillImportMap {
 }
 
 impl BuiltinSkillImportMap {
+    /// 从注册表构建内置技能映射；导出名缺失会 panic。
     pub fn new(registry: &ExtensionRegistry) -> Self {
         let mut active_by_legacy_key = [None; 256];
         for skill in BuiltinActiveSkill::ALL {
@@ -442,10 +522,12 @@ impl BuiltinSkillImportMap {
         }
     }
 
+    /// 按索引取召唤物专用技能 ID；默认 profile 未注册该索引时 panic。
     fn special_skill_id(&self, index: usize) -> SkillId {
         self.special_skill_ids[index].unwrap_or_else(|| panic!("runtime 默认 profile 未注册召唤物技能索引 {index}"))
     }
 
+    /// 把导入的技能条目与各顺序键落成 [`SkillLoadout`]：固定键映射到 lane，未列入行动序的 lane 追加到末尾。
     fn finish_import(
         &self,
         imported: Vec<(usize, SkillId, u32, bool, Option<crate::namerena::SkillBoost>)>,
@@ -607,6 +689,7 @@ impl BuiltinSkillImportMap {
     }
 }
 
+/// 一条 bed2 行的导入结果：名字、可选队伍与体力。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomBed2Import {
     pub name: String,
@@ -614,6 +697,7 @@ pub struct CustomBed2Import {
     pub hp: i32,
 }
 
+/// bed2 roster 导入失败：给出队伍、行内位置与原始文本。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomBed2RosterImportError {
     pub team_index: usize,
@@ -621,6 +705,7 @@ pub struct CustomBed2RosterImportError {
     pub raw: String,
 }
 
+/// bed2 召唤物模板 overlay 配置：模板槽、召唤物类型与火球/自爆导出名。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CustomBed2SummonTemplateConfig<'a> {
     pub template_slot: TemplateSlotId,
@@ -629,6 +714,7 @@ pub struct CustomBed2SummonTemplateConfig<'a> {
     pub explode_skill_export_name: &'a str,
 }
 
+/// bed2 幻影模板 overlay 配置：模板槽、幻影类型与附体技能导出名。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CustomBed2ShadowTemplateConfig<'a> {
     pub template_slot: TemplateSlotId,
@@ -636,6 +722,7 @@ pub struct CustomBed2ShadowTemplateConfig<'a> {
     pub possess_skill_export_name: &'a str,
 }
 
+/// bed2 亡灵模板 overlay 配置：模板槽、亡灵类型与技能导出名前缀。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CustomBed2ZombieTemplateConfig<'a> {
     pub template_slot: TemplateSlotId,
@@ -643,6 +730,7 @@ pub struct CustomBed2ZombieTemplateConfig<'a> {
     pub skill_export_name_prefix: &'a str,
 }
 
+/// 三类使魔模板 overlay 的组合配置。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CustomBed2MinionOverlayConfig<'a> {
     pub summon: CustomBed2SummonTemplateConfig<'a>,
@@ -650,6 +738,7 @@ pub struct CustomBed2MinionOverlayConfig<'a> {
     pub zombie: CustomBed2ZombieTemplateConfig<'a>,
 }
 
+/// 自定义 Runtime 导入配置：注册表、bed2 参数、overlay 与 handler 绑定。
 #[derive(Clone)]
 pub struct CustomRuntimeImportConfig<'a> {
     pub registry: ExtensionRegistry,
@@ -660,6 +749,7 @@ pub struct CustomRuntimeImportConfig<'a> {
     pub state_handlers: Vec<RuntimeStateHandlerBinding>,
 }
 
+/// 一条 skill handler 绑定：技能 ID、函数与上下文能力。
 #[derive(Clone)]
 pub struct RuntimeSkillHandlerBinding {
     pub skill_id: SkillId,
@@ -667,6 +757,7 @@ pub struct RuntimeSkillHandlerBinding {
     pub capabilities: Vec<ExtensionCapability>,
 }
 
+/// 一条 state handler 绑定：状态 ID、函数与上下文能力。
 #[derive(Clone)]
 pub struct RuntimeStateHandlerBinding {
     pub state_id: StateId,
@@ -675,6 +766,7 @@ pub struct RuntimeStateHandlerBinding {
 }
 
 impl<'a> CustomRuntimeImportConfig<'a> {
+    /// 构造只含注册表与 bed2 参数的导入配置。
     pub fn new(registry: ExtensionRegistry, bed2_kind: PlayerKindId, bed2_summon_skill: SkillId) -> Self {
         Self {
             registry,
@@ -686,11 +778,13 @@ impl<'a> CustomRuntimeImportConfig<'a> {
         }
     }
 
+    /// 附加使魔模板 overlay 配置。
     pub fn with_bed2_minion_overlays(mut self, config: CustomBed2MinionOverlayConfig<'a>) -> Self {
         self.bed2_minion_overlays = Some(config);
         self
     }
 
+    /// 追加一条不声明额外能力的 skill handler 绑定。
     pub fn with_skill_handler(mut self, skill_id: SkillId, handler: SkillHandlerFn) -> Self {
         self.skill_handlers.push(RuntimeSkillHandlerBinding {
             skill_id,
@@ -700,6 +794,7 @@ impl<'a> CustomRuntimeImportConfig<'a> {
         self
     }
 
+    /// 追加一条带上下文能力的 skill handler 绑定。
     pub fn with_skill_handler_with_capabilities(
         mut self,
         skill_id: SkillId,
@@ -714,6 +809,7 @@ impl<'a> CustomRuntimeImportConfig<'a> {
         self
     }
 
+    /// 追加一条不声明额外能力的 state handler 绑定。
     pub fn with_state_handler(mut self, state_id: StateId, handler: StateHandlerFn) -> Self {
         self.state_handlers.push(RuntimeStateHandlerBinding {
             state_id,
@@ -723,6 +819,7 @@ impl<'a> CustomRuntimeImportConfig<'a> {
         self
     }
 
+    /// 追加一条带上下文能力的 state handler 绑定。
     pub fn with_state_handler_with_capabilities(
         mut self,
         state_id: StateId,
@@ -738,15 +835,18 @@ impl<'a> CustomRuntimeImportConfig<'a> {
     }
 }
 
+/// 默认 profile 组装失败：注册表构建错误。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DefaultCustomRuntimeProfileError {
     Registry(ExtensionError),
 }
 
 impl From<ExtensionError> for DefaultCustomRuntimeProfileError {
+    /// 把注册表构建错误转换为 [`DefaultCustomRuntimeProfileError::Registry`] 变体。
     fn from(error: ExtensionError) -> Self { Self::Registry(error) }
 }
 
+/// 召唤物模板 overlay 导入失败：roster、导出名缺失或槽错误。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CustomBed2SummonTemplateImportError {
     Roster(CustomBed2RosterImportError),
@@ -756,17 +856,21 @@ pub enum CustomBed2SummonTemplateImportError {
 }
 
 impl From<CustomBed2RosterImportError> for CustomBed2SummonTemplateImportError {
+    /// 把 bed2 roster 错误转换为 [`CustomBed2SummonTemplateImportError::Roster`] 变体。
     fn from(error: CustomBed2RosterImportError) -> Self { Self::Roster(error) }
 }
 
 impl From<CustomMixedRosterImportError> for CustomBed2SummonTemplateImportError {
+    /// 把混合 roster 错误转换为 [`CustomBed2SummonTemplateImportError::MixedRoster`] 变体。
     fn from(error: CustomMixedRosterImportError) -> Self { Self::MixedRoster(error) }
 }
 
 impl From<SlotError> for CustomBed2SummonTemplateImportError {
+    /// 把槽错误转换为 [`CustomBed2SummonTemplateImportError::Slot`] 变体。
     fn from(error: SlotError) -> Self { Self::Slot(error) }
 }
 
+/// 幻影模板 overlay 导入失败：roster、导出名缺失或槽错误。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CustomBed2ShadowTemplateImportError {
     Roster(CustomBed2RosterImportError),
@@ -776,17 +880,21 @@ pub enum CustomBed2ShadowTemplateImportError {
 }
 
 impl From<CustomBed2RosterImportError> for CustomBed2ShadowTemplateImportError {
+    /// 把 bed2 roster 错误转换为 [`CustomBed2ShadowTemplateImportError::Roster`] 变体。
     fn from(error: CustomBed2RosterImportError) -> Self { Self::Roster(error) }
 }
 
 impl From<CustomMixedRosterImportError> for CustomBed2ShadowTemplateImportError {
+    /// 把混合 roster 错误转换为 [`CustomBed2ShadowTemplateImportError::MixedRoster`] 变体。
     fn from(error: CustomMixedRosterImportError) -> Self { Self::MixedRoster(error) }
 }
 
 impl From<SlotError> for CustomBed2ShadowTemplateImportError {
+    /// 把槽错误转换为 [`CustomBed2ShadowTemplateImportError::Slot`] 变体。
     fn from(error: SlotError) -> Self { Self::Slot(error) }
 }
 
+/// 亡灵模板 overlay 导入失败：roster、导出名缺失或槽错误。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CustomBed2ZombieTemplateImportError {
     Roster(CustomBed2RosterImportError),
@@ -796,17 +904,21 @@ pub enum CustomBed2ZombieTemplateImportError {
 }
 
 impl From<CustomBed2RosterImportError> for CustomBed2ZombieTemplateImportError {
+    /// 把 bed2 roster 错误转换为 [`CustomBed2ZombieTemplateImportError::Roster`] 变体。
     fn from(error: CustomBed2RosterImportError) -> Self { Self::Roster(error) }
 }
 
 impl From<CustomMixedRosterImportError> for CustomBed2ZombieTemplateImportError {
+    /// 把混合 roster 错误转换为 [`CustomBed2ZombieTemplateImportError::MixedRoster`] 变体。
     fn from(error: CustomMixedRosterImportError) -> Self { Self::MixedRoster(error) }
 }
 
 impl From<SlotError> for CustomBed2ZombieTemplateImportError {
+    /// 把槽错误转换为 [`CustomBed2ZombieTemplateImportError::Slot`] 变体。
     fn from(error: SlotError) -> Self { Self::Slot(error) }
 }
 
+/// 使魔模板 overlay 组合导入失败：任一步骤错误或槽错误。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CustomBed2MinionOverlayImportError {
     Roster(CustomBed2RosterImportError),
@@ -818,29 +930,36 @@ pub enum CustomBed2MinionOverlayImportError {
 }
 
 impl From<CustomBed2RosterImportError> for CustomBed2MinionOverlayImportError {
+    /// 把 bed2 roster 错误转换为 [`CustomBed2MinionOverlayImportError::Roster`] 变体。
     fn from(error: CustomBed2RosterImportError) -> Self { Self::Roster(error) }
 }
 
 impl From<CustomMixedRosterImportError> for CustomBed2MinionOverlayImportError {
+    /// 把混合 roster 错误转换为 [`CustomBed2MinionOverlayImportError::MixedRoster`] 变体。
     fn from(error: CustomMixedRosterImportError) -> Self { Self::MixedRoster(error) }
 }
 
 impl From<CustomBed2SummonTemplateImportError> for CustomBed2MinionOverlayImportError {
+    /// 把召唤模板导入错误转换为 [`CustomBed2MinionOverlayImportError::Summon`] 变体。
     fn from(error: CustomBed2SummonTemplateImportError) -> Self { Self::Summon(error) }
 }
 
 impl From<CustomBed2ShadowTemplateImportError> for CustomBed2MinionOverlayImportError {
+    /// 把影袭模板导入错误转换为 [`CustomBed2MinionOverlayImportError::Shadow`] 变体。
     fn from(error: CustomBed2ShadowTemplateImportError) -> Self { Self::Shadow(error) }
 }
 
 impl From<CustomBed2ZombieTemplateImportError> for CustomBed2MinionOverlayImportError {
+    /// 把亡灵模板导入错误转换为 [`CustomBed2MinionOverlayImportError::Zombie`] 变体。
     fn from(error: CustomBed2ZombieTemplateImportError) -> Self { Self::Zombie(error) }
 }
 
 impl From<SlotError> for CustomBed2MinionOverlayImportError {
+    /// 把槽错误转换为 [`CustomBed2MinionOverlayImportError::Slot`] 变体。
     fn from(error: SlotError) -> Self { Self::Slot(error) }
 }
 
+/// 自定义 Runtime 导入的顶层错误，汇总 roster、overlay、初始化与就绪校验失败。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CustomRuntimeImportError {
     Bed2Roster(CustomBed2RosterImportError),
@@ -851,25 +970,31 @@ pub enum CustomRuntimeImportError {
 }
 
 impl From<CustomBed2RosterImportError> for CustomRuntimeImportError {
+    /// 把 bed2 roster 错误转换为 [`CustomRuntimeImportError::Bed2Roster`] 变体。
     fn from(error: CustomBed2RosterImportError) -> Self { Self::Bed2Roster(error) }
 }
 
 impl From<CustomMixedRosterImportError> for CustomRuntimeImportError {
+    /// 把混合 roster 错误转换为 [`CustomRuntimeImportError::MixedRoster`] 变体。
     fn from(error: CustomMixedRosterImportError) -> Self { Self::MixedRoster(error) }
 }
 
 impl From<CustomBed2MinionOverlayImportError> for CustomRuntimeImportError {
+    /// 把使魔 overlay 导入错误转换为 [`CustomRuntimeImportError::Bed2MinionOverlay`] 变体。
     fn from(error: CustomBed2MinionOverlayImportError) -> Self { Self::Bed2MinionOverlay(error) }
 }
 
 impl From<RuntimeBattleInitError> for CustomRuntimeImportError {
+    /// 把战斗初始化错误转换为 [`CustomRuntimeImportError::BattleInit`] 变体。
     fn from(error: RuntimeBattleInitError) -> Self { Self::BattleInit(error) }
 }
 
 impl From<RuntimeReadyError> for CustomRuntimeImportError {
+    /// 把就绪校验错误转换为 [`CustomRuntimeImportError::NotReady`] 变体。
     fn from(error: RuntimeReadyError) -> Self { Self::NotReady(error) }
 }
 
+/// 混合 roster 导入失败：给出队伍、行内位置、原文与原因。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomMixedRosterImportError {
     pub team_index: usize,

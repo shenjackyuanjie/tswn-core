@@ -1,6 +1,7 @@
 use super::*;
 
 impl CombatRuntime {
+    /// 瘟疫（half）选目标：聪明时只考虑体力在 160 到 400 之间的敌人。
     pub fn select_plain_half_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         self.select_plain_filtered_enemy_targets(
             actor,
@@ -10,6 +11,7 @@ impl CombatRuntime {
         )
     }
 
+    /// 瘟疫选目标评分：基础分乘以目标体力，体力越高越优先。
     pub fn score_plain_half_target(&mut self, target: EntityIdx, smart: bool) -> f64 {
         let entity = self
             .entities
@@ -36,6 +38,7 @@ impl CombatRuntime {
         base * entity.runtime.hp as f64
     }
 
+    /// 诅咒选目标：聪明时要求体力不低于 80，且未携带高概率诅咒。
     pub fn select_plain_curse_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         self.select_plain_filtered_enemy_targets(
             actor,
@@ -59,6 +62,7 @@ impl CombatRuntime {
         )
     }
 
+    /// 诅咒选目标评分：已中诅咒的目标评分减半。
     pub fn score_plain_curse_target(&mut self, target: EntityIdx, smart: bool) -> f64 {
         let entity = self
             .entities
@@ -94,6 +98,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 诅咒技能：取魔法威力攻击并附加诅咒伤害效果。
     pub fn drain_plain_curse_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         let atp = self
             .entities

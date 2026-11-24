@@ -130,7 +130,7 @@ impl CombatRuntime {
     /// 0.5.5 `RinickModifierPreAction.aN`：行动前清除自身负向状态。
     ///
     /// 解除消息只在体力大于 0 时输出，火伤状态没有解除文本；只要产生了解除消息，
-    /// 「使用[属性修改器]」就会被插回本段更新开头，并在末尾补一个换行。
+    /// 「使用\[属性修改器\]」就会被插回本段更新开头，并在末尾补一个换行。
     /// 身份分支的隐身技能以更高优先级覆盖了强制分身返回值，因此这里不复刻该分支。
     pub fn run_plain_rinick_modifier_pre_action(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
         use crate::runtime::lang::keys;

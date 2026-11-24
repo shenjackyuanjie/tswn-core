@@ -11,6 +11,7 @@
 
 #[cfg(target_family = "wasm")]
 pub(crate) use self::wasm::Stopwatch;
+/// WASM 平台的计时实现：基于 `Date::now()` 毫秒墙钟。
 #[cfg(target_family = "wasm")]
 mod wasm {
     /// WASM 计时点，记录 `Date::now()` 的毫秒时间戳。
@@ -20,6 +21,7 @@ mod wasm {
     pub struct Stopwatch(f64);
 
     impl Stopwatch {
+        /// 记录当前墙钟毫秒时间戳。
         pub fn now() -> Self { Self(js_sys::Date::now()) }
 
         /// 将当前墙钟与计时点的差换算为纳秒数，时钟回拨时返回 `0`。
@@ -52,6 +54,7 @@ mod wasm {
         fn cmp(&self, other: &Self) -> std::cmp::Ordering { self.0.total_cmp(&other.0) }
     }
 
+    /// 把两个毫秒时间戳的差换算为纳秒；时钟回拨（非正差）返回 0。
     fn elapsed_nanos(earlier_millis: f64, now_millis: f64) -> u128 {
         let millis = now_millis - earlier_millis;
         if millis <= 0.0 { 0 } else { (millis * 1_000_000.0) as u128 }
@@ -60,6 +63,7 @@ mod wasm {
 
 #[cfg(not(target_family = "wasm"))]
 pub(crate) use self::native::Stopwatch;
+/// 原生平台的计时实现：包装 `std::time::Instant` 单调时钟。
 #[cfg(not(target_family = "wasm"))]
 mod native {
     /// 原生平台计时点，包装 [`std::time::Instant`] 的单调时间源。
@@ -69,6 +73,7 @@ mod native {
     pub struct Stopwatch(std::time::Instant);
 
     impl Stopwatch {
+        /// 记录当前单调时刻。
         pub fn now() -> Self { Self(std::time::Instant::now()) }
 
         /// 返回从采集计时点到本次调用经过的纳秒数。

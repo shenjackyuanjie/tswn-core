@@ -6,6 +6,7 @@
 
 use super::*;
 
+/// 列表族单行记录：owner / field / ordinal / target 与排序键。
 #[derive(Debug, Clone, Copy)]
 struct ListRecord {
     owner_scope: i32,
@@ -17,6 +18,7 @@ struct ListRecord {
     rank_domain: Option<OrderRankDomain>,
 }
 
+/// 排序域：注册序或运行序，携带对应序号。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum OrderRankDomain {
     Registration(usize),
@@ -24,12 +26,14 @@ enum OrderRankDomain {
 }
 
 impl ListRecord {
+    /// 设置记录 owner 的链式构造器。
     fn with_owner(mut self, owner: i32) -> Self {
         self.owner = owner;
         self
     }
 }
 
+/// 为实体构造列表记录；target 行号来自样本索引。
 fn entity_list_record(
     index: &SampleIndex<'_>,
     id: EntityIdx,
@@ -49,6 +53,7 @@ fn entity_list_record(
 }
 
 impl FeatureEncoder {
+    /// 把列表族写入编码批次：按模板 / lane 展开记录并按排序键稳定输出。
     pub(super) fn write_list_family(
         &self,
         state: &BattleModelState,

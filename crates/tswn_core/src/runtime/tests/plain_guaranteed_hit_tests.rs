@@ -1,5 +1,6 @@
 use super::*;
 
+/// 按 charged 构造注册了换血/交换等技能的 CombatRuntime，用于必中控制测试。
 fn control_runtime(charged: bool) -> CombatRuntime {
     let mut builder = ExtensionRegistryBuilder::default();
     let exchange = builder
@@ -23,6 +24,7 @@ fn control_runtime(charged: bool) -> CombatRuntime {
     ))
 }
 
+/// 按 exchange 选择换血或半血技能路径，把技能效果 drain 进 updates。
 fn cast(runtime: &mut CombatRuntime, exchange: bool) {
     let mut updates = RunUpdates::new();
     if exchange {

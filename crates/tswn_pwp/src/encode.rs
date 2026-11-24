@@ -3,7 +3,9 @@
 //! 先校验编码契约和源分片身份，再按 split/标签策略流式填充固定批；尾批使用实际数量。
 //! 源目录共享锁在整个导出期间持有，特征、精确旁路、标签和 audit 使用不同清单。
 //! 输出先写同级暂存包并逐文件回读哈希，全部成功才发布目录；失败保留现场且不覆盖旧包。
+/// 编码输出的临时目录与无覆盖提交。
 mod output;
+/// 源数据集身份核对与标签计数扫描。
 mod source;
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
@@ -23,6 +25,7 @@ use tswn_core::{
 use crate::{SampleRow, storage};
 use source::SourceDataset;
 
+/// encode 子命令参数：源数据集目录、manifest、输出目录与批大小。
 #[derive(Debug, Clone, clap::Args)]
 pub struct EncodeArgs {
     /// 已生成的 Parquet 数据集目录。
@@ -46,6 +49,7 @@ pub struct EncodeArgs {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// 单个批次的清单：张量、精确旁路、标签与审计条目及各自哈希。
 struct BatchManifest {
     format: String,
     format_version: u32,
@@ -59,6 +63,7 @@ struct BatchManifest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// 一个张量文件条目：名称、dtype、shape 与负载信息。
 struct TensorFile {
     name: String,
     dtype: String,
@@ -68,6 +73,7 @@ struct TensorFile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// 文件条目：字节数、相对路径与 SHA-256。
 struct FileEntry {
     byte_length: usize,
     file: String,
@@ -75,6 +81,7 @@ struct FileEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// 整个编码包的清单：契约摘要、数据集摘要、批次数与样本数。
 struct ExportManifest {
     format: String,
     format_version: u32,
@@ -104,11 +111,13 @@ struct SourceRow {
     progress: f64,
 }
 
+/// 一条选中样本：样本行与来源审计信息。
 struct SelectedRow {
     row: SampleRow,
     source: SourceRow,
 }
 
+/// 执行编码：校验参数与 manifest，按批读取源数据集并原子写出编码包。
 pub fn run(args: &EncodeArgs) -> Result<()> {
     ensure!(args.batch_size > 0, "batch-size 必须大于 0");
     output::ensure_absent(&args.out)?;
@@ -139,6 +148,7 @@ pub fn run(args: &EncodeArgs) -> Result<()> {
     Ok(())
 }
 
+/// 把编码结果分批写入输出目录，并生成导出清单。
 fn write_export(
     args: &EncodeArgs,
     source: &SourceDataset,
@@ -225,6 +235,7 @@ fn stream_batches(
     Ok(samples)
 }
 
+/// 按 encoder profile 与样本数计算张量字节预算。
 fn tensor_budget(encoder: &FeatureEncoder, samples: usize) -> Result<u64> {
     let dims = encoder.profile().dims();
     let mut per_sample = 5usize; // i32 标签与 u8 label_mask。
@@ -242,6 +253,7 @@ fn tensor_budget(encoder: &FeatureEncoder, samples: usize) -> Result<u64> {
         .context("编码包字节预算溢出")
 }
 
+/// 编码一个批次并写盘，返回批次清单文件名。
 fn write_batch(out: &Path, index: usize, chunk: &[SelectedRow], encoder: &FeatureEncoder, digest: &str) -> Result<String> {
     let mut encoded = EncodedBatch::new(encoder.profile(), chunk.len());
     let mut winners = Vec::with_capacity(chunk.len() * 4);
@@ -315,6 +327,7 @@ fn write_batch(out: &Path, index: usize, chunk: &[SelectedRow], encoder: &Featur
     storage::file_hash(&dir.join("batch-manifest.json"))
 }
 
+/// 写出一个张量二进制文件并登记到清单。
 fn write_tensor(dir: &Path, name: &str, dtype: &str, shape: Vec<usize>, bytes: &[u8]) -> Result<TensorFile> {
     let file = format!("{name}.bin");
     let payload = output::write_payload(dir, &file, bytes)?;

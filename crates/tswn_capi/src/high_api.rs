@@ -16,6 +16,7 @@ use crate::{
     write_json_result, write_string_result,
 };
 
+/// 胜率统计的 JSON 输出结构：胜/负场数、胜率与初始化、战斗耗时（纳秒）。
 #[derive(Serialize)]
 struct JsonWinRateResult {
     wins: usize,
@@ -25,12 +26,14 @@ struct JsonWinRateResult {
     fight_nanos: u64,
 }
 
+/// 分组胜率的 JSON 输出：对手组文本与对应的 `JsonWinRateResult`。
 #[derive(Serialize)]
 struct JsonGroupWinRateResult {
     opponent: String,
     result: JsonWinRateResult,
 }
 
+/// 分数 bench 的 JSON 输出：分数、胜负数、错误数与耗时。
 #[derive(Serialize)]
 struct JsonScoreResult {
     score: f64,
@@ -41,6 +44,7 @@ struct JsonScoreResult {
     fight_nanos: u64,
 }
 
+/// namer pf 的 JSON 输出：组内玩家、指标标签、各指标得分与总分。
 #[derive(Serialize)]
 struct JsonNamerPfResult {
     group: Vec<String>,
@@ -49,6 +53,7 @@ struct JsonNamerPfResult {
     total_score: f64,
 }
 
+/// 批量胜率的 JSON 输出：标签、平均与聚合胜率、有效/跳过对阵数与耗时。
 #[derive(Serialize)]
 struct JsonBatchRateResult {
     label: String,
@@ -62,12 +67,14 @@ struct JsonBatchRateResult {
     fight_nanos: u64,
 }
 
+/// pair 胜率榜单单项：玩家名与胜率。
 #[derive(Serialize)]
 struct JsonPairRateEntry {
     name: String,
     rate: f64,
 }
 
+/// pair 胜率的 JSON 输出：榜单入选数、top 列表、聚合胜率与耗时等汇总。
 #[derive(Serialize)]
 struct JsonPairRateResult {
     label: String,
@@ -84,6 +91,7 @@ struct JsonPairRateResult {
     fight_nanos: u64,
 }
 
+/// 图标结构化信息：边框样式、形状列表、背景/前景颜色索引与 RGB、消耗颜色数，供 FFI 以 JSON 暴露。
 #[derive(Serialize)]
 struct JsonIconInfo {
     border_style: usize,
@@ -95,8 +103,10 @@ struct JsonIconInfo {
     colors_consumed: usize,
 }
 
+/// 把 `u128` 纳秒计时饱和转换为 `u64`，超出 `u64::MAX` 时截断为最大值，避免 JSON 序列化失败。
 fn nanos_to_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
 
+/// 把 `CliApiError` 映射为 FFI 错误：输入/参数/不支持项映射 `TSWN_ERR_INVALID_ARGUMENT`，其余映射 `TSWN_ERR_RUNNER`，并保留 core 稳定错误码。
 pub(crate) fn cli_api_error(err: CliApiError) -> FfiError {
     let status = match &err {
         CliApiError::InvalidInput(_) | CliApiError::InvalidArgument(_) | CliApiError::UnsupportedOption(_) => {

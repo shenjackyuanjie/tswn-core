@@ -28,6 +28,7 @@ pub enum OutputMode {
     Pure,
 }
 
+/// namer-pf 指标：pp、pd、qp、qd 与 sum。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NamerPfMetric {
     Pp,
@@ -38,8 +39,10 @@ pub enum NamerPfMetric {
 }
 
 impl NamerPfMetric {
+    /// 全部指标，顺序 pp/pd/qp/qd/sum。
     pub const ALL: [Self; 5] = [Self::Pp, Self::Pd, Self::Qp, Self::Qd, Self::Sum];
 
+    /// 返回指标的 CLI 字符串名。
     pub fn label(self) -> &'static str {
         match self {
             Self::Pp => "pp",
@@ -67,6 +70,7 @@ pub struct CommonBenchOptions {
     pub wr_precision: usize,
 }
 
+/// namer-pf 单项指标的运行选项：指标、屏幕阈值与输出文件。
 #[derive(Debug, Clone)]
 pub struct NamerPfMetricOptions {
     pub metric: NamerPfMetric,
@@ -77,6 +81,7 @@ pub struct NamerPfMetricOptions {
     pub min_file: Option<f64>,
 }
 
+/// namer-pf 技能板输出选项：屏幕输出、文件输出与阈值配置路径。
 #[derive(Debug, Clone)]
 pub struct NamerPfSkillBoardOptions {
     pub screen: bool,
@@ -141,6 +146,7 @@ pub struct PairInput {
     pub cancel: Arc<AtomicBool>,
 }
 
+/// 配对明细模式：不显示、逐个显示或只显示前列。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PairDetailMode {
     None,

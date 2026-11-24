@@ -18,6 +18,7 @@ use super::source::TextSource;
 use super::widgets::{BenchOutputConfig, OptionalFileOutput};
 use tswn_openbox::presets::{TargetPresetState, TeammatePresetState};
 
+/// 工具枚举：to-diy、namer-pf、cqd/cqp、pair、base 与 DS4。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Tool {
     ToDiy,
@@ -29,8 +30,10 @@ pub enum Tool {
 }
 
 impl Tool {
+    /// 全部工具，顺序与界面标签一致。
     pub const ALL: [Self; 6] = [Self::ToDiy, Self::NamerPf, Self::BatchRate, Self::Pair, Self::Base, Self::Ds4];
 
+    /// 返回工具的界面标签。
     pub fn label(self) -> &'static str {
         match self {
             Self::ToDiy => "to-diy",
@@ -43,12 +46,14 @@ impl Tool {
     }
 }
 
+/// 场数模式：按精确度档位或手动指定。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CountMode {
     Accuracy,
     Manual,
 }
 
+/// 精确度档位：1%、10%、100%。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccuracyPreset {
     One,
@@ -57,8 +62,10 @@ pub enum AccuracyPreset {
 }
 
 impl AccuracyPreset {
+    /// 全部精确度档位。
     pub const ALL: [Self; 3] = [Self::One, Self::Ten, Self::Hundred];
 
+    /// 返回档位的界面标签。
     pub fn label(self) -> &'static str {
         match self {
             Self::One => "1%",
@@ -67,6 +74,7 @@ impl AccuracyPreset {
         }
     }
 
+    /// 返回档位对应的采样场数（100 / 1000 / 10000）。
     pub fn count(self) -> usize {
         match self {
             Self::One => 100,
@@ -76,6 +84,7 @@ impl AccuracyPreset {
     }
 }
 
+/// to-diy 工具的状态：名字输入与导出选项。
 pub struct ToDiyState {
     pub names: TextSource,
     pub old: bool,
@@ -96,6 +105,7 @@ impl Default for ToDiyState {
     }
 }
 
+/// namer-pf 工具的状态：输入、场数模式与线程选项。
 pub struct NamerPfState {
     pub names: TextSource,
     pub count_mode: CountMode,
@@ -109,6 +119,7 @@ pub struct NamerPfState {
     pub skill_board: NamerPfSkillBoardState,
 }
 
+/// namer-pf 单项指标的状态：指标、屏幕阈值与输出。
 pub struct NamerPfMetricState {
     pub metric: NamerPfMetric,
     pub screen: bool,
@@ -118,6 +129,7 @@ pub struct NamerPfMetricState {
     pub min_file: String,
 }
 
+/// namer-pf 技能板输出的状态。
 pub struct NamerPfSkillBoardState {
     pub screen: bool,
     pub file_output: OptionalFileOutput,
@@ -153,6 +165,7 @@ impl Default for NamerPfState {
     }
 }
 
+/// 批量胜率工具的状态：靶子、玩家与预设。
 pub struct BatchRateState {
     pub targets: TextSource,
     pub target_presets: TargetPresetState,
@@ -199,6 +212,7 @@ impl Default for BatchRateState {
     }
 }
 
+/// 配对工具的状态：靶子、玩家与选项。
 pub struct PairState {
     pub targets: TextSource,
     pub target_presets: TargetPresetState,
@@ -255,6 +269,7 @@ impl Default for PairState {
     }
 }
 
+/// namer-pf 高亮增量的默认值：sum 项 300，其余 100。
 fn default_namer_pf_highlight_delta(metric: NamerPfMetric) -> u64 { if metric == NamerPfMetric::Sum { 300 } else { 100 } }
 
 /// base 页只需一个名字：输出是固定格式的多行文本，走右侧日志，没有结构化结果。
@@ -270,6 +285,7 @@ impl Default for BaseState {
     }
 }
 
+/// 应用主状态：当前工具、各工具状态、日志、结果视图与运行控制。
 pub struct OpenboxApp {
     pub theme_preference: egui::ThemePreference,
     pub tool: Tool,

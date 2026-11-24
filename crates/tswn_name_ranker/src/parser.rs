@@ -6,6 +6,7 @@
 
 use anyhow::{Context, bail};
 
+/// 解析名字文本：逐行去空白并拒绝空行；空输入或含换行的名字返回错误。
 pub fn parse_names(text: &str) -> anyhow::Result<Vec<String>> {
     let names: Vec<_> = text.lines().map(str::trim).filter(|x| !x.is_empty()).map(str::to_owned).collect();
     if names.is_empty() {
@@ -17,6 +18,7 @@ pub fn parse_names(text: &str) -> anyhow::Result<Vec<String>> {
     Ok(names)
 }
 
+/// 解析靶子配置文本：跳过空行与 # 注释行，返回 (权重, raw, 左名, 右名) 列表。
 pub fn parse_targets(text: &str) -> anyhow::Result<Vec<(f64, String, String, String)>> {
     let mut out = Vec::new();
     for (idx, line) in text.lines().enumerate() {

@@ -1,5 +1,6 @@
 use super::*;
 
+/// 构造注册了魅惑 targeting 状态的 CombatRuntime。
 fn charmed_runtime() -> CombatRuntime {
     let mut builder = ExtensionRegistryBuilder::default();
     let charm_state = builder
@@ -36,6 +37,7 @@ fn charmed_runtime() -> CombatRuntime {
     runtime
 }
 
+/// 推进 RNG 直到实体 0 成为首个敌方候选，用于稳定魅惑目标测试。
 fn advance_until_actor_is_first_enemy_pick(runtime: &mut CombatRuntime) {
     let all_alive = runtime.world.flat_alive().to_vec();
     while {

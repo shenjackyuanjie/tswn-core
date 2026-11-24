@@ -4,6 +4,7 @@ use super::*;
 ///
 /// 与编号 41 使用相同对局身份和 2880 总分；只做回放断言，不合并或重写历史期望。
 pub fn large_45<E: crate::EngineAdapter>() {
+    /// large_45 用例的内嵌对局输入。
     const CASE: &str = r####"桃v66wy7tgu27xp@asyncTales
 b64d64cfaae1f621@asyncTales
 

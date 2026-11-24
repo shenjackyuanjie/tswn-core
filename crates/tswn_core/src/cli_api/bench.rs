@@ -4,6 +4,7 @@ use crate::win_rate::WinRateTiming;
 
 use super::{BatchSummary, CliApiResult, PairRateEntry, PairRateResult};
 
+/// 对基础组（duplicate 时复制为双人同名组）运行评分并折算为百分制分数。
 pub(super) fn namer_pf_score(
     base_group: &[String],
     modifier: &str,
@@ -22,6 +23,7 @@ pub(super) fn namer_pf_score(
         .map_err(super::runtime_batch_error)
 }
 
+/// 对单个选手遍历全部靶子组累计批量胜率汇总；带权时按因子加权，跳过无效对阵。
 pub(super) fn batch_rate_for_group(
     player: &str,
     target_groups: &[String],
@@ -84,6 +86,7 @@ pub(super) fn batch_rate_for_group(
     })
 }
 
+/// 对单个选手与各队友组合累计 pair 胜率，并按乘权分数取前 head 名求和。
 pub(super) fn pair_rate_for_player(
     player: &str,
     target_groups: &[String],
@@ -141,6 +144,7 @@ pub(super) fn pair_rate_for_player(
     })
 }
 
+/// 返回对阵中第一个重复出现的归一化玩家名。
 fn first_duplicate_name_in_matchup(groups: &[&str]) -> Option<String> {
     let mut seen = HashSet::new();
     for group in groups {
@@ -154,6 +158,7 @@ fn first_duplicate_name_in_matchup(groups: &[&str]) -> Option<String> {
     None
 }
 
+/// 判断两组文本的玩家集合是否相同：归一化后排序比较。
 fn groups_have_same_players(left: &str, right: &str) -> bool {
     let mut left = group_player_ids(left);
     let mut right = group_player_ids(right);
@@ -162,6 +167,7 @@ fn groups_have_same_players(left: &str, right: &str) -> bool {
     left == right
 }
 
+/// 把组文本转换为归一化玩家 id 列表。
 fn group_player_ids(group: &str) -> Vec<String> {
     group
         .lines()
@@ -183,6 +189,7 @@ fn member_to_ol(raw: &str) -> CliApiResult<String> {
     super::parse::export_player(raw, false, false)
 }
 
+/// 把组文本整体转换为 ol 格式多行文本。
 fn group_to_ol(group: &str) -> CliApiResult<String> {
     group
         .lines()

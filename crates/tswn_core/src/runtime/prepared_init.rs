@@ -1,3 +1,9 @@
+//! 对局初始化：解析输入文本与 roster，构造可重复应用的初始状态。
+//!
+//! PreparedBattleInit 保存完整初始状态（玩家、输入分组、行动序、RNG 等），
+//! PreparedBattleSeed 只保留 seed 会改变的部分，供批量胜率逐局快速应用；
+//! 文本拆分、roster 构建与 seed 应用分别由 init、roster、seed 子模块完成。
+
 use super::*;
 use crate::namerena::{
     NAME_MAX_LEN, PlayerStats, RINICK_MODIFIER_BOSS_ALIAS, SAITAMA_RETIREMENT_WINNER, boss_combat_identity_override,
@@ -10,6 +16,7 @@ mod init;
 mod roster;
 mod seed;
 
+/// 对局初始化失败：单个玩家构造错误，或准备好的实体数与 Runtime 不一致。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeBattleInitError {
     Player {
@@ -25,6 +32,7 @@ pub enum RuntimeBattleInitError {
 }
 
 impl std::fmt::Display for RuntimeBattleInitError {
+    /// 显示初始化错误：区分具体玩家构造失败与准备/运行实体数不匹配两类。
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Player {
@@ -115,6 +123,7 @@ pub(crate) struct ScoreRosterBuffers {
 }
 
 impl ScoreProfileBuild {
+    /// 由随机流构造 score profile：按 clan 类型（`!` 与其否则）改写名字基数，并随机打乱技能顺序。
     fn from_rng(id: PlrId, name: String, clan_name: String, mut rand: RC4) -> Self {
         let mut name_base = score_name_base(&rand.main_val);
         let normal_raw_name_base = name_base;
@@ -155,6 +164,7 @@ impl ScoreProfileBuild {
         }
     }
 
+    /// 用另一份 profile 的原始名字基数抬升自身对应下标；`test_ex` 组合不抬升。
     fn upgrade_from(&mut self, other: &Self) {
         if self.test_ex {
             return;
@@ -166,6 +176,7 @@ impl ScoreProfileBuild {
         }
     }
 
+    /// 把 score profile 落成准备玩家：由名字基数中位数推八围与体力、排定技能等级，并产出模板、克隆构建与蓝图占位。
     fn into_prepared(
         self,
         team: usize,
@@ -325,6 +336,7 @@ fn score_name_base(values: &[u8; 256]) -> [u8; 128] {
     score_name_base_scalar(values)
 }
 
+/// score 名字基数的标量实现：按 `value * 181 + 160` 取模过滤出 128 个 6 位值；AVX2 路径的结果必须与它一致。
 fn score_name_base_scalar(values: &[u8; 256]) -> [u8; 128] {
     let mut name_base = [0u8; 128];
     let mut output = 0usize;
@@ -396,6 +408,7 @@ pub struct PreparedBattleRoster {
     recycle_score_buffers: bool,
 }
 
+/// 一局对局的完整初始状态，可重复应用到 CombatRuntime。
 #[derive(Debug, Clone)]
 pub struct PreparedBattleInit {
     players: Vec<Option<PreparedPlayerInit>>,

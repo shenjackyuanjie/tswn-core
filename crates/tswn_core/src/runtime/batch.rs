@@ -31,11 +31,15 @@ use super::{
 };
 
 pub mod test_session;
-
+// 上游评分保留独立模块，Clever 继续导出扩展会话。
+pub mod score_test;
 const BATCH_PARALLEL_THRESHOLD: usize = 100;
+/// 单场对局的最大推进回合数；达到上限按保护上限耗尽处理，计入 `guard_exhausted`。
 const BATCH_MAX_ROUNDS: usize = 100_000;
+/// 胜率 seed 的交错批大小：一次准备 4 个轮次的 RC4 初始随机状态，再按原轮次逐场使用。
 const WIN_RATE_SEED_BATCH: usize = 4;
 
+/// 胜率执行复用的 seed 缓冲：seed 文本、每批 4 份密钥与可选的数字槽位快速改写模板。
 struct WinRateSeedScratch {
     seed: String,
     keys: [String; WIN_RATE_SEED_BATCH],
@@ -43,6 +47,7 @@ struct WinRateSeedScratch {
 }
 
 impl WinRateSeedScratch {
+    /// 按准备模板与待执行轮次数构造；轮次足够时启用 [`ProfileSeedKeys`] 数字槽位快路径。
     fn new(prepared: &PreparedRuntimeRunner, rounds: usize) -> Self {
         let profile_keys = if rounds >= WIN_RATE_SEED_BATCH {
             prepared
@@ -62,6 +67,7 @@ impl WinRateSeedScratch {
         }
     }
 
+    /// 为从 `start` 开始的 [`WIN_RATE_SEED_BATCH`] 个轮次准备 RC4；可整体改写编号槽位时优先走快路径。
     fn prepare_rngs(&mut self, prepared: &PreparedRuntimeRunner, start: usize) -> [RC4; WIN_RATE_SEED_BATCH] {
         let roster = &prepared.battle_roster;
         if let Some(keys) = &mut self.profile_keys
@@ -84,6 +90,7 @@ struct ProfileSeedKeys {
 }
 
 impl ProfileSeedKeys {
+    /// 就地改写 4 份密钥中的八位编号槽位；第 0 轮或编号超过 `100_000_000` 上限时返回 `None`，退回逐轮 seed 文本路径。
     fn refill(&mut self, start: usize) -> Option<[&[u8]; WIN_RATE_SEED_BATCH]> {
         let first = crate::runtime::PROFILE_START.checked_add(u32::try_from(start).ok()?)?;
         if start == 0 || first > 100_000_000 - WIN_RATE_SEED_BATCH as u32 {
@@ -102,6 +109,7 @@ impl ProfileSeedKeys {
     }
 }
 
+/// 单场对局的 seed 来源：文本 seed（第 0 轮为空）或预准备的 RC4 初始随机状态。
 enum WinRateSeed<'a> {
     Text(&'a [String]),
     PreparedRng(&'a crate::rc4::RC4),
@@ -121,10 +129,13 @@ pub struct RuntimeBatchSummary {
 }
 
 impl RuntimeBatchSummary {
+    /// 胜率百分比；分母为 `total`，空统计按 0 处理。
     pub fn win_rate_percent(self) -> f64 { self.wins as f64 * 100.0 / self.total.max(1) as f64 }
 
+    /// 万分制评分（胜率乘以 10000）；分母口径与 [`Self::win_rate_percent`] 相同。
     pub fn score_10000(self) -> f64 { self.wins as f64 * 10_000.0 / self.total.max(1) as f64 }
 
+    /// 把 `other` 的计数与计时累加到自身，用于合并分片或 worker 的部分统计。
     pub fn merge(&mut self, other: Self) {
         self.wins += other.wins;
         self.total += other.total;
@@ -134,6 +145,10 @@ impl RuntimeBatchSummary {
     }
 }
 
+/// 批量评分或胜率执行失败的顶层错误。
+///
+/// `DefaultProfile` 表示默认自定义 profile 构建失败，`Import` 表示阵容导入失败；
+/// 逐轮初始化失败不经过该错误，而是计入 [`RuntimeBatchSummary::errors`]。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeBatchError {
     DefaultProfile(DefaultCustomRuntimeProfileError),
@@ -141,6 +156,7 @@ pub enum RuntimeBatchError {
 }
 
 impl std::fmt::Display for RuntimeBatchError {
+    /// 显示批量错误：区分默认 profile 构建失败与阵容导入失败两类，均附内部错误的调试信息。
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::DefaultProfile(error) => write!(f, "runtime default profile failed: {error:?}"),
@@ -152,10 +168,12 @@ impl std::fmt::Display for RuntimeBatchError {
 impl std::error::Error for RuntimeBatchError {}
 
 impl From<DefaultCustomRuntimeProfileError> for RuntimeBatchError {
+    /// 把默认自定义 profile 错误转换为 [`RuntimeBatchError::DefaultProfile`] 变体。
     fn from(error: DefaultCustomRuntimeProfileError) -> Self { Self::DefaultProfile(error) }
 }
 
 impl From<CustomRuntimeImportError> for RuntimeBatchError {
+    /// 把阵容导入错误转换为 [`RuntimeBatchError::Import`] 变体。
     fn from(error: CustomRuntimeImportError) -> Self { Self::Import(error) }
 }
 
@@ -185,6 +203,7 @@ pub fn runtime_groups_win_rate_timed(
     runtime_groups_win_rate_with_timing::<true>(groups, n, eval_rq, thread)
 }
 
+/// [`runtime_groups_win_rate`] 与 [`runtime_groups_win_rate_timed`] 的 const 泛型实现：构建默认配置与准备 runner 后转交 prepared 路径。
 fn runtime_groups_win_rate_with_timing<const TIMED: bool>(
     groups: &[Vec<String>],
     n: usize,
@@ -217,6 +236,7 @@ pub fn prepared_runtime_win_rate_timed(
     prepared_runtime_win_rate_with_timing::<true>(prepared, n, thread)
 }
 
+/// 批量胜率核心：按 worker 预算与 [`BATCH_PARALLEL_THRESHOLD`] 决定串行或并行；并行时按小区间动态领取，结束后合并各 worker 统计。
 fn prepared_runtime_win_rate_with_timing<const TIMED: bool>(
     prepared: &PreparedRuntimeRunner,
     n: usize,
@@ -295,6 +315,7 @@ pub fn runtime_score_timed(
     runtime_score_with_timing::<true>(target_group, modifier, n, eval_rq, thread)
 }
 
+/// 评分核心：先按第一轮分队构建准备 runner，再按 worker 预算串行或并行逐轮执行；并行 worker 只合并计数。
 fn runtime_score_with_timing<const TIMED: bool>(
     target_group: &[String],
     modifier: &str,
@@ -375,6 +396,7 @@ pub fn runtime_score_range_timed(
     runtime_score_range_with_timing::<true>(target_group, modifier, start, end, eval_rq)
 }
 
+/// [`runtime_score_range`] 与 [`runtime_score_range_timed`] 的实现：构建准备 runner 后串行执行原始区间。
 fn runtime_score_range_with_timing<const TIMED: bool>(
     target_group: &[String],
     modifier: &str,
@@ -388,6 +410,7 @@ fn runtime_score_range_with_timing<const TIMED: bool>(
     Ok(run_score_range::<TIMED>(target_group, modifier, start, end, eval_rq, &prepared))
 }
 
+/// 串行执行准备模板的原始区间 `[start, end)`：准备 seed scratch 与可复用 runner 后按 chunk 推进。
 fn run_prepared_range<const TIMED: bool>(
     prepared: &PreparedRuntimeRunner,
     start: usize,
@@ -402,6 +425,7 @@ fn run_prepared_range<const TIMED: bool>(
     Ok(summary)
 }
 
+/// 并行 worker 循环：从共享计数器领取 chunk，使用本线程的 seed scratch 与 runner 执行并累计统计。
 fn run_prepared_worker<const TIMED: bool>(
     prepared: &PreparedRuntimeRunner,
     next: &AtomicUsize,
@@ -422,6 +446,7 @@ fn run_prepared_worker<const TIMED: bool>(
     Ok(summary)
 }
 
+/// 执行一段轮次区间：整批部分走 [`WinRateSeedScratch::prepare_rngs`] 快路径，余下逐轮使用文本 seed。
 fn run_prepared_chunk<const TIMED: bool>(
     prepared: &PreparedRuntimeRunner,
     runner: &mut RuntimeRunner,
@@ -448,6 +473,7 @@ fn run_prepared_chunk<const TIMED: bool>(
     Ok(())
 }
 
+/// 单场胜率对局：按 seed 复位 runner、推进至完成，累计 `total`/`guard_exhausted`/`wins` 与可选计时。
 fn run_prepared_round<const TIMED: bool>(
     prepared: &PreparedRuntimeRunner,
     runner: &mut RuntimeRunner,
@@ -476,6 +502,7 @@ fn run_prepared_round<const TIMED: bool>(
     Ok(())
 }
 
+/// 生成第 `round` 轮的附加 seed：第 0 轮为空，之后为 `seed:{PROFILE_START + round}@!`，写入复用缓冲。
 fn profile_seed_for_round(seed: &mut String, round: usize) -> &[String] {
     if round == 0 {
         &[]
@@ -486,6 +513,7 @@ fn profile_seed_for_round(seed: &mut String, round: usize) -> &[String] {
     }
 }
 
+/// 串行执行评分区间：每轮先更新分队中的数字 profile，再逐场执行并累计统计。
 fn run_score_range<const TIMED: bool>(
     target_group: &[String],
     modifier: &str,
@@ -505,6 +533,7 @@ fn run_score_range<const TIMED: bool>(
     summary
 }
 
+/// 评分并行 worker：动态领取轮次区间，使用本线程的分队缓冲与 runner 执行。
 fn run_score_worker<const TIMED: bool>(
     target_group: &[String],
     modifier: &str,
@@ -529,6 +558,7 @@ fn run_score_worker<const TIMED: bool>(
     summary
 }
 
+/// 单场评分对局：按轮次分队复位 runner；复位失败计入 `errors`，否则累计 `total`/`guard_exhausted`/`wins` 与可选计时。
 fn run_score_round<const TIMED: bool>(
     round: usize,
     eval_rq: f64,
@@ -572,6 +602,7 @@ fn run_score_round<const TIMED: bool>(
     summary.wins += usize::from(runner.input_group_won(0));
 }
 
+/// 每轮跟踪的目标数量：重复二人组按 1 个计，其余取目标组长度。
 fn js_score_targets_per_round(target_group: &[String]) -> usize {
     if target_group.len() == 2 && target_group[0] == target_group[1] {
         1
@@ -580,6 +611,7 @@ fn js_score_targets_per_round(target_group: &[String]) -> usize {
     }
 }
 
+/// 每轮生成的数字 profile 数量：重复二人组为 1，单目标为 3，其余与目标数相同。
 fn js_score_profiles_per_round(target_group: &[String]) -> usize {
     if target_group.len() == 2 && target_group[0] == target_group[1] {
         1
@@ -590,6 +622,7 @@ fn js_score_profiles_per_round(target_group: &[String]) -> usize {
     }
 }
 
+/// 评分执行按轮复用的分队缓冲：目标队、profile 槽位与各轮共享的 skill / identity / roster 缓冲。
 struct ScoreMatchGroups {
     groups: Vec<Vec<String>>,
     profile_slots: Vec<(usize, usize)>,
@@ -603,6 +636,7 @@ struct ScoreMatchGroups {
 }
 
 impl ScoreMatchGroups {
+    /// 按目标组与 modifier 构造第 0 轮的分队布局，并分配各复用缓冲。
     fn new(target_group: &[String], modifier: &str) -> Self {
         let tracked_targets = js_score_targets_per_round(target_group);
         let profile_count = js_score_profiles_per_round(target_group);
@@ -655,6 +689,7 @@ impl ScoreMatchGroups {
         value
     }
 
+    /// 按轮次重写 profile 槽位中的数字名字 `{PROFILE_START + round * 槽位数 + 序号}@{modifier}`。
     fn set_round(&mut self, round: usize) {
         let profile_base = crate::runtime::PROFILE_START as usize + round * self.profile_slots.len();
         for (offset, &(group, player)) in self.profile_slots.iter().enumerate() {
@@ -754,6 +789,7 @@ mod tests {
         }
     }
 
+    /// 测试辅助：以指定目标与轮次执行单场评分对局，返回第一输入组是否获胜。
     fn score_round_target_won(target: &str, round_number: usize) -> bool {
         let target_group = vec![target.to_owned()];
         let modifier = "!";

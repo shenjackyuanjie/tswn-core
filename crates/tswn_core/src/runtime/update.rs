@@ -46,6 +46,7 @@ thread_local! {
     static RUN_UPDATES_ID: Cell<u64> = const { Cell::new(1) };
 }
 
+/// 领取下一批 `RunUpdates` 的唯一自增 ID；no_debug 下走线程局部计数器，否则走全局原子计数器。
 #[inline]
 fn next_run_updates_id() -> u64 {
     #[cfg(feature = "no_debug")]
@@ -104,6 +105,8 @@ pub struct RunUpdateHp {
 /// - 延迟时间（用于 web 端动画）
 #[derive(Debug, Clone)]
 pub struct RunUpdate {
+    /// 纯台词事件；发动、伤害和状态效果均为 false。
+    pub dialogue: bool,
     /// 视觉分值（用于 UI 展示，影响动画强度）。
     pub score: u32,
     /// 可选数值参数，对应消息中 `[2]` 的纯数字情形（优先于 targets 列表）。
@@ -137,9 +140,16 @@ pub struct RunUpdate {
 }
 
 impl RunUpdate {
+    /// 标记纯台词，由显示层使用独立背景，不改变结算与计分。
+    pub(crate) fn as_dialogue(mut self) -> Self {
+        self.dialogue = true;
+        self
+    }
+
     /// 创建一个空白占位帧（`UpdateType::None`）。
     pub fn new_dummy() -> RunUpdate {
         RunUpdate {
+            dialogue: false,
             score: 0,
             param: None,
             delay0: 0,
@@ -163,6 +173,7 @@ impl RunUpdate {
     /// 用于在战斗日志中插入视觉换行，对应 JS 的 `RunUpdate_init(null, ...)` 形式。
     pub fn new_newline() -> RunUpdate {
         RunUpdate {
+            dialogue: false,
             score: 0,
             param: None,
             delay0: 0,
@@ -190,6 +201,7 @@ impl RunUpdate {
     /// - `score`：UI 显示分值。
     pub fn new(msg: impl Into<Cow<'static, str>>, caster: PlrId, target: PlrId, score: u32) -> Self {
         RunUpdate {
+            dialogue: false,
             score,
             param: None,
             delay0: DEFAULT_DELAY0_MS,
@@ -243,21 +255,25 @@ impl RunUpdate {
     /// 规范回放中的真实单体目标。
     pub fn replay_target_id(&self) -> Option<PlrId> { (self.has_target && !self.hide_replay_target).then_some(self.target) }
 
+    /// 隐藏规范回放中的单体目标；旧兼容投影 `target_id` 仍可见。
     pub(crate) fn without_replay_target(mut self) -> Self {
         self.hide_replay_target = true;
         self
     }
 
+    /// 清除“有真实施法者”标记，使 `caster_id` 返回 `None`；legacy `caster` 字段仍可读。
     pub(crate) fn without_caster(mut self) -> Self {
         self.has_caster = false;
         self
     }
 
+    /// 收集多目标动画目标并顺带隐藏单体回放目标（多目标动画不暴露单一 replay target）。
     pub(crate) fn with_animation_targets(mut self, targets: impl ExactSizeIterator<Item = PlrId>) -> Self {
         self.animation_targets = Some(targets.collect());
         self.without_replay_target()
     }
 
+    /// 记录一次处决/致死伤害：置位伤害参数标记，并为目标登记 before→0 的生命变化。
     pub(crate) fn with_execution_damage(mut self, before: i32) -> Self {
         self.has_damage_param = true;
         let player = self.target;
@@ -268,6 +284,7 @@ impl RunUpdate {
         }])
     }
 
+    /// 由目标的生命变化反推本次伤害值（before-after，饱和到非负）；无伤害参数或找不到对应变化时返回 `None`。
     pub(crate) fn damage_param(&self) -> Option<u32> {
         if !self.has_damage_param {
             return None;
@@ -276,11 +293,13 @@ impl RunUpdate {
         Some(hp.before.saturating_sub(hp.after).max(0) as u32)
     }
 
+    /// 清除目标存在标记，使 `target_id` 与 `replay_target_id` 都返回 `None`。
     pub(crate) fn without_target(mut self) -> Self {
         self.has_target = false;
         self
     }
 
+    /// 将定长生命变化数组装箱存入 `hp_changes`。
     pub(crate) fn with_hp_changes<const N: usize>(mut self, changes: [RunUpdateHp; N]) -> Self {
         self.hp_changes = Some(Box::new(changes));
         self
@@ -343,6 +362,7 @@ pub struct RunUpdates {
 }
 
 impl RunUpdates {
+    /// 以给定 capture 开关构造空批次并领取新批次 ID，其余字段取初始值。
     fn new_with_capture(capture_updates: bool) -> RunUpdates {
         RunUpdates {
             id: next_run_updates_id(),
@@ -428,6 +448,7 @@ impl RunUpdates {
         }
     }
 
+    /// 返回本批次记录的 legacy 主体行动边界；[`Self::new_no_capture()`] 高速路径下为空。
     #[cfg(not(feature = "no_debug"))]
     pub fn action_boundaries(&self) -> &[LegacyActionBoundary] { &self.action_boundaries }
 

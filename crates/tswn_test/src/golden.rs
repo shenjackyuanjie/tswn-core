@@ -12,13 +12,19 @@ use tswn_core::runtime::{RuntimeRunner, default_custom_runtime_import_config};
 
 use crate::{EngineAdapter, EventSnapshot, RuntimeEngine, SnapshotKind};
 
+/// 冻结 stress 基线的 schema 版本。
 pub const STRESS_GOLDEN_SCHEMA_VERSION: u32 = 1;
+/// 逐轮精确追踪的 case 数：87。
 pub const EXACT_TRACE_CASE_COUNT: usize = 87;
+/// stress case 总数：37。
 pub const STRESS_CASE_COUNT: usize = 37;
+/// golden 比对允许的最大轮数：20000；超过即失败。
 pub const MAX_GOLDEN_ROUNDS: usize = 20_000;
+/// 逐轮摘要的规范化摘要格式（字段与顺序）。
 pub const CANONICAL_DIGEST_FORMAT: &str =
     "sha256-v1(round-index,event-kind,message,caster-name,score,post-round-rc4,winner-team)";
 
+/// 内嵌的冻结 Runtime stress golden JSON。
 const STRESS_GOLDEN_JSON: &str = include_str!("../cases/runtime_stress/golden.json");
 
 #[derive(Debug, Clone, Copy)]
@@ -72,6 +78,7 @@ macro_rules! stress_case {
     };
 }
 
+/// 内嵌的 stress case 列表；输入在编译期嵌入。
 pub const STRESS_CASES: &[StressCaseSpec] = &[
     stress_case!("1v1-0f92cb76cc37fdc5.txt"),
     stress_case!("2v2-554f4128af707167.txt"),
@@ -112,12 +119,14 @@ pub const STRESS_CASES: &[StressCaseSpec] = &[
     stress_case!("score-mario-r11350.txt", unescape_x02),
 ];
 
+/// 冻结的 RC4 状态：i 与 j。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rc4Golden {
     pub i: u64,
     pub j: u64,
 }
 
+/// 单个 case 的冻结基线：输入哈希、eval_rq、胜者、轮数、总分、最终 RC4 与逐轮摘要。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StressCaseGolden {
     pub file_name: String,
@@ -130,6 +139,7 @@ pub struct StressCaseGolden {
     pub round_digests: Vec<String>,
 }
 
+/// 整套 stress 基线：schema 版本、计数与全部 case 条目。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StressGoldenSet {
     pub schema_version: u32,
@@ -139,6 +149,7 @@ pub struct StressGoldenSet {
     pub cases: Vec<StressCaseGolden>,
 }
 
+/// 计算字节序列的 SHA-256 十六进制字符串。
 fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     let mut output = String::with_capacity(digest.len() * 2);
@@ -149,6 +160,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
     output
 }
 
+/// 按规范化换行后的输入计算 SHA-256，屏蔽 CRLF 差异。
 fn input_sha256_hex(raw: &str) -> String {
     if raw.as_bytes().contains(&b'\r') {
         let normalized = raw.replace("\r\n", "\n").replace('\r', "\n");
@@ -158,11 +170,13 @@ fn input_sha256_hex(raw: &str) -> String {
     }
 }
 
+/// 按小端长度前缀加字节喂入哈希，避免字段拼接歧义。
 fn feed_string(hasher: &mut Sha256, value: &str) {
     hasher.update((value.len() as u64).to_le_bytes());
     hasher.update(value.as_bytes());
 }
 
+/// 把快照类型映射为摘要用的单字节标签。
 fn snapshot_kind_tag(kind: SnapshotKind) -> u8 {
     match kind {
         SnapshotKind::Event => 0,
@@ -171,6 +185,7 @@ fn snapshot_kind_tag(kind: SnapshotKind) -> u8 {
     }
 }
 
+/// 计算单轮规范化摘要：事件、RC4 游标与胜者队伍。
 fn canonical_round_digest(
     round_index: usize,
     events: &[EventSnapshot],
@@ -205,6 +220,7 @@ fn canonical_round_digest(
     sha256_hex(&hasher.finalize())
 }
 
+/// 执行一个用例直到产生胜者，采集逐轮摘要、总分、终态 RC4 与胜者队伍；超出轮数上限即断言失败。
 fn capture_case<E: EngineAdapter>(mut runner: E::Runner, spec: StressCaseSpec) -> StressCaseGolden {
     let input = spec.effective_input();
     let mut round_digests = Vec::new();
@@ -249,6 +265,7 @@ fn capture_case<E: EngineAdapter>(mut runner: E::Runner, spec: StressCaseSpec) -
     }
 }
 
+/// 按 golden profile 构建 RuntimeRunner；失败直接 panic（视为 fixture 数据问题）。
 fn build_runtime_runner(spec: StressCaseSpec) -> RuntimeRunner {
     let config = default_custom_runtime_import_config()
         .unwrap_or_else(|error| panic!("Runtime golden profile failed to build: {error:?}"));
@@ -256,10 +273,12 @@ fn build_runtime_runner(spec: StressCaseSpec) -> RuntimeRunner {
         .unwrap_or_else(|error| panic!("Runtime golden input {} failed to build: {error:?}", spec.file_name))
 }
 
+/// 解析内嵌 golden JSON；格式损坏直接 panic。
 fn parse_frozen_goldens() -> StressGoldenSet {
     serde_json::from_str(STRESS_GOLDEN_JSON).expect("frozen Runtime stress golden JSON must be valid")
 }
 
+/// 核对 golden 与编译期用例清单的 schema、数量与文件名完全一致。
 fn assert_inventory(goldens: &StressGoldenSet) {
     assert_eq!(
         goldens.schema_version, STRESS_GOLDEN_SCHEMA_VERSION,
@@ -292,6 +311,7 @@ fn assert_inventory(goldens: &StressGoldenSet) {
     );
 }
 
+/// 按输入哈希与 eval_rq 查找冻结用例，找不到即 panic。
 fn find_spec_by_input(raw: &str, eval_rq: f64) -> StressCaseSpec {
     let input_sha256 = input_sha256_hex(raw);
     STRESS_CASES

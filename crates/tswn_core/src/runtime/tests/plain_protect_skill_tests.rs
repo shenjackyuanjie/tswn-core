@@ -1,6 +1,7 @@
 use super::*;
 use crate::runtime::combat::PlainAttackOnDamage;
 
+/// 按目标 kind 导出名用默认 profile 构造注册了保护技能的 CombatRuntime。
 fn protect_runtime(target_kind_export: &str) -> CombatRuntime {
     let config = default_custom_runtime_import_config().expect("default runtime profile should build");
     let protect = config

@@ -21,6 +21,7 @@ use std::{
 };
 use sysinfo::{Pid, ProcessesToUpdate, System};
 
+/// bench 子命令参数：生成选项、资源采样间隔与报告输出。
 #[derive(Debug, Clone, clap::Args)]
 pub struct BenchArgs {
     #[command(flatten)]
@@ -42,6 +43,7 @@ pub struct BenchArgs {
 }
 
 #[derive(Debug, Default, Clone)]
+/// 一次资源采样的峰值：RSS、线程数、CPU 时间与采样次数。
 struct Sample {
     peak_rss_bytes: u64,
     peak_threads: usize,
@@ -50,6 +52,7 @@ struct Sample {
 }
 
 /// 在后台线程里采样本进程的 RSS、线程数与 CPU 时间。
+/// 后台资源采样器：按间隔轮询直到收到停止信号。
 struct Sampler {
     stop: Arc<AtomicBool>,
     handle: std::thread::JoinHandle<Sample>,
@@ -57,6 +60,7 @@ struct Sampler {
 }
 
 impl Sampler {
+    /// 启动采样线程并记录起始时间。
     fn start(interval: Duration) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let flag = stop.clone();
@@ -82,6 +86,7 @@ impl Sampler {
             started: Instant::now(),
         }
     }
+    /// 请求停止采样并 join 线程，返回样本与墙钟时长。
     fn stop(self) -> (Sample, f64) {
         self.stop.store(true, Ordering::Relaxed);
         let sample = self.handle.join().unwrap_or_default();
@@ -89,6 +94,7 @@ impl Sampler {
     }
 }
 
+/// 一次运行的资源指标：墙钟时间、峰值内存与线程数、CPU 时间与占用比。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunMetrics {
     pub wall_seconds: f64,
@@ -101,6 +107,7 @@ pub struct RunMetrics {
 }
 
 impl RunMetrics {
+    /// 由样本与墙钟计算运行指标（含单核占用比）。
     fn new(sample: Sample, wall: f64) -> Self {
         let cpu_seconds = sample.cpu_ms as f64 / 1000.0;
         Self {
@@ -114,6 +121,7 @@ impl RunMetrics {
     }
 }
 
+/// 单表统计：文件字节、行数、row group 数与压缩前后字节。
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct TableStats {
     pub file_bytes: u64,
@@ -124,6 +132,7 @@ pub struct TableStats {
     pub compression_ratio: Option<f64>,
 }
 
+/// 数据集统计：分片数、对局数、样本数与体积指标。
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct DatasetStats {
     pub shards: usize,
@@ -139,6 +148,7 @@ pub struct DatasetStats {
     pub top_columns: Vec<ColumnShare>,
 }
 
+/// 列的字节占比：路径、压缩前后字节与占样本列的比例。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColumnShare {
     pub path: String,
@@ -147,6 +157,7 @@ pub struct ColumnShare {
     pub share_of_samples_columns: f64,
 }
 
+/// 基准报告：标签、生成与校验阶段的指标及数据集统计。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BenchReport {
     pub label: String,
@@ -189,6 +200,7 @@ fn table_stats(path: &Path) -> Result<(TableStats, ColumnMap)> {
     Ok((stats, columns))
 }
 
+/// 汇总各分片列统计，得到数据集级报告。
 fn analyze_dataset(out: &Path, top: usize) -> Result<DatasetStats> {
     let shards: Vec<PathBuf> = std::fs::read_dir(out)?
         .filter_map(|entry| entry.ok())
@@ -261,8 +273,10 @@ fn analyze_dataset(out: &Path, top: usize) -> Result<DatasetStats> {
     Ok(stats)
 }
 
+/// 计算字节占比；总量为 0 时返回 0。
 fn share(bytes: u64, total: u64) -> f64 { if total == 0 { 0.0 } else { bytes as f64 / total as f64 } }
 
+/// 执行基准：按间隔采样资源，生成并校验数据集，最后写出报告。
 pub fn run(args: &BenchArgs) -> Result<()> {
     let interval = Duration::from_secs_f64(args.interval.max(0.01));
     let generate = if args.skip_generate {
@@ -293,6 +307,7 @@ pub fn run(args: &BenchArgs) -> Result<()> {
     Ok(())
 }
 
+/// 向 stdout 打印基准报告。
 fn print_report(report: &BenchReport, top: usize) {
     let dataset = &report.dataset;
     println!();

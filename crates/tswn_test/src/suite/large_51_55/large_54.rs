@@ -4,6 +4,7 @@ use super::*;
 ///
 /// 对规范化日志及总分 1767 做断言，适配器须在 20,000 轮预算内结束。
 pub fn large_54<E: crate::EngineAdapter>() {
+    /// large_54 用例的内嵌对局输入。
     const CASE: &str = r#"我力 7#W2ib8D@仙蛊屋+123
 万我 68#huMG43@仙蛊屋+123
 Dianmu YKFMWRPXIMCQ@nan+234

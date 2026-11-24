@@ -291,6 +291,7 @@ pub(super) fn parse_player_groups_with_labels(content: &str, double_plus: bool) 
     (groups, labels)
 }
 
+/// 把一行按分隔符拆出的成员 trim 后用换行连接，转为单组多行文本。
 fn parse_group_line(line: &str, separator: &str) -> String { line.split(separator).map(str::trim).collect::<Vec<_>>().join("\n") }
 
 #[cfg(test)]

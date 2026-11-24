@@ -11,6 +11,7 @@ use std::path::Path;
 use crate::error::Ds4Result;
 use crate::output::AtomicFileWriter;
 
+/// 把 input_dir 下的文件按路径排序后依次合并写出到 output_file，返回实际合并的文件数；目录不存在时按空处理。
 pub fn merge_input_files(input_dir: &Path, output_file: &Path) -> Ds4Result<usize> {
     let mut entries = Vec::new();
     if input_dir.exists() {

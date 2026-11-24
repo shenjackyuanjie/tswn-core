@@ -7,8 +7,10 @@
 use super::*;
 
 impl AppService {
+    /// 为指定 lane 生成 Correct 靶子配置，返回汇总、配置文本与轨迹元数据。
     pub fn generate_lane_targets(&self, lane: usize, req: TargetGenerationRequest) -> anyhow::Result<TargetGenerationResponse> {
         #[cfg(any())]
+        /// 兼容保留：旧版固定支持数量；当前求解器输出 40–50 个组合。
         const SUPPORT_COUNT: usize = 50;
 
         // 仅为兼容旧的 target-bar 请求而保留。
@@ -572,6 +574,7 @@ impl AppService {
 }
 
 #[derive(Debug, Clone)]
+/// 一个靶子候选：结果行与归一化账户键（name@root_team）。
 pub(super) struct TargetCandidate {
     pub(super) row: crate::model::LaneResultRow,
     /// 归一化账户键（`name@root_team`），仅用于全局账户不重复规则。每位玩家/所有者上限由
@@ -580,14 +583,17 @@ pub(super) struct TargetCandidate {
 }
 
 impl TargetCandidate {
+    /// 由结果行构造候选并预计算账户键。
     pub(super) fn from_row(row: crate::model::LaneResultRow) -> Self {
         let player_keys = merged_player_keys(&row);
         Self { row, player_keys }
     }
 
+    /// 返回候选的 Correct 分数；缺失时取负无穷，便于排序时排除。
     pub(super) fn correct_score(&self) -> f64 { self.row.pair_score.unwrap_or(f64::NEG_INFINITY) }
 }
 
+/// 判断候选是否可作靶子：未屏蔽、Raw 达标、状态有效、有配对排名且分数有限。
 pub(super) fn target_candidate_is_eligible(candidate: &TargetCandidate, raw_min: f64) -> bool {
     !candidate.row.is_blocked
         && candidate.row.raw_average_cqd >= raw_min
@@ -597,6 +603,7 @@ pub(super) fn target_candidate_is_eligible(candidate: &TargetCandidate, raw_min:
         && candidate.correct_score().is_finite()
 }
 
+/// 判断某列是否必须使用真实胜率：压缩目标列或大靶质量非零即需要；零质量且不合资格的列可用占位。
 pub(super) fn target_rate_column_requires_observed(
     target_idx: usize,
     big_weight: f64,
@@ -605,6 +612,7 @@ pub(super) fn target_rate_column_requires_observed(
     compression_target_indices.contains(&target_idx) || big_weight.abs() > 1e-15
 }
 
+/// 由 canonical 生成排序去重的账户键，用于全局账号不重复规则。
 pub(super) fn merged_player_keys(row: &crate::model::LaneResultRow) -> Vec<String> {
     let root_team = row.root_team_name.as_str();
     let mut keys = Vec::new();
@@ -626,6 +634,7 @@ pub(super) fn merged_player_keys(row: &crate::model::LaneResultRow) -> Vec<Strin
     keys
 }
 
+/// 候选排序：配对排名、Correct 分数、Raw 排名、组 ID。
 pub(super) fn compare_target_candidates(a: &TargetCandidate, b: &TargetCandidate) -> std::cmp::Ordering {
     let ar = a.row.pair_rank.unwrap_or(usize::MAX);
     let br = b.row.pair_rank.unwrap_or(usize::MAX);
@@ -635,6 +644,7 @@ pub(super) fn compare_target_candidates(a: &TargetCandidate, b: &TargetCandidate
         .then_with(|| a.row.group_id.cmp(&b.row.group_id))
 }
 
+/// 按无序组对读取胜率；同组为 50，仅有反向记录时取 100-rate。
 pub(super) fn rate_between(
     rate_map: &HashMap<(crate::model::GroupId, crate::model::GroupId), f64>,
     a: crate::model::GroupId,
@@ -650,6 +660,7 @@ pub(super) fn rate_between(
     }
 }
 
+/// 把选中索引与权重导出为制表符分隔的配置文本。
 pub(super) fn build_target_config_text(indices: &[usize], weights: &[f64], candidates: &[TargetCandidate]) -> String {
     let mut lines = Vec::with_capacity(indices.len());
     for (&idx, &weight) in indices.iter().zip(weights.iter()) {
@@ -658,6 +669,7 @@ pub(super) fn build_target_config_text(indices: &[usize], weights: &[f64], candi
     lines.join("\n")
 }
 
+/// 收集参考对填充池中缺失的胜率对，按无序键去重。
 pub(super) fn collect_missing_target_rate_pairs(
     reference_indices: &[usize],
     fill_pool: &[usize],
@@ -684,6 +696,7 @@ pub(super) fn collect_missing_target_rate_pairs(
     out
 }
 
+/// 把秒数格式化为 s/m/h 进度文本。
 pub(super) fn format_target_rate_duration(seconds: f64) -> String {
     if seconds < 60.0 {
         format!("{seconds:.1}s")
@@ -694,6 +707,7 @@ pub(super) fn format_target_rate_duration(seconds: f64) -> String {
     }
 }
 
+/// 并行补算缺失的靶子矩阵胜率并按检查点写库，同时把结果写回 rate_map。
 pub(super) fn fill_missing_target_rates_with_checkpoints(
     db: &Db,
     config: &RankerConfig,
@@ -848,6 +862,7 @@ pub(super) fn fill_missing_target_rates_with_checkpoints(
     Ok(())
 }
 
+/// 计算单个靶子对参考集合的平均胜率，返回均值与可用参考数。
 pub(super) fn average_reference_winrate_for_target(
     reference_indices: &[usize],
     target_idx: usize,

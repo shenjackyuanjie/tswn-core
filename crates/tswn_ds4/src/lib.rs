@@ -30,21 +30,37 @@
 //! 重新生成对应缓存。文件布局、ABCP5 资源与局部命令见
 //! [DS4 README](https://github.com/shenjackyuanjie/tswn-core/tree/main/crates/tswn_ds4)。
 
+/// ABCP5 外部预测调用与二人组、三人组输入准备。
 mod abcp;
+/// 命令行参数解析与子命令分派。
 mod cli;
+/// 旧 C++ 实现的行为兼容备注。
 mod compat;
+/// 配置结构与 JSON/TOML/TXT 解析。
 mod config;
+/// 统一错误与结果类型。
 mod error;
+/// 带分数输入行的解析。
 mod input;
+/// 名称特征与五套单人评分模型。
 mod model;
+/// Openbox 实战筛选入口。
 mod openbox;
+/// 输入合并、去重与排序等文件操作。
 mod ops;
+/// 原子写入与追加等输出工具。
 mod output;
+/// FC/WC/RH 二人增量配对。
 mod pairing;
+/// 全流程执行管道与阶段统计。
 mod pipeline;
+/// SP1 五种单人评分与技能筛选。
 mod sp1;
+/// SP1 模型系数表。
 mod sp1_coeffs;
+/// 工作目录路径布局。
 mod store;
+/// 三人组增量配对与评分。
 mod three;
 
 pub use config::{Config, PairMode, PairThreshold, SingleMode, SingleThreshold, Sp1Threshold, ThreeThreshold};

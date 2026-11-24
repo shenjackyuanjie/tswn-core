@@ -1,5 +1,6 @@
 use super::*;
 
+/// 预行动累积结果：本回合被迫使用的技能与是否清除强制行动标记。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PlainSkillPreActionOutcome {
     pub forced_skill: Option<PreparedBuiltinSkillAction>,
@@ -7,6 +8,7 @@ pub struct PlainSkillPreActionOutcome {
 }
 
 impl CombatRuntime {
+    /// 执行行动前的 pre-action 累积：解除隐匿、把待发暗杀转为强制技能，并标记是否清除强制行动。
     pub fn run_plain_skill_pre_action_accumulator(&mut self, actor: EntityIdx) -> PlainSkillPreActionOutcome {
         let pre_action_order = self
             .entities
@@ -91,6 +93,7 @@ impl CombatRuntime {
         )
     }
 
+    /// 背刺选目评分：普通模式按随机值加仇恨；smart 按高体力权重乘以队伍人数或属性总和。
     fn score_plain_assassinate_target(&mut self, target: EntityIdx, smart: bool) -> f64 {
         let entity = self
             .entities
@@ -115,6 +118,7 @@ impl CombatRuntime {
         }
     }
 
+    /// 取走并清空实体的待发背刺记录，同时移除对应的 PRE_ACTION lane。
     fn clear_plain_assassinate_pending(&mut self, actor: EntityIdx) -> Option<AssassinateRuntime> {
         let entity = self
             .entities

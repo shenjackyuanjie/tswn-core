@@ -1,15 +1,24 @@
 # 更新日志
 
-## [Unreleased] - 0.5.13
+## [0.5.13] - 2026-11-21
 
 ### 新增
 
+- 完整回放页支持 `!test!` 评分：单名为评分，同名两行为单挑；名字前单独加一行 `!` 可切换强化陪测。同一 Worker 累计跑 10,000 场，仅在 1,000 场和 10,000 场显示评分与被测本体的技能／动作频率；停止测试或开始新对局会终止旧 Worker。
+- 导出 `ScoreTestSession`，支持分批推进并读取累计结果。仅该会话采集战斗事件，不保留回放；普通 `score()`、`namer_pf()` 与 CLI 保持原批量路径，不包含 Clever 搜索。
+- 新增 `uv run scripts/serve_wasm.py`，可构建并在本地打开示例页面。
 - 新增 `cards` feature（默认关闭），转发 `tswn_core/cards`。开启后 `BattleSession.set_abilities(packet)` 可用：三元组为技能编号、减耗量、倍率万分数，让能力卡的独立乘区与减耗生效；关闭时该方法不参与编译，生成的 `.d.ts` 也不含 `set_abilities`。
 - 导出强制回放与受控会话接口：新增 `battle_replay_forced`（非法三元组在推进前返回 `INVALID_ARGUMENT`）、`forced_hits` / `forced_taken`；`BattleSession` 增加 `set_initial_hp` / `paused_actor` / `submit_action`；JS options 与 `.d.ts` 同步 `controlled_team` / `start_hp_pct`、暂停与技能字段，`BattleStopReason` 增加 `paused`、`BattlePlayerState` 增加 `skills`。
 
 ### 修复
 
 - 角色展示统一改用原名加全局实体 ID，召唤单位支持显式 `display_label`，避免重复编号与误删合法昵称；角色栏、日志、详情与结算展示保持一致。
+- 对齐首领回放的生命值增减、事件目标、群体动画目标及部分消息模板，并同步 WASM 类型声明。
+
+### 验证
+
+- 四种评分模式在 1,000 场和 10,000 场的胜场、分数与截断次数均与普通批量评分对账一致。
+- 工作区测试和 58 项前端测试通过；在 Chrome 中以真实 WASM 验证两个检查点、取消和切回普通对局。
 
 ## [0.5.12] - 2026-10-17
 

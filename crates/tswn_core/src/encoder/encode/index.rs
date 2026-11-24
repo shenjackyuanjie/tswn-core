@@ -43,6 +43,7 @@ impl SampleIndex<'_> {
 }
 
 impl SampleIndex<'_> {
+    /// 把实体 id 映射为样本行；未登记报 `InvalidReference`。
     pub(super) fn entity_row(&self, id: EntityIdx, path: &str) -> Result<usize, EncodeError> {
         self.entity_rows.get(&id.0).copied().ok_or_else(|| EncodeError::InvalidReference {
             path: path.to_owned(),
@@ -54,6 +55,7 @@ impl SampleIndex<'_> {
 impl FeatureEncoder {
     // ---------------------------------------------------------------- 重映射
 
+    /// 为模型态构建样本索引：实体行、模板行（含槽内模板）与 lane 行。
     pub(super) fn build_index<'a>(&self, state: &'a BattleModelState) -> Result<SampleIndex<'a>, EncodeError> {
         let mut entity_rows: BTreeMap<u32, usize> = BTreeMap::new();
         for (row, entity) in state.entities.iter().enumerate() {

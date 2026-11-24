@@ -4,6 +4,7 @@ use super::*;
 ///
 /// 在 20,000 轮预算内结束，总分为 2880；比较时仅忽略 clone/summon 数字后缀噪声。
 pub fn large_41<E: crate::EngineAdapter>() {
+    /// large_41 用例的内嵌对局输入。
     const CASE: &str = r####"桃v66wy7tgu27xp@asyncTales
 b64d64cfaae1f621@asyncTales
 

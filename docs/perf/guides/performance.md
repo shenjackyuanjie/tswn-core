@@ -10,7 +10,7 @@
 ## Release profile 选择
 
 - `--release`：正式 benchmark 和发布口径，使用 fat LTO、`codegen-units = 1` 与默认 mimalloc。
-- `--profile release-fast`：日常快速验证口径，使用 thin LTO 和更多 codegen units；结果不能写入正式性能表。
+- `--profile release-fast`：日常快速验证口径，使用 thin LTO 和更多 codegen units；正式性能表收录 `--release` 口径的结果。
 - `no_debug`：正式性能与发布构建必须启用，避免诊断逻辑进入热路径。
 
 ## 行为验证
@@ -23,7 +23,7 @@ python scripts/check_runtime_release.py --corpus
 ```
 
 第二条命令运行 release/no_debug 主 Runtime、release CLI 与完整冻结 corpus。
-旧 API 与架构约定留在 [迁移指南](../../guides/runtime-0.5-migration.md)，不以源码扫描或固定测试数量冻结实现。C、Python、WASM 和 OpenBox 等包装层修改还应运行：
+旧 API 与架构约定留在 [迁移指南](../../guides/runtime-0.5-migration.md)；实现的行为由测试验证，不依赖源码扫描或固定测试数量。C、Python、WASM 和 OpenBox 等包装层修改还应运行：
 
 ```powershell
 cargo test --workspace --all-targets --no-run
@@ -31,7 +31,7 @@ python scripts/verify_py_cli_api.py --release
 ```
 
 0.5.0 之前使用的 `tswn_case_miner`、`track_perf_cases`、`track_score_perf` 和
-legacy/runtime parity 工具已经随旧执行器删除，不得继续把历史文档中的命令作为当前门禁。
+legacy/runtime parity 工具已经随旧执行器删除，当前门禁以 [行为验证](#行为验证) 一节的命令为准。
 
 ## Benchmark 方法
 
@@ -62,7 +62,7 @@ target\release\examples\perf_runtime.exe --mode score -i docs\perf\score\mario.t
 
 输出字段、计时范围与自动线程口径见 [性能追踪](../benchmark-history.md#2-30-case-固定-benchmark)。
 0.5.0 的完整发版数据、环境和 A/B 判定见 [历史发版基准](../reports/runtime-0.5.0-749fcd1-release-benchmark.md)。
-该版本的 fixed30 与 score 使用临时外部 harness，现行 example 并非那个历史工具，不直接混用结果。
+该版本的 fixed30 与 score 使用临时外部 harness，现行 example 与那个历史工具是两套实现，结果按各自口径单独记录。
 
 正式结果必须记录被测 commit、rustc/Cargo 版本、feature、输入哈希、线程口径和原始轮次；
 机器状态变化时，以同一会话中交替顺序的旧版/新版 A/B 为准。
@@ -76,7 +76,7 @@ target\release\examples\perf_runtime.exe --mode score -i docs\perf\score\mario.t
 `5.103/5.141/5.226`）。因此：
 
 - 必须**同会话交替顺序**跑新旧二进制，至少 5 轮取中位数；
-- 小于 **1.5%** 的差异不得作为优化成立的依据，也不要写进长期表格；
+- 优化成立的依据和长期表格只收录 ≥ **1.5%** 的差异，更小的差异按噪声处理；
 - 「先跑三次旧的，再跑三次新的」这种方式量到的 2%~3% 基本都是机器漂移。
 
 ## PGO 构建
@@ -92,7 +92,7 @@ python scripts/pgo_build.py --kind cli --skip-train      # 仅在已有匹配 pr
 Openbox 的资源已迁到 `crates/tswn_openbox_backend/assets/`，但脚本的训练靶子仍使用旧
 `crates/tswn_openbox/assets/targets/`。这一路径适配前，`--kind openbox` 及同时给 CLI/Openbox
 启用 PGO 的 `build_all.py --pgo` 不作为当前完整发布流程；聚合包使用普通 `--release`。
-CLI 与 Openbox 的 profile 分别位于 `target/pgo/cli/`、`target/pgo/openbox/`，不要混用。
+CLI 与 Openbox 的 profile 分别位于 `target/pgo/cli/`、`target/pgo/openbox/`，按构建类型取用。
 
 约束：
 

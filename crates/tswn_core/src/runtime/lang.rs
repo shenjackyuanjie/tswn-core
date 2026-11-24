@@ -317,186 +317,337 @@ pub fn format_lang(key: &str, s0: &str, s1: &str, s2: &str) -> String {
 /// 推荐在技能实现中使用这里的常量，而不是裸字符串，以便编译期检查键名拼写。
 pub mod keys {
     // ── 战斗核心 ──────────────────────────────────────────────────────────
+    /// 通用受击文案键，对应 zh.json 同名条目。
     pub const DAMAGE: &str = "damage";
+    /// 通用防御文案键，对应 zh.json 同名条目。
     pub const DEFEND: &str = "defend";
+    /// 通用被击倒文案键，对应 zh.json 同名条目。
     pub const DIE: &str = "die";
+    /// 通用回避攻击文案键，对应 zh.json 同名条目。
     pub const DODGE: &str = "dodge";
+    /// 使魔消失文案键，对应 zh.json 同名条目。
     pub const MINION_DIE: &str = "minionDie";
+    /// 通用回复体力文案键，对应 zh.json 同名条目。
     pub const RECOVER: &str = "recover";
+    /// 胜利宣言文案键，对应 zh.json 同名条目。
     pub const WIN: &str = "win";
 
     // ── act 技能 ──────────────────────────────────────────────────────────
+    /// 吸血攻击文案键，对应 zh.json 同名条目。
     pub const SKL_ABSORB: &str = "sklAbsorb";
+    /// 开始聚气文案键，对应 zh.json 同名条目。
     pub const SKL_ACCUMULATE: &str = "sklAccumulate";
+    /// 聚气被打消文案键，对应 zh.json 同名条目。
     pub const SKL_ACCUMULATE_CANCEL: &str = "sklAccumulateCancel";
+    /// 聚气后攻击力上升文案键，对应 zh.json 同名条目。
     pub const SKL_ACCUMULATED: &str = "sklAccumulated";
+    /// 青雉吸收冰冻伤害文案键，对应 zh.json 同名条目。
     pub const SKL_AOKIJI_DEFEND: &str = "sklAokijiDefend";
+    /// 青雉冰河时代文案键，对应 zh.json 同名条目。
     pub const SKL_AOKIJI_ICE_AGE: &str = "sklAokijiIceAge";
+    /// 暗杀潜行文案键，对应 zh.json 同名条目。
     pub const SKL_ASSASSINATE_1: &str = "sklAssassinate1";
+    /// 暗杀背刺文案键，对应 zh.json 同名条目。
     pub const SKL_ASSASSINATE_2: &str = "sklAssassinate2";
+    /// 潜行被识破文案键，对应 zh.json 同名条目。
     pub const SKL_ASSASSINATE_FAILED: &str = "sklAssassinateFailed";
+    /// 普通攻击文案键，对应 zh.json 同名条目。
     pub const SKL_ATTACK: &str = "sklAttack";
+    /// 发动狂暴术文案键，对应 zh.json 同名条目。
     pub const SKL_BERSERK: &str = "sklBerserk";
+    /// 狂暴攻击文案键，对应 zh.json 同名条目。
     pub const SKL_BERSERK_ATTACK: &str = "sklBerserkAttack";
+    /// 狂暴解除文案键，对应 zh.json 同名条目。
     pub const SKL_BERSERK_END: &str = "sklBerserkEnd";
+    /// 进入狂暴状态文案键，对应 zh.json 同名条目。
     pub const SKL_BERSERK_HIT: &str = "sklBerserkHit";
+    /// 开始蓄力文案键，对应 zh.json 同名条目。
     pub const SKL_CHARGE: &str = "sklCharge";
+    /// 蓄力被中止文案键，对应 zh.json 同名条目。
     pub const SKL_CHARGE_CANCEL: &str = "sklChargeCancel";
+    /// 使用魅惑文案键，对应 zh.json 同名条目。
     pub const SKL_CHARM: &str = "sklCharm";
+    /// 魅惑解除文案键，对应 zh.json 同名条目。
     pub const SKL_CHARM_END: &str = "sklCharmEnd";
+    /// 被魅惑文案键，对应 zh.json 同名条目。
     pub const SKL_CHARM_HIT: &str = "sklCharmHit";
+    /// 使用分身文案键，对应 zh.json 同名条目。
     pub const SKL_CLONE: &str = "sklClone";
+    /// 分身出现文案键，对应 zh.json 同名条目。
     pub const SKL_CLONED: &str = "sklCloned";
+    /// 会心一击文案键，对应 zh.json 同名条目。
     pub const SKL_CRITICAL: &str = "sklCritical";
+    /// 使用诅咒文案键，对应 zh.json 同名条目。
     pub const SKL_CURSE: &str = "sklCurse";
+    /// 诅咒使伤害加倍文案键，对应 zh.json 同名条目。
     pub const SKL_CURSE_DAMAGE: &str = "sklCurseDamage";
+    /// 诅咒解除文案键，对应 zh.json 同名条目。
     pub const SKL_CURSE_END: &str = "sklCurseEnd";
+    /// 被诅咒文案键，对应 zh.json 同名条目。
     pub const SKL_CURSE_HIT: &str = "sklCurseHit";
+    /// 使用净化文案键，对应 zh.json 同名条目。
     pub const SKL_DISPERSE: &str = "sklDisperse";
+    /// 使用生命之轮互换体力文案键，对应 zh.json 同名条目。
     pub const SKL_EXCHANGE: &str = "sklExchange";
+    /// 体力互换结果文案键，对应 zh.json 同名条目。
     pub const SKL_EXCHANGED: &str = "sklExchanged";
+    /// 使用自爆文案键，对应 zh.json 同名条目。
     pub const SKL_EXPLODE: &str = "sklExplode";
+    /// 火球术文案键，对应 zh.json 同名条目。
     pub const SKL_FIRE: &str = "sklFire";
+    /// 瘟疫文案键，对应 zh.json 同名条目。
     pub const SKL_HALF: &str = "sklHalf";
+    /// 瘟疫造成体力减少文案键，对应 zh.json 同名条目。
     pub const SKL_HALF_DAMAGE: &str = "sklHalfDamage";
+    /// 加速术文案键，对应 zh.json 同名条目。
     pub const SKL_HASTE: &str = "sklHaste";
+    /// 疾走解除文案键，对应 zh.json 同名条目。
     pub const SKL_HASTE_END: &str = "sklHasteEnd";
+    /// 进入疾走状态文案键，对应 zh.json 同名条目。
     pub const SKL_HASTE_HIT: &str = "sklHasteHit";
+    /// 治愈魔法文案键，对应 zh.json 同名条目。
     pub const SKL_HEAL: &str = "sklHeal";
+    /// 冰冻术文案键，对应 zh.json 同名条目。
     pub const SKL_ICE: &str = "sklIce";
+    /// 冰冻解除文案键，对应 zh.json 同名条目。
     pub const SKL_ICE_END: &str = "sklIceEnd";
+    /// 被冰冻文案键，对应 zh.json 同名条目。
     pub const SKL_ICE_HIT: &str = "sklIceHit";
+    /// 斑鸠能量释放文案键，对应 zh.json 同名条目。
     pub const SKL_IKARUGA_ATTACK: &str = "sklIkarugaAttack";
+    /// 斑鸠吸收奇数伤害文案键，对应 zh.json 同名条目。
     pub const SKL_IKARUGA_DEFEND: &str = "sklIkarugaDefend";
+    /// 发动铁壁文案键，对应 zh.json 同名条目。
     pub const SKL_IRON: &str = "sklIron";
+    /// 铁壁被打消文案键，对应 zh.json 同名条目。
     pub const SKL_IRON_CANCEL: &str = "sklIronCancel";
+    /// 铁壁解除文案键，对应 zh.json 同名条目。
     pub const SKL_IRON_END: &str = "sklIronEnd";
+    /// 铁壁防御大幅上升文案键，对应 zh.json 同名条目。
     pub const SKL_IROND: &str = "sklIrond";
+    /// 魔法攻击文案键，对应 zh.json 同名条目。
     pub const SKL_MAGIC_ATTACK: &str = "sklMagicAttack";
+    /// 投毒文案键，对应 zh.json 同名条目。
     pub const SKL_POISON: &str = "sklPoison";
+    /// 毒性发作文案键，对应 zh.json 同名条目。
     pub const SKL_POISON_DAMAGE: &str = "sklPoisonDamage";
+    /// 中毒解除文案键，对应 zh.json 同名条目。
     pub const SKL_POISON_END: &str = "sklPoisonEnd";
+    /// 中毒文案键，对应 zh.json 同名条目。
     pub const SKL_POISON_HIT: &str = "sklPoisonHit";
+    /// 附体文案键，对应 zh.json 同名条目。
     pub const SKL_POSSESS: &str = "sklPossess";
+    /// 地裂术文案键，对应 zh.json 同名条目。
     pub const SKL_QUAKE: &str = "sklQuake";
+    /// 苏生术文案键，对应 zh.json 同名条目。
     pub const SKL_REVIVE: &str = "sklRevive";
+    /// 复活文案键，对应 zh.json 同名条目。
     pub const SKL_REVIVED: &str = "sklRevived";
+    /// 幻术文案键，对应 zh.json 同名条目。
     pub const SKL_SHADOW: &str = "sklShadow";
+    /// 幻影名称文案键，对应 zh.json 同名条目。
     pub const SKL_SHADOW_NAME: &str = "sklShadowName";
+    /// 幻术召唤出单位文案键，对应 zh.json 同名条目。
     pub const SKL_SHADOWED: &str = "sklShadowed";
+    /// 减速术文案键，对应 zh.json 同名条目。
     pub const SKL_SLOW: &str = "sklSlow";
+    /// 迟缓解除文案键，对应 zh.json 同名条目。
     pub const SKL_SLOW_END: &str = "sklSlowEnd";
+    /// 进入迟缓状态文案键，对应 zh.json 同名条目。
     pub const SKL_SLOW_HIT: &str = "sklSlowHit";
+    /// 血祭召唤文案键，对应 zh.json 同名条目。
     pub const SKL_SUMMON: &str = "sklSummon";
+    /// 使魔名称文案键，对应 zh.json 同名条目。
     pub const SKL_SUMMON_NAME: &str = "sklSummonName";
+    /// 召唤出现文案键，对应 zh.json 同名条目。
     pub const SKL_SUMMONED: &str = "sklSummoned";
+    /// 雷击术文案键，对应 zh.json 同名条目。
     pub const SKL_THUNDER: &str = "sklThunder";
+    /// 雷击被回避文案键，对应 zh.json 同名条目。
     pub const SKL_THUNDER_END: &str = "sklThunderEnd";
 
     // ── skl 技能（防御/被动）──────────────────────────────────────────────
+    /// 反击文案键，对应 zh.json 同名条目。
     pub const SKL_COUNTER: &str = "sklCounter";
+    /// 隐匿文案键，对应 zh.json 同名条目。
     pub const SKL_HIDE: &str = "sklHide";
+    /// 吞噬文案键，对应 zh.json 同名条目。
     pub const SKL_MERGE: &str = "sklMerge";
+    /// 吞噬后属性上升文案键，对应 zh.json 同名条目。
     pub const SKL_MERGED: &str = "sklMerged";
+    /// 守护文案键，对应 zh.json 同名条目。
     pub const SKL_PROTECT: &str = "sklProtect";
+    /// 伤害反弹文案键，对应 zh.json 同名条目。
     pub const SKL_REFLECT: &str = "sklReflect";
+    /// 护身符抵挡死亡文案键，对应 zh.json 同名条目。
     pub const SKL_RERAISE: &str = "sklReraise";
+    /// 垂死抗争文案键，对应 zh.json 同名条目。
     pub const SKL_UPGRADE: &str = "sklUpgrade";
+    /// 垂死属性被打消文案键，对应 zh.json 同名条目。
     pub const SKL_UPGRADE_CANCEL: &str = "sklUpgradeCancel";
+    /// 垂死全部属性上升文案键，对应 zh.json 同名条目。
     pub const SKL_UPGRADED: &str = "sklUpgraded";
+    /// 召唤亡灵文案键，对应 zh.json 同名条目。
     pub const SKL_ZOMBIE: &str = "sklZombie";
+    /// 丧尸名称文案键，对应 zh.json 同名条目。
     pub const SKL_ZOMBIE_NAME: &str = "sklZombieName";
+    /// 目标变成亡灵文案键，对应 zh.json 同名条目。
     pub const SKL_ZOMBIED: &str = "sklZombied";
 
     // ── 连击 ──────────────────────────────────────────────────────────────
+    /// 连击起手攻击文案键，对应 zh.json 同名条目。
     pub const SKL_RAPID: &str = "SklRapid";
+    /// 连击后续攻击文案键，对应 zh.json 同名条目。
     pub const SKL_RAPID_NEXT: &str = "SklRapidNext";
 
     // ── Boss 名称 ──────────────────────────────────────────────────────────
+    /// 青雉 Boss 的显示名文案键，对应 zh.json 同名条目。
     pub const BOSS_NAME_AOKIJI: &str = "bossName_aokiji";
+    /// 柯南 Boss 的显示名文案键，对应 zh.json 同名条目。
     pub const BOSS_NAME_CONAN: &str = "bossName_conan";
+    /// 新冠病毒 Boss 的显示名文案键，对应 zh.json 同名条目。
     pub const BOSS_NAME_COVID: &str = "bossName_covid";
+    /// 斑鸠 Boss 的显示名文案键，对应 zh.json 同名条目。
     pub const BOSS_NAME_IKARUGA: &str = "bossName_ikaruga";
+    /// 懒癌 Boss 的显示名文案键，对应 zh.json 同名条目。
     pub const BOSS_NAME_LAZY: &str = "bossName_lazy";
+    /// 马里奥 Boss 的显示名文案键，对应 zh.json 同名条目。
     pub const BOSS_NAME_MARIO: &str = "bossName_mario";
+    /// 蚊 Boss 的显示名文案键，对应 zh.json 同名条目。
     pub const BOSS_NAME_MOSQUITO: &str = "bossName_mosquito";
+    /// 一拳超人 Boss 的显示名文案键，对应 zh.json 同名条目。
     pub const BOSS_NAME_SAITAMA: &str = "bossName_saitama";
+    /// 史莱姆 Boss 的显示名文案键，对应 zh.json 同名条目。
     pub const BOSS_NAME_SLIME: &str = "bossName_slime";
+    /// 索尼克 Boss 的显示名文案键，对应 zh.json 同名条目。
     pub const BOSS_NAME_SONIC: &str = "bossName_sonic";
+    /// 尤里 Boss 的显示名文案键，对应 zh.json 同名条目。
     pub const BOSS_NAME_YURI: &str = "bossName_yuri";
+    /// 实验体 #C8 Boss 的显示名文案键，对应 zh.json 同名条目。
     pub const BOSS_NAME_TESTSUBJECT: &str = "bossName_testsubject";
 
     // ── Boss：柯南 ────────────────────────────────────────────────────────
+    /// 柯南发现尸体文案键，对应 zh.json 同名条目。
     pub const SKL_CONAN_KILL: &str = "sklConanKill";
+    /// 柯南指认最后目标文案键，对应 zh.json 同名条目。
     pub const SKL_CONAN_KILL_LAST: &str = "sklConanKillLast";
+    /// 柯南发现无名尸体文案键，对应 zh.json 同名条目。
     pub const SKL_CONAN_KILL_UNKNOWN: &str = "sklConanKillUnknown";
+    /// 柯南推理中文案键，对应 zh.json 同名条目。
     pub const SKL_CONAN_THINKING: &str = "sklConanThinking";
+    /// 柯南推理完毕文案键，对应 zh.json 同名条目。
     pub const SKL_CONAN_THINKING_FINISH: &str = "sklConanThinkingFinish";
+    /// 真相只有一个文案键，对应 zh.json 同名条目。
     pub const SKL_CONAN_THINKING_FINISH2: &str = "sklConanThinkingFinish2";
+    /// 凶手就是你文案键，对应 zh.json 同名条目。
     pub const SKL_CONAN_THINKING_FINISH3: &str = "sklConanThinkingFinish3";
 
     // ── Boss：新冠病毒 ────────────────────────────────────────────────────
+    /// 新冠肺炎发作文案键，对应 zh.json 同名条目。
     pub const SKL_COVID_DAMAGE: &str = "sklCovidDamage";
+    /// 感染新冠病毒文案键，对应 zh.json 同名条目。
     pub const SKL_COVID_HIT: &str = "sklCovidHit";
+    /// 新冠重症无法行动文案键，对应 zh.json 同名条目。
     pub const SKL_COVID_ICU: &str = "sklCovidICU";
+    /// 新冠近距离接触文案键，对应 zh.json 同名条目。
     pub const SKL_COVID_INFECT: &str = "sklCovidInfect";
+    /// 新冠变异文案键，对应 zh.json 同名条目。
     pub const SKL_COVID_MUTATE: &str = "sklCovidMutate";
+    /// 未被感染文案键，对应 zh.json 同名条目。
     pub const SKL_COVID_PREVENT: &str = "sklCovidPrevent";
+    /// 居家自我隔离文案键，对应 zh.json 同名条目。
     pub const SKL_COVID_STAY_HOME: &str = "sklCovidStayHome";
 
     // ── Boss：懒癌 ────────────────────────────────────────────────────────
+    /// 懒癌发作文案键，对应 zh.json 同名条目。
     pub const SKL_LAZY_DAMAGE: &str = "sklLazyDamage";
+    /// 感染懒癌文案键，对应 zh.json 同名条目。
     pub const SKL_LAZY_HIT: &str = "sklLazyHit";
+    /// 懒癌跳回合（什么也没做）文案键，对应 zh.json 同名条目。
     pub const SKL_LAZY_SKIP_TURN_0: &str = "sklLazySkipTurn0";
+    /// 懒癌跳回合活动（哔哩哔哩）文案键，对应 zh.json 同名条目。
     pub const SKL_LAZY_SKIP_TURN_1: &str = "sklLazySkipTurn1";
+    /// 懒癌跳回合活动（无畏契约）文案键，对应 zh.json 同名条目。
     pub const SKL_LAZY_SKIP_TURN_2: &str = "sklLazySkipTurn2";
+    /// 懒癌跳回合活动（三角洲行动）文案键，对应 zh.json 同名条目。
     pub const SKL_LAZY_SKIP_TURN_3: &str = "sklLazySkipTurn3";
+    /// 懒癌跳回合活动（王者荣耀）文案键，对应 zh.json 同名条目。
     pub const SKL_LAZY_SKIP_TURN_4: &str = "sklLazySkipTurn4";
+    /// 懒癌跳回合活动（抖音）文案键，对应 zh.json 同名条目。
     pub const SKL_LAZY_SKIP_TURN_5: &str = "sklLazySkipTurn5";
+    /// 懒癌跳回合活动（小红书）文案键，对应 zh.json 同名条目。
     pub const SKL_LAZY_SKIP_TURN_6: &str = "sklLazySkipTurn6";
 
     // ── Boss：马里奥 ──────────────────────────────────────────────────────
+    /// 马里奥得到蘑菇文案键，对应 zh.json 同名条目。
     pub const BOSS_MARIO_GROW_10: &str = "bossMarioGrow10";
+    /// 马里奥攻击力上升文案键，对应 zh.json 同名条目。
     pub const BOSS_MARIO_GROW_11: &str = "bossMarioGrow11";
+    /// 马里奥得到火焰花文案键，对应 zh.json 同名条目。
     pub const BOSS_MARIO_GROW_20: &str = "bossMarioGrow20";
+    /// 马里奥学会火球术文案键，对应 zh.json 同名条目。
     pub const BOSS_MARIO_GROW_21: &str = "bossMarioGrow21";
+    /// 马里奥得到奖命蘑菇文案键，对应 zh.json 同名条目。
     pub const BOSS_MARIO_GROW_30: &str = "bossMarioGrow30";
+    /// 马里奥剩余命数文案键，对应 zh.json 同名条目。
     pub const BOSS_MARIO_LIFE: &str = "bossMarioLife";
+    /// 马里奥满血复活文案键，对应 zh.json 同名条目。
     pub const BOSS_MARIO_REVIVE: &str = "bossMarioRevive";
 
     // ── Boss：一拳超人 ────────────────────────────────────────────────────
+    /// 一拳超人觉得饥饿文案键，对应 zh.json 同名条目。
     pub const SAITAMA_HUNGRY: &str = "saitamaHungry";
+    /// 一拳超人离开战场文案键，对应 zh.json 同名条目。
     pub const SAITAMA_LEAVE: &str = "saitamaLeave";
 
     // ── Boss：史莱姆 ──────────────────────────────────────────────────────
+    /// 史莱姆分裂文案键，对应 zh.json 同名条目。
     pub const SKL_SLIME_SPAWN: &str = "sklSlimeSpawn";
+    /// 史莱姆分裂结果文案键，对应 zh.json 同名条目。
     pub const SKL_SLIME_SPAWNED: &str = "sklSlimeSpawned";
 
     // ── Boss：尤里 ────────────────────────────────────────────────────────
+    /// 尤里心灵控制文案键，对应 zh.json 同名条目。
     pub const SKL_YURI_CONTROL: &str = "sklYuriControl";
 
     // ── Boss：灭霸 ────────────────────────────────────────────────────────
+    /// 灭霸 Boss 的显示名文案键，对应 zh.json 同名条目。
     pub const BOSS_NAME_THANOS: &str = "bossName_thanos";
+    /// 灭霸响指文案键，对应 zh.json 同名条目。
     pub const SKL_THANOS_SNAP: &str = "sklThanosSnap";
+    /// 灭霸灰烬文案键，对应 zh.json 同名条目。
     pub const SKL_THANOS_DUST: &str = "sklThanosDust";
 
     // ── Boss：生命之轮 ────────────────────────────────────────────────────
+    /// 生命之轮 Boss 的显示名文案键，对应 zh.json 同名条目。
     pub const BOSS_NAME_WHEEL: &str = "bossName_wheel";
 
     // ── 武器 ──────────────────────────────────────────────────────────────
+    /// 死亡笔记写下名字文案键，对应 zh.json 同名条目。
     pub const WEAPON_DEATH_NOTE_ATK: &str = "weaponDeathNoteAtk";
+    /// 属性修改器使用文案键，对应 zh.json 同名条目。
     pub const WEAPON_R_MODIFIER_USE: &str = "weaponRModifierUse";
+    /// S11 促销日购买武器文案键，对应 zh.json 同名条目。
     pub const WEAPON_S11_0: &str = "weaponS11_0";
+    /// S11 购买没有效果文案键，对应 zh.json 同名条目。
     pub const WEAPON_S11_1: &str = "weaponS11_1";
+    /// S11 属性增加文案键，对应 zh.json 同名条目。
     pub const WEAPON_S11_2: &str = "weaponS11_2";
+    /// S11 信用卡刷爆文案键，对应 zh.json 同名条目。
     pub const WEAPON_S11_DONE_1: &str = "weaponS11Done1";
+    /// S11 砍下右手文案键，对应 zh.json 同名条目。
     pub const WEAPON_S11_DONE_2: &str = "weaponS11Done2";
+    /// S11 砍下左手文案键，对应 zh.json 同名条目。
     pub const WEAPON_S11_DONE_3: &str = "weaponS11Done3";
 
     // ── 实力评估 ──────────────────────────────────────────────────────────
+    /// 实力评估胜率行文案键，对应 zh.json 同名条目。
     pub const BENCHMARK_RATIO: &str = "benchmarkRatio";
+    /// 实力评分行文案键，对应 zh.json 同名条目。
     pub const BENCHMARK_SCORE: &str = "benchmarkScore";
+    /// 技能频率行文案键，对应 zh.json 同名条目。
     pub const BENCHMARK_SKILL: &str = "benchmarkSkill";
+    /// 实力评估进行中文案键，对应 zh.json 同名条目。
     pub const BENCHMARKING: &str = "benchmarking";
 }
 

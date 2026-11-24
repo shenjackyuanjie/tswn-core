@@ -12,12 +12,15 @@ use tswn_core::namerena::icon_render::{has_boss_icon, render_icon_vec_from_name}
 #[cfg(feature = "png_render")]
 use tswn_core::namerena::icon_render::{render_icon_b64_from_name, render_icon_png_from_name};
 
+/// 在终端按输入顺序逐个预览名字图标的像素输出。
 pub fn print_icons(names: &[String]) {
     for name in names {
         print_icon(name);
     }
 }
 
+/// 输出名字图标的 PNG Base64 文本；单个名字只打印 Base64，多个名字带 `名字:` 前缀。
+/// 需要 `png_render` feature，未启用时返回错误而不是静默跳过。
 pub fn print_icon_b64(names: &[String]) -> Result<(), String> {
     #[cfg(feature = "png_render")]
     {
@@ -42,6 +45,8 @@ pub fn print_icon_b64(names: &[String]) -> Result<(), String> {
     }
 }
 
+/// 把名字图标保存为 `<名字>.png` 到 `dir`，目录不存在时创建；
+/// 需要 `png_render` feature，未启用时返回错误。
 pub fn save_icons(dir: &Path, names: &[String]) -> Result<(), String> {
     #[cfg(feature = "png_render")]
     {
@@ -65,6 +70,7 @@ pub fn save_icons(dir: &Path, names: &[String]) -> Result<(), String> {
     }
 }
 
+/// 打印图标信息与终端预览：Boss 固定徽章走固定渲染，普通图标输出边框、形状与颜色明细。
 fn print_icon(name: &str) {
     if has_boss_icon(name) {
         println!("=== Icon: {name} ===");
@@ -94,6 +100,7 @@ fn print_icon(name: &str) {
     println!();
 }
 
+/// 把 16x16 RGBA 像素渲染为终端真彩色方块画。
 fn render_pixels_to_terminal(pixels: &[u8]) {
     let border_line = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
     println!("┌{}┐", border_line);
@@ -113,6 +120,7 @@ fn render_pixels_to_terminal(pixels: &[u8]) {
     println!("└{}┘", border_line);
 }
 
+/// 按 (x, y) 取像素 RGB；越界或 alpha 为 0 时返回 None。
 fn get_pixel(pixels: &[u8], x: usize, y: usize) -> Option<(u8, u8, u8)> {
     if x >= 16 || y >= 16 {
         return None;

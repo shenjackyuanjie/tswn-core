@@ -12,6 +12,7 @@ use std::path::Path;
 use crate::error::{Ds4Error, Ds4Result};
 use crate::output::AtomicFileWriter;
 
+/// 排序选项：分数列数、0 基排序键与是否在输出中附带分数。
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct SortOptions {
     pub score_number: usize,
@@ -20,11 +21,13 @@ pub struct SortOptions {
 }
 
 #[derive(Debug, Clone)]
+/// 排序中的一行：全部分数列与名字。
 struct ScoredRow {
     scores: Vec<f64>,
     name: String,
 }
 
+/// 按指定键对已评分文件排序并原子写出；score_number 必须 >= 1，排序键须小于列数，否则返回解析错误。
 pub fn sort_scored_file(input_file: &Path, output_file: &Path, options: &SortOptions) -> Ds4Result<usize> {
     if options.score_number == 0 {
         return Err(Ds4Error::parse("score_number must be >= 1"));
@@ -89,6 +92,7 @@ pub fn sort_scored_file(input_file: &Path, output_file: &Path, options: &SortOpt
     Ok(written)
 }
 
+/// 解析一行的前 score_number 个分数字段与其余名字；字段不足或非数字返回 None。
 fn parse_row(line: &str, score_number: usize) -> Option<ScoredRow> {
     let mut scores = Vec::with_capacity(score_number);
     let bytes = line.as_bytes();

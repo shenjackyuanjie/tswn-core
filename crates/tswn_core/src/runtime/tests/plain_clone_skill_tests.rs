@@ -1,5 +1,6 @@
 use super::*;
 
+/// 按给定 fields 组装 owner/target 的 namerena raw 输入并构建 RuntimeRunner。
 fn effective_skill_runner(fields: &str) -> RuntimeRunner {
     let raw = format!("owner+ol:{{\"attrs\":[86,86,86,86,86,86,116,300],{fields}}}\ntarget+ol:{{\"skills\":{{}}}}");
     RuntimeRunner::new_from_namerena_raw(raw).unwrap()

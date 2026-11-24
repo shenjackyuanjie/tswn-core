@@ -3,6 +3,7 @@
 //! 选手和队友按完整队伍交给矩阵窗口执行；未完成选手不发布最终排名。
 //! 增量搭档仅是预览，文件与终态由本模块统一收口，错误或取消不回滚已有输出。
 
+/// 选手×队友×靶子矩阵遍历。
 mod matrix;
 
 use super::format::{format_pair_file_record, format_pair_screen_log, should_highlight};
@@ -196,6 +197,7 @@ pub fn run_pair_observed(input: PairInput, send: impl Fn(ProgressEvent), observe
     send(ProgressEvent::Done(Ok(final_message)));
 }
 
+/// 解析靶子分组：带权走 TOML，否则按普通分组解析并补 1.0 权重。
 fn parse_pair_target_groups(content: &str, factor_enabled: bool) -> Result<(Vec<String>, Vec<f64>), String> {
     if factor_enabled {
         parse_factored_target_groups(content)
@@ -206,8 +208,10 @@ fn parse_pair_target_groups(content: &str, factor_enabled: bool) -> Result<(Vec<
     }
 }
 
+/// 队友解析结果：分组、展示标签与权重。
 type ParsedTeammates = (Vec<String>, Vec<String>, Vec<f64>);
 
+/// 解析队友分组：带权走 TOML，否则按 ++ 语义解析并补 1.0 权重。
 fn parse_pair_teammate_groups(content: &str, double_plus: bool, factor_enabled: bool) -> Result<ParsedTeammates, String> {
     if factor_enabled {
         let (groups, factors) = parse_factored_target_groups(content)?;
@@ -220,6 +224,7 @@ fn parse_pair_teammate_groups(content: &str, double_plus: bool, factor_enabled: 
     }
 }
 
+/// pair 执行前的全部分组与权重快照。
 struct PreparedPairGroups {
     target_groups: Vec<String>,
     target_factors: Vec<f64>,
@@ -231,6 +236,7 @@ struct PreparedPairGroups {
 }
 
 /// 保留成员原文，交给 core 按完整队伍计算组队加成及 DIY 覆盖。
+/// 汇总靶子/选手/队友分组并校验非空，保留成员原文交给 core。
 fn prepare_pair_groups(input: &PairInput) -> Result<PreparedPairGroups, String> {
     let (target_groups, target_factors) = parse_pair_target_groups(&input.target_text, input.target_factor_enabled)?;
     let (players, player_labels) = parse_player_groups_with_labels(&input.player_text, input.player_double_plus);

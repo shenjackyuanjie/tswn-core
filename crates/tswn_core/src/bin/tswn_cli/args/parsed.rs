@@ -27,6 +27,7 @@ pub enum NamerPfMode {
 }
 
 impl NamerPfMode {
+    /// 该评分项传给 `namer_pf_score` 的参数：分隔符 modifier 与是否允许重复的 duplicate 标志。
     pub fn score_params(self) -> (&'static str, bool) {
         match self {
             Self::Pp => ("\u{0002}", false),
@@ -54,6 +55,7 @@ impl NamerPfMetric {
     /// openbox GUI 的固定输出顺序；`--metric` 的传入顺序不影响最终输出顺序。
     pub const ALL: [Self; 5] = [Self::Pp, Self::Pd, Self::Qp, Self::Qd, Self::Sum];
 
+    /// 指标的小写输出名，用于屏幕行与文件记录。
     pub fn label(self) -> &'static str {
         match self {
             Self::Pp => "pp",

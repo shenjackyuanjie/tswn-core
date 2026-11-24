@@ -4,6 +4,7 @@ use super::*;
 ///
 /// 逐行比较完整规范化日志并检查轮数预算；此用例不单独冻结总积分。
 pub fn large_62<E: crate::EngineAdapter>() {
+    /// large_62 用例的内嵌对局输入。
     const CASE: &str = r#"Italian_Love #5Agn8kVYl@Shabby_fish
 我会回来的 #yTneTj00J@Shabby_fish
 

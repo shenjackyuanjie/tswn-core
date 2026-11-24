@@ -36,15 +36,21 @@
 //! UTF-8 长度校验、UTF-16 字符评估和实际技能等级各有度量语义。
 //! 解析规则同时承载角色身份、随机材料与输入兼容信息。
 
+/// 玩家构建管线：从 `PlayerSpec` 到 `PreparedPlayer`。
 mod build;
 pub mod eval_name;
 pub mod icon;
 pub mod icon_render;
+/// raw 输入解析与玩家分类。
 mod input;
 pub mod overlay;
+/// Boss 名称与身份的特殊规则。
 mod rules;
+/// 技能装载（`SkillLoadoutSpec`）构建。
 mod skill;
+/// 属性到 `PlayerStats` 的换算。
 mod stats;
+/// 武器解析与名字三元组强化。
 mod weapon;
 
 pub(crate) use build::score_profile_team_rng;

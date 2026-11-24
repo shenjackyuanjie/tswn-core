@@ -155,7 +155,7 @@ NumPy 读取器可以读取这些连续数组，并核对 shape、dtype、摘要
 
 ## 其他批量工具怎样接入
 
-Openbox 使用结构化任务、进度和预设组织 core 的 batch/pair/namer-pf。DS4 使用历史模型与缓存缩小候选集合，再按配置进入实战筛选。lane ranker 复用已保存的两两胜率矩阵，ladder 按匹配策略运行实际对局后更新评分。
+Openbox 使用结构化任务、进度和预设组织 core 的 batch/pair/namer-pf。DS4 使用历史模型与缓存缩小候选集合，再按配置进入实战筛选。lane ranker 复用已保存的两两胜率矩阵。
 
 各工具都能从明确输入、独立工作目录和可追溯配置中受益：机制由 core 统一，调度与结果用途由业务层表达。
 

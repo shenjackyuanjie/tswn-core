@@ -18,6 +18,8 @@ pub struct PreparedRinickData {
     pub clone_skills: Option<SkillLoadoutSpec>,
 }
 
+/// 一名玩家的完整构建结果：身份、八围、状态、技能表与各类机制标记。
+/// 不含本场战斗 RNG，可重复用于初始化多个对局。
 #[derive(Debug, Clone)]
 pub struct PreparedPlayer {
     pub id: usize,
@@ -56,6 +58,7 @@ pub struct PreparedRoster {
     pub groups: Vec<Vec<usize>>,
 }
 
+/// 召唤物种类：幻影、使魔与丧尸。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MinionKind {
     Shadow,
@@ -63,6 +66,8 @@ pub enum MinionKind {
     Zombie,
 }
 
+/// 召唤物蓝图：按主人单独构建的玩家数据，外加召唤语义标记
+/// （预留 ID 数、重铸时是否复用技能/状态、是否继承主人 DEF/RES）。
 #[derive(Debug, Clone)]
 pub struct PreparedMinionBlueprint {
     pub player: PreparedPlayer,
@@ -73,9 +78,11 @@ pub struct PreparedMinionBlueprint {
     pub inherit_owner_def_res: bool,
 }
 
+/// 构建阵容的错误类型；当前没有可构造变体，Result 仅为保留既有接口形状。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PreparedRosterError {}
 
+/// 单个玩家的构建中间态：名字、类别、名字基串与武器等，finish 后产出 `PreparedPlayer`。
 #[derive(Debug, Clone)]
 struct PlayerBuild {
     id: usize,
@@ -138,6 +145,7 @@ impl PreparedRoster {
 }
 
 impl PreparedPlayer {
+    /// Boss 的战斗名（归一化后），其余返回原名。
     pub(crate) fn combat_name(&self) -> &str {
         if self.class == PlayerClass::Boss {
             boss_combat_name(&self.name)
@@ -146,6 +154,8 @@ impl PreparedPlayer {
         }
     }
 
+    /// 按类型为该玩家生成召唤物蓝图：名字追加 `?<kind>` 后缀、按 Normal 类重新构建，
+    /// 名字系数归零；使魔在 overlay 要求时继承主人的 DEF 与 RES。
     pub fn minion_blueprint(&self, kind: MinionKind, eval_rq: f64) -> PreparedMinionBlueprint {
         let (suffix, display_name) = match kind {
             MinionKind::Shadow => ("shadow", "幻影"),
@@ -231,6 +241,7 @@ impl PreparedPlayer {
         }
     }
 
+    /// 按小兵类型取对应 overlay，不存在返回 None。
     fn minion_overlay(&self, kind: MinionKind) -> Option<&crate::namerena::MinionOverlay> {
         let overlay = self.overlay.as_ref()?;
         match kind {
@@ -250,6 +261,7 @@ pub(crate) fn score_profile_team_rng(team: &str) -> RC4 {
 }
 
 impl PlayerBuild {
+    /// 从 `PlayerSpec` 构造构建态：校验长度上限、准备名字键与 RNG。
     fn new(id: usize, spec: &PlayerSpec, eval_rq: f64) -> Self {
         debug_assert!(spec.name.len() <= NAME_MAX_LEN);
         debug_assert!(spec.team.as_ref().is_none_or(|team| team.len() <= TEAM_MAX_LEN));
@@ -357,6 +369,7 @@ impl PlayerBuild {
         }
     }
 
+    /// 按另一玩家的 raw 名字基串强化自身名字基串；TestEx 不参与强化。
     fn upgrade(&mut self, other: &Self) {
         if self.class == PlayerClass::TestEx {
             return;
@@ -377,6 +390,7 @@ impl PlayerBuild {
         }
     }
 
+    /// 收尾构建：武器前置强化、属性中位数换算与技能装载，产出 `PreparedPlayer`。
     fn finish(mut self) -> PreparedPlayer {
         if let Some(weapon) = &mut self.weapon {
             weapon.pre_upgrade(&self.raw_name_base, &mut self.name_base);
@@ -528,6 +542,20 @@ impl PlayerBuild {
             status = status_from_attrs(attrs, self.name_factor, true);
             status.magic_point = 1000;
         }
+        // Squall 与 smdd 的 106 只是外显值；实际战斗速度按普通公式补上 160。
+        if self.class == PlayerClass::Boss && (self.name == "Squall" || self.name == "smdd") {
+            self.name_factor = 0.0;
+            attrs = [106, 106, 106, 106, 106, 106, 106, 360];
+            status = status_from_attrs(attrs, 0.0, true);
+            status.speed = 266;
+        }
+        // 被子是后排 Boss：500 HP、其余 100，速度同样不追加 160 点。
+        if self.class == PlayerClass::Boss && self.name == "quilt" {
+            self.name_factor = 0.0;
+            attrs = [100, 100, 100, 100, 100, 100, 100, 500];
+            status = status_from_attrs(attrs, 0.0, true);
+            status.speed = 100;
+        }
         let mut skills = overlay_skills.map_or_else(
             || SkillLoadoutSpec::standard(&levels, &boosted, &boosts, &self.action_order),
             |skills| SkillLoadoutSpec::player_overlay(skills, effective_skills),
@@ -624,6 +652,7 @@ fn apply_plain_slot_boosts(
     }
 }
 
+/// 对同组玩家按比较序应用互相强化；enabled 为 false 时只排序不强化。
 fn apply_team_upgrades(players: &mut [PlayerBuild], groups: &mut [Vec<usize>], enabled: bool) {
     for group in groups {
         group.sort_by(|left, right| compare_builds(&players[*left], &players[*right]));
@@ -645,6 +674,7 @@ fn apply_team_upgrades(players: &mut [PlayerBuild], groups: &mut [Vec<usize>], e
     }
 }
 
+/// 构建态排序：Boss 身份优先，其次按 id。
 fn compare_builds(left: &PlayerBuild, right: &PlayerBuild) -> Ordering {
     boss_combat_identity_override(&left.id_key_name)
         .unwrap_or(&left.id_key_name)
@@ -652,6 +682,7 @@ fn compare_builds(left: &PlayerBuild, right: &PlayerBuild) -> Ordering {
         .then_with(|| left.id.cmp(&right.id))
 }
 
+/// 同时取两个下标的可变引用（按大小序拆分切片避免借用冲突）。
 fn two_mut(values: &mut [PlayerBuild], left: usize, right: usize) -> (&mut PlayerBuild, &mut PlayerBuild) {
     if left < right {
         let (before, after) = values.split_at_mut(right);
@@ -662,6 +693,7 @@ fn two_mut(values: &mut [PlayerBuild], left: usize, right: usize) -> (&mut Playe
     }
 }
 
+/// 把 RNG 状态映射为可用名字基串（过滤区间并压缩到 0..63）。
 fn map_name_base(rand: &RC4) -> [u8; 128] {
     let mut output = [0u8; 128];
     let mut index = 0;
@@ -676,6 +708,7 @@ fn map_name_base(rand: &RC4) -> [u8; 128] {
     output
 }
 
+/// 按队伍与名字派生 RC4：先以队伍键初始化，再用名字键更新。
 fn name_rng(team: &str, name: &str) -> RC4 {
     let mut team_key = [0u8; TEAM_MAX_LEN + 1];
     team_key[1..1 + team.len()].copy_from_slice(team.as_bytes());
@@ -686,6 +719,7 @@ fn name_rng(team: &str, name: &str) -> RC4 {
     rng
 }
 
+/// 把 8 项属性与名字系数换算为 `PlayerStats`。
 pub(crate) fn status_from_attrs(attrs: [u32; 8], name_factor: f64, alive: bool) -> PlayerStats {
     let scale = |value: i32, factor: i32| (value as f64 * (1.0 - name_factor / factor as f64)).round() as i32;
     let attr_sum = attrs[..7].iter().sum();

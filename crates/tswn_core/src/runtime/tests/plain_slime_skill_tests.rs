@@ -2,6 +2,7 @@ use super::*;
 
 use crate::runtime::lang::{get_lang, keys};
 
+/// 用默认 profile 构造史莱姆 boss 对英雄的 CombatRuntime，用于史莱姆技能测试。
 fn slime_runtime() -> CombatRuntime {
     let config = default_custom_runtime_import_config().expect("default runtime profile should build");
     let registry = config.registry;
@@ -17,8 +18,10 @@ fn slime_runtime() -> CombatRuntime {
     ))
 }
 
+/// 提取 RunUpdates 中所有消息字符串。
 fn messages_of(updates: &RunUpdates) -> Vec<String> { updates.updates.iter().map(|update| update.message.to_string()).collect() }
 
+/// 把目标实体 hp 置 0（致死），用于触发死亡/分裂路径。
 fn kill(runtime: &mut CombatRuntime, target: EntityIdx) { runtime.entities.get_mut(target).unwrap().runtime.hp = 0; }
 
 /// 子体八围来自 `eV` 位改写后的名字底数，再按 nameDens 缩放（体力不缩放）。
@@ -43,6 +46,7 @@ fn assert_slime_child_scaled(child: &EntityRecord, generation: u32, max_hp: i32)
     assert_eq!(child.template.clone_build.as_ref().unwrap().attrs(), attrs);
 }
 
+/// 史莱姆公开合并的 namerena 输入样本。
 const SLIME_MERGE_INPUT: &str = "slime@!\n\nlazy@!\nparity3a\nparity3b";
 
 #[test]

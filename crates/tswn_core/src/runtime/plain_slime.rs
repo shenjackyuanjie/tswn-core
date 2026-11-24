@@ -99,6 +99,7 @@ impl CombatRuntime {
         true
     }
 
+    /// 按名字基数与代际生成一个史莱姆子体：分配最小代名字、按代际折算属性与状态，第二代起附带 32 级减半与治疗技能。
     fn spawn_plain_slime_child(
         &mut self,
         name: &str,

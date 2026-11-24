@@ -28,6 +28,7 @@ import {
 import { ensureApi, createBattleStreamSource } from "./show-wasm.js";
 
 import { parseScoreTestInput, scoreCheckpointHtml } from "./show-score-test.js";
+import { winRateTableHtml } from "./show-win-rate.js";
 
 import { BattleStreamController } from "./show-stream.js";
 import { BattleDisplay } from "./show-display.js";
@@ -90,6 +91,15 @@ const strategySelect = document.querySelector("#strategySelect");
 /** @type {HTMLInputElement} 评分验证需显式勾选，普通对局不读取此选项。 */
 const scoreLegacyOpponents = document.querySelector("#scoreLegacyOpponents");
 scoreLegacyOpponents.checked = false;
+/** @type {HTMLInputElement} 挑战 Boss：勾选后自动把所选 Boss 追加为对手，无需手写 xx@!。 */
+const bossChallenge = document.querySelector("#bossChallenge");
+/** @type {HTMLSelectElement} */
+const bossSelect = document.querySelector("#bossSelect");
+bossChallenge.checked = false;
+bossSelect.disabled = true;
+bossChallenge.addEventListener("change", () => {
+  bossSelect.disabled = !bossChallenge.checked;
+});
 strategySelect.value = new URLSearchParams(window.location.search).get("strategy") === "legacy" ? "legacy" : "search";
 /** @type {HTMLButtonElement} */
 const startBtn = document.querySelector("#startBtn");
@@ -617,6 +627,56 @@ function clearCurrentNickname() {
  * @param {{ persistInput?: boolean }} [options]
  * @returns {Promise<void>}
  */
+function startWinRateTest(input, { persistInput }) {
+  if (persistInput) persistInputValue();
+  const generation = ++battleGenerationToken;
+  stopPlaybackLoop();
+  clearCurrentReplayView();
+  playerList.textContent = input.input;
+  plistMeta.textContent = `${input.label} · ${input.groups.length} 组`;
+  headerMeta.textContent = input.label + " · 计算中";
+  battleRows.innerHTML = "";
+  const cancel = document.createElement("button");
+  cancel.textContent = "停止测试";
+  cancel.className = "goBtn";
+  battleRows.append(cancel);
+  closePanel(inputPanel);
+  setInputStatus("正在后台计算各组对其余组的胜率。");
+  let worker;
+  function finish(message, failed = false) {
+    worker?.terminate();
+    if (scoreWorker === worker) scoreWorker = null;
+    cancel.disabled = true;
+    headerMeta.textContent = message;
+    setInputStatus(message, failed);
+  }
+  try {
+    worker = new Worker(new URL("./show-rate-worker.js", import.meta.url), { type: "module" });
+    scoreWorker = worker;
+    cancel.onclick = () => finish("胜率测试已停止；保留已完成的分组。");
+    worker.onmessage = ({ data }) => {
+      if (generation !== battleGenerationToken || scoreWorker !== worker) return;
+      if (data.type === "progress") {
+        battleRows.innerHTML = "";
+        battleRows.insertAdjacentHTML("beforeend", winRateTableHtml(data.progress));
+        headerMeta.textContent = `${input.label} · 已完成 ${data.progress.length}/${input.groups.length} 组`;
+      } else if (data.type === "done") {
+        battleRows.innerHTML = "";
+        battleRows.insertAdjacentHTML("beforeend", winRateTableHtml(data.results));
+        finish(input.label + " · 已完成");
+      } else if (data.type === "error") {
+        finish("胜率测试失败：" + data.message, true);
+      }
+    };
+    worker.onerror = event => {
+      if (generation === battleGenerationToken && scoreWorker === worker) finish("胜率测试失败：" + (event.message || "后台计算异常"), true);
+    };
+    worker.postMessage({ groups: input.groups });
+  } catch (error) {
+    finish("胜率测试启动失败：" + formatError(error), true);
+  }
+}
+
 function startScoreTest(input, { persistInput }) {
   if (persistInput) persistInputValue();
   const generation = ++battleGenerationToken;
@@ -668,6 +728,13 @@ function startScoreTest(input, { persistInput }) {
   }
 }
 
+/** 勾选“挑战 Boss”时把所选 Boss 作为独立对手组追加到输入，省去手写 xx@!。 */
+function withChallengeBoss(raw) {
+  if (!bossChallenge.checked) return raw;
+  const boss = bossSelect.value.trim();
+  return boss ? `${raw}\n\n${boss}@!` : raw;
+}
+
 async function startBattle({ persistInput = true } = {}) {
   const clickStartedAt = performance.now();
   const rawInput = inputName.value.trim();
@@ -679,7 +746,8 @@ async function startBattle({ persistInput = true } = {}) {
   let scoreInput;
   try { scoreInput = parseScoreTestInput(rawInput); }
   catch (error) { setInputStatus(formatError(error), true); openInputEditor(); return; }
-  const inputError = validateReplayInput(scoreInput?.input ?? rawInput);
+  const battleInput = scoreInput == null ? withChallengeBoss(rawInput) : rawInput;
+  const inputError = validateReplayInput(scoreInput?.input ?? battleInput);
   if (inputError) {
     setInputStatus(inputError, true);
     openInputEditor();
@@ -687,7 +755,11 @@ async function startBattle({ persistInput = true } = {}) {
   }
 
   if (scoreInput != null) {
-    startScoreTest(scoreInput, { persistInput });
+    if ((scoreInput.groups?.length ?? 0) > 1) {
+      startWinRateTest(scoreInput, { persistInput });
+    } else {
+      startScoreTest(scoreInput, { persistInput });
+    }
     return;
   }
 
@@ -705,7 +777,7 @@ async function startBattle({ persistInput = true } = {}) {
 
   let source = null;
   try {
-    source = await createBattleStreamSource(rawInput, versionInfo, coreVersionInfo, modulePathInfo, { metrics: battleMetrics, strategy: strategySelect.value });
+    source = await createBattleStreamSource(battleInput, versionInfo, coreVersionInfo, modulePathInfo, { metrics: battleMetrics, strategy: strategySelect.value });
     if (generation !== battleGenerationToken) { source.dispose(); return; }
     currentBattle = {
       raw_input: source.raw_input, seed_line: source.seed_line, strategy: strategySelect.value,

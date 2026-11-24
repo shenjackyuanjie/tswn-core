@@ -71,6 +71,7 @@ pub fn run_bench_winrate(
     }
 }
 
+/// 打印对阵信息：恰好两队时逐队显示，多组时按序号列出全部组。
 fn print_bench_winrate_matchup(raw: &str) {
     let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_string());
     let groups: Vec<_> = groups.into_iter().filter(|group| !group.is_empty()).collect();
@@ -88,6 +89,7 @@ fn print_bench_winrate_matchup(raw: &str) {
     }
 }
 
+/// 把一组玩家名单规整为展示文本。
 fn format_group(group: &[String]) -> String { display_group(&group.join("\n")) }
 
 /// 目标组对多个对手组的逐组胜率测试。

@@ -51,6 +51,36 @@
     padding: 8px 10px 20px;
 }
 
+.score-test-names {
+    padding: 8px 12px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.score-test-result {
+    margin-top: 10px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+}
+
+.score-test-result table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.score-test-result th,
+.score-test-result td {
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--border);
+}
+
+.score-test-result th:not(:first-child),
+.score-test-result td:not(:first-child) {
+    text-align: right;
+}
+
 .welcome {
     display: grid;
     gap: 6px;
@@ -253,6 +283,18 @@
 .skill-token {
     color: var(--skill);
     font-weight: normal;
+}
+
+/* 只给显式标记的纯台词描底，技能发动和效果日志不使用此样式。 */
+.msg.dialogue {
+    display: inline-block;
+    max-width: 100%;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: #eeeeee;
+    color: #414141;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
 }
 
 /* [解除]/[中止]/[打消] 独立中括号标红 */
