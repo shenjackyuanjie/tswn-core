@@ -555,6 +555,13 @@ impl CombatRuntime {
                 amount: 0,
             });
         }
+        // 新纪元的行动完全由专属脚本决定。
+        if self.entities.get(actor).is_some_and(|e| e.template.name == "新纪元") {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Xjy,
+                targets: PreparedTargetList::new(),
+            }));
+        }
         // 被子的行动完全由专属脚本决定：不扫描普攻，也不消耗概率随机数。
         if self.is_quilt(actor) {
             return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {

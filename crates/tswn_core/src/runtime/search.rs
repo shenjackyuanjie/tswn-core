@@ -1059,7 +1059,8 @@ impl CombatRuntime {
                 match entry.payload {
                     StatePayload::FireMagHalfSteps(half_steps) if half_steps > 0 => {
                         // 实际机制是后续火系/震系增伤，不是降低自身魔法输出。
-                        damage += (fire_threat * f64::from(half_steps.clamp(0, 8)) * eval_w(4, 0.04)).min(hp * eval_w(5, 0.587449632));
+                        damage +=
+                            (fire_threat * f64::from(half_steps.clamp(0, 8)) * eval_w(4, 0.04)).min(hp * eval_w(5, 0.587449632));
                     }
                     StatePayload::Ice { frozen_step } => {
                         // frozen_step 是冻结行动进度，不是剩余回合数；归零后仍需到达解除动作点。
@@ -1072,8 +1073,9 @@ impl CombatRuntime {
                     StatePayload::Curse { prob, multiply } if prob > 0 => {
                         // 正式判定使用六位随机数；诅咒不妨碍自身行动，只放大受击伤害。
                         let chance = f64::from(prob.clamp(0, 64)) / 64.0;
-                        damage += (incoming * chance * f64::from(multiply.saturating_sub(1).clamp(0, 8)) * eval_w(8, 0.124457993))
-                            .min(hp * eval_w(9, 0.5));
+                        damage +=
+                            (incoming * chance * f64::from(multiply.saturating_sub(1).clamp(0, 8)) * eval_w(8, 0.124457993))
+                                .min(hp * eval_w(9, 0.5));
                     }
                     StatePayload::Poison { atp_bits, count, .. } if count > 0 => {
                         let atp = f64::from_bits(atp_bits);

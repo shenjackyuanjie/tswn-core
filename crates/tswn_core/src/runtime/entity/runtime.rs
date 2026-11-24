@@ -188,6 +188,9 @@ pub struct PlayerRuntime {
     /// smdd 的做局层数与技能冷却。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub smdd: Option<Box<SmddRuntime>>,
+    /// 新纪元的行动计数、铁壁与拜谢状态。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xjy: Option<Box<XjyRuntime>>,
     /// 被子衍生物的行动计数与睡眠、钻被、得意等临时标记。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quilt_minion: Option<Box<QuiltMinionState>>,
@@ -264,6 +267,7 @@ impl PlayerRuntime {
             squall_helper: None,
             squall_taunt: None,
             smdd: (flags.contains(PlayerKindFlags::BOSS) && template.name == "smdd").then(|| Box::new(SmddRuntime::default())),
+            xjy: (flags.contains(PlayerKindFlags::BOSS) && template.name == "新纪元").then(|| Box::new(XjyRuntime::default())),
             quilt_minion: None,
             quilt_arrests: Vec::new(),
             corpse: RuntimeCorpseKind::None,

@@ -16,6 +16,7 @@ pub(crate) mod boss_smdd;
 mod boss_squall;
 mod boss_thanos;
 mod boss_wheel;
+mod boss_xjy;
 mod defense;
 mod effects;
 mod infection;

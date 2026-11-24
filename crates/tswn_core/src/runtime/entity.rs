@@ -29,6 +29,7 @@ mod skill_loadout;
 mod smdd;
 mod squall;
 mod state;
+mod xjy;
 
 pub use quilt::*;
 pub use runtime::*;
@@ -36,6 +37,7 @@ pub use skill_loadout::*;
 pub use smdd::*;
 pub use squall::*;
 pub use state::*;
+pub use xjy::*;
 
 /// 默认 at_boost 倍率 1.0 的百万分比表示，用于整数比较与导出。
 const DEFAULT_AT_BOOST_MILLIONTHS: i64 = 1_000_000;
