@@ -44,3 +44,17 @@ fn baixie_drains_mp_and_marks_target() {
     rt.drain_baixie_action_into(baixie, &mut u);
     assert!(rt.entities.get(target).unwrap().runtime.magic_point <= before.saturating_sub(20).max(0));
 }
+
+#[test]
+fn baixie_always_heals_the_boss_twenty() {
+    let (mut runner, boss) = battle();
+    let rt = runner.runtime_mut();
+    let mut u = RunUpdates::new();
+    rt.drain_yi_action_into(boss, &mut u);
+    let baixie = rt.entities.iter().find(|(_, e)| e.template.name == BAIXIE).map(|(idx, _)| idx).unwrap();
+    if let Some(entity) = rt.entities.get_mut(boss) {
+        entity.runtime.hp = 300;
+    }
+    rt.drain_baixie_action_into(baixie, &mut u);
+    assert_eq!(rt.entities.get(boss).unwrap().runtime.hp, 320);
+}
