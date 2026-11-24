@@ -33,3 +33,16 @@ fn grass_drains_mp_and_spawns_leopards() {
     rt.drain_tiger_action_into(boss, &mut u);
     assert_eq!(rt.entities.get(boss).unwrap().runtime.tiger.as_ref().unwrap().m_turns, 2);
 }
+
+#[test]
+fn buff_skill_uses_the_new_line() {
+    let (mut runner, boss) = battle();
+    let rt = runner.runtime_mut();
+    if let Some(state) = rt.entities.get_mut(boss).and_then(|e| e.runtime.tiger.as_mut()) {
+        state.turn = 9;
+    }
+    let mut u = RunUpdates::new();
+    rt.drain_tiger_action_into(boss, &mut u);
+    let messages: Vec<&str> = u.updates.iter().map(|update| update.message.as_ref()).collect();
+    assert!(messages.iter().any(|message| message.contains("我知道微弱的优势")));
+}

@@ -87,7 +87,7 @@ impl CombatRuntime {
         template.clone_build = self.entities.get(actor).and_then(|e| e.template.clone_build.clone());
         template.id_key_name = "yi-baixie".to_owned();
         // 拜谢自带 70 级反弹熟练度（召唤流程会重建技能表，放到生成后再写）。
-        let reflect = Some(crate::runtime::extension::SkillId(27));
+        let reflect = self.registry.skill_id_by_export_name("core.skill.reflect");
         template.display_name = BAIXIE.to_owned();
         let idx = self.entities.next_spawn_idx(&template);
         self.effects.push(QueuedEffect::SpawnWithMessage {
@@ -215,29 +215,6 @@ impl CombatRuntime {
         }
     }
 
-    /// 拜谢的 70 级伤害反弹：被普通攻击命中后按 70/256 反弹等量伤害，并给对方加上拜谢。
-    pub(super) fn drain_baixie_reflect_into(
-        &mut self,
-        baixie: EntityIdx,
-        attacker: EntityIdx,
-        amount: i32,
-        updates: &mut RunUpdates,
-    ) {
-        if amount <= 0
-            || !self.entities.get(baixie).is_some_and(|e| e.runtime.baixie.is_some() && e.runtime.alive)
-            || !self.entities.get(attacker).is_some_and(|e| e.runtime.active())
-        {
-            return;
-        }
-        // 70 级反弹：70/256 的概率。
-        if self.rng.next_u8() >= 70 {
-            return;
-        }
-        if self.apply_legacy_damage_into(baixie, attacker, amount, updates) {
-            self.drain_plain_lethal_damage_into(baixie, attacker, updates);
-        }
-        self.mark_baixie_on(baixie, attacker, updates);
-    }
     /// 反弹命中后，给被反弹到的敌人也加上拜谢。
     pub(super) fn mark_baixie_on(&mut self, baixie: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         let is_baixie = self.entities.get(baixie).is_some_and(|e| e.runtime.baixie.is_some());

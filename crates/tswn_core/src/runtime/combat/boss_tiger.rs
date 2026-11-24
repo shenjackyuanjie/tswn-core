@@ -72,7 +72,8 @@ impl CombatRuntime {
             6 => TigerSkill::Shadow,
             7 => TigerSkill::Small,
             8 => TigerSkill::Leopards,
-            9 => TigerSkill::Buff,
+            // 「我知道微弱的优势…」发动概率提升到 2/10（第 9、10 回合）。
+            0 | 9 => TigerSkill::Buff,
             _ => TigerSkill::Grass,
         }
     }
@@ -300,7 +301,11 @@ impl CombatRuntime {
                 *template = *template * 11 / 10;
             }
         }
-        self.tiger_say(actor, "[0]使用[加成之后完全恐怖]", updates);
+        self.tiger_say(
+            actor,
+            "[0]使用[我知道微弱的优势不能保证每场赢，但我一定要在输的那一场红温]",
+            updates,
+        );
     }
 
     fn tiger_spawn_leopard(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
