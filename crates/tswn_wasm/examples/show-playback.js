@@ -115,6 +115,8 @@ export function createShowPlayback(state, { playerList, battleRows, endPanel, he
       playerList,
       state.playersById,
     );
+    // 同步刷新战斗属性表。
+    state.updateStats?.(state.currentVisibleStates);
   }
 
   function renderChunkSidebar(chunk) {

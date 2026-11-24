@@ -15,7 +15,7 @@ import {
   validateReplayInput,
 } from "./show-utils.js";
 import { buildPlayerDetailHtml } from "./show-detail.js";
-import { renderIdleState } from "./show-render.js";
+import { renderIdleState, statsPanelHtml } from "./show-render.js";
 import {
   createReplayPlan,
   appendFrameToReplayPlan,
@@ -256,11 +256,25 @@ const {
   get playbackStartedAt() { return playbackStartedAt; }, set playbackStartedAt(value) { playbackStartedAt = value; },
   get playbackPaused() { return playbackPaused; }, set playbackPaused(value) { playbackPaused = value; },
   get playbackFinished() { return playbackFinished; }, set playbackFinished(value) { playbackFinished = value; },
-}, { playerList, battleRows, endPanel, headerMeta, plistMeta, normalBtn, fastBtn, pauseBtn, shareBtn, stepControls, stepBackEventBtn, stepForwardEventBtn, stepBackFrameBtn, stepForwardFrameBtn, rememberPlayers, clearPlayerHighlight, closePanel, visibleStatesForCursor });
+}, { playerList, battleRows, endPanel, headerMeta, plistMeta, normalBtn, fastBtn, pauseBtn, shareBtn, stepControls, stepBackEventBtn, stepForwardEventBtn, stepBackFrameBtn, stepForwardFrameBtn, rememberPlayers, clearPlayerHighlight, closePanel, visibleStatesForCursor, updateStats });
 
 // ============================================================================
 // 胶水函数（直接操作 DOM 或全局状态）
 // ============================================================================
+
+/** 刷新战斗属性表：始终展示全部角色，每行一个。 */
+function updateStats(states) {
+  const panel = document.querySelector("#battleStats");
+  if (!panel) return;
+  const html = statsPanelHtml(states);
+  if (!html) {
+    panel.hidden = true;
+    panel.innerHTML = "";
+    return;
+  }
+  panel.hidden = false;
+  panel.innerHTML = html;
+}
 
 /**
  * 记住玩家列表，建立 id→player 的快速查找表。

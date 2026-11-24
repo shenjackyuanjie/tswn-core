@@ -134,3 +134,26 @@ body.highlight-active [data-player-id].hl-active.player-row .name {
         flex: 1 1 auto;
     }
 }
+/* 战斗属性表：每个角色一行，人数多也全部展示。 */
+.battle-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--sidebar-bg);
+    font-size: 12px;
+    line-height: 1.45;
+    max-height: 30vh;
+    overflow: auto;
+}
+.battle-stats[hidden] { display: none; }
+.battle-stat-row { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.battle-stat-row.is-dead { opacity: 0.45; }
+.battle-stat-name { min-width: 9em; font-weight: 600; }
+.battle-stat-hp { min-width: 7.5em; }
+.stat-icon { width: 16px; height: 16px; display: inline-block; }
+.dmg-mark { display: inline-block; width: 16px; height: 16px; background-size: 16px 16px; background-repeat: no-repeat; vertical-align: -3px; }
+.s_dmg0 { background-image: url("data:image/gif;base64,R0lGODlhFAAUAMQAAAAAAP///98AJDsBRZbFU6LPYqPPY63aba3ZbbfgfcPuhcLthcHrhM/1mdL1n9H0n9/9tXqpNYi3Q6TOZMDog7bHjv///wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEAABYALAAAAAAUABQAAAWT4CCO5GCdKDoEbNuaabrOAS1aAppbq/sqB4EQNyyJaguFQsgcyhoipTLYjA0aDYhUSt2psBDtVokQwE6DSngwZisWB8l54IiOFaPDAcZmM+5SFAMHESZueICIeoU8iXcHBYxsD45KcJGGBQdhjnoFcmgHlUCQcxOid2yeBGc8engkpAesMTyDenoIkAUFrVZGIzEhADs="); }
+.s_dmg120 { background-image: url("data:image/gif;base64,R0lGODlhFAAUAMQAAAAAAP///98AJNzo/+vx/JbFU6LPYqLOYq3abcPuhcLthc/1mc3ymNL1n9/9tXqpNYi3Q6PMYa7XbKLGacLshMPrhMDog8DphL7mg3ymNTMqKf///wAAAAAAAAAAAAAAACH5BAEAABsALAAAAAAUABQAAAWj4CaOo6aRaCpqyam+bFKcwlircZIgQr/1N5JmoSsCj6jhwlHcHYOrxSIX4/mEDBOzaEpMBK5VQxMIUMsshKk0RnPdCPUq0SCYFE3TYId4nGJle00BBHtxfhuAAQM5CYR7EhGILA1uOY8VkRl/BgiEMYCFcQcQLhqeBAFNjqIIBmEaBoQBChQWFxizrjNCj0V4urwoBK1xCMQDryqFjCYmzGEiIQA7"); }
+.s_dmg160 { background-image: url("data:image/gif;base64,R0lGODlhFAAUAKUAAAAAAP///98AJP+vvP++yPmSo//J0pbFU6LPYqLOYq3aba3ZbarWa8Puhc/1mdL1n9/9tXqpNYi3Q8Dpg87wnHymNUBAKzw5LTs3KjcxKjs0LzUuKjQsKTUtKjMrKTQrKTMqKf8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEKAD8ALAAAAAAUABQAAAbHwJ9wOASBiMikENQ4KochIrNx2PwEQ+wvKm14GwqB+DoOcX8fR9PYELvH2x8o7QAF7qDwmxgKgBwQdnhgbkhmIBCBd35eYRpQGkYhEF5GU40aj0JmIWyXX2AKmkwUU5cGBgQEoREWcl4TbF4EBbWrCgoRGK9NvQ20tQMEAwoIERmvD2uztQUDzwoJFR1yCAqJvarO0NESHksKoEyoBgOhCNRL1qBeBo3FB05CHrjs7woH30gfF7i4CwsYIBiYTsmGTAgRckASBAA7"); }
