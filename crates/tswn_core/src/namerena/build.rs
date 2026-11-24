@@ -549,6 +549,21 @@ impl PlayerBuild {
             status = status_from_attrs(attrs, 0.0, true);
             status.speed = 266;
         }
+        // 咦：固定属性，外显速度 89，实战速度 249。
+        if self.class == PlayerClass::Boss && self.name == "咦" {
+            self.name_factor = 0.0;
+            attrs = [99, 87, 89, 82, 98, 89, 56, 487];
+            status = status_from_attrs(attrs, 0.0, true);
+            status.attack = 99;
+            status.defense = 87;
+            status.speed = 249;
+            status.agility = 82;
+            status.magic = 98;
+            status.resistance = 89;
+            status.wisdom = 89;
+            status.hp = 487;
+            status.max_hp = 487;
+        }
         // 被子是后排 Boss：1000 HP、其余 100，速度同样不追加 160 点。
         if self.class == PlayerClass::Boss && self.name == "quilt" {
             self.name_factor = 0.0;

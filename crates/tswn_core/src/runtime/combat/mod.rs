@@ -17,6 +17,7 @@ mod boss_squall;
 mod boss_thanos;
 mod boss_wheel;
 mod boss_xjy;
+mod boss_yi;
 mod defense;
 mod effects;
 mod infection;

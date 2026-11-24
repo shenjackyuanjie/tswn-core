@@ -280,7 +280,13 @@ impl CombatRuntime {
             self.drain_action_damage_phase_into(action.actor, ProcMask::PRE_DAMAGE, &mut updates);
             match prepared_plain_action.take() {
                 Some(PreparedPlainAction::BasicAttack { target, use_magic, .. }) => {
-                    if self.quilt_minion_kind(action.actor).is_some() {
+                    if self
+                        .entities
+                        .get(action.actor)
+                        .is_some_and(|e| e.template.name == crate::runtime::combat::boss_yi::BAIXIE)
+                    {
+                        self.drain_baixie_action_into(action.actor, &mut updates);
+                    } else if self.quilt_minion_kind(action.actor).is_some() {
                         self.drain_quilt_minion_action_into(action.actor, target, &mut updates);
                     } else {
                         self.drain_plain_default_attack_into(action.actor, target, use_magic, &mut updates);
@@ -554,6 +560,17 @@ impl CombatRuntime {
                 use_magic: false,
                 amount: 0,
             });
+        }
+        // 咦的行动完全由专属脚本决定。
+        if self
+            .entities
+            .get(actor)
+            .is_some_and(|e| e.template.name == crate::runtime::combat::boss_yi::ID)
+        {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Yi,
+                targets: PreparedTargetList::new(),
+            }));
         }
         // 新纪元的行动完全由专属脚本决定。
         if self.entities.get(actor).is_some_and(|e| e.template.name == "新纪元") {
@@ -1249,10 +1266,11 @@ impl CombatRuntime {
     fn apply_potion(&mut self, actor: EntityIdx, code: u32) {
         // code = 属性下标 + 1（0 表示没喝药）
         let field = ((code & 0xF) as usize).saturating_sub(1);
+        let mp_scale = self.baixie_mp_scale(actor);
         let Some(entity) = self.entities.get_mut(actor) else { return };
         if field == 9 {
-            // 9 = 能量药水：回复 40 点 MP（与其他返蓝共用上限）
-            entity.runtime.magic_point = (entity.runtime.magic_point + 40).min(MAGIC_POINT_CAP);
+            // 9 = 能量药水：回复 40 点 MP（与其他返蓝共用上限；被拜谢过则减半）
+            entity.runtime.magic_point = (entity.runtime.magic_point + (40.0 * mp_scale) as i32).min(MAGIC_POINT_CAP);
             return;
         }
         if field >= 8 {

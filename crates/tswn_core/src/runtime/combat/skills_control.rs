@@ -166,12 +166,14 @@ impl CombatRuntime {
 
     /// 蓄力技能：激活蓄力运行时并回复 32 点 MP。
     pub fn drain_plain_charge_skill_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+        // 被拜谢过的角色自然回蓝减半。
+        let mp_scale = self.baixie_mp_scale(actor);
         let owner = self
             .entities
             .get_mut(actor)
             .unwrap_or_else(|| panic!("unknown runtime charge owner: {}", actor.0));
         owner.activate_charge_runtime();
-        owner.runtime.magic_point = (owner.runtime.magic_point + 32).min(MAGIC_POINT_CAP);
+        owner.runtime.magic_point = (owner.runtime.magic_point + (32.0 * mp_scale) as i32).min(MAGIC_POINT_CAP);
         updates.add(crate::runtime::update::RunUpdate::new(
             "[0]开始[蓄力]",
             actor.0 as usize,

@@ -188,6 +188,11 @@ pub struct PlayerRuntime {
     /// smdd 的做局层数与技能冷却。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub smdd: Option<Box<SmddRuntime>>,
+    /// 咦 Boss 与拜谢衍生物的运行态。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub yi: Option<Box<YiRuntime>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baixie: Option<Box<BaixieRuntime>>,
     /// 新纪元的行动计数、铁壁与拜谢状态。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xjy: Option<Box<XjyRuntime>>,
@@ -268,6 +273,8 @@ impl PlayerRuntime {
             squall_taunt: None,
             smdd: (flags.contains(PlayerKindFlags::BOSS) && template.name == "smdd").then(|| Box::new(SmddRuntime::default())),
             xjy: (flags.contains(PlayerKindFlags::BOSS) && template.name == "新纪元").then(|| Box::new(XjyRuntime::default())),
+            yi: (flags.contains(PlayerKindFlags::BOSS) && template.name == "咦").then(|| Box::new(YiRuntime::default())),
+            baixie: None,
             quilt_minion: None,
             quilt_arrests: Vec::new(),
             corpse: RuntimeCorpseKind::None,

@@ -654,6 +654,14 @@ impl CombatRuntime {
                 let (accuracy, dodge, active) = Self::plain_dodge_values_for(actor_runtime, defender, use_magic);
                 if active && PlayerRuntime::dodge(accuracy, dodge, &mut self.rng) {
                     updates.add_with(|| RuntimeFrame::replay_update(target.0 as usize, actor.0 as usize, "[0][回避]了攻击", 20));
+                    // 咦成功闪避后立刻反击 1~x-2 名敌人。
+                    if self
+                        .entities
+                        .get(target)
+                        .is_some_and(|e| e.template.name == crate::runtime::combat::boss_yi::ID)
+                    {
+                        self.yi_dodge_counter(target, updates);
+                    }
                     0
                 } else {
                     let defense = if use_magic {
@@ -731,6 +739,14 @@ impl CombatRuntime {
         }
         if dodged {
             updates.add_with(|| RuntimeFrame::replay_update(target.0 as usize, actor.0 as usize, "[0][回避]了攻击", 20));
+            // 咦成功闪避后立刻反击 1~x-2 名敌人。
+            if self
+                .entities
+                .get(target)
+                .is_some_and(|e| e.template.name == crate::runtime::combat::boss_yi::ID)
+            {
+                self.yi_dodge_counter(target, updates);
+            }
             if let Some(batch_id) = batch_id {
                 self.control.finish_damage_batch(batch_id);
             }
