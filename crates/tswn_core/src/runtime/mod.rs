@@ -45,6 +45,7 @@ pub mod forced_action;
 mod handlers;
 pub mod lang;
 pub mod model_state;
+pub mod nn_eval;
 mod normalized;
 mod plain_assassinate;
 mod plain_slime;
@@ -56,7 +57,6 @@ mod runner;
 pub mod scheduler;
 pub mod scratch;
 pub mod search;
-pub mod nn_eval;
 mod session;
 pub mod slot;
 #[cfg(not(feature = "no_debug"))]
@@ -71,6 +71,9 @@ pub type PlrId = usize;
 
 /// 行动条触发一次行动所需的移动点数。
 pub const MOVE_POINT_THRESHOLD: i32 = 2048;
+
+/// 行动恢复与技能返蓝共用的 MP 上限。
+const MAGIC_POINT_CAP: i32 = 128;
 
 /// namerena 评分机制里的第一个靶子。
 pub const PROFILE_START: u32 = 3355_4431;

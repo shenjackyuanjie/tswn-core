@@ -114,7 +114,8 @@ impl CombatRuntime {
             .map(|entity| entity.runtime.hp)
             .unwrap_or_else(|| panic!("unknown runtime wheel actor: {}", actor.0));
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let all_alive = target_pool.as_ref();
         let mut candidates = smallvec::SmallVec::<[(EntityIdx, i32); 8]>::new();
         for &idx in all_alive {
             if idx == actor {
@@ -158,6 +159,11 @@ impl CombatRuntime {
     /// 其余与通用交换技能一致：蓄力时夺取对方行动值、互换后按自身 max_hp 截断、
     /// 报 `sklExchange`/`sklExchanged` 并走 post_damage 与致死链。
     pub fn drain_plain_wheel_exchange_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
+        if self.is_quilt(target) || self.quilt_minion_sleeping(target) {
+            updates.add(RunUpdate::new_lang(keys::SKL_EXCHANGE, actor.0 as usize, target.0 as usize, 1));
+            updates.add(RunUpdate::new("[0][回避]了攻击", target.0 as usize, actor.0 as usize, 20));
+            return;
+        }
         let (charge_active, owner_hp, owner_max_hp) = self
             .entities
             .get(actor)
@@ -206,6 +212,7 @@ impl CombatRuntime {
             ])
         });
         if target_hp > owner_hp {
+            self.relay_quilt_damage(actor, target, target_hp - owner_hp, updates);
             self.drain_plain_post_damage_skill_chain_into(target, target_hp - owner_hp, actor, updates);
             let needs_lethal = self
                 .entities

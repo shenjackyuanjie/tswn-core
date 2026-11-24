@@ -7,32 +7,32 @@
  * @typedef {import("./show-types.js").InvolvedSet} InvolvedSet
  */
 
-import { createShowPlayback } from "./show-playback.js";
-import { createThemeControls, setupPlayerHighlight, isEditableKeyTarget, copyTextToClipboard } from "./show-ui.js";
+import { createShowPlayback } from "./show-playback.js?v=20261124stats4";
+import { createThemeControls, setupPlayerHighlight, isEditableKeyTarget, copyTextToClipboard } from "./show-ui.js?v=20261124stats4";
 import {
   buildIconClassCss,
   formatError,
   validateReplayInput,
-} from "./show-utils.js";
-import { buildPlayerDetailHtml } from "./show-detail.js";
-import { renderIdleState } from "./show-render.js";
+} from "./show-utils.js?v=20261124stats4";
+import { buildPlayerDetailHtml } from "./show-detail.js?v=20261124stats4";
+import { renderIdleState, statsPanelHtml } from "./show-render.js?v=20261124stats4";
 import {
   createReplayPlan,
   appendFrameToReplayPlan,
   markReplayPlanComplete,
-} from "./show-replay.js";
+} from "./show-replay.js?v=20261124stats4";
 import {
   buildShowShareUrl,
   readStaticReplayInputFromSearch,
-} from "./show-routing.js";
-import { ensureApi, createBattleStreamSource } from "./show-wasm.js";
+} from "./show-routing.js?v=20261124stats4";
+import { ensureApi, createBattleStreamSource } from "./show-wasm.js?v=20261124stats4";
 
-import { parseScoreTestInput, scoreCheckpointHtml } from "./show-score-test.js";
-import { winRateTableHtml } from "./show-win-rate.js";
+import { parseScoreTestInput, scoreCheckpointHtml } from "./show-score-test.js?v=20261124stats4";
+import { winRateTableHtml } from "./show-win-rate.js?v=20261124stats4";
 
-import { BattleStreamController } from "./show-stream.js";
-import { BattleDisplay } from "./show-display.js";
-import { BattleMetrics } from "./show-metrics.js";
+import { BattleStreamController } from "./show-stream.js?v=20261124stats4";
+import { BattleDisplay } from "./show-display.js?v=20261124stats4";
+import { BattleMetrics } from "./show-metrics.js?v=20261124stats4";
 
 // ============================================================================
 // 默认示例输入 — 可在页面中直接点击"示例"按钮填入
@@ -256,11 +256,33 @@ const {
   get playbackStartedAt() { return playbackStartedAt; }, set playbackStartedAt(value) { playbackStartedAt = value; },
   get playbackPaused() { return playbackPaused; }, set playbackPaused(value) { playbackPaused = value; },
   get playbackFinished() { return playbackFinished; }, set playbackFinished(value) { playbackFinished = value; },
-}, { playerList, battleRows, endPanel, headerMeta, plistMeta, normalBtn, fastBtn, pauseBtn, shareBtn, stepControls, stepBackEventBtn, stepForwardEventBtn, stepBackFrameBtn, stepForwardFrameBtn, rememberPlayers, clearPlayerHighlight, closePanel, visibleStatesForCursor });
+}, { playerList, battleRows, endPanel, headerMeta, plistMeta, normalBtn, fastBtn, pauseBtn, shareBtn, stepControls, stepBackEventBtn, stepForwardEventBtn, stepBackFrameBtn, stepForwardFrameBtn, rememberPlayers, clearPlayerHighlight, closePanel, visibleStatesForCursor, updateStats });
 
 // ============================================================================
 // 胶水函数（直接操作 DOM 或全局状态）
 // ============================================================================
+
+/** 刷新战斗属性表：始终展示全部角色，每行一个。 */
+function updateStats(states) {
+  let panel = document.querySelector("#battleStats");
+  if (!panel) {
+    // 回放开始时容器可能被重建，属性表就动态补在战报前面。
+    const rows = document.querySelector("#battleRows");
+    if (!rows || !rows.parentElement) return;
+    panel = document.createElement("div");
+    panel.id = "battleStats";
+    panel.className = "battle-stats";
+    rows.parentElement.insertBefore(panel, rows);
+  }
+  const html = statsPanelHtml(states);
+  if (!html) {
+    panel.hidden = true;
+    panel.innerHTML = "";
+    return;
+  }
+  panel.hidden = false;
+  panel.innerHTML = html;
+}
 
 /**
  * 记住玩家列表，建立 id→player 的快速查找表。

@@ -1,13 +1,13 @@
 /** 句子级播放、跳转和检查点；通过访问器读取同一份页面会话状态。 */
-import { formatError, sleep } from "./show-utils.js";
-import { renderPlayers } from "./show-render.js";
-import { createReplayPlan, appendFrameToReplayPlan, markReplayPlanComplete, renderReplayIntro, updateSpeedButtons, playbackDelay, buildReplayResultTableHtml } from "./show-replay.js";
+import { formatError, sleep } from "./show-utils.js?v=20261124stats4";
+import { renderPlayers } from "./show-render.js?v=20261124stats4";
+import { createReplayPlan, appendFrameToReplayPlan, markReplayPlanComplete, renderReplayIntro, updateSpeedButtons, playbackDelay, buildReplayResultTableHtml } from "./show-replay.js?v=20261124stats4";
 
 const SEEK_CHECKPOINT_FRAME_INTERVAL = 20;
 const NORMAL_RESULT_REVEAL_DELAY_MS = 1500;
 const TURBO_YIELD_VISIBLE_CHUNKS = 24;
 
-export function createShowPlayback(state, { playerList, battleRows, endPanel, headerMeta, plistMeta, normalBtn, fastBtn, pauseBtn, shareBtn, stepControls, stepBackEventBtn, stepForwardEventBtn, stepBackFrameBtn, stepForwardFrameBtn, rememberPlayers, clearPlayerHighlight, closePanel, visibleStatesForCursor }) {
+export function createShowPlayback(state, { playerList, battleRows, endPanel, headerMeta, plistMeta, normalBtn, fastBtn, pauseBtn, shareBtn, stepControls, stepBackEventBtn, stepForwardEventBtn, stepBackFrameBtn, stepForwardFrameBtn, rememberPlayers, clearPlayerHighlight, closePanel, visibleStatesForCursor, updateStats }) {
   function stopPlaybackLoop() {
     state.playbackLoopToken += 1;
   }
@@ -115,6 +115,8 @@ export function createShowPlayback(state, { playerList, battleRows, endPanel, he
       playerList,
       state.playersById,
     );
+    // 同步刷新战斗属性表。
+    updateStats?.(state.currentVisibleStates);
   }
 
   function renderChunkSidebar(chunk) {

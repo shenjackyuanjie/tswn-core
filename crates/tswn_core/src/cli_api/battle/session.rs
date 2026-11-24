@@ -677,8 +677,12 @@ fn battle_icon_key<'a>(runner: &'a RuntimeRunner, state: &BattlePlayerState, gro
     }
     let entities = &runner.runtime().entities;
     let entity = entities.get(EntityIdx(state.id.try_into().ok()?))?;
-    // 被子衍生物与曙光的召唤物保留自己的徽章键，便于前端改用 emoji 图标。
+    // 被子衍生物与曙光的召唤物保留各自的徽章键。
     let own_key = entity.template.id_key_name.as_str();
+    // 直接识别本体键与召唤物键，转化后的猴区也按新身份取图标。
+    if own_key == "quilt@!" {
+        return Some("quilt-icon");
+    }
     if own_key.starts_with("quilt-") || own_key == "smdd-leopard" || own_key.ends_with("@nan") {
         return Some(own_key);
     }

@@ -153,7 +153,8 @@ impl CombatRuntime {
             return PreparedTargetList::new();
         }
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return PreparedTargetList::new();
         }
@@ -719,7 +720,8 @@ impl CombatRuntime {
     /// 连击选目标：聪明抽 5 个、普通抽 3 个敌人并按评分排序。
     pub fn select_plain_rapid_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return PreparedTargetList::new();
         }

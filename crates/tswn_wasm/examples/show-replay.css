@@ -1,7 +1,8 @@
 .pbody-shell {
     min-height: 100%;
     display: grid;
-    grid-template-rows: auto 1fr;
+    /* 头部 / 属性表 / 战报三行，战报占剩余空间。 */
+    grid-template-rows: auto auto minmax(0, 1fr);
 }
 
 .pbody-header {

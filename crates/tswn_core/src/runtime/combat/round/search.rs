@@ -17,7 +17,7 @@ impl CombatRuntime {
         let cost = i32::from(self.rng.next_u8() & 15) + 8;
         let mut candidates = Vec::new();
         for &target in self.world.flat_alive() {
-            if self.entities.get(target)?.runtime.team == team {
+            if self.is_quilt(target) || self.entities.get(target)?.runtime.team == team {
                 continue;
             }
             candidates.push(SearchCandidate {
@@ -118,6 +118,7 @@ impl CombatRuntime {
             self.world
                 .flat_alive()
                 .iter()
+                .filter(|target| !self.is_quilt(**target))
                 .copied()
                 .filter(|&id| {
                     let entity = self.entities.get(id).unwrap();

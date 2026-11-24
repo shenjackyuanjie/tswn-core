@@ -861,3 +861,33 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
   }
   return buildStructuredFrameRows(frame, roundIndex, playersById);
 }
+
+/** 战斗属性表：每个角色一行，人数再多也全部展示并随帧更新。 */
+export function statsPanelHtml(states) {
+  if (!Array.isArray(states) || !states.length) {
+    return "";
+  }
+  try {
+    return states
+      .map((s) => {
+        const hp = Number.isFinite(s.hp) ? s.hp : 0;
+        const maxHp = Number.isFinite(s.max_hp) ? s.max_hp : 0;
+        const alive = s.alive !== false;
+        let icon = "";
+        try {
+          icon = renderIconSprite(s.icon_class_id ?? s.id, "stat-icon icon-sprite");
+        } catch {
+          icon = "";
+        }
+        return `<div class="battle-stat-row${alive ? "" : " is-dead"}">
+      <span class="battle-stat-icon">${icon}</span>
+      <span class="battle-stat-name">${escapeHtml(s.display_name ?? s.id_name ?? String(s.id))}</span>
+      <span class="battle-stat-hp">HP ${hp}/${maxHp}</span>
+      <span>攻 ${s.attack ?? "-"}</span><span>防 ${s.defense ?? "-"}</span><span>速 ${s.speed ?? "-"}</span><span>敏 ${s.agility ?? "-"}</span><span>魔 ${s.magic ?? "-"}</span><span>抗 ${s.resistance ?? "-"}</span><span>智 ${s.wisdom ?? "-"}</span>
+    </div>`;
+      })
+      .join("");
+  } catch {
+    return "";
+  }
+}

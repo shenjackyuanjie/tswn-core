@@ -38,9 +38,13 @@ impl CombatRuntime {
                     self.select_plain_default_enemy_targets_with_count(actor, smart, if smart { 6 } else { 5 })
                 }
                 BossActionSkill::YuriControl => self.select_plain_yuri_control_targets(actor, smart),
-                BossActionSkill::MarioGet | BossActionSkill::Squall | BossActionSkill::Quilt | BossActionSkill::Smdd => {
-                    PreparedTargetList::new()
-                }
+                BossActionSkill::MarioGet
+                | BossActionSkill::Squall
+                | BossActionSkill::Quilt
+                | BossActionSkill::Smdd
+                | BossActionSkill::Xjy
+                | BossActionSkill::Yi
+                | BossActionSkill::Tiger => PreparedTargetList::new(),
                 // `SklSaitama.au` 的基础概率在等级 0 时恒为 false，`aa` 不会执行。
                 BossActionSkill::Saitama => continue,
             };
@@ -113,6 +117,9 @@ impl CombatRuntime {
             BossActionSkill::Squall => self.drain_squall_action_into(actor, updates),
             BossActionSkill::Quilt => self.drain_quilt_action_into(actor, updates),
             BossActionSkill::Smdd => self.drain_smdd_action_into(actor, updates),
+            BossActionSkill::Xjy => self.drain_xjy_action_into(actor, updates),
+            BossActionSkill::Yi => self.drain_yi_action_into(actor, updates),
+            BossActionSkill::Tiger => self.drain_tiger_action_into(actor, updates),
             BossActionSkill::Fire => {
                 let target = prepared.targets[0];
                 self.drain_plain_fire_skill_into(actor, target, updates);
@@ -247,7 +254,8 @@ impl CombatRuntime {
     fn select_plain_conan_targets_in_mode(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let select_count = if smart { 4 } else { 3 };
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return PreparedTargetList::new();
         }
@@ -514,7 +522,8 @@ impl CombatRuntime {
     /// 尤里的心灵控制目标：不看 smart，只要目标不在自身当前队伍、没有魅惑。
     pub fn select_plain_yuri_control_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let all_alive = target_pool.as_ref();
         let mut candidates = smallvec::SmallVec::<[EntityIdx; 8]>::new();
         let mut enemy_skip_indices = smallvec::SmallVec::<[usize; 8]>::new();
         for (idx, target) in all_alive.iter().copied().enumerate() {

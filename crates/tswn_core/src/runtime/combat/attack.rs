@@ -19,7 +19,8 @@ impl CombatRuntime {
     pub fn select_plain_default_attack_target(&mut self, actor: EntityIdx, smart: bool) -> Option<EntityIdx> {
         self.entities.get(actor)?;
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return None;
         }
@@ -204,7 +205,8 @@ impl CombatRuntime {
         score: impl Fn(&mut Self, EntityIdx, bool) -> f64,
     ) -> PreparedTargetList {
         let team = self.plain_effective_team(actor);
-        let alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let alive = target_pool.as_ref();
         let skips = alive
             .iter()
             .enumerate()
@@ -652,6 +654,14 @@ impl CombatRuntime {
                 let (accuracy, dodge, active) = Self::plain_dodge_values_for(actor_runtime, defender, use_magic);
                 if active && PlayerRuntime::dodge(accuracy, dodge, &mut self.rng) {
                     updates.add_with(|| RuntimeFrame::replay_update(target.0 as usize, actor.0 as usize, "[0][回避]了攻击", 20));
+                    // 咦成功闪避后立刻反击 1~x-2 名敌人。
+                    if self
+                        .entities
+                        .get(target)
+                        .is_some_and(|e| e.template.name == crate::runtime::combat::boss_yi::ID)
+                    {
+                        self.yi_dodge_counter(target, updates);
+                    }
                     0
                 } else {
                     let defense = if use_magic {
@@ -729,6 +739,14 @@ impl CombatRuntime {
         }
         if dodged {
             updates.add_with(|| RuntimeFrame::replay_update(target.0 as usize, actor.0 as usize, "[0][回避]了攻击", 20));
+            // 咦成功闪避后立刻反击 1~x-2 名敌人。
+            if self
+                .entities
+                .get(target)
+                .is_some_and(|e| e.template.name == crate::runtime::combat::boss_yi::ID)
+            {
+                self.yi_dodge_counter(target, updates);
+            }
             if let Some(batch_id) = batch_id {
                 self.control.finish_damage_batch(batch_id);
             }
@@ -883,7 +901,7 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
     ) -> bool {
         // 被子衍生物在睡5觉/钻被/猴儿冰冻期间固定 0 伤。
-        let amount = if self.quilt_minion_sleeping(target) { 0 } else { amount };
+        let amount = self.quilt_damage(target, amount);
         // 0.5.5 `aF`：负数伤害表示 Boss 防御吸收，只回血并输出恢复消息，
         // 不触发 covid/lazy 扩散、命中回调或 POST_DAMAGE 链。
         if amount < 0 {
@@ -901,17 +919,11 @@ impl CombatRuntime {
         if actual_damage > 0 {
             // 曙光的「局」层数：被本体命中一次加一层。
             self.record_smdd_hit(target);
+            // TigerStar 的「我是M」：受伤时随机属性提升等量数值。
+            self.record_tiger_damage(target, actual_damage);
         }
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
-        // 被子的衍生物只把一半伤害传导给本体；本体那一行排在衍生物受击之后。
-        if actual_damage > 0
-            && let Some(owner) = self.quilt_share_owner(target)
-        {
-            let shared = actual_damage / 2;
-            if shared > 0 && self.apply_legacy_damage_into(caster, owner, shared, updates) {
-                self.drain_plain_lethal_damage_into(caster, owner, updates);
-            }
-        }
+        self.relay_quilt_damage(caster, target, amount, updates);
         if amount == 0 {
             return false;
         }

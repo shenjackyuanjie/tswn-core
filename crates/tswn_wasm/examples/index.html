@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light dark">
     <meta name="darkreader-lock">
     <title>tswn_wasm Show Demo</title>
-    <link rel="stylesheet" href="./show.css?v=20261123quilt1">
+    <link rel="stylesheet" href="./show.css?v=20261124stats5">
     <script>
         (() => {
             try {
@@ -58,6 +58,7 @@
                         <div id="runtimeModeInfo" class="version-note small dim">使用 BattleSession 边计算边播放战斗。</div>
                         <div id="themeNotice" class="theme-notice" role="status" hidden></div>
                     </div>
+                    <div id="battleStats" class="battle-stats" hidden></div>
                     <div id="battleRows" class="battleRows">
                         <div class="welcome">
                             <div><strong>原始网页风格的 show 页面</strong></div>
@@ -81,6 +82,10 @@
                     <div class="input-note">仅对 Clever 评分生效；不勾选时双方均使用 Clever。与全员原版评分比较，评分差即提升量。</div>
                     <label class="boss-picker"><input type="checkbox" id="bossChallenge"> 挑战 Boss </label>
                     <select id="bossSelect" class="boss-select" disabled>
+                        <option value="TigerStar">豹星</option>
+                        <option value="咦">咦</option>
+                        <option value="新纪元">新纪元</option>
+                        <option value="smdd">曙光</option>
                         <option value="quilt">被子</option>
                         <option value="Squall">Squall</option>
                         <option value="thanos">灭霸</option>
@@ -213,6 +218,6 @@
     </div>
 
     <script type="module" src="./show-theme-compat.js?v=20261123squall2"></script>
-    <script type="module" src="./show.js?v=20261123squall2"></script>
+    <script type="module" src="./show.js?v=20261124stats6"></script>
 </body>
 </html>

@@ -697,6 +697,7 @@ impl CombatRuntime {
         fire_state_key: Option<u32>,
         updates: &mut RunUpdates,
     ) -> bool {
+        let amount = self.quilt_damage(target, amount);
         if amount < 0 {
             self.apply_plain_absorb_heal_into(caster, target, amount.saturating_neg(), updates);
             return false;
@@ -710,15 +711,7 @@ impl CombatRuntime {
         let was_alive = target_entity.runtime.alive;
         self.record_squall_damage(caster, target, actual_damage);
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
-        // 被子的衍生物只把一半伤害传导给本体；本体那一行排在衍生物受击之后。
-        if actual_damage > 0
-            && let Some(owner) = self.quilt_share_owner(target)
-        {
-            let shared = actual_damage / 2;
-            if shared > 0 && self.apply_legacy_damage_into(caster, owner, shared, updates) {
-                self.drain_plain_lethal_damage_into(caster, owner, updates);
-            }
-        }
+        self.relay_quilt_damage(caster, target, amount, updates);
         // 原版 damage 先调用命中回调（含火球免疫随机数），再由 onDamaged 登记反击。
         if amount > 0
             && let Some(key) = fire_state_key
@@ -742,6 +735,7 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
         replay: fn(usize, usize, i32) -> crate::runtime::update::RunUpdate,
     ) -> bool {
+        let amount = self.quilt_damage(target, amount);
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime damage target entity: {}", target.0);
         };
@@ -754,6 +748,7 @@ impl CombatRuntime {
         let team = target_entity.runtime.team;
         self.record_squall_damage(caster, target, actual_damage);
         updates.add(replay(caster.0 as usize, target.0 as usize, amount));
+        self.relay_quilt_damage(caster, target, amount, updates);
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         if killed {
             self.mark_dead_with_linked_minions_into(target, team, updates);
@@ -769,6 +764,7 @@ impl CombatRuntime {
         amount: i32,
         updates: &mut RunUpdates,
     ) -> bool {
+        let amount = self.quilt_damage(target, amount);
         let target_entity = self
             .entities
             .get_mut(target)
@@ -778,6 +774,7 @@ impl CombatRuntime {
         let was_alive = target_entity.runtime.alive;
         self.record_squall_damage(caster, target, actual_damage);
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        self.relay_quilt_damage(caster, target, amount, updates);
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         was_alive
             && self
@@ -794,6 +791,7 @@ impl CombatRuntime {
         amount: i32,
         updates: &mut RunUpdates,
     ) -> bool {
+        let amount = self.quilt_damage(target, amount);
         if amount < 0 {
             self.apply_plain_absorb_heal_into(caster, target, amount.saturating_neg(), updates);
             return false;
@@ -809,6 +807,7 @@ impl CombatRuntime {
         if amount > 0 {
             self.apply_disperse_hit_into(caster, target, updates);
         }
+        self.relay_quilt_damage(caster, target, amount, updates);
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         was_alive
             && self
@@ -911,6 +910,10 @@ impl CombatRuntime {
         unavoidable: bool,
         updates: Option<&RunUpdates>,
     ) -> bool {
+        // 即使外部脚本直接提交目标，固定回避也先于必中特例。
+        if self.is_quilt(target) {
+            return true;
+        }
         if self.control.passive_decision_mode() {
             if let Some(decision) = self.control.take_evade_decision() {
                 return !decision.unavoidable && decision.activate && decision.success;
@@ -1002,6 +1005,10 @@ impl CombatRuntime {
 
     /// 目标对指定状态是否免疫：Boss 与加成角色按阈值判定。
     pub fn status_immune(&mut self, target: EntityIdx, status: &'static str) -> bool {
+        // 明确指定目标的异常状态也无法命中被子。
+        if self.is_quilt(target) {
+            return true;
+        }
         let Some(target_entity) = self.entities.get(target) else {
             panic!("unknown runtime {status} immune target entity: {}", target.0);
         };
