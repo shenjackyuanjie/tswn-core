@@ -13,8 +13,11 @@
 let wasmApi = null;
 const MODULE_CACHE_BUST = Date.now().toString(36);
 
-/** 曙光豹豹保留既有 Emoji；被子一家使用引擎内置徽章。 */
+/** 固定角色的 Emoji 徽章优先于 WASM 生成的像素图标。 */
 const QUILT_EMOJI = [
+    ["quilt-icon", "🛏️"],
+    ["quilt-monkey", "🐵"],
+    ["quilt-fish", "🐟️"],
     ["smdd-leopard", "🐆"],
 ];
 const quiltEmojiCache = new Map();

@@ -25,7 +25,7 @@ import {
   buildShowShareUrl,
   readStaticReplayInputFromSearch,
 } from "./show-routing.js";
-import { ensureApi, createBattleStreamSource } from "./show-wasm.js?v=20261124quilt2";
+import { ensureApi, createBattleStreamSource } from "./show-wasm.js?v=20261124quilt3";
 
 import { parseScoreTestInput, scoreCheckpointHtml } from "./show-score-test.js";
 import { winRateTableHtml } from "./show-win-rate.js";
