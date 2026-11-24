@@ -1,9 +1,28 @@
 # namerena 但是 rust 版
 
-> 本文由根目录 `README.old.md` 归档，保留项目早期介绍与随笔，记录当时的构建、模块与接口状态。
-> 当前使用入口见 [仓库 README](../../README.md)，更多历史材料见 [归档索引](README.md)。
+- 好了好了好了，这下好了
+- 我现在要宣布 DeepSeek 天下第一了
+- 自从上次记录，在项目里使用过的AI
+  - GPT 5.4
+  - GPT 5.5
+  - GPT 5.6 Sol
+  - GPT 5.6 Terra
+  - GPT 5.6 Luna
+  - GPT 6 Sol
+  - GPT 6 Astra
+  - GPT 6.1 Terra
+  - GPT 6.1 Sol
+  - GPT 6.2 Sol
+  - DeepSeek V4 Flash 0731
+  - DeepSeek V4.1 Flash 0910
+  - DeepSeek V4.1 Flash 1017
+    - 白嫖了不少 qoder cn 的免费
+  - Gemini 4 Argon
+- 20261124
 
-> 坏了, 我真开始技术封锁了
+> ~~坏了, 我真开始技术封锁了~~
+>
+> 开！源！
 
 - 即日起 tswn 源码开启 Early Access 活动! (不是)
   - 要源码给我 github id 就行
