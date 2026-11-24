@@ -56,11 +56,14 @@ impl CombatRuntime {
                     && entity.runtime.is_minion()
             })
             .count();
-        if alive_baixie < 2 && self.rng.next_u8() % 3 == 0 {
+        if alive_baixie < 2 && self.rng.next_u8() % 4 == 0 {
             self.yi_say(actor, "[0]使用[咦拜涂地]", updates);
             self.yi_spawn_baixie(actor, updates);
-        } else {
+        } else if self.rng.next_u8() % 2 == 0 {
             self.yi_sun(actor, updates);
+        } else {
+            // 咦也会使用普通攻击，猴咦射日的永久加攻对普攻同样生效。
+            self.yi_plain_attack(actor, updates);
         }
     }
 
@@ -109,6 +112,16 @@ impl CombatRuntime {
             entity.template.attack = entity.template.attack * 3 / 2;
         }
         updates.add(RunUpdate::new("[0]攻击力永久上升50%", actor.0 as usize, actor.0 as usize, 0));
+    }
+
+    /// 咦的普通攻击：使用当前攻击力（含猴咦射日的永久加成）。
+    fn yi_plain_attack(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+        let Some(target) = self.select_plain_default_attack_target(actor, true) else {
+            return;
+        };
+        self.yi_say(actor, "[0]发起攻击", updates);
+        let atp = self.entities.get(actor).map_or(0.0, |entity| f64::from(entity.runtime.attack));
+        self.drain_plain_attack_with_atp_into(actor, target, false, atp, updates);
     }
 
     /// 咦？：成功闪避后对 1~x-2 名敌人反击。

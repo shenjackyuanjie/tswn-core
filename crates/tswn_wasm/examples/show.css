@@ -1,7 +1,7 @@
 /* 按原始层叠顺序组织主题、角色、正文与面板；保持分发入口不变。 */
 @import url("./show-base.css");
 @import url("./show-players.css");
-@import url("./show-replay.css?v=20261123squall2");
+@import url("./show-replay.css?v=20261124stats2");
 @import url("./show-panels.css");
 
 .version-marker {
