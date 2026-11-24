@@ -264,8 +264,16 @@ const {
 
 /** 刷新战斗属性表：始终展示全部角色，每行一个。 */
 function updateStats(states) {
-  const panel = document.querySelector("#battleStats");
-  if (!panel) return;
+  let panel = document.querySelector("#battleStats");
+  if (!panel) {
+    // 回放开始时容器可能被重建，属性表就动态补在战报前面。
+    const rows = document.querySelector("#battleRows");
+    if (!rows || !rows.parentElement) return;
+    panel = document.createElement("div");
+    panel.id = "battleStats";
+    panel.className = "battle-stats";
+    rows.parentElement.insertBefore(panel, rows);
+  }
   const html = statsPanelHtml(states);
   if (!html) {
     panel.hidden = true;
