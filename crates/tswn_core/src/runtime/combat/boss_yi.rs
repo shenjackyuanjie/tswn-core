@@ -146,7 +146,7 @@ impl CombatRuntime {
         }
     }
 
-    /// 拜谢的行动：随机对 1~2 名未拜谢过的敌人扣 20 MP 并标记；无论是否还有未拜谢目标，每次行动都为咦回复 20 点生命。
+    /// 拜谢的行动：随机对 1~2 名未拜谢过的敌人扣 20 MP 并标记；若场上所有敌方都已被拜谢过，则此次行动为咦回复 20 点生命。
     pub(super) fn drain_baixie_action_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
         if !self.entities.get(actor).is_some_and(|e| e.runtime.active()) {
             return;
@@ -164,7 +164,7 @@ impl CombatRuntime {
             })
             .collect();
         if candidates.is_empty() {
-            // 没有可拜谢的目标时仍会为咦回血。
+            // 全场敌方都已被拜谢过：改为给咦回血。
             self.heal_yi_owner(actor, owner, updates);
             return;
         }
@@ -189,10 +189,9 @@ impl CombatRuntime {
                 0,
             ));
         }
-        self.heal_yi_owner(actor, owner, updates);
     }
 
-    /// 拜谢每次行动固定为咦回复 20 点生命。
+    /// 场上所有敌方都已被拜谢过时，为咦回复 20 点生命。
     fn heal_yi_owner(&mut self, actor: EntityIdx, owner: Option<EntityIdx>, updates: &mut RunUpdates) {
         let Some(owner) = owner else {
             return;

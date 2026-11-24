@@ -46,7 +46,7 @@ fn baixie_drains_mp_and_marks_target() {
 }
 
 #[test]
-fn baixie_always_heals_the_boss_twenty() {
+fn baixie_heals_the_boss_only_after_everyone_is_thanked() {
     let (mut runner, boss) = battle();
     let rt = runner.runtime_mut();
     let mut u = RunUpdates::new();
@@ -54,6 +54,14 @@ fn baixie_always_heals_the_boss_twenty() {
     let baixie = rt.entities.iter().find(|(_, e)| e.template.name == BAIXIE).map(|(idx, _)| idx).unwrap();
     if let Some(entity) = rt.entities.get_mut(boss) {
         entity.runtime.hp = 300;
+    }
+    // 还有未被拜谢的敌人时不回血。
+    rt.drain_baixie_action_into(baixie, &mut u);
+    assert_eq!(rt.entities.get(boss).unwrap().runtime.hp, 300);
+    // 把所有敌人都标记为已拜谢后再行动，才会回 20 点。
+    let enemies = rt.yi_enemies(baixie);
+    if let Some(state) = rt.entities.get_mut(baixie).and_then(|e| e.runtime.baixie.as_mut()) {
+        state.thanked.extend(enemies);
     }
     rt.drain_baixie_action_into(baixie, &mut u);
     assert_eq!(rt.entities.get(boss).unwrap().runtime.hp, 320);
