@@ -45,12 +45,22 @@ impl CombatRuntime {
             self.yi_spawn_baixie(actor, updates);
             return;
         }
-        match self.rng.next_u8() % 3 {
-            2 => self.yi_sun(actor, updates),
-            _ => {
-                self.yi_say(actor, "[0]使用[咦拜涂地]", updates);
-                self.yi_spawn_baixie(actor, updates);
-            }
+        // 场上拜谢最多保留两个；不足两个且掷中时才再召唤，其余回合改为猴咦射日。
+        let alive_baixie = self
+            .entities
+            .iter()
+            .filter(|(_, entity)| {
+                entity.runtime.alive
+                    && entity.template.name == BAIXIE
+                    && entity.runtime.owner == actor
+                    && entity.runtime.is_minion()
+            })
+            .count();
+        if alive_baixie < 2 && self.rng.next_u8() % 3 == 0 {
+            self.yi_say(actor, "[0]使用[咦拜涂地]", updates);
+            self.yi_spawn_baixie(actor, updates);
+        } else {
+            self.yi_sun(actor, updates);
         }
     }
 
