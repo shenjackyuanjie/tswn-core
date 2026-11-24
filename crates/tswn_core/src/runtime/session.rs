@@ -305,6 +305,18 @@ fn step_suffix(step: i32) -> String { if step > 0 { format!(" ({step})") } else 
 /// 汇总实体当前的状态标签：聚气、蓄力、隐匿、潜行、各类状态效果与垂死。
 fn status_labels(entity: &EntityRecord) -> Vec<String> {
     let mut labels = Vec::new();
+    // 显示独立状态，便于区分得意与传统疾走、逮捕与中毒。
+    if let Some(s) = &entity.runtime.quilt_minion {
+        if s.sleeping {
+            push_status_label(&mut labels, "钻进被子");
+        }
+        if !s.pride.is_empty() {
+            push_status_label(&mut labels, format!("得意 ×{}", s.pride.len()));
+        }
+    }
+    if !entity.runtime.quilt_arrests.is_empty() {
+        push_status_label(&mut labels, "逮捕");
+    }
     if let Some(s) = &entity.runtime.squall {
         push_status_label(&mut labels, format!("测试样本 {}", s.samples));
         if s.iron_until > s.turn {

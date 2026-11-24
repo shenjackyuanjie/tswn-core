@@ -211,6 +211,10 @@ pub fn render_icon_vec_from_name(name: &str) -> Vec<u8> {
             _ => None,
         })
         .unwrap_or(name);
+    // 被子一家使用内置像素徽章，网页与 PNG 接口共享图案，不依赖 Emoji 字体。
+    if let Some(pixels) = quilt_icon(name) {
+        return pixels;
+    }
     boss_icon(mapped).map_or_else(|| render_icon_vec(&icon_from_name(parse_sglname(mapped))), <[_]>::to_vec)
 }
 
@@ -237,3 +241,42 @@ fn base64_encode(data: &[u8]) -> String {
 /// 渲染结果的位图比对测试。
 #[cfg(all(test, feature = "png_render"))]
 mod test;
+
+/// 根据独立角色键生成 16×16 徽章。
+fn quilt_icon(name: &str) -> Option<Vec<u8>> {
+    let color = match name.split('@').next()? {
+        "quilt" if name == "quilt@!" || name == "quilt-icon" => [124, 91, 185],
+        "quilt-monkey" => [140, 76, 38],
+        "quilt-fish" => [30, 130, 172],
+        _ => return None,
+    };
+    let mut rgba = Vec::with_capacity(1024);
+    for y in 0_i32..16 {
+        for x in 0_i32..16 {
+            let pixel = match name.split('@').next().unwrap() {
+                "quilt-monkey" if (x == 6 || x == 10) && y == 7 => [41, 24, 18, 255],
+                "quilt-monkey" if (x - 8).abs() <= 4 && (y - 9).abs() <= 3 => [242, 185, 118, 255],
+                "quilt-monkey"
+                    if (x - 8).pow(2) + (y - 7).pow(2) < 35
+                        || ((x - 2).abs() <= 1 || (x - 13).abs() <= 1) && (y - 8).abs() <= 2 =>
+                {
+                    [color[0], color[1], color[2], 255]
+                }
+                "quilt-fish" if x == 5 && y == 7 => [18, 42, 61, 255],
+                "quilt-fish" if (x - 7).pow(2) + 2 * (y - 8).pow(2) < 23 || x >= 10 && (y - 8).abs() <= x - 10 => {
+                    [color[0], color[1], color[2], 255]
+                }
+                "quilt" | "quilt-icon" if (2..14).contains(&x) && (3..13).contains(&y) => {
+                    if (x + y) % 4 == 0 {
+                        [196, 174, 236, 255]
+                    } else {
+                        [color[0], color[1], color[2], 255]
+                    }
+                }
+                _ => [0, 0, 0, 0],
+            };
+            rgba.extend(pixel);
+        }
+    }
+    Some(rgba)
+}

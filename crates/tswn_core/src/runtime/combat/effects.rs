@@ -103,13 +103,11 @@ impl CombatRuntime {
                     }
                     for share_target in share_targets {
                         self.ensure_effect_entity("damage", "share target", share_target);
-                        // 被子的衍生物只把一半伤害传导给本体。
-                        let shared = if self.entities.get(share_target).is_some_and(|e| e.template.name == "quilt") {
-                            amount / 2
-                        } else {
-                            amount
-                        };
-                        if self.apply_damage_into(caster, share_target, shared, updates) {
+                        // 被子的传导已由伤害入口结算。
+                        if self.is_quilt(share_target) {
+                            continue;
+                        }
+                        if self.apply_damage_into(caster, share_target, amount, updates) {
                             self.drain_lethal_damage_hooks_into(caster, share_target, updates);
                         }
                     }

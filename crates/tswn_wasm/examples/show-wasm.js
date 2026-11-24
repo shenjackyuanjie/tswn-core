@@ -13,11 +13,8 @@
 let wasmApi = null;
 const MODULE_CACHE_BUST = Date.now().toString(36);
 
-/** 被子衍生物与本体使用 emoji 图标，不再走默认的名字生成图标。 */
+/** 曙光豹豹保留既有 Emoji；被子一家使用引擎内置徽章。 */
 const QUILT_EMOJI = [
-    ["quilt-monkey", "🐒"],
-    ["quilt-fish", "🐟"],
-    ["quilt", "🛏️"],
     ["smdd-leopard", "🐆"],
 ];
 const quiltEmojiCache = new Map();

@@ -10,6 +10,11 @@ impl CombatRuntime {
             1,
         ));
 
+        // 被子固定回避，优先于蓄力必中，且不扣体力或行动点。
+        if self.is_quilt(target) || self.quilt_minion_sleeping(target) {
+            updates.add(RunUpdate::new("[0][回避]了攻击", target.0 as usize, actor.0 as usize, 20));
+            return;
+        }
         let (owner_wisdom, owner_magic, charge_active) = {
             let owner = self
                 .entities
@@ -65,10 +70,16 @@ impl CombatRuntime {
         }
         percent = percent.min(99);
         let new_hp = ((target_hp as f64) * (100 - percent) as f64 / 100.0).ceil() as i32;
-        let damage = (target_hp - new_hp).max(0);
+        // 瘟疫绕过普通受击链，仍需尊重钻被和飞翔。
+        let damage = self.quilt_damage(target, (target_hp - new_hp).max(0));
+        let new_hp = target_hp - damage;
         let mut update =
             crate::runtime::update::RunUpdate::new("[1]体力减少[2]%", actor.0 as usize, target.0 as usize, damage as u32);
-        update.param = Some(percent.max(0) as u32);
+        update.param = Some(if damage == 0 && self.quilt_minion_sleeping(target) {
+            0
+        } else {
+            percent.max(0) as u32
+        });
         updates.add(update);
         if damage <= 0 {
             return;
@@ -79,6 +90,7 @@ impl CombatRuntime {
             .unwrap_or_else(|| panic!("runtime half target disappeared: {}", target.0))
             .runtime
             .hp = new_hp;
+        self.relay_quilt_damage(actor, target, damage, updates);
         self.drain_plain_post_damage_skill_chain_into(target, damage, actor, updates);
         // 瘟疫本身按百分比保底留下 1 HP，但 on_damaged 中的使魔分摊可能击倒 owner，
         // 并把当前活动使魔标记为 0 HP，等待外层伤害调用方完成致死链。
@@ -159,7 +171,7 @@ impl CombatRuntime {
             .get_mut(actor)
             .unwrap_or_else(|| panic!("unknown runtime charge owner: {}", actor.0));
         owner.activate_charge_runtime();
-        owner.runtime.magic_point = (owner.runtime.magic_point + 32).min(100);
+        owner.runtime.magic_point = (owner.runtime.magic_point + 32).min(MAGIC_POINT_CAP);
         updates.add(crate::runtime::update::RunUpdate::new(
             "[0]开始[蓄力]",
             actor.0 as usize,
@@ -453,7 +465,8 @@ impl CombatRuntime {
             .map(|entity| entity.runtime.hp)
             .unwrap_or_else(|| panic!("unknown runtime exchange actor: {}", actor.0));
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return PreparedTargetList::new();
         }
@@ -561,6 +574,11 @@ impl CombatRuntime {
             1,
         ));
 
+        // 被子固定回避，优先于蓄力必中，且不扣体力或行动点。
+        if self.is_quilt(target) || self.quilt_minion_sleeping(target) {
+            updates.add(RunUpdate::new("[0][回避]了攻击", target.0 as usize, actor.0 as usize, 20));
+            return;
+        }
         let (owner_magic, charge_active, owner_hp, owner_max_hp) = self
             .entities
             .get(actor)
@@ -656,6 +674,7 @@ impl CombatRuntime {
             ((target_hp - owner_hp) * 2).max(0) as u32,
         ));
         if target_hp > owner_hp {
+            self.relay_quilt_damage(actor, target, target_hp - owner_hp, updates);
             self.drain_plain_post_damage_skill_chain_into(target, target_hp - owner_hp, actor, updates);
             // 生命之轮直接改写 HP 后仍会调用 legacy on_damaged；若伤害分摊等
             // post_damage 回调把目标压到 0 HP，必须在当前技能内完成死亡与 KILL 链。

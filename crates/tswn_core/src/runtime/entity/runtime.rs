@@ -191,6 +191,9 @@ pub struct PlayerRuntime {
     /// 被子衍生物的行动计数与睡眠、钻被、得意等临时标记。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quilt_minion: Option<Box<QuiltMinionState>>,
+    /// 独立的逮捕效果保存来源、每跳伤害和剩余跳数。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub quilt_arrests: Vec<(EntityIdx, i32, u8)>,
     pub corpse: RuntimeCorpseKind,
 }
 
@@ -262,6 +265,7 @@ impl PlayerRuntime {
             squall_taunt: None,
             smdd: (flags.contains(PlayerKindFlags::BOSS) && template.name == "smdd").then(|| Box::new(SmddRuntime::default())),
             quilt_minion: None,
+            quilt_arrests: Vec::new(),
             corpse: RuntimeCorpseKind::None,
         }
     }
@@ -314,6 +318,8 @@ impl PlayerRuntime {
         self.rinick_reraise_lives = None;
         self.conan_thinking = None;
         self.slime_split_generation = None;
+        self.quilt_minion = None;
+        self.quilt_arrests.clear();
         self.squall = None;
         self.squall_helper = None;
         self.squall_taunt = None;
@@ -362,6 +368,8 @@ impl PlayerRuntime {
         self.rinick_reraise_lives = prepared.rinick_reraise_lives;
         self.conan_thinking = prepared.conan_thinking;
         self.slime_split_generation = prepared.slime_split_generation;
+        self.quilt_minion.clone_from(&prepared.quilt_minion);
+        self.quilt_arrests.clone_from(&prepared.quilt_arrests);
         self.squall.clone_from(&prepared.squall);
         self.squall_helper = prepared.squall_helper;
         self.squall_taunt = prepared.squall_taunt;
@@ -407,7 +415,9 @@ impl PlayerRuntime {
             atk,
         ) as f64;
         let b = median_i32_3(randomer.r63() as i32 + 64, randomer.r63() as i32 + 64, atk + 64) as f64;
-        let at = a * b * self.at_boost();
+        // 得意层各贡献 15% 攻击威力，独立于聚气。
+        let pride = self.quilt_minion.as_ref().map_or(0, |s| s.pride.len());
+        let at = a * b * self.at_boost() * (1.0 + 0.15 * pride as f64);
         // 能力卡在攻击力之后独立乘算，不额外消耗随机流。
         #[cfg(feature = "cards")]
         let at = at * crate::runtime::forced_action::attack_multiplier(self.root_owner.0);
@@ -538,6 +548,10 @@ impl EntityRecord {
     /// 含状态修正与垂死增益的有效速度。
     pub fn effective_speed(&self) -> i32 {
         let mut speed = self.states.effective_speed(self.template.speed);
+        // 得意的速度增益叠加，但不会创建疾走状态。
+        if let Some(s) = &self.runtime.quilt_minion {
+            speed += self.template.speed * s.pride.len() as i32 / 10;
+        }
         if self.runtime.upgrade_active {
             // 增益量独立乘算，保留原始技能等级。
             #[cfg(feature = "cards")]
@@ -757,6 +771,12 @@ impl EntityRecord {
     pub fn clear_positive_messages(&mut self) -> Vec<(i32, &'static str)> {
         let mut messages = self.clear_positive_runtime_messages();
         messages.extend(self.clear_positive_state_messages());
+        if let Some(s) = &mut self.runtime.quilt_minion {
+            if !s.pride.is_empty() {
+                s.pride.clear();
+                messages.push((0, "[1]从[得意]中解除"));
+            }
+        }
         messages.sort_unstable_by_key(|(priority, _)| *priority);
         messages
     }

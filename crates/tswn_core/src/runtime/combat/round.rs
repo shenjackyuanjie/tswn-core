@@ -103,6 +103,7 @@ impl CombatRuntime {
                 "[1]从[冰冻]中解除",
                 0,
             ));
+            self.quilt_thaw(target, &mut updates);
         }
         let Some(mut action) = selected_action else {
             return Some(self.finish_round_with_capture::<CAPTURE_UPDATES, _>(None, updates, build));
@@ -336,6 +337,7 @@ impl CombatRuntime {
                 updates.add_newline();
             }
             self.drain_post_action_chain_into(action.actor, &mut updates);
+            self.quilt_post_action(action.actor, &mut updates);
             if !legacy_plain_action || !self.plain_battle_has_ended() {
                 self.drain_plain_update_end_into(&mut updates);
             }
@@ -544,6 +546,23 @@ impl CombatRuntime {
         pre_action: PlainSkillPreActionOutcome,
     ) -> Option<PreparedPlainAction> {
         crate::runtime::forced_action::hit();
+        // 衍生物即使暂无可攻击目标，也可以睡觉、钻被或使用自身技能。
+        if self.quilt_minion_kind(actor).is_some() {
+            let target = self.select_plain_default_attack_target(actor, smart).unwrap_or(actor);
+            return Some(PreparedPlainAction::BasicAttack {
+                target,
+                use_magic: false,
+                amount: 0,
+            });
+        }
+        // 被子的行动完全由专属脚本决定：不扫描普攻，也不消耗概率随机数。
+        if self.is_quilt(actor) {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Quilt,
+                targets: PreparedTargetList::new(),
+            }));
+        }
+
         // 外部脚本：引擎自身没有强制动作时，优先执行调用方排好的这一手。
         // 潜行→背刺这类引擎强制动作必须先走完，指令留到该单位的下一次行动。
         let engine_forced = pre_action.forced_skill.is_some();
@@ -607,17 +626,6 @@ impl CombatRuntime {
         {
             return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
                 selected: crate::namerena::BossActionSkill::Smdd,
-                targets: PreparedTargetList::new(),
-            }));
-        }
-        // 被子的行动完全由专属脚本决定：不扫描普攻，也不消耗概率随机数。
-        if self
-            .entities
-            .get(actor)
-            .is_some_and(|e| e.template.name == crate::runtime::combat::boss_quilt::ID)
-        {
-            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
-                selected: crate::namerena::BossActionSkill::Quilt,
                 targets: PreparedTargetList::new(),
             }));
         }
@@ -1236,8 +1244,8 @@ impl CombatRuntime {
         let field = ((code & 0xF) as usize).saturating_sub(1);
         let Some(entity) = self.entities.get_mut(actor) else { return };
         if field == 9 {
-            // 9 = 能量药水：回复 40 点 MP（上限 100）
-            entity.runtime.magic_point = (entity.runtime.magic_point + 40).min(100);
+            // 9 = 能量药水：回复 40 点 MP（与其他返蓝共用上限）
+            entity.runtime.magic_point = (entity.runtime.magic_point + 40).min(MAGIC_POINT_CAP);
             return;
         }
         if field >= 8 {
@@ -1292,7 +1300,8 @@ impl CombatRuntime {
     }
 
     pub fn select_plain_berserk_forced_attack_target(&mut self, smart: bool) -> Option<EntityIdx> {
-        let all_alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return None;
         }

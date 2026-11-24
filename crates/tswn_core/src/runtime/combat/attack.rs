@@ -19,7 +19,8 @@ impl CombatRuntime {
     pub fn select_plain_default_attack_target(&mut self, actor: EntityIdx, smart: bool) -> Option<EntityIdx> {
         self.entities.get(actor)?;
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return None;
         }
@@ -204,7 +205,8 @@ impl CombatRuntime {
         score: impl Fn(&mut Self, EntityIdx, bool) -> f64,
     ) -> PreparedTargetList {
         let team = self.plain_effective_team(actor);
-        let alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let alive = target_pool.as_ref();
         let skips = alive
             .iter()
             .enumerate()
@@ -883,7 +885,7 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
     ) -> bool {
         // 被子衍生物在睡5觉/钻被/猴儿冰冻期间固定 0 伤。
-        let amount = if self.quilt_minion_sleeping(target) { 0 } else { amount };
+        let amount = self.quilt_damage(target, amount);
         // 0.5.5 `aF`：负数伤害表示 Boss 防御吸收，只回血并输出恢复消息，
         // 不触发 covid/lazy 扩散、命中回调或 POST_DAMAGE 链。
         if amount < 0 {
@@ -903,15 +905,7 @@ impl CombatRuntime {
             self.record_smdd_hit(target);
         }
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
-        // 被子的衍生物只把一半伤害传导给本体；本体那一行排在衍生物受击之后。
-        if actual_damage > 0
-            && let Some(owner) = self.quilt_share_owner(target)
-        {
-            let shared = actual_damage / 2;
-            if shared > 0 && self.apply_legacy_damage_into(caster, owner, shared, updates) {
-                self.drain_plain_lethal_damage_into(caster, owner, updates);
-            }
-        }
+        self.relay_quilt_damage(caster, target, actual_damage, updates);
         if amount == 0 {
             return false;
         }
