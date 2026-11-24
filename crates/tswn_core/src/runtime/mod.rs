@@ -56,6 +56,7 @@ mod runner;
 pub mod scheduler;
 pub mod scratch;
 pub mod search;
+pub mod nn_eval;
 mod session;
 pub mod slot;
 #[cfg(not(feature = "no_debug"))]

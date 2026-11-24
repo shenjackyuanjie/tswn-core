@@ -120,24 +120,7 @@ impl ScoreTestSession {
         if self.completed == SCORE_TEST_TOTAL {
             return Ok(());
         }
-        self.groups.set_round(self.completed);
-        if let Err(error) = self.prepared.reset_score_groups_with_seed_and_eval_rq(
-            &mut self.runner,
-            &self.groups.groups,
-            &self.groups.profile_player_ids,
-            &self.groups.modifier,
-            &self.groups.profile_team_rng,
-            &mut self.groups.skill_buffers,
-            &mut self.groups.identity_buffers,
-            &mut self.groups.round_scratch,
-            &mut self.groups.roster_buffers,
-            &[],
-            crate::namerena::eval_name::WIN_RATE_EVAL_RQ,
-        ) {
-            let error = format!("{error:?}");
-            self.failure = Some(error.clone());
-            return Err(CliApiError::Runtime(error));
-        }
+        self.advance_round_setup()?;
         for _ in 0..BATCH_MAX_ROUNDS {
             if self.runner.have_winner() {
                 break;
@@ -168,6 +151,65 @@ impl ScoreTestSession {
         self.wins += usize::from(self.runner.input_group_won(0));
         self.completed += 1;
         Ok(())
+    }
+
+    /// 失败检查之后的场次推进：推进轮次游标并重置 profile 阵容；`step` 与 `step_observed` 共用。
+    fn advance_round_setup(&mut self) -> CliApiResult<()> {
+        self.groups.set_round(self.completed);
+        if let Err(error) = self.prepared.reset_score_groups_with_seed_and_eval_rq(
+            &mut self.runner,
+            &self.groups.groups,
+            &self.groups.profile_player_ids,
+            &self.groups.modifier,
+            &self.groups.profile_team_rng,
+            &mut self.groups.skill_buffers,
+            &mut self.groups.identity_buffers,
+            &mut self.groups.round_scratch,
+            &mut self.groups.roster_buffers,
+            &[],
+            crate::namerena::eval_name::WIN_RATE_EVAL_RQ,
+        ) {
+            let error = format!("{error:?}");
+            self.failure = Some(error.clone());
+            return Err(CliApiError::Runtime(error));
+        }
+        Ok(())
+    }
+
+    /// 带逐轮观测回调的单场：每轮调度前回调当前战场（回调时必无胜者），
+    /// 返回 (是否超轮数截断, 胜者队伍)。用于自对弈状态采集等离线用途。
+    pub fn step_observed<F: FnMut(&crate::runtime::CombatRuntime)>(
+        &mut self,
+        mut observe: F,
+    ) -> CliApiResult<(bool, Option<usize>)> {
+        if let Some(error) = &self.failure {
+            return Err(CliApiError::Runtime(error.clone()));
+        }
+        if self.completed == SCORE_TEST_TOTAL {
+            return Ok((false, None));
+        }
+        self.advance_round_setup()?;
+        for _ in 0..BATCH_MAX_ROUNDS {
+            if self.runner.have_winner() {
+                break;
+            }
+            observe(self.runner.runtime());
+            if let Some(mut config) = self.search {
+                // 勾选验证时仅接管固定目标前缀所在队伍；默认接管双方。
+                config.team = self
+                    .legacy_opponents
+                    .then(|| self.runner.runtime().entities.get(crate::runtime::EntityIdx(0)).unwrap().runtime.team);
+                let _ = self.runner.runtime_mut().run_search_round(config);
+            } else {
+                let _ = self.runner.runtime_mut().run_minimal_round();
+            }
+        }
+        let winner = self.runner.runtime().world.winner_team();
+        let truncated = winner.is_none();
+        self.truncated += usize::from(truncated);
+        self.wins += usize::from(self.runner.input_group_won(0));
+        self.completed += 1;
+        Ok((truncated, winner))
     }
 }
 

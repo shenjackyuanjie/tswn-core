@@ -1,5 +1,37 @@
 //! CPU 搜索的预算与一次决策结果；不改变默认自动战斗规则。
+use super::nn_eval::ValueStage;
 use super::*;
+
+use std::sync::Once;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// 可训练启发式权重表（训练用）：env TSWN_EVAL_W=逗号分隔覆盖，未设置/0 用代码默认。
+/// 索引顺序：0尸体底 1尸体率 2耐久率 3蓄能对数 4火威胁 5火上限 6冰冻底 7冰冻斜率
+/// 8诅咒率 9诅咒上限 10毒衰减 11毒率 12疾走支援 13疾走行动 14狂暴倍率 15狂暴斜率
+/// 16减速斜率 17减速平伤 18铁壁率 19蓄力残值 20背刺率 21背刺置信 22反击底 23反击率
+/// 24隐匿支援 25守护链 26护盾率 27速度率 28行动点率 29价值底 30血量权重 31HP率
+/// 32输出权重 33MP率 34魅惑底 35魅惑步率
+static EVAL_W: [AtomicU64; 36] = [const { AtomicU64::new(0) }; 36];
+static EVAL_W_INIT: Once = Once::new();
+
+fn env_eval_w(idx: usize, default: f64) -> f64 {
+    EVAL_W_INIT.call_once(|| {
+        if let Ok(s) = std::env::var("TSWN_EVAL_W") {
+            for (i, tok) in s.split(',').enumerate() {
+                if i >= EVAL_W.len() {
+                    break;
+                }
+                if let Ok(v) = tok.trim().parse::<f64>() {
+                    if v.is_finite() {
+                        EVAL_W[i].store(v.to_bits(), Ordering::Relaxed);
+                    }
+                }
+            }
+        }
+    });
+    let bits = EVAL_W[idx].load(Ordering::Relaxed);
+    if bits == 0 { default } else { f64::from_bits(bits) }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct SearchConfig {
@@ -187,7 +219,7 @@ mod tests {
         let mut rng = field.rng.clone();
         let team = turn.team.unwrap();
         for index in 0..turn.candidates.len() {
-            let (value, _) = field.evaluate_search_candidate(index, team, 91, 24, true, None);
+            let (value, _) = field.evaluate_search_candidate(index, team, 91, 24, true, true, None, true);
             assert!(value.is_finite() && (-1.0..=1.0).contains(&value));
         }
         assert_eq!(format!("{field:?}"), before);
@@ -229,7 +261,7 @@ mod tests {
         // 等待真正的出手机会；不把调度空轮当成策略已作决定。
         let mut winner = None;
         for _ in 0..200 {
-            winner = field.run_tactical_rollout_round(7, None).0.winner_team;
+            winner = field.run_tactical_rollout_round(7, None, true).0.winner_team;
             assert!(field.scratch.search_turn.is_none());
             if winner.is_some() {
                 break;
@@ -294,8 +326,8 @@ mod tests {
         ));
         field.entities.get_mut(EntityIdx(1)).unwrap().runtime.hp = 500;
         assert_eq!(field.search_turn_preview().actor, Some(EntityIdx(0)));
-        let (_, legacy_winner) = field.evaluate_search_candidate(0, 0, 91, 128, false, Some(0));
-        let (_, tactical_winner) = field.evaluate_search_candidate(0, 0, 91, 128, true, Some(0));
+        let (_, legacy_winner) = field.evaluate_search_candidate(0, 0, 91, 128, false, true, Some(0), true);
+        let (_, tactical_winner) = field.evaluate_search_candidate(0, 0, 91, 128, true, true, Some(0), true);
         assert_eq!(legacy_winner, None);
         assert_eq!(tactical_winner, Some(0));
     }
@@ -320,7 +352,7 @@ mod tests {
             ],
             config.registry,
         ));
-        let (_, used) = field.run_tactical_rollout_round(7, Some(0));
+        let (_, used) = field.run_tactical_rollout_round(7, Some(0), true);
         assert!(used);
         assert!(field.entities.get(EntityIdx(0)).unwrap().runtime.assassinate.is_some());
         for _ in 0..32 {
@@ -336,7 +368,7 @@ mod tests {
         // 相同 RNG 下对手的实体结果和随机流均应与原版完全一致。
         let mut field = tactical_field();
         let mut legacy = field.clone();
-        field.run_tactical_rollout_round(123, Some(1));
+        field.run_tactical_rollout_round(123, Some(1), true);
         legacy.run_minimal_round_no_capture();
         assert_eq!(format!("{field:?}"), format!("{legacy:?}"));
         for _ in 0..64 {
@@ -931,7 +963,23 @@ impl CombatRuntime {
     }
 
     /// 有界机制评价，不读取名字、随机状态或未来结果，也不解释为校准胜率。
+    /// `TSWN_EVAL_NN=1` 且已装载网络权重时走神经网络估值，否则保持启发式。
     pub fn search_position_value(&self, team: usize) -> f64 {
+        if crate::runtime::nn_eval::nn_enabled()
+            && let Some(value) = crate::runtime::nn_eval::nn_value(&self.nn_features(team))
+        {
+            return value;
+        }
+        self.search_position_value_raw(team, None)
+    }
+
+    /// 启发式估值主体；`table` 为 Some 时使用固定权重表（神经网络特征提取的确定性输入），
+    /// None 时使用环境覆盖权重。局部闭包 `eval_w` 遮蔽模块级 `env_eval_w` 以统一两条路径。
+    pub(crate) fn search_position_value_raw(&self, team: usize, table: Option<&[f64; 36]>) -> f64 {
+        let eval_w = |idx: usize, default: f64| match table {
+            Some(table) => table[idx],
+            None => env_eval_w(idx, default),
+        };
         // 每次局面只收集一次施压能力；灼烧必须有后续火球/地裂，诅咒必须承受伤害才有残值。
         let threats: Vec<_> = self
             .entities
@@ -971,7 +1019,7 @@ impl CombatRuntime {
             if !r.alive {
                 // 只有尚可被己方苏生术恢复的常规尸体才保留少量潜力，不能把全灭当作存活。
                 if !r.is_combat_minion() && r.corpse == RuntimeCorpseKind::None && can_revive.contains(&r.team) {
-                    let reserve = 12.0 + f64::from(r.attack.max(r.magic).clamp(0, 512)) * 0.04;
+                    let reserve = eval_w(0, 12.0) + f64::from(r.attack.max(r.magic).clamp(0, 512)) * eval_w(1, 0.04);
                     if r.team == team {
                         ally += reserve;
                     } else {
@@ -984,7 +1032,7 @@ impl CombatRuntime {
             let hp = f64::from(r.hp.max(0));
             let health = (hp / max_hp).clamp(0.0, 1.0);
             let power = f64::from(r.attack.max(r.magic).clamp(0, 4096));
-            let durability = (f64::from(r.defense.max(0)) + f64::from(r.resistance.max(0))).min(2048.0) * 0.06;
+            let durability = (f64::from(r.defense.max(0)) + f64::from(r.resistance.max(0))).min(2048.0) * eval_w(2, 0.153116288);
             let mut readiness = 1.0;
             let mut damage = 0.0;
             let mut support = 0.0;
@@ -996,7 +1044,7 @@ impl CombatRuntime {
             };
             // 攻击倍率已经参与真实动作结算；horizon 残值只保留有界影响，避免蓄积覆盖全部局面信息。
             // 对数压缩仍能区分蓄力、聚气及二者叠加，避免两倍后全部饱和成同一个价值。
-            let boost_value = 1.0 + attack_boost.max(0.25).log2() * 0.15;
+            let boost_value = 1.0 + attack_boost.max(0.25).log2() * eval_w(3, 0.0993943736);
             let mut action_power = power * boost_value;
             let mut state_shield = 0.0;
             let mut charm_steps = 0;
@@ -1011,12 +1059,12 @@ impl CombatRuntime {
                 match entry.payload {
                     StatePayload::FireMagHalfSteps(half_steps) if half_steps > 0 => {
                         // 实际机制是后续火系/震系增伤，不是降低自身魔法输出。
-                        damage += (fire_threat * f64::from(half_steps.clamp(0, 8)) * 0.04).min(hp * 0.25);
+                        damage += (fire_threat * f64::from(half_steps.clamp(0, 8)) * eval_w(4, 0.04)).min(hp * eval_w(5, 0.587449632));
                     }
                     StatePayload::Ice { frozen_step } => {
                         // frozen_step 是冻结行动进度，不是剩余回合数；归零后仍需到达解除动作点。
                         let lost_actions = (f64::from(frozen_step.max(0)) / f64::from(MOVE_POINT_THRESHOLD)).min(2.0);
-                        readiness *= 0.75 - 0.25 * lost_actions;
+                        readiness *= eval_w(6, 0.75) - eval_w(7, 0.25) * lost_actions;
                     }
                     StatePayload::ShieldValue(value) if value > 0 => {
                         state_shield += f64::from(value).min(max_hp);
@@ -1024,7 +1072,8 @@ impl CombatRuntime {
                     StatePayload::Curse { prob, multiply } if prob > 0 => {
                         // 正式判定使用六位随机数；诅咒不妨碍自身行动，只放大受击伤害。
                         let chance = f64::from(prob.clamp(0, 64)) / 64.0;
-                        damage += (incoming * chance * f64::from(multiply.saturating_sub(1).clamp(0, 8)) * 0.08).min(hp * 0.5);
+                        damage += (incoming * chance * f64::from(multiply.saturating_sub(1).clamp(0, 8)) * eval_w(8, 0.124457993))
+                            .min(hp * eval_w(9, 0.5));
                     }
                     StatePayload::Poison { atp_bits, count, .. } if count > 0 => {
                         let atp = f64::from_bits(atp_bits);
@@ -1038,31 +1087,31 @@ impl CombatRuntime {
                                 let tick = remaining * (1.0 + (left - 1.0) * 0.10000000149011612) / left;
                                 expected += (tick / (f64::from(r.magic) + 64.0).max(1.0)).ceil() * weight;
                                 remaining = (remaining - tick).max(0.0);
-                                weight *= 0.75;
+                                weight *= eval_w(10, 0.334896921);
                             }
-                            damage += expected.min(hp) * 0.16;
+                            damage += expected.min(hp) * eval_w(11, 0.4132613);
                         }
                     }
                     StatePayload::Haste { step, .. } if step > 0 => {
                         let remaining = duration(step);
-                        support += power * 0.02 * remaining;
-                        readiness *= 1.0 + 0.08 * remaining;
+                        support += power * eval_w(12, 0.02) * remaining;
+                        readiness *= 1.0 + eval_w(13, 0.08) * remaining;
                     }
                     StatePayload::Berserk { step } if step > 0 => {
                         let remaining = duration(step);
-                        let berserk_power = f64::from(r.attack.clamp(0, 4096)) * boost_value * 1.2;
+                        let berserk_power = f64::from(r.attack.clamp(0, 4096)) * boost_value * eval_w(14, 1.2);
                         // 狂暴是 1.2 倍物理、随机目标且失去技能选择，不能按通用增益处理。
                         action_power = action_power * (1.0 - remaining) + berserk_power * remaining;
-                        readiness *= 1.0 - 0.25 * remaining;
+                        readiness *= 1.0 - eval_w(15, 0.25) * remaining;
                     }
                     StatePayload::Charm { step, .. } => charm_steps = charm_steps.max(step),
                     StatePayload::Slow { step } if step > 0 => {
                         let remaining = duration(step);
-                        readiness *= 1.0 - 0.12 * remaining;
-                        damage += 4.0 * remaining;
+                        readiness *= 1.0 - eval_w(16, 0.12) * remaining;
+                        damage += eval_w(17, 4.0) * remaining;
                     }
                     StatePayload::Iron { protect, step } if step > 0 => {
-                        support += f64::from(protect.clamp(0, 256)) * 0.12 * (0.5 + 0.5 * duration(step));
+                        support += f64::from(protect.clamp(0, 256)) * eval_w(18, 0.105811553) * (0.5 + 0.5 * duration(step));
                     }
                     // Boss 不进入 Clever 搜索，也不为其专属状态建立启发式估值。
                     StatePayload::CovidBoss { .. }
@@ -1085,7 +1134,7 @@ impl CombatRuntime {
             }
             if r.charge.active && !r.charge.permanent {
                 // 速度点及蓄积联动已分别进入 mobility/at_boost，这里只保留其他技能的蓄力联动残值。
-                support += power * 0.06;
+                support += power * eval_w(19, 0.06);
             }
             if let Some(pending) = r.assassinate.as_ref() {
                 if let Some(target) = self.entities.get(pending.target).filter(|target| target.runtime.alive) {
@@ -1093,8 +1142,8 @@ impl CombatRuntime {
                     // 背刺是四倍魔法攻击，不是按目标 HP 必杀；脆弱潜行保留被打断的折扣。
                     let nominal = (f64::from(r.magic.clamp(0, 127)) + 32.0) * 96.0 * attack_boost * 4.0;
                     let expected_strike = nominal / (f64::from(target.runtime.resistance) + 64.0).max(1.0);
-                    let confidence = if pending.break_on_damage { 0.5 } else { 1.0 };
-                    support += expected_strike.min(target_hp).min(4096.0) * 0.08 * confidence;
+                    let confidence = if pending.break_on_damage { eval_w(21, 0.5) } else { 1.0 };
+                    support += expected_strike.min(target_hp).min(4096.0) * eval_w(20, 0.08) * confidence;
                 }
             }
             if r.counter.pending
@@ -1103,11 +1152,11 @@ impl CombatRuntime {
                     .is_some_and(|target| self.entities.get(target).is_some_and(|target| target.runtime.active()))
             {
                 // 普通反击走物攻；无有效待反击目标时不保留虚假的攻击收益。
-                support += 8.0 + f64::from(r.attack.clamp(0, 4096)) * boost_value * 0.04;
+                support += eval_w(22, 8.0) + f64::from(r.attack.clamp(0, 4096)) * boost_value * eval_w(23, 0.04);
             }
             // +武器只由正式续局结算，不添加专属残值或决策偏好。
             if r.hide.is_some() {
-                support += 12.0;
+                support += eval_w(24, 12.0);
             }
             support += r
                 .protect_from
@@ -1119,16 +1168,16 @@ impl CombatRuntime {
                 })
                 .count()
                 .min(3) as f64
-                * 6.0;
-            let shield = (f64::from(r.shield.max(0)) + state_shield).min(max_hp) * 0.18;
-            let mobility = f64::from(entity.effective_speed().clamp(0, 1024)) * 0.08
-                + f64::from(r.move_state.speed_points.clamp(0, MOVE_POINT_THRESHOLD)) * 0.01;
-            let value = (35.0
-                + 90.0 * health
-                + hp.min(4096.0) * 0.16
-                + action_power * health.sqrt() * readiness * 0.55
+                * eval_w(25, 6.0);
+            let shield = (f64::from(r.shield.max(0)) + state_shield).min(max_hp) * eval_w(26, 0.0884436616);
+            let mobility = f64::from(entity.effective_speed().clamp(0, 1024)) * eval_w(27, 0.08)
+                + f64::from(r.move_state.speed_points.clamp(0, MOVE_POINT_THRESHOLD)) * eval_w(28, 0.01);
+            let value = (eval_w(29, 60.3681443)
+                + eval_w(30, 128.278657) * health
+                + hp.min(4096.0) * eval_w(31, 0.4466431)
+                + action_power * health.sqrt() * readiness * eval_w(32, 1.3862735)
                 + durability * health
-                + f64::from(r.magic_point.clamp(0, 128)) * 0.20
+                + f64::from(r.magic_point.clamp(0, 128)) * eval_w(33, 0.532987596)
                 + mobility * readiness
                 + shield
                 + support
@@ -1139,7 +1188,7 @@ impl CombatRuntime {
             let credit = if effective == r.team {
                 f64::from(r.team == team)
             } else {
-                let borrowed = 0.70 + 0.05 * f64::from(charm_steps.clamp(1, 4));
+                let borrowed = eval_w(34, 0.70) + eval_w(35, 0.05) * f64::from(charm_steps.clamp(1, 4));
                 borrowed * f64::from(effective == team) + (1.0 - borrowed) * f64::from(r.team == team)
             };
             ally += value * credit;
@@ -1156,7 +1205,9 @@ impl CombatRuntime {
         probe.scratch.search_turn.take().unwrap_or_else(|| SearchTurn::new(None, None))
     }
 
-    fn search_reward(&self, winner: Option<usize>, team: usize) -> f64 {
+    /// 终局直接给 ±1；未终局按 `use_nn` 选择估值路径（混合模式下筛选走启发式、终局走网络），
+    /// 并在采集开启（TSWN_DUMP_VALUE=1）时登记估值状态供训练分布对齐使用。
+    fn search_reward(&self, winner: Option<usize>, team: usize, use_nn: bool, stage: ValueStage) -> f64 {
         match winner {
             Some(winner) => {
                 if winner == team {
@@ -1165,12 +1216,28 @@ impl CombatRuntime {
                     -1.0
                 }
             }
-            None => self.search_position_value(team) * 0.5,
+            None => {
+                crate::runtime::nn_eval::nn_dump_push(self, team, stage);
+                // 训练目标为 ±1 终局期望，与终局奖励使用相同尺度。
+                if stage != ValueStage::Screening
+                    && use_nn
+                    && crate::runtime::nn_eval::nn_enabled()
+                    && let Some(value) = crate::runtime::nn_eval::nn_value(&self.nn_features(team))
+                {
+                    return value;
+                }
+                let value = if use_nn && !crate::runtime::nn_eval::nn_hybrid_enabled() {
+                    self.search_position_value(team)
+                } else {
+                    self.search_position_value_raw(team, None)
+                };
+                value * 0.5
+            }
         }
     }
 
     /// 轻量续局只做一层动作比较；潜行需等强制背刺兑现或被打断，禁止递归搜索。
-    fn run_tactical_rollout_round(&mut self, seed: u64, controlled_team: Option<usize>) -> (RoundOutcome, bool) {
+    fn run_tactical_rollout_round(&mut self, seed: u64, controlled_team: Option<usize>, use_nn: bool) -> (RoundOutcome, bool) {
         let turn = self.search_turn_preview();
         // 单方评分的对手在模拟中也必须保持原版；普通双方搜索则允许双方使用战术续局。
         if controlled_team
@@ -1206,7 +1273,7 @@ impl CombatRuntime {
                 }
                 winner = trial.run_minimal_round_no_capture().winner_team;
             }
-            let score = trial.search_reward(winner, team);
+            let score = trial.search_reward(winner, team, use_nn, ValueStage::Tactical);
             if best.is_none_or(|(_, value)| score > value) {
                 best = Some((index, score));
             }
@@ -1224,7 +1291,9 @@ impl CombatRuntime {
         seed: u64,
         horizon: usize,
         tactical: bool,
+        final_leaf: bool,
         controlled_team: Option<usize>,
+        use_nn: bool,
     ) -> (f64, Option<usize>) {
         let mut trial = self.clone();
         trial.scratch.search_turn = Some(SearchTurn::new(Some(index), Some(seed)));
@@ -1240,6 +1309,7 @@ impl CombatRuntime {
                 let (outcome, used) = trial.run_tactical_rollout_round(
                     seed.wrapping_add(round as u64).wrapping_add(0xd1b54a32d192ed03),
                     controlled_team,
+                    use_nn,
                 );
                 tactical_decisions += usize::from(used);
                 outcome.winner_team
@@ -1247,7 +1317,19 @@ impl CombatRuntime {
                 trial.run_minimal_round_no_capture().winner_team
             };
         }
-        (trial.search_reward(winner, team), winner)
+        (
+            trial.search_reward(
+                winner,
+                team,
+                use_nn,
+                if final_leaf {
+                    ValueStage::Final
+                } else {
+                    ValueStage::Screening
+                },
+            ),
+            winner,
+        )
     }
 
     /// 多样本短续局筛选后给所有入围动作相同预算，避免用四次偶然结果淘汰组合起手。
@@ -1281,13 +1363,24 @@ impl CombatRuntime {
         let team = turn.team.unwrap();
         let samples = config.samples.max(1);
         let seed_at = |sample: usize| config.seed.wrapping_add((sample as u64).wrapping_mul(0x9e3779b97f4a7c15));
+        // 混合模式（TSWN_EVAL_NN=1 + TSWN_EVAL_NN_HYBRID=1）：筛选阶段用启发式短视估值，
+        // 其手调机制知识在 8 轮视界最可靠；最终阶段用网络估值。未启用网络时两路径同落启发式。
+        let screening_nn = crate::runtime::nn_eval::nn_enabled() && !crate::runtime::nn_eval::nn_hybrid_enabled();
         let mut ranked: Vec<_> = (0..turn.candidates.len()).collect();
         let mut screening: Vec<CandidateStats> = (0..ranked.len()).map(|_| CandidateStats::default()).collect();
         // 至少两个独立样本，最多三个；先观察八个调度轮，减少即时评价的单次偶然性。
         for &index in &ranked {
             for sample in 0..samples.clamp(2, 3) {
-                let (score, winner) =
-                    self.evaluate_search_candidate(index, team, seed_at(sample), config.horizon.min(8), false, config.team);
+                let (score, winner) = self.evaluate_search_candidate(
+                    index,
+                    team,
+                    seed_at(sample),
+                    config.horizon.min(8),
+                    false,
+                    false,
+                    config.team,
+                    screening_nn,
+                );
                 screening[index].add(score, winner, team);
             }
         }
@@ -1298,8 +1391,16 @@ impl CombatRuntime {
         // 每个入围动作都完成同一组独立样本，不能凭前四次的偶然结果提前淘汰。
         for &index in &active {
             for sample in 0..samples {
-                let (score, winner) =
-                    self.evaluate_search_candidate(index, team, seed_at(sample), config.horizon, sample % 2 == 1, config.team);
+                let (score, winner) = self.evaluate_search_candidate(
+                    index,
+                    team,
+                    seed_at(sample),
+                    config.horizon,
+                    sample % 2 == 1,
+                    true,
+                    config.team,
+                    true,
+                );
                 stats[index].add(score, winner, team);
             }
         }

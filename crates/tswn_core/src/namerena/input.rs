@@ -2,8 +2,8 @@ use std::fmt;
 
 use super::{BOOST_NAMES, BOSS_NAMES, PlayerOverlay};
 
-pub const NAME_MAX_LEN: usize = 256;
-pub const TEAM_MAX_LEN: usize = 256;
+pub const NAME_MAX_LEN: usize = 1024;
+pub const TEAM_MAX_LEN: usize = 1024;
 pub const SEED_PREFIX: &str = "seed:";
 pub(crate) const RINICK_MODIFIER_BOSS_ALIAS: &str = "Rinick属性修改器@!";
 
