@@ -96,6 +96,8 @@ impl CombatRuntime {
         if let Some(spawned) = self.entities.get_mut(idx) {
             spawned.template.id_key_name = "yi-baixie".to_owned();
             spawned.runtime.baixie = Some(Box::new(BaixieRuntime::default()));
+            // 拜谢的嘲讽值必须高于咦本体，保证敌方优先打拜谢。
+            spawned.runtime.attract_bits = 1.0e12_f64.to_bits();
         }
     }
 
@@ -144,7 +146,7 @@ impl CombatRuntime {
         }
     }
 
-    /// 拜谢的行动：随机对 1~2 名未拜谢过的敌人扣 20 MP 并标记；全部拜过后为咦回血。
+    /// 拜谢的行动：随机对 1~2 名未拜谢过的敌人扣 20 MP 并标记；无论是否还有未拜谢目标，每次行动都为咦回复 20 点生命。
     pub(super) fn drain_baixie_action_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
         if !self.entities.get(actor).is_some_and(|e| e.runtime.active()) {
             return;
@@ -162,14 +164,8 @@ impl CombatRuntime {
             })
             .collect();
         if candidates.is_empty() {
-            // 全场都拜过：改为给咦回血。
-            if let Some(owner) = owner {
-                let heal = self.entities.get(owner).map_or(0, |e| (e.template.max_hp / 10).max(1));
-                if let Some(entity) = self.entities.get_mut(owner) {
-                    entity.runtime.hp = (entity.runtime.hp + heal).min(entity.template.max_hp);
-                }
-                updates.add(RunUpdate::new("[0]为[1]回复体力", actor.0 as usize, owner.0 as usize, 0));
-            }
+            // 没有可拜谢的目标时仍会为咦回血。
+            self.heal_yi_owner(actor, owner, updates);
             return;
         }
         let count = 1 + usize::from(self.rng.next_u8()) % 2;
@@ -192,6 +188,24 @@ impl CombatRuntime {
                 target.0 as usize,
                 0,
             ));
+        }
+        self.heal_yi_owner(actor, owner, updates);
+    }
+
+    /// 拜谢每次行动固定为咦回复 20 点生命。
+    fn heal_yi_owner(&mut self, actor: EntityIdx, owner: Option<EntityIdx>, updates: &mut RunUpdates) {
+        let Some(owner) = owner else {
+            return;
+        };
+        if let Some(entity) = self.entities.get_mut(owner) {
+            let before = entity.runtime.hp;
+            entity.runtime.hp = (before + 20).min(entity.template.max_hp);
+            let healed = entity.runtime.hp - before;
+            if healed > 0 {
+                let mut line = RunUpdate::new("[0]为[1]回复体力[2]点", actor.0 as usize, owner.0 as usize, 0);
+                line.param = Some(healed as u32);
+                updates.add(line);
+            }
         }
     }
 
