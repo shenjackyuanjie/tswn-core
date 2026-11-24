@@ -549,10 +549,10 @@ impl PlayerBuild {
             status = status_from_attrs(attrs, 0.0, true);
             status.speed = 266;
         }
-        // 被子是后排 Boss：500 HP、其余 100，速度同样不追加 160 点。
+        // 被子是后排 Boss：1000 HP、其余 100，速度同样不追加 160 点。
         if self.class == PlayerClass::Boss && self.name == "quilt" {
             self.name_factor = 0.0;
-            attrs = [100, 100, 100, 100, 100, 100, 100, 500];
+            attrs = [100, 100, 100, 100, 100, 100, 100, 1000];
             status = status_from_attrs(attrs, 0.0, true);
             status.speed = 100;
         }

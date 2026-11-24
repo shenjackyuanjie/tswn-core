@@ -19,7 +19,7 @@ fn charged_wheel_cannot_exchange_quilt_hp_or_action_points() {
     let mut u = RunUpdates::new();
     rt.drain_plain_wheel_exchange_into(actor, boss, &mut u);
     let e = rt.entities.get(boss).unwrap();
-    assert_eq!((e.runtime.hp, e.runtime.move_state.speed_points), (500, 500));
+    assert_eq!((e.runtime.hp, e.runtime.move_state.speed_points), (1000, 500));
     assert!(u.updates.iter().any(|line| line.message == "[0][回避]了攻击"));
 }
 
@@ -58,7 +58,7 @@ fn occupation_applies_slow_to_the_entire_enemy_side() {
 }
 
 #[test]
-fn fixed_stats_are_500_hp_and_100_attributes() {
+fn fixed_stats_are_1000_hp_and_100_attributes() {
     let (runner, boss, _) = battle();
     let e = runner.runtime().entities.get(boss).unwrap();
     let r = &e.runtime;
@@ -66,8 +66,8 @@ fn fixed_stats_are_500_hp_and_100_attributes() {
         [r.attack, r.defense, r.speed, r.agility, r.magic, r.resistance, r.wisdom],
         [100; 7]
     );
-    assert_eq!(r.hp, 500);
-    assert_eq!(e.template.max_hp, 500);
+    assert_eq!(r.hp, 1000);
+    assert_eq!(e.template.max_hp, 1000);
     assert!(r.flags.contains(PlayerKindFlags::BOSS));
 }
 
