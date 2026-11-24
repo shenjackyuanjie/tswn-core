@@ -44,6 +44,10 @@ pub struct SearchConfig {
     pub seed: u64,
 }
 
+/// Clever 规则：技能候选的熟练度加分系数（价值尺度 [-1,1]）。
+/// 满熟练度(128)的候选加满 SKILL_LEVEL_BONUS；普攻不加分。
+const SKILL_LEVEL_BONUS: f64 = 0.1;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1363,6 +1367,23 @@ impl CombatRuntime {
         let team = turn.team.unwrap();
         let samples = config.samples.max(1);
         let seed_at = |sample: usize| config.seed.wrapping_add((sample as u64).wrapping_mul(0x9e3779b97f4a7c15));
+        // Clever 规则：发动与熟练度相关——技能候选的滚出均值加 熟练度/128 × SKILL_LEVEL_BONUS 的加分，
+        // 熟练度越高越容易中选；普攻（不发动）无加分，仍可由搜索按滚出质量选择。
+        let bonuses: Vec<f64> = turn
+            .candidates
+            .iter()
+            .map(|candidate| {
+                let PreparedPlainAction::BuiltinSkill(action) = &candidate.action else {
+                    return 0.0;
+                };
+                let level = self
+                    .entities
+                    .get(actor)
+                    .and_then(|entity| entity.template.skills.level_at(action.selected.fixed_lane))
+                    .unwrap_or(0) as f64;
+                SKILL_LEVEL_BONUS * (level / 128.0)
+            })
+            .collect();
         // 混合模式（TSWN_EVAL_NN=1 + TSWN_EVAL_NN_HYBRID=1）：筛选阶段用启发式短视估值，
         // 其手调机制知识在 8 轮视界最可靠；最终阶段用网络估值。未启用网络时两路径同落启发式。
         let screening_nn = crate::runtime::nn_eval::nn_enabled() && !crate::runtime::nn_eval::nn_hybrid_enabled();
@@ -1381,7 +1402,7 @@ impl CombatRuntime {
                     config.team,
                     screening_nn,
                 );
-                screening[index].add(score, winner, team);
+                screening[index].add(score + bonuses[index], winner, team);
             }
         }
         ranked.sort_by(|&a, &b| screening[b].mean().total_cmp(&screening[a].mean()).then(a.cmp(&b)));
@@ -1401,7 +1422,7 @@ impl CombatRuntime {
                     config.team,
                     true,
                 );
-                stats[index].add(score, winner, team);
+                stats[index].add(score + bonuses[index], winner, team);
             }
         }
         active.sort_by(|&a, &b| stats[b].mean().total_cmp(&stats[a].mean()).then(a.cmp(&b)));

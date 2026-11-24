@@ -48,8 +48,9 @@ impl CombatRuntime {
                 .filter_map(|&lane| Some((lane, self.builtin_active_skill(skills.skills()[lane])?, skills.level_at(lane)?)))
                 .collect();
             for (fixed_lane, skill, level) in entries {
-                // 每个技能只抽一次资格；枚举目标不额外重掷资格或 MP 消耗。
-                if level == 0 || !self.plain_action_skill_probability(actor, skill, level, false) {
+                // Clever 规则：条件满足的主动技能全部进候选——不按顺序逐个掷资格（无顺序先后、
+                // 无空发）；发不发动与发动哪个由搜索比较决定，熟练度以加分形式参与（见 search.rs）。
+                if level == 0 || !self.plain_action_skill_allowed(actor, skill, level, smart) {
                     continue;
                 }
                 let selected = SelectedBuiltinSkill { skill, fixed_lane };
