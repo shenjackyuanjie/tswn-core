@@ -43,7 +43,8 @@ impl CombatRuntime {
                 | BossActionSkill::Quilt
                 | BossActionSkill::Smdd
                 | BossActionSkill::Xjy
-                | BossActionSkill::Yi => PreparedTargetList::new(),
+                | BossActionSkill::Yi
+                | BossActionSkill::Tiger => PreparedTargetList::new(),
                 // `SklSaitama.au` 的基础概率在等级 0 时恒为 false，`aa` 不会执行。
                 BossActionSkill::Saitama => continue,
             };
@@ -118,6 +119,7 @@ impl CombatRuntime {
             BossActionSkill::Smdd => self.drain_smdd_action_into(actor, updates),
             BossActionSkill::Xjy => self.drain_xjy_action_into(actor, updates),
             BossActionSkill::Yi => self.drain_yi_action_into(actor, updates),
+            BossActionSkill::Tiger => self.drain_tiger_action_into(actor, updates),
             BossActionSkill::Fire => {
                 let target = prepared.targets[0];
                 self.drain_plain_fire_skill_into(actor, target, updates);

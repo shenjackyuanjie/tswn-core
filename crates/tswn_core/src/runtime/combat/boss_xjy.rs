@@ -27,6 +27,10 @@ enum XjySkill {
     Thanks,
     /// 那是因为我就是豹：血量低于猎豹时换血并召唤。
     Swap,
+    /// 净幻这样砍了什么技能变得牛逼：目标全部技能熟练度 ×75%。
+    Necro,
+    /// 砍了：目标最高熟练度技能归零。
+    Cut,
 }
 
 impl CombatRuntime {
@@ -81,6 +85,12 @@ impl CombatRuntime {
         if state.turn % 2 == 0 {
             return XjySkill::ThreeOfTwo;
         }
+        if state.turn % 7 == 0 {
+            return XjySkill::Necro;
+        }
+        if state.turn % 8 == 0 {
+            return XjySkill::Cut;
+        }
         XjySkill::Tide
     }
 
@@ -111,7 +121,63 @@ impl CombatRuntime {
             XjySkill::Iron => self.xjy_iron(actor, updates),
             XjySkill::Thanks => self.xjy_thanks(actor, updates),
             XjySkill::Swap => self.xjy_swap(actor, updates),
+            XjySkill::Necro => self.xjy_necro(actor, updates),
+            XjySkill::Cut => self.xjy_cut(actor, updates),
         }
+    }
+
+    /// 净幻这样砍了什么技能变得牛逼：目标全部技能熟练度 ×75%。
+    fn xjy_necro(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+        let enemies = self.xjy_enemies(actor);
+        if enemies.is_empty() {
+            return;
+        }
+        let target = enemies[usize::from(self.rng.next_u8()) % enemies.len()];
+        self.xjy_say(actor, "[0]使用[净幻这样砍了什么技能变得牛逼]", updates);
+        if let Some(entity) = self.entities.get_mut(target) {
+            for lane in 0..40 {
+                if let Some(level) = entity.template.skills.level_at(lane) {
+                    if level > 0 {
+                        entity.template.skills.set_level_at(lane, level * 3 / 4);
+                    }
+                }
+            }
+        }
+        updates.add(RunUpdate::new(
+            "[1]全部技能熟练度变为75%",
+            actor.0 as usize,
+            target.0 as usize,
+            0,
+        ));
+    }
+
+    /// 砍了：目标熟练度最高的技能归零。
+    fn xjy_cut(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+        let enemies = self.xjy_enemies(actor);
+        if enemies.is_empty() {
+            return;
+        }
+        let target = enemies[usize::from(self.rng.next_u8()) % enemies.len()];
+        self.xjy_say(actor, "[0]使用[砍了]", updates);
+        let mut cleared = String::from("最高");
+        if let Some(entity) = self.entities.get_mut(target) {
+            let best = (0..40)
+                .filter_map(|lane| entity.template.skills.level_at(lane).map(|level| (lane, level)))
+                .max_by_key(|(_, level)| *level);
+            if let Some((lane, _)) = best {
+                // 先取出被砍掉的技能名，再归零熟练度。
+                if let Some(spec) = entity.template.skills.skills().get(lane).and_then(|id| self.registry.skill(*id)) {
+                    cleared = spec.name.clone();
+                }
+                entity.template.skills.set_level_at(lane, 0);
+            }
+        }
+        updates.add(RunUpdate::new(
+            format!("[1]的{cleared}熟练度归零"),
+            actor.0 as usize,
+            target.0 as usize,
+            0,
+        ));
     }
 
     fn xjy_say(&self, actor: EntityIdx, message: &'static str, updates: &mut RunUpdates) {

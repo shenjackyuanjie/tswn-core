@@ -188,6 +188,9 @@ pub struct PlayerRuntime {
     /// smdd 的做局层数与技能冷却。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub smdd: Option<Box<SmddRuntime>>,
+    /// TigerStar 的运行态。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tiger: Option<Box<TigerRuntime>>,
     /// 咦 Boss 与拜谢衍生物的运行态。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub yi: Option<Box<YiRuntime>>,
@@ -274,6 +277,8 @@ impl PlayerRuntime {
             smdd: (flags.contains(PlayerKindFlags::BOSS) && template.name == "smdd").then(|| Box::new(SmddRuntime::default())),
             xjy: (flags.contains(PlayerKindFlags::BOSS) && template.name == "新纪元").then(|| Box::new(XjyRuntime::default())),
             yi: (flags.contains(PlayerKindFlags::BOSS) && template.name == "咦").then(|| Box::new(YiRuntime::default())),
+            tiger: (flags.contains(PlayerKindFlags::BOSS) && template.name == "TigerStar")
+                .then(|| Box::new(TigerRuntime::default())),
             baixie: None,
             quilt_minion: None,
             quilt_arrests: Vec::new(),

@@ -29,6 +29,7 @@ mod skill_loadout;
 mod smdd;
 mod squall;
 mod state;
+mod tiger;
 mod xjy;
 mod yi;
 
@@ -38,6 +39,7 @@ pub use skill_loadout::*;
 pub use smdd::*;
 pub use squall::*;
 pub use state::*;
+pub use tiger::*;
 pub use xjy::*;
 pub use yi::*;
 

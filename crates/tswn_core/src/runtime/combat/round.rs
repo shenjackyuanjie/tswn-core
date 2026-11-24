@@ -561,6 +561,17 @@ impl CombatRuntime {
                 amount: 0,
             });
         }
+        // TigerStar 的行动完全由专属脚本决定。
+        if self
+            .entities
+            .get(actor)
+            .is_some_and(|e| e.template.name == crate::runtime::combat::boss_tiger::ID)
+        {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Tiger,
+                targets: PreparedTargetList::new(),
+            }));
+        }
         // 咦的行动完全由专属脚本决定。
         if self
             .entities
@@ -1266,7 +1277,7 @@ impl CombatRuntime {
     fn apply_potion(&mut self, actor: EntityIdx, code: u32) {
         // code = 属性下标 + 1（0 表示没喝药）
         let field = ((code & 0xF) as usize).saturating_sub(1);
-        let mp_scale = self.baixie_mp_scale(actor);
+        let mp_scale = self.mp_regen_scale(actor);
         let Some(entity) = self.entities.get_mut(actor) else { return };
         if field == 9 {
             // 9 = 能量药水：回复 40 点 MP（与其他返蓝共用上限；被拜谢过则减半）

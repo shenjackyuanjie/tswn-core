@@ -919,6 +919,8 @@ impl CombatRuntime {
         if actual_damage > 0 {
             // 曙光的「局」层数：被本体命中一次加一层。
             self.record_smdd_hit(target);
+            // TigerStar 的「我是M」：受伤时随机属性提升等量数值。
+            self.record_tiger_damage(target, actual_damage);
         }
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         self.relay_quilt_damage(caster, target, actual_damage, updates);

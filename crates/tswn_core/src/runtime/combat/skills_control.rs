@@ -167,7 +167,7 @@ impl CombatRuntime {
     /// 蓄力技能：激活蓄力运行时并回复 32 点 MP。
     pub fn drain_plain_charge_skill_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
         // 被拜谢过的角色自然回蓝减半。
-        let mp_scale = self.baixie_mp_scale(actor);
+        let mp_scale = self.mp_regen_scale(actor);
         let owner = self
             .entities
             .get_mut(actor)

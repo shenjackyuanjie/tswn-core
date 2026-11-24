@@ -15,6 +15,7 @@ pub(crate) mod boss_quilt;
 pub(crate) mod boss_smdd;
 mod boss_squall;
 mod boss_thanos;
+mod boss_tiger;
 mod boss_wheel;
 mod boss_xjy;
 mod boss_yi;
