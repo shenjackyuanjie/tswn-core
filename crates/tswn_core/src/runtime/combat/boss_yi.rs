@@ -233,7 +233,7 @@ impl CombatRuntime {
         if self.rng.next_u8() >= 70 {
             return;
         }
-        if self.apply_damage_into(baixie, attacker, amount, updates) {
+        if self.apply_legacy_damage_into(baixie, attacker, amount, updates) {
             self.drain_plain_lethal_damage_into(baixie, attacker, updates);
         }
         self.mark_baixie_on(baixie, attacker, updates);

@@ -197,7 +197,7 @@ impl CombatRuntime {
             "[0]使用[自爆]",
             0,
         ));
-        if self.apply_damage_into(leopard, target, amount, updates) {
+        if self.apply_legacy_damage_into(leopard, target, amount, updates) {
             self.drain_plain_lethal_damage_into(leopard, target, updates);
         }
         // 猎豹自爆后消失。

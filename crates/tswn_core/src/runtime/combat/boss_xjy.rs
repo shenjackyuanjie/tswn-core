@@ -246,7 +246,7 @@ impl CombatRuntime {
                 updates.add(RunUpdate::new("[1][回避]了攻击", actor.0 as usize, target.0 as usize, 0));
                 continue;
             }
-            if self.apply_damage_into(actor, target, 60, updates) {
+            if self.apply_legacy_damage_into(actor, target, 60, updates) {
                 self.drain_plain_lethal_damage_into(actor, target, updates);
             }
         }
