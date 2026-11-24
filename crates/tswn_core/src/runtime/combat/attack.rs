@@ -924,6 +924,10 @@ impl CombatRuntime {
         }
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         self.relay_quilt_damage(caster, target, amount, updates);
+        // 拜谢的伤害反弹（70 级）。
+        if actual_damage > 0 {
+            self.drain_baixie_reflect_into(target, caster, actual_damage, updates);
+        }
         if amount == 0 {
             return false;
         }

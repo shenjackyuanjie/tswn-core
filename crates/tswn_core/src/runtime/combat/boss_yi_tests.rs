@@ -66,3 +66,14 @@ fn baixie_heals_the_boss_only_after_everyone_is_thanked() {
     rt.drain_baixie_action_into(baixie, &mut u);
     assert_eq!(rt.entities.get(boss).unwrap().runtime.hp, 320);
 }
+
+#[test]
+fn baixie_has_level_seventy_reflect() {
+    let (mut runner, boss) = battle();
+    let rt = runner.runtime_mut();
+    let mut u = RunUpdates::new();
+    rt.drain_yi_action_into(boss, &mut u);
+    let baixie = rt.entities.iter().find(|(_, e)| e.template.name == BAIXIE).map(|(idx, _)| idx).unwrap();
+    let levels = rt.entities.get(baixie).unwrap().template.skills.levels().to_vec();
+    assert_eq!(levels, vec![70], "拜谢应当只有 70 级反弹");
+}

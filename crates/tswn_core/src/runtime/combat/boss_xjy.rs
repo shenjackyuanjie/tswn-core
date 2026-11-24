@@ -201,6 +201,7 @@ impl CombatRuntime {
         template.agility = 200;
         template.wisdom = 90;
         template.magic_point = 40;
+        template.clone_build = self.entities.get(actor).and_then(|e| e.template.clone_build.clone());
         template.id_key_name = "smdd-leopard".to_owned();
         template.display_name = LEOPARD.to_owned();
         let idx = self.entities.next_spawn_idx(&template);
@@ -307,6 +308,7 @@ impl CombatRuntime {
         template.agility = 106;
         template.wisdom = 106;
         template.magic_point = 40;
+        template.clone_build = self.entities.get(actor).and_then(|e| e.template.clone_build.clone());
         template.id_key_name = "xjy-clone".to_owned();
         template.display_name = "分身".to_owned();
         self.effects.push(QueuedEffect::SpawnWithMessage {

@@ -189,17 +189,20 @@ impl CombatRuntime {
         let Some(target) = self.tiger_pick_enemy(actor) else {
             return;
         };
+        // 与使魔自爆一致：猎豹使用「自爆」，对敌人造成固定伤害后消失。
         let amount = self.entities.get(actor).map_or(0, |e| e.runtime.magic * 4);
-        if let Some(entity) = self.entities.get_mut(leopard) {
-            entity.runtime.hp = 0;
-            entity.runtime.alive = false;
+        updates.add(RuntimeFrame::replay_update(
+            leopard.0 as usize,
+            target.0 as usize,
+            "[0]使用[自爆]",
+            0,
+        ));
+        if self.apply_damage_into(leopard, target, amount, updates) {
+            self.drain_plain_lethal_damage_into(leopard, target, updates);
         }
-        updates.add(RunUpdate::new("[1]自爆了", leopard.0 as usize, target.0 as usize, 0));
-        if self.apply_damage_into(actor, target, amount, updates) {
-            self.drain_plain_lethal_damage_into(actor, target, updates);
-        }
+        // 猎豹自爆后消失。
+        self.drain_summon_explode_self_death_into(leopard, updates);
     }
-
     /// 红温：HP 低于 50% 时全属性 ×1.5，持续整场。
     fn tiger_red(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
         let Some(entity) = self.entities.get_mut(actor) else {
@@ -260,6 +263,7 @@ impl CombatRuntime {
         template.wisdom = 106;
         template.magic_point = 40;
         template.skills = skills;
+        template.clone_build = self.entities.get(actor).and_then(|e| e.template.clone_build.clone());
         template.id_key_name = "tiger-clone".to_owned();
         template.display_name = "分身".to_owned();
         self.effects.push(QueuedEffect::SpawnWithMessage {
@@ -316,6 +320,7 @@ impl CombatRuntime {
         template.agility = 200;
         template.wisdom = 90;
         template.magic_point = 40;
+        template.clone_build = self.entities.get(actor).and_then(|e| e.template.clone_build.clone());
         template.id_key_name = "smdd-leopard".to_owned();
         template.display_name = LEOPARD.to_owned();
         let idx = self.entities.next_spawn_idx(&template);

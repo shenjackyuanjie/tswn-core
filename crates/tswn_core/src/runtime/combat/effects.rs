@@ -131,6 +131,10 @@ impl CombatRuntime {
                         on_damage,
                         updates,
                     );
+                    // 拜谢的反弹命中后，也给被反弹的敌人加上拜谢。
+                    if self.entities.get(caster).is_some_and(|e| e.runtime.baixie.is_some()) {
+                        self.mark_baixie_on(caster, target, updates);
+                    }
                     // Vite 判胜会从反弹伤害中直接返回，不再扣除反弹者的行动点。
                     // 仅对首领和属性修改器修正终局快照，普通反弹保留原来的兼容行为。
                     let reflector = self.entities.get(caster).unwrap();

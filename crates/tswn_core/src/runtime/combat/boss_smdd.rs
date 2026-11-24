@@ -175,6 +175,7 @@ impl CombatRuntime {
         template.agility = 90;
         template.wisdom = 70;
         template.magic_point = 40;
+        template.clone_build = self.entities.get(actor).and_then(|e| e.template.clone_build.clone());
         template.id_key_name = icon_key.to_owned();
         template.display_name = display.to_owned();
         let idx = self.entities.next_spawn_idx(&template);

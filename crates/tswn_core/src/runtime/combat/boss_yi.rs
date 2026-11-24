@@ -84,7 +84,10 @@ impl CombatRuntime {
         template.resistance = 98;
         template.wisdom = 56;
         template.magic_point = 40;
+        template.clone_build = self.entities.get(actor).and_then(|e| e.template.clone_build.clone());
         template.id_key_name = "yi-baixie".to_owned();
+        // 拜谢自带 70 级反弹熟练度（召唤流程会重建技能表，放到生成后再写）。
+        let reflect = Some(crate::runtime::extension::SkillId(27));
         template.display_name = BAIXIE.to_owned();
         let idx = self.entities.next_spawn_idx(&template);
         self.effects.push(QueuedEffect::SpawnWithMessage {
@@ -98,6 +101,10 @@ impl CombatRuntime {
             spawned.runtime.baixie = Some(Box::new(BaixieRuntime::default()));
             // 拜谢的嘲讽值必须高于咦本体，保证敌方优先打拜谢。
             spawned.runtime.attract_bits = 1.0e12_f64.to_bits();
+            // 拜谢自带 70 级反弹熟练度。
+            if let Some(reflect) = reflect {
+                spawned.template.skills = crate::runtime::entity::SkillLoadout::from_skill_levels([(reflect, 70)]);
+            }
         }
     }
 
@@ -208,6 +215,56 @@ impl CombatRuntime {
         }
     }
 
+    /// 拜谢的 70 级伤害反弹：被普通攻击命中后按 70/256 反弹等量伤害，并给对方加上拜谢。
+    pub(super) fn drain_baixie_reflect_into(
+        &mut self,
+        baixie: EntityIdx,
+        attacker: EntityIdx,
+        amount: i32,
+        updates: &mut RunUpdates,
+    ) {
+        if amount <= 0
+            || !self.entities.get(baixie).is_some_and(|e| e.runtime.baixie.is_some() && e.runtime.alive)
+            || !self.entities.get(attacker).is_some_and(|e| e.runtime.active())
+        {
+            return;
+        }
+        // 70 级反弹：70/256 的概率。
+        if self.rng.next_u8() >= 70 {
+            return;
+        }
+        if self.apply_damage_into(baixie, attacker, amount, updates) {
+            self.drain_plain_lethal_damage_into(baixie, attacker, updates);
+        }
+        self.mark_baixie_on(baixie, attacker, updates);
+    }
+    /// 反弹命中后，给被反弹到的敌人也加上拜谢。
+    pub(super) fn mark_baixie_on(&mut self, baixie: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
+        let is_baixie = self.entities.get(baixie).is_some_and(|e| e.runtime.baixie.is_some());
+        if !is_baixie || !self.entities.get(target).is_some_and(|e| e.runtime.active()) {
+            return;
+        }
+        let already = self
+            .entities
+            .get(baixie)
+            .and_then(|e| e.runtime.baixie.as_ref())
+            .is_some_and(|state| state.thanked.contains(&target));
+        if already {
+            return;
+        }
+        if let Some(entity) = self.entities.get_mut(target) {
+            entity.runtime.magic_point = (entity.runtime.magic_point - 20).max(0);
+        }
+        if let Some(state) = self.entities.get_mut(baixie).and_then(|e| e.runtime.baixie.as_mut()) {
+            state.thanked.push(target);
+        }
+        updates.add(RunUpdate::new(
+            "[1]被[0]反弹并拜谢，失去20点MP",
+            baixie.0 as usize,
+            target.0 as usize,
+            0,
+        ));
+    }
     /// 目标当前是否被存活的拜谢压低了 MP 恢复。
     pub(super) fn baixie_mp_scale(&self, target: EntityIdx) -> f64 {
         let mut thanked = false;
