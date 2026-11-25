@@ -212,6 +212,7 @@ pub fn render_icon_vec_from_name(name: &str) -> Vec<u8> {
             "Squall" => Some("Squall@Squall"),
             "smdd" => Some("nan@nan"),
             "新纪元" => Some("新纪元@新纪元"),
+            "Shabby_fish" => Some("Shabby_fish@Shabby_fish"),
             _ => None,
         })
         .unwrap_or(name);

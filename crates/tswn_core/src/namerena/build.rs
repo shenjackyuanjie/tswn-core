@@ -543,7 +543,9 @@ impl PlayerBuild {
             status.magic_point = 1000;
         }
         // Squall 与 smdd 的 106 只是外显值；实际战斗速度按普通公式补上 160。
-        if self.class == PlayerClass::Boss && matches!(self.name.as_str(), "Squall" | "smdd" | "新纪元" | "TigerStar") {
+        if self.class == PlayerClass::Boss
+            && matches!(self.name.as_str(), "Squall" | "smdd" | "新纪元" | "TigerStar" | "Shabby_fish")
+        {
             self.name_factor = 0.0;
             attrs = [106, 106, 106, 106, 106, 106, 106, 360];
             status = status_from_attrs(attrs, 0.0, true);

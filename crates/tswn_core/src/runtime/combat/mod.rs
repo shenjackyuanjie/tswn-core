@@ -11,6 +11,7 @@ use std::sync::Arc;
 #[cfg(feature = "cards")]
 mod abilities;
 mod attack;
+mod boss_fish;
 pub(crate) mod boss_quilt;
 pub(crate) mod boss_smdd;
 mod boss_squall;

@@ -561,6 +561,17 @@ impl CombatRuntime {
                 amount: 0,
             });
         }
+        // 沙冰鱼的行动完全由专属脚本决定。
+        if self
+            .entities
+            .get(actor)
+            .is_some_and(|e| e.template.name == crate::runtime::combat::boss_fish::ID)
+        {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Fish,
+                targets: PreparedTargetList::new(),
+            }));
+        }
         // TigerStar 的行动完全由专属脚本决定。
         if self
             .entities
