@@ -61,37 +61,28 @@ impl CombatRuntime {
             .collect()
     }
 
-    fn next_xjy_skill(&self, actor: EntityIdx) -> XjySkill {
-        let Some(state) = self.entities.get(actor).and_then(|e| e.runtime.xjy.as_ref()) else {
-            return XjySkill::Tide;
-        };
+    fn next_xjy_skill(&mut self, actor: EntityIdx) -> XjySkill {
         let allies = self.xjy_units(actor).len() + 1;
         let enemies = self.xjy_enemies(actor).len();
         if enemies > allies && enemies > 0 {
             return XjySkill::LeopardFill;
         }
-        if !self.xjy_leopards(actor).is_empty() && state.turn % 4 == 0 {
-            return XjySkill::LeopardBuff;
-        }
-        if state.turn % 5 == 0 {
-            return XjySkill::Iron;
-        }
-        if state.turn % 3 == 0 {
-            return XjySkill::Thanks;
-        }
         if self.leopard_hp_max(actor) > self.entities.get(actor).map_or(0, |e| e.runtime.hp) {
             return XjySkill::Swap;
         }
-        if state.turn % 2 == 0 {
-            return XjySkill::ThreeOfTwo;
+        // 新纪元按普通 AI 随机选技能；猎豹相关技能需要场上有猎豹。
+        let has_leopard = !self.xjy_leopards(actor).is_empty();
+        match usize::from(self.rng.next_u8()) % 9 {
+            0 => XjySkill::ThreeOfTwo,
+            1 => XjySkill::Iron,
+            2 => XjySkill::Thanks,
+            3 if has_leopard => XjySkill::LeopardBuff,
+            4 => XjySkill::Necro,
+            5 => XjySkill::Cut,
+            6 => XjySkill::ThreeOfTwo,
+            7 => XjySkill::Tide,
+            _ => XjySkill::Iron,
         }
-        if state.turn % 7 == 0 {
-            return XjySkill::Necro;
-        }
-        if state.turn % 8 == 0 {
-            return XjySkill::Cut;
-        }
-        XjySkill::Tide
     }
 
     fn leopard_hp_max(&self, actor: EntityIdx) -> i32 {

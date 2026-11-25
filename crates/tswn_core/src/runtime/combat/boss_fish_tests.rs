@@ -1,4 +1,4 @@
-//! 沙冰鱼 Boss 的固定数值、魔高与全体普攻。
+﻿//! 沙冰鱼 Boss 的固定数值、魔高与全体普攻。
 use super::*;
 
 fn battle() -> (RuntimeRunner, EntityIdx) {
@@ -30,7 +30,7 @@ fn magic_zero_hits_two_and_restores_later() {
     let (mut runner, boss) = battle();
     let rt = runner.runtime_mut();
     let mut u = RunUpdates::new();
-    rt.drain_fish_action_into(boss, &mut u);
+    rt.fish_magic_zero(boss, &mut u);
     let zeroed = rt.entities.iter().filter(|(_, e)| e.runtime.magic == 0 && e.template.name != ID).count();
     assert_eq!(zeroed, 2);
     // 净化熟练度 200。

@@ -44,7 +44,8 @@ impl CombatRuntime {
                 }
             }
         }
-        match turn % 10 {
+        // 沙冰鱼按普通 AI 的随机方式选技能，不做固定轮转。
+        match usize::from(self.rng.next_u8()) % 9 {
             0 => self.fish_disperse(actor, updates),
             1 => self.fish_magic_zero(actor, updates),
             2 => self.fish_attack_all(actor, updates),
@@ -53,8 +54,7 @@ impl CombatRuntime {
             5 => self.fish_eleven_tera(actor, updates),
             6 => self.fish_rename(actor, updates),
             7 => self.fish_comfort(actor, updates),
-            8 => self.fish_lingrenyi(actor, updates),
-            _ => self.fish_magic_zero(actor, updates),
+            _ => self.fish_lingrenyi(actor, updates),
         }
     }
     /// 施了遗忘咒：随机敌方最高熟练度技能归零。

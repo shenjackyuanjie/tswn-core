@@ -27,17 +27,12 @@ fn fixed_stats_match_squall_and_use_squall_icon_rules() {
 }
 
 #[test]
-fn skills_rotate_over_seven_turns() {
+fn skills_are_picked_randomly() {
     let (mut runner, boss) = battle();
     let rt = runner.runtime_mut();
     let mut seen = std::collections::HashSet::new();
-    for turn in 1..=7u32 {
-        if let Some(state) = rt.entities.get_mut(boss).and_then(|e| e.runtime.smdd.as_mut()) {
-            state.turn = turn;
-        }
+    for _ in 0..200 {
         seen.insert(format!("{:?}", rt.next_smdd_skill(boss)));
     }
-    for expected in ["Rp", "Tiger", "Monkey", "Leopard", "Mining", "Win", "God"] {
-        assert!(seen.contains(expected), "{expected} 应出现在轮转里");
-    }
+    assert!(seen.len() >= 5, "随机选技能应覆盖多数技能，实际 {seen:?}");
 }

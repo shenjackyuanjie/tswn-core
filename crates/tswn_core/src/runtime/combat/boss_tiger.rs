@@ -50,14 +50,15 @@ impl CombatRuntime {
             .collect()
     }
 
-    fn next_tiger_skill(&self, actor: EntityIdx) -> TigerSkill {
+    fn next_tiger_skill(&mut self, actor: EntityIdx) -> TigerSkill {
         let Some(state) = self.entities.get(actor).and_then(|e| e.runtime.tiger.as_ref()) else {
             return TigerSkill::Buff;
         };
         if !state.red && self.entities.get(actor).is_some_and(|e| e.runtime.hp * 2 < e.template.max_hp) {
             return TigerSkill::Red;
         }
-        match state.turn % 10 {
+        // 豹星按普通 AI 随机选技能。
+        match usize::from(self.rng.next_u8()) % 10 {
             1 => TigerSkill::Grass,
             2 => TigerSkill::Masochist,
             3 => TigerSkill::Everyone,

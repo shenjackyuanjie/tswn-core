@@ -37,11 +37,12 @@ impl CombatRuntime {
             .collect()
     }
 
-    fn next_smdd_skill(&self, actor: EntityIdx) -> SmddSkill {
+    fn next_smdd_skill(&mut self, actor: EntityIdx) -> SmddSkill {
         let Some(state) = self.entities.get(actor).and_then(|e| e.runtime.smdd.as_ref()) else {
             return SmddSkill::Win;
         };
-        match state.turn % 7 {
+        // 曙光按普通 AI 随机选技能。
+        match usize::from(self.rng.next_u8()) % 7 {
             1 => SmddSkill::Rp,
             2 => SmddSkill::Tiger,
             3 => SmddSkill::Monkey,
