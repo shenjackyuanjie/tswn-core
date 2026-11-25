@@ -211,7 +211,7 @@ impl CombatRuntime {
         if enemies.is_empty() {
             return;
         }
-        self.fish_say(actor, "[0]使用[魔高]", updates);
+        self.fish_say(actor, "[0]使用[本体本体也不需要魔高也不需要魔高]", updates);
         let first = usize::from(self.rng.next_u8()) % enemies.len();
         let target_a = enemies.remove(first);
         let target_b = if enemies.is_empty() {
