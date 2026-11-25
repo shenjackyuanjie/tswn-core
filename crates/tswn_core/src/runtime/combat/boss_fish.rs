@@ -44,7 +44,8 @@ impl CombatRuntime {
                 }
             }
         }
-        match turn % 9 {
+        match turn % 10 {
+            0 => self.fish_disperse(actor, updates),
             1 => self.fish_magic_zero(actor, updates),
             2 => self.fish_attack_all(actor, updates),
             3 => self.fish_forget(actor, updates),
@@ -239,6 +240,16 @@ impl CombatRuntime {
             entity.template.attack = entity.template.attack * 3 / 2;
         }
         updates.add(RunUpdate::new("[0]攻击力永久上升50%", actor.0 as usize, actor.0 as usize, 0));
+    }
+    /// 净化：对一个随机敌人施放驱逐，清除其正面状态并扣 MP。
+    fn fish_disperse(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+        let enemies = self.fish_enemies(actor);
+        if enemies.is_empty() {
+            return;
+        }
+        let target = enemies[usize::from(self.rng.next_u8()) % enemies.len()];
+        self.fish_say(actor, "[0]使用[净化]", updates);
+        self.apply_disperse_hit_into(actor, target, updates);
     }
     fn fish_say(&self, actor: EntityIdx, message: &'static str, updates: &mut RunUpdates) {
         updates.add_newline();
