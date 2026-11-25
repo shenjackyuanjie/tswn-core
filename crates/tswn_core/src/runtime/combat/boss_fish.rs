@@ -63,7 +63,7 @@ impl CombatRuntime {
             return;
         }
         let target = enemies[usize::from(self.rng.next_u8()) % enemies.len()];
-        self.fish_say(actor, "[0]使用[并对你施了遗忘咒]", updates);
+        self.fish_say(actor, "[0]使用[遗忘咒]", updates);
         let mut cleared = String::from("最高");
         if let Some(entity) = self.entities.get_mut(target) {
             let best = (0..40)
@@ -132,21 +132,25 @@ impl CombatRuntime {
             updates.add(RunUpdate::new("[1][回避]了攻击", actor.0 as usize, target.0 as usize, 0));
             return;
         }
-        // 11.7 万亿（117 后面跟 11 个 0）；超出 u32，直接写进文本。
-        updates.add(RunUpdate::new(
-            "[1]受到11700000000000点伤害[s_dmg160]",
-            actor.0 as usize,
-            target.0 as usize,
-            0,
-        ));
+        // 11.7 万亿（117 后面跟 11 个 0）；超出 u32，直接写进文本，并附上血量变化。
+        let before = self.entities.get(target).map_or(0, |e| e.runtime.hp);
+        let team = self.entities.get(target).map_or(0, |e| e.runtime.team);
         if let Some(entity) = self.entities.get_mut(target) {
             entity.runtime.hp = 0;
             entity.runtime.alive = false;
-            let team = entity.runtime.team;
-            self.mark_dead_with_linked_minions_into(target, team, updates);
         }
+        let mut line = RunUpdate::new("[1]受到11700000000000点伤害[s_dmg160]", actor.0 as usize, target.0 as usize, 0);
+        line.hp_changes = Some(
+            vec![crate::runtime::update::RunUpdateHp {
+                player: target.0 as usize,
+                before,
+                after: 0,
+            }]
+            .into_boxed_slice(),
+        );
+        updates.add(line);
+        self.mark_dead_with_linked_minions_into(target, team, updates);
     }
-
     /// 晋级锦标赛的，记得换号：把随机敌人的名字换成一串随机字符，
     /// 并按照这个新名字重建它的属性、图标与技能熟练度。
     fn fish_rename(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
@@ -215,8 +219,7 @@ impl CombatRuntime {
                 *template = *template * 11 / 10;
             }
             if healed > 0 {
-                let mut line = RunUpdate::new("[0]回复体力[1]点", actor.0 as usize, actor.0 as usize, 0);
-                line.param = Some(healed as u32);
+                let mut line = RunUpdate::new(format!("[0]回复体力{healed}点"), actor.0 as usize, actor.0 as usize, 0);
                 updates.add(line);
             }
         }
