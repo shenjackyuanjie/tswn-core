@@ -8,6 +8,7 @@
  */
 
 import { createShowPlayback } from "./show-playback.js?v=20261125rates1";
+import { createRateChart } from "./show-rate-chart.js?v=20261125chart1";
 import { createThemeControls, setupPlayerHighlight, isEditableKeyTarget, copyTextToClipboard } from "./show-ui.js?v=20261125rates1";
 import {
   buildIconClassCss,
@@ -274,13 +275,20 @@ const {
 // 胶水函数（直接操作 DOM 或全局状态）
 // ============================================================================
 
+// 图表独立保留 DOM，避免胜率刷新时中断历史滑块拖动。
+let stateRateChart = null;
+
 /** 只显示已播放完的边界，回退时复用对应帧的胜率。 */
 function updateStateRates() {
   let panel = document.querySelector("#stateRates");
   if (!panel) { panel = document.createElement("section"); panel.id = "stateRates"; document.body.append(panel); }
   const enabled = stateRateToggle.checked && currentBattle?.state_rates_enabled && currentBattle.strategy !== "search" && new Set(currentBattle.players.map(p => p.team_index)).size === 2;
   panel.hidden = !enabled;
-  if (!enabled) return;
+  if (!enabled) { panel.innerHTML = ""; stateRateChart = null; return; }
+  if (!stateRateChart) {
+    panel.innerHTML = '<div class="rate-summary"></div><div class="rate-chart"></div>';
+    stateRateChart = createRateChart(panel.querySelector(".rate-chart"), cursor => stepPlaybackTo(cursor));
+  }
   const completed = currentPlan?.frames.filter(f => playbackCursor >= f.end).at(-1);
   const rates = completed?.frame.state_rates;
   const teams = [...new Set(currentBattle.players.map(p => p.team_index))].sort((a,b) => a-b);
@@ -295,7 +303,19 @@ function updateStateRates() {
     const badgeStyle = percent == null ? '' : ' style="--rate-hue:' + (percent * 1.2).toFixed(2) + '"';
     return '<div class="rate-team"><div>' + names + '</div><strong class="rate-value' + (percent == null ? ' is-pending' : '') + '"' + badgeStyle + '>' + (percent == null ? '等待测算' : percent.toFixed(2) + '%') + '</strong></div>';
   }).join("");
-  panel.innerHTML = '<b>当前队伍胜率</b><div>' + (rates ? '100% · ' + rates.rounds.toLocaleString() + ' 场' : '每步完整测算 10,000 场') + '</div>' + rows + (rates?.counts[2] ? '<small>未决 ' + rates.counts[2] + ' 场（计入总场数）</small>' : '');
+  const summaryHtml = '<b>当前队伍胜率</b><div>' + (rates ? '100% · ' + rates.rounds.toLocaleString() + ' 场' : '每步完整测算 10,000 场') + '</div>' + rows + (rates?.counts[2] ? '<small>未决 ' + rates.counts[2] + ' 场（计入总场数）</small>' : '');
+  const summary = panel.querySelector(".rate-summary");
+  if (summary.innerHTML !== summaryHtml) summary.innerHTML = summaryHtml;
+  const inputTeams = [...teams].sort((a,b) => {
+    const group = team => currentBattle.players.find(p => p.team_index === team)?.input_team_index ?? team;
+    return group(a) - group(b);
+  });
+  const icons = inputTeams.map(team => {
+    const player = currentBattle.players.find(p => p.team_index === team);
+    battleDisplay.state(player);
+    return battleDisplay.iconBase64.get(player.icon_key ?? player.id_name ?? ('#' + player.id));
+  });
+  stateRateChart.update(currentBattle, currentPlan, playbackCursor, icons);
 }
 
 /** 刷新战斗属性表：始终展示全部角色，每行一个。 */
