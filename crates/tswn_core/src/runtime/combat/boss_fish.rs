@@ -44,13 +44,18 @@ impl CombatRuntime {
                 }
             }
         }
-        if turn % 2 == 1 {
-            self.fish_magic_zero(actor, updates);
-        } else {
-            self.fish_attack_all(actor, updates);
+        match turn % 9 {
+            1 => self.fish_magic_zero(actor, updates),
+            2 => self.fish_attack_all(actor, updates),
+            3 => self.fish_forget(actor, updates),
+            4 => self.fish_monkey(actor, updates),
+            5 => self.fish_eleven_tera(actor, updates),
+            6 => self.fish_rename(actor, updates),
+            7 => self.fish_comfort(actor, updates),
+            8 => self.fish_lingrenyi(actor, updates),
+            _ => self.fish_magic_zero(actor, updates),
         }
     }
-
     /// 施了遗忘咒：随机敌方最高熟练度技能归零。
     fn fish_forget(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
         let enemies = self.fish_enemies(actor);
@@ -127,9 +132,10 @@ impl CombatRuntime {
             new_name.push(CHARS[index] as char);
         }
         self.fish_say(actor, "[0]使用[晋级锦标赛的，记得换号]", updates);
+        let before = self.entities.get(target).map_or_else(String::new, |e| e.template.display_name.clone());
         self.rebuild_player_from_name(target, &new_name);
         updates.add(RunUpdate::new(
-            format!("[1]被更换为{new_name}"),
+            format!("{before}被更换为{new_name}"),
             actor.0 as usize,
             target.0 as usize,
             0,
