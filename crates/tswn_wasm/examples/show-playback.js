@@ -7,7 +7,7 @@ const SEEK_CHECKPOINT_FRAME_INTERVAL = 20;
 const NORMAL_RESULT_REVEAL_DELAY_MS = 1500;
 const TURBO_YIELD_VISIBLE_CHUNKS = 24;
 
-export function createShowPlayback(state, { playerList, battleRows, endPanel, headerMeta, plistMeta, normalBtn, fastBtn, pauseBtn, shareBtn, stepControls, stepBackEventBtn, stepForwardEventBtn, stepBackFrameBtn, stepForwardFrameBtn, rememberPlayers, clearPlayerHighlight, closePanel, visibleStatesForCursor, updateStats }) {
+export function createShowPlayback(state, { playerList, battleRows, endPanel, headerMeta, plistMeta, normalBtn, fastBtn, pauseBtn, shareBtn, stepControls, stepBackEventBtn, stepForwardEventBtn, stepBackFrameBtn, stepForwardFrameBtn, rememberPlayers, clearPlayerHighlight, closePanel, visibleStatesForCursor, updateStats, updateStateRates }) {
   function stopPlaybackLoop() {
     state.playbackLoopToken += 1;
   }
@@ -37,6 +37,8 @@ export function createShowPlayback(state, { playerList, battleRows, endPanel, he
   }
 
   function syncPlaybackUi() {
+    // 导航完成后同步当前帧缓存，不发起新的胜率试算。
+    updateStateRates?.();
     updateSpeedButtons(
       normalBtn,
       fastBtn,

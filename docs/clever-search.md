@@ -43,10 +43,18 @@ cargo build --release -p tswn_core --bin clever-search --features 'no_debug,mima
 
 ## Clever 网页与发布来源
 
-- 前端入口：https://kodu16.github.io/namerena/ 。默认选择 Clever 搜索，可在输入面板切换原版策略。双方搜索预算为 16 samples、128 horizon、4 shortlist，模拟 seed 固定为 1；对照时输入相同的显式 seed 行。分享链接保留策略。
+- 前端入口：https://kodu16.github.io/namerena/ 。默认选择原版策略，可在输入面板显式启用 Clever；strategy=search 分享链接保留 Clever。双方搜索预算为 16 samples、128 horizon、4 shortlist，模拟 seed 固定为 1；对照时输入相同的显式 seed 行。分享链接保留策略。
 - 网页通过 WASM BattleSession.set_search 接入同一 run_search_round，每次只推进真实回合，试算不计入回放或回合上限。搜索耗时随阵容增长，尚未验证策略整体胜率优于原版。
 - 发布源固定为本项目 KODU16/tswn-core-clever 的 main；仅在用户明确要求时同步 shenjackyuanjie/tswn-core，合并后保留 Clever 搜索与评分扩展。后续修改应从这里验证、提交并发布至 Clever main。
 - KODU16/kodu16.github.io 的 Pages 工作流每 5 分钟检查 Clever main，对比线上 build.json，只在版本变化时重建，WASM 和前端取同一提交。GitHub 定时任务可能延迟；手动运行主页部署工作流可立即同步。
+
+## 原版双队逐步胜率
+
+右侧控制栏的“逐步胜率测算”默认关闭，仅适用于两支队伍，与 Clever 互斥。页面默认原版，显式选择 Clever 或 strategy=search 分享链接才启用搜索。战斗中首次开启测算会重新开始当前输入，以补齐所有步骤；关闭只隐藏面板，再开启复用当前缓存。
+
+每个可见帧结束后，从完整 RuntimeRunner 克隆 10,000 场原版续局，保留 HP、MP、行动顺序、效果状态、尸体和召唤物，仅替换试算随机流。样本 seed 固定为 state-win-rate:样本序号，不读取正式战斗未来随机序列。每场最多 10,000 个调度回合，未决场单列并计入总场数。“100%”指完整采样进度，胜率为经验估计。
+
+左下角列出双方全部输入名字、图标和队伍胜率，按运行队伍编号对应。每帧缓存只属于当前战斗；后退、前进和从头播放复用缓存，开始下一场即释放。单队或多队不试算、不展示。开启会增加每步等待时间，分批试算期间可取消或打开新对局。
 
 ## !test! 有限评分测试
 
@@ -67,7 +75,7 @@ alpha
 
 普通 profile 使用 `\u0002` 修饰符，强化 profile 使用 `!` 修饰符；只切换陪测 profile 的构造，不改写被测名字。单名评分由被测名字与一个 profile 组队，对战两个 profile；相同名字两行只保留一个被测实体，对战一个 profile。多名字队伍继续沿用现有评分分组规则。页面标题显示模式与出招策略。
 
-输入面板的策略决定全部 10000 场 profile 对局的战斗方式：默认选择 Clever，双方均使用与回放一致的 run_search_round 和 16/128/4 预算；选择原版则双方原版。新增的“评分验证”复选框默认不勾选，只有勾选且选择 Clever 时，才让被测本体及其 profile 队友使用 Clever、对手使用原版。普通对局不受此框影响。只在累计 1000 场（10%）和 10000 场（100%）展示结果，随后永久停止该会话。Profile 名单、空战斗 seed 和 WIN_RATE_EVAL_RQ 沿用现有评分接口；旧 score() API 仍为原版评分。
+输入面板的策略决定全部 10000 场 profile 对局的战斗方式：选择 Clever 时，双方均使用与回放一致的 run_search_round 和 16/128/4 预算；选择原版则双方原版。新增的“评分验证”复选框默认不勾选，只有勾选且选择 Clever 时，才让被测本体及其 profile 队友使用 Clever、对手使用原版。普通对局不受此框影响。只在累计 1000 场（10%）和 10000 场（100%）展示结果，随后永久停止该会话。Profile 名单、空战斗 seed 和 WIN_RATE_EVAL_RQ 沿用现有评分接口；旧 score() API 仍为原版评分。
 
 技能／动作频率沿用参考站口径：被测本体产生的正 score、含 [0] 的真实消息次数，除以已完成场数再乘 100。不计 profile、召唤物、搜索试算及兼容层的 [s_dmg0] 伤害消息。这是每百局发生次数，不是每次出手的发动概率，可以超过 100%。Worker 支持立即取消正在计算的对局。
 

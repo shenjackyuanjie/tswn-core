@@ -7,32 +7,33 @@
  * @typedef {import("./show-types.js").InvolvedSet} InvolvedSet
  */
 
-import { createShowPlayback } from "./show-playback.js?v=20261124stats4";
-import { createThemeControls, setupPlayerHighlight, isEditableKeyTarget, copyTextToClipboard } from "./show-ui.js?v=20261124stats4";
+import { createShowPlayback } from "./show-playback.js?v=20261125rates1";
+import { createThemeControls, setupPlayerHighlight, isEditableKeyTarget, copyTextToClipboard } from "./show-ui.js?v=20261125rates1";
 import {
   buildIconClassCss,
+  escapeHtml,
   formatError,
   validateReplayInput,
-} from "./show-utils.js?v=20261124stats4";
-import { buildPlayerDetailHtml } from "./show-detail.js?v=20261124stats4";
-import { renderIdleState, statsPanelHtml } from "./show-render.js?v=20261124stats4";
+} from "./show-utils.js?v=20261125rates1";
+import { buildPlayerDetailHtml } from "./show-detail.js?v=20261125rates1";
+import { renderIdleState, statsPanelHtml } from "./show-render.js?v=20261125rates1";
 import {
   createReplayPlan,
   appendFrameToReplayPlan,
   markReplayPlanComplete,
-} from "./show-replay.js?v=20261124stats4";
+} from "./show-replay.js?v=20261125rates1";
 import {
   buildShowShareUrl,
   readStaticReplayInputFromSearch,
-} from "./show-routing.js?v=20261124stats4";
-import { ensureApi, createBattleStreamSource } from "./show-wasm.js?v=20261124stats4";
+} from "./show-routing.js?v=20261125rates1";
+import { ensureApi, createBattleStreamSource } from "./show-wasm.js?v=20261125rates1";
 
-import { parseScoreTestInput, scoreCheckpointHtml } from "./show-score-test.js?v=20261124stats4";
-import { winRateTableHtml } from "./show-win-rate.js?v=20261124stats4";
+import { parseScoreTestInput, scoreCheckpointHtml } from "./show-score-test.js?v=20261125rates1";
+import { winRateTableHtml } from "./show-win-rate.js?v=20261125rates1";
 
-import { BattleStreamController } from "./show-stream.js?v=20261124stats4";
-import { BattleDisplay } from "./show-display.js?v=20261124stats4";
-import { BattleMetrics } from "./show-metrics.js?v=20261124stats4";
+import { BattleStreamController } from "./show-stream.js?v=20261125rates1";
+import { BattleDisplay } from "./show-display.js?v=20261125rates1";
+import { BattleMetrics } from "./show-metrics.js?v=20261125rates1";
 
 // ============================================================================
 // 默认示例输入 — 可在页面中直接点击"示例"按钮填入
@@ -87,6 +88,7 @@ const coreVersionInfo = document.querySelector("#coreVersionInfo");
 /** @type {HTMLElement} */
 const modulePathInfo = document.querySelector("#modulePathInfo");
 /** @type {HTMLButtonElement} */
+const stateRateToggle = document.querySelector("#stateRateToggle");
 const strategySelect = document.querySelector("#strategySelect");
 /** @type {HTMLInputElement} 评分验证需显式勾选，普通对局不读取此选项。 */
 const scoreLegacyOpponents = document.querySelector("#scoreLegacyOpponents");
@@ -100,7 +102,17 @@ bossSelect.disabled = true;
 bossChallenge.addEventListener("change", () => {
   bossSelect.disabled = !bossChallenge.checked;
 });
-strategySelect.value = new URLSearchParams(window.location.search).get("strategy") === "legacy" ? "legacy" : "search";
+// 默认原版；开启测算切换到原版，选择 Clever 关闭测算。
+strategySelect.value = new URLSearchParams(window.location.search).get("strategy") === "search" ? "search" : "legacy";
+stateRateToggle.addEventListener("change", () => {
+  if (stateRateToggle.checked) strategySelect.value = "legacy";
+  if (stateRateToggle.checked && currentBattle && !currentBattle.state_rates_enabled) void startBattle();
+  else updateStateRates();
+});
+strategySelect.addEventListener("change", () => {
+  if (strategySelect.value === "search") stateRateToggle.checked = false;
+  updateStateRates();
+});
 /** @type {HTMLButtonElement} */
 const startBtn = document.querySelector("#startBtn");
 /** @type {HTMLButtonElement} */
@@ -256,14 +268,36 @@ const {
   get playbackStartedAt() { return playbackStartedAt; }, set playbackStartedAt(value) { playbackStartedAt = value; },
   get playbackPaused() { return playbackPaused; }, set playbackPaused(value) { playbackPaused = value; },
   get playbackFinished() { return playbackFinished; }, set playbackFinished(value) { playbackFinished = value; },
-}, { playerList, battleRows, endPanel, headerMeta, plistMeta, normalBtn, fastBtn, pauseBtn, shareBtn, stepControls, stepBackEventBtn, stepForwardEventBtn, stepBackFrameBtn, stepForwardFrameBtn, rememberPlayers, clearPlayerHighlight, closePanel, visibleStatesForCursor, updateStats });
+}, { playerList, battleRows, endPanel, headerMeta, plistMeta, normalBtn, fastBtn, pauseBtn, shareBtn, stepControls, stepBackEventBtn, stepForwardEventBtn, stepBackFrameBtn, stepForwardFrameBtn, rememberPlayers, clearPlayerHighlight, closePanel, visibleStatesForCursor, updateStats, updateStateRates });
 
 // ============================================================================
 // 胶水函数（直接操作 DOM 或全局状态）
 // ============================================================================
 
+/** 只显示已播放完的边界，回退时复用对应帧的胜率。 */
+function updateStateRates() {
+  let panel = document.querySelector("#stateRates");
+  if (!panel) { panel = document.createElement("section"); panel.id = "stateRates"; document.body.append(panel); }
+  const enabled = stateRateToggle.checked && currentBattle?.state_rates_enabled && currentBattle.strategy !== "search" && new Set(currentBattle.players.map(p => p.team_index)).size === 2;
+  panel.hidden = !enabled;
+  if (!enabled) return;
+  const completed = currentPlan?.frames.filter(f => playbackCursor >= f.end).at(-1);
+  const rates = completed?.frame.state_rates;
+  const teams = [...new Set(currentBattle.players.map(p => p.team_index))].sort((a,b) => a-b);
+  const rows = teams.map((team, i) => {
+    const names = currentBattle.players.filter(p => p.team_index === team).map(p => {
+      battleDisplay.state(p);
+      const icon = battleDisplay.iconBase64.get(p.icon_key ?? p.id_name ?? ('#' + p.id)) ?? '';
+      return '<span class="rate-member"><img alt="" src="' + escapeHtml(icon) + '">' + escapeHtml(p.id_name ?? p.display_name) + '</span>';
+    }).join("");
+    return '<div class="rate-team"><div>' + names + '</div><strong>' + (rates ? (rates.counts[i] / rates.rounds * 100).toFixed(2) + '%' : '等待测算') + '</strong></div>';
+  }).join("");
+  panel.innerHTML = '<b>当前队伍胜率</b><div>' + (rates ? '100% · ' + rates.rounds.toLocaleString() + ' 场' : '每步完整测算 10,000 场') + '</div>' + rows + (rates?.counts[2] ? '<small>未决 ' + rates.counts[2] + ' 场（计入总场数）</small>' : '');
+}
+
 /** 刷新战斗属性表：始终展示全部角色，每行一个。 */
 function updateStats(states) {
+  updateStateRates();
   let panel = document.querySelector("#battleStats");
   if (!panel) {
     // 回放开始时容器可能被重建，属性表就动态补在战报前面。
@@ -400,6 +434,7 @@ function setInputStatus(message, isError = false) {
 function setLoading(loading) {
   startBtn.disabled = loading;
   strategySelect.disabled = loading;
+  stateRateToggle.disabled = loading;
   sampleBtn.disabled = loading;
 }
 
@@ -799,10 +834,10 @@ async function startBattle({ persistInput = true } = {}) {
 
   let source = null;
   try {
-    source = await createBattleStreamSource(battleInput, versionInfo, coreVersionInfo, modulePathInfo, { metrics: battleMetrics, strategy: strategySelect.value });
+    source = await createBattleStreamSource(battleInput, versionInfo, coreVersionInfo, modulePathInfo, { metrics: battleMetrics, strategy: strategySelect.value, stateRates: stateRateToggle.checked });
     if (generation !== battleGenerationToken) { source.dispose(); return; }
     currentBattle = {
-      raw_input: source.raw_input, seed_line: source.seed_line, strategy: strategySelect.value,
+      raw_input: source.raw_input, seed_line: source.seed_line, strategy: strategySelect.value, state_rates_enabled: stateRateToggle.checked,
       players: source.players, initial_states: source.initial_states,
       frames: [], result: null, source_done: false,
       winner_ids: [], final_states: source.initial_states,

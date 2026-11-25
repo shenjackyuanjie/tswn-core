@@ -34,6 +34,11 @@ pub struct BattleSession {
 
 #[wasm_bindgen]
 impl BattleSession {
+    /// 返回当前状态续局的双方胜场（运行队伍升序）和未决场数。
+    pub fn current_win_rate_batch(&self, start: u32, count: u32) -> WasmResult<Vec<u32>> {
+        self.inner.current_win_rate_batch(start, count).map_err(cli_api_error)
+    }
+
     /// 启用 Clever 搜索；未调用时保持原版策略，预算由 core 校验。
     pub fn set_search(&mut self, samples: u32, horizon: u32, shortlist: u32, seed: u32) -> WasmResult<()> {
         self.inner

@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light dark">
     <meta name="darkreader-lock">
     <title>tswn_wasm Show Demo</title>
-    <link rel="stylesheet" href="./show.css?v=20261124stats5">
+    <link rel="stylesheet" href="./show.css?v=20261125rates1">
     <script>
         (() => {
             try {
@@ -76,7 +76,7 @@
                 </div>
                 <div class="side-controls">
                     <label for="strategySelect">出招策略 </label>
-                    <select id="strategySelect"><option value="search">Clever 搜索（当前实验版）</option><option value="legacy">原版策略（对照）</option></select>
+                    <select id="strategySelect"><option value="legacy">原版策略（默认）</option><option value="search">Clever 搜索（当前实验版）</option></select>
                     <div class="input-note">默认双方采用所选策略。搜索预算：最多 16 次续局采样 / 128 调度轮 / 4 个入围候选，另有短续局初筛。</div>
                     <label><input type="checkbox" id="scoreLegacyOpponents"> 评分验证：仅被测侧及队友使用 Clever，对手使用原版</label>
                     <div class="input-note">仅对 Clever 评分生效；不勾选时双方均使用 Clever。与全员原版评分比较，评分差即提升量。</div>
@@ -172,6 +172,8 @@
                 <svg class="svgicon collapse-icon" fill="white" height="24" width="24" viewBox="0 0 24 24"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
                 <svg class="svgicon expand-icon" fill="white" height="24" width="24" viewBox="0 0 24 24"><path d="M7.41 15.41 12 10.83l4.59 4.58L18 14l-6-6-6 6z"/></svg>
             </button>
+            <!-- 双队原版状态续局开关，与 Clever 策略互斥。 -->
+            <label class="state-rate-toggle"><input id="stateRateToggle" type="checkbox">逐步胜率测算<br><small>仅适用于两支队伍对战<br>与 Clever 互斥 · 每步 10,000 场</small></label>
             <div id="stepControls" class="step-controls">
                 <button id="stepBackEventBtn" class="micon" title="后退一个事件 (←)" aria-label="后退一个事件">
                     <svg class="svgicon" fill="white" height="24" width="24" viewBox="0 0 24 24"><path d="M5 7v10h2V7zm5 5l8-5v10l-8-5z"/></svg>
@@ -219,6 +221,6 @@
     </div>
 
     <script type="module" src="./show-theme-compat.js?v=20261123squall2"></script>
-    <script type="module" src="./show.js?v=20261124stats6"></script>
+    <script type="module" src="./show.js?v=20261125rates1"></script>
 </body>
 </html>

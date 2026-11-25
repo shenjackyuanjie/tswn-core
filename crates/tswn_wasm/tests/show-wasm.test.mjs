@@ -4,6 +4,41 @@ import assert from "node:assert/strict";
 import { actorToken, buildFrameRows } from "../examples/show-render.js";
 import { createBattleStreamSource } from "../examples/show-wasm.js";
 import { actorHpMetrics } from "../examples/show-utils.js";
+import { BattleStreamController } from "../examples/show-stream.js";
+
+// 真实流适配器与历史控制器共同验证采样缓存的生命周期。
+test("state rates finish ten thousand samples once per frame and reuse history", async () => {
+  let samples = 0, freed = 0;
+  const states = [{id: 0, team_index: 0, owner_id: null}, {id: 1, team_index: 1, owner_id: null}];
+  const api = { BattleSession: class {
+    constructor() { this.frames = 0; }
+    initial_states() { return states; }
+    next_frame() { return {frame_index: this.frames++, states, rows: []}; }
+    current_win_rate_batch(start, count) { samples += count; return [count, 0, 0]; }
+    is_done() { return this.frames === 2; }
+    result() { return {status: 'finished', final_states: states}; }
+    free() { freed++; }
+  }};
+  const makeSource = () => createBattleStreamSource('a\n\nb', null, null, null, {api, strategy: 'legacy', stateRates: true});
+  const controller = new BattleStreamController(await makeSource(), {paused: true});
+  const first = await controller.ensureFrame(0);
+  assert.deepEqual(first.state_rates, {counts: [10000, 0, 0], rounds: 10000});
+  await controller.ensureFrame(1);
+  assert.equal(samples, 20000);
+  controller.setPlaybackFrame(-1);
+  assert.equal(await controller.ensureFrame(0), first);
+  controller.setPlaybackFrame(0);
+  await controller.ensureFrame(1);
+  assert.equal(samples, 20000);
+  controller.dispose();
+  assert.equal(controller.history.length, 0);
+  const nextBattle = new BattleStreamController(await makeSource(), {paused: true});
+  const newFirst = await nextBattle.ensureFrame(0);
+  assert.notEqual(newFirst, first);
+  assert.equal(samples, 30000);
+  nextBattle.dispose();
+  assert.equal(freed, 2);
+});
 
 function streamApi({ failAt = -1, initialFailure = false } = {}) {
   const calls = { pulls: 0, frees: 0, eager: 0, options: null };

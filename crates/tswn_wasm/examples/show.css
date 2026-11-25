@@ -4,6 +4,17 @@
 @import url("./show-replay.css?v=20261124stats2");
 @import url("./show-panels.css");
 
+/* 胜率面板固定左下，长队伍名单支持滚动。 */
+#stateRates { position: fixed; left: 12px; bottom: 12px; z-index: 20; width: min(370px, calc(100vw - 110px)); max-height: 35vh; overflow: auto; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--sidebar-bg); color: var(--ink); font-size: 14px; box-shadow: 0 3px 14px #0003; }
+#stateRates[hidden] { display: none; }
+.right-controls.is-collapsed .state-rate-toggle { display: none; }
+.rate-team { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; }
+.rate-team strong { white-space: nowrap; }
+.rate-member { display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.rate-member img { width: 24px; height: 24px; image-rendering: pixelated; }
+.state-rate-toggle { padding: 8px; max-width: 165px; border-radius: 8px; background: var(--sidebar-bg); color: var(--ink); font-size: 14px; }
+.state-rate-toggle small { font-size: 12px; }
+
 .version-marker {
     position: absolute;
     top: 10px;

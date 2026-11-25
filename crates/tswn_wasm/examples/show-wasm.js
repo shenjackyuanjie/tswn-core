@@ -188,6 +188,7 @@ export async function createBattleStreamSource(rawInput, versionInfo, coreVersio
             session.set_search(16, 128, 4, 1);
         }
         const initialStates = session.initial_states();
+        const measureRates = options.stateRates === true && options.strategy !== "search" && new Set(initialStates.map(s => s.team_index)).size === 2;
         captureResult();
         options.metrics?.sessionCreated(performance.now() - createStart);
         return {
@@ -201,6 +202,21 @@ export async function createBattleStreamSource(rawInput, versionInfo, coreVersio
                 const pullStart = performance.now();
                 try {
                     const frame = session.next_frame();
+                    // 完整采样后发布该步；分批让出主线程，取消后不再访问会话。
+                    if (frame && measureRates) {
+                        const counts = [0, 0, 0];
+                        let yieldedAt = performance.now();
+                        for (let start = 0; start < 10000; start += 8) {
+                            if (disposed) return null;
+                            session.current_win_rate_batch(start, 8).forEach((n, i) => counts[i] += n);
+                            if (performance.now() - yieldedAt >= 12) {
+                                await new Promise(resolve => setTimeout(resolve, 0));
+                                yieldedAt = performance.now();
+                            }
+                        }
+                        if (disposed) return null;
+                        frame.state_rates = { counts, rounds: 10000 };
+                    }
                     captureResult();
                     if (frame == null && terminalResult == null) {
                         throw new Error("BattleSession 返回空 frame 但尚未终止");

@@ -54,6 +54,46 @@ pub struct BattleSession {
 }
 
 impl BattleSession {
+    /// 克隆完整边界独立续局，只替换试算 RNG，不消费正式对局随机流。
+    pub fn current_win_rate_batch(&self, start: u32, count: u32) -> CliApiResult<Vec<u32>> {
+        if self.driver.search.is_some()
+            || self.driver.runner.input_groups().len() != 2
+            || count == 0
+            || count > 32
+            || start.saturating_add(count) > 10000
+        {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "state rates require two legacy teams, count 1..32, total <= 10000".into(),
+            ));
+        }
+        if let Some(error) = &self.driver.failure {
+            return Err(error.clone());
+        }
+        let teams: Vec<_> = self
+            .initial_states
+            .iter()
+            .map(|s| s.team_index)
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        if teams.len() != 2 {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "state rates require exactly two runtime teams".into(),
+            ));
+        }
+        let mut counts = vec![0, 0, 0];
+        for sample in start..start + count {
+            let mut trial = self.driver.runner.clone();
+            trial.runtime_mut().rng = crate::rc4::RC4::new(format!("state-win-rate:{sample}").as_bytes(), 1);
+            let result = trial.run_to_completion(10000);
+            match result.winner_team.and_then(|team| teams.iter().position(|id| *id == team)) {
+                Some(index) => counts[index] += 1,
+                None => counts[2] += 1,
+            }
+        }
+        Ok(counts)
+    }
+
     /// 在推进前选择搜索预算；受控对局不能同时交给搜索策略。
     pub fn set_search(&mut self, config: crate::runtime::search::SearchConfig) -> CliApiResult<()> {
         if self.driver.rounds_advanced != 0 || !self.driver.runner.runtime().control.controlled_teams().is_empty() {
@@ -1037,6 +1077,29 @@ fn part_from_core(part: ReplayTextPart) -> BattleReplayTextPart {
 
 #[cfg(test)]
 mod tests {
+    /// 当前状态采样可分批累加，且不改变正式下一帧、随机流或终局。
+    #[test]
+    fn current_state_rates_preserve_live_battle_and_partition_samples() {
+        let raw = "alpha@red\n\nbeta@blue\nseed:state-rate-test@!";
+        let mut measured = BattleSession::new(raw, BattleOptions::default()).unwrap();
+        let mut reference = BattleSession::new(raw, BattleOptions::default()).unwrap();
+        assert_eq!(measured.next_frame().unwrap(), reference.next_frame().unwrap());
+        let whole = measured.current_win_rate_batch(0, 16).unwrap();
+        let a = measured.current_win_rate_batch(0, 8).unwrap();
+        let b = measured.current_win_rate_batch(8, 8).unwrap();
+        assert_eq!(whole, a.iter().zip(b).map(|(a, b)| a + b).collect::<Vec<_>>());
+        assert_eq!(whole.iter().sum::<u32>(), 16);
+        while !measured.is_done() {
+            assert_eq!(measured.next_frame().unwrap(), reference.next_frame().unwrap());
+        }
+        let terminal = measured.current_win_rate_batch(0, 8).unwrap();
+        assert_eq!(terminal.iter().sum::<u32>(), 8);
+        assert!(terminal[0] == 8 || terminal[1] == 8);
+        assert_eq!(terminal[2], 0);
+        let multi = BattleSession::new("a\n\nb\n\nc", BattleOptions::default()).unwrap();
+        assert!(multi.current_win_rate_batch(0, 8).is_err());
+    }
+
     use super::*;
     use crate::runtime::EntityIdx;
 
