@@ -49,41 +49,68 @@ export function createRateChart(host, onSeek) {
   async function downloadPng(footer = []) {
     if (!points.length) throw new Error('暂无可导出的胜率数据');
     const snapshot = points.slice(), teamIcons = icons.slice();
-    const width = Math.min(15000, Math.max(340, 82 + (snapshot.length-1) * (258/9)));
-    const x = i => 67 + i * ((width-82) / Math.max(1,snapshot.length-1));
-    const y = p => 26 + (100-p.percent) * 1.12;
-    const style = getComputedStyle(host), ink = style.getPropertyValue('--ink').trim(), grid = style.getPropertyValue('--border').trim();
-    const surface = style.getPropertyValue('--paper').trim();
-    const labelWidth = Math.max(24,String(snapshot.at(-1).round).length*7+8);
-    const labelEvery = Math.max(1,Math.ceil((snapshot.length-1) / Math.max(1,Math.floor((width-82)/labelWidth))));
-    const axisIcons = teamIcons.map((icon,i)=>'<image href="'+escapeHtml(icon ?? '')+'" x="0" y="'+(i ? 128 : 16)+'" width="20" height="20"/>').join('');
-    const nodes = snapshot.map((p,i)=>'<circle cx="'+x(i)+'" cy="'+y(p)+'" r="3.5" fill="#2484e4" stroke="'+surface+'" stroke-width="1.5"/>' + (i%labelEvery===0 || i===snapshot.length-1 ? '<text x="'+x(i)+'" y="158" text-anchor="middle">'+p.round+'</text>' : '')).join('');
-    // 完整输入名逐行排版，图标跟随名字；长名字自动折行，队间空行不丢失。
+    // 按名单所需高度反推横轴宽度；整张图（含名单和 seed）固定宽高比 1:0.618。
     const fontFamily = getComputedStyle(host).fontFamily;
     const measure = document.createElement('canvas').getContext('2d'); measure.font = '14px '+fontFamily;
-    let footerY = 190;
-    const footerSvg = footer.map(row=>{
-      if(!row.text) { footerY += 24; return ''; }
+    const wrap = (text,width) => {
       const lines = []; let line = '';
-      for(const char of row.text) {
+      for(const char of text) {
         if(line && measure.measureText(line+char).width > width-44) { lines.push(line); line=''; }
         line += char;
       }
       if(line) lines.push(line);
+      return lines;
+    };
+    let width = 340, layout;
+    for (;;) {
+      layout = footer.map(row=>({...row,lines:row.text ? wrap(row.text,width) : []}));
+      const neededHeight = 204 + layout.reduce((sum,row)=>sum+(row.text ? row.lines.length*22+4 : 24),0);
+      if(neededHeight <= width*0.618+0.001) break;
+      width = neededHeight/0.618;
+    }
+    const height = width*0.618;
+    const x = i => 67 + i * ((width-82) / Math.max(1,snapshot.length-1));
+    const y = p => 26 + (100-p.percent) * 1.12;
+    const style = getComputedStyle(host), ink = style.getPropertyValue('--ink').trim(), grid = style.getPropertyValue('--border').trim();
+    const surface = style.getPropertyValue('--paper').trim();
+    // 只压缩节点坐标；按实际字宽选择 1/2/5 级刻度间隔，文字不做横向变形。
+    measure.font = '11px '+fontFamily;
+    const labelWidths = snapshot.map(p=>measure.measureText(String(p.round)).width);
+    const labelWidth = labelWidths.reduce((max,w)=>Math.max(max,w+10),24);
+    const roughStep = Math.max(1,Math.ceil((snapshot.length-1) / Math.max(1,Math.floor((width-82)/labelWidth))));
+    const power = 10 ** Math.floor(Math.log10(roughStep));
+    const labelEvery = [1,2,5,10].map(n=>n*power).find(n=>n>=roughStep);
+    const ticks = [];
+    for(let i=0;i<snapshot.length-1;i+=labelEvery) ticks.push(i);
+    const last=snapshot.length-1;
+    while(ticks.length && x(last)-labelWidths[last]/2 < x(ticks.at(-1))+labelWidths[ticks.at(-1)]/2+8) ticks.pop();
+    ticks.push(last);
+    const tickSet = new Set(ticks);
+    const axisIcons = teamIcons.map((icon,i)=>'<image href="'+escapeHtml(icon ?? '')+'" x="0" y="'+(i ? 128 : 16)+'" width="20" height="20"/>').join('');
+    const nodes = snapshot.map((p,i)=>'<circle cx="'+x(i)+'" cy="'+y(p)+'" r="3.5" fill="#2484e4" stroke="'+surface+'" stroke-width="1.5"/>' + (tickSet.has(i) ? '<text x="'+x(i)+'" y="158" text-anchor="middle">'+p.round+'</text>' : '')).join('');
+    // 完整输入名逐行排版，图标跟随名字；长名字自动折行，队间空行不丢失。
+    let footerY = 190;
+    const footerSvg = layout.map(row=>{
+      if(!row.text) { footerY += 24; return ''; }
+      const lines = row.lines;
       const icon = row.icon ? '<image href="'+escapeHtml(row.icon)+'" x="6" y="'+(footerY-16)+'" width="20" height="20"/>' : '';
       const text = lines.map((line,index)=>'<text x="'+(row.icon ? 34 : 6)+'" y="'+(footerY+index*22)+'" style="font-size:14px">'+escapeHtml(line)+'</text>').join('');
       footerY += lines.length*22+4;
       return icon+text;
     }).join('');
-    const height = Math.max(168,footerY+14);
+    // 文字排版只使用固定比例画布以内的空间。
     // 不生成 0%/100% 文本，保留 50% 与三条水平虚线、左侧队伍图标。
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="'+width+'" height="'+height+'" viewBox="0 0 '+width+' '+height+'"><style>text{font-family:'+escapeHtml(fontFamily)+';font-size:11px;fill:'+ink+'}</style><rect width="100%" height="100%" fill="'+surface+'"/>'+axisIcons+'<path d="M65 26H'+(width-10)+' M65 82H'+(width-10)+' M65 138H'+(width-10)+'" stroke="'+grid+'" fill="none" stroke-dasharray="3 3"/><text x="24" y="86">50%</text><polyline points="'+snapshot.map((p,i)=>x(i)+','+y(p)).join(' ')+'" stroke="#2484e4" stroke-width="2.5" stroke-linejoin="round" fill="none"/>'+nodes+footerSvg+'</svg>';
     const url = URL.createObjectURL(new Blob([svg],{type:'image/svg+xml;charset=utf-8'}));
     try {
       const image = new Image(); image.src = url; await image.decode();
-      const canvas = document.createElement('canvas'); canvas.width = Math.ceil(width*2); canvas.height = Math.ceil(height*2);
+      // 500:309 与 1:0.618 完全相同，使用整数倍像素消除取整造成的比例偏差。
+      const units = Math.max(1,Math.ceil(width*2/500));
+      const canvas = document.createElement('canvas'); canvas.width = units*500; canvas.height = units*309;
       const ctx = canvas.getContext('2d'); if(!ctx) throw new Error('浏览器无法创建 PNG 画布');
-      ctx.scale(2,2); ctx.drawImage(image,0,0,width,height);
+      const scale = canvas.width/width;
+      ctx.setTransform(scale,0,0,scale,0,0);
+      ctx.drawImage(image,0,0,width,height);
       const blob = await new Promise(resolve=>canvas.toBlob(resolve,'image/png')); if(!blob) throw new Error('PNG 生成失败');
       const downloadUrl = URL.createObjectURL(blob), link = document.createElement('a');
       link.href = downloadUrl; link.download = 'namerena-winrate-'+new Date().toISOString().replace(/[:.]/g,'-')+'.png';
