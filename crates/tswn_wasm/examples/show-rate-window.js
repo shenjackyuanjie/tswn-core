@@ -1,6 +1,6 @@
 /** 胜率浮窗只在标题栏拖动、右下角缩放；正文保持独立交互和滚动。 */
-export function setupRateWindow(panel) {
-  panel.innerHTML = '<div class="rate-window-header"><b>当前队伍胜率</b><button type="button" title="恢复左下角默认位置和大小">复位</button></div><div class="rate-window-content"></div><div class="rate-window-resize" title="拖动调整窗口大小" aria-label="拖动调整窗口大小"></div>';
+export function setupRateWindow(panel, onExport) {
+  panel.innerHTML = '<div class="rate-window-header"><b>当前队伍胜率</b><span class="rate-window-actions"><button type="button" class="rate-window-reset" title="恢复左下角默认位置和大小">复位</button><button type="button" class="rate-export-png" disabled title="战斗结束后可导出整场胜率走势">导出 PNG</button></span></div><div class="rate-window-content"></div><div class="rate-window-resize" title="拖动调整窗口大小" aria-label="拖动调整窗口大小"></div>';
   const header = panel.querySelector('.rate-window-header'), handle = panel.querySelector('.rate-window-resize');
   let gesture = null;
   const clamp = (n,min,max) => Math.max(min, Math.min(max,n));
@@ -34,7 +34,8 @@ export function setupRateWindow(panel) {
     element.addEventListener('pointercancel',stop);
     element.addEventListener('lostpointercapture',stop);
   }
-  header.querySelector('button').addEventListener('click',()=>{panel.removeAttribute('style');});
+  header.querySelector('.rate-window-reset').addEventListener('click',()=>{panel.removeAttribute('style');});
+  header.querySelector('.rate-export-png').addEventListener('click',()=>onExport());
   // 视口缩小时保留可见标题栏，避免浮窗留在屏幕外。
   window.addEventListener('resize',()=>{if(!panel.hidden && panel.style.top) {const r=panel.getBoundingClientRect();apply(r.left,r.top,r.width,r.height);}});
 }

@@ -8,8 +8,8 @@
  */
 
 import { createShowPlayback } from "./show-playback.js?v=20261125rates1";
-import { createRateChart } from "./show-rate-chart.js?v=20261125chart1";
-import { setupRateWindow } from "./show-rate-window.js?v=20261125window1";
+import { createRateChart } from "./show-rate-chart.js?v=20261125png1";
+import { setupRateWindow } from "./show-rate-window.js?v=20261125png1";
 import { createThemeControls, setupPlayerHighlight, isEditableKeyTarget, copyTextToClipboard } from "./show-ui.js?v=20261125rates1";
 import {
   buildIconClassCss,
@@ -282,9 +282,12 @@ let stateRateChart = null;
 /** 只显示已播放完的边界，回退时复用对应帧的胜率。 */
 function updateStateRates() {
   let panel = document.querySelector("#stateRates");
-  if (!panel) { panel = document.createElement("section"); panel.id = "stateRates"; setupRateWindow(panel); document.body.append(panel); }
+  if (!panel) { panel = document.createElement("section"); panel.id = "stateRates"; setupRateWindow(panel, exportStateRatesPng); document.body.append(panel); }
   const enabled = stateRateToggle.checked && currentBattle?.state_rates_enabled && currentBattle.strategy !== "search" && new Set(currentBattle.players.map(p => p.team_index)).size === 2;
   panel.hidden = !enabled;
+  // 完整播至终局后解锁；同场回退或重播仍保留导出资格。
+  if (currentBattle?.source_done && playbackFinished) currentBattle.rate_export_ready = true;
+  panel.querySelector('.rate-export-png').disabled = !enabled || !currentBattle?.rate_export_ready || panel.dataset.exporting === 'true';
   const content = panel.querySelector(".rate-window-content");
   if (!enabled) { content.innerHTML = ""; stateRateChart = null; return; }
   if (!stateRateChart) {
@@ -318,6 +321,29 @@ function updateStateRates() {
     return battleDisplay.iconBase64.get(player.icon_key ?? player.id_name ?? ('#' + player.id));
   });
   stateRateChart.update(currentBattle, currentPlan, playbackCursor, icons);
+}
+
+/** 结束后导出整场缓存，名单读取本场原始输入而非可修改的输入框。 */
+async function exportStateRatesPng() {
+  if (!currentBattle?.rate_export_ready || !stateRateChart) return;
+  const panel = document.querySelector('#stateRates'), button = panel.querySelector('.rate-export-png');
+  panel.dataset.exporting = 'true'; button.disabled = true; button.textContent = '正在导出…';
+  const players = [...currentBattle.players].sort((a,b)=>a.id-b.id);
+  let playerIndex = 0;
+  const rawLines = currentBattle.raw_input.split(/\r?\n/).map(line=>line.trim());
+  const seedLines = rawLines.filter(line=>/^seed:/i.test(line));
+  const rosterLines = rawLines.filter(line=>!/^seed:/i.test(line)).join('\n').trim().replace(/\n{3,}/g,'\n\n').split('\n');
+  const footer = rosterLines.map(text=>{
+    if(!text) return {text:''};
+    const player=players[playerIndex++];
+    if(!player) return {text};
+    battleDisplay.state(player);
+    return {text,icon:battleDisplay.iconBase64.get(player.icon_key ?? player.id_name ?? ('#'+player.id))};
+  });
+  footer.push({text:''},... (seedLines.length ? seedLines : ['seed：（空 seed）']).map(text=>({text})));
+  try { await stateRateChart.downloadPng(footer); }
+  catch (error) { setInputStatus(formatError(error),true); }
+  finally { delete panel.dataset.exporting; button.textContent = '导出 PNG'; updateStateRates(); }
 }
 
 /** 刷新战斗属性表：始终展示全部角色，每行一个。 */
