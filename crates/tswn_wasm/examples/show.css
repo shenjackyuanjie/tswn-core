@@ -5,8 +5,14 @@
 @import url("./show-panels.css");
 
 /* 胜率面板固定左下，长队伍名单支持滚动。 */
-#stateRates { position: fixed; left: 12px; bottom: 12px; z-index: 20; width: min(370px, calc(100vw - 110px)); max-height: 65vh; overflow: auto; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--sidebar-bg); color: var(--ink); font-size: 14px; box-shadow: 0 3px 14px #0003; }
+#stateRates { position: fixed; left: 12px; bottom: 12px; z-index: 20; width: min(370px, calc(100vw - 24px)); max-height: 65vh; display: flex; flex-direction: column; overflow: hidden; padding: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--sidebar-bg); color: var(--ink); font-size: 14px; box-shadow: 0 3px 14px #0003; }
 #stateRates[hidden] { display: none; }
+/* 只有标题栏和缩放角接管指针，正文图表与历史滑块保持原有行为。 */
+.rate-window-header { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border); cursor: move; touch-action: none; user-select: none; }
+.rate-window-header button { font-size: 12px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-strong); color: var(--ink); box-shadow: none; cursor: pointer; }
+.rate-window-content { min-height: 0; overflow: auto; padding: 10px 12px 22px; flex: 1 1 auto; }
+.rate-window-resize { position: absolute; bottom: 2px; right: 2px; width: 20px; height: 20px; cursor: nwse-resize; touch-action: none; background: repeating-linear-gradient(135deg, transparent 0 4px, var(--muted) 4px 5px); clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+#stateRates.is-adjusting { user-select: none; }
 /* 勾选框保持自然宽度，并与左侧文字同行，避免继承文本框的整行宽度。 */
 input[type="checkbox"] { width: auto; padding: 0; }
 .checkbox-option { display: flex; align-items: flex-start; gap: 8px; text-align: left; }
