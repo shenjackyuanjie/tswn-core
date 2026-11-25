@@ -285,7 +285,7 @@ impl PreparedBattleInit {
         }
     }
 
-    pub(super) fn prepare_namerena_player(
+    pub(crate) fn prepare_namerena_player(
         player: &crate::namerena::PreparedPlayer,
         team: usize,
         registry: &ExtensionRegistry,

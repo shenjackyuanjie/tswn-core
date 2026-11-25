@@ -203,7 +203,8 @@ impl CombatRuntime {
             let Some(current) = self.select_plain_default_attack_target(actor, true) else {
                 break;
             };
-            self.drain_plain_attack_with_atp_into(actor, current, false, self.smdd_at(actor, 0.9), updates);
+            let atp = self.entities.get(actor).map_or(0.0, |entity| entity.runtime.get_at(false, &mut self.rng)) * 0.9;
+            self.drain_plain_attack_with_atp_into(actor, current, false, atp, updates);
         }
     }
 

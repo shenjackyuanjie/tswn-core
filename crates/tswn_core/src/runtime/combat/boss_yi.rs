@@ -114,7 +114,7 @@ impl CombatRuntime {
             return;
         };
         self.yi_say(actor, "[0]使用[猴咦射日]", updates);
-        let atp = self.entities.get(actor).map_or(0.0, |entity| f64::from(entity.runtime.magic) * 1.5);
+        let atp = self.entities.get(actor).map_or(0.0, |entity| entity.runtime.get_at(true, &mut self.rng)) * 1.5;
         self.drain_plain_attack_with_atp_into(actor, target, true, atp, updates);
         if let Some(entity) = self.entities.get_mut(actor) {
             entity.runtime.attack = entity.runtime.attack * 3 / 2;
@@ -128,9 +128,7 @@ impl CombatRuntime {
         let Some(target) = self.select_plain_default_attack_target(actor, true) else {
             return;
         };
-        self.yi_say(actor, "[0]发起攻击", updates);
-        let atp = self.entities.get(actor).map_or(0.0, |entity| f64::from(entity.runtime.attack));
-        self.drain_plain_attack_with_atp_into(actor, target, false, atp, updates);
+        self.drain_plain_default_attack_into(actor, target, false, updates);
     }
 
     /// 咦？：成功闪避后对 1~x-2 名敌人反击。

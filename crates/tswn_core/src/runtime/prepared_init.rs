@@ -12,7 +12,7 @@ use crate::namerena::{
 use crate::rc4::Rc4KeySchedulePrefix;
 use crate::runtime::entity::ScoreCloneSkillBoostPlan;
 
-mod init;
+pub(crate) mod init;
 mod roster;
 mod seed;
 
@@ -443,4 +443,16 @@ pub struct PreparedBattleSeed {
     sort_ints: Vec<i32>,
     battle_groups: Vec<Vec<PlrId>>,
     rc4_key: String,
+}
+
+/// 按名字重建一个战斗模板（换号类技能使用）：属性、图标与技能熟练度都按新名字计算。
+pub(crate) fn template_from_name(registry: &ExtensionRegistry, name: &str, team: usize) -> Option<PlayerTemplate> {
+    let input = crate::namerena::NamerenaInput::parse(name).ok()?;
+    let roster = crate::namerena::PreparedRoster::build(&input, 0.0).ok()?;
+    let player = roster.players.first()?;
+    let import = crate::runtime::profile::BuiltinSkillImportMap::new(registry);
+    let init = PreparedBattleInit::prepare_namerena_player(player, team, registry, &import, 0.0, false);
+    let mut template = init.template;
+    template.team = team;
+    Some(template)
 }

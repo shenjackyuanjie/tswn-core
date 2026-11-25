@@ -126,7 +126,7 @@ impl CombatRuntime {
             return;
         };
         self.tiger_say(actor, "[0]使用[草你]", updates);
-        let amount = self.entities.get(actor).map_or(0.0, |e| f64::from(e.runtime.magic));
+        let amount = self.entities.get(actor).map_or(0.0, |e| e.runtime.get_at(true, &mut self.rng));
         if self.apply_plain_attack_damage_into(actor, target, amount as i32, updates) {
             self.drain_plain_lethal_damage_into(actor, target, updates);
         }

@@ -24,7 +24,7 @@ pub const OCCUPY_MONKEYS: usize = 4;
 pub const MONKEY_CAP: usize = 10;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Child {
+pub(super) enum Child {
     Monkey,
     Fish,
 }
@@ -154,7 +154,7 @@ impl CombatRuntime {
     }
 
     /// 从被子里钻出一只猴区或一条鱼，衍生物受伤时一半传给被子。
-    fn quilt_spawn(&mut self, actor: EntityIdx, child: Child, updates: &mut RunUpdates) {
+    pub(super) fn quilt_spawn(&mut self, actor: EntityIdx, child: Child, updates: &mut RunUpdates) {
         let owner = self.entities.get(actor).expect("quilt owner missing");
         let team = owner.runtime.team;
         let kind = self
