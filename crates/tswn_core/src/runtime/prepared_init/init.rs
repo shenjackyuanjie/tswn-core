@@ -368,6 +368,12 @@ impl PreparedBattleInit {
             "saitama" if player.class == crate::namerena::PlayerClass::Boss => PreparedBossState::Saitama,
             _ => PreparedBossState::None,
         };
+        // 沙冰鱼固定只带 200 熟练度净化，避免默认血祭触发召唤蓝图。
+        if player.name == "Shabby_fish"
+            && let Some(purify) = registry.skill_id_by_export_name("core.skill.disperse")
+        {
+            template.skills = SkillLoadout::from_skill_levels([(purify, 200)]);
+        }
         PreparedPlayerInit {
             template,
             hp: player.status.hp,

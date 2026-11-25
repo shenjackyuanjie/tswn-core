@@ -87,7 +87,37 @@ impl CombatRuntime {
     /// 猴儿：召唤一只猴区（与被子相同）。
     fn fish_monkey(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
         self.fish_say(actor, "[0]使用[猴儿]", updates);
-        self.quilt_spawn(actor, crate::runtime::combat::boss_quilt::Child::Monkey, updates);
+        let Some(owner) = self.entities.get(actor) else {
+            return;
+        };
+        let team = owner.runtime.team;
+        let kind = self
+            .registry
+            .player_kind_id_by_export_name(DEFAULT_CORE_SHADOW_KIND_EXPORT)
+            .expect("core shadow kind missing");
+        // 猴区的属性与被子的猴区一致，但用幻影链路生成，避免召唤蓝图的分摊 lane。
+        let mut template = PlayerTemplate::with_kind(0, "猴区", kind, team, 260, 130);
+        template.defense = 55;
+        template.speed = 160;
+        template.agility = 70;
+        template.magic = 130;
+        template.resistance = 55;
+        template.wisdom = 70;
+        template.magic_point = 60;
+        template.id_key_name = "quilt-monkey".to_owned();
+        template.display_name = "猴区".to_owned();
+        template.clone_build = self.entities.get(actor).and_then(|e| e.template.clone_build.clone());
+        let idx = self.entities.next_spawn_idx(&template);
+        self.effects.push(QueuedEffect::SpawnWithMessage {
+            caster: actor,
+            template,
+            message: "[1]加入了己方".to_owned(),
+        });
+        self.drain_effects_into(updates);
+        if let Some(spawned) = self.entities.get_mut(idx) {
+            spawned.template.id_key_name = "quilt-monkey".to_owned();
+            spawned.runtime.attract_bits = 1_048_576.0_f64.to_bits();
+        }
     }
 
     /// 所以说我现在要发11.7T帮测：一次不可反弹的普攻，未回避则直接击杀，伤害外显 11.7T。
@@ -142,7 +172,8 @@ impl CombatRuntime {
         ));
     }
 
-    /// 按名字重建一个战斗单位的模板与运行态（属性、图标、技能熟练度全部换新）。
+    /// 按名字重建一个战斗单位：属性与图标按新名字计算，技能表保持原样，
+    /// 避免重建出缺少召唤分摊 lane 的技能表导致召唤链崩溃。
     fn rebuild_player_from_name(&mut self, target: EntityIdx, name: &str) -> bool {
         let Some(old) = self.entities.get(target) else {
             return false;
@@ -154,6 +185,7 @@ impl CombatRuntime {
         };
         template.id = id;
         template.team = team;
+        template.skills = old.template.skills.clone();
         if let Some(entity) = self.entities.get_mut(target) {
             entity.template = template;
             entity.refresh_runtime_stats_from_template();
