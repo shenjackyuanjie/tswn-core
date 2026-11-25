@@ -233,7 +233,7 @@ impl CombatRuntime {
             return;
         };
         self.fish_say(actor, "[0]使用[令人咦]", updates);
-        let atp = self.entities.get(actor).map_or(0.0, |e| f64::from(e.runtime.magic) * 1.5);
+        let atp = self.entities.get(actor).map_or(0.0, |e| e.runtime.get_at(true, &mut self.rng)) * 1.5;
         self.drain_plain_attack_with_atp_into(actor, target, true, atp, updates);
         if let Some(entity) = self.entities.get_mut(actor) {
             entity.runtime.attack = entity.runtime.attack * 3 / 2;
@@ -249,7 +249,8 @@ impl CombatRuntime {
         }
         let target = enemies[usize::from(self.rng.next_u8()) % enemies.len()];
         self.fish_say(actor, "[0]使用[净化]", updates);
-        self.apply_disperse_hit_into(actor, target, updates);
+        // 走原版净化：造成一次伤害并清除正面状态。
+        self.drain_plain_disperse_skill_into(actor, target, updates);
     }
     fn fish_say(&self, actor: EntityIdx, message: &'static str, updates: &mut RunUpdates) {
         updates.add_newline();
