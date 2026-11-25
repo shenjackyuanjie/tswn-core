@@ -290,7 +290,10 @@ function updateStateRates() {
       const icon = battleDisplay.iconBase64.get(p.icon_key ?? p.id_name ?? ('#' + p.id)) ?? '';
       return '<span class="rate-member"><img alt="" src="' + escapeHtml(icon) + '">' + escapeHtml(p.id_name ?? p.display_name) + '</span>';
     }).join("");
-    return '<div class="rate-team"><div>' + names + '</div><strong>' + (rates ? (rates.counts[i] / rates.rounds * 100).toFixed(2) + '%' : '等待测算') + '</strong></div>';
+    // 0% 红、50% 黄、100% 绿；高明度底色保持黑字清晰。
+    const percent = rates ? Math.max(0, Math.min(100, rates.counts[i] / rates.rounds * 100)) : null;
+    const badgeStyle = percent == null ? '' : ' style="--rate-hue:' + (percent * 1.2).toFixed(2) + '"';
+    return '<div class="rate-team"><div>' + names + '</div><strong class="rate-value' + (percent == null ? ' is-pending' : '') + '"' + badgeStyle + '>' + (percent == null ? '等待测算' : percent.toFixed(2) + '%') + '</strong></div>';
   }).join("");
   panel.innerHTML = '<b>当前队伍胜率</b><div>' + (rates ? '100% · ' + rates.rounds.toLocaleString() + ' 场' : '每步完整测算 10,000 场') + '</div>' + rows + (rates?.counts[2] ? '<small>未决 ' + rates.counts[2] + ' 场（计入总场数）</small>' : '');
 }
