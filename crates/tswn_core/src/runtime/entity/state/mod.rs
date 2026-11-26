@@ -6,10 +6,6 @@
 
 use super::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
-/// arena 中稳定的实体索引，允许预留 ID 空槽。
-pub struct EntityIdx(pub u32);
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// 一个带载荷状态的登记信息；增删由 [`StateStore`] 维护计划缓存与注册游标。
 pub struct StateEntry {

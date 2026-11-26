@@ -45,12 +45,12 @@ pub fn run_benchmark(
     match group_count {
         0 => eprintln!("benchmark: 输入为空或无有效玩家"),
         1 => run_bench_score(&groups_to_raw(&groups), n, mode, threads, perf, buckets_step),
-        _ => run_bench_winrate(&groups_to_raw(&groups), n, mode, threads, WIN_RATE_EVAL_RQ, perf, buckets_step),
+        _ => run_bench_win_rate(&groups_to_raw(&groups), n, mode, threads, WIN_RATE_EVAL_RQ, perf, buckets_step),
     }
 }
 
 /// 普通胜率 benchmark 入口。
-pub fn run_bench_winrate(
+pub fn run_bench_win_rate(
     raw: &str,
     n: usize,
     mode: BenchThreadMode,
@@ -60,19 +60,19 @@ pub fn run_bench_winrate(
     buckets_step: Option<usize>,
 ) {
     println!("=== 对战胜率测试 ({n} 场) ===");
-    print_bench_winrate_matchup(raw);
+    print_bench_win_rate_matchup(raw);
 
     if let Some(step) = buckets_step {
-        let summary = bench_winrate_with_buckets(raw, n, step, eval_rq, perf);
-        print_bench_winrate_summary(summary, perf);
+        let summary = bench_win_rate_with_buckets(raw, n, step, eval_rq, perf);
+        print_bench_win_rate_summary(summary, perf);
     } else {
-        let summary = bench_winrate_summary(raw, n, mode, threads, eval_rq, perf);
-        print_bench_winrate_summary(summary, perf);
+        let summary = bench_win_rate_summary(raw, n, mode, threads, eval_rq, perf);
+        print_bench_win_rate_summary(summary, perf);
     }
 }
 
 /// 打印对阵信息：恰好两队时逐队显示，多组时按序号列出全部组。
-fn print_bench_winrate_matchup(raw: &str) {
+fn print_bench_win_rate_matchup(raw: &str) {
     let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_string());
     let groups: Vec<_> = groups.into_iter().filter(|group| !group.is_empty()).collect();
 
@@ -115,7 +115,7 @@ pub fn run_bench_group_win_rate(
         println!();
         println!("[{}/{}] vs {}", index + 1, against.len(), display_group(opponent));
         let raw = format!("{target}\n\n{opponent}");
-        let summary = bench_winrate_summary(&raw, n, mode, threads, eval_rq, perf);
+        let summary = bench_win_rate_summary(&raw, n, mode, threads, eval_rq, perf);
         println!("胜率: {:.2}%  ({}/{})", summary.win_rate_percent(), summary.wins, summary.total);
         if perf {
             print_perf_lines(summary.elapsed, summary.timing, summary.total);
@@ -140,7 +140,7 @@ pub fn run_bench_group_win_rate(
 }
 
 /// 普通 win-rate 的实际执行器。
-pub fn bench_winrate_summary(
+pub fn bench_win_rate_summary(
     raw: &str,
     n: usize,
     mode: BenchThreadMode,
@@ -186,7 +186,7 @@ pub fn bench_winrate_summary(
 
 /// 分段累积胜率测试。按 `step` 将 `n` 场分块，每块结束后输出一次累积胜率。
 /// 强制单线程以保证顺序正确。
-fn bench_winrate_with_buckets(raw: &str, n: usize, step: usize, eval_rq: f64, timed: bool) -> BenchSummary {
+fn bench_win_rate_with_buckets(raw: &str, n: usize, step: usize, eval_rq: f64, timed: bool) -> BenchSummary {
     let step = step.max(1);
     let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_string());
     let prepared = match (|| -> Result<_, tswn_core::runtime::RuntimeBatchError> {
@@ -250,7 +250,7 @@ fn bench_winrate_with_buckets(raw: &str, n: usize, step: usize, eval_rq: f64, ti
 }
 
 /// 打印统一风格的 win-rate 摘要。
-fn print_bench_winrate_summary(summary: BenchSummary, perf: bool) {
+fn print_bench_win_rate_summary(summary: BenchSummary, perf: bool) {
     let elapsed_secs = summary.elapsed.as_secs_f64();
     let throughput = if elapsed_secs > 0.0 {
         summary.total as f64 / elapsed_secs

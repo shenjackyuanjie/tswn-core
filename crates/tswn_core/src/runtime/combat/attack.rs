@@ -756,7 +756,6 @@ impl CombatRuntime {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     /// 回避判定后的普攻结算：按防御折算伤害、过 POST_DEFEND 并落地。
     pub fn drain_plain_attack_after_dodge_into(
         &mut self,

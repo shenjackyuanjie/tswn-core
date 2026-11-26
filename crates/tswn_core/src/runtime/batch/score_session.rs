@@ -4,10 +4,36 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 
 use super::{BATCH_MAX_ROUNDS, ScoreMatchGroups, js_score_targets_per_round};
-use crate::cli_api::{CliApiError, CliApiResult};
 use crate::namerena::eval_name::WIN_RATE_EVAL_RQ;
 use crate::namerena::trim_js_line_end;
 use crate::runtime::{PreparedRuntimeRunner, RunUpdate, RuntimeRunner, default_custom_runtime_import_config};
+
+/// 评分测试会话的错误：输入非法、runner 初始化失败与运行时推进失败三类。
+///
+/// 位于 runtime 机制层，不依赖适配层的 CliApiError；对外形态由 cli_api 边界的
+/// `From<ScoreTestError>` 转换还原，错误码与信息保持不变。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScoreTestError {
+    /// 输入不是单队名字集合（分队、空行或指定 seed）。
+    InvalidInput(String),
+    /// 默认配置或预构建 runner 初始化失败。
+    RunnerInit(String),
+    /// 单场对局初始化或推进失败。
+    Runtime(String),
+}
+
+impl std::fmt::Display for ScoreTestError {
+    /// 显示评分测试错误：区分输入、初始化与运行时三类。
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidInput(message) => f.write_str(message),
+            Self::RunnerInit(message) => write!(f, "runtime runner init failed: {message}"),
+            Self::Runtime(message) => write!(f, "runtime failed: {message}"),
+        }
+    }
+}
+
+impl std::error::Error for ScoreTestError {}
 
 /// 评分测试固定的样本局数（10,000 场）。
 pub const SCORE_TEST_TOTAL: usize = 10_000;
@@ -42,12 +68,12 @@ pub struct ScoreTestSession {
     wins: usize,
     truncated: usize,
     skills: BTreeMap<Cow<'static, str>, u64>,
-    failure: Option<CliApiError>,
+    failure: Option<ScoreTestError>,
 }
 
 impl ScoreTestSession {
     /// 接收剥掉网页指令后的单队文本。强化仅切换陪测 profile 的修饰符。
-    pub fn new(raw: &str, enhanced: bool) -> CliApiResult<Self> {
+    pub fn new(raw: &str, enhanced: bool) -> Result<Self, ScoreTestError> {
         let raw = raw.replace("\r\n", "\n").replace('\r', "\n");
         let targets = raw.trim().lines().map(trim_js_line_end).map(str::to_owned).collect::<Vec<_>>();
         if targets.is_empty()
@@ -57,13 +83,13 @@ impl ScoreTestSession {
                     || name.trim_start().get(..5).is_some_and(|prefix| prefix.eq_ignore_ascii_case("seed:"))
             })
         {
-            return Err(CliApiError::InvalidInput("评分需要一组名字；不能分队或指定 seed。".into()));
+            return Err(ScoreTestError::InvalidInput("评分需要一组名字；不能分队或指定 seed。".into()));
         }
 
         let groups = ScoreMatchGroups::new(&targets, if enhanced { "!" } else { "\u{0002}" });
-        let config = default_custom_runtime_import_config().map_err(|error| CliApiError::RunnerInit(format!("{error:?}")))?;
+        let config = default_custom_runtime_import_config().map_err(|error| ScoreTestError::RunnerInit(format!("{error:?}")))?;
         let prepared = PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(&groups.groups, WIN_RATE_EVAL_RQ, config)
-            .map_err(|error| CliApiError::RunnerInit(format!("{error:?}")))?;
+            .map_err(|error| ScoreTestError::RunnerInit(format!("{error:?}")))?;
         let runner = prepared.new_reusable_runner();
         Ok(Self {
             prepared,
@@ -79,7 +105,7 @@ impl ScoreTestSession {
     }
 
     /// 推进至多 batch_size 场；完成后不再推进，复位失败后不再继续本批评分。
-    pub fn step(&mut self, batch_size: usize) -> CliApiResult<()> {
+    pub fn step(&mut self, batch_size: usize) -> Result<(), ScoreTestError> {
         if let Some(error) = &self.failure {
             return Err(error.clone());
         }
@@ -94,7 +120,7 @@ impl ScoreTestSession {
     }
 
     /// 执行单场评分对局：按当前完成局数设置分队轮次并复位 runner，逐帧累计技能消息，更新截断、胜场与完成数。
-    fn step_match(&mut self) -> CliApiResult<()> {
+    fn step_match(&mut self) -> Result<(), ScoreTestError> {
         self.groups.set_round(self.completed);
         self.prepared
             .reset_score_groups_with_seed_and_eval_rq(
@@ -110,7 +136,7 @@ impl ScoreTestSession {
                 &[],
                 WIN_RATE_EVAL_RQ,
             )
-            .map_err(|error| CliApiError::Runtime(format!("{error:?}")))?;
+            .map_err(|error| ScoreTestError::Runtime(format!("{error:?}")))?;
 
         for _ in 0..BATCH_MAX_ROUNDS {
             let outcome = self.runner.runtime_mut().run_minimal_round();
@@ -250,7 +276,7 @@ mod tests {
             "!\nalpha",
         ] {
             assert!(
-                matches!(ScoreTestSession::new(raw, false), Err(CliApiError::InvalidInput(_))),
+                matches!(ScoreTestSession::new(raw, false), Err(ScoreTestError::InvalidInput(_))),
                 "{raw:?}"
             );
         }

@@ -851,5 +851,4 @@ impl EncodedBatch {
 }
 
 #[cfg(test)]
-#[path = "batch_tests.rs"]
 mod tests;

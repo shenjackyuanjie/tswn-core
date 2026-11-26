@@ -55,6 +55,10 @@
 //! tswn-cli icon show mario luigi
 //! ```
 
+// 批量与评分热路径与 lib 一致，刻意以多个 `&mut` 缓冲参数复用分配，避免每局重新分配；
+// 为此放宽 clippy 的参数数量上限。参见 bench 批量入口。
+#![allow(clippy::too_many_arguments)]
+
 /// CLI 参数解析与命令表示。
 mod args;
 /// benchmark 子命令实现。
@@ -117,7 +121,7 @@ fn main() {
                 tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ
             };
             let raw = format!("{team1}\n\n{team2}");
-            bench::run_bench_winrate(&raw, n, mode, threads, eval_rq, perf, buckets_step);
+            bench::run_bench_win_rate(&raw, n, mode, threads, eval_rq, perf, buckets_step);
         }
         ParsedCommand::BenchGroupWinRate {
             target,

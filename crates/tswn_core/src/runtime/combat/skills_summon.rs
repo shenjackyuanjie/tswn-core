@@ -1,7 +1,7 @@
 use super::*;
 
 impl CombatRuntime {
-    pub(super) fn plain_summon_probability_allowed(&self, actor: EntityIdx, smart: bool) -> bool {
+    pub fn plain_summon_probability_allowed(&self, actor: EntityIdx, smart: bool) -> bool {
         let owner = self
             .entities
             .get(actor)
@@ -25,7 +25,7 @@ impl CombatRuntime {
         }
     }
 
-    pub(super) fn drain_plain_summon_skill_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+    pub fn drain_plain_summon_skill_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
         updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[血祭]",
             actor.0 as usize,
@@ -94,7 +94,7 @@ impl CombatRuntime {
             .expect("runtime core summoned entity slot must exist");
     }
 
-    pub(super) fn drain_plain_summon_explode_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
+    pub fn drain_plain_summon_explode_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         self.effects.push(QueuedEffect::SummonExplode {
             caster: actor,
             target,
@@ -103,7 +103,7 @@ impl CombatRuntime {
         self.drain_effects_into(updates);
     }
 
-    pub(super) fn drain_plain_summon_share_damage_into(
+    pub fn drain_plain_summon_share_damage_into(
         &mut self,
         summoned: EntityIdx,
         level: u32,

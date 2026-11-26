@@ -384,6 +384,9 @@ impl NamerPfMode {
 }
 
 /// 批量胜率汇总：平均/聚合胜率、计数、耗时与有效/跳过对阵数。
+///
+/// 与 `WinRateSummary` 不同，它持有 `avg` / `aggregate_rate` 这类**已计算值**，
+/// 不再可合并，因此不遵循「`*Summary` 只存可累加计数」的约定。
 #[derive(Debug, Clone, Copy, Default)]
 pub(super) struct BatchSummary {
     avg: f64,
@@ -396,6 +399,11 @@ pub(super) struct BatchSummary {
 }
 
 /// 计算第一输入组对其他组的胜率；默认 rq 为胜率口径，n 至少按 1 处理。
+///
+/// 统计结果在本 crate 内沿三层窄化，改字段前先确认落在哪一层：
+/// `RuntimeBatchSummary`（引擎层，含 `errors` / `guard_exhausted`）
+/// → `WinRateSummary`（入口层，只留 `wins` / `total` / `timing`）
+/// → `WinRateResult`（公共 DTO，把 timing 拍平成两个纳秒字段）。
 pub fn win_rate_summary(raw: &str, n: usize, eval_rq: Option<f64>, thread: u32) -> CliApiResult<WinRateResult> {
     let eval_rq = eval_rq.unwrap_or(eval_name::WIN_RATE_EVAL_RQ);
     let groups = RuntimeRunner::split_namerena_into_groups(raw.to_owned()).0;
@@ -768,6 +776,17 @@ fn validate_factored_targets(target_groups: &[String], target_factors: &[f64], a
 
 /// 把 runtime 批量错误映射为 `CliApiError::Runtime`。
 fn runtime_batch_error(error: crate::runtime::RuntimeBatchError) -> CliApiError { CliApiError::Runtime(error.to_string()) }
+
+impl From<crate::runtime::ScoreTestError> for CliApiError {
+    /// 把评分测试错误还原为对应的 CliApiError 变体，保持对外的错误码与信息不变。
+    fn from(error: crate::runtime::ScoreTestError) -> Self {
+        match error {
+            crate::runtime::ScoreTestError::InvalidInput(message) => Self::InvalidInput(message),
+            crate::runtime::ScoreTestError::RunnerInit(message) => Self::RunnerInit(message),
+            crate::runtime::ScoreTestError::Runtime(message) => Self::Runtime(message),
+        }
+    }
+}
 
 /// 把 custom runtime 导入错误映射为输入错误。
 fn custom_runtime_import_error(error: crate::runtime::CustomRuntimeImportError) -> CliApiError {

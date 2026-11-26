@@ -81,7 +81,7 @@ impl CombatRuntime {
         outcome
     }
 
-    pub(super) fn select_plain_assassinate_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
+    pub fn select_plain_assassinate_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         if self.entities.get(actor).is_some_and(|entity| entity.runtime.assassinate.is_some()) {
             return PreparedTargetList::new();
         }
@@ -131,7 +131,7 @@ impl CombatRuntime {
         pending
     }
 
-    pub(super) fn drain_plain_assassinate_skill_into(
+    pub fn drain_plain_assassinate_skill_into(
         &mut self,
         actor: EntityIdx,
         fixed_lane: usize,
@@ -194,7 +194,7 @@ impl CombatRuntime {
         ));
     }
 
-    pub(super) fn run_plain_assassinate_post_damage_into(&mut self, owner: EntityIdx, damage: i32, updates: &mut RunUpdates) {
+    pub fn run_plain_assassinate_post_damage_into(&mut self, owner: EntityIdx, damage: i32, updates: &mut RunUpdates) {
         if damage <= 0
             || !self
                 .entities

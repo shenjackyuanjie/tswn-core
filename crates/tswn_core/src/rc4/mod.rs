@@ -72,14 +72,14 @@ fn apply_key_scheduling(state: &mut [u8; VAL_LEN], keys: &[u8]) {
 
     for x in 0..VAL_LEN {
         // SAFETY: x 始终小于 VAL_LEN；key_index 在每轮末尾回绕，始终小于非零的 key_len；
-        // j 是 u8，转换后的下标天然落在 0..VAL_LEN。两个状态指针可能相同，逐字节交换对此安全。
+        // j 是 u8，转换后的下标天然落在 0..VAL_LEN。两个状态指针可能相同（自交换）。
+        // 用 ptr::swap 而非 mem::swap：KSA 中 x 与 j 可能取同一位置，
+        // mem::swap 走 typed_swap_nonoverlapping，重叠即 UB；ptr::swap 的契约允许重叠。
         unsafe {
             let x_ptr = state_ptr.add(x);
             j = j.wrapping_add(*x_ptr).wrapping_add(*key_ptr.add(key_index));
             let j_ptr = state_ptr.add(j as usize);
-            let value = *x_ptr;
-            *x_ptr = *j_ptr;
-            *j_ptr = value;
+            std::ptr::swap(x_ptr, j_ptr);
         }
 
         key_index += 1;
@@ -95,13 +95,13 @@ fn apply_key_scheduling_step(state: &mut [u8; VAL_LEN], key: &[u8], x: usize, ke
     let state_ptr = state.as_mut_ptr();
     // SAFETY: 调用方保证 x 小于 256，key_index 小于非空 key 长度；j 为 u8，
     // 因而状态数组的两个下标和密钥下标都始终在界内。
+    // 用 ptr::swap 而非 mem::swap：KSA 中 x 与 j 可能取同一位置，
+    // mem::swap 走 typed_swap_nonoverlapping，重叠即 UB；ptr::swap 的契约允许重叠。
     unsafe {
         let x_ptr = state_ptr.add(x);
         *j = j.wrapping_add(*x_ptr).wrapping_add(*key.as_ptr().add(key_index));
         let j_ptr = state_ptr.add(*j as usize);
-        let value = *x_ptr;
-        *x_ptr = *j_ptr;
-        *j_ptr = value;
+        std::ptr::swap(x_ptr, j_ptr);
     }
 }
 
@@ -271,7 +271,7 @@ const SMALL_RANGE_RECIPROCALS: [u64; 256] = {
     let mut table = [0; 256];
     let mut divisor = 1usize;
     while divisor < table.len() {
-        table[divisor] = ((1u64 << 32) + divisor as u64 - 1) / divisor as u64;
+        table[divisor] = (1u64 << 32).div_ceil(divisor as u64);
         divisor += 1;
     }
     table
@@ -1122,5 +1122,4 @@ impl RC4 {
 }
 
 #[cfg(test)]
-#[path = "rc4_tests.rs"]
 mod tests;

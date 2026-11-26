@@ -190,7 +190,6 @@ pub(super) fn write_batch_rate_record(file: &mut File, line: &str) -> io::Result
 }
 
 /// 构造 batch-rate JSONL 记录。
-#[allow(clippy::too_many_arguments)]
 pub(super) fn format_batch_rate_record(
     label: &str,
     avg_rate: f64,
@@ -222,7 +221,6 @@ pub(super) fn format_batch_rate_log_record(label: &str, avg_rate: f64, wr_precis
 pub(super) fn format_batch_rate_pure_record(label: &str) -> String { label.to_string() }
 
 /// 构造 pair JSONL 记录。
-#[allow(clippy::too_many_arguments)]
 pub(super) fn format_pair_rate_record(
     label: &str,
     final_score: f64,

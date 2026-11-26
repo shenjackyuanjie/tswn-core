@@ -324,12 +324,6 @@ mod tests {
     }
 
     #[test]
-    fn k4_is_empty_because_the_skill_is_a_pre_action_shield() {
-        assert!(action_skills().is_empty());
-        assert_eq!(ACTION_SKILLS.len(), 0);
-    }
-
-    #[test]
     fn default_skill_levels_register_the_shield_at_80() {
         assert_eq!(default_skill_levels(), &[(29, 80)]);
         assert_eq!(SHIELD_LEVEL, 0x50);

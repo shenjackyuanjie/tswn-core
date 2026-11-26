@@ -71,7 +71,7 @@ const BOSS_ICONS: [&str; 13] = [
     "aokiji", "conan", "covid", "ikaruga", "lazy", "mario", "mosquito", "saitama", "slime", "sonic", "thanos", "wheel", "yuri",
 ];
 /// Boss 徽章的 RGBA 位图数据，每个图标 1024 字节。
-const BOSS_RGBA: &[u8; BOSS_ICONS.len() * 1024] = include_bytes!("icon_render/boss_rgba.bin");
+const BOSS_RGBA: &[u8; BOSS_ICONS.len() * 1024] = include_bytes!("boss_rgba.bin");
 
 /// 按 raw 名取 Boss 固定徽章 RGBA：要求 `@!` 修饰且名称在表内。
 fn boss_icon(raw_name: &str) -> Option<&'static [u8]> {

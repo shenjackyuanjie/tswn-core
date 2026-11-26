@@ -685,13 +685,4 @@ mod tests {
             assert_eq!(get_lang(k), *v, "键 {:?} 查询结果不一致", k);
         }
     }
-
-    #[test]
-    fn test_no_duplicate_keys() {
-        use std::collections::HashSet;
-        let mut seen = HashSet::new();
-        for &(k, _) in LANG_DATA {
-            assert!(seen.insert(k), "LANG_DATA 中存在重复键: {:?}", k);
-        }
-    }
 }

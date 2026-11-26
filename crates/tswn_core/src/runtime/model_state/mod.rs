@@ -914,5 +914,4 @@ impl From<&PlayerRuntime> for ModelPlayerRuntime {
 }
 
 #[cfg(test)]
-#[path = "model_state_tests.rs"]
 mod tests;

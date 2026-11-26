@@ -110,7 +110,6 @@ pub struct PairOptions {
 /// 执行 `bench pair`：遍历 player × teammate 组合，先按靶子权重得到平均胜率，
 /// `teammate_factored` 时再乘队友权重，按乘权分数降序取前 `head` 个求和。
 /// 输出文件、屏幕阈值与排序由 `output` 控制；转换或 I/O 失败报告后以退出码 1 终止。
-#[allow(clippy::too_many_arguments)]
 pub fn run_bench_pair(
     target_groups: &[String],
     target_factors: &[f64],

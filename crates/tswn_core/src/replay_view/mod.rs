@@ -709,5 +709,4 @@ fn clip_delay(
 }
 
 #[cfg(test)]
-#[path = "replay_view_tests.rs"]
 mod tests;

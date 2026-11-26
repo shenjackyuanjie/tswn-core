@@ -208,7 +208,6 @@ pub fn runtime_cqp_matchups_observed(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_range_jobs(
     matchups: &[RuntimeCqpMatchup],
     n: usize,

@@ -69,6 +69,10 @@
 //! [项目与 core 原理指南](https://github.com/shenjackyuanjie/tswn-core/tree/main/docs/core-guide)
 //! 开始；安装、CLI 参数和发布工具见各 crate README。API 细节以本 rustdoc 的类型和签名为准。
 
+// 批量与评分热路径刻意以多个 `&mut` 缓冲参数复用分配，避免每局重新分配；
+// 为此放宽 clippy 的参数数量上限。参见 runtime::batch 与 prepared_init 的复位入口。
+#![allow(clippy::too_many_arguments)]
+
 #[cfg(feature = "mimalloc_alloc")]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;

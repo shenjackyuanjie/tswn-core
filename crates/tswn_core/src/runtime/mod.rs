@@ -46,15 +46,10 @@ mod handlers;
 pub mod lang;
 pub mod model_state;
 mod normalized;
-mod plain_assassinate;
-mod plain_slime;
-mod plain_summon;
-mod plain_zombie;
 mod prepared_init;
 mod profile;
 mod runner;
 pub mod scheduler;
-pub mod scratch;
 mod session;
 pub mod slot;
 #[cfg(not(feature = "no_debug"))]
@@ -73,6 +68,7 @@ pub const MOVE_POINT_THRESHOLD: i32 = 2048;
 /// namerena 评分机制里的第一个靶子。
 pub const PROFILE_START: u32 = 3355_4431;
 
+pub use combat::BattleScratch;
 pub use effect::{
     CoreReplayEvent, CoreShowEvent, CustomEffect, CustomEffectPayload, EffectContext, EffectContextError, EffectHandlerFn,
     EffectHandlers, EffectQueue, QueuedEffect, RenderedReplay, RenderedShow, ReplayRendererFn, ReplayRenderers, RuntimeFrame,
@@ -95,18 +91,19 @@ pub use normalized::{NormalizedActionBoundary, NormalizedOutcome, NormalizedRngC
 pub use scheduler::{
     ActionPlan, ActionSchedulerMode, PhaseScheduler, SkillHookPlan, SkillHookPlanEntry, StateHookPlan, StateHookPlanEntry,
 };
-pub use scratch::BattleScratch;
 pub use slot::{BattleSlotStorage, EntitySlotStorage, SlotError, SlotValue, TemplateSlotStorage};
 #[cfg(not(feature = "no_debug"))]
 pub use trace::{RngCheckpoint, RuntimeTrace, TraceAction, TraceFrame};
 pub use world::WorldArena;
 
 pub use batch::{
-    RuntimeBatchError, RuntimeBatchSummary, SCORE_TEST_TOTAL, ScoreSkillFrequency, ScoreTestProgress, ScoreTestSession,
-    prepared_runtime_win_rate, prepared_runtime_win_rate_range, prepared_runtime_win_rate_range_timed,
+    RuntimeBatchError, RuntimeBatchSummary, SCORE_TEST_TOTAL, ScoreSkillFrequency, ScoreTestError, ScoreTestProgress,
+    ScoreTestSession, prepared_runtime_win_rate, prepared_runtime_win_rate_range, prepared_runtime_win_rate_range_timed,
     prepared_runtime_win_rate_timed, runtime_groups_win_rate, runtime_groups_win_rate_timed, runtime_score, runtime_score_range,
     runtime_score_range_timed, runtime_score_timed,
 };
+pub use combat::PlainSkillPreActionOutcome;
+pub use combat::boss_slime;
 pub use combat::{
     CombatRuntime, PreparedBossSkillAction, PreparedBuiltinSkillAction, PreparedPlainAction, PreparedTargetList, RoundOutcome,
     SelectedBuiltinSkill,
@@ -120,7 +117,6 @@ pub use cqp::{
     runtime_cqp_matchups_observed,
 };
 pub use handlers::*;
-pub use plain_assassinate::PlainSkillPreActionOutcome;
 pub use prepared_init::{PreparedBattleInit, PreparedBattleRoster, RuntimeBattleInitError};
 pub(crate) use prepared_init::{ScoreIdentityBuffer, ScoreRosterBuffers, ScoreRoundScratch};
 pub use profile::*;

@@ -4,12 +4,37 @@
 //! 调度器选行动，hook 读取当前数据并修改受击值或入队，效果提交后同步世界与消息。
 //! 各攻击与状态效果使用各自分支，沿具体技能入口可查看完整的伤害与状态链。
 //! 普通应用通过 [`super::RuntimeRunner`] 或规范 BattleSession 使用本执行器。
+//!
+//! # 命名约定
+//!
+//! 文件名表达**机制类别**，函数名表达**角色与动作**，两者是不同维度：
+//!
+//! - 无前缀（`round` / `attack` / `defense` / `effects` / `lifecycle` / `passive` /
+//!   `infection`，以及随 `cards` feature 编译的 `abilities`）是执行阶段或横切关注点。
+//! - `skills_*` 按技能类别切分（offense / control / team / lifecycle / debuff / boss /
+//!   weapon / summon / zombie / assassinate）。
+//! - `boss_*` 是单个 Boss 的专属实现（thanos / wheel / slime），与 `skills_boss` 的
+//!   「Boss 技能类别」不是一回事。
+//!
+//! 函数名里的 `plain_` / `boss_` 是**角色**前缀（普通角色对 Boss），与文件名的机制类别
+//! 无关，所以 `skills_control` 里会出现 `drain_plain_ice_skill_into`。
+//!
+//! 两个高频动词的边界：
+//!
+//! - `drain_*_into`：排空累积队列，例如 `drain_plain_update_end_into` 先
+//!   `std::mem::take` 再逐条处理。
+//! - `run_*_into`：执行一个具体 handler，并把结果追加进 updates。
+//!
+//! 两者都接收 `&mut RunUpdates`。`_into` 统一表示「输出写入 RunUpdates」；
+//! `apply_*_on_damage` 一族走的是「触发条件」命名轴（on_damage）而不是输出目标轴，
+//! 因此不带 `_into`。
 
 use super::*;
 
 #[cfg(feature = "cards")]
 mod abilities;
 mod attack;
+pub mod boss_slime;
 mod boss_thanos;
 mod boss_wheel;
 mod defense;
@@ -18,13 +43,18 @@ mod infection;
 mod lifecycle;
 mod passive;
 mod round;
+mod skills_assassinate;
 mod skills_boss;
 mod skills_control;
 mod skills_debuff;
 mod skills_lifecycle;
 mod skills_offense;
+mod skills_summon;
 mod skills_team;
 mod skills_weapon;
+mod skills_zombie;
+
+pub use skills_assassinate::PlainSkillPreActionOutcome;
 
 /// 截断后仅对正向余量进一，保留 `ceil() as i32` 的饱和及 NaN 规则。
 #[inline]
@@ -110,6 +140,17 @@ pub enum PreparedPlainAction {
     },
     BuiltinSkill(PreparedBuiltinSkillAction),
     BossSkill(PreparedBossSkillAction),
+}
+
+/// 一场战斗内的临时行动标记；复位时清空，不跨对局保留。
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct BattleScratch {
+    pub selected_actor_round: u64,
+}
+
+impl BattleScratch {
+    /// 复位临时游标，避免把上一局的选中回合带入下一局。
+    pub fn clear(&mut self) { self.selected_actor_round = 0; }
 }
 
 #[derive(Debug, Clone)]

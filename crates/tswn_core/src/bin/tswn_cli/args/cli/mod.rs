@@ -1002,5 +1002,4 @@ impl InputArgs {
 }
 
 #[cfg(test)]
-#[path = "cli_tests.rs"]
-mod cli_tests;
+mod tests;

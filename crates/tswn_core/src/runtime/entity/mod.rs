@@ -31,6 +31,10 @@ pub use runtime::*;
 pub use skill_loadout::*;
 pub use state::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
+/// arena 中稳定的实体索引，允许预留 ID 空槽。
+pub struct EntityIdx(pub u32);
+
 /// 默认 at_boost 倍率 1.0 的百万分比表示，用于整数比较与导出。
 const DEFAULT_AT_BOOST_MILLIONTHS: i64 = 1_000_000;
 /// 默认 at_boost 倍率 1.0 的 f64 位模式，是派生统计的零修正基准。
