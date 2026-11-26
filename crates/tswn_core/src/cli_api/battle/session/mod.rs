@@ -940,6 +940,7 @@ fn update_type_name(value: UpdateType) -> &'static str {
 /// `ReplayTone` 到稳定字符串名。
 fn tone_name(value: ReplayTone) -> &'static str {
     match value {
+        ReplayTone::Dialogue => "dialogue",
         ReplayTone::Normal => "normal",
         ReplayTone::Damage => "damage",
         ReplayTone::Recover => "recover",

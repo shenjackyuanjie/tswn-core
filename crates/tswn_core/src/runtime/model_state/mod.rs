@@ -94,7 +94,7 @@ impl RuntimeRunner {
         let registry =
             DEFAULT_REGISTRY.get_or_init(|| default_custom_runtime_import_config().expect("默认注册表必须有效").registry);
         let rt = &self.runtime;
-        if rt.registry.as_ref() != registry {
+        if &rt.registry != registry {
             return Err(ModelStateError("状态导出只支持已审计的默认规则注册表".into()));
         }
         self.validate_ready().map_err(|error| ModelStateError(error.to_string()))?;

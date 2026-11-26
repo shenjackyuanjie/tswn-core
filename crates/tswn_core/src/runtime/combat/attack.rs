@@ -658,7 +658,7 @@ impl CombatRuntime {
                     if self
                         .entities
                         .get(target)
-                        .is_some_and(|e| e.template.name == crate::runtime::combat::boss_yi::ID)
+                        .is_some_and(|e| e.template.name == crate::runtime::combat::boss::yi::ID)
                     {
                         self.yi_dodge_counter(target, updates);
                     }
@@ -743,7 +743,7 @@ impl CombatRuntime {
             if self
                 .entities
                 .get(target)
-                .is_some_and(|e| e.template.name == crate::runtime::combat::boss_yi::ID)
+                .is_some_and(|e| e.template.name == crate::runtime::combat::boss::yi::ID)
             {
                 self.yi_dodge_counter(target, updates);
             }
