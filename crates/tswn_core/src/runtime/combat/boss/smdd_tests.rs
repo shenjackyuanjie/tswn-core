@@ -1,6 +1,6 @@
 //! 曙光 Boss 的固定数值与技能轮转。
-use super::boss_smdd::*;
-use super::*;
+use super::super::*;
+use super::smdd::*;
 
 fn battle() -> (RuntimeRunner, EntityIdx) {
     let config = default_custom_runtime_import_config().unwrap();

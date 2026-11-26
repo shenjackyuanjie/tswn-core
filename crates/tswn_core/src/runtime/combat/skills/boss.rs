@@ -1,4 +1,4 @@
-use super::*;
+use super::super::*;
 
 use crate::namerena::BossActionSkill;
 use crate::runtime::lang::keys;

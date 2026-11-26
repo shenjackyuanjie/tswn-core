@@ -114,7 +114,7 @@ pub fn action_skills() -> &'static [(BossActionSkill, u32)] { &ACTION_SKILLS[..]
 /// JS 只 push 一个 level = 0x50 的护盾，因此条目是 (29, 80)。
 pub fn default_skill_levels() -> &'static [(usize, u32)] { &[(SHIELD_SKILL_KEY, SHIELD_LEVEL)] }
 
-use super::*;
+use super::super::*;
 use crate::runtime::lang::keys;
 use crate::runtime::update::RunUpdateHp;
 

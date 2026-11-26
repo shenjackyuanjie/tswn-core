@@ -215,8 +215,8 @@ new_level = max(ceil(level * 3 / 4), 1)    // 向上取整，最低为 1
 
 ## 当前源码依据
 
-- 生命之轮与分身：[skills_control.rs](../../crates/tswn_core/src/runtime/combat/skills_control.rs)，分别为 `drain_plain_exchange_skill_into` 与 `drain_plain_clone_skill_into`。
-- 治愈魔法：[skills_team.rs](../../crates/tswn_core/src/runtime/combat/skills_team.rs)，`drain_plain_heal_skill_into` 在当前等级大于 8 时减 1。
-- 苏生术与幻术：[skills_lifecycle.rs](../../crates/tswn_core/src/runtime/combat/skills_lifecycle.rs)，苏生术为 `(current_level + 1) >> 1`，幻术使用整数 `saturating_mul(3).div_ceil(4).max(1)`。
+- 生命之轮与分身：[skills/control.rs](../../crates/tswn_core/src/runtime/combat/skills/control.rs)，分别为 `drain_plain_exchange_skill_into` 与 `drain_plain_clone_skill_into`。
+- 治愈魔法：[skills/team.rs](../../crates/tswn_core/src/runtime/combat/skills/team.rs)，`drain_plain_heal_skill_into` 在当前等级大于 8 时减 1。
+- 苏生术与幻术：[skills/lifecycle.rs](../../crates/tswn_core/src/runtime/combat/skills/lifecycle.rs)，苏生术为 `(current_level + 1) >> 1`，幻术使用整数 `saturating_mul(3).div_ceil(4).max(1)`。
 - 护身符：[profile/hooks.rs](../../crates/tswn_core/src/runtime/profile/hooks.rs) 的 `run_reraise_die_skill` 调用 [effect/skill_context.rs](../../crates/tswn_core/src/runtime/effect/skill_context.rs) 的 `reraise_owner`，其中 `set_level_at(fixed_lane, current_level.div_ceil(2))`。
 - 分身技能基底与 boost 重建：[entity/tests.rs](../../crates/tswn_core/src/runtime/entity/tests.rs#L234)、[plain_clone_skill_tests.rs](../../crates/tswn_core/src/runtime/tests/plain_clone_skill_tests.rs)。

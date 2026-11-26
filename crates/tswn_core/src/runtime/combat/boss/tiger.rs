@@ -1,5 +1,5 @@
 //! TigerStar（豹星）Boss：魅惑、我是M、猎豹自爆、红温与幻术。
-use super::*;
+use super::super::*;
 
 /// Boss 名字。
 pub const ID: &str = "TigerStar";
@@ -371,7 +371,7 @@ impl CombatRuntime {
 
     /// 回蓝总倍率：被拜谢（拜谢衍生物或 TigerStar）时减半。
     ///
-    /// 拜谢衍生物那一半在 kodu 位于 boss_yi.rs::baixie_mp_scale，依赖「咦」的
+    /// 拜谢衍生物那一半在 kodu 位于 boss/yi.rs::baixie_mp_scale，依赖「咦」的
     /// 拜谢名单；待它落地后需把 or self.baixie_mp_scale(target) < 1.0 补回条件。
     pub fn mp_regen_scale(&self, target: EntityIdx) -> f64 { if self.tiger_thanked(target) { 0.5 } else { 1.0 } }
 

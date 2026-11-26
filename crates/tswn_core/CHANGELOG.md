@@ -16,6 +16,10 @@
 
 - `MAGIC_POINT_CAP` 定为 100。原作者在 `22c7af3e` 把它改成 128 并加了具名常量，但他的基线同样是 100；该上限作用于能量药水（+40）、蓄力返蓝（+32）与行动恢复这些普通对局也走的路径，改它会动既有行为对齐，而仓库里没有任何测试覆盖该上限。保留具名常量只为消除魔法数字，将来若确认原版规则是 128，改这一行即可。
 - 回放的 `ReplayTone::Dialogue` 投影未接。原作者在 `replay_view.rs` 与 `cli_api/battle/session.rs` 把 `update.dialogue` 投影成新 tone，但 `replay_tone_color()` 并不特殊处理它，渲染与 `Normal` 同色，收益纯装饰；代价却是 `tswn_py` 的 `replay_tone_to_str()` 是穷尽 match、加变体直接编译失败。`RunUpdate.dialogue` 与 `as_dialogue()` 已在位且有测试覆盖，投影随时可补。
+- `runtime/combat` 由 36 个文件平铺改为三族子目录：8 个通用机制文件（`attack`／`defense`／`round`／`infection`／`lifecycle`／`effects`／`passive`／`abilities`）留在 `combat/` 顶层，10 只 Boss 移入 `combat/boss/`（`boss_squall.rs` → `boss/squall.rs`，去掉目录已表达的前缀），10 个技能族移入 `combat/skills/`。命名约定随之从「文件名表达机制类别」改为「目录表达机制类别、文件名表达具体对象」。27 个文件用 `git mv` 保留历史。
+- `combat/skills/boss.rs`（原 `skills_boss.rs`）与 `combat/boss/` 是不同层次：前者是 Boss 技能的 select／prepare／probability 三个 match 派发与 `drain_plain_boss_skill_into`，后者是每只 Boss 的专属实现。这一点已在 `combat/mod.rs`、`boss/mod.rs`、`skills/mod.rs` 三处文档中写明。
+- `thanos` 与 `wheel` 的模块声明由私有 `mod` 提升为 `pub mod`：移入 `boss/` 后 `round.rs` 作为其「伯父」模块按 Rust 规则访问不到私有孙模块。`skills/assassinate` 同样提升，供 `combat/mod.rs` re-export `PlainSkillPreActionOutcome`。`combat` 本身私有，不扩大公开面。
+- 8 个文档文件的 46 处旧路径引用同步更新（`combat/skills_X.rs` → `combat/skills/X.rs`、`combat/boss_wheel.rs` → `combat/boss/wheel.rs`），链接 URL 与显示文本同步。
 
 ### 破坏性变更
 

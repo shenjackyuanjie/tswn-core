@@ -1,5 +1,5 @@
 //! 沙冰鱼（Shabby_fish）Boss：净化、魔高压制与全体普攻。
-use super::*;
+use super::super::*;
 
 /// Boss 名字。
 pub const ID: &str = "Shabby_fish";

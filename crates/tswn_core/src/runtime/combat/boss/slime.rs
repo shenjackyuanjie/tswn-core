@@ -1,4 +1,4 @@
-use super::*;
+use super::super::*;
 
 use crate::runtime::lang::{get_lang, keys};
 use crate::runtime::update::RunUpdateHp;

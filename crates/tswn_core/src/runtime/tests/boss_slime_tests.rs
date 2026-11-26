@@ -28,7 +28,7 @@ fn kill(runtime: &mut CombatRuntime, target: EntityIdx) { runtime.entities.get_m
 /// 子体八围来自 `eV` 位改写后的名字底数，再按 nameDens 缩放（体力不缩放）。
 fn assert_slime_child_scaled(child: &EntityRecord, generation: u32, max_hp: i32) {
     let (name_base, _) = PreparedBattleInit::plain_minion_name_base("slime", "slime");
-    let attrs = crate::runtime::boss_slime::slime_child_attrs(&name_base, generation);
+    let attrs = crate::runtime::slime::slime_child_attrs(&name_base, generation);
     let factor = crate::namerena::eval_name::eval_str_common_with_rq("slime", true, crate::namerena::eval_name::DEFAULT_EVAL_RQ)
         .max(
             crate::namerena::eval_name::eval_str_common_with_rq("slime", true, crate::namerena::eval_name::DEFAULT_EVAL_RQ) - 6.0,

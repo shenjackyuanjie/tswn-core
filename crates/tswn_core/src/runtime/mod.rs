@@ -116,7 +116,7 @@ pub use batch::{
     runtime_score_range_timed, runtime_score_timed,
 };
 pub use combat::PlainSkillPreActionOutcome;
-pub use combat::boss_slime;
+pub use combat::boss::slime;
 pub use combat::{
     CombatRuntime, PreparedBossSkillAction, PreparedBuiltinSkillAction, PreparedPlainAction, PreparedTargetList, RoundOutcome,
     SelectedBuiltinSkill,

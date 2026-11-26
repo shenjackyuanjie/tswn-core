@@ -1,6 +1,6 @@
 //! 验证科研技能的实际状态、伤害链、日志顺序及普通/批量执行一致性。
-use super::boss_squall::*;
-use super::*;
+use super::super::*;
+use super::squall::*;
 use crate::runtime::update::UpdateType;
 
 fn battle() -> (RuntimeRunner, EntityIdx, Vec<EntityIdx>) {

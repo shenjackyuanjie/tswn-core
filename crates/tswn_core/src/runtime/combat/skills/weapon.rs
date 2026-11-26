@@ -1,4 +1,4 @@
-use super::*;
+use super::super::*;
 use crate::runtime::update::RunUpdateHp;
 
 /// `SklS11` 强化提示里的属性名，按语言包 `detail` 的槽位顺序拆分得到。

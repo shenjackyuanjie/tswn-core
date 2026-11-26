@@ -1,6 +1,6 @@
 //! 新纪元 Boss 的固定数值、图标与技能轮转。
-use super::boss_xjy::*;
-use super::*;
+use super::super::*;
+use super::xjy::*;
 
 fn battle() -> (RuntimeRunner, EntityIdx) {
     let config = default_custom_runtime_import_config().unwrap();

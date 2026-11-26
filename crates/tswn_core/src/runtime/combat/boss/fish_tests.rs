@@ -1,6 +1,6 @@
 //! 沙冰鱼 Boss 的固定数值、魔高与全体普攻。
-use super::boss_fish::*;
-use super::*;
+use super::super::*;
+use super::fish::*;
 
 fn battle() -> (RuntimeRunner, EntityIdx) {
     let config = default_custom_runtime_import_config().unwrap();

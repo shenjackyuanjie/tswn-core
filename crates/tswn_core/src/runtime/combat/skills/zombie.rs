@@ -1,4 +1,4 @@
-use super::*;
+use super::super::*;
 
 impl CombatRuntime {
     /// 按击杀 hook 计划分派僵尸与融合击杀技能，其余条目以死亡目标为选中目标执行。

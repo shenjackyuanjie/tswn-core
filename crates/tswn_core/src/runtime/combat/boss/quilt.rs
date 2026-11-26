@@ -2,7 +2,7 @@
 //!
 //! 本体不攻击，行动完全由脚本决定：钻出猴区、多重魂合并、猴区宣布占领此群、鱼我所欲也。
 //! 衍生物受到的伤害有一半经 `DamageSharePolicy::ShareToOwner` 转给本体。
-use super::*;
+use super::super::*;
 use crate::runtime::entity::QuiltMinionState;
 
 /// Boss 名字（小写键名）。

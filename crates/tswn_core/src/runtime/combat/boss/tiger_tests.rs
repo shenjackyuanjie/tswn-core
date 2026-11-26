@@ -1,6 +1,6 @@
 //! TigerStar 的固定属性与主要技能。
-use super::*;
-use crate::runtime::combat::boss_tiger::ID;
+use super::super::*;
+use crate::runtime::combat::boss::tiger::ID;
 
 fn battle() -> (RuntimeRunner, EntityIdx) {
     let config = default_custom_runtime_import_config().unwrap();

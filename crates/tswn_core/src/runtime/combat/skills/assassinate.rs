@@ -1,4 +1,4 @@
-use super::*;
+use super::super::*;
 
 /// 预行动累积结果：本回合被迫使用的技能与是否清除强制行动标记。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

@@ -1,4 +1,4 @@
-use super::*;
+use super::super::*;
 
 impl CombatRuntime {
     /// 瘟疫（half）选目标：聪明时只考虑体力在 160 到 400 之间的敌人。

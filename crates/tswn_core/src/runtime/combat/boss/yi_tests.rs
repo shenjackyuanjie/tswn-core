@@ -1,6 +1,6 @@
 //! 咦 Boss 的固定数值、召唤与拜谢压制。
-use super::boss_yi::*;
-use super::*;
+use super::super::*;
+use super::yi::*;
 
 fn battle() -> (RuntimeRunner, EntityIdx) {
     let config = default_custom_runtime_import_config().unwrap();

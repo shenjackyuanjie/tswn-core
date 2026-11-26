@@ -1,5 +1,5 @@
 //! Squall 的十项科研技能；伤害、召唤与死亡仍经正式战斗执行链。
-use super::*;
+use super::super::*;
 use crate::runtime::update::{RunUpdate, RunUpdateHp};
 
 /// 取自本地聊天记录的测试/模型相关原句，只用于演出台词。

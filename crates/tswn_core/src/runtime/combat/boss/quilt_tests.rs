@@ -1,6 +1,6 @@
 //! 被子 Boss 的数值、召唤、伤害传导与不可选中验证。
-use super::boss_quilt::{Child, ID, OCCUPY_MONKEYS};
-use super::*;
+use super::super::*;
+use super::quilt::{Child, ID, OCCUPY_MONKEYS};
 
 fn battle() -> (RuntimeRunner, EntityIdx, Vec<EntityIdx>) {
     let config = default_custom_runtime_import_config().unwrap();

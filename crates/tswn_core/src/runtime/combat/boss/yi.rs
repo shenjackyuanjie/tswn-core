@@ -1,5 +1,5 @@
 //! 咦 Boss 与衍生物拜谢：闪避反击、猴咦射日与 MP 压制。
-use super::*;
+use super::super::*;
 use crate::runtime::entity::BaixieRuntime;
 
 /// Boss 名字。

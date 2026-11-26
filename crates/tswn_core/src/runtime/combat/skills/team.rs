@@ -1,4 +1,4 @@
-use super::*;
+use super::super::*;
 
 impl CombatRuntime {
     /// 实体的有效队伍：被魅惑时按魅惑指定的队伍，否则取运行时队伍。

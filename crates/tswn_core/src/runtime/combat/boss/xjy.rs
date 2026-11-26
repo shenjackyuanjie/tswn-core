@@ -5,7 +5,7 @@
 //! 队列，随机流与消息顺序与原版一致。
 #![allow(dead_code)]
 
-use super::*;
+use super::super::*;
 
 /// 角色名（小写键名）。
 pub const ID: &str = "新纪元";

@@ -7,17 +7,24 @@
 //!
 //! # 命名约定
 //!
-//! 文件名表达**机制类别**，函数名表达**角色与动作**，两者是不同维度：
+//! **目录表达机制类别，文件名表达具体对象**，函数名表达**角色与动作**，三者各管一个维度：
 //!
-//! - 无前缀（`round` / `attack` / `defense` / `effects` / `lifecycle` / `passive` /
-//!   `infection`，以及随 `cards` feature 编译的 `abilities`）是执行阶段或横切关注点。
-//! - `skills_*` 按技能类别切分（offense / control / team / lifecycle / debuff / boss /
-//!   weapon / summon / zombie / assassinate）。
-//! - `boss_*` 是单个 Boss 的专属实现（thanos / wheel / slime），与 `skills_boss` 的
-//!   「Boss 技能类别」不是一回事。
+//! - 顶层无前缀文件（`round` / `attack` / `defense` / `effects` / `lifecycle` /
+//!   `passive` / `infection`，以及随 `cards` feature 编译的 `abilities`）是执行阶段或
+//!   横切关注点，不属于下面两族。
+//! - `boss/`：单只 Boss 的专属机制，文件名就是具体 Boss（`thanos` / `wheel` /
+//!   `slime` / `tiger` / `fish` / `quilt` / `smdd` / `squall` / `xjy` / `yi`），
+//!   配套回归放在同目录的 `<boss>_tests.rs`。
+//! - `skills/`：技能族，文件名是技能类别（`offense` / `control` / `team` /
+//!   `lifecycle` / `debuff` / `weapon` / `summon` / `zombie` / `assassinate`）。
 //!
-//! 函数名里的 `plain_` / `boss_` 是**角色**前缀（普通角色对 Boss），与文件名的机制类别
-//! 无关，所以 `skills_control` 里会出现 `drain_plain_ice_skill_into`。
+//! `skills/boss.rs` 与 `boss/` 目录是**不同层次**，别混淆：`skills/boss.rs` 承载
+//! Boss 技能的三个 match 派发（select / prepare / probability）与
+//! `drain_plain_boss_skill_into`，是「技能 → Boss 技能」的派发层；`boss/` 是每只
+//! Boss 的专属实现。
+//!
+//! 函数名里的 `plain_` / `boss_` 是**角色**前缀（普通角色对 Boss），与文件/目录的机制
+//! 类别无关，所以 `skills/control.rs` 里会出现 `drain_plain_ice_skill_into`。
 //!
 //! 两个高频动词的边界：
 //!
@@ -39,48 +46,16 @@ use super::*;
 #[cfg(feature = "cards")]
 mod abilities;
 mod attack;
-pub mod boss_fish;
-#[cfg(test)]
-pub mod boss_fish_tests;
-pub mod boss_quilt;
-#[cfg(test)]
-pub mod boss_quilt_tests;
-pub mod boss_slime;
-pub mod boss_smdd;
-#[cfg(test)]
-pub mod boss_smdd_tests;
-pub mod boss_squall;
-#[cfg(test)]
-pub mod boss_squall_tests;
-mod boss_thanos;
-pub mod boss_tiger;
-#[cfg(test)]
-pub mod boss_tiger_tests;
-mod boss_wheel;
-pub mod boss_xjy;
-#[cfg(test)]
-pub mod boss_xjy_tests;
-pub mod boss_yi;
-#[cfg(test)]
-pub mod boss_yi_tests;
+pub mod boss;
 mod defense;
 mod effects;
 mod infection;
 mod lifecycle;
 mod passive;
 mod round;
-mod skills_assassinate;
-mod skills_boss;
-mod skills_control;
-mod skills_debuff;
-mod skills_lifecycle;
-mod skills_offense;
-mod skills_summon;
-mod skills_team;
-mod skills_weapon;
-mod skills_zombie;
+mod skills;
 
-pub use skills_assassinate::PlainSkillPreActionOutcome;
+pub use skills::assassinate::PlainSkillPreActionOutcome;
 
 /// 截断后仅对正向余量进一，保留 `ceil() as i32` 的饱和及 NaN 规则。
 #[inline]

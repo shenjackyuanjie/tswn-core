@@ -1,4 +1,4 @@
-use super::*;
+use super::super::*;
 
 impl CombatRuntime {
     /// 复活选目标：同队已死亡且非战斗使魔、无尸体标记的成员。

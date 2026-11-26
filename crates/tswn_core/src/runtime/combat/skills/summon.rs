@@ -1,4 +1,4 @@
-use super::*;
+use super::super::*;
 
 impl CombatRuntime {
     pub fn plain_summon_probability_allowed(&self, actor: EntityIdx, smart: bool) -> bool {

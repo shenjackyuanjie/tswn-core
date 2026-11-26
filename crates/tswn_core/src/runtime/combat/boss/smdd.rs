@@ -1,5 +1,5 @@
 //! smdd（曙光）Boss：以“做局”为核心的轮转型 Boss，技能全部取自群成员 3023226682 的发言。
-use super::*;
+use super::super::*;
 
 /// 角色名（小写键名）。
 pub const ID: &str = "smdd";

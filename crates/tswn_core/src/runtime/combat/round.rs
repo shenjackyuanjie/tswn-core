@@ -283,7 +283,7 @@ impl CombatRuntime {
                     if self
                         .entities
                         .get(action.actor)
-                        .is_some_and(|e| e.template.name == crate::runtime::combat::boss_yi::BAIXIE)
+                        .is_some_and(|e| e.template.name == crate::runtime::combat::boss::yi::BAIXIE)
                     {
                         self.drain_baixie_action_into(action.actor, &mut updates);
                     } else if self.quilt_minion_kind(action.actor).is_some() {
@@ -565,7 +565,7 @@ impl CombatRuntime {
         if self
             .entities
             .get(actor)
-            .is_some_and(|e| e.template.name == crate::runtime::combat::boss_fish::ID)
+            .is_some_and(|e| e.template.name == crate::runtime::combat::boss::fish::ID)
         {
             return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
                 selected: crate::namerena::BossActionSkill::Fish,
@@ -576,7 +576,7 @@ impl CombatRuntime {
         if self
             .entities
             .get(actor)
-            .is_some_and(|e| e.template.name == crate::runtime::combat::boss_tiger::ID)
+            .is_some_and(|e| e.template.name == crate::runtime::combat::boss::tiger::ID)
         {
             return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
                 selected: crate::namerena::BossActionSkill::Tiger,
@@ -587,7 +587,7 @@ impl CombatRuntime {
         if self
             .entities
             .get(actor)
-            .is_some_and(|e| e.template.name == crate::runtime::combat::boss_yi::ID)
+            .is_some_and(|e| e.template.name == crate::runtime::combat::boss::yi::ID)
         {
             return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
                 selected: crate::namerena::BossActionSkill::Yi,
@@ -667,7 +667,7 @@ impl CombatRuntime {
         if self
             .entities
             .get(actor)
-            .is_some_and(|e| e.template.name == crate::runtime::combat::boss_smdd::ID)
+            .is_some_and(|e| e.template.name == crate::runtime::combat::boss::smdd::ID)
         {
             return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
                 selected: crate::namerena::BossActionSkill::Smdd,
@@ -821,12 +821,12 @@ impl CombatRuntime {
                 }
                 return Some(PreparedPlainAction::Conan { targets });
             }
-            if boss_name == super::boss_thanos::ID {
+            if boss_name == super::boss::thanos::ID {
                 if let Some(targets) = self.select_plain_thanos_snap_targets(actor) {
                     return Some(PreparedPlainAction::ThanosSnap { targets });
                 }
             }
-            if boss_name == super::boss_wheel::ID {
+            if boss_name == super::boss::wheel::ID {
                 // 两种选敌方式都交给生命之轮的默认行动，执行时按当时体力决定是互换还是普攻。
                 let target = self
                     .select_plain_wheel_exchange_target(actor)

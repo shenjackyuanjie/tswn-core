@@ -98,7 +98,7 @@ pub fn action_skills() -> &'static [(crate::namerena::BossActionSkill, u32)] { &
 /// `ac()` 写入的通用技能等级：反击 48 级。
 pub fn default_skill_levels() -> &'static [(usize, u32)] { &[(COUNTER_SKILL_KEY, COUNTER_SKILL_LEVEL)] }
 
-use super::*;
+use super::super::*;
 use crate::runtime::lang::keys;
 use crate::runtime::update::RunUpdateHp;
 

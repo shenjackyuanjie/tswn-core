@@ -1,4 +1,4 @@
-use super::*;
+use super::super::*;
 
 impl CombatRuntime {
     /// 瘟疫技能：按魔法与目标抗性计算百分比扣血，蓄力时必中。

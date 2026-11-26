@@ -1,4 +1,4 @@
-use super::*;
+use super::super::*;
 
 impl CombatRuntime {
     /// 按选中的内置主动技能分派到对应技能实现；能力作用域限定于实际施法者。
