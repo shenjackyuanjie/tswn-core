@@ -580,7 +580,6 @@ impl CombatRuntime {
                     .derive_stats();
                 caster_entity.template.apply_derived_stats(stats);
             }
-            let post_action_state_cursor = caster_entity.states.post_action_registration_cursor();
             let before_levels = caster_entity.template.skills.levels().to_vec();
             let merge_policy = caster_entity.runtime.policies.merge;
             let caster_skills = &mut caster_entity.template.skills;
@@ -603,14 +602,11 @@ impl CombatRuntime {
                     let Some(skill) = self.registry.skill(skill_id) else {
                         continue;
                     };
-                    // JS 的 x2 会把 Merge 新启用的 early POST_ACTION 钩子插到当前状态队列尾部，
-                    // 后续新增状态仍排在它后面；这里保存当时的状态注册游标，不能只按固定槽位重排。
+                    // 吞噬新启用的钩子按优先级插入 x2；同优先级按实际登记先后执行。
                     if skill.hook_mask.intersects(ProcMask::POST_ACTION) && skill.post_action_phase == SkillPostActionPhase::Early
                     {
-                        caster_entity
-                            .template
-                            .skills
-                            .register_post_action_after_states(lane, post_action_state_cursor);
+                        let registration_order = caster_entity.states.reserve_runtime_registration_order();
+                        caster_entity.template.skills.register_post_action_after_states(lane, registration_order);
                     }
                     if skill.export_name == DEFAULT_CORE_HIDE_SKILL_EXPORT {
                         caster_entity.template.skills.ensure_pre_action_lane(lane);

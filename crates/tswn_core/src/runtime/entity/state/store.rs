@@ -193,7 +193,7 @@ impl StateStore {
         order
     }
 
-    pub fn register_charge_post_action(&mut self) { self.charge_post_action_cursor = self.next_runtime_registration_order; }
+    pub fn register_charge_post_action(&mut self) { self.charge_post_action_cursor = self.reserve_runtime_registration_order(); }
 
     pub fn charge_post_action_cursor(&self) -> u64 { self.charge_post_action_cursor }
 

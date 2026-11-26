@@ -216,7 +216,7 @@ pub fn default_custom_runtime_import_config() -> Result<CustomRuntimeImportConfi
         DEFAULT_CORE_PROTECT_SKILL_EXPORT,
         ProcMask::POST_ACTION,
         TargetPolicy::Ally,
-        SkillPriority(0),
+        SkillPriority(10_000),
     )?;
     builder.register_skill_with_hooks(
         "core",

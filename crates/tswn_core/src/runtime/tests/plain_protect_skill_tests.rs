@@ -70,8 +70,8 @@ fn plain_protect_can_target_clone_and_preserves_legacy_rng_consumption() {
 }
 
 #[test]
-fn deferred_plain_protect_keeps_expiring_charm_team_until_state_chain_tail() {
-    // 此处只锁定 Rust 当前的延期清除顺序；原版魅惑到期时会在自己的回调里同步解除。
+fn merge_registered_protect_targets_charm_team_before_synchronous_expiry() {
+    // 后登记的守护优先级为 10000，先于优先级为 Infinity 的魅惑到期回调。
     let config = default_custom_runtime_import_config().expect("default runtime profile should build");
     let protect = config
         .registry
@@ -126,6 +126,7 @@ fn deferred_plain_protect_keeps_expiring_charm_team_until_state_chain_tail() {
         Some(EntityIdx(2))
     );
     assert!(runtime.entities.get(EntityIdx(0)).unwrap().states.entry(76).is_none());
+    assert_eq!(runtime.plain_effective_team(EntityIdx(0)), 0);
     assert!(
         outcome
             .frame

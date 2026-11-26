@@ -570,20 +570,7 @@ fn run_timed_release_post_action_state(
         owner.runtime.alive
             || (owner.runtime.hp > 0 && owner.runtime.flags.contains(PlayerKindFlags::BOSS) && owner.template.name == "saitama")
     });
-    if release_message == "[1]从[魅惑]中解除"
-        && (context.owner_has_boss_infection(PLAIN_COVID_INFECTION_STATE_KEY)
-            || context.owner_has_boss_infection(PLAIN_LAZY_INFECTION_STATE_KEY))
-    {
-        context.clear_owner_state(entry.legacy_order_key).expect("charm state should still exist");
-    } else {
-        // 原版 Charm.K（14902–14908）同步摘双钩子再调 F()；实跑确认自然解除前后立即切回原队伍。
-        // 暂保留延迟：3v3v3-711d7e09df7b7da3 改为同步后，第 41 帧多消耗 4 字节 RC4，
-        // 结局由 60 轮/7039 分/RC4(203,151) 变为 56 轮/6351 分/RC4(74,97)。
-        // 改前需先对齐吞噬后新挂载的守护钩子与魅惑解除的顺序，见 docs/diff/charm-expiry-and-thaw.md。
-        context
-            .defer_owner_state_clear(entry.legacy_order_key)
-            .expect("timed state payload should still exist");
-    }
+    context.clear_owner_state(entry.legacy_order_key).expect("timed state should still exist");
     if should_emit_release {
         context.add_newline();
         context.add_update(crate::runtime::update::RunUpdate::new(

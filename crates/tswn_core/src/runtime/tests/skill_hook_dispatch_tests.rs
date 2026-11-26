@@ -419,6 +419,15 @@ fn run_minimal_round_interleaves_merge_registered_post_action_skill_between_exis
             registration_order: RegistrationOrder(0),
             payload: StatePayload::None,
         });
+        // 先登记的大优先级状态仍须晚于吞噬技能。
+        owner.states.add_entry(StateEntry {
+            legacy_order_key: 77,
+            extension_state_id: Some(existing_state),
+            hook_mask: ProcMask::POST_ACTION,
+            priority: SkillPriority(1),
+            registration_order: RegistrationOrder(0),
+            payload: StatePayload::None,
+        });
         let state_cursor = owner.states.post_action_registration_cursor();
         owner.template.skills.register_post_action_after_states(1, state_cursor);
         owner.states.add_entry(StateEntry {
@@ -426,6 +435,15 @@ fn run_minimal_round_interleaves_merge_registered_post_action_skill_between_exis
             extension_state_id: Some(future_state),
             hook_mask: ProcMask::POST_ACTION,
             priority: SkillPriority(0),
+            registration_order: RegistrationOrder(1),
+            payload: StatePayload::None,
+        });
+        // 后登记的小优先级状态仍须早于相同登记位置的吞噬技能。
+        owner.states.add_entry(StateEntry {
+            legacy_order_key: 88,
+            extension_state_id: Some(future_state),
+            hook_mask: ProcMask::POST_ACTION,
+            priority: SkillPriority(-1),
             registration_order: RegistrationOrder(1),
             payload: StatePayload::None,
         });
@@ -448,9 +466,11 @@ fn run_minimal_round_interleaves_merge_registered_post_action_skill_between_exis
         vec![
             ("[0]攻击[1]", 3),
             ("skill mark", initial_skill.0),
+            ("state mark", 88),
             ("state mark", 55),
             ("skill mark", merged_skill.0),
             ("state mark", 66),
+            ("state mark", 77),
         ]
     );
 }

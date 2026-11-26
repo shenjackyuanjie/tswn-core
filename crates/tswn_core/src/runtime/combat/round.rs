@@ -1,6 +1,14 @@
 use super::*;
 use crate::runtime::control::TargetWisdom;
 use crate::runtime::forced_action::ForcedFallback;
+use smallvec::SmallVec;
+
+/// 原版 MList 的优先级；任何有限 sortId 都早于 PostActionImpl。
+#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+enum PostActionPriority {
+    Finite(SkillPriority),
+    Infinity,
+}
 
 /// 卡牌兼容模式的降级战报；前端按这句话判断「点名的技能没生效」。
 pub const FORCED_FALLBACK_MESSAGE: &str = "[1]的指定技能无法生效，改为普通攻击";
@@ -405,7 +413,8 @@ impl CombatRuntime {
         }
     }
 
-    /// 排空 POST_ACTION 链：先早阶段技能，再按注册序交错延迟技能与状态条目，蓄力早于新冠时先撤销到期倍率，最后统一清理并执行尾阶段技能。
+    /// 初始早段技能之后，按原版 x2 的优先级和登记序混排中途启用的技能、蓄力和状态。
+    /// 反弹登记在前受击链 y1（md5.js:19302），不参与 x2 排序。
     fn drain_post_action_chain_into(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
         let actor = self.entities.get(owner).expect("runtime post-action owner missing");
         let skills = &actor.template.skills;
@@ -424,66 +433,84 @@ impl CombatRuntime {
             skill_plans = self.scheduler.skill_post_action_plans(skills_after_early, &self.registry, owner);
         }
 
+        enum PostActionHook {
+            Skill(SkillHookPlanEntry),
+            State(StateHookPlanEntry),
+        }
+
         let state_plan = self.scheduler.state_hook_plan(&self.entities, owner, ProcMask::POST_ACTION);
         let owner_entity = self.entities.get(owner).expect("runtime post-action owner missing");
-        // 蓄力早于真实新冠感染登记时，先撤销到期倍率，再按原版结算肺炎。
-        // 只把已核实的蓄力/肺炎组合移入状态链；其余晚阶段和普通局不变。
-        let covid_key = crate::runtime::profile::PLAIN_COVID_INFECTION_STATE_KEY;
-        let charge_before_covid = if owner_entity.runtime.charge.post_action_active
-            && owner_entity
-                .states
-                .entry(covid_key)
-                .is_some_and(|entry| entry.is_boss_infection(&self.entities))
-        {
-            self.registry
-                .skill_id_by_export_name(BuiltinActiveSkill::Charge.export_name())
-                .map(|charge| (owner_entity.states.charge_post_action_cursor(), charge))
+        let charge = if owner_entity.runtime.charge.post_action_active {
+            self.registry.skill_id_by_export_name(BuiltinActiveSkill::Charge.export_name())
         } else {
             None
         };
-        let mut charge_ran = None;
-        let deferred_entries = &skill_plans.deferred;
-        let mut deferred_idx = 0usize;
+        let mut chain = SmallVec::<[((PostActionPriority, u64), PostActionHook); 4]>::new();
+        for &(cursor, entry) in &skill_plans.deferred {
+            chain.push((
+                (PostActionPriority::Finite(entry.priority), cursor),
+                PostActionHook::Skill(entry),
+            ));
+        }
+        let mut charge_in_chain = None;
+        for &entry in skill_plans.late.iter().filter(|entry| Some(entry.skill_id) == charge) {
+            charge_in_chain = Some(entry.skill_id);
+            chain.push((
+                (PostActionPriority::Infinity, owner_entity.states.charge_post_action_cursor()),
+                PostActionHook::Skill(entry),
+            ));
+        }
+        for entry in state_plan.entries {
+            let priority =
+                owner_entity
+                    .states
+                    .entry(entry.legacy_order_key)
+                    .map_or(PostActionPriority::Finite(entry.priority), |state| {
+                        match &state.payload {
+                            // 中毒本体和守护都直接挂在 x2 上，使用 MEntry 默认的 10000。
+                            StatePayload::Poison { .. } => PostActionPriority::Finite(SkillPriority(10_000)),
+                            // PostActionImpl 包装的钩子使用 Infinity，而非有限数值。
+                            StatePayload::Charm { .. }
+                            | StatePayload::Haste { .. }
+                            | StatePayload::Slow { .. }
+                            | StatePayload::Iron { .. } => PostActionPriority::Infinity,
+                            StatePayload::CovidInfection { .. } | StatePayload::LazyInfection { .. }
+                                if state.is_boss_infection(&self.entities) =>
+                            {
+                                PostActionPriority::Infinity
+                            }
+                            // 无原版 x2 对应项的扩展状态沿用自身有限优先级。
+                            // 例如实验体易伤（1000）先于中毒（10000）是 Rust 扩展规则，并非 JS 行为。
+                            _ => PostActionPriority::Finite(entry.priority),
+                        }
+                    });
+            chain.push(((priority, entry.runtime_registration_order), PostActionHook::State(entry)));
+        }
+        // 原版 MList.j 先按 sortId 插入，再按同一 sortId 的登记顺序执行。
+        chain.sort_by_key(|(key, _)| *key);
         let mut deferred_owner_state_clears = Vec::new();
-        for state_entry in state_plan.entries.iter().copied() {
-            while deferred_entries
-                .get(deferred_idx)
-                .is_some_and(|(cursor, _)| *cursor <= state_entry.runtime_registration_order)
-            {
-                let entry = deferred_entries[deferred_idx].1;
-                self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, std::slice::from_ref(&entry), updates);
-                deferred_idx += 1;
-            }
-            // legacy 的状态循环会在每个状态执行前检查 dj()：只有行动者已经死亡且
-            // 战斗同时结束时才中断；尚未执行的尾部 deferred skill 仍会在循环后继续处理。
-            let owner_alive = self.entities.get(owner).is_some_and(|entity| entity.runtime.alive);
-            if !owner_alive && self.world.alive_group_count() <= 1 {
-                break;
-            }
-            if state_entry.legacy_order_key == covid_key
-                && let Some((cursor, charge)) = charge_before_covid
-                && cursor <= state_entry.runtime_registration_order
-            {
-                for entry in skill_plans.late.iter().filter(|entry| entry.skill_id == charge) {
-                    self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, std::slice::from_ref(entry), updates);
-                    charge_ran = Some(charge);
+        let mut skip_states = false;
+        for (_, hook) in chain {
+            match hook {
+                PostActionHook::Skill(entry) => {
+                    self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, std::slice::from_ref(&entry), updates)
+                }
+                PostActionHook::State(entry) => {
+                    let owner_alive = self.entities.get(owner).is_some_and(|entity| entity.runtime.alive);
+                    skip_states |= !owner_alive && self.world.alive_group_count() <= 1;
+                    if !skip_states {
+                        self.drain_state_hook_entry_with_deferred_clears_into(
+                            ProcMask::POST_ACTION,
+                            entry,
+                            updates,
+                            Some(&mut deferred_owner_state_clears),
+                        );
+                    }
                 }
             }
-            self.drain_state_hook_entry_with_deferred_clears_into(
-                ProcMask::POST_ACTION,
-                state_entry,
-                updates,
-                Some(&mut deferred_owner_state_clears),
-            );
         }
-        while let Some((_, entry)) = deferred_entries.get(deferred_idx).copied() {
-            self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, std::slice::from_ref(&entry), updates);
-            deferred_idx += 1;
-        }
-        // legacy 会先记录本轮需要清理的状态，等状态与中途注册技能全部执行完后再统一移除。
         self.flush_deferred_owner_state_clears(owner, &deferred_owner_state_clears);
 
-        // Charge 以及 Haste、Slow 的尾阶段必须继续晚于状态和中途注册的 early 技能。
         let skills_after_states = &self
             .entities
             .get(owner)
@@ -493,7 +520,7 @@ impl CombatRuntime {
         if skills_after_states.hook_generation() != skill_plans.generation {
             skill_plans = self.scheduler.skill_post_action_plans(skills_after_states, &self.registry, owner);
         }
-        if let Some(charge) = charge_ran {
+        if let Some(charge) = charge_in_chain {
             skill_plans.late.retain(|entry| entry.skill_id != charge);
         }
         self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, &skill_plans.late, updates);
