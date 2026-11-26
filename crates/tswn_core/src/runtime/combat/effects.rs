@@ -182,7 +182,7 @@ impl CombatRuntime {
                         "[0]使用[自爆]",
                         0,
                     ));
-                    let killed_caster = self.kill_entity_without_damage_mark_only_into(caster);
+                    let killed_caster = self.kill_entity_without_damage_mark_only(caster);
                     self.drain_pre_defend_hooks_with_on_damage_into(
                         target,
                         updates,

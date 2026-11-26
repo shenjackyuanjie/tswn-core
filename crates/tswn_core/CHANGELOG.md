@@ -23,6 +23,10 @@
 - `runtime/combat` 模块文档新增「命名约定」小节：文件名表达机制类别、函数名表达角色与动作，是两套正交维度；并说明 `drain_*_into`（排空累积队列）与 `run_*_into`（执行具体 handler）的边界，以及 `_into` 统一表示输出写入 `RunUpdates`。`cli_api` 补充批量统计的三层窄化关系（`RuntimeBatchSummary` → `WinRateSummary` → `WinRateResult`）与 `BatchSummary` 属已计算聚合结果、不再可合并的说明。
 - 拆分 `runtime/profile`：6 个错误枚举与 21 个 `From` 实现移入 `profile/errors.rs`，导出名常量表移入 `profile/exports.rs`，`profile/mod.rs` 由 1004 行降至 733 行。新模块经 `pub use` 原样再导出，`crate::runtime::profile::*` 下的公开路径全部不变。
 - `cli_api/battle/session.rs`（2061 行）改为目录式：生产代码留在 `session/mod.rs`（1008 行），原内嵌的 `mod tests`（763 行）与 `mod card_control_tests`（286 行）外提为同级文件，测试代码一字未改。`cli_api/battle/mod.rs` 无需改动。
+- `runtime/tests/` 中 4 个测试文件按被测模块改名：`plain_slime_tests` → `boss_slime_tests`、`plain_summon_tests` → `skills_summon_tests`、`plain_zombie_skill_tests` → `skills_zombie_tests`、`plain_assassinate_skill_tests` → `skills_assassinate_tests`，对应 `runtime/combat/` 里的同名模块文件。其余 20 个 `plain_*_tests` 保持原名：它们按测试的行为维度命名（`plain` 是角色前缀，与 `custom_*`、主题名并列的另一套轴），且 `heal`／`protect`／`disperse` 共用 `skills_team`、`damage_and_probability`／`targeting` 属跨切面，套模块名会造成重名或虚假的一对一。
+- 两个名不副实的 `_into` 函数改名：`kill_entity_without_damage_mark_only_into` → `kill_entity_without_damage_mark_only`、`run_plain_weapon_death_note_post_damage_into` → `run_plain_weapon_death_note_post_damage`。二者签名都不收 `&mut RunUpdates`，与 `_into` 的既定含义不符；同名兄弟函数 `kill_entity_without_damage_into`、`run_plain_weapon_xuan_yue_post_damage_into` 确实带 `updates` 参数，未受影响。
+- `runtime/combat` 的「命名约定」小节补充 `_into` 的边界：少数编码／转换入口（`encoder::encode::encode_into`、`namerena::input::raw_namerena_to_id_name_into`）的 `_into` 表示结果写入调用方给出的目标缓冲区，同属输出目标轴，不改名。
+- `namerena/icon_render/test.rs` 改名为 `tests.rs`，与全仓其余 13 处一致。`runtime/entity/derived_stats_tests.rs` 与 `entity/tests.rs` 职责不重叠（前者 6 个 `CloneDerivedStats` 用例，后者 39 个 `EntityArena`／`EntityRecord`／`SkillLoadout`／`StateStore` 用例），保留并存并在文件头补充分工说明。
 
 ## [0.7.2] - 2026-11-21
 

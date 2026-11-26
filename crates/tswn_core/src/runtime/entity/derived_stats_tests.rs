@@ -1,3 +1,10 @@
+//! 分身派生统计（`CloneDerivedStats`）的 apply / refresh / clear 回归测试。
+//!
+//! 只覆盖派生修正的套用与回滚：upgrade 重放、隐藏视图与快照重建、清除正面状态后的
+//! 还原、curse atk 汇总重放，以及分身 name factor 的独立缩放。与同级 `tests.rs`
+//! 分工明确——后者覆盖 `EntityArena` / `EntityRecord` / `SkillLoadout` 与 `StateStore`
+//! 等实体容器和记录行为，二者职责不重叠，故并存。
+
 use super::*;
 
 /// 测试辅助：构造一份除速度外固定的分身派生统计，供 apply / refresh 用例使用。

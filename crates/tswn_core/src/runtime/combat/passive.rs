@@ -116,7 +116,7 @@ impl CombatRuntime {
                     self.drain_plain_summon_share_damage_into(target, level, damage, caster, updates);
                 }
                 PlainPostDamageSkill::WeaponDeathNote => {
-                    self.run_plain_weapon_death_note_post_damage_into(target, damage, caster);
+                    self.run_plain_weapon_death_note_post_damage(target, damage, caster);
                 }
                 PlainPostDamageSkill::WeaponXuanYue => {
                     self.run_plain_weapon_xuan_yue_post_damage_into(target, caster, updates);
@@ -259,7 +259,7 @@ impl CombatRuntime {
     }
 
     /// 0.5.5 `SklDeathNote.aD`：被命中后按闪避判定把攻击者写进死亡笔记。
-    pub fn run_plain_weapon_death_note_post_damage_into(&mut self, owner: EntityIdx, damage: i32, caster: EntityIdx) {
+    pub fn run_plain_weapon_death_note_post_damage(&mut self, owner: EntityIdx, damage: i32, caster: EntityIdx) {
         if damage <= 0 || caster == owner {
             return;
         }

@@ -6,6 +6,7 @@
 
 use super::*;
 
+mod boss_slime_tests;
 mod custom_bed2_fixture_tests;
 mod custom_bed2_roster_import_tests;
 mod custom_minion_name_tests;
@@ -15,7 +16,6 @@ mod custom_runner_import_tests;
 mod custom_summon_handler_tests;
 mod effect_pipeline_tests;
 mod plain_action_scheduler_tests;
-mod plain_assassinate_skill_tests;
 mod plain_attack_skill_tests;
 mod plain_boss_skill_tests;
 mod plain_charge_accumulate_tests;
@@ -32,15 +32,15 @@ mod plain_protect_skill_tests;
 mod plain_raw_import_tests;
 mod plain_reflect_skill_tests;
 mod plain_revive_and_reraise_tests;
-mod plain_slime_tests;
 mod plain_status_skill_tests;
-mod plain_summon_tests;
 mod plain_targeting_tests;
 mod plain_weapon_skill_tests;
-mod plain_zombie_skill_tests;
 mod runtime_core_tests;
 mod runtime_render_tests;
 mod skill_hook_dispatch_tests;
+mod skills_assassinate_tests;
+mod skills_summon_tests;
+mod skills_zombie_tests;
 mod state_hook_dispatch_tests;
 mod summon_explode_post_defend_tests;
 mod summon_explode_tests;

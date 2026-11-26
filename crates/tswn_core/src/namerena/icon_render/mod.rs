@@ -226,4 +226,4 @@ fn base64_encode(data: &[u8]) -> String {
 
 /// 渲染结果的位图比对测试。
 #[cfg(all(test, feature = "png_render"))]
-mod test;
+mod tests;

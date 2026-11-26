@@ -28,6 +28,11 @@
 //! 两者都接收 `&mut RunUpdates`。`_into` 统一表示「输出写入 RunUpdates」；
 //! `apply_*_on_damage` 一族走的是「触发条件」命名轴（on_damage）而不是输出目标轴，
 //! 因此不带 `_into`。
+//!
+//! 边界：少数编码 / 转换入口的 `_into` 表示「结果写入调用方给出的目标缓冲区」，
+//! 目标不是 `RunUpdates`，例如 `crate::encoder::encode::encode_into` 写
+//! `EncodedBatch`、`crate::namerena::input::raw_namerena_to_id_name_into` 写 `String`。
+//! 它们同属「输出目标」轴，只是落到调用方缓冲，因此保留 `_into`，不按 RunUpdates 变体处理。
 
 use super::*;
 

@@ -991,7 +991,7 @@ impl CombatRuntime {
 
     /// 不经过伤害直接击倒目标，走完整移出与连带清理；目标原本已死返回 false。
     pub fn kill_entity_without_damage_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) -> bool {
-        let killed = self.kill_entity_without_damage_mark_only_into(target);
+        let killed = self.kill_entity_without_damage_mark_only(target);
         if killed {
             let team = self
                 .entities
@@ -1006,7 +1006,7 @@ impl CombatRuntime {
     }
 
     /// 只把目标体力置零并返回原存活状态，不走死亡链。
-    pub fn kill_entity_without_damage_mark_only_into(&mut self, target: EntityIdx) -> bool {
+    pub fn kill_entity_without_damage_mark_only(&mut self, target: EntityIdx) -> bool {
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime self-death target entity: {}", target.0);
         };
