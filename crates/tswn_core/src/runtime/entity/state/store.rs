@@ -376,7 +376,7 @@ impl StateStore {
         self.add_entry(StateEntry::ice(legacy_order_key, frozen_step));
     }
 
-    /// 行动前结算冰冻：返回 (剩余步数, 本次是否解除冰冻)。
+    /// 行动前结算冰冻：返回 (剩余步数, 本次是否解除冰冻)，解除后的派生属性由调用方重算。
     pub fn apply_ice_pre_step(&mut self, step: i32, move_points: i32) -> (i32, bool) {
         if step <= 0 || self.scheduler_state_flags & SCHEDULER_STATE_ICE == 0 {
             return (step, false);
@@ -402,9 +402,6 @@ impl StateStore {
                 self.clear_legacy_key(legacy_order_key),
                 "runtime ice state disappeared during pre-step"
             );
-            // legacy 清除冰冻后会调用 update_states；这一步也会让疾走等待生效的
-            // 强化倍率立即提交，不能只删除 Ice 状态。
-            self.refresh_effective_haste_faster();
             return (0, true);
         }
         (step, false)

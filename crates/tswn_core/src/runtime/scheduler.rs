@@ -171,12 +171,16 @@ impl PhaseScheduler {
                 let entity = entities.get_mut(actor).filter(|entity| entity.runtime.alive)?;
                 let step_roll = (randomer.next_u8() & 3) as i32;
                 let speed = entity.effective_speed();
-                let move_state = &mut entity.runtime.move_state;
-                let (step, ice_released) = entity.states.apply_ice_pre_step(speed * step_roll, move_state.speed_points);
-                move_state.speed_points += step;
-                let should_act = move_state.speed_points > MOVE_POINT_THRESHOLD;
+                let move_points = entity.runtime.move_state.speed_points;
+                let (step, ice_released) = entity.states.apply_ice_pre_step(speed * step_roll, move_points);
+                if ice_released {
+                    // 原版先在解冻钩子内重算状态，再累计本步行动点。
+                    entity.apply_runtime_stats_from_template(true);
+                }
+                entity.runtime.move_state.speed_points += step;
+                let should_act = entity.runtime.move_state.speed_points > MOVE_POINT_THRESHOLD;
                 if should_act {
-                    move_state.speed_points -= MOVE_POINT_THRESHOLD;
+                    entity.runtime.move_state.speed_points -= MOVE_POINT_THRESHOLD;
                 }
                 Some((actor, should_act, ice_released))
             })?;
@@ -212,11 +216,11 @@ impl PhaseScheduler {
                     .get_mut(actor)
                     .unwrap_or_else(|| panic!("runtime scheduler selected unknown actor: {}", actor.0));
                 let effective_speed = actor.effective_speed();
-                #[cfg(not(feature = "no_debug"))]
                 let move_points_before = actor.runtime.move_state.speed_points;
-                let (step, ice_released) = actor
-                    .states
-                    .apply_ice_pre_step(effective_speed * step_roll, actor.runtime.move_state.speed_points);
+                let (step, ice_released) = actor.states.apply_ice_pre_step(effective_speed * step_roll, move_points_before);
+                if ice_released {
+                    actor.apply_runtime_stats_from_template(true);
+                }
                 actor.runtime.move_state.speed_points += step;
                 if actor.runtime.move_state.speed_points > MOVE_POINT_THRESHOLD {
                     actor.runtime.move_state.speed_points -= MOVE_POINT_THRESHOLD;

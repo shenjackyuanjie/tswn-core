@@ -102,23 +102,63 @@ fn ice_pre_step_positive_step_releases_when_crossing_threshold() {
 }
 
 #[test]
-fn ice_release_refreshes_pending_haste_multiplier() {
-    let mut builder = ExtensionRegistryBuilder::default();
-    let haste = builder
-        .register_state("core", "haste", "core.haste", ProcMask::POST_ACTION, SkillPriority(100))
-        .expect("haste state should register");
-    let mut states = StateStore::default();
-    states.add_entry(StateEntry::haste_with_effective_faster(77, haste, 4, 2, 9, SkillPriority(100)));
-    states.add_entry(StateEntry::ice(PLAIN_ICE_STATE_KEY, 0));
-    assert_eq!(states.effective_speed(100), 200);
+fn natural_ice_release_commits_pending_charm_team_and_haste_multiplier() {
+    let config = default_custom_runtime_import_config().unwrap();
+    let haste = config.registry.state_id_by_export_name(DEFAULT_CORE_HASTE_STATE_EXPORT).unwrap();
+    let charm = config.registry.state_id_by_export_name(DEFAULT_CORE_CHARM_STATE_EXPORT).unwrap();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "frozen", 0, 100, 3)
+                .with_speed(100)
+                .with_speed_points(crate::runtime::MOVE_POINT_THRESHOLD),
+            PlayerTemplate::new(2, "old charmer", 1, 100, 3),
+            PlayerTemplate::new(3, "new charmer", 2, 100, 3),
+        ],
+        config.registry,
+    ));
+    let frozen = EntityIdx(0);
+    let owner = runtime.entities.get_mut(frozen).unwrap();
+    owner.states.add_entry(StateEntry::ice(PLAIN_ICE_STATE_KEY, 0));
+    // 重魅和叠加疾走只更新来源/倍率；自然解冻前仍应读取旧值。
+    owner.states.add_entry(StateEntry::charm(
+        crate::runtime::profile::PLAIN_CHARM_STATE_KEY,
+        charm,
+        2,
+        Some(1),
+        Some(2),
+        Some(0),
+        2,
+        SkillPriority(210),
+    ));
+    owner.states.add_entry(StateEntry::haste_with_effective_faster(
+        PLAIN_HASTE_STATE_KEY,
+        haste,
+        4,
+        2,
+        9,
+        SkillPriority(210),
+    ));
+    assert_eq!(owner.effective_speed(), 200);
+    assert_eq!(runtime.plain_effective_team(frozen), 1);
+    while runtime.rng.clone().next_u8() & 3 == 0 {
+        runtime.rng.next_u8();
+    }
 
-    let (step, released) = states.apply_ice_pre_step(1, crate::runtime::MOVE_POINT_THRESHOLD);
+    let action = runtime
+        .scheduler
+        .select_action(&mut runtime.world, &mut runtime.entities, &mut runtime.rng);
 
-    assert_eq!(step, 0);
-    assert!(released);
-    assert!(!states.is_frozen());
-    assert_eq!(states.entry(77).and_then(StateEntry::haste_runtime_value), Some((4, 4, 9)));
-    assert_eq!(states.effective_speed(100), 400);
+    assert!(action.is_none());
+    assert_eq!(runtime.scheduler.take_ice_release_events().as_slice(), &[frozen]);
+    let owner = runtime.entities.get(frozen).unwrap();
+    assert!(!owner.states.is_frozen());
+    assert_eq!(owner.runtime.move_state.speed_points, crate::runtime::MOVE_POINT_THRESHOLD);
+    assert_eq!(
+        owner.states.entry(PLAIN_HASTE_STATE_KEY).and_then(StateEntry::haste_runtime_value),
+        Some((4, 4, 9))
+    );
+    assert_eq!(owner.effective_speed(), 400);
+    assert_eq!(runtime.plain_effective_team(frozen), 2);
 }
 
 #[test]

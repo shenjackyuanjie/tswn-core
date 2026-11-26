@@ -612,7 +612,7 @@ impl EntityRecord {
     }
 
     /// 把模板八围与派生数值同步到运行态；只有原版 updateStates 对应的入口才提交挂载钩子的结果。
-    fn apply_runtime_stats_from_template(&mut self, commit_update_hooks: bool) {
+    pub fn apply_runtime_stats_from_template(&mut self, commit_update_hooks: bool) {
         if commit_update_hooks {
             #[cfg(not(feature = "no_debug"))]
             let probe_pending_haste = crate::debug::probe_refresh()
