@@ -407,7 +407,7 @@ impl PlayerRuntime {
     pub fn at_boost(&self) -> f64 { f64::from_bits(self.at_boost_bits) }
 
     /// 当前吸引力。
-    pub fn attract(&self) -> f64 { f64::from_bits(self.attract_bits) }
+    pub fn attract(&self) -> f64 { f64::from_bits(self.squall_taunt.map_or(self.attract_bits, |(_, bits)| bits)) }
 
     /// 是否为使魔。
     pub fn is_minion(&self) -> bool { self.flags.contains(PlayerKindFlags::MINION) }

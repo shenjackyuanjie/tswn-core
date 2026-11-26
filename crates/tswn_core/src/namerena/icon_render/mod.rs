@@ -64,6 +64,10 @@ use super::icon::{IconResult, icon_from_name, parse_sglname};
 mod sprite_data;
 use sprite_data::{BORDERS_DARK, BORDERS_OPACITY, SHAPES};
 
+/// Boss 专属像素徽章（咦、被子一家），与 [`sprite_data`] 的调色板精灵相互独立。
+mod boss_badges;
+use boss_badges::{YI_ICON, quilt_icon};
+
 /// Boss 固定徽章名称表（按字典序排布以供二分检索）。
 // 原版 Vite（rinick.github.io 的 2ab0f562）的单帧 16×16 GIF，经浏览器 Canvas 解码后按名字排序保存 RGBA；
 // Rust 的 PNG 与无 png_render 的像素接口共享这份数据，不需要运行时 GIF 解码。
@@ -201,7 +205,26 @@ pub fn render_icon_b64_from_name(name: &str) -> String {
 
 /// 便捷包装器: 通过玩家名称渲染 → RGBA 像素数据 (1024 字节)。
 pub fn render_icon_vec_from_name(name: &str) -> Vec<u8> {
-    boss_icon(name).map_or_else(|| render_icon_vec(&icon_from_name(parse_sglname(name))), <[_]>::to_vec)
+    // Squall Boss 与同名队伍角色共用程序生成图标；smdd（曙光）固定使用 nan@nan 的图标。
+    if name == "咦" || name == "咦@" || name.starts_with("咦@") {
+        return YI_ICON.to_vec();
+    }
+    let mapped = name
+        .split_once('@')
+        .filter(|(_, modifiers)| modifiers.split(['@', '+']).next() == Some("!"))
+        .and_then(|(base, _)| match base {
+            "Squall" => Some("Squall@Squall"),
+            "smdd" => Some("nan@nan"),
+            "新纪元" => Some("新纪元@新纪元"),
+            "Shabby_fish" => Some("Shabby_fish@Shabby_fish"),
+            _ => None,
+        })
+        .unwrap_or(name);
+    // 被子一家使用内置像素徽章，网页与 PNG 接口共享图案，不依赖 Emoji 字体。
+    if let Some(pixels) = quilt_icon(name) {
+        return pixels;
+    }
+    boss_icon(mapped).map_or_else(|| render_icon_vec(&icon_from_name(parse_sglname(mapped))), <[_]>::to_vec)
 }
 
 // ── 内部辅助函数 ──────────────────────────────────────────────────────────

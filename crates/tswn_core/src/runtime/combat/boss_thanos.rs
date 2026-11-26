@@ -146,7 +146,7 @@ impl CombatRuntime {
     /// 抽取偏移。返回空列表时装配方只把它当作「响指」分支标记。
     pub fn select_plain_thanos_snap_targets(&self, actor: EntityIdx) -> Option<PreparedTargetList> {
         let enemies = self.plain_thanos_snap_enemies(actor);
-        let allies = self.world.flat_alive().len() - enemies.len();
+        let allies = Self::quilt_target_pool(&self.entities, &self.world).len() - enemies.len();
         should_snap(enemies.len(), allies).then(PreparedTargetList::new)
     }
 

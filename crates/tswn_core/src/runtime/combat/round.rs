@@ -103,6 +103,7 @@ impl CombatRuntime {
                 "[1]从[冰冻]中解除",
                 0,
             ));
+            self.quilt_thaw(target, &mut updates);
         }
         let Some(mut action) = selected_action else {
             return Some(self.finish_round_with_capture::<CAPTURE_UPDATES, _>(None, updates, build));
@@ -189,6 +190,8 @@ impl CombatRuntime {
                 }
                 return None;
             }
+            // 专属计时只在真正获得行动时推进，冰冻期间保留剪枝预告。
+            self.begin_squall_action(action.actor, &mut updates);
             let forced_pre_action_skill = plain_skill_pre_action.forced_skill.is_some();
             let prepared = self.prepare_plain_action(action.actor, smart, plain_skill_pre_action);
             // 卡牌兼容模式：点名的技能放不出来时引擎改用普攻，这里补一条说明战报。
@@ -277,7 +280,17 @@ impl CombatRuntime {
             self.drain_action_damage_phase_into(action.actor, ProcMask::PRE_DAMAGE, &mut updates);
             match prepared_plain_action.take() {
                 Some(PreparedPlainAction::BasicAttack { target, use_magic, .. }) => {
-                    self.drain_plain_default_attack_into(action.actor, target, use_magic, &mut updates);
+                    if self
+                        .entities
+                        .get(action.actor)
+                        .is_some_and(|e| e.template.name == crate::runtime::combat::boss_yi::BAIXIE)
+                    {
+                        self.drain_baixie_action_into(action.actor, &mut updates);
+                    } else if self.quilt_minion_kind(action.actor).is_some() {
+                        self.drain_quilt_minion_action_into(action.actor, target, &mut updates);
+                    } else {
+                        self.drain_plain_default_attack_into(action.actor, target, use_magic, &mut updates);
+                    }
                 }
                 Some(PreparedPlainAction::ForcedAttack { target, .. }) => {
                     self.drain_plain_berserk_forced_attack_into(action.actor, target, &mut updates);
@@ -330,6 +343,7 @@ impl CombatRuntime {
                 updates.add_newline();
             }
             self.drain_post_action_chain_into(action.actor, &mut updates);
+            self.quilt_post_action(action.actor, &mut updates);
             if !legacy_plain_action || !self.plain_battle_has_ended() {
                 self.drain_plain_update_end_into(&mut updates);
             }
@@ -491,9 +505,11 @@ impl CombatRuntime {
     fn finish_round_with_capture<const CAPTURE_UPDATES: bool, O>(
         &mut self,
         action: Option<ActionPlan>,
-        updates: RunUpdates,
+        mut updates: RunUpdates,
         build: impl FnOnce(Option<ActionPlan>, Option<RuntimeFrame>, Option<usize>) -> O,
     ) -> O {
+        // 普通回放与不捕获消息的评分路径共享同一份科研状态结算。
+        self.finish_squall_action(action.as_ref().map(|a| a.actor), &mut updates);
         debug_assert_eq!(updates.capture_updates, CAPTURE_UPDATES);
         let frame = (CAPTURE_UPDATES && updates.had_updates()).then_some(RuntimeFrame { updates });
         self.round += 1;
@@ -536,6 +552,15 @@ impl CombatRuntime {
         pre_action: PlainSkillPreActionOutcome,
     ) -> Option<PreparedPlainAction> {
         crate::runtime::forced_action::hit();
+        // 衍生物即使暂无可攻击目标，也可以睡觉、钻被或使用自身技能。
+        if self.quilt_minion_kind(actor).is_some() {
+            let target = self.select_plain_default_attack_target(actor, smart).unwrap_or(actor);
+            return Some(PreparedPlainAction::BasicAttack {
+                target,
+                use_magic: false,
+                amount: 0,
+            });
+        }
         // 沙冰鱼的行动完全由专属脚本决定。
         if self
             .entities
@@ -1260,10 +1285,11 @@ impl CombatRuntime {
     fn apply_potion(&mut self, actor: EntityIdx, code: u32) {
         // code = 属性下标 + 1（0 表示没喝药）
         let field = ((code & 0xF) as usize).saturating_sub(1);
+        let mp_scale = self.mp_regen_scale(actor);
         let Some(entity) = self.entities.get_mut(actor) else { return };
         if field == 9 {
-            // 9 = 能量药水：回复 40 点 MP（上限 100）
-            entity.runtime.magic_point = (entity.runtime.magic_point + 40).min(100);
+            // 9 = 能量药水：回复 40 点 MP（与其他返蓝共用上限；被拜谢过则减半）
+            entity.runtime.magic_point = (entity.runtime.magic_point + (40.0 * mp_scale) as i32).min(MAGIC_POINT_CAP);
             return;
         }
         if field >= 8 {
@@ -1318,7 +1344,8 @@ impl CombatRuntime {
     }
 
     pub fn select_plain_berserk_forced_attack_target(&mut self, smart: bool) -> Option<EntityIdx> {
-        let all_alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return None;
         }

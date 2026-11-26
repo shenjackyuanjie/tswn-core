@@ -326,6 +326,18 @@ impl ScoreProfileBuild {
     }
 }
 
+/// 按名字重建一个战斗模板（换号类技能使用）：属性、图标与技能熟练度都按新名字计算。
+pub fn template_from_name(registry: &ExtensionRegistry, name: &str, team: usize) -> Option<PlayerTemplate> {
+    let input = crate::namerena::NamerenaInput::parse(name).ok()?;
+    let roster = crate::namerena::PreparedRoster::build(&input, 0.0).ok()?;
+    let player = roster.players.first()?;
+    let import = crate::runtime::profile::BuiltinSkillImportMap::new(registry);
+    let init = PreparedBattleInit::prepare_namerena_player(player, team, registry, &import, 0.0, false);
+    let mut template = init.template;
+    template.team = team;
+    Some(template)
+}
+
 #[inline]
 fn score_name_base(values: &[u8; 256]) -> [u8; 128] {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

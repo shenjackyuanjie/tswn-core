@@ -19,9 +19,23 @@ impl CombatRuntime {
     pub fn select_plain_default_attack_target(&mut self, actor: EntityIdx, smart: bool) -> Option<EntityIdx> {
         self.entities.get(actor)?;
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return None;
+        }
+        // 被子有存活召唤物时不可被选中：单独抽取，避免破坏原版连续跳过区间的假设。
+        if all_alive.iter().any(|idx| self.quilt_untargetable(*idx)) {
+            let candidates: smallvec::SmallVec<[EntityIdx; 8]> = all_alive
+                .iter()
+                .copied()
+                .filter(|idx| self.plain_effective_team(*idx) != actor_team && !self.quilt_untargetable(*idx))
+                .collect();
+            if candidates.is_empty() {
+                return None;
+            }
+            let index = usize::from(self.rng.next_u8()) % candidates.len();
+            return Some(candidates[index]);
         }
         let enemy_skip_indices = all_alive
             .iter()
@@ -191,7 +205,8 @@ impl CombatRuntime {
         score: impl Fn(&mut Self, EntityIdx, bool) -> f64,
     ) -> PreparedTargetList {
         let team = self.plain_effective_team(actor);
-        let alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let alive = target_pool.as_ref();
         let skips = alive
             .iter()
             .enumerate()
@@ -868,6 +883,8 @@ impl CombatRuntime {
         on_damage: PlainAttackOnDamage,
         updates: &mut RunUpdates,
     ) -> bool {
+        // 被子衍生物在睡5觉/钻被/猴儿冰冻期间固定 0 伤。
+        let amount = self.quilt_damage(target, amount);
         // 0.5.5 `aF`：负数伤害表示 Boss 防御吸收，只回血并输出恢复消息，
         // 不触发 covid/lazy 扩散、命中回调或 POST_DAMAGE 链。
         if amount < 0 {
@@ -878,9 +895,18 @@ impl CombatRuntime {
             .entities
             .get_mut(target)
             .unwrap_or_else(|| panic!("unknown runtime default attack target: {}", target.0));
+        let actual_damage = amount.max(0).min(target_entity.runtime.hp.max(0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
+        self.record_squall_damage(caster, target, actual_damage);
+        if actual_damage > 0 {
+            // 曙光的「局」层数：被本体命中一次加一层。
+            self.record_smdd_hit(target);
+            // TigerStar 的「我是M」：受伤时随机属性提升等量数值。
+            self.record_tiger_damage(target, actual_damage);
+        }
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        self.relay_quilt_damage(caster, target, amount, updates);
         if amount == 0 {
             return false;
         }

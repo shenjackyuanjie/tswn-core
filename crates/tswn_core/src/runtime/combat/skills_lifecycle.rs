@@ -130,7 +130,8 @@ impl CombatRuntime {
     /// 减速选目标：聪明时要求体力不低于 80 且未携带深层迟缓。
     pub fn select_plain_slow_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return PreparedTargetList::new();
         }
@@ -255,6 +256,11 @@ impl CombatRuntime {
             return;
         }
 
+        self.apply_plain_slow_into(actor, target, charge_active, updates);
+    }
+
+    /// 施加迟缓本身，供已完成命中判定的技能或全队占领调用。
+    pub fn apply_plain_slow_into(&mut self, actor: EntityIdx, target: EntityIdx, charge_active: bool, updates: &mut RunUpdates) {
         let slow_state_id = self
             .registry
             .state_id_by_export_name(DEFAULT_CORE_SLOW_STATE_EXPORT)
@@ -371,7 +377,8 @@ impl CombatRuntime {
     /// 附体选目标：敌方存活者，无敌人时返回空列表。
     pub fn select_plain_possess_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return PreparedTargetList::new();
         }

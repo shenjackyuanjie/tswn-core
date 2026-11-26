@@ -7,6 +7,16 @@
 - 13 个原版 Boss 使用固定徽章；其他 `name@!` 玩家按自身名字生成徽章，含特殊身份的输入组和史莱姆子体按原版继承图标。PNG 和 RGBA 接口保持原格式。
 - 同公会的评分对局回退完整阵容构建时，先恢复场前实体，避免上局召唤物 ID 或状态泄漏到下一局。
 
+### 新增
+
+- 移植 KODU16 fork 上的 7 只自定义 Boss：Squall（暴政）、被子、曙光、新纪元、咦（含拜谢衍生物）、豹星老虎、沙冰鱼。各自的机制实现（3,289 行）、实体蓝图（130 行）与测试来自原作者，机制逻辑逐字保留。
+- 共享接线一并落地：`RunUpdate.dialogue` 与 `as_dialogue()`、`CombatRuntime.squall_bosses`、`apply_plain_slow_into`、`apply_squall_defense`、`begin_squall_action`／`finish_squall_action`、`record_squall_damage`、`dispel_squall_effects`、`record_smdd_hit`、`record_tiger_damage`、`baixie_mp_scale`、`prepared_init::template_from_name`、`PlainBossDefend::Quilt`，以及被子在 `attack`／`defense`／`round`／`skills_*` 十个文件里的选敌池与伤害传导触点。
+- 7 只 Boss 合计 44 个 `#[test]`。这些测试在原作者分支上从未被声明为模块（`combat/mod.rs` 缺 `mod boss_*_tests`），实际不参与编译；本次一并声明，全部通过。
+- `namerena/icon_render` 新增 `boss_badges` 模块：咦的 16×16 手画徽章 `YI_ICON`、被子一家的 `quilt_icon`（床、猴脸、鱼三种 Emoji），以及新 Boss 名字到徽章的映射规则。
+
+- `MAGIC_POINT_CAP` 定为 100。原作者在 `22c7af3e` 把它改成 128 并加了具名常量，但他的基线同样是 100；该上限作用于能量药水（+40）、蓄力返蓝（+32）与行动恢复这些普通对局也走的路径，改它会动既有行为对齐，而仓库里没有任何测试覆盖该上限。保留具名常量只为消除魔法数字，将来若确认原版规则是 128，改这一行即可。
+- 回放的 `ReplayTone::Dialogue` 投影未接。原作者在 `replay_view.rs` 与 `cli_api/battle/session.rs` 把 `update.dialogue` 投影成新 tone，但 `replay_tone_color()` 并不特殊处理它，渲染与 `Normal` 同色，收益纯装饰；代价却是 `tswn_py` 的 `replay_tone_to_str()` 是穷尽 match、加变体直接编译失败。`RunUpdate.dialogue` 与 `as_dialogue()` 已在位且有测试覆盖，投影随时可补。
+
 ### 破坏性变更
 
 - **BREAKING**：`BattlePlayerState.source_id` 重命名为 `root_owner_id`，与 `RuntimePlayerSnapshot.root_owner_id` 统一「根主人」命名。字段语义不变（根来源实体 ID），仅字段名变更，不保留旧别名。该字段经 serde 自动序列化，C ABI 的 JSON 输出随之变化；Python dict 键与类型存根、TypeScript 声明已同步。

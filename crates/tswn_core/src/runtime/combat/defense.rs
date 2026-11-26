@@ -7,11 +7,15 @@ enum PlainBossDefend {
     Aokiji,
     /// 斑鸠：吸收奇数伤害。
     Ikaruga,
+    /// 被子：本体不可被选中，直接命中一律不造成伤害；只有衍生物的伤害传导才会扣血。
+    Quilt,
 }
 
 impl CombatRuntime {
     /// 驱散命中：清除目标正面状态并按档位扣除 MP。
     pub fn apply_disperse_hit_into(&mut self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
+        // 净化也能解除科研 Boss 的铁壁、蓄势、剪枝与嘲讽交换。
+        self.dispel_squall_effects(target, updates);
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime disperse target entity: {}", target.0);
         };
@@ -394,6 +398,11 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
         defend_value: &mut RuntimeDefendValue,
     ) {
+        // 被子衍生物在睡5觉/钻被/猴儿冰冻期间固定 0 伤，不再借用超大护盾。
+        if self.quilt_minion_sleeping(target) {
+            defend_value.set_damage(0);
+            return;
+        }
         #[derive(Clone, Copy)]
         enum DefendHookPlanEntry {
             Skill(SkillHookPlanEntry),
@@ -519,6 +528,8 @@ impl CombatRuntime {
                 break;
             }
         }
+        // 科研铁壁和复查易伤应用于完成常规防御后的正伤害。
+        self.apply_squall_defense(target, defend_value);
     }
 
     /// 常规护盾在 POST_DEFEND 中抵减伤害；护盾不足时清零且不抵消伤害。
@@ -553,6 +564,7 @@ impl CombatRuntime {
         match entity.template.name.as_str() {
             "aokiji" => Some((SkillPriority(10_000), PlainBossDefend::Aokiji)),
             "ikaruga" => Some((SkillPriority(20_000), PlainBossDefend::Ikaruga)),
+            "quilt" => Some((SkillPriority(30_000), PlainBossDefend::Quilt)),
             _ => None,
         }
     }
@@ -588,6 +600,7 @@ impl CombatRuntime {
                 DamageKind::Physical => defend_value.set_damage(0),
                 DamageKind::Default => {}
             },
+            PlainBossDefend::Quilt => defend_value.set_damage(0),
             PlainBossDefend::Ikaruga => {
                 if damage & 1 == 1 {
                     updates.add_with(|| {
@@ -621,6 +634,8 @@ impl CombatRuntime {
 
     /// 执行目标的死亡 hook：护身符、史莱姆分裂、马里奥复活等。
     pub fn drain_die_hooks_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) {
+        // 猴区的 HOUQU_BLAST 先于其它死亡钩子结算，分裂出的子体不再继续分裂。
+        self.drain_quilt_split_into(target, updates);
         // 史莱姆分裂的死亡钩子优先级为 0，先于马里奥复活（10）和通用死亡链；
         // 分裂不阻止本体死亡，因此继续走后续死亡流程。
         self.drain_plain_slime_split_into(target, updates);
@@ -682,6 +697,7 @@ impl CombatRuntime {
         fire_state_key: Option<u32>,
         updates: &mut RunUpdates,
     ) -> bool {
+        let amount = self.quilt_damage(target, amount);
         if amount < 0 {
             self.apply_plain_absorb_heal_into(caster, target, amount.saturating_neg(), updates);
             return false;
@@ -690,9 +706,12 @@ impl CombatRuntime {
             .entities
             .get_mut(target)
             .unwrap_or_else(|| panic!("unknown runtime plain legacy damage target entity: {}", target.0));
+        let actual_damage = amount.max(0).min(target_entity.runtime.hp.max(0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
+        self.record_squall_damage(caster, target, actual_damage);
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        self.relay_quilt_damage(caster, target, amount, updates);
         // 原版 damage 先调用命中回调（含火球免疫随机数），再由 onDamaged 登记反击。
         if amount > 0
             && let Some(key) = fire_state_key
@@ -716,16 +735,20 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
         replay: fn(usize, usize, i32) -> crate::runtime::update::RunUpdate,
     ) -> bool {
+        let amount = self.quilt_damage(target, amount);
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime damage target entity: {}", target.0);
         };
+        let actual_damage = amount.max(0).min(target_entity.runtime.hp.max(0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let killed = target_entity.runtime.hp == 0 && target_entity.runtime.alive;
         if killed {
             target_entity.runtime.alive = false;
         }
         let team = target_entity.runtime.team;
+        self.record_squall_damage(caster, target, actual_damage);
         updates.add(replay(caster.0 as usize, target.0 as usize, amount));
+        self.relay_quilt_damage(caster, target, amount, updates);
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         if killed {
             self.mark_dead_with_linked_minions_into(target, team, updates);
@@ -741,13 +764,17 @@ impl CombatRuntime {
         amount: i32,
         updates: &mut RunUpdates,
     ) -> bool {
+        let amount = self.quilt_damage(target, amount);
         let target_entity = self
             .entities
             .get_mut(target)
             .unwrap_or_else(|| panic!("unknown runtime poison target entity: {}", target.0));
+        let actual_damage = amount.max(0).min(target_entity.runtime.hp.max(0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
+        self.record_squall_damage(caster, target, actual_damage);
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        self.relay_quilt_damage(caster, target, amount, updates);
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         was_alive
             && self
@@ -764,6 +791,7 @@ impl CombatRuntime {
         amount: i32,
         updates: &mut RunUpdates,
     ) -> bool {
+        let amount = self.quilt_damage(target, amount);
         if amount < 0 {
             self.apply_plain_absorb_heal_into(caster, target, amount.saturating_neg(), updates);
             return false;
@@ -771,12 +799,15 @@ impl CombatRuntime {
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime disperse damage target entity: {}", target.0);
         };
+        let actual_damage = amount.max(0).min(target_entity.runtime.hp.max(0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
+        self.record_squall_damage(caster, target, actual_damage);
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         if amount > 0 {
             self.apply_disperse_hit_into(caster, target, updates);
         }
+        self.relay_quilt_damage(caster, target, amount, updates);
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         was_alive
             && self

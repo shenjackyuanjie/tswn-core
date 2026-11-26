@@ -191,6 +191,8 @@ pub struct CombatRuntime {
     pub state_handlers: StateHandlers,
     pub replay_renderers: ReplayRenderers,
     pub show_renderers: ShowRenderers,
+    /// 固定记录科研 Boss 的实体槽，普通对局不扫描所有实体。
+    pub squall_bosses: Vec<EntityIdx>,
     pub scratch: BattleScratch,
     pub template_slots: TemplateSlotStorage,
     pub slots: BattleSlotStorage,

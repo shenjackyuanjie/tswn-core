@@ -308,7 +308,8 @@ impl CombatRuntime {
     fn select_plain_conan_targets_in_mode(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let select_count = if smart { 4 } else { 3 };
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return PreparedTargetList::new();
         }
@@ -575,7 +576,8 @@ impl CombatRuntime {
     /// 尤里的心灵控制目标：不看 smart，只要目标不在自身当前队伍、没有魅惑。
     pub fn select_plain_yuri_control_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let all_alive = target_pool.as_ref();
         let mut candidates = smallvec::SmallVec::<[EntityIdx; 8]>::new();
         let mut enemy_skip_indices = smallvec::SmallVec::<[usize; 8]>::new();
         for (idx, target) in all_alive.iter().copied().enumerate() {

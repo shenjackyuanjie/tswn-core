@@ -153,9 +153,19 @@ impl CombatRuntime {
             return PreparedTargetList::new();
         }
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return PreparedTargetList::new();
+        }
+        // 被子有存活召唤物时不可被选中：单独挑目标，避免破坏原版连续跳过区间。
+        if all_alive.iter().any(|idx| self.quilt_untargetable(*idx)) {
+            let candidates: Vec<EntityIdx> = all_alive
+                .iter()
+                .copied()
+                .filter(|idx| self.plain_effective_team(*idx) != actor_team && !self.quilt_untargetable(*idx))
+                .collect();
+            return candidates.into_iter().take(select_count).collect();
         }
         let ally_skip_indices = all_alive
             .iter()
@@ -710,7 +720,8 @@ impl CombatRuntime {
     /// 连击选目标：聪明抽 5 个、普通抽 3 个敌人并按评分排序。
     pub fn select_plain_rapid_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive();
+        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return PreparedTargetList::new();
         }
