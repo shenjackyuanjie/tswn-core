@@ -53,15 +53,16 @@ Co-authored-by: <模型标识> <模型标识@厂商域名>
 
 | 模型 | 署名 |
 | --- | --- |
-| Codex | `Codex <codex@openai.com>` |
 | GPT-6.2 Sol | `gpt-6.2-sol <gpt-6.2-sol@openai.com>` |
 | Claude Opus | `claude-opus-4-7 <claude-opus-4-7@anthropic.com>` |
 | DeepSeek Flash | `deepseek-flash <deepseek-flash@deepseek.com>` |
 | Step 5 Preview | `step-5-preview <step-5-preview@stepfun.com>` |
 
-署名要落到**具体模型**上。`Copilot` 这类产品名不是模型，它是入口不是能力来源，被它调起来跑的那个模型才该署名，所以不进这张表。同理，认不出底层模型时宁可写厂商-模型，也别拿产品名顶替。
+署名要落到**具体模型**上。`Copilot`、`Codex`、`Claude Code` 这类产品名和代理名都不算——它们只是入口，换个后端就换了脑子，挂上去说不清到底是谁在干活。历史上 `Codex GPT-5.5` 和 `GPT-5.5` 分裂成两条就是这么来的。被它们调起来跑的那个具体模型才该署名；认不出底层模型时按厂商-模型写，别拿产品名顶替。
 
-同一个模型固定用同一种写法。历史上 `step5preview` 与 `step-5-preview`、`Codex GPT-5.5` 与 `GPT-5.5` 并存，除了让统计碎成一地没有别的作用。自己是什么模型就用什么标识署名，不要借用别人的模型名。
+同一个模型固定用同一种写法。历史上 `step5preview` 与 `step-5-preview` 并存、`deepseek-v4-1-flash` 用 `example.invalid` 占位，除了让统计碎成一地没有别的作用。自己是什么模型就用什么标识署名，不要借用别人的模型名。
+
+存量提交不回填，这条只管新提交。
 
 ## 远程仓库与推送
 
