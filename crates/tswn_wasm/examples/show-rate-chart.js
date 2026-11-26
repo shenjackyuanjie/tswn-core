@@ -87,7 +87,8 @@ export function createRateChart(host, onSeek) {
     ticks.push(last);
     const tickSet = new Set(ticks);
     const axisIcons = teamIcons.map((icon,i)=>'<image href="'+escapeHtml(icon ?? '')+'" x="0" y="'+(i ? 128 : 16)+'" width="20" height="20"/>').join('');
-    const nodes = snapshot.map((p,i)=>'<circle cx="'+x(i)+'" cy="'+y(p)+'" r="3.5" fill="#2484e4" stroke="'+surface+'" stroke-width="1.5"/>' + (tickSet.has(i) ? '<text x="'+x(i)+'" y="158" text-anchor="middle">'+p.round+'</text>' : '')).join('');
+    // PNG 仅绘制折线与横轴文字，不绘制交互节点圆点。
+    const tickLabels = snapshot.map((p,i)=>tickSet.has(i) ? '<text x="'+x(i)+'" y="158" text-anchor="middle">'+p.round+'</text>' : '').join('');
     // 完整输入名逐行排版，图标跟随名字；长名字自动折行，队间空行不丢失。
     let footerY = 190;
     const footerSvg = layout.map(row=>{
@@ -100,7 +101,7 @@ export function createRateChart(host, onSeek) {
     }).join('');
     // 文字排版只使用固定比例画布以内的空间。
     // 不生成 0%/100% 文本，保留 50% 与三条水平虚线、左侧队伍图标。
-    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="'+width+'" height="'+height+'" viewBox="0 0 '+width+' '+height+'"><style>text{font-family:'+escapeHtml(fontFamily)+';font-size:11px;fill:'+ink+'}</style><rect width="100%" height="100%" fill="'+surface+'"/>'+axisIcons+'<path d="M65 26H'+(width-10)+' M65 82H'+(width-10)+' M65 138H'+(width-10)+'" stroke="'+grid+'" fill="none" stroke-dasharray="3 3"/><text x="24" y="86">50%</text><polyline points="'+snapshot.map((p,i)=>x(i)+','+y(p)).join(' ')+'" stroke="#2484e4" stroke-width="2.5" stroke-linejoin="round" fill="none"/>'+nodes+footerSvg+'</svg>';
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="'+width+'" height="'+height+'" viewBox="0 0 '+width+' '+height+'"><style>text{font-family:'+escapeHtml(fontFamily)+';font-size:11px;fill:'+ink+'}</style><rect width="100%" height="100%" fill="'+surface+'"/>'+axisIcons+'<path d="M65 26H'+(width-10)+' M65 82H'+(width-10)+' M65 138H'+(width-10)+'" stroke="'+grid+'" fill="none" stroke-dasharray="3 3"/><text x="24" y="86">50%</text><polyline points="'+snapshot.map((p,i)=>x(i)+','+y(p)).join(' ')+'" stroke="#2484e4" stroke-width="2.5" stroke-linejoin="round" fill="none"/>'+tickLabels+footerSvg+'</svg>';
     const url = URL.createObjectURL(new Blob([svg],{type:'image/svg+xml;charset=utf-8'}));
     try {
       const image = new Image(); image.src = url; await image.decode();

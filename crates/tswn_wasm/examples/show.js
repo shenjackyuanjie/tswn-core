@@ -8,7 +8,7 @@
  */
 
 import { createShowPlayback } from "./show-playback.js?v=20261125rates1";
-import { createRateChart } from "./show-rate-chart.js?v=20261125ratio1";
+import { createRateChart } from "./show-rate-chart.js?v=20261125line1";
 import { setupRateWindow } from "./show-rate-window.js?v=20261125png1";
 import { createThemeControls, setupPlayerHighlight, isEditableKeyTarget, copyTextToClipboard } from "./show-ui.js?v=20261125rates1";
 import {
