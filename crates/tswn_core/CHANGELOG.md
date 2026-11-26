@@ -21,6 +21,8 @@
 - `runtime/combat` 中 7 个内部辅助函数的可见性统一为 `pub`（原为 `pub(in crate::runtime)`），与 `drain_plain_slime_split_into` 等同类方法一致。这些方法挂在公开类型 `CombatRuntime` 上，公开面因此扩大；不涉及行为变化。
 - `tswn-cli` 的 `bench/winrate.rs` 改名为 `win_rate.rs`，`run_bench_winrate` / `bench_winrate_summary` 等连写标识符统一为 `win_rate` 蛇形，与既有 `win_rate_summary`、`resolve_win_rate_workers` 一致。不影响对外接口。
 - `runtime/combat` 模块文档新增「命名约定」小节：文件名表达机制类别、函数名表达角色与动作，是两套正交维度；并说明 `drain_*_into`（排空累积队列）与 `run_*_into`（执行具体 handler）的边界，以及 `_into` 统一表示输出写入 `RunUpdates`。`cli_api` 补充批量统计的三层窄化关系（`RuntimeBatchSummary` → `WinRateSummary` → `WinRateResult`）与 `BatchSummary` 属已计算聚合结果、不再可合并的说明。
+- 拆分 `runtime/profile`：6 个错误枚举与 21 个 `From` 实现移入 `profile/errors.rs`，导出名常量表移入 `profile/exports.rs`，`profile/mod.rs` 由 1004 行降至 733 行。新模块经 `pub use` 原样再导出，`crate::runtime::profile::*` 下的公开路径全部不变。
+- `cli_api/battle/session.rs`（2061 行）改为目录式：生产代码留在 `session/mod.rs`（1008 行），原内嵌的 `mod tests`（763 行）与 `mod card_control_tests`（286 行）外提为同级文件，测试代码一字未改。`cli_api/battle/mod.rs` 无需改动。
 
 ## [0.7.2] - 2026-11-21
 
