@@ -536,17 +536,17 @@ cargo run -p tswn_openbox --bin tswn_openbox --features ui_capture -- --capture-
 
 源码按职责拆分，GUI 与 `openbox-cli` 共用同一套后端与预设：
 
-- `src/lib.rs`、`src/app.rs`、`src/app/`：GUI 的状态、控件与任务启动。
+- `src/lib.rs`、`src/app/mod.rs`、`src/app/`：GUI 的状态、控件与任务启动。
   - `state.rs` 面板状态、`view.rs` 布局与控件、`actions.rs` 启动任务、`widgets.rs` 复用控件、
     `task.rs` 后台任务生命周期、`help.rs` 上下文帮助、`style.rs` 语义配色、`log.rs` 日志缓存、
-    `results.rs` 结果模型、`results/view.rs` 结果渲染、`source.rs` 文本输入来源、`ds4.rs` DS4 页面与任务入口、`ds4_help.rs` DS4 参数及流程帮助。
-- `../tswn_openbox_backend/src/backend.rs`、`backend/`：解析、执行、输出格式化与文件写入。
-  - `to_diy.rs` 导出及属性详情、`namer_pf.rs` 评分入口、`pair.rs` 配队入口、`batch.rs` 批量胜率及有界窗口执行，
+    `results/mod.rs` 结果模型、`results/view/mod.rs` 结果渲染、`source.rs` 文本输入来源、`ds4.rs` DS4 页面与任务入口、`ds4_help.rs` DS4 参数及流程帮助。
+- `../tswn_openbox_backend/src/backend/mod.rs`、`backend/`：解析、执行、输出格式化与文件写入。
+  - `to_diy/mod.rs` 导出及属性详情、`namer_pf.rs` 评分入口、`pair/mod.rs` 配队入口、`batch.rs` 批量胜率及有界窗口执行，
     `parse.rs` 输入解析、`format.rs` 输出格式、`output.rs` 文件创建与排序、`score.rs` 评分、
     `pair/matrix.rs` 队友×靶子窗口矩阵、`live.rs` 实时收件箱、`skill_board.rs` 技能榜、`types.rs` 事件与输入类型。
 - `../tswn_openbox_backend/src/presets.rs`：靶子/队友预设与默认资源释放，GUI、DS4 与 CLI 共用。
 - `src/bin/openbox_cli/`：无头入口（`main.rs` 排空事件通道并按 stdout/stderr 分流、
-  `args.rs` 参数解析与执行计划、`input.rs` 输入读取与校验、`plan.rs` 计划类型、`tools.rs` 分发）。
+  `args/mod.rs` 参数解析与执行计划、`input.rs` 输入读取与校验、`plan.rs` 计划类型、`tools.rs` 分发）。
 
 这样后续继续对齐 `tswn-cli` 能力时，可以把 UI 和业务逻辑分开维护。
 

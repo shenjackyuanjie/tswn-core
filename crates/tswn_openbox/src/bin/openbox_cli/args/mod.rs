@@ -947,5 +947,4 @@ pub(super) enum Job {
 }
 
 #[cfg(test)]
-#[path = "args_tests.rs"]
 mod tests;

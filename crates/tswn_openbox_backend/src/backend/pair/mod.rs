@@ -287,7 +287,7 @@ mod tests {
         const FACTOR: f64 = 0.99044987;
         let names = format!("{FIRST}+{SECOND}");
         let mut pair = PairInput {
-            target_text: include_str!("../../assets/targets/target3.txt").into(),
+            target_text: include_str!("../../../assets/targets/target3.txt").into(),
             target_factor_enabled: false,
             player_text: names.clone(),
             player_double_plus: false,

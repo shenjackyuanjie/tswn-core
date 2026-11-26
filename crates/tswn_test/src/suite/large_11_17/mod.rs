@@ -4,8 +4,6 @@
 
 use super::*;
 
-/// case_17 用例子模块。
-mod case_17;
 /// large_11 用例子模块。
 mod large_11;
 /// large_12 用例子模块。
@@ -18,11 +16,13 @@ mod large_14;
 mod large_15;
 /// large_16 用例子模块。
 mod large_16;
+/// large_17 用例子模块。
+mod large_17;
 
-pub use case_17::case_17;
 pub use large_11::large_11;
 pub use large_12::large_12;
 pub use large_13::large_13;
 pub use large_14::large_14;
 pub use large_15::large_15;
 pub use large_16::large_16;
+pub use large_17::large_17;

@@ -222,6 +222,6 @@ FeatureEncoder 与 WinProbFeatures（tswn_core::encoder；全八族核心张量�
 模型结构与推理接口
 ```
 
-当前 [FeatureEncoder](../../crates/tswn_core/src/encoder/encode/mod.rs) 写入 global / entity / template / lane / state / slot / list / extra 八族，完整注册表见 [TENSOR_SPECS](../../crates/tswn_core/src/encoder/batch/mod.rs)。[tswn-pwp encode](../../crates/tswn_pwp/src/encode.rs) 导出版本 2 流式训练包，包含完整 encoder manifest、features/exact/labels/audit 四个通道、逐行源位置和文件摘要；[NumPy loader](../../scripts/read_encoded_batches.py) 校验文件后逐批读取已编码数组。
+当前 [FeatureEncoder](../../crates/tswn_core/src/encoder/encode/mod.rs) 写入 global / entity / template / lane / state / slot / list / extra 八族，完整注册表见 [TENSOR_SPECS](../../crates/tswn_core/src/encoder/batch/mod.rs)。[tswn-pwp encode](../../crates/tswn_pwp/src/encode/mod.rs) 导出版本 2 流式训练包，包含完整 encoder manifest、features/exact/labels/audit 四个通道、逐行源位置和文件摘要；[NumPy loader](../../scripts/read_encoded_batches.py) 校验文件后逐批读取已编码数组。
 
 完整数据格式、支持域和训练包约定见 [FeatureEncoder 规格](../design/feature-encoder-spec.md#14-接口边界)，运行流程见 [PWP README](../../crates/tswn_pwp/README.md#离线张量编码)。在线 Python/WASM 编码绑定、模型训练与推理属于后续目标，继续复用同一核心 encoder 和契约。

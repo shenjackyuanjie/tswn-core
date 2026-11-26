@@ -1,7 +1,6 @@
 //! 验证实际后端的提前发布、并发归属与旧输出兼容性。
 
-#[path = "legacy_tests.rs"]
-mod legacy_tests;
+mod tests;
 
 use std::cell::RefCell;
 use std::sync::{

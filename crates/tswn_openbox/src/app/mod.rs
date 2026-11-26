@@ -38,7 +38,7 @@ pub use state::{OpenboxApp, Tool};
 /// 内嵌 CJK 等宽字体名。
 const SARASA_FONT_NAME: &str = "SarasaMonoSC";
 /// 内嵌 Sarasa Mono SC 字体字节。
-const SARASA_MONO_SC: &[u8] = include_bytes!("SarasaMonoSC-Regular.ttf");
+const SARASA_MONO_SC: &[u8] = include_bytes!("../SarasaMonoSC-Regular.ttf");
 /// 面板统一外边距。
 const PANEL_MARGIN: i8 = 8;
 /// 顶栏上下预留空间。

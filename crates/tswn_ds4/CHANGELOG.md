@@ -9,6 +9,7 @@
 ### 内部整理
 
 - 单字与配对流程共用五套模型系数，删除重复的配对系数副本；五套单侧模型和六套 SP1 系数按模型分文件，原始数值、顺序和 f64 位表示保持不变。
+- `model/coeffs.rs` 与 `sp1_coeffs.rs` 改为 `coeffs/mod.rs` 与 `sp1_coeffs/mod.rs`，与工作区其余 crate 的目录风格统一。系数数值、顺序与 f64 位表示不变。
 - 2026-10-13 系数整理时 `cargo test -p tswn_ds4` 全部通过。同日的 `ds4_preview` C++ 对拍在首轮报告 `out/WC.txt`、`file/WC_old.txt` 两处差异；同输入的改动前后 Rust 文本记录一致，差异属于既有 C++ 对齐问题；全流程对拍尚未通过，golden 基线保持原样。
 
 ### 验证边界

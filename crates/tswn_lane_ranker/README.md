@@ -12,7 +12,7 @@ cargo run -p tswn_lane_ranker
 
 默认监听 `127.0.0.1:3000`，数据库为当前目录的 `lane_ranker.sqlite3`。可通过 `LANE_RANKER_BIND` 和 `LANE_RANKER_DB` 修改；启动会初始化数据库结构。
 
-排名参数从 `LANE_WARMUP_ROUNDS`、`LANE_TOTAL_ROUNDS`、`LANE_WIN_RATE_SAMPLES`、`LANE_STICKINESS`、`LANE_OUTER_WORKERS` 和 `LANE_SKIP_ARCHIVED` 读取，默认值与处理方式见 [RankerConfig](src/ranker.rs)。内层胜率 worker 固定为 1；外层为 0 时使用动态分配，否则按指定 worker 数静态分块。
+排名参数从 `LANE_WARMUP_ROUNDS`、`LANE_TOTAL_ROUNDS`、`LANE_WIN_RATE_SAMPLES`、`LANE_STICKINESS`、`LANE_OUTER_WORKERS` 和 `LANE_SKIP_ARCHIVED` 读取，默认值与处理方式见 [RankerConfig](src/ranker/mod.rs)。内层胜率 worker 固定为 1；外层为 0 时使用动态分配，否则按指定 worker 数静态分块。
 
 ## 校准与靶子生成
 
@@ -22,10 +22,10 @@ Rust 侧负责读取已保存结果、补算缺失胜率、调用 Python 求解�
 
 ## 内部结构
 
-- `db.rs` 保留连接与任务入口；`db/schema.rs` 管理迁移，`groups.rs` 管理组合/胜率/归档，`results.rs` 管理进度、排名与 Correct 靶子轨迹。
-- `ranker.rs` 负责配置和重新计算编排；`ranker/algorithm.rs` 负责 Raw/Golden 迭代和重建，`archive.rs` 负责归档规则，`rates.rs` 负责胜率矩阵和补算。
-- `pairwise.rs` 编排校准；`pairwise/` 分离 Rust Correct 计算、Python 结果解析和胜率准备。
-- `service.rs` 保留服务对象和队列入口；`service/` 分离组合管理、后台任务、靶子生成与压缩协议。HTTP 路由和页面仍在 `web.rs`、`static/`。
+- `db/mod.rs` 保留连接与任务入口；`db/schema.rs` 管理迁移，`groups.rs` 管理组合/胜率/归档，`results.rs` 管理进度、排名与 Correct 靶子轨迹。
+- `ranker/mod.rs` 负责配置和重新计算编排；`ranker/algorithm.rs` 负责 Raw/Golden 迭代和重建，`archive.rs` 负责归档规则，`rates.rs` 负责胜率矩阵和补算。
+- `pairwise/mod.rs` 编排校准；`pairwise/` 分离 Rust Correct 计算、Python 结果解析和胜率准备。
+- `service/mod.rs` 保留服务对象和队列入口；`service/` 分离组合管理、后台任务、靶子生成与压缩协议。HTTP 路由和页面仍在 `web.rs`、`static/`。
 
 ## 验证
 

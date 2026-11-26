@@ -93,7 +93,7 @@ struct StrictPythonMissingRateRequest {
 }
 
 /// 内嵌的严格 Python 校准脚本文本，运行时写入临时目录执行。
-const STRICT_PYTHON_CALIBRATOR: &str = include_str!("../tools/strict_python_calibrator.py");
+const STRICT_PYTHON_CALIBRATOR: &str = include_str!("../../tools/strict_python_calibrator.py");
 
 /// 清空一行的配对校准与画像诊断字段，避免过期指标被当成当前模型的结果。
 fn reset_calibration_fields(row: &mut LaneResultRow) {

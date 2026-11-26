@@ -157,7 +157,7 @@ macro_rules! test_engine_suite {
             #[test]
             fn large_16() { $crate::suite::large_11_17::large_16::<$engine>(); }
             #[test]
-            fn case_17() { $crate::suite::large_11_17::case_17::<$engine>(); }
+            fn large_17() { $crate::suite::large_11_17::large_17::<$engine>(); }
         }
 
         mod large_18_22 {

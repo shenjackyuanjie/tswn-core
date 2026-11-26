@@ -5,6 +5,7 @@
 ### 内部整理
 
 - 按职责拆分 SQLite 存储、Raw/Golden 排名、Correct/Python 校准与服务任务模块；SQL、评分公式、求解器脚本与 HTTP 调用契约保持原状。
+- `db`、`pairwise`、`ranker`、`service` 四个模块改为 `*/mod.rs`。`pairwise` 与 `service` 内的 `include_str!` 按模块文件所在目录解析，路径相应上溯一层，内嵌内容不变。
 - 默认阈值和替换槽位策略留在 README，删除只比较固定返回值的两项测试，保留七项实际行为回归。
 - 2026-10-13 使用正常 SQLite/mimalloc 配置执行 `cargo test -p tswn_lane_ranker`，全部通过。
 

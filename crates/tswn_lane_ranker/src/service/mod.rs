@@ -32,7 +32,7 @@ use crate::ranker::{RankerConfig, recompute_lane_until_stable};
 use crate::winrate::compute_rate_without_db;
 
 /// 内嵌的靶子 MILP 求解 Python 脚本文本。
-const TARGET_MILP_SOLVER: &str = include_str!("../tools/target_milp_solver.py");
+const TARGET_MILP_SOLVER: &str = include_str!("../../tools/target_milp_solver.py");
 /// 服务层胜率检查点累积条数：满 100 条或强制时落库。
 const RATE_PERSIST_CHECKPOINT_SIZE: usize = 100;
 /// 继承大靶子的压缩协议与 Python 求解器调用。

@@ -25,6 +25,6 @@
 
 - 会话推进与失败状态：[BattleDriver](../../crates/tswn_core/src/cli_api/battle/driver.rs)、[BattleSession](../../crates/tswn_core/src/cli_api/battle/session.rs)。
 - 实验状态接口与数据链路：[BattleModelSession](../../crates/tswn_core/src/cli_api/battle/model_session.rs)、[Runtime 状态投影](../../crates/tswn_core/src/runtime/model_state/mod.rs)、[生成器](../../crates/tswn_pwp/src/generate.rs)。
-- 核心张量与离线导出：[张量注册表](../../crates/tswn_core/src/encoder/batch/mod.rs)、[FeatureEncoder](../../crates/tswn_core/src/encoder/encode/mod.rs)、[manifest 命令](../../crates/tswn_pwp/src/manifest.rs)、[encode 命令](../../crates/tswn_pwp/src/encode.rs)、[Python loader](../../scripts/read_encoded_batches.py)。
+- 核心张量与离线导出：[张量注册表](../../crates/tswn_core/src/encoder/batch/mod.rs)、[FeatureEncoder](../../crates/tswn_core/src/encoder/encode/mod.rs)、[manifest 命令](../../crates/tswn_pwp/src/manifest.rs)、[encode 命令](../../crates/tswn_pwp/src/encode/mod.rs)、[Python loader](../../scripts/read_encoded_batches.py)。
 
 旧版本升级见 [Runtime 迁移指南](../guides/runtime-0.5-migration.md)；已完成的长篇实施计划可从对应文档的 Git 历史查阅。

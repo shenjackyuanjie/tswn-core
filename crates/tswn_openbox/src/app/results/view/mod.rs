@@ -767,5 +767,4 @@ fn changed_items_job(ui: &egui::Ui, text: &str) -> Option<egui::text::LayoutJob>
 }
 
 #[cfg(test)]
-#[path = "view_tests.rs"]
 mod tests;

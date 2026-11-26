@@ -1,7 +1,7 @@
 use super::*;
 
-/// case_17 对局的泛型回放 fixture：比对冻结 JS 回放。
-pub fn case_17<E: crate::EngineAdapter>() {
+/// large_17 对局的泛型回放 fixture：比对冻结 JS 回放。
+pub fn large_17<E: crate::EngineAdapter>() {
     let expected: Vec<String> = vec![
         "aaaaa发起攻击",
         "help受到77点伤害",
@@ -32,10 +32,10 @@ pub fn case_17<E: crate::EngineAdapter>() {
 
     let mut runner = E::new_from_raw("help\naaaaa".to_string()).unwrap();
     let (actual, guard, total_score) = collect_replay_events::<E>(&mut runner, 256, false);
-    assert_eq!(total_score, 645, "case_17 score mismatch");
+    assert_eq!(total_score, 645, "large_17 score mismatch");
 
     assert!(guard < 256, "combat did not finish in expected rounds");
-    assert_trace_with_context("case_17", &actual, &expected);
+    assert_trace_with_context("large_17", &actual, &expected);
 
     let winner = winner_names::<E>(&runner);
     assert_eq!(winner, vec!["help".to_string()]);

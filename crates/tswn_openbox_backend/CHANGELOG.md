@@ -1,5 +1,12 @@
 # 更新日志
 
+## [Unreleased]
+
+### 内部整理
+
+- `backend`、`backend/pair`、`backend/to_diy` 改为目录式 `mod.rs`。`pair` 里的 `include_str!` 资产按文件所在目录解析，路径上溯一层，内嵌内容不变。
+- `backend/live_tests.rs:3` 的 `#[path = "legacy_tests.rs"]` 改为标准模块声明，文件并入 `live_tests/tests.rs`。51 项 lib 测试全通过。
+
 ## [0.5.4] - 2026-11-21
 
 ### 修复
