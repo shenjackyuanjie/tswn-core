@@ -116,7 +116,7 @@ pub fn bench_batch_rate_for_group(
         }
 
         let raw = format!("{player}\n\n{target}");
-        match bench_winrate_summary(&raw, n, threads, eval_rq) {
+        match bench_win_rate_summary(&raw, n, threads, eval_rq) {
             Ok(summary) => {
                 if verbose {
                     let _ = writeln!(
@@ -189,7 +189,7 @@ pub fn namer_pf_score(
 }
 
 #[cfg(test)]
-fn bench_winrate_summary(raw: &str, n: usize, threads: Option<usize>, eval_rq: f64) -> Result<BenchSummary, String> {
+fn bench_win_rate_summary(raw: &str, n: usize, threads: Option<usize>, eval_rq: f64) -> Result<BenchSummary, String> {
     let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_owned());
     let thread = threads.and_then(|value| u32::try_from(value).ok()).unwrap_or(0);
     runtime_groups_win_rate(&groups, n, eval_rq, thread)

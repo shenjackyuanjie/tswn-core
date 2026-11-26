@@ -37,12 +37,14 @@ impl ScoreTestSession {
     pub fn new(raw_input: String, enhanced: Option<bool>) -> WasmResult<Self> {
         crate::install_panic_hook();
         Ok(Self {
-            inner: CoreSession::new(&raw_input, enhanced.unwrap_or(false)).map_err(cli_api_error)?,
+            inner: CoreSession::new(&raw_input, enhanced.unwrap_or(false)).map_err(|error| cli_api_error(error.into()))?,
         })
     }
 
     /// 同步推进至多 batch_size 场，场次数达到 10000 后不再推进。
-    pub fn step(&mut self, batch_size: usize) -> WasmResult<()> { self.inner.step(batch_size).map_err(cli_api_error) }
+    pub fn step(&mut self, batch_size: usize) -> WasmResult<()> {
+        self.inner.step(batch_size).map_err(|error| cli_api_error(error.into()))
+    }
 
     #[wasm_bindgen(unchecked_return_type = "ScoreTestProgress")]
     /// 复制当前累计评分和技能／动作频率。
