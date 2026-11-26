@@ -738,6 +738,14 @@ fn special_group_icons(runner: &RuntimeRunner) -> Vec<Option<&str>> {
 
 /// 解析玩家应使用的固定徽章 key：分裂子体回溯到源实体，特殊组名优先。
 fn battle_icon_key<'a>(runner: &'a RuntimeRunner, state: &BattlePlayerState, groups: &[Option<&'a str>]) -> Option<&'a str> {
+    // 固定衍生物有自己的图标，不能被本体的 Boss 阵营徽章覆盖。
+    let own = runner.runtime().entities.get(EntityIdx(state.id.try_into().ok()?))?;
+    if matches!(
+        own.template.id_key_name.as_str(),
+        "quilt-monkey" | "quilt-fish" | "smdd-leopard"
+    ) {
+        return Some(&own.template.id_key_name);
+    }
     if groups.is_empty() {
         return None;
     }

@@ -12,6 +12,25 @@ fn session(max_rounds: usize) -> BattleSession {
     .unwrap()
 }
 
+// 实际召唤后的投影必须保留各自图标键，不能回退到 Boss 本体徽章。
+#[test]
+fn summoned_animals_keep_their_own_battle_icons() {
+    use crate::runtime::RunUpdates;
+    let mut s = BattleSession::new("quilt@!\n\nalpha\n\nseed:1", BattleOptions::default()).unwrap();
+    let rt = s.driver.runner.runtime_mut();
+    let boss = rt.entities.iter().find(|(_, e)| e.template.name == "quilt").unwrap().0;
+    let mut updates = RunUpdates::new();
+    for _ in 0..3 {
+        rt.drain_quilt_action_into(boss, &mut updates);
+    }
+    rt.tiger_spawn_leopard(boss, &mut updates);
+    let states = states_from_runner(&s.driver.runner, false, false, &mut HashMap::new());
+    for key in ["quilt-monkey", "quilt-fish", "smdd-leopard"] {
+        let state = states.iter().find(|state| state.id_key_name == key).unwrap();
+        assert_eq!(state.icon_key, key);
+    }
+}
+
 fn remove_round_actors(session: &mut BattleSession) {
     for id in session.driver.runner.all_player_ids() {
         session.driver.runner.runtime_mut().world.remove_round_actor(EntityIdx(id as u32));

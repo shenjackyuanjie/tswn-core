@@ -2,7 +2,7 @@
 
 [返回文档中心](../README.md)
 
-- [Squall 科研 Boss](squall.md)：固定属性、十项科研技能、日志与反制。
+- [Squall 科研 Boss](squall.md)：固定属性、重制科研技能、出勤流程、日志与反制。
 - [分身机制](clone.md)：本体与分身、衰减下限、SlotBoost 和 DIY 拟合。
 - [技能衰减](skill-decay.md)：五种主动技能的衰减方式。
 - [name_factor 与 rq](name-factor-rq.md)：实际对打和胜率评估的差异。

@@ -2,9 +2,31 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { actorToken, buildFrameRows } from "../examples/show-render.js";
-import { createBattleStreamSource, normalizeStateRateRounds } from "../examples/show-wasm.js";
+import { createBattleStreamSource, normalizeStateRateRounds, loadBattleIcon } from "../examples/show-wasm.js";
 import { actorHpMetrics } from "../examples/show-utils.js";
 import { BattleStreamController } from "../examples/show-stream.js";
+
+// 验证召唤物与本体实际绘制的 Emoji，普通名字仍由引擎生成。
+test("boss and summoned animal icons use the requested emoji", () => {
+  const oldDocument = globalThis.document;
+  const painted = [];
+  globalThis.document = {createElement() {return {
+    getContext() {return {fillText(value) {painted.push(value);}};},
+    toDataURL() {return 'data:image/png;base64,' + painted.at(-1);},
+  };}};
+  const api = {name_to_png_base64(key) {return 'fallback:' + key;}};
+  try {
+    for (const [key, emoji] of [['quilt@!', '🛏️'], ['quilt-monkey', '🐵'], ['quilt-fish', '🐟️'], ['smdd-leopard', '🐆']]) {
+      assert.equal(loadBattleIcon(api, key), 'data:image/png;base64,' + emoji);
+      assert.equal(loadBattleIcon(api, key), 'data:image/png;base64,' + emoji);
+    }
+    assert.deepEqual(painted, ['🛏️', '🐵', '🐟️', '🐆']);
+    assert.equal(loadBattleIcon(api, 'quilt@red'), 'fallback:quilt@red');
+  } finally {
+    if (oldDocument === undefined) delete globalThis.document;
+    else globalThis.document = oldDocument;
+  }
+});
 
 // 真实流适配器与历史控制器共同验证采样缓存的生命周期。
 test("state rates finish ten thousand samples once per frame and reuse history", async () => {

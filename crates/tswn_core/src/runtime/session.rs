@@ -325,22 +325,39 @@ fn status_labels(entity: &EntityRecord) -> Vec<String> {
     if !entity.runtime.quilt_arrests.is_empty() {
         push_status_label(&mut labels, "逮捕");
     }
+    if let Some(s) = &entity.runtime.rosmontic {
+        if s.dream > 0 {
+            push_status_label(&mut labels, format!("梦想天生 {}", s.dream));
+        }
+        if s.barrier_turns > 0 {
+            push_status_label(&mut labels, format!("二重结界 {}", s.barrier_turns));
+        }
+        if s.aura {
+            push_status_label(&mut labels, "气场");
+        }
+        if s.scarlet > 0 {
+            push_status_label(&mut labels, format!("鲜红印记 {}", s.scarlet));
+        }
+        if s.time_stop > 0 {
+            push_status_label(&mut labels, "世界：时停中");
+        }
+        if s.burn_turns > 0 {
+            push_status_label(&mut labels, format!("烧伤 {}", s.burn_turns));
+        }
+        if entity.template.name == "marisa" && entity.runtime.flags.contains(PlayerKindFlags::BOSS) {
+            push_status_label(&mut labels, format!("八卦炉 {}", s.energy));
+        }
+    }
     if let Some(s) = &entity.runtime.squall {
         push_status_label(&mut labels, format!("测试样本 {}", s.samples));
-        if s.iron_until > s.turn {
-            push_status_label(&mut labels, "蓄力铁壁");
+        if s.attendance {
+            push_status_label(&mut labels, "出勤：防抗翻倍");
         }
-        if s.amplify > 0 {
-            push_status_label(&mut labels, format!("蓄势 +{}%", s.amplify));
-        }
-        if s.exposed {
-            push_status_label(&mut labels, "我错了");
+        if s.turn == 2 {
+            push_status_label(&mut labels, "正在出勤回来的路上");
         }
         if s.red {
             push_status_label(&mut labels, "红温");
-        }
-        if s.burned {
-            push_status_label(&mut labels, "烧库");
         }
     }
     if entity.runtime.squall_taunt.is_some() {

@@ -4,7 +4,7 @@
 pub const SAITAMA_RETIREMENT_WINNER: &str = "SAITAMA";
 
 /// 内置 Boss 名字表；用于身份分类、默认技能与免疫规则查询。
-pub const BOSS_NAMES: [&str; 26] = [
+pub const BOSS_NAMES: [&str; 34] = [
     "mario",
     "sonic",
     "mosquito",
@@ -31,6 +31,14 @@ pub const BOSS_NAMES: [&str; 26] = [
     "rin",
     "megia",
     "rumia",
+    "reimu",
+    "marisa",
+    "daiyousei",
+    "hong",
+    "koakuma",
+    "patchouli",
+    "sakuya",
+    "remilia",
 ];
 
 /// 加成角色名字表；对应 [`boost_value`] 的加成来源。
@@ -79,6 +87,14 @@ pub fn boss_display_name(name: &str) -> &str {
         "rin" => "冴月麟",
         "megia" => "megia",
         "rumia" => "露米娅",
+        "reimu" => "博丽灵梦",
+        "marisa" => "雾雨魔理沙",
+        "daiyousei" => "大妖精",
+        "hong" => "红美铃",
+        "koakuma" => "小恶魔",
+        "patchouli" => "帕秋莉",
+        "sakuya" => "十六夜咲夜",
+        "remilia" => "蕾米莉亚",
         _ => name,
     }
 }
@@ -117,6 +133,8 @@ pub fn boss_default_skill_levels(name: &str) -> &'static [(usize, u32)] {
         "yuri" => &[(25, 48), (27, 48)],
         "thanos" => &[(29, 80)],
         "wheel" => &[(30, 48)],
+        // 红美铃的守护仍复用普通被动。
+        "hong" => &[(26, 200)],
         _ => &[],
     }
 }
@@ -185,7 +203,12 @@ pub fn boost_value(name: &str) -> u32 {
 }
 
 /// 0.5.5 中 `k3` 使用 `SklAttack` 的 Boss；它们的默认攻击可以走魔法分支。
-pub fn boss_uses_skill_attack(name: &str) -> bool { matches!(boss_combat_name(name), "aokiji" | "ikaruga") }
+pub fn boss_uses_skill_attack(name: &str) -> bool {
+    matches!(
+        boss_combat_name(name),
+        "aokiji" | "ikaruga" | "reimu" | "marisa" | "daiyousei" | "hong" | "koakuma" | "patchouli" | "sakuya" | "remilia"
+    )
+}
 
 /// Boss 行动概率的抽样条目数；`covid` / `lazy` / `testsubject` 为 0，其余为 1。
 pub fn boss_action_prob_count(name: &str) -> usize {
@@ -200,7 +223,14 @@ pub fn boss_action_prob_count(name: &str) -> usize {
 pub fn boss_immune_threshold(name: &str, key: &str) -> i32 {
     match boss_combat_name(name) {
         // 琪露诺没有状态免疫名单，冰伤免疫另由防御 hook 处理。
-        "cirno" | "megia" | "rumia" => 0,
+        "cirno" | "megia" | "rumia" | "marisa" | "daiyousei" | "hong" | "koakuma" | "patchouli" | "sakuya" | "remilia" => 0,
+        "reimu" => {
+            if matches!(key, "piston" | "poison" | "slow" | "ice") {
+                192
+            } else {
+                0
+            }
+        }
         "rin" => match key {
             "assassinate" | "charm" | "berserk" | "half" | "curse" | "exchange" | "slow" | "ice" => 240,
             _ => 0,
@@ -346,10 +376,15 @@ mod tests {
     }
 
     #[test]
-    fn boss_uses_skill_attack_only_for_aokiji_and_ikaruga() {
+    fn boss_uses_skill_attack_for_native_and_rosmontic_attackers() {
         assert!(boss_uses_skill_attack("aokiji"));
         assert!(boss_uses_skill_attack("ikaruga"));
-        for name in BOSS_NAMES.iter().copied().filter(|name| !matches!(*name, "aokiji" | "ikaruga")) {
+        for name in BOSS_NAMES.iter().copied().filter(|name| {
+            !matches!(
+                *name,
+                "aokiji" | "ikaruga" | "reimu" | "marisa" | "daiyousei" | "hong" | "koakuma" | "patchouli" | "sakuya" | "remilia"
+            )
+        }) {
             assert!(!boss_uses_skill_attack(name), "{name} 的 k3 不是 SklAttack");
         }
         assert!(!boss_uses_skill_attack("unknown"));

@@ -29,7 +29,7 @@ import {
   buildShowShareUrl,
   readStaticReplayInputFromSearch,
 } from "./show-routing.js?v=20261125rates1";
-import { ensureApi, createBattleStreamSource, normalizeStateRateRounds } from "./show-wasm.js?v=20261126rounds1";
+import { ensureApi, createBattleStreamSource, normalizeStateRateRounds, loadBattleIcon } from "./show-wasm.js?v=20261126boss12";
 
 import { parseScoreTestInput, scoreCheckpointHtml } from "./show-score-test.js?v=20261125rates1";
 import { winRateTableHtml } from "./show-win-rate.js?v=20261125rates1";
@@ -1224,7 +1224,7 @@ async function main() {
 
   try {
     const api = await ensureApi(versionInfo, coreVersionInfo, modulePathInfo);
-    setupBossPicker(bossSelect, bossChallenge, name => api.name_to_png_base64(name + "@!"));
+    setupBossPicker(bossSelect, bossChallenge, name => loadBattleIcon(api, name + "@!"));
     if (staticInput?.ok) {
       await startBattle({ persistInput: false });
       return;

@@ -598,6 +598,25 @@ impl PlayerBuild {
             status = status_from_attrs(attrs, 0.0, true);
             status.speed = 204;
         }
+        // 红魔乡角色采用固定八围；行动速度保留原版 +160 基值。
+        if self.class == PlayerClass::Boss
+            && let Some(fixed) = match self.name.as_str() {
+                "reimu" => Some([44, 59, 35, 44, 54, 59, 59, 1000]),
+                "marisa" => Some([44, 39, 57, 49, 64, 54, 63, 860]),
+                "daiyousei" => Some([30, 44, 46, 49, 41, 49, 54, 1200]),
+                "hong" => Some([50, 72, 39, 49, 24, 39, 44, 1018]),
+                "koakuma" => Some([39, 44, 46, 45, 44, 76, 44, 953]),
+                "patchouli" => Some([30, 34, 36, 41, 84, 59, 83, 720]),
+                "sakuya" => Some([45, 31, 54, 78, 54, 55, 61, 780]),
+                "remilia" => Some([61, 46, 63, 44, 53, 54, 46, 1100]),
+                _ => None,
+            }
+        {
+            self.name_factor = 0.0;
+            attrs = fixed;
+            status = status_from_attrs(attrs, 0.0, true);
+            status.speed = attrs[2] as i32 + 160;
+        }
         // 被子是后排 Boss：1000 HP、其余 100，速度同样不追加 160 点。
         if self.class == PlayerClass::Boss && self.name == "quilt" {
             self.name_factor = 0.0;

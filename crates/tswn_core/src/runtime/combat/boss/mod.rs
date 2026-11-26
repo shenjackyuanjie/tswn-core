@@ -14,10 +14,13 @@ pub mod mario;
 pub mod quilt;
 #[cfg(test)]
 pub mod quilt_tests;
+mod reimu_marisa;
 pub mod rosmontic;
 #[cfg(test)]
 mod rosmontic_tests;
 mod rumia;
+mod scarlet_mansion;
+mod scarlet_support;
 pub mod slime;
 pub mod smdd;
 #[cfg(test)]
@@ -29,6 +32,9 @@ pub mod thanos;
 pub mod tiger;
 #[cfg(test)]
 pub mod tiger_tests;
+mod touhou;
+#[cfg(test)]
+mod touhou_tests;
 pub mod wheel;
 pub mod xjy;
 #[cfg(test)]

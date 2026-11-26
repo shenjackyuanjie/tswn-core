@@ -101,13 +101,22 @@ pub struct PreparedBossSkillAction {
 pub enum PlainAttackOnDamage {
     None,
     Absorb,
+    /// 红魔乡专属命中回调。
+    Disperse,
+    RosmonticBurn,
+    RosmonticAbsorbFifth,
     Berserk,
     Curse,
     Fire(u32),
     Ice,
     Poison,
-    CovidDefaultSpread { mutation: i32 },
-    CovidSpread { boss: EntityIdx, mutation: i32 },
+    CovidDefaultSpread {
+        mutation: i32,
+    },
+    CovidSpread {
+        boss: EntityIdx,
+        mutation: i32,
+    },
     LazyDefaultSpread,
 }
 

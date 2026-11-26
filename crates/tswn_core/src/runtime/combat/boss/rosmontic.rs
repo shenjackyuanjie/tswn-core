@@ -5,7 +5,7 @@ impl CombatRuntime {
     pub(crate) fn is_rosmontic_boss(&self, actor: EntityIdx, name: &str) -> bool {
         self.entities
             .get(actor)
-            .is_some_and(|e| e.runtime.rosmontic.is_some() && e.template.name == name)
+            .is_some_and(|e| e.runtime.flags.contains(PlayerKindFlags::BOSS) && e.template.name == name)
     }
 
     pub(crate) fn rosmontic_message(&self, actor: EntityIdx, text: &'static str, updates: &mut RunUpdates) {
@@ -37,7 +37,11 @@ impl CombatRuntime {
             self.drain_rumia_action_into(actor, updates);
             return;
         }
-        self.drain_megia_action_into(actor, updates);
+        if self.is_rosmontic_boss(actor, "megia") {
+            self.drain_megia_action_into(actor, updates);
+        } else {
+            self.drain_touhou_action_into(actor, updates);
+        }
     }
 
     /// 蓄力后下一次行动锁定原目标；斩击从三次威力抽样中取最大值。
