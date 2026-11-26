@@ -191,6 +191,12 @@ pub struct PlayerRuntime {
     /// 沙冰鱼的运行态。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fish: Option<Box<FishRuntime>>,
+    /// 来源：KODU16。琪露诺的绝对零度概率等级。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cirno: Option<Box<CirnoRuntime>>,
+    /// 来源：KODU16。Rosmontic 的回合计数、蓄力目标与一次性复活。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rosmontic: Option<Box<RosmonticRuntime>>,
     /// TigerStar 的运行态。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tiger: Option<Box<TigerRuntime>>,
@@ -287,6 +293,10 @@ impl PlayerRuntime {
                 .then(|| Box::new(TigerRuntime::default())),
             fish: (flags.contains(PlayerKindFlags::BOSS) && template.name == "Shabby_fish")
                 .then(|| Box::new(FishRuntime::default())),
+            cirno: (flags.contains(PlayerKindFlags::BOSS) && template.name == crate::runtime::combat::boss::cirno::ID)
+                .then(|| Box::new(CirnoRuntime::default())),
+            rosmontic: (flags.contains(PlayerKindFlags::BOSS) && matches!(template.name.as_str(), "rin" | "megia" | "rumia"))
+                .then(|| Box::new(RosmonticRuntime::default())),
             baixie: None,
             quilt_minion: None,
             testsubject: (flags.contains(PlayerKindFlags::BOSS) && template.name == "testsubject")
@@ -346,6 +356,8 @@ impl PlayerRuntime {
         self.yi = None;
         self.tiger = None;
         self.fish = None;
+        self.cirno = None;
+        self.rosmontic = None;
         self.baixie = None;
         self.quilt_minion = None;
         self.testsubject = None;
@@ -403,6 +415,8 @@ impl PlayerRuntime {
         self.yi.clone_from(&prepared.yi);
         self.tiger.clone_from(&prepared.tiger);
         self.fish.clone_from(&prepared.fish);
+        self.cirno.clone_from(&prepared.cirno);
+        self.rosmontic.clone_from(&prepared.rosmontic);
         self.baixie.clone_from(&prepared.baixie);
         self.quilt_minion.clone_from(&prepared.quilt_minion);
         self.testsubject.clone_from(&prepared.testsubject);
@@ -660,6 +674,18 @@ impl EntityRecord {
             self.runtime.resistance += (30.0 * power).round() as i32;
             self.runtime.speed += (20.0 * power).round() as i32;
             self.runtime.wisdom += (20.0 * power).round() as i32;
+        }
+        // 来源：KODU16。黑雾形态与月影增防属于持续修正，重建状态时仍需恢复。
+        if self.runtime.flags.contains(PlayerKindFlags::BOSS)
+            && self.template.name == "rumia"
+            && let Some(state) = &self.runtime.rosmontic
+        {
+            let multiplier = if state.rumia_destroy { 5 } else { 1 };
+            self.runtime.attack *= multiplier;
+            self.runtime.magic *= multiplier;
+            self.runtime.wisdom *= multiplier;
+            self.runtime.defense = self.runtime.defense * multiplier + state.rumia_def_bonus;
+            self.runtime.resistance = self.runtime.resistance * multiplier + state.rumia_def_bonus;
         }
         self.refresh_runtime_at_boost();
         if let Some(level) = hide_level {

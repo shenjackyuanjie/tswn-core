@@ -4,7 +4,7 @@
 pub const SAITAMA_RETIREMENT_WINNER: &str = "SAITAMA";
 
 /// 内置 Boss 名字表；用于身份分类、默认技能与免疫规则查询。
-pub const BOSS_NAMES: [&str; 22] = [
+pub const BOSS_NAMES: [&str; 26] = [
     "mario",
     "sonic",
     "mosquito",
@@ -27,6 +27,10 @@ pub const BOSS_NAMES: [&str; 22] = [
     "咦",
     "TigerStar",
     "Shabby_fish",
+    "cirno",
+    "rin",
+    "megia",
+    "rumia",
 ];
 
 /// 加成角色名字表；对应 [`boost_value`] 的加成来源。
@@ -71,6 +75,10 @@ pub fn boss_display_name(name: &str) -> &str {
         "咦" => "咦",
         "TigerStar" => "豹星",
         "Shabby_fish" => "沙冰鱼",
+        "cirno" => "琪露诺",
+        "rin" => "冴月麟",
+        "megia" => "megia",
+        "rumia" => "露米娅",
         _ => name,
     }
 }
@@ -145,6 +153,10 @@ pub enum BossActionSkill {
     Fish,
     /// 实验体的三阶段行动表统一进入专属结算器。
     TestSubject,
+    /// 琪露诺的冰属性连招统一进入专属结算器。
+    Cirno,
+    /// 冴月麟、megia 和露米娅共享专属行动分派。
+    Rosmontic,
 }
 
 /// 按 0.5.5 中 `k4` 的插入顺序返回 Boss 主动技能及基础等级。
@@ -193,6 +205,11 @@ pub fn boss_action_prob_count(name: &str) -> usize {
 /// 返回 0 表示恒不免疫且不抽样；`piston` 是毒状态在 0.5.5 中的键名。
 pub fn boss_immune_threshold(name: &str, key: &str) -> i32 {
     match boss_combat_name(name) {
+        "cirno" | "megia" | "rumia" => 0,
+        "rin" => match key {
+            "assassinate" | "charm" | "berserk" | "half" | "curse" | "exchange" | "slow" | "ice" => 240,
+            _ => 0,
+        },
         "saitama" => match key {
             "half" | "exchange" => 240,
             "berserk" | "slow" | "ice" => 192,

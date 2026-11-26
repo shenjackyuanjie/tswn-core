@@ -23,8 +23,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{MOVE_POINT_THRESHOLD, PlrId};
 
+mod cirno;
 mod fish;
 mod quilt;
+mod rosmontic;
 mod runtime;
 mod skill_loadout;
 mod smdd;
@@ -35,8 +37,10 @@ mod tiger;
 mod xjy;
 mod yi;
 
+pub use cirno::*;
 pub use fish::*;
 pub use quilt::*;
+pub use rosmontic::*;
 pub use runtime::*;
 pub use skill_loadout::*;
 pub use smdd::*;
@@ -415,6 +419,36 @@ impl PlayerTemplate {
             reuse_stats_on_recast: false,
             inherit_owner_def_res: false,
         }
+    }
+
+    /// 冴月麟的唯一有符号面板。规范身份由输入解析后的名字与队伍用 `@` 拼接；
+    /// 此处按大小写精确匹配，不额外去空白、折叠大小写或删除 `@!`。
+    pub fn allows_signed_namerena_stats(player: &crate::namerena::PreparedPlayer, flags: PlayerKindFlags) -> bool {
+        flags.contains(PlayerKindFlags::BOSS)
+            && player.class == crate::namerena::PlayerClass::Boss
+            && player.name == "rin"
+            && player.clan_name == "!"
+            && player.id_key_name == "rin@!"
+            && player.status.attack == -26
+            && player.status.magic == -26
+    }
+
+    /// 从已经分类的名竞玩家构造身份和攻魔基底，普通模板继续使用非负校验。
+    pub fn from_namerena_base(player: &crate::namerena::PreparedPlayer, id: PlrId, team: usize, flags: PlayerKindFlags) -> Self {
+        let status = &player.status;
+        let mut template = if Self::allows_signed_namerena_stats(player, flags) {
+            let mut template = Self::new(id, player.name.clone(), team, status.max_hp, 0);
+            template.attack = status.attack;
+            template.magic = status.magic;
+            template.atk_sum = status.attack;
+            template
+        } else {
+            Self::new(id, player.name.clone(), team, status.max_hp, status.attack).with_magic(status.magic)
+        };
+        template.id_key_name.clone_from(&player.id_key_name);
+        template.clan_name.clone_from(&player.clan_name);
+        template.display_name.clone_from(&player.display_name);
+        template
     }
 
     /// 消费已经回收的身份字符串，直接构造数字 score profile 模板。

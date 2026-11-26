@@ -595,6 +595,20 @@ impl CombatRuntime {
                 amount: 0,
             });
         }
+        if self.has_rosmontic_action(actor) {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Rosmontic,
+                targets: PreparedTargetList::new(),
+                smart,
+            }));
+        }
+        if self.entities.get(actor).is_some_and(|e| e.runtime.cirno.is_some()) {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Cirno,
+                targets: PreparedTargetList::new(),
+                smart,
+            }));
+        }
         // 沙冰鱼的行动完全由专属脚本决定。
         if self
             .entities

@@ -314,7 +314,8 @@ impl PreparedBattleInit {
                 slot_boosts: player.clone_slot_boosts,
             });
         }
-        let mut template = Self::template_from_namerena_player(player, player.id, team, skills.clone());
+        let flags = registry.player_kind(kind).map_or(PlayerKindFlags::NONE, |entry| entry.flags);
+        let mut template = Self::template_from_namerena_player(player, player.id, team, skills.clone(), flags);
         template.kind = kind;
         template.native_boss_skills = player.class == crate::namerena::PlayerClass::Boss
             && player
@@ -406,7 +407,7 @@ impl PreparedBattleInit {
                 .player_kind_id_by_export_name(DEFAULT_CORE_ZOMBIE_KIND_EXPORT)
                 .expect("runtime registry importing zombie must register core zombie kind"),
         };
-        let mut template = Self::template_from_namerena_player(&blueprint.player, 0, team, skills);
+        let mut template = Self::template_from_namerena_player(&blueprint.player, 0, team, skills, PlayerKindFlags::NONE);
         template.kind = kind;
         template.reserved_player_ids_before_spawn = blueprint
             .reserved_player_ids_before_spawn
@@ -440,12 +441,10 @@ impl PreparedBattleInit {
         id: PlrId,
         team: usize,
         skills: SkillLoadout,
+        flags: PlayerKindFlags,
     ) -> PlayerTemplate {
         let status = &player.status;
-        let mut template = PlayerTemplate::new(id, player.name.clone(), team, status.max_hp, status.attack)
-            .with_identity_names(player.id_key_name.clone(), player.clan_name.clone())
-            .with_display_name(player.display_name.clone())
-            .with_magic(status.magic)
+        let mut template = PlayerTemplate::from_namerena_base(player, id, team, flags)
             .with_magic_point(status.magic_point)
             .with_wisdom(status.wisdom)
             .with_speed(status.speed)

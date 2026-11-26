@@ -568,6 +568,26 @@ impl PlayerBuild {
             status.hp = 487;
             status.max_hp = 487;
         }
+        if self.class == PlayerClass::Boss
+            && let Some(fixed_attrs) = match self.name.as_str() {
+                "cirno" => Some([44, 39, 54, 44, 45, 54, 63, 810]),
+                "rin" => Some([0, 963, 14, 963, 0, 963, 63, 1000]),
+                "megia" => Some([63, 63, 63, 63, 63, 63, 63, 399]),
+                "rumia" => Some([49, 64, 44, 39, 44, 64, 44, 1000]),
+                _ => None,
+            }
+        {
+            self.name_factor = 0.0;
+            attrs = fixed_attrs;
+            status = status_from_attrs(attrs, 0.0, true);
+            // 来源：KODU16。冴月麟的负攻击属性保留在有符号 status 中，避免转为 u32 后溢出。
+            if self.name == "rin" {
+                status.attack = -26;
+                status.magic = -26;
+                status.attr_sum = 2914;
+                status.atk_sum = -2902;
+            }
+        }
         // 被子是后排 Boss：1000 HP、其余 100，速度同样不追加 160 点。
         if self.class == PlayerClass::Boss && self.name == "quilt" {
             self.name_factor = 0.0;

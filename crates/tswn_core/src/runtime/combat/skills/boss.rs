@@ -97,6 +97,8 @@ impl CombatRuntime {
                 | BossActionSkill::Yi
                 | BossActionSkill::Tiger
                 | BossActionSkill::Fish
+                | BossActionSkill::Cirno
+                | BossActionSkill::Rosmontic
                 | BossActionSkill::TestSubject => PreparedTargetList::new(),
                 // `SklSaitama.au` 的基础概率在等级 0 时恒为 false，`aa` 不会执行。
                 BossActionSkill::Saitama => continue,
@@ -169,6 +171,8 @@ impl CombatRuntime {
             BossActionSkill::Yi => self.drain_yi_action_into(actor, updates),
             BossActionSkill::Tiger => self.drain_tiger_action_into(actor, updates),
             BossActionSkill::Fish => self.drain_fish_action_into(actor, updates),
+            BossActionSkill::Cirno => self.drain_cirno_action_into(actor, updates),
+            BossActionSkill::Rosmontic => self.drain_rosmontic_action_into(actor, updates),
             BossActionSkill::TestSubject => self.drain_testsubject_action_into(actor, prepared.smart, updates),
             BossActionSkill::Fire => {
                 let target = prepared.targets[0];

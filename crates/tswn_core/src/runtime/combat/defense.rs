@@ -1,8 +1,12 @@
 use super::*;
 
-/// 0.5.5 中两个 Boss 专属 POST_DEFEND 吸收技能。
+/// Boss 专属 POST_DEFEND 吸收和免伤技能。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PlainBossDefend {
+    /// 来源：KODU16（`118f45e3`）。冴月麟在伤害换算后归零，也覆盖跳过回避的攻击。
+    Rin,
+    /// 来源：KODU16。琪露诺只免疫冰属性伤害，仍可被附加冰冻。
+    Cirno,
     /// 青雉：吸收冰冻伤害，免疫物理伤害。
     Aokiji,
     /// 斑鸠：吸收奇数伤害。
@@ -113,6 +117,8 @@ impl CombatRuntime {
         defend_value: &mut RuntimeDefendValue,
         on_damage: PlainAttackOnDamage,
     ) {
+        // 来源：KODU16。黑雾反击绕过 PRE_DEFEND，避免反射双方递归互弹。
+        self.reflect_rumia_into(target, defend_value.caster(), updates);
         let defender = self.entities.get(target).expect("runtime pre-defend target missing");
         let skills = &defender.template.skills;
         let protect_split = (!defender.runtime.protect_from.is_empty())
@@ -555,7 +561,7 @@ impl CombatRuntime {
         }
     }
 
-    /// 0.5.5 中青雉/斑鸠把专属防御技能直接写入 `k1`，不在通用技能表里。
+    /// 专属防御技能不占用通用技能表槽位，在伤害换算后按优先级执行。
     fn plain_boss_defend(&self, target: EntityIdx) -> Option<(SkillPriority, PlainBossDefend)> {
         let entity = self.entities.get(target)?;
         if !entity.runtime.flags.contains(PlayerKindFlags::BOSS) {
@@ -565,11 +571,13 @@ impl CombatRuntime {
             "aokiji" => Some((SkillPriority(10_000), PlainBossDefend::Aokiji)),
             "ikaruga" => Some((SkillPriority(20_000), PlainBossDefend::Ikaruga)),
             "quilt" => Some((SkillPriority(30_000), PlainBossDefend::Quilt)),
+            "cirno" => Some((SkillPriority(10_000), PlainBossDefend::Cirno)),
+            "rin" => Some((SkillPriority(10_000), PlainBossDefend::Rin)),
             _ => None,
         }
     }
 
-    /// 应用 Boss 专属防御：青雉把冰伤害转为吸收回复并上报防御文案、物理伤害归零；斑鸠把奇数伤害转为吸收回复。
+    /// 应用 Boss 专属防御：根据伤害分类或数值决定免伤、吸收或保留原伤害。
     fn apply_plain_boss_defend(
         &mut self,
         target: EntityIdx,
@@ -600,7 +608,15 @@ impl CombatRuntime {
                 DamageKind::Physical => defend_value.set_damage(0),
                 DamageKind::Default => {}
             },
-            PlainBossDefend::Quilt => defend_value.set_damage(0),
+            PlainBossDefend::Cirno => {
+                if defend_value.kind() == DamageKind::Ice {
+                    updates.add(
+                        RunUpdate::new("[0][免疫]冰冻伤害", target.0 as usize, target.0 as usize, 1).without_replay_target(),
+                    );
+                    defend_value.set_damage(0);
+                }
+            }
+            PlainBossDefend::Quilt | PlainBossDefend::Rin => defend_value.set_damage(0),
             PlainBossDefend::Ikaruga => {
                 if damage & 1 == 1 {
                     updates.add_with(|| {
@@ -646,6 +662,10 @@ impl CombatRuntime {
         // 实验体的异常再生同样先于通用死亡链：旧实现用 post_damage_priority = i32::MIN
         // 抢在死亡记录前，这里的执行点已经在 alive = false 与 mark_dead 之前。
         if self.drain_testsubject_reraise_into(target, updates) {
+            return;
+        }
+        // 来源：KODU16。无名的决意在首次致死时恢复 199 HP，并中止死亡链。
+        if self.revive_megia_into(target, updates) {
             return;
         }
         let die_skill_plan = self.scheduler.skill_hook_plan(&self.entities, &self.registry, target, ProcMask::DIE);

@@ -353,22 +353,30 @@ impl CustomBed2Import {
                         raw: raw.clone(),
                         message: "native namerena importer returned no player".to_owned(),
                     })?;
-                    let status = player.status;
-                    if status.max_hp <= 0 || status.attack < 0 || status.defense < 0 || status.resistance < 0 {
+                    let status = &player.status;
+                    // 此处是原生对局初始化前的临时模板，先用解析出的身份分类校验。
+                    let flags = if player.class == crate::namerena::PlayerClass::Boss {
+                        PlayerKindFlags::BOSS
+                    } else {
+                        PlayerKindFlags::NONE
+                    };
+                    let signed_rin = PlayerTemplate::allows_signed_namerena_stats(&player, flags);
+                    if status.max_hp <= 0
+                        || ((status.attack < 0 || status.magic < 0) && !signed_rin)
+                        || status.defense < 0
+                        || status.resistance < 0
+                    {
                         return Err(CustomMixedRosterImportError {
                             team_index,
                             player_index,
                             raw: raw.clone(),
                             message: format!(
-                                "native player import produced unsupported status max_hp={} attack={} defense={} resistance={}",
-                                status.max_hp, status.attack, status.defense, status.resistance
+                                "native player import produced unsupported status max_hp={} attack={} magic={} defense={} resistance={}",
+                                status.max_hp, status.attack, status.magic, status.defense, status.resistance
                             ),
                         });
                     }
-                    PlayerTemplate::new(next_id, player.name, team_index, status.max_hp, status.attack)
-                        .with_identity_names(player.id_key_name, player.clan_name)
-                        .with_display_name(player.display_name)
-                        .with_magic(status.magic)
+                    PlayerTemplate::from_namerena_base(&player, next_id, team_index, flags)
                         .with_magic_point(status.magic_point)
                         .with_wisdom(status.wisdom)
                         .with_agility(status.agility)
