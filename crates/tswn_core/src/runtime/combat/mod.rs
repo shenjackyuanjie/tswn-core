@@ -94,7 +94,7 @@ pub struct PreparedBuiltinSkillAction {
 pub struct PreparedBossSkillAction {
     pub selected: crate::namerena::BossActionSkill,
     pub targets: PreparedTargetList,
-    /// 本次行动的智慧检定结果，供结算时才选敌的实验体使用。
+    /// 本次行动的智慧检定结果，供结算时才选敌的 Boss 使用。
     pub smart: bool,
 }
 
@@ -103,6 +103,9 @@ pub struct PreparedBossSkillAction {
 pub enum PlainAttackOnDamage {
     None,
     Absorb,
+    Disperse,
+    RosmonticBurn,
+    RosmonticAbsorbFifth,
     Berserk,
     Curse,
     Fire(u32),

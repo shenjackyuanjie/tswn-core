@@ -172,7 +172,7 @@ impl CombatRuntime {
             BossActionSkill::Tiger => self.drain_tiger_action_into(actor, updates),
             BossActionSkill::Fish => self.drain_fish_action_into(actor, updates),
             BossActionSkill::Cirno => self.drain_cirno_action_into(actor, updates),
-            BossActionSkill::Rosmontic => self.drain_rosmontic_action_into(actor, updates),
+            BossActionSkill::Rosmontic => self.drain_rosmontic_action_into(actor, prepared.smart, updates),
             BossActionSkill::TestSubject => self.drain_testsubject_action_into(actor, prepared.smart, updates),
             BossActionSkill::Fire => {
                 let target = prepared.targets[0];

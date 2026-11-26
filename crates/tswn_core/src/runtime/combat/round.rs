@@ -200,6 +200,7 @@ impl CombatRuntime {
             }
             // 专属计时只在真正获得行动时推进，冰冻期间保留剪枝预告。
             self.begin_squall_action(action.actor, &mut updates);
+            self.begin_rosmontic_action(action.actor, &mut updates);
             let forced_pre_action_skill = plain_skill_pre_action.forced_skill.is_some();
             let prepared = self.prepare_plain_action(action.actor, smart, plain_skill_pre_action);
             // 卡牌兼容模式：点名的技能放不出来时引擎改用普攻，这里补一条说明战报。
@@ -358,6 +359,7 @@ impl CombatRuntime {
                 updates.add_newline();
             }
             self.drain_post_action_chain_into(action.actor, &mut updates);
+            self.end_rosmontic_action(action.actor, &mut updates);
             self.quilt_post_action(action.actor, &mut updates);
             if !legacy_plain_action || !self.plain_battle_has_ended() {
                 self.drain_plain_update_end_into(&mut updates);

@@ -360,15 +360,15 @@ impl CombatRuntime {
                 actor.0, target.0, atp, self.rng.i, self.rng.j,
             );
         }
-        // 青雉只免疫 SklAttack 的物理回调；普通玩家、青雉和斑鸠使用它，
-        // 其他 Boss 的 SklSimpleAttack 与物理技能都不使用该回调。
+        // 青雉和小恶魔区分 SklAttack 的物理回调与普通的无回调伤害。
         let kind = if !use_magic
             && self.entities.get(actor).is_some_and(|entity| {
                 if entity.runtime.flags.contains(PlayerKindFlags::BOSS) {
                     crate::namerena::boss_uses_skill_attack(&entity.template.name)
                 } else {
                     self.entities.get(target).is_some_and(|target| {
-                        target.runtime.flags.contains(PlayerKindFlags::BOSS) && target.template.name == "aokiji"
+                        target.runtime.flags.contains(PlayerKindFlags::BOSS)
+                            && matches!(target.template.name.as_str(), "aokiji" | "koakuma")
                     })
                 }
             }) {
@@ -797,7 +797,11 @@ impl CombatRuntime {
                 target_runtime.defense + 64
             }
         };
-        let amount = ceil_damage_to_i32(atp / defense as f64);
+        let mut amount = ceil_damage_to_i32(atp / defense as f64);
+        // 来源：KODU16。小恶魔只削弱带命中回调的攻击，空回调技能保持原伤害。
+        if self.is_rosmontic_boss(target, "koakuma") && (on_damage != PlainAttackOnDamage::None || kind != DamageKind::Default) {
+            amount = (i64::from(amount) * 13 / 20) as i32;
+        }
         let mut defend_value = RuntimeDefendValue::Damage {
             value: amount,
             caster: actor,
@@ -914,6 +918,9 @@ impl CombatRuntime {
             self.try_covid_spread_on_damage_into(boss, target, mutation, amount, updates);
         }
         match on_damage {
+            PlainAttackOnDamage::Disperse => self.apply_disperse_hit_into(caster, target, updates),
+            PlainAttackOnDamage::RosmonticBurn => self.apply_rosmontic_burn(caster, target, amount, updates),
+            PlainAttackOnDamage::RosmonticAbsorbFifth => self.apply_absorb_on_damage(caster, (amount / 5) * 2, updates),
             PlainAttackOnDamage::None => {}
             PlainAttackOnDamage::Absorb => self.apply_absorb_on_damage(caster, amount, updates),
             PlainAttackOnDamage::Berserk => self.apply_berserk_on_damage(caster, target, amount, updates),

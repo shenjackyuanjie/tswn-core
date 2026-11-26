@@ -295,8 +295,14 @@ impl PlayerRuntime {
                 .then(|| Box::new(FishRuntime::default())),
             cirno: (flags.contains(PlayerKindFlags::BOSS) && template.name == crate::runtime::combat::boss::cirno::ID)
                 .then(|| Box::new(CirnoRuntime::default())),
-            rosmontic: (flags.contains(PlayerKindFlags::BOSS) && matches!(template.name.as_str(), "rin" | "megia" | "rumia"))
-                .then(|| Box::new(RosmonticRuntime::default())),
+            rosmontic: RosmonticRuntime::boss_levels(&template.name)
+                .filter(|_| flags.contains(PlayerKindFlags::BOSS))
+                .map(|levels| {
+                    Box::new(RosmonticRuntime {
+                        levels: levels.to_vec(),
+                        ..Default::default()
+                    })
+                }),
             baixie: None,
             quilt_minion: None,
             testsubject: (flags.contains(PlayerKindFlags::BOSS) && template.name == "testsubject")
@@ -593,6 +599,15 @@ impl EntityRecord {
     #[inline]
     /// 含状态修正与垂死增益的有效速度。
     pub fn effective_speed(&self) -> i32 {
+        // 来源：KODU16。调度器也读取专属速度变化，不能只让状态面板显示加速。
+        if self
+            .runtime
+            .rosmontic
+            .as_ref()
+            .is_some_and(|s| s.stat_add[2] != 0 || s.stat_scale_bits[2] != 0 || (s.aura && self.template.name == "remilia"))
+        {
+            return self.states.effective_speed(self.runtime.speed);
+        }
         let mut speed = self.states.effective_speed(self.template.speed);
         if self.runtime.upgrade_active {
             // 增益量独立乘算，保留原始技能等级。
@@ -686,6 +701,37 @@ impl EntityRecord {
             self.runtime.wisdom *= multiplier;
             self.runtime.defense = self.runtime.defense * multiplier + state.rumia_def_bonus;
             self.runtime.resistance = self.runtime.resistance * multiplier + state.rumia_def_bonus;
+        }
+        // 来源：KODU16。专属变化在普通状态重建后恢复，燃烧本身不会赋予行动能力。
+        let r = &mut self.runtime;
+        if let Some(s) = &r.rosmontic {
+            for (i, value) in [
+                &mut r.attack,
+                &mut r.defense,
+                &mut r.speed,
+                &mut r.agility,
+                &mut r.magic,
+                &mut r.resistance,
+                &mut r.wisdom,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                if s.stat_scale_bits[i] != 0 {
+                    *value = (f64::from(*value) * f64::from_bits(s.stat_scale_bits[i])) as i32;
+                }
+                *value += s.stat_add[i];
+            }
+            let bonus = if s.aura_bonus { 1.0 } else { 0.0 };
+            if s.aura && self.template.name == "hong" {
+                r.defense = (f64::from(r.defense) * (1.8 + bonus)) as i32;
+            }
+            if s.aura && self.template.name == "remilia" {
+                let power = 1.7 + bonus + 0.8 * f64::from(s.scarlet);
+                r.attack = (f64::from(r.attack) * power) as i32;
+                r.magic = (f64::from(r.magic) * power) as i32;
+                r.speed = (f64::from(r.speed) * (1.7 + bonus + 0.5 * f64::from(s.scarlet))) as i32;
+            }
         }
         self.refresh_runtime_at_boost();
         if let Some(level) = hide_level {
@@ -882,6 +928,17 @@ impl EntityRecord {
             .is_some_and(|(grow, _)| grow > 0)
         {
             at_boost *= 1.5;
+        }
+        // 来源：KODU16。气场的威力倍率独立于普通聚气，驱散后可恢复基底。
+        if let Some(s) = &self.runtime.rosmontic
+            && s.aura
+        {
+            let bonus = if s.aura_bonus { 1.0 } else { 0.0 };
+            match self.template.name.as_str() {
+                "hong" => at_boost *= 1.8 + bonus,
+                "remilia" => at_boost *= 1.7 + bonus + 0.5 * f64::from(s.scarlet),
+                _ => {}
+            }
         }
         self.runtime.at_boost_bits = at_boost.to_bits();
         self.runtime.at_boost_millionths = at_boost_to_millionths(at_boost);

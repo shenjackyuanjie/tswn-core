@@ -16,10 +16,10 @@ fn rin_retires_on_eighth_action_and_keeps_signed_stats() {
     assert_eq!(rt.entities.get(boss).unwrap().runtime.magic, -26);
     let mut updates = RunUpdates::new();
     for _ in 0..7 {
-        rt.drain_rosmontic_action_into(boss, &mut updates);
+        rt.drain_rosmontic_action_into(boss, false, &mut updates);
     }
     assert!(rt.entities.get(boss).unwrap().is_active());
-    rt.drain_rosmontic_action_into(boss, &mut updates);
+    rt.drain_rosmontic_action_into(boss, false, &mut updates);
     assert_eq!(rt.entities.get(boss).unwrap().runtime.hp, 0);
     assert!(!rt.entities.get(boss).unwrap().runtime.alive);
     assert!(updates.updates.iter().any(|u| u.message.contains("梦的沙堤")));
@@ -47,15 +47,15 @@ fn megia_high_charge_breaks_even_when_hit_crosses_low_threshold() {
     let (mut runner, boss, enemy) = battle("megia");
     let rt = runner.runtime_mut();
     let mut updates = RunUpdates::new();
-    rt.drain_rosmontic_action_into(boss, &mut updates);
+    rt.drain_rosmontic_action_into(boss, false, &mut updates);
     assert!(rt.entities.get(boss).unwrap().runtime.rosmontic.as_ref().unwrap().charge_target.is_some());
     let amount = rt.entities.get(boss).unwrap().runtime.hp - 190;
     assert!(!rt.apply_plain_attack_damage_into(enemy, boss, amount, &mut updates));
     assert!(rt.entities.get(boss).unwrap().runtime.rosmontic.as_ref().unwrap().charge_target.is_none());
-    rt.drain_rosmontic_action_into(boss, &mut updates);
+    rt.drain_rosmontic_action_into(boss, false, &mut updates);
     assert!(!rt.apply_plain_attack_damage_into(enemy, boss, 1, &mut updates));
     assert!(rt.entities.get(boss).unwrap().runtime.rosmontic.as_ref().unwrap().charge_target.is_some());
-    rt.drain_rosmontic_action_into(boss, &mut updates);
+    rt.drain_rosmontic_action_into(boss, false, &mut updates);
     assert!(updates.updates.iter().any(|u| u.message.contains("肃清的一刀")));
 }
 

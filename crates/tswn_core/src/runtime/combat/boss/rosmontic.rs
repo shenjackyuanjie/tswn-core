@@ -1,14 +1,16 @@
 //! 冴月麟的八段台词与 megia 的两阶段剑技。
 //! 来源：KODU16（`kodu16/main`，`cf460c84`）。
 use super::super::*;
+use crate::runtime::entity::RosmonticRuntime;
 
 impl CombatRuntime {
-    /// 专属行动只由正式 Boss 接管，不能仅凭共享运行态判定。
+    /// 专属行动只由正式 Boss 和有专属角色标记的召唤物接管。
     pub fn has_rosmontic_action(&self, actor: EntityIdx) -> bool {
         self.entities.get(actor).is_some_and(|e| {
-            e.runtime.flags.contains(PlayerKindFlags::BOSS)
-                && e.runtime.rosmontic.is_some()
-                && matches!(e.template.name.as_str(), "rin" | "megia" | "rumia")
+            e.runtime.rosmontic.as_ref().is_some_and(|s| {
+                (e.runtime.flags.contains(PlayerKindFlags::BOSS) && RosmonticRuntime::boss_levels(&e.template.name).is_some())
+                    || (e.runtime.is_combat_minion() && matches!(s.child_kind, 1..=3))
+            })
         })
     }
 
@@ -22,8 +24,8 @@ impl CombatRuntime {
         updates.add(RunUpdate::new(text, actor.0 as usize, actor.0 as usize, 1).without_replay_target());
     }
 
-    /// 冴月麟不攻击；第八次行动按自我退场流程结算。
-    pub fn drain_rosmontic_action_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+    /// 结算 Rosmontic 专属行动；冴月麟第八次行动按自我退场流程结算。
+    pub fn drain_rosmontic_action_into(&mut self, actor: EntityIdx, smart: bool, updates: &mut RunUpdates) {
         if self.is_rosmontic_boss(actor, "rin") {
             let entity = self.entities.get_mut(actor).unwrap();
             let state = entity.runtime.rosmontic.as_mut().unwrap();
@@ -49,6 +51,8 @@ impl CombatRuntime {
         }
         if self.is_rosmontic_boss(actor, "megia") {
             self.drain_megia_action_into(actor, updates);
+        } else {
+            self.drain_touhou_action_into(actor, smart, updates);
         }
     }
 

@@ -20,6 +20,7 @@ impl CombatRuntime {
     pub fn apply_disperse_hit_into(&mut self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         // 净化也能解除科研 Boss 的铁壁、蓄势、剪枝与嘲讽交换。
         self.dispel_squall_effects(target, updates);
+        self.dispel_rosmontic_into(target, updates);
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime disperse target entity: {}", target.0);
         };
@@ -117,6 +118,21 @@ impl CombatRuntime {
         defend_value: &mut RuntimeDefendValue,
         on_damage: PlainAttackOnDamage,
     ) {
+        // 来源：KODU16。大妖精支付自己的反射消耗，成功后本次入射威力归零。
+        if self.is_rosmontic_boss(target, "daiyousei")
+            && self.entities.get(defend_value.caster()).is_some_and(|e| e.runtime.hp > 0)
+            && self.rng.next_u8() < 85
+        {
+            let byte = i32::from(self.rng.next_u8());
+            let cost = ((((byte & 15) + 1) * (((byte >> 4) & 15) + 1)) >> 5) + 1;
+            let r = &mut self.entities.get_mut(target).unwrap().runtime;
+            if r.hp > 0 && r.magic_point >= cost {
+                r.magic_point -= cost;
+                defend_value.set_atp(0.0);
+                self.rosmontic_message(target, "[0]反射并抵消了攻击", updates);
+                return;
+            }
+        }
         // 来源：KODU16。黑雾反击绕过 PRE_DEFEND，避免反射双方递归互弹。
         self.reflect_rumia_into(target, defend_value.caster(), updates);
         let defender = self.entities.get(target).expect("runtime pre-defend target missing");
@@ -532,6 +548,26 @@ impl CombatRuntime {
             }
             if !rebuild {
                 break;
+            }
+        }
+        // 来源：KODU16。灵梦的常驻减伤和结界、蕾米莉亚的鲜红印记都作用于换算后的伤害。
+        if let Some(amount) = defend_value.damage().filter(|n| *n > 0) {
+            if self.is_rosmontic_boss(target, "reimu") {
+                let mut damage = (i64::from(amount) * 4 / 5) as i32;
+                let s = self.ros_state(target);
+                if s.barrier_turns > 0 {
+                    if damage <= 100 {
+                        damage = 1;
+                    } else {
+                        damage -= 100;
+                        s.barrier_turns = 0;
+                        self.rosmontic_message(target, "[0]的[结界]被打破了", updates);
+                    }
+                }
+                defend_value.set_damage(damage);
+            } else if self.is_rosmontic_boss(target, "remilia") {
+                let count = self.ros_state(target).scarlet;
+                defend_value.set_damage((f64::from(amount) * (1.0 + 0.75 * f64::from(count))).floor() as i32);
             }
         }
         // 科研铁壁和复查易伤应用于完成常规防御后的正伤害。

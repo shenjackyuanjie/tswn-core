@@ -171,16 +171,12 @@ impl CombatRuntime {
             target.0 as usize,
             1,
         ));
-        let (owner_magic, charge_active, caster_effective_team_idx) = {
+        let owner_magic = {
             let owner = self
                 .entities
                 .get(actor)
                 .unwrap_or_else(|| panic!("unknown runtime charm actor: {}", actor.0));
-            (
-                owner.runtime.magic,
-                owner.runtime.charge.active,
-                self.plain_effective_team(actor),
-            )
+            owner.runtime.magic
         };
         let (target_flags, target_name, target_dodge, target_active) = {
             let target_entity = self
@@ -219,6 +215,20 @@ impl CombatRuntime {
             return;
         }
 
+        self.apply_plain_charm_hit_into(actor, target, updates);
+        #[cfg(not(feature = "no_debug"))]
+        if crate::debug::probe_charm().is_some() {
+            eprintln!(
+                "[charm_probe:runtime:act_after] actor={} target={} dodged=false rc4=({},{})",
+                actor.0, target.0, self.rng.i, self.rng.j,
+            );
+        }
+    }
+
+    /// 结算已命中的魅惑；调用方负责免疫、回避和随机判定。
+    pub fn apply_plain_charm_hit_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
+        let charge_active = self.entities.get(actor).unwrap().runtime.charge.active;
+        let caster_effective_team_idx = self.plain_effective_team(actor);
         let existing = self
             .entities
             .get(target)
@@ -296,13 +306,6 @@ impl CombatRuntime {
             target.0 as usize,
             120,
         ));
-        #[cfg(not(feature = "no_debug"))]
-        if crate::debug::probe_charm().is_some() {
-            eprintln!(
-                "[charm_probe:runtime:act_after] actor={} target={} dodged=false rc4=({},{})",
-                actor.0, target.0, self.rng.i, self.rng.j,
-            );
-        }
     }
 
     /// 治疗选目标：同队存活且未满血的成员，聪明时要求差距超过 80。
