@@ -1,4 +1,208 @@
+//! 伤害短路与概率门：必中交换、零伤跳过与技能概率 RNG 语义。
 use super::*;
+
+/// 按 charged 构造注册了换血/交换等技能的 CombatRuntime，用于必中控制测试。
+fn control_runtime(charged: bool) -> CombatRuntime {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let exchange = builder
+        .register_skill(
+            "core",
+            "exchange",
+            BuiltinActiveSkill::Exchange.export_name(),
+            TargetPolicy::Enemy,
+            SkillPriority(1),
+        )
+        .unwrap();
+    CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "caster", 0, 100, 3)
+                .with_magic(60)
+                .with_at_boost(if charged { 3.0 } else { 1.0 })
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(exchange, 64)])),
+            PlayerTemplate::new(2, "target", 1, 200, 3).with_def_res(1000, 1000).with_agility(1000),
+        ],
+        builder.build(),
+    ))
+}
+
+/// 按 exchange 选择换血或半血技能路径，把技能效果 drain 进 updates。
+fn cast(runtime: &mut CombatRuntime, exchange: bool) {
+    let mut updates = RunUpdates::new();
+    if exchange {
+        runtime.drain_plain_exchange_skill_into(EntityIdx(0), 0, EntityIdx(1), &mut updates);
+    } else {
+        runtime.drain_plain_half_skill_into(EntityIdx(0), EntityIdx(1), &mut updates);
+    }
+}
+
+#[test]
+fn charged_exchange_and_half_bypass_manual_evade_without_consuming_its_script() {
+    for exchange in [false, true] {
+        let mut runtime = control_runtime(true);
+        runtime.control.set_passive_decision_mode(true);
+        runtime.control.set_passive_decisions([PassiveDecision {
+            actor: 1,
+            skill: "evade".into(),
+            activate: true,
+            success: true,
+            target: None,
+        }]);
+        let before_rng = runtime.rng.clone();
+        cast(&mut runtime, exchange);
+        assert!(runtime.control.pending_passive().is_none());
+        assert!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp < 200);
+        assert_rng_state_eq(&runtime.rng, &before_rng);
+        assert_eq!(runtime.control.next_passive_decision().unwrap().skill, "evade");
+    }
+}
+
+#[test]
+fn uncharged_exchange_and_half_still_request_and_respect_manual_evade() {
+    for exchange in [false, true] {
+        let mut runtime = control_runtime(false);
+        runtime.control.set_passive_decision_mode(true);
+        let paused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| cast(&mut runtime, exchange)));
+        assert!(paused.is_err());
+        let pending = runtime.control.pending_passive().unwrap();
+        assert_eq!(pending.skill, "evade");
+        assert!(!pending.unavoidable);
+
+        let mut runtime = control_runtime(false);
+        runtime.control.set_passive_decision_mode(true);
+        runtime.control.set_passive_decisions([PassiveDecision {
+            actor: 1,
+            skill: "evade".into(),
+            activate: true,
+            success: true,
+            target: None,
+        }]);
+        cast(&mut runtime, exchange);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 200);
+    }
+}
+
+#[test]
+fn zero_plain_attack_damage_skips_on_damage_and_post_damage_rng() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let counter = builder
+        .register_skill_with_hooks(
+            "core",
+            "counter",
+            DEFAULT_CORE_COUNTER_SKILL_EXPORT,
+            ProcMask::POST_DAMAGE,
+            TargetPolicy::None,
+            SkillPriority(0),
+        )
+        .expect("counter skill should register");
+    let registry = builder.build();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "caster", 0, 100, 3),
+            PlayerTemplate::new(2, "target", 1, 100, 1).with_skill_loadout(SkillLoadout::from_skill_levels([(counter, 128)])),
+        ],
+        registry,
+    ));
+    let expected_rng = runtime.rng.clone();
+    let mut updates = RunUpdates::new();
+
+    assert!(!runtime.apply_plain_attack_damage_into(EntityIdx(0), EntityIdx(1), 0, &mut updates,));
+
+    assert_rng_state_eq(&runtime.rng, &expected_rng);
+    assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 100);
+    assert!(!runtime.entities.get(EntityIdx(1)).unwrap().runtime.counter.pending);
+    assert!(updates.on_update_end.is_empty());
+    assert_eq!(updates.updates.len(), 1);
+    assert_eq!(updates.updates[0].message, "[0]受到[2]点伤害[s_dmg0]");
+    assert_eq!(updates.updates[0].score, 10);
+}
+
+#[test]
+fn zero_disperse_damage_skips_post_damage_rng() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let counter = builder
+        .register_skill_with_hooks(
+            "core",
+            "counter",
+            DEFAULT_CORE_COUNTER_SKILL_EXPORT,
+            ProcMask::POST_DAMAGE,
+            TargetPolicy::None,
+            SkillPriority(0),
+        )
+        .expect("counter skill should register");
+    let registry = builder.build();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "caster", 0, 100, 3),
+            PlayerTemplate::new(2, "target", 1, 100, 1).with_skill_loadout(SkillLoadout::from_skill_levels([(counter, 128)])),
+        ],
+        registry,
+    ));
+    let expected_rng = runtime.rng.clone();
+    let mut updates = RunUpdates::new();
+
+    assert!(!runtime.apply_disperse_attack_damage_into(EntityIdx(0), EntityIdx(1), 0, &mut updates,));
+
+    assert_rng_state_eq(&runtime.rng, &expected_rng);
+    assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 100);
+    assert!(!runtime.entities.get(EntityIdx(1)).unwrap().runtime.counter.pending);
+    assert!(updates.on_update_end.is_empty());
+    assert_eq!(updates.updates.len(), 1);
+    assert_eq!(updates.updates[0].message, "[0]受到[2]点伤害[s_dmg0]");
+    assert_eq!(updates.updates[0].score, 10);
+}
+
+#[cfg(feature = "no_debug")]
+#[test]
+fn uncaptured_attack_matches_captured_dodge_and_damage() {
+    let base = CombatRuntime::from_template(PreparedCombatTemplate::new(vec![
+        PlayerTemplate::new(1, "caster", 0, 100, 3),
+        PlayerTemplate::new(2, "target", 1, 100, 1),
+    ]));
+    let (actor, target) = (EntityIdx(0), EntityIdx(1));
+
+    for use_magic in [false, true] {
+        for (atp, shield) in [(0.0, 0), (640.0, 0), (640.0, 7), (-640.0, 0), (640_000.0, 0)] {
+            let mut saw_dodge = false;
+            let mut saw_hit = false;
+            for seed in 0..24 {
+                let mut captured = base.clone();
+                captured.rng = RC4::new(&[seed], 1);
+                let target_runtime = &mut captured.entities.get_mut(target).unwrap().runtime;
+                target_runtime.hp = 70;
+                target_runtime.shield = shield;
+                let mut uncaptured = captured.clone();
+
+                let mut replay = RunUpdates::new();
+                let mut silent = RunUpdates::new_no_capture();
+                let expected = captured.drain_plain_attack_with_atp_into(actor, target, use_magic, atp, &mut replay);
+                let actual = uncaptured.drain_plain_attack_with_atp_into(actor, target, use_magic, atp, &mut silent);
+                assert_eq!(actual, expected);
+                assert_rng_state_eq(&uncaptured.rng, &captured.rng);
+                assert_eq!(uncaptured.entities, captured.entities);
+                assert_eq!(uncaptured.world, captured.world);
+                assert_eq!(uncaptured.effects, captured.effects);
+                assert_eq!(uncaptured.control.damage_batch(), None);
+                assert_eq!(
+                    uncaptured.control.begin_damage_batch(0, 1),
+                    captured.control.begin_damage_batch(0, 1)
+                );
+                assert_eq!(silent.had_updates(), replay.had_updates());
+                assert_eq!(
+                    silent.last_update_was_plain_defense(target.0 as usize, actor.0 as usize),
+                    replay.last_update_was_plain_defense(target.0 as usize, actor.0 as usize)
+                );
+                assert!(silent.updates.is_empty());
+                saw_dodge |= replay.updates.iter().any(|update| update.message == "[0][回避]了攻击");
+                saw_hit |= expected != 0;
+            }
+            if atp != 0.0 {
+                assert!(saw_dodge);
+                assert!(saw_hit);
+            }
+        }
+    }
+}
+
 use crate::runtime::combat::PlainAttackOnDamage;
 
 #[test]
