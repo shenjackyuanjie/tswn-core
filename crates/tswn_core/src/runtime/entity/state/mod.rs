@@ -93,6 +93,12 @@ pub enum StatePayload {
         grow: i32,
         fire_level: u32,
     },
+    /// 实验体「颅骨重击」附加的易伤；层数只表示持续回合，不提高倍率。
+    SkullFracture {
+        stacks: i32,
+    },
+    /// 实验体第三阶段轮换的无实体；受伤压到 1，不可净化。
+    TestSubjectNoEntity,
 }
 
 impl StateEntry {
@@ -367,6 +373,35 @@ impl StateEntry {
         }
     }
 
+    /// 构造实验体易伤状态，挂到 POST_DEFEND 与 POST_ACTION。
+    ///
+    /// 层数只表示持续回合：目标每次行动后递减一层，归零时解除；倍率恒为 1.5。
+    pub fn skull_fracture(legacy_order_key: u32, state_id: StateId, stacks: i32, priority: SkillPriority) -> Self {
+        Self {
+            legacy_order_key,
+            extension_state_id: Some(state_id),
+            hook_mask: ProcMask::POST_DEFEND | ProcMask::POST_ACTION,
+            priority,
+            registration_order: RegistrationOrder::default(),
+            payload: StatePayload::SkullFracture { stacks },
+        }
+    }
+
+    /// 构造实验体无实体状态，挂到 POST_DEFEND。
+    ///
+    /// 与铁壁同为减伤类，但没有步数：进入与解除完全由实验体自己的奇偶行动控制，
+    /// 因此既不是正面状态也不能被净化打消。
+    pub fn testsubject_no_entity(legacy_order_key: u32, state_id: StateId, priority: SkillPriority) -> Self {
+        Self {
+            legacy_order_key,
+            extension_state_id: Some(state_id),
+            hook_mask: ProcMask::POST_DEFEND,
+            priority,
+            registration_order: RegistrationOrder::default(),
+            payload: StatePayload::TestSubjectNoEntity,
+        }
+    }
+
     /// 读取马里奥成长的蘑菇层数与火球术等级。
     pub fn mario_boss_value(&self) -> Option<(i32, u32)> {
         match &self.payload {
@@ -394,7 +429,9 @@ impl StateEntry {
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. }
-            | StatePayload::MarioBoss { .. } => None,
+            | StatePayload::MarioBoss { .. }
+            | StatePayload::SkullFracture { .. }
+            | StatePayload::TestSubjectNoEntity => None,
         }
     }
 
@@ -417,7 +454,9 @@ impl StateEntry {
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. }
-            | StatePayload::MarioBoss { .. } => None,
+            | StatePayload::MarioBoss { .. }
+            | StatePayload::SkullFracture { .. }
+            | StatePayload::TestSubjectNoEntity => None,
         }
     }
 
@@ -440,7 +479,9 @@ impl StateEntry {
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. }
-            | StatePayload::MarioBoss { .. } => None,
+            | StatePayload::MarioBoss { .. }
+            | StatePayload::SkullFracture { .. }
+            | StatePayload::TestSubjectNoEntity => None,
         }
     }
 
@@ -480,7 +521,9 @@ impl StateEntry {
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. }
-            | StatePayload::MarioBoss { .. } => None,
+            | StatePayload::MarioBoss { .. }
+            | StatePayload::SkullFracture { .. }
+            | StatePayload::TestSubjectNoEntity => None,
         }
     }
 
@@ -509,7 +552,9 @@ impl StateEntry {
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. }
-            | StatePayload::MarioBoss { .. } => None,
+            | StatePayload::MarioBoss { .. }
+            | StatePayload::SkullFracture { .. }
+            | StatePayload::TestSubjectNoEntity => None,
         }
     }
 
@@ -532,7 +577,9 @@ impl StateEntry {
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. }
-            | StatePayload::MarioBoss { .. } => None,
+            | StatePayload::MarioBoss { .. }
+            | StatePayload::SkullFracture { .. }
+            | StatePayload::TestSubjectNoEntity => None,
         }
     }
 
@@ -555,7 +602,9 @@ impl StateEntry {
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. }
-            | StatePayload::MarioBoss { .. } => None,
+            | StatePayload::MarioBoss { .. }
+            | StatePayload::SkullFracture { .. }
+            | StatePayload::TestSubjectNoEntity => None,
         }
     }
 
@@ -578,7 +627,9 @@ impl StateEntry {
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. }
-            | StatePayload::MarioBoss { .. } => None,
+            | StatePayload::MarioBoss { .. }
+            | StatePayload::SkullFracture { .. }
+            | StatePayload::TestSubjectNoEntity => None,
         }
     }
 
@@ -592,6 +643,9 @@ impl StateEntry {
                 SkillPriority(210)
             }
             StatePayload::Iron { .. } if hook.intersects(ProcMask::POST_ACTION) => SkillPriority(210),
+            // 易伤的 POST_DEFEND 优先级取登记值 10000，POST_ACTION 单独压到 1000，
+            // 与旧实现的 post_defend_priority / post_action_priority 一致。
+            StatePayload::SkullFracture { .. } if hook.intersects(ProcMask::POST_ACTION) => SkillPriority(1000),
             StatePayload::CovidInfection { .. } if hook.intersects(ProcMask::PRE_ACTION | ProcMask::POST_ACTION) => {
                 SkillPriority(1000)
             }
@@ -660,7 +714,9 @@ impl StateEntry {
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. }
-            | StatePayload::MarioBoss { .. } => None,
+            | StatePayload::MarioBoss { .. }
+            | StatePayload::SkullFracture { .. }
+            | StatePayload::TestSubjectNoEntity => None,
         }
     }
 
@@ -697,7 +753,9 @@ impl StateEntry {
             | StatePayload::CovidInfection { .. }
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
-            | StatePayload::LazyInfection { .. } => false,
+            | StatePayload::LazyInfection { .. }
+            | StatePayload::SkullFracture { .. }
+            | StatePayload::TestSubjectNoEntity => false,
         }
     }
 }

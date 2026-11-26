@@ -288,6 +288,13 @@ impl CombatRuntime {
                         self.drain_baixie_action_into(action.actor, &mut updates);
                     } else if self.quilt_minion_kind(action.actor).is_some() {
                         self.drain_quilt_minion_action_into(action.actor, target, &mut updates);
+                    } else if self
+                        .entities
+                        .get(action.actor)
+                        .is_some_and(|e| e.template.name == super::boss::testsubject::ID)
+                    {
+                        // 实验体一阶段普攻按已行动次数爬升倍率。
+                        self.drain_testsubject_default_attack_into(action.actor, target, use_magic, &mut updates);
                     } else {
                         self.drain_plain_default_attack_into(action.actor, target, use_magic, &mut updates);
                     }

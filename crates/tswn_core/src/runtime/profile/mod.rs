@@ -90,9 +90,16 @@ pub const PLAIN_LAZY_INFECTION_STATE_KEY: u32 = 93;
 pub const PLAIN_SAITAMA_BOSS_STATE_KEY: u32 = 94;
 /// 马里奥成长状态的 legacy 兼容键。
 pub const PLAIN_MARIO_BOSS_STATE_KEY: u32 = 95;
+/// 实验体「颅骨重击」附加的易伤状态的 legacy 兼容键。
+pub const PLAIN_TESTSUBJECT_SKULL_FRACTURE_STATE_KEY: u32 = 96;
+/// 实验体第三阶段无实体状态的 legacy 兼容键。
+pub const PLAIN_TESTSUBJECT_NO_ENTITY_STATE_KEY: u32 = 97;
 
 /// 默认规则会产生的 legacy state key，按原始值升序冻结给 encoder 分类词表。
-pub const PLAIN_STATE_LEGACY_KEYS: [u32; 16] = [
+///
+/// 新状态接入时必须同步追加，否则 encoder 的 `state.legacy_order_key` 词表会把
+/// 该键判为未知类别并直接报错。
+pub const PLAIN_STATE_LEGACY_KEYS: [u32; 18] = [
     PLAIN_FIRE_STATE_KEY,
     PLAIN_ICE_STATE_KEY,
     PLAIN_BERSERK_STATE_KEY,
@@ -109,6 +116,8 @@ pub const PLAIN_STATE_LEGACY_KEYS: [u32; 16] = [
     PLAIN_LAZY_INFECTION_STATE_KEY,
     PLAIN_SAITAMA_BOSS_STATE_KEY,
     PLAIN_MARIO_BOSS_STATE_KEY,
+    PLAIN_TESTSUBJECT_SKULL_FRACTURE_STATE_KEY,
+    PLAIN_TESTSUBJECT_NO_ENTITY_STATE_KEY,
 ];
 
 impl BuiltinActiveSkill {

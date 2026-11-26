@@ -96,11 +96,13 @@ impl CombatRuntime {
                 | BossActionSkill::Xjy
                 | BossActionSkill::Yi
                 | BossActionSkill::Tiger
-                | BossActionSkill::Fish => PreparedTargetList::new(),
+                | BossActionSkill::Fish
+                | BossActionSkill::TestSubject => PreparedTargetList::new(),
                 // `SklSaitama.au` 的基础概率在等级 0 时恒为 false，`aa` 不会执行。
                 BossActionSkill::Saitama => continue,
             };
-            if targets.is_empty() && !matches!(skill, BossActionSkill::MarioGet) {
+            // 马里奥采菇与实验体行动表的目标由结算阶段自行选取，空列表同样算选中。
+            if targets.is_empty() && !matches!(skill, BossActionSkill::MarioGet | BossActionSkill::TestSubject) {
                 continue;
             }
             return Some(PreparedBossSkillAction {
@@ -150,6 +152,8 @@ impl CombatRuntime {
                     self.rng.r127() < level
                 }
             }
+            // 实验体的抽签链按阶段变化（三阶段最多连抽三次），必须走专属入口。
+            BossActionSkill::TestSubject => self.roll_plain_testsubject_phase_skill(actor),
             _ => self.rng.r127() < level,
         }
     }
@@ -164,6 +168,7 @@ impl CombatRuntime {
             BossActionSkill::Yi => self.drain_yi_action_into(actor, updates),
             BossActionSkill::Tiger => self.drain_tiger_action_into(actor, updates),
             BossActionSkill::Fish => self.drain_fish_action_into(actor, updates),
+            BossActionSkill::TestSubject => self.drain_testsubject_action_into(actor, updates),
             BossActionSkill::Fire => {
                 let target = prepared.targets[0];
                 self.drain_plain_fire_skill_into(actor, target, updates);

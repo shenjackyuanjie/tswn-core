@@ -681,6 +681,94 @@ fn run_iron_post_action_state(context: &mut StateContext<'_>, entry: &StateHookP
     ));
 }
 
+/// 实验体易伤状态的 POST_DEFEND：把本次受伤按 1.5 倍向上取整。
+///
+/// 层数只表示持续回合，不提高倍率；与旧实现一致，倍率恒为 1.5 且正数才生效。
+pub fn run_testsubject_skull_fracture_post_defend_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+    let Some(StatePayload::SkullFracture { stacks }) = context.owner_state_payload(entry.legacy_order_key) else {
+        return;
+    };
+    if stacks <= 0 {
+        return;
+    }
+    let Some(damage) = context.defend_damage() else {
+        return;
+    };
+    if damage <= 0 {
+        return;
+    }
+    let caster = context
+        .defend_caster()
+        .expect("runtime skull-fracture state should receive incoming defend caster");
+    let target = context
+        .defend_target()
+        .expect("runtime skull-fracture state should receive incoming defend target");
+    context.add_update(crate::runtime::update::RunUpdate::new(
+        "[易伤]使伤害提高",
+        caster.0 as usize,
+        target.0 as usize,
+        0,
+    ));
+    context.set_defend_damage(((f64::from(damage)) * 1.5).ceil() as i32);
+}
+
+/// 实验体易伤状态的 POST_ACTION：递减一层持续回合，归零时解除。
+pub fn run_testsubject_skull_fracture_post_action_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+    let Some(StatePayload::SkullFracture { stacks }) = context.owner_state_payload(entry.legacy_order_key) else {
+        return;
+    };
+    let next_stacks = stacks - 1;
+    context
+        .set_owner_state_payload_without_refresh(entry.legacy_order_key, StatePayload::SkullFracture { stacks: next_stacks })
+        .expect("skull-fracture state payload should still exist");
+    if next_stacks > 0 {
+        return;
+    }
+    context
+        .defer_owner_state_clear(entry.legacy_order_key)
+        .expect("skull-fracture state payload should still exist");
+    if context.owner().is_some_and(|owner| owner.runtime.alive) {
+        context.add_newline();
+        context.add_update(crate::runtime::update::RunUpdate::new(
+            "[1]从[易伤]中解除",
+            context.owner_idx().0 as usize,
+            context.owner_idx().0 as usize,
+            0,
+        ));
+    }
+}
+
+/// 实验体易伤状态的统一入口：按当前 hook 分流到受伤放大或持续回合递减。
+pub fn run_testsubject_skull_fracture_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+    if context.hook().intersects(ProcMask::POST_DEFEND) {
+        run_testsubject_skull_fracture_post_defend_state(context, entry);
+    } else {
+        run_testsubject_skull_fracture_post_action_state(context, entry);
+    }
+}
+
+/// 实验体无实体状态的 POST_DEFEND：把受伤压到 1。
+///
+/// 与铁壁同为减伤，但没有持续步数：进入与解除完全由实验体自己的奇偶行动控制，
+/// 因此既不能被打消，也不会在行动后自然到期。
+pub fn run_testsubject_no_entity_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+    if !context.hook().intersects(ProcMask::POST_DEFEND) {
+        return;
+    }
+    if !matches!(
+        context.owner_state_payload(entry.legacy_order_key),
+        Some(StatePayload::TestSubjectNoEntity)
+    ) {
+        return;
+    }
+    let Some(damage) = context.defend_damage() else {
+        return;
+    };
+    if damage > 1 {
+        context.set_defend_damage(1);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

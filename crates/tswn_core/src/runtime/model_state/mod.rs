@@ -819,6 +819,14 @@ impl From<&StatePayload> for ModelPayload {
                     fire_level: *fire_level,
                 });
             }
+            // 实验体两个状态只投影种类：易伤层数与无实体本身不参与模型特征，
+            // 需要层数时读 StateStore 即可。
+            StatePayload::SkullFracture { .. } => {
+                result.kind = "testsubject_skull_fracture".into();
+            }
+            StatePayload::TestSubjectNoEntity => {
+                result.kind = "testsubject_no_entity".into();
+            }
         }
         result
     }

@@ -43,6 +43,10 @@ pub const DEFAULT_CORE_COVID_INFECTION_STATE_EXPORT: &str = "core.state.covid-in
 pub const DEFAULT_CORE_LAZY_INFECTION_STATE_EXPORT: &str = "core.state.lazy-infection";
 /// 一拳超人 Boss 状态的默认导出名。
 pub const DEFAULT_CORE_SAITAMA_BOSS_STATE_EXPORT: &str = "core.state.saitama-boss";
+/// 实验体易伤状态的默认导出名。
+pub const DEFAULT_CORE_TESTSUBJECT_SKULL_FRACTURE_STATE_EXPORT: &str = "core.state.testsubject-skull-fracture";
+/// 实验体无实体状态的默认导出名。
+pub const DEFAULT_CORE_TESTSUBJECT_NO_ENTITY_STATE_EXPORT: &str = "core.state.testsubject-no-entity";
 /// 幻影玩家类型的默认导出名。
 pub const DEFAULT_CORE_SHADOW_KIND_EXPORT: &str = "core.kind.shadow";
 /// 召唤物玩家类型的默认导出名。

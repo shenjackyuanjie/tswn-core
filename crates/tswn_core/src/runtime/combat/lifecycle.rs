@@ -214,6 +214,10 @@ impl CombatRuntime {
             DEFAULT_CORE_COVID_INFECTION_STATE_EXPORT => Some((run_covid_infection_state, READ_ALLIES_AND_ENEMIES_CAPABILITIES)),
             DEFAULT_CORE_LAZY_INFECTION_STATE_EXPORT => Some((run_lazy_infection_state, READ_ALLIES_AND_ENEMIES_CAPABILITIES)),
             DEFAULT_CORE_SAITAMA_BOSS_STATE_EXPORT => Some((run_saitama_boss_state, READ_ALLIES_AND_ENEMIES_CAPABILITIES)),
+            DEFAULT_CORE_TESTSUBJECT_SKULL_FRACTURE_STATE_EXPORT => {
+                Some((run_testsubject_skull_fracture_state, NO_EXTENSION_CAPABILITIES))
+            }
+            DEFAULT_CORE_TESTSUBJECT_NO_ENTITY_STATE_EXPORT => Some((run_testsubject_no_entity_state, NO_EXTENSION_CAPABILITIES)),
             _ => None,
         }
     }

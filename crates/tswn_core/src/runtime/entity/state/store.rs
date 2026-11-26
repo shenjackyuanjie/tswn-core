@@ -48,6 +48,8 @@ pub enum StatePayloadKind {
     LazyBoss,
     LazyInfection,
     MarioBoss,
+    SkullFracture,
+    TestSubjectNoEntity,
 }
 
 impl StatePayloadKind {
@@ -75,6 +77,8 @@ impl StatePayloadKind {
             StatePayload::LazyBoss { .. } => Self::LazyBoss,
             StatePayload::LazyInfection { .. } => Self::LazyInfection,
             StatePayload::MarioBoss { .. } => Self::MarioBoss,
+            StatePayload::SkullFracture { .. } => Self::SkullFracture,
+            StatePayload::TestSubjectNoEntity => Self::TestSubjectNoEntity,
         }
     }
 }
@@ -409,7 +413,9 @@ impl StateStore {
                 | StatePayload::Haste { .. }
                 | StatePayload::Berserk { .. }
                 | StatePayload::Charm { .. }
-                | StatePayload::Slow { .. } => {
+                | StatePayload::Slow { .. }
+                | StatePayload::SkullFracture { .. }
+                | StatePayload::TestSubjectNoEntity => {
                     entry.payload = StatePayload::FireMagHalfSteps(1);
                 }
             }

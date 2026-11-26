@@ -140,6 +140,23 @@ pub fn default_custom_runtime_import_config() -> Result<CustomRuntimeImportConfi
         ProcMask::POST_DEFEND,
         SkillPriority(i32::MAX),
     )?;
+    // 易伤要先于铁壁之类的减伤改写受伤值，因此 POST_DEFEND 优先级取 10000；
+    // 它的 POST_ACTION 优先级由 priority_for_hook 单独覆盖为 1000。
+    builder.register_state(
+        "core",
+        "testsubject-skull-fracture",
+        DEFAULT_CORE_TESTSUBJECT_SKULL_FRACTURE_STATE_EXPORT,
+        ProcMask::POST_DEFEND | ProcMask::POST_ACTION,
+        SkillPriority(10_000),
+    )?;
+    // 无实体与铁壁同为 POST_DEFEND，优先级取 10，排在易伤之后收尾压伤。
+    builder.register_state(
+        "core",
+        "testsubject-no-entity",
+        DEFAULT_CORE_TESTSUBJECT_NO_ENTITY_STATE_EXPORT,
+        ProcMask::POST_DEFEND,
+        SkillPriority(10),
+    )?;
     builder.register_player_kind_with_policies(
         "core",
         "boss",

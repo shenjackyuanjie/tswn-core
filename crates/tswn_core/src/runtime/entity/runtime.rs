@@ -205,6 +205,9 @@ pub struct PlayerRuntime {
     /// 被子衍生物的行动计数与睡眠、钻被、得意等临时标记。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quilt_minion: Option<Box<QuiltMinionState>>,
+    /// 实验体 Boss 的阶段计数与本回合待执行招式。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub testsubject: Option<Box<TestSubjectRuntime>>,
     /// 独立的逮捕效果保存来源、每跳伤害和剩余跳数。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub quilt_arrests: Vec<(EntityIdx, i32, u8)>,
@@ -286,6 +289,8 @@ impl PlayerRuntime {
                 .then(|| Box::new(FishRuntime::default())),
             baixie: None,
             quilt_minion: None,
+            testsubject: (flags.contains(PlayerKindFlags::BOSS) && template.name == "testsubject")
+                .then(|| Box::new(TestSubjectRuntime::default())),
             quilt_arrests: Vec::new(),
             corpse: RuntimeCorpseKind::None,
         }
@@ -343,6 +348,7 @@ impl PlayerRuntime {
         self.fish = None;
         self.baixie = None;
         self.quilt_minion = None;
+        self.testsubject = None;
         self.quilt_arrests.clear();
         self.corpse = RuntimeCorpseKind::None;
     }
@@ -399,6 +405,7 @@ impl PlayerRuntime {
         self.fish.clone_from(&prepared.fish);
         self.baixie.clone_from(&prepared.baixie);
         self.quilt_minion.clone_from(&prepared.quilt_minion);
+        self.testsubject.clone_from(&prepared.testsubject);
         self.quilt_arrests.clone_from(&prepared.quilt_arrests);
         self.corpse = prepared.corpse;
     }

@@ -643,6 +643,11 @@ impl CombatRuntime {
         if self.drain_plain_mario_reraise_into(target, updates) {
             return;
         }
+        // 实验体的异常再生同样先于通用死亡链：旧实现用 post_damage_priority = i32::MIN
+        // 抢在死亡记录前，这里的执行点已经在 alive = false 与 mark_dead 之前。
+        if self.drain_testsubject_reraise_into(target, updates) {
+            return;
+        }
         let die_skill_plan = self.scheduler.skill_hook_plan(&self.entities, &self.registry, target, ProcMask::DIE);
         self.drain_skill_hook_plan_into(&die_skill_plan, updates);
         if self.entities.get(target).is_some_and(|entity| entity.runtime.hp > 0)

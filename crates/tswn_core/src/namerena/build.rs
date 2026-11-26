@@ -534,8 +534,10 @@ impl PlayerBuild {
             all_sum: attr_sum * 3 + attrs[7],
             ..PlayerStats::default()
         };
-        // 旧版 boss 初始化会在构建后安装 runtime 状态。TestSubject 也会替换复制到 Runtime 模板中的
-        // 可观察冷快照。
+        // 实验体是正式 Boss，但名字不派生属性：固定七围 80、体力 100、初始 MP 1000。
+        // 这是它第一阶段的冷快照，二、三阶段由异常再生在 Runtime 内爬升
+        // （120/200 与 160/300），因此这里只负责起始值；替换同样要落到复制到
+        // Runtime 模板中的可观察冷快照上。
         if self.class == PlayerClass::Boss && self.name == "testsubject" {
             self.name_factor = 0.0;
             attrs = [80, 80, 80, 80, 80, 80, 80, 100];

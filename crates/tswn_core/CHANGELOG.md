@@ -14,6 +14,11 @@
 - 共享接线一并落地：`RunUpdate.dialogue` 与 `as_dialogue()`、`CombatRuntime.squall_bosses`、`apply_plain_slow_into`、`apply_squall_defense`、`begin_squall_action`／`finish_squall_action`、`record_squall_damage`、`dispel_squall_effects`、`record_smdd_hit`、`record_tiger_damage`、`baixie_mp_scale`、`prepared_init::template_from_name`、`PlainBossDefend::Quilt`，以及被子在 `attack`／`defense`／`round`／`skills_*` 十个文件里的选敌池与伤害传导触点。
 - 7 只 Boss 合计 44 个 `#[test]`。这些测试在原作者分支上从未被声明为模块（`combat/mod.rs` 缺 `mod boss_*_tests`），实际不参与编译；本次一并声明，全部通过。
 - `namerena/icon_render` 新增 `boss_badges` 模块：咦的 16×16 手画徽章 `YI_ICON`、被子一家的 `quilt_icon`（床、猴脸、鱼三种 Emoji），以及新 Boss 名字到徽章的映射规则。
+- 恢复「实验体」（`testsubject@!`）的完整技能实现。它在 2026-07-18 的 `3148727d`（升格 Runtime v2）中整包迁丢，`a234e609` 收尾时删掉了 641 行实现，2026-10-28 的 `6b47a4af` 只以纯数据形态加回属性与免疫、`boss_action_skills` 仍走 `_ => &[]`，于是退化成只会普攻的木桩（玩家反馈「变成最菜 boss，打不过普通号」）。现按旧实现完整复原：三阶段行动表（颅骨重击／多段爪击／割裂／大猛扑／燃烧咆哮）、易伤与无实体两个状态、两次复活与属性爬升 80/100 → 120/200 → 160/300。
+- 属性爬升采用「同步改写 `PlayerTemplate` + runtime」而非 state 钩子：新 Runtime 的运行态属性由 template 派生，`refresh_runtime_stats_from_template()` 会被隐匿、垂死、聚气、吞噬等机制反复触发，只改 runtime 会被下一次刷新静默抹平。与 `xjy_iron`／`fish_comfort` 的既有惯例一致。
+- 复活接入 `drain_die_hooks_into`，与马里奥同路径。钩子点位于 `emit_plain_lethal_replay_into` 之后、`alive = false` 与死亡记录之前；这个顺序由新增的 `die_hook_revives_before_death_is_recorded` 固化。
+- 命名上不再称它为「测试专用 Boss」——它是仓库自有的正式 Boss，误导性在注释里而不在标识符上。`testsubject@!` 输入名、`BOSS_NAMES` 键、`boss_display_name`、文案键全部保持不变，玩家侧零变更；`TestSubjectState` 改为 `TestSubjectRuntime`（新架构按 `xjy`／`tiger`／`fish` 惯例放 `PlayerRuntime` 字段），易伤与无实体并入 `StatePayload` 枚举。`docs/reviews/` 三篇里「兼容输入／无专属技能」的描述已同步纠正。
+- 17 个测试覆盖：身份与三阶段属性爬升、五档抽签阈值（含 `roll_skill(128)` 恒真因而二、三阶段不会回落普攻）、颅骨重击与易伤放大、多段爪击段数递增与迟缓、无实体受伤压制与奇偶轮换、两次异常再生与属性归零、复活钩子早于死亡记录。
 
 - `MAGIC_POINT_CAP` 定为 100。原作者在 `22c7af3e` 把它改成 128 并加了具名常量，但他的基线同样是 100；该上限作用于能量药水（+40）、蓄力返蓝（+32）与行动恢复这些普通对局也走的路径，改它会动既有行为对齐，而仓库里没有任何测试覆盖该上限。保留具名常量只为消除魔法数字，将来若确认原版规则是 128，改这一行即可。
 - 回放的 `ReplayTone::Dialogue` 投影未接。原作者在 `replay_view.rs` 与 `cli_api/battle/session.rs` 把 `update.dialogue` 投影成新 tone，但 `replay_tone_color()` 并不特殊处理它，渲染与 `Normal` 同色，收益纯装饰；代价却是 `tswn_py` 的 `replay_tone_to_str()` 是穷尽 match、加变体直接编译失败。`RunUpdate.dialogue` 与 `as_dialogue()` 已在位且有测试覆盖，投影随时可补。
