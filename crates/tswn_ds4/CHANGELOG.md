@@ -5,6 +5,7 @@
 ### 修复
 
 - 单文件输出提交改为同目录重命名替换，不再预先删除旧目标；替换失败保留旧内容，未提交临时文件由 Drop 尽力清理；多文件输出与追加写入不是事务操作。
+- `tests/fixtures/basic/expected/new/new.txt` 同步为单份去重输入。`1598d6bb` 移除 `copy_to_new_store` 对 `tmp/new_dup.txt` 的重复追加（该重复自 `23483469` 的 DS3 初始代码起即存在，属生成期复制粘贴残留）后遗漏更新本 fixture，使其停留在修复前聚合输入翻倍的产出。同一 fixture 的 `tmp/new_dup.txt`、各 `new/new_*.txt` 与 `file/old.txt` 本就是单份口径，唯独 `new/new.txt` 与之矛盾；`new/` 是按轮追加的历史归档，全新工作目录单轮运行下它等于 `tmp/new_dup.txt`。
 
 ### 内部整理
 
