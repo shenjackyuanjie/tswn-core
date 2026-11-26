@@ -62,6 +62,10 @@ impl CombatRuntime {
     }
 
     pub(super) fn ros_child_action(&mut self, actor: EntityIdx, role: u8, updates: &mut RunUpdates) {
+        if role >= 4 {
+            self.pcb_child_action(actor, role, updates);
+            return;
+        }
         let Some(target) = self.select_plain_default_attack_target(actor, true) else {
             return;
         };

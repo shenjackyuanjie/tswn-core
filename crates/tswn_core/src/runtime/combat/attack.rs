@@ -815,6 +815,12 @@ impl CombatRuntime {
             }
         };
         let mut amount = ceil_damage_to_i32(atp / defense as f64);
+        // 蕾蒂也免疫带冰冻回调、但未显式标记 Ice 类型的原生攻击。
+        let kind = if self.is_rosmontic_boss(target, "letty") && on_damage == PlainAttackOnDamage::Ice {
+            DamageKind::Ice
+        } else {
+            kind
+        };
         // 小恶魔只削弱带命中回调的攻击，空回调技能保持原伤害。
         if self.is_rosmontic_boss(target, "koakuma") && (on_damage != PlainAttackOnDamage::None || kind != DamageKind::Default) {
             amount = amount * 13 / 20;

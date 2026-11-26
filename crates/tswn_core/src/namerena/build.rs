@@ -598,7 +598,7 @@ impl PlayerBuild {
             status = status_from_attrs(attrs, 0.0, true);
             status.speed = 204;
         }
-        // 红魔乡角色采用固定八围；行动速度保留原版 +160 基值。
+        // 东方角色采用固定八围；行动速度保留原版 +160 基值。
         if self.class == PlayerClass::Boss
             && let Some(fixed) = match self.name.as_str() {
                 "reimu" => Some([44, 59, 35, 44, 54, 59, 59, 1000]),
@@ -609,6 +609,14 @@ impl PlayerBuild {
                 "patchouli" => Some([30, 34, 36, 41, 84, 59, 83, 720]),
                 "sakuya" => Some([45, 31, 54, 78, 54, 55, 61, 780]),
                 "remilia" => Some([61, 46, 63, 44, 53, 54, 46, 1100]),
+                "flandre" => Some([83, 49, 49, 44, 34, 54, 45, 1050]),
+                "letty" => Some([27, 49, 55, 41, 62, 62, 58, 740]),
+                "chen" => Some([39, 39, 75, 68, 14, 54, 39, 820]),
+                "alice" => Some([24, 64, 59, 54, 74, 64, 83, 1200]),
+                "phantom" => Some([30, 44, 41, 44, 44, 44, 44, 1497]),
+                "youmu" => Some([51, 39, 80, 61, 34, 39, 47, 790]),
+                "yuyuko" => Some([36, 54, 49, 63, 66, 36, 60, 736]),
+                "ran" => Some([44, 44, 54, 54, 58, 62, 79, 800]),
                 _ => None,
             }
         {

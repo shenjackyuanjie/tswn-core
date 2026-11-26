@@ -4,7 +4,7 @@
 pub const SAITAMA_RETIREMENT_WINNER: &str = "SAITAMA";
 
 /// 内置 Boss 名字表；用于身份分类、默认技能与免疫规则查询。
-pub const BOSS_NAMES: [&str; 34] = [
+pub const BOSS_NAMES: [&str; 42] = [
     "mario",
     "sonic",
     "mosquito",
@@ -39,6 +39,14 @@ pub const BOSS_NAMES: [&str; 34] = [
     "patchouli",
     "sakuya",
     "remilia",
+    "flandre",
+    "letty",
+    "chen",
+    "alice",
+    "phantom",
+    "youmu",
+    "yuyuko",
+    "ran",
 ];
 
 /// 加成角色名字表；对应 [`boost_value`] 的加成来源。
@@ -95,6 +103,14 @@ pub fn boss_display_name(name: &str) -> &str {
         "patchouli" => "帕秋莉",
         "sakuya" => "十六夜咲夜",
         "remilia" => "蕾米莉亚",
+        "flandre" => "芙兰朵露",
+        "letty" => "蕾蒂",
+        "chen" => "橙",
+        "alice" => "爱丽丝",
+        "phantom" => "幽灵乐团",
+        "youmu" => "魂魄妖梦",
+        "yuyuko" => "西行寺幽幽子",
+        "ran" => "八云蓝",
         _ => name,
     }
 }
@@ -206,7 +222,24 @@ pub fn boost_value(name: &str) -> u32 {
 pub fn boss_uses_skill_attack(name: &str) -> bool {
     matches!(
         boss_combat_name(name),
-        "aokiji" | "ikaruga" | "reimu" | "marisa" | "daiyousei" | "hong" | "koakuma" | "patchouli" | "sakuya" | "remilia"
+        "aokiji"
+            | "ikaruga"
+            | "reimu"
+            | "marisa"
+            | "daiyousei"
+            | "hong"
+            | "koakuma"
+            | "patchouli"
+            | "sakuya"
+            | "remilia"
+            | "flandre"
+            | "letty"
+            | "chen"
+            | "alice"
+            | "phantom"
+            | "youmu"
+            | "yuyuko"
+            | "ran"
     )
 }
 
@@ -223,7 +256,8 @@ pub fn boss_action_prob_count(name: &str) -> usize {
 pub fn boss_immune_threshold(name: &str, key: &str) -> i32 {
     match boss_combat_name(name) {
         // 琪露诺没有状态免疫名单，冰伤免疫另由防御 hook 处理。
-        "cirno" | "megia" | "rumia" | "marisa" | "daiyousei" | "hong" | "koakuma" | "patchouli" | "sakuya" | "remilia" => 0,
+        "cirno" | "megia" | "rumia" | "marisa" | "daiyousei" | "hong" | "koakuma" | "patchouli" | "sakuya" | "remilia"
+        | "flandre" | "letty" | "chen" | "alice" | "phantom" | "youmu" | "yuyuko" | "ran" => 0,
         "reimu" => {
             if matches!(key, "piston" | "poison" | "slow" | "ice") {
                 192
@@ -382,7 +416,24 @@ mod tests {
         for name in BOSS_NAMES.iter().copied().filter(|name| {
             !matches!(
                 *name,
-                "aokiji" | "ikaruga" | "reimu" | "marisa" | "daiyousei" | "hong" | "koakuma" | "patchouli" | "sakuya" | "remilia"
+                "aokiji"
+                    | "ikaruga"
+                    | "reimu"
+                    | "marisa"
+                    | "daiyousei"
+                    | "hong"
+                    | "koakuma"
+                    | "patchouli"
+                    | "sakuya"
+                    | "remilia"
+                    | "flandre"
+                    | "letty"
+                    | "chen"
+                    | "alice"
+                    | "phantom"
+                    | "youmu"
+                    | "yuyuko"
+                    | "ran"
             )
         }) {
             assert!(!boss_uses_skill_attack(name), "{name} 的 k3 不是 SklAttack");

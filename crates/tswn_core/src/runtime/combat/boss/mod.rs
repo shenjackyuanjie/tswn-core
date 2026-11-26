@@ -33,6 +33,14 @@ pub mod tiger;
 #[cfg(test)]
 pub mod tiger_tests;
 mod touhou;
+// 第二批东方角色共用召唤与状态钩子，招式按机制族拆分。
+mod alice_ran;
+mod flandre_letty_chen;
+mod pcb_hooks;
+mod pcb_summons;
+#[cfg(test)]
+mod pcb_tests;
+mod phantom_youmu_yuyuko;
 #[cfg(test)]
 mod touhou_tests;
 pub mod wheel;

@@ -32,6 +32,7 @@ impl CombatRuntime {
             return;
         }
         // 高体力阶段的剑技受到实际伤害后中断，低体力阶段不挂中断钩子。
+        self.pcb_after_damage(target, updates);
         self.interrupt_megia_into(target, updates);
         self.upgrade_rumia_into(target, updates);
         // 红温在每次真实受伤后立即触发，不等待整段连击结束。

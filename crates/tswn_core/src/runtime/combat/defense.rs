@@ -118,6 +118,7 @@ impl CombatRuntime {
         defend_value: &mut RuntimeDefendValue,
         on_damage: PlainAttackOnDamage,
     ) {
+        self.pcb_letty_shield(target, updates);
         // 大妖精支付自己的反射消耗，成功后本次入射威力归零。
         if self.is_rosmontic_boss(target, "daiyousei")
             && self.entities.get(defend_value.caster()).is_some_and(|e| e.runtime.hp > 0)
@@ -425,6 +426,9 @@ impl CombatRuntime {
             defend_value.set_damage(0);
             return;
         }
+        if self.pcb_defend(target, defend_value, updates) {
+            return;
+        }
         #[derive(Clone, Copy)]
         enum DefendHookPlanEntry {
             Skill(SkillHookPlanEntry),
@@ -688,6 +692,11 @@ impl CombatRuntime {
 
     /// 执行目标的死亡 hook：护身符、史莱姆分裂、马里奥复活等。
     pub fn drain_die_hooks_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) {
+        // 反魂蝶先恢复生命，式神死亡返还只执行一次。
+        if self.revive_pcb_into(target, updates) {
+            return;
+        }
+        self.pcb_child_died(target);
         // 无名的决意在首次致死时恢复 199 HP，并中止死亡链。
         if self.revive_megia_into(target, updates) {
             return;
@@ -1044,7 +1053,13 @@ impl CombatRuntime {
             return;
         }
         let charge_active = self.entities.get(caster).is_some_and(|entity| entity.runtime.charge.active);
-        let frozen_step = 1024 + if charge_active { 2048 } else { 0 };
+        // 蕾蒂的延长冬日与寒流额外冻结时长独立于普通蓄力。
+        let frost = self
+            .entities
+            .get(caster)
+            .and_then(|e| e.runtime.rosmontic.as_ref())
+            .map_or(0, |s| i32::from(s.frost_mode) * 1024);
+        let frozen_step = 1024 + frost + if charge_active { 2048 } else { 0 };
         let target_entity = self.entities.get_mut(target).unwrap();
         let first_application = target_entity.states.entry(PLAIN_ICE_STATE_KEY).is_none();
         target_entity.states.add_ice_frozen_step(PLAIN_ICE_STATE_KEY, frozen_step);

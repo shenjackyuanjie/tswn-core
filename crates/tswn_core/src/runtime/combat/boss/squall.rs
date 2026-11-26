@@ -12,6 +12,9 @@ pub const SAMPLE_QUOTES: [&str; 5] = [
 /// 红温台词取自本地聊天记录中唯一出现“红温”的原话，发送于 2026-11-06 00:50:43。
 pub const RED_QUOTE: &str = "我已经要被 6.1sol 整红温了";
 
+/// 暂时隐藏技能后的台词；保留原句以便之后恢复，不改技能或战斗随机数。
+const SHOW_SKILL_DIALOGUE: bool = false;
+
 /// 禁言的固定魔力下限。
 pub const TYRANNY_MP_FLOOR: i32 = -64;
 
@@ -31,7 +34,7 @@ impl CombatRuntime {
         SAMPLE_QUOTES[index as usize]
     }
 
-    /// 每条发动文案后立即插入独立台词段，效果明细随后沿用原版战报。
+    /// 技能提示始终显示，独立台词段由临时展示开关控制。
     fn squall_say(
         &self,
         actor: EntityIdx,
@@ -41,6 +44,9 @@ impl CombatRuntime {
     ) {
         updates.add_newline();
         updates.add(RunUpdate::new(message, actor.0 as usize, actor.0 as usize, 1).without_replay_target());
+        if !SHOW_SKILL_DIALOGUE {
+            return;
+        }
         updates.add_newline();
         updates.add(
             RunUpdate::new(quote, actor.0 as usize, actor.0 as usize, 0)

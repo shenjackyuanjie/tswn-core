@@ -12,8 +12,19 @@ pub struct RosmonticRuntime {
     pub energy: u8,
     pub charged_skill: Option<usize>,
     pub child: Option<EntityIdx>,
-    /// 1 为妖精、2 为逆召唤帕秋莉、3 为咲夜残影。
+    /// 1～3 为妖精／帕秋莉／残影，4 为分身，10～18 为人偶，20～23 为式神。
     pub child_kind: u8,
+    /// 妖妖梦一批：化猫、乐团成员、招架、反魂蝶和神现均随快照保存。
+    pub cat: bool,
+    pub phantom_members: u8,
+    pub guard: u8,
+    pub butterfly_prepared: bool,
+    pub butterfly_revived: bool,
+    pub butterfly_turns: i16,
+    pub divine_turns: u8,
+    pub frost_mode: u8,
+    pub illusion_count: u32,
+    pub child_death_notified: bool,
     pub elements: u8,
     pub time_stop: u8,
     pub scarlet: u32,
@@ -49,10 +60,19 @@ impl RosmonticRuntime {
             "patchouli" => &[35, 35, 45, 45, 60, 60, 67, 67, 120, 120, 300],
             "sakuya" => &[50, 35, 45, 126, 100],
             "remilia" => &[0, 70, 50, 70, 300],
+            "flandre" => &[44, 45, 60, 120],
+            "letty" => &[0, 48, 48, 132, 66, 132],
+            "chen" => &[0, 50, 55, 60, 140],
+            "alice" => &[5, 1080, 80, 28, 31, 35, 40, 50, 64, 80, 400],
+            "phantom" => &[0, 40, 58, 110, 0, 100],
+            "youmu" => &[30, 36, 51, 82, 0, 100],
+            "yuyuko" => &[29, 55, 56, 81, 100, 300, 0],
+            "ran" => &[50, 70, 80, 80],
             _ => &[],
         };
         Self {
             levels: levels.to_vec(),
+            phantom_members: if name == "phantom" { 7 } else { 0 },
             ..Self::default()
         }
     }
