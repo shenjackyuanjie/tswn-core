@@ -2,7 +2,7 @@
 
 [返回机制索引](README.md)
 
-分身（普通技能 ID 23）创建的是一个重新派生属性与技能的新 Runtime 实体，不是本体的镜像。当前入口为 [drain_plain_clone_skill_into](../../crates/tswn_core/src/runtime/combat/skills_control.rs#L231-L443)，构造数据保存在 `CloneBuildData` 中。
+分身（普通技能 ID 23）创建的是一个重新派生属性与技能的新 Runtime 实体，不是本体的镜像。当前入口为 [drain_plain_clone_skill_into](../../crates/tswn_core/src/runtime/combat/skills/control.rs#L231-L443)，构造数据保存在 `CloneBuildData` 中。
 
 ## 1. 本体与克隆体的属性
 
@@ -19,7 +19,7 @@
 | MP | 这个分身处理步骤不重新初始化本体 MP |
 | 技能 | 分身技能自身按第 2 节衰减；其余技能按第 3 节的基底截断＋加成重放重建 |
 
-`CLONE_ATTR_DECAY` 保留旧实现 f32 常量转为 f64 后的值，约为 `0.7799999713897705`。因此“七围 ×0.78”只是便于理解的近似，不能直接对展示出的攻击、速度等数值乘 0.78。精确操作见 [CloneBuildData::decay_owner / derive_stats](../../crates/tswn_core/src/runtime/entity.rs#L162-L214)。蓄力状态跳过本体 HP 与原始八围衰减，但不跳过后面的分身技能等级处理。
+`CLONE_ATTR_DECAY` 保留旧实现 f32 常量转为 f64 后的值，约为 `0.7799999713897705`。因此“七围 ×0.78”只是便于理解的近似，不能直接对展示出的攻击、速度等数值乘 0.78。精确操作见 [CloneBuildData::decay_owner / derive_stats](../../crates/tswn_core/src/runtime/entity/mod.rs#L162-L214)。蓄力状态跳过本体 HP 与原始八围衰减，但不跳过后面的分身技能等级处理。
 
 ### 克隆体
 
@@ -33,7 +33,7 @@
 | 行动点 | 随机初始化为 `r255() * 4 + 256` |
 | 召唤物蓝图 | 继承已准备好的 shadow / summon / zombie 模板 |
 
-属性派生见 [CloneBuildData::child](../../crates/tswn_core/src/runtime/entity.rs#L169-L177)，实体初始化见 [skills_control.rs](../../crates/tswn_core/src/runtime/combat/skills_control.rs#L380-L443)。当前模型没有旧 `Player::init_values()` 调用，MP 规则直接写在 Runtime 构造链中。
+属性派生见 [CloneBuildData::child](../../crates/tswn_core/src/runtime/entity/mod.rs#L169-L177)，实体初始化见 [skills/control.rs](../../crates/tswn_core/src/runtime/combat/skills/control.rs#L380-L443)。当前模型没有旧 `Player::init_values()` 调用，MP 规则直接写在 Runtime 构造链中。
 
 ## 2. 分身技能自身的衰减
 

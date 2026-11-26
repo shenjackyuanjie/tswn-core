@@ -6,62 +6,43 @@
 
 use super::*;
 
+mod boss_slime_tests;
 mod custom_bed2_fixture_tests;
 mod custom_bed2_roster_import_tests;
 mod custom_minion_name_tests;
 mod custom_minion_spawn_tests;
-mod custom_mixed_import_tests;
-mod custom_runner_fixture_diff_tests;
+mod custom_runner_diff_tests;
 mod custom_runner_import_tests;
-mod custom_runner_round_diff_tests;
 mod custom_summon_handler_tests;
 mod effect_pipeline_tests;
-mod entity_identity_tests;
 mod plain_action_scheduler_tests;
-mod plain_assassinate_skill_tests;
-mod plain_at_boost_precision_tests;
 mod plain_attack_skill_tests;
 mod plain_boss_skill_tests;
 mod plain_charge_accumulate_tests;
-mod plain_charm_targeting_tests;
 mod plain_clone_skill_tests;
 mod plain_counter_skill_tests;
-mod plain_damage_short_circuit_tests;
-mod plain_disperse_effect_tests;
-mod plain_disperse_skill_tests;
-mod plain_guaranteed_hit_tests;
-mod plain_haste_scheduler_tests;
-mod plain_haste_targeting_tests;
+mod plain_damage_and_probability_tests;
+mod plain_disperse_tests;
+mod plain_haste_tests;
 mod plain_heal_skill_tests;
-mod plain_ice_scheduler_tests;
-mod plain_ice_skill_tests;
+mod plain_ice_tests;
 mod plain_kill_hook_tests;
-mod plain_linked_minion_cleanup_tests;
 mod plain_poison_state_tests;
-mod plain_probability_tests;
 mod plain_protect_skill_tests;
 mod plain_raw_import_tests;
 mod plain_reflect_skill_tests;
-mod plain_reraise_auto_tests;
-mod plain_revive_lifecycle_tests;
-mod plain_slime_skill_tests;
-mod plain_slime_split_tests;
+mod plain_revive_and_reraise_tests;
 mod plain_status_skill_tests;
-mod plain_summon_share_damage_tests;
-mod plain_summon_skill_tests;
-mod plain_terminal_round_tests;
-mod plain_thunder_decision_tests;
+mod plain_targeting_tests;
 mod plain_weapon_skill_tests;
-mod plain_zombie_skill_tests;
-mod prepared_init_tests;
 mod runtime_core_tests;
 mod runtime_render_tests;
 mod skill_hook_dispatch_tests;
+mod skills_assassinate_tests;
+mod skills_summon_tests;
+mod skills_zombie_tests;
 mod state_hook_dispatch_tests;
-mod state_hook_generation_tests;
 mod summon_explode_post_defend_tests;
-mod summon_explode_pre_defend_tests;
-mod summon_explode_scheduler_tests;
 mod summon_explode_tests;
 mod winner_path_divergence_tests;
 
@@ -513,5 +494,3 @@ fn render_hp_marker_bar_show(frame: &RuntimeFrame) -> Option<RenderedShow> {
         ),
     ))
 }
-
-mod plain_target_team_tests;

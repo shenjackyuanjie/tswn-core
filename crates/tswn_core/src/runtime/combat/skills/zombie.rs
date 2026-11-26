@@ -1,0 +1,176 @@
+use super::super::*;
+
+impl CombatRuntime {
+    /// 按击杀 hook 计划分派僵尸与融合击杀技能，其余条目以死亡目标为选中目标执行。
+    pub fn drain_plain_kill_skill_plan_into(&mut self, plan: &SkillHookPlan, killed_target: EntityIdx, updates: &mut RunUpdates) {
+        for entry in &plan.entries {
+            let export_name = self.registry.skill(entry.skill_id).map(|skill| skill.export_name.as_str());
+            if export_name == Some(DEFAULT_CORE_ZOMBIE_SKILL_EXPORT) {
+                let force = match self.consume_kill_passive_decision(entry, DEFAULT_CORE_ZOMBIE_SKILL_EXPORT, killed_target) {
+                    None => false,
+                    Some(false) => continue,
+                    Some(true) => true,
+                };
+                if self.drain_plain_zombie_kill_skill_into(entry.owner, entry.fixed_lane, killed_target, updates, force) {
+                    break;
+                }
+                continue;
+            }
+            if export_name == Some(DEFAULT_CORE_MERGE_SKILL_EXPORT) {
+                let force = match self.consume_kill_passive_decision(entry, DEFAULT_CORE_MERGE_SKILL_EXPORT, killed_target) {
+                    None => false,
+                    Some(false) => continue,
+                    Some(true) => true,
+                };
+                if self.drain_plain_merge_kill_skill_into(entry.owner, entry.fixed_lane, killed_target, updates, force) {
+                    break;
+                }
+                continue;
+            }
+            let entry_plan = SkillHookPlan {
+                owner: plan.owner,
+                hook: plan.hook,
+                loadout_len: plan.loadout_len,
+                entries: smallvec::SmallVec::from_slice(&[*entry]),
+            };
+            self.drain_skill_hook_plan_with_selected_target_into(&entry_plan, updates, Some(killed_target));
+        }
+    }
+
+    /// 取用玩家对击杀被动的决策：非决策模式返回 `None`；有待处理决策时返回其放行结果，否则挂起请求并触发 `PassivePause`。
+    fn consume_kill_passive_decision(
+        &mut self,
+        entry: &SkillHookPlanEntry,
+        export_name: &str,
+        killed_target: EntityIdx,
+    ) -> Option<bool> {
+        if !self.control.passive_decision_mode() {
+            return None;
+        }
+        let level = self
+            .entities
+            .get(entry.owner)
+            .and_then(|entity| entity.template.skills.level_at(entry.fixed_lane))
+            .unwrap_or(0);
+        let Some(decision) = self.control.next_passive_decision() else {
+            let request = PassiveRequest {
+                initiator: Some(entry.owner.0 as PlrId),
+                mp_costs: self.passive_mp_costs(entry.owner, export_name, false),
+                actor: entry.owner.0 as PlrId,
+                target: Some(killed_target.0 as PlrId),
+                skill: export_name.to_owned(),
+                level,
+                candidates: Vec::new(),
+                unavoidable: false,
+                intercept: false,
+                batch_id: None,
+                phase: None,
+            };
+            self.control.set_pending_passive(request);
+            std::panic::panic_any(PassivePause);
+        };
+        Some(decision.activate && decision.success)
+    }
+
+    /// 僵尸被动：达标时把死亡目标转化为同名亡灵；返回 true 表示中止后续击杀条目。
+    pub fn drain_plain_zombie_kill_skill_into(
+        &mut self,
+        caster: EntityIdx,
+        fixed_lane: usize,
+        killed_target: EntityIdx,
+        updates: &mut RunUpdates,
+        force: bool,
+    ) -> bool {
+        let target_is_combat_minion = self
+            .entities
+            .get(killed_target)
+            .unwrap_or_else(|| panic!("runtime zombie target disappeared: {}", killed_target.0))
+            .runtime
+            .is_combat_minion();
+        if target_is_combat_minion {
+            return false;
+        }
+
+        let level = self
+            .entities
+            .get(caster)
+            .and_then(|entity| entity.template.skills.level_at(fixed_lane))
+            .unwrap_or_else(|| panic!("runtime zombie level missing for fixed lane {fixed_lane}"));
+        if !force && self.rng.r63() >= level {
+            return false;
+        }
+
+        self.ensure_plain_minion_blueprint(caster, crate::namerena::MinionKind::Zombie);
+
+        let blueprint_slot = self
+            .registry
+            .entity_slot_id_by_export_name(DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT)
+            .expect("default runtime profile must register core zombie blueprint slot");
+        let blueprint = match self.entities.get(caster).and_then(|entity| entity.slots.get(blueprint_slot)) {
+            Some(SlotValue::PlayerTemplate(template)) => Some(template.as_ref().clone()),
+            Some(_) => panic!("runtime core zombie blueprint slot has invalid value"),
+            None => None,
+        };
+        if blueprint.is_none() {
+            self.mark_zombie_corpse(killed_target);
+            return true;
+        }
+        #[cfg(feature = "cards")]
+        let _ability = self.ability_scope(caster, "core.skill.zombie");
+        if !self.entity_mp_ready(caster) {
+            return false;
+        }
+
+        self.mark_zombie_corpse(killed_target);
+        let mut template = blueprint.unwrap();
+        template.name = self.allocate_plain_minion_name(caster);
+        template.team = self.entities.get(caster).unwrap().runtime.team;
+        template.move_state.speed_points = self.rng.r255() as i32 * 4;
+        let root_owner = self.entities.get(caster).unwrap().runtime.root_owner;
+        let zombie = self
+            .entities
+            .spawn_from_template_with_owner(template, &self.registry, Some(caster), Some(root_owner));
+        let team = self.entities.get(zombie).unwrap().runtime.team;
+        self.world.add_spawned_alive(zombie, team);
+
+        updates.add_newline();
+        let mut summon_update =
+            crate::runtime::update::RunUpdate::new("[0][召唤亡灵]", caster.0 as usize, killed_target.0 as usize, 60);
+        summon_update.delay0 = 1500;
+        updates.add(summon_update);
+        let mut zombied = crate::runtime::update::RunUpdate::new("[2]变成了[1]", caster.0 as usize, zombie.0 as usize, 0);
+        zombied.targets.push(killed_target.0 as usize);
+        updates.add(zombied);
+        true
+    }
+
+    /// 融合被动的击杀入口：达标时把死亡目标融合进施法者。
+    pub fn drain_plain_merge_kill_skill_into(
+        &mut self,
+        caster: EntityIdx,
+        fixed_lane: usize,
+        killed_target: EntityIdx,
+        updates: &mut RunUpdates,
+        force: bool,
+    ) -> bool {
+        let level = self
+            .entities
+            .get(caster)
+            .and_then(|entity| entity.template.skills.level_at(fixed_lane))
+            .unwrap_or_else(|| panic!("runtime merge level missing for fixed lane {fixed_lane}"));
+        if !force && self.rng.r63() >= level {
+            return false;
+        }
+        self.apply_plain_merge_into(caster, killed_target, updates)
+    }
+
+    /// 把目标标记为僵尸尸体，供亡灵转化与展示使用。
+    pub fn mark_zombie_corpse(&mut self, target: EntityIdx) {
+        let target = self
+            .entities
+            .get_mut(target)
+            .unwrap_or_else(|| panic!("runtime zombie corpse target disappeared: {}", target.0));
+        target.states.register_compressed_legacy_state(CompressedLegacyState::Corpse);
+        target.runtime.corpse = RuntimeCorpseKind::Zombie;
+    }
+}

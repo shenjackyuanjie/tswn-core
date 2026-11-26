@@ -7,7 +7,7 @@
 use super::*;
 
 /// 把内嵌脚本写入临时目录并依次尝试 python3/python 执行；缺边时以标记路径抛错交上层补算，输出目录保留用于诊断。
-pub(super) fn run_strict_python_calibrator(
+pub fn run_strict_python_calibrator(
     db_path: &str,
     lane_size: usize,
     cqd_threshold: f64,
@@ -83,7 +83,7 @@ pub(super) fn run_strict_python_calibrator(
 }
 
 /// 解析 Python 总分表 CSV 为逐行分数；selection_weight_cqd 列缺失即报错，不用模型 Correct Cqd 顶替 C-Score。
-pub(super) fn read_strict_python_scores(out_dir: &Path) -> anyhow::Result<Vec<StrictPythonScoreRow>> {
+pub fn read_strict_python_scores(out_dir: &Path) -> anyhow::Result<Vec<StrictPythonScoreRow>> {
     let path = out_dir.join("final_total_table_ALL_GROUPS.csv");
     if !path.exists() {
         anyhow::bail!(
@@ -145,7 +145,7 @@ pub(super) fn read_strict_python_scores(out_dir: &Path) -> anyhow::Result<Vec<St
 }
 
 /// 解析并校验 Python 目标权重追溯：版本/口径/lane 一致、权重有限为正且归一化和为 1。
-pub(super) fn read_strict_python_target_trace(out_dir: &Path, expected_lane_size: usize) -> anyhow::Result<CorrectTargetTrace> {
+pub fn read_strict_python_target_trace(out_dir: &Path, expected_lane_size: usize) -> anyhow::Result<CorrectTargetTrace> {
     let csv_path = out_dir.join("target_correct_trace_weights.csv");
     let json_path = out_dir.join("target_correct_trace_metadata.json");
     let text = fs::read_to_string(&csv_path).with_context(|| {
@@ -322,7 +322,7 @@ pub(super) fn read_strict_python_target_trace(out_dir: &Path, expected_lane_size
 }
 
 /// 按列号取追溯 CSV 字段，缺列时带行号上下文报错。
-pub(super) fn csv_record_field<'a>(record: &'a [String], index: usize, name: &str, row_number: usize) -> anyhow::Result<&'a str> {
+pub fn csv_record_field<'a>(record: &'a [String], index: usize, name: &str, row_number: usize) -> anyhow::Result<&'a str> {
     record
         .get(index)
         .map(String::as_str)
@@ -330,7 +330,7 @@ pub(super) fn csv_record_field<'a>(record: &'a [String], index: usize, name: &st
 }
 
 /// 在表头中按名称查找列号，缺失即报错。
-pub(super) fn csv_col(header: &[String], name: &str) -> anyhow::Result<usize> {
+pub fn csv_col(header: &[String], name: &str) -> anyhow::Result<usize> {
     header
         .iter()
         .position(|h| h.trim() == name)
@@ -338,7 +338,7 @@ pub(super) fn csv_col(header: &[String], name: &str) -> anyhow::Result<usize> {
 }
 
 /// 解析可选浮点：空值、nan、none 视为缺失。
-pub(super) fn parse_optional_f64(s: &str) -> Option<f64> {
+pub fn parse_optional_f64(s: &str) -> Option<f64> {
     let t = s.trim();
     if t.is_empty() || t.eq_ignore_ascii_case("nan") || t.eq_ignore_ascii_case("none") {
         None
@@ -348,7 +348,7 @@ pub(super) fn parse_optional_f64(s: &str) -> Option<f64> {
 }
 
 /// 解析 CSV 文本为记录矩阵，支持引号、成对引号转义与引号内换行，不做严格语法校验。
-pub(super) fn parse_csv_records(text: &str) -> Vec<Vec<String>> {
+pub fn parse_csv_records(text: &str) -> Vec<Vec<String>> {
     let mut records = Vec::new();
     let mut record = Vec::new();
     let mut field = String::new();
@@ -386,7 +386,7 @@ pub(super) fn parse_csv_records(text: &str) -> Vec<Vec<String>> {
 }
 
 /// 读取 Python 的缺失胜率请求 JSON，规范化排序并去重组合对。
-pub(super) fn read_strict_python_missing_rate_request(path: &Path) -> anyhow::Result<StrictPythonMissingRateRequest> {
+pub fn read_strict_python_missing_rate_request(path: &Path) -> anyhow::Result<StrictPythonMissingRateRequest> {
     let text =
         fs::read_to_string(path).with_context(|| format!("read strict Python missing-rate request: {}", path.display()))?;
     let value: Value = serde_json::from_str(&text)
@@ -421,7 +421,7 @@ pub(super) fn read_strict_python_missing_rate_request(path: &Path) -> anyhow::Re
 }
 
 /// 从错误文本中提取缺失胜率请求文件路径标记。
-pub(super) fn extract_missing_rate_request_path(err: &anyhow::Error) -> Option<PathBuf> {
+pub fn extract_missing_rate_request_path(err: &anyhow::Error) -> Option<PathBuf> {
     let s = err.to_string();
     let marker = "STRICT_PYTHON_MISSING_RATE_PAIRS_JSON=";
     let idx = s.find(marker)?;

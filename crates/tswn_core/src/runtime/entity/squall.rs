@@ -1,5 +1,5 @@
 //! 科研 Boss 的可克隆运行态；计时全部采用本体实际行动次数。
-use super::super::EntityIdx;
+use super::EntityIdx;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SquallRuntime {

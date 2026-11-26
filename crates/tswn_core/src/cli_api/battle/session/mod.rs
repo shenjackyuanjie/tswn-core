@@ -1,0 +1,1008 @@
+use std::collections::HashMap;
+use std::sync::Once;
+
+#[cfg(feature = "png_render")]
+use crate::namerena::icon_render::render_icon_b64_from_name;
+use crate::replay_view::{
+    ReplayClip, ReplayEventView, ReplayRow, ReplayTextPart, ReplayTextPartKind, ReplayTone, build_replay_view_frame,
+    hp_delta_for_tone, is_percent_hp_damage_update, render_update_message,
+};
+use crate::runtime::control::TargetWisdom;
+use crate::runtime::lang::{get_lang, keys};
+use crate::runtime::update::{RunUpdate, RunUpdates, UpdateType};
+use crate::runtime::{
+    EntityIdx, ForcedAction, PassivePause, PlannedAction, PlannedSkill, PlayerKindFlags, PlrId, RuntimeMinionKind,
+    RuntimePlayerSnapshot, RuntimeRunner,
+};
+
+use super::dto::*;
+use crate::cli_api::CliApiResult;
+
+/// 按名字渲染图标 base64；未启用 PNG 构建时内部契约要求不可达，公开入口必须先拒绝 include_icons。
+#[cfg(not(feature = "png_render"))]
+fn render_icon_b64_from_name(_name: &str) -> String {
+    // 仅守卫内部契约；公开构造先返回 UnsupportedOption，不返回空图或占位图。
+    unreachable!("无 PNG 构建不能调用内部图标渲染，公开入口应先拒绝 include_icons")
+}
+
+/// 拥有一场对局、边界快照和图标缓存的增量式展示会话。
+///
+/// 通过 [`Self::next_frame`] 同步推进，查询初始/当前快照不会消费随机流。
+/// 一个可见帧可能跨过若干无消息回合，回合上限仍按实际推进次数计算。
+/// 胜者、上限截断与长期无可见进展产生正常结果；Runtime 校验错误保存为粘性失败，
+/// 由错误通道返回，不伪装成截断结果。
+///
+/// 初始快照保留至会话释放，当前快照随推进替换。启用图标时按完整身份键缓存 PNG data URL；
+/// 不同实体可共用图标，但不以展示名合并身份。缓存随本会话释放，不跨对局共享。
+#[derive(Debug)]
+pub struct BattleSession {
+    driver: super::driver::BattleDriver,
+    options: BattleOptions,
+    initial_states: Vec<BattlePlayerState>,
+    /// 以开局已解析的实体类型决定展示口径，不受名称或退场影响。
+    has_initial_boss: bool,
+    current_states: Vec<BattlePlayerState>,
+    /// 主动暂停的面板投影；内部帧仍以前一已提交边界为起点，避免续行与整场重演不同。
+    paused_states: Option<Vec<BattlePlayerState>>,
+    icon_cache: HashMap<String, String>,
+    /// 受控单位逼停回放时的等待者；非暂停边界为 `None`。
+    paused: Option<PlrId>,
+    /// 实际主动暂停位置捕获的强制行动，不从展示快照反推。
+    paused_forced_action: Option<ForcedAction>,
+    /// 被动 hook 等待玩家确认时保留的请求；此会话不应继续推进。
+    pending_passive: Option<crate::runtime::PassiveRequest>,
+}
+
+impl BattleSession {
+    /// 解析并初始化对局，不推进回合；空输入、零上限或非有限 eval_rq 返回错误。
+    ///
+    /// 未启用 `png_render` 时，请求 `include_icons=true` 返回 `UnsupportedOption`，
+    /// 不生成空图或占位图；默认的无图标对局不依赖 PNG 能力。
+    ///
+    /// `options.controlled_team` 只影响推进方式：该队伍的本体与分身缺指令时会暂停，
+    /// 需要 LegacyStep 调度方式，否则返回 `UnsupportedOption`。
+    pub fn new(raw: &str, options: BattleOptions) -> CliApiResult<Self> {
+        static PASSIVE_PANIC_HOOK: Once = Once::new();
+        PASSIVE_PANIC_HOOK.call_once(|| {
+            let previous = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                if info.payload().downcast_ref::<PassivePause>().is_some() {
+                    return;
+                }
+                previous(info);
+            }));
+        });
+        #[cfg(not(feature = "png_render"))]
+        if options.include_icons {
+            return Err(crate::cli_api::CliApiError::UnsupportedOption(
+                "战斗图标需要启用 png_render feature".to_owned(),
+            ));
+        }
+        let mut driver = super::driver::BattleDriver::from_raw(raw, options.clone())?;
+        let mut controlled_teams = options.controlled_teams.clone();
+        if let Some(team) = options.controlled_team
+            && !controlled_teams.contains(&team)
+        {
+            controlled_teams.push(team);
+        }
+        // 开局体力倍率必须有受控队伍且为有限正数；无队伍时不得悄悄改动双方状态。
+        if let Some(pct) = options.start_hp_pct
+            && (!pct.is_finite() || pct <= 0.0 || controlled_teams.is_empty())
+        {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "start_hp_pct must be finite and positive; bonuses require controlled_team".into(),
+            ));
+        }
+        if !controlled_teams.is_empty() {
+            let runtime = driver.runner.runtime_mut();
+            if !runtime.scheduler.uses_legacy_step_scheduler() {
+                return Err(crate::cli_api::CliApiError::UnsupportedOption(
+                    "controlled_team requires the LegacyStep action scheduler".to_owned(),
+                ));
+            }
+            // 队伍编号写错时不能静默不暂停：先确认这场里确实有这个队伍。
+            for team in &controlled_teams {
+                if *team != crate::runtime::BattleControl::CONTROLLED_ALL_TEAMS
+                    && !runtime.entities.iter().any(|(_, entity)| entity.template.team == *team)
+                {
+                    return Err(crate::cli_api::CliApiError::InvalidArgument(format!(
+                        "controlled_team {team} matches no entity in this battle"
+                    )));
+                }
+            }
+            runtime.set_controlled_teams(controlled_teams.iter().copied());
+            // 能力卡快照按受控队伍判定生效范围，构造时先同步一次。
+            driver.forced.controlled_team = controlled_teams.first().copied();
+            if let Some(pct) = options.start_hp_pct {
+                let ids: Vec<_> = runtime.entities.iter().map(|(id, _)| id).collect();
+                for id in ids {
+                    let Some(entity) = runtime.entities.get_mut(id) else {
+                        continue;
+                    };
+                    if !entity.runtime.alive {
+                        continue;
+                    }
+                    if controlled_teams.contains(&entity.template.team)
+                        || controlled_teams.contains(&crate::runtime::BattleControl::CONTROLLED_ALL_TEAMS)
+                    {
+                        entity.runtime.hp = (entity.template.max_hp as f64 * pct).round().clamp(1.0, i32::MAX as f64) as i32;
+                    }
+                }
+            }
+        }
+        let mut icon_cache = HashMap::new();
+        driver
+            .runner
+            .runtime_mut()
+            .control
+            .set_passive_decisions(options.passive_decisions.clone());
+        driver
+            .runner
+            .runtime_mut()
+            .control
+            .set_passive_decision_mode(options.passive_decision_mode);
+        driver.runner.runtime_mut().control.set_controlled_minions(options.controlled_minions);
+        if !options.skill_multiplier.is_finite() || !(0.1..=100.0).contains(&options.skill_multiplier) {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "技能倍率必须在 0.1x～100x 之间".into(),
+            ));
+        }
+        driver.runner.runtime_mut().control.set_skill_multiplier(options.skill_multiplier);
+        let initial_states = states_from_runner(&driver.runner, options.include_icons, options.include_skills, &mut icon_cache);
+        let has_initial_boss = driver
+            .runner
+            .runtime()
+            .entities
+            .iter()
+            .any(|(_, entity)| entity.runtime.flags.contains(PlayerKindFlags::BOSS));
+        Ok(Self {
+            driver,
+            options,
+            current_states: initial_states.clone(),
+            paused_states: None,
+            initial_states,
+            has_initial_boss,
+            icon_cache,
+            paused: None,
+            paused_forced_action: None,
+            pending_passive: None,
+        })
+    }
+
+    /// 创建会话并预置外部指令；指令按入队顺序消费，用尽后受控单位才会暂停。
+    ///
+    /// 指令里的 `actor` 必须是本场已存在的实体 ID，否则返回 `InvalidArgument`。
+    /// 脚本可以为任意实体排队（包括敌方），不必属于 `controlled_team`。
+    pub fn new_with_actions(raw: &str, options: BattleOptions, actions: &[PlannedAction]) -> CliApiResult<Self> {
+        let mut session = Self::new(raw, options)?;
+        session.queue_actions(actions)?;
+        Ok(session)
+    }
+
+    /// 追加外部指令；已推进的会话同样可用，指令在下一次轮到该实体时生效。
+    pub fn queue_actions(&mut self, actions: &[PlannedAction]) -> CliApiResult<()> {
+        if !self.options.allow_future_actors {
+            let entity_count = self.driver.runner.runtime().entities.len();
+            for action in actions {
+                if action.actor >= entity_count {
+                    return Err(crate::cli_api::CliApiError::InvalidArgument(format!(
+                        "planned action actor {} does not exist",
+                        action.actor
+                    )));
+                }
+            }
+        }
+        self.driver.runner.runtime_mut().queue_planned_actions(actions.iter().copied());
+        Ok(())
+    }
+
+    /// 输入席位映射到机制队伍，不能把排序后的机制编号当作网站席位。
+    fn target_runtime_team(&self, input_team: usize) -> CliApiResult<usize> {
+        self.initial_states
+            .iter()
+            .find(|s| s.input_team_index == Some(input_team))
+            .map(|s| s.team_index)
+            .ok_or_else(|| crate::cli_api::CliApiError::InvalidArgument(format!("unknown target input team {input_team}")))
+    }
+
+    /// 首次推进前设置每条脚本的目标席位；长度必须与待执行脚本完全相同。
+    pub fn set_action_target_teams(&mut self, teams: &[Option<usize>]) -> CliApiResult<()> {
+        self.set_action_target_teams_with_wisdom(teams, None)
+    }
+
+    /// 智慧规则与每条指令绑定。旧脚本省略标志时使用原来的非智慧索敌。
+    pub fn set_action_target_teams_with_wisdom(
+        &mut self,
+        teams: &[Option<usize>],
+        turn_wisdom: Option<&[bool]>,
+    ) -> CliApiResult<()> {
+        self.set_action_target_teams_with_followups(teams, turn_wisdom, None)
+    }
+
+    /// 多段默认沿用当回合的智慧。回放旧指令可逐条指定仅首目标使用智慧。
+    pub fn set_action_target_teams_with_followups(
+        &mut self,
+        teams: &[Option<usize>],
+        turn_wisdom: Option<&[bool]>,
+        include_followups: Option<&[bool]>,
+    ) -> CliApiResult<()> {
+        if self.rounds_advanced() != 0
+            || self.frames_emitted() != 0
+            || self.paused.is_some()
+            || self.pending_passive.is_some()
+            || self.is_done()
+            || self.is_failed()
+            || teams.len() != self.driver.runner.runtime().planned_actions_pending()
+            || turn_wisdom.is_some_and(|flags| flags.len() != teams.len())
+            || include_followups.is_some_and(|flags| flags.len() != teams.len())
+        {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "target teams require an unstarted, matching action script".into(),
+            ));
+        }
+        let mapped = teams
+            .iter()
+            .map(|team| team.map(|t| self.target_runtime_team(t)).transpose())
+            .collect::<CliApiResult<Vec<_>>>()?;
+        self.driver
+            .runner
+            .runtime_mut()
+            .control
+            .set_action_target_teams(&mapped, turn_wisdom, include_followups);
+        Ok(())
+    }
+
+    /// 在当前暂停点按指定输入席位预览首段，保持真实战场与随机流不变。
+    pub fn preview_targets_for_team(&mut self, actor: PlrId, skill: PlannedSkill, input_team: usize) -> CliApiResult<Vec<PlrId>> {
+        self.preview_action_targets(actor, skill, Some(input_team), false)
+    }
+
+    /// 在暂停视图中读取本次行动已有的智慧判定，重复预览不重掷。
+    pub fn preview_action_targets(
+        &mut self,
+        actor: PlrId,
+        skill: PlannedSkill,
+        input_team: Option<usize>,
+        use_turn_wisdom: bool,
+    ) -> CliApiResult<Vec<PlrId>> {
+        self.preview_action_targets_with_followups(actor, skill, input_team, use_turn_wisdom, true)
+    }
+
+    /// 预览旧地裂、连击指令时，可指定本回合智慧只用于首目标。
+    pub fn preview_action_targets_with_followups(
+        &mut self,
+        actor: PlrId,
+        skill: PlannedSkill,
+        input_team: Option<usize>,
+        use_turn_wisdom: bool,
+        include_followups: bool,
+    ) -> CliApiResult<Vec<PlrId>> {
+        let team = input_team.map(|index| self.target_runtime_team(index)).transpose()?;
+        let wisdom = TargetWisdom::for_action(use_turn_wisdom, include_followups);
+        let runtime = self.driver.observed_runner_mut().runtime_mut();
+        runtime
+            .preview_current_action_targets(EntityIdx(actor as u32), skill, team, wisdom)
+            .map_err(|e| crate::cli_api::CliApiError::InvalidArgument(e.to_string()))
+    }
+
+    /// 受控单位逼停回放时返回等待指令的实体 ID；非暂停边界为 `None`。
+    ///
+    /// 暂停不是终局：[`Self::result`] 仍为 `None`，`status` 仍为 running。
+    /// 可用 [`Self::submit_action`] 补交指令后续行，也可把新指令并入完整脚本重建会话。
+    pub fn paused_actor(&self) -> Option<PlrId> { self.paused }
+
+    /// 当前缺指令暂停是否仍由引擎强制行动；普通暂停、被动请求和终止/失败返回 None。
+    /// 只读查询不消费脚本或随机数，也不会恢复或推进会话。
+    pub fn paused_forced_action(&self) -> Option<ForcedAction> {
+        if self.paused.is_none() || self.pending_passive.is_some() || self.is_done() || self.is_failed() {
+            return None;
+        }
+        self.paused_forced_action
+    }
+
+    /// 为当前暂停实体补交一条指令，并继续同一个会话。
+    ///
+    /// `packed_mp` 与前端线格式一致：低字节是这一手的 MP 消耗（0 表示按 tswn 规则现场掷），
+    /// 高字节是药水编号。暂停时整个回合已回滚，补交后推进会重放同一行动，
+    /// 行动条与随机流都不被消耗。
+    pub fn submit_action(&mut self, actor: PlrId, skill: u32, packed_mp: u32) -> CliApiResult<()> {
+        if self.paused != Some(actor) {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "actor is not waiting for an action".into(),
+            ));
+        }
+        let actions = crate::runtime::decode_actions(&[actor as u32, skill, packed_mp])
+            .map_err(|message| crate::cli_api::CliApiError::InvalidArgument(message.into()))?;
+        self.queue_actions(&actions)?;
+        self.paused = None;
+        self.paused_forced_action = None;
+        self.driver.paused = None;
+        self.driver.paused_view = None;
+        self.paused_states = None;
+        Ok(())
+    }
+
+    /// 地图遭遇只继承当前 HP，最大 HP 不变；整批验证后才修改，且不能在行动后重设。
+    pub fn set_initial_hp(&mut self, packet: &[u32]) -> CliApiResult<()> {
+        if self.driver.rounds_advanced != 0 || self.paused.is_some() || !packet.len().is_multiple_of(2) {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "initial HP requires an unadvanced session and id/hp pairs".into(),
+            ));
+        }
+        let mut seen = std::collections::HashSet::new();
+        for pair in packet.chunks_exact(2) {
+            let entity = self
+                .driver
+                .runner
+                .runtime()
+                .entities
+                .get(EntityIdx(pair[0]))
+                .ok_or_else(|| crate::cli_api::CliApiError::InvalidArgument("unknown initial HP actor".into()))?;
+            if !seen.insert(pair[0])
+                || pair[1] == 0
+                || i64::from(pair[1]) > i64::from(entity.template.max_hp)
+                || entity.runtime.owner != entity.runtime.root_owner
+            {
+                return Err(crate::cli_api::CliApiError::InvalidArgument("invalid initial HP".into()));
+            }
+        }
+        for pair in packet.chunks_exact(2) {
+            self.driver
+                .runner
+                .runtime_mut()
+                .entities
+                .get_mut(EntityIdx(pair[0]))
+                .expect("initial HP actor validated")
+                .runtime
+                .hp = pair[1] as i32;
+        }
+        self.initial_states = states_from_runner(
+            &self.driver.runner,
+            self.options.include_icons,
+            self.options.include_skills,
+            &mut self.icon_cache,
+        );
+        self.current_states = self.initial_states.clone();
+        Ok(())
+    }
+
+    /// 开局配置能力卡；不修改技能组或熟练度，不能在行动后篡改配置。
+    #[cfg(feature = "cards")]
+    pub fn set_abilities(&mut self, packet: &[u32]) -> CliApiResult<()> {
+        if self.driver.rounds_advanced != 0 || self.driver.forced.controlled_team.is_none() {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "abilities require an unadvanced controlled session".into(),
+            ));
+        }
+        self.driver.forced.abilities = crate::runtime::forced_action::decode_abilities(packet)
+            .map_err(|message| crate::cli_api::CliApiError::InvalidArgument(message.into()))?;
+        Ok(())
+    }
+    /// 当前等待外部决策的被动请求；没有被动暂停时为 `None`。
+    pub fn pending_passive(&self) -> Option<&crate::runtime::PassiveRequest> { self.pending_passive.as_ref() }
+
+    /// 按被动脚本索引读取回避结算；None等待中，false未执行或被覆盖，true实际执行。
+    pub fn evade_result(&self, decision_index: usize) -> Option<bool> {
+        self.driver.runner.runtime().control.evade_result(decision_index)
+    }
+
+    /// 当前被动暂停所在的雷击段次；雷击结束或无被动暂停时返回 None。
+    pub fn pending_thunder(&self) -> Option<crate::runtime::ThunderContext> {
+        self.pending_passive.as_ref()?;
+        self.driver.runner.runtime().control.thunder_context()
+    }
+
+    /// 预读下一条外部主动技的 MP 消耗，不推进随机数。
+    ///
+    /// 手动对战需要在技能环上展示这一手要多少 MP，同时保证执行与预览使用同一个值。
+    pub fn peek_magic_cost(&self) -> Option<u8> {
+        let mut rng = self.driver.observed_runner().runtime().rng.clone();
+        Some((rng.next_u8() & 15) + 8)
+    }
+
+    /// 预览某个实体使用指定技能会选中的目标；不消耗会话随机数、不改动状态。
+    ///
+    /// 仅用于 UI 提示；真正执行仍走外部行动脚本，执行时会重新按同一口径选择目标。
+    pub fn preview_targets(&mut self, actor: PlrId, skill: PlannedSkill) -> CliApiResult<Vec<PlrId>> {
+        self.preview_action_targets(actor, skill, None, false)
+    }
+
+    /// 仅用于测试：破坏 skill handlers，让下一次推进经过真实 Runtime validation 失败。
+    #[cfg(any(test, feature = "battle-test-support"))]
+    #[doc(hidden)]
+    pub fn invalidate_runtime_for_test(&mut self) { self.driver.runner.runtime_mut().skill_handlers = Default::default(); }
+
+    /// 读取当前机制状态，不消耗随机数，也不构造展示数据。
+    pub fn model_state(
+        &self,
+    ) -> Result<crate::runtime::model_state::BattleModelState, crate::runtime::model_state::ModelStateError> {
+        if self.options.preview_controlled_pause && self.paused.is_some() {
+            self.driver.observed_runner().model_state()
+        } else {
+            self.driver.model_state()
+        }
+    }
+
+    /// 本会话创建时保存的初始展示快照。
+    pub fn initial_states(&self) -> &[BattlePlayerState] { &self.initial_states }
+    /// 最近推进边界的展示快照，适合更新角色面板。
+    pub fn current_states(&self) -> &[BattlePlayerState] { self.paused_states.as_deref().unwrap_or(&self.current_states) }
+    /// 正常对局状态；失败另由 [`Self::is_failed`] 表示。
+    pub fn status(&self) -> BattleStatus {
+        match self.driver.stop_reason {
+            None => BattleStatus::Running,
+            Some(BattleStopReason::Winner) => BattleStatus::Finished,
+            // Paused 只出现在回放的截断原因上，会话本身仍在运行。
+            Some(BattleStopReason::Paused) => BattleStatus::Running,
+            Some(_) => BattleStatus::Truncated,
+        }
+    }
+    /// 正常终止原因；运行中及 Runtime 失败后均为 `None`。
+    /// 暂停等待 cards 指令时不是终局，但需要向前端报告 paused 原因。
+    pub fn stop_reason(&self) -> Option<BattleStopReason> {
+        self.paused.map(|_| BattleStopReason::Paused).or(self.driver.stop_reason)
+    }
+    /// 是否已产生正常 terminal BattleResult；Runtime failure 不属于正常终止。
+    pub fn is_done(&self) -> bool { self.driver.stop_reason.is_some() }
+    /// Runtime error 后为 true；后续推进返回相同错误，调用方应停止推进并释放会话。
+    pub fn is_failed(&self) -> bool { self.driver.failure.is_some() }
+    /// 是否以胜者方式正常结束（对应 [`BattleStatus::Finished`]）。
+    pub fn is_finished(&self) -> bool { self.status() == BattleStatus::Finished }
+    /// 是否因安全截断结束（对应 [`BattleStatus::Truncated`]）。
+    pub fn is_truncated(&self) -> bool { self.status() == BattleStatus::Truncated }
+    /// 已提交的 Runtime 回合数，包含无消息回合。
+    /// `preview_controlled_pause` 开启时另计当前已进入的主动暂停回合，兼容 Python 契约。
+    pub fn rounds_advanced(&self) -> usize {
+        self.driver.rounds_advanced + usize::from(self.options.preview_controlled_pause && self.paused.is_some())
+    }
+    /// 已产出的可见帧数，不等于 Runtime 回合数。
+    pub fn frames_emitted(&self) -> usize { self.driver.frames_emitted }
+
+    /// 同步推进至下一个可见帧、正常终止、受控单位暂停或 Runtime 错误。
+    ///
+    /// 空回合会继续推进并更新当前快照，但不占可见帧编号；没有消息的胜利也会产生终止帧。
+    /// 同一回合先判胜，再判回合上限，最后判长期无可见进展。正常终止后的调用返回
+    /// `Ok(None)`；粘性失败后的调用返回第一次错误且不继续推进。
+    /// 无可见帧的截断也可能返回 `Ok(None)`，用 [`Self::result`] 取得终止原因与最终快照。
+    /// 受控单位暂停时返回该边界已有的帧（可能为 `None`），再用 [`Self::paused_actor`] 查询。
+    pub fn next_frame(&mut self) -> CliApiResult<Option<BattleReplayFrame>> {
+        if let Some(error) = &self.driver.failure {
+            return Err(error.clone());
+        }
+        if self.is_done() || self.paused.is_some() || self.pending_passive.is_some() {
+            return Ok(None);
+        }
+        loop {
+            let advanced = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.driver.advance_round()));
+            let step = match advanced {
+                Ok(result) => result?,
+                Err(payload) => {
+                    if payload.downcast_ref::<PassivePause>().is_some() {
+                        self.pending_passive = self.driver.runner.runtime_mut().control.take_pending_passive();
+                        let states = states_from_runner(
+                            &self.driver.runner,
+                            self.options.include_icons,
+                            self.options.include_skills,
+                            &mut self.icon_cache,
+                        );
+                        let Some(updates) = self.driver.runner.runtime_mut().control.take_pending_updates() else {
+                            // 击倒被动可能没有待输出的消息，但吞噬等效果已改变技能/生死状态。
+                            // 暂停查询必须反映当前边界，不能退回上一可见帧的快照。
+                            self.current_states = states;
+                            return Ok(None);
+                        };
+                        let mut frame = build_frame(
+                            &updates,
+                            &self.current_states,
+                            &states,
+                            &self.driver.runner,
+                            self.has_initial_boss,
+                        );
+                        frame.frame_index = self.driver.frames_emitted;
+                        frame.round_index = self.driver.rounds_advanced;
+                        self.driver.frames_emitted += 1;
+                        self.current_states = states;
+                        return Ok(Some(frame));
+                    }
+                    std::panic::resume_unwind(payload);
+                }
+            };
+            let Some(step) = step else {
+                // 受控单位缺指令：driver 已回滚整个回合，这里只登记暂停边界。
+                if let Some((actor, forced)) = self.driver.paused {
+                    self.paused = Some(actor);
+                    self.paused_forced_action = forced;
+                    // 展示实际等待指令的位置；续行检查点仅用于重放，不用于面板或预览。
+                    self.current_states = states_from_runner(
+                        &self.driver.runner,
+                        self.options.include_icons,
+                        self.options.include_skills,
+                        &mut self.icon_cache,
+                    );
+                    if self.options.preview_controlled_pause {
+                        self.paused_states = Some(states_from_runner(
+                            self.driver.observed_runner(),
+                            self.options.include_icons,
+                            self.options.include_skills,
+                            &mut self.icon_cache,
+                        ));
+                    }
+                }
+                return Ok(None);
+            };
+            let round_index = step.round_index;
+            let updates = step.updates;
+            let visible = step.frame_index.is_some();
+            let states = states_from_runner(
+                &self.driver.runner,
+                self.options.include_icons,
+                self.options.include_skills,
+                &mut self.icon_cache,
+            );
+            let frame = visible.then(|| {
+                let mut frame = build_frame(
+                    &updates,
+                    &self.current_states,
+                    &states,
+                    &self.driver.runner,
+                    self.has_initial_boss,
+                );
+                frame.frame_index = step.frame_index.unwrap();
+                frame.round_index = round_index;
+                frame
+            });
+            self.current_states = states;
+            // 脚本指令执行失败属于调用方输入错误；保留为粘性失败，不伪装成截断结果。
+            if let Some(error) = self.driver.runner.runtime_mut().take_planned_action_error() {
+                let error = crate::cli_api::CliApiError::InvalidArgument(error.to_string());
+                self.driver.failure = Some(error.clone());
+                return Err(error);
+            }
+            if frame.is_some() || self.is_done() || self.paused.is_some() {
+                return Ok(frame);
+            }
+        }
+    }
+
+    /// 正常终止后返回拥有最终快照的结果；运行中或粘性失败时为 `None`。
+    ///
+    /// 重复查询不推进战斗，但每次都会复制最终快照及其字符串。需要多次使用结果时
+    /// 可保存首次返回值。截断结果不附胜者 ID 或获胜输入组，避免将未结束对局当成胜利。
+    pub fn result(&self) -> Option<BattleResult> {
+        Some(BattleResult {
+            status: self.status(),
+            stop_reason: self.driver.stop_reason?,
+            finished: self.is_finished(),
+            truncated: self.is_truncated(),
+            rounds_advanced: self.driver.rounds_advanced,
+            frames_emitted: self.driver.frames_emitted,
+            winner_ids: if self.is_finished() {
+                self.driver.runner.winner_ids()
+            } else {
+                Vec::new()
+            },
+            winner_team_indices: if self.is_finished() {
+                self.driver.runner.winner_team_indices()
+            } else {
+                Vec::new()
+            },
+            final_states: self.current_states.clone(),
+        })
+    }
+}
+
+/// 把 runner 的全部玩家快照转换为 `BattlePlayerState`，按开关决定是否带图标与技能，图标经缓存去重。
+pub fn states_from_runner(
+    runner: &RuntimeRunner,
+    include_icons: bool,
+    include_skills: bool,
+    icon_cache: &mut HashMap<String, String>,
+) -> Vec<BattlePlayerState> {
+    let special_group_icons = special_group_icons(runner);
+    runner
+        .player_snapshots()
+        .into_iter()
+        .map(|snapshot| {
+            let mut state = state_from_snapshot(snapshot, false);
+            if let Some(key) = battle_icon_key(runner, &state, &special_group_icons) {
+                state.icon_key = key.to_owned();
+            }
+            if include_skills {
+                state.skills = skill_snapshots(runner, state.id);
+                state.active_skills = active_skill_snapshots(runner, state.id);
+            }
+            if include_icons {
+                state.icon_png_base64 = Some(match icon_cache.get(&state.icon_key) {
+                    Some(icon) => icon.clone(),
+                    None => {
+                        let icon = render_icon_b64_from_name(&state.icon_key);
+                        icon_cache.insert(state.icon_key.clone(), icon.clone());
+                        icon
+                    }
+                });
+            }
+            state
+        })
+        .collect()
+}
+
+/// 含特殊身份的输入组，普通同伴使用原版首成员的徽章。
+fn special_group_icons(runner: &RuntimeRunner) -> Vec<Option<&str>> {
+    let entities = &runner.runtime().entities;
+    if !entities.iter().any(|(_, entity)| entity.template.clan_name == "!") {
+        return Vec::new();
+    }
+    runner
+        .input_groups
+        .iter()
+        .map(|group| {
+            if !group
+                .iter()
+                .filter_map(|&id| entities.get(id))
+                .any(|entity| entity.template.clan_name == "!")
+            {
+                return None;
+            }
+            // 场上顺序会按 seed 洗牌；初始实体 ID 按原始输入顺序分配。
+            let first = entities.get(*group.iter().min()?)?;
+            if first.template.clan_name == "!" && !first.runtime.flags.contains(PlayerKindFlags::BOSS) {
+                Some(first.template.name.as_str())
+            } else {
+                Some(first.template.id_key_name.as_str())
+            }
+        })
+        .collect()
+}
+
+/// 解析玩家应使用的固定徽章 key：分裂子体回溯到源实体，特殊组名优先。
+fn battle_icon_key<'a>(runner: &'a RuntimeRunner, state: &BattlePlayerState, groups: &[Option<&'a str>]) -> Option<&'a str> {
+    if groups.is_empty() {
+        return None;
+    }
+    let entities = &runner.runtime().entities;
+    let entity = entities.get(EntityIdx(state.id.try_into().ok()?))?;
+    // 分裂子体不属于常规召唤物，但必须继承源史莱姆的固定徽章。
+    let root = if state.minion_kind.is_some() || entity.runtime.slime_split_generation.is_some_and(|generation| generation > 0) {
+        entities.get(entity.runtime.root_owner)?
+    } else {
+        entity
+    };
+    if root.template.clan_name == "!" {
+        return Some(if root.runtime.flags.contains(PlayerKindFlags::BOSS) {
+            &root.template.id_key_name
+        } else {
+            &root.template.name
+        });
+    }
+    state.input_team_index.and_then(|team| groups.get(team).copied().flatten())
+}
+
+/// 读取指定实体的技能熟练度投影。
+///
+/// 按固定槽位顺序遍历，跳过 0 级与注册表里查不到的技能；同名技能只保留一项并取最高等级。
+fn skill_snapshots(runner: &RuntimeRunner, id: PlrId) -> Vec<SkillSnapshot> {
+    let runtime = runner.runtime();
+    let Some(entity) = runtime.entities.get(crate::runtime::entity::EntityIdx(id as u32)) else {
+        return Vec::new();
+    };
+    let loadout = &entity.template.skills;
+    let mut skills: Vec<SkillSnapshot> = Vec::new();
+    for (lane, skill_id) in loadout.skills().iter().enumerate() {
+        let level = loadout.level_at(lane).unwrap_or(0);
+        if level == 0 {
+            continue;
+        }
+        let Some(spec) = runtime.registry.skill(*skill_id) else {
+            continue;
+        };
+        match skills.iter_mut().find(|skill| skill.export_name == spec.export_name) {
+            Some(existing) => existing.level = existing.level.max(level),
+            None => skills.push(SkillSnapshot {
+                export_name: spec.export_name.clone(),
+                level,
+            }),
+        }
+    }
+    skills
+}
+
+/// 按运行时主动行动顺序导出技能熟练度。
+///
+/// 与 [`skill_snapshots`] 不同，这里保留行动扫描顺序，并在同一槽位重复时逐项保留，
+/// 供前端计算“按顺序逐个判定”时每个技能实际被选中的概率。
+fn active_skill_snapshots(runner: &RuntimeRunner, id: PlrId) -> Vec<SkillSnapshot> {
+    let runtime = runner.runtime();
+    let Some(entity) = runtime.entities.get(crate::runtime::entity::EntityIdx(id as u32)) else {
+        return Vec::new();
+    };
+    let loadout = &entity.template.skills;
+    let mut skills = Vec::new();
+    for lane in loadout.active_order() {
+        let level = loadout.level_at(*lane).unwrap_or(0);
+        if level == 0 {
+            continue;
+        }
+        let Some(skill_id) = loadout.skills().get(*lane).copied() else {
+            continue;
+        };
+        if runtime.builtin_active_skill(skill_id).is_none() {
+            continue;
+        }
+        let Some(spec) = runtime.registry.skill(skill_id) else {
+            continue;
+        };
+        skills.push(SkillSnapshot {
+            export_name: spec.export_name.clone(),
+            level,
+        });
+    }
+    skills
+}
+
+/// 把单个 runtime 快照转换为 DTO 状态；include_icons 时才渲染图标。
+fn state_from_snapshot(snapshot: RuntimePlayerSnapshot, include_icons: bool) -> BattlePlayerState {
+    let icon_key = snapshot.id_key_name.clone();
+    let icon_png_base64 = include_icons.then(|| render_icon_b64_from_name(&icon_key));
+    BattlePlayerState {
+        id: snapshot.id,
+        team_index: snapshot.team_index,
+        input_team_index: snapshot.input_team_index,
+        owner_id: snapshot.owner_id,
+        root_owner_id: snapshot.root_owner_id,
+        id_name: snapshot.id_name,
+        id_key_name: snapshot.id_key_name,
+        icon_key,
+        display_name: snapshot.display_name,
+        display_index: snapshot.display_index,
+        base_name: snapshot.base_name,
+        player_type: snapshot.player_type.to_owned(),
+        minion_kind: snapshot.minion_kind.map(RuntimeMinionKind::as_str),
+        icon_png_base64,
+        hp: snapshot.hp,
+        max_hp: snapshot.max_hp,
+        shield: snapshot.shield,
+        max_shield: snapshot.max_shield,
+        magic_point: snapshot.magic_point,
+        move_point: snapshot.move_point,
+        attack: snapshot.attack,
+        defense: snapshot.defense,
+        speed: snapshot.speed,
+        agility: snapshot.agility,
+        magic: snapshot.magic,
+        resistance: snapshot.resistance,
+        wisdom: snapshot.wisdom,
+        point: snapshot.point,
+        all_sum: snapshot.all_sum,
+        name_factor: snapshot.name_factor,
+        at_boost: snapshot.at_boost,
+        attract: snapshot.attract,
+        frozen: snapshot.frozen,
+        alive: snapshot.alive,
+        active: snapshot.active,
+        status_labels: snapshot.status_labels,
+        // 纯快照不含技能表；开启 include_skills 时由 states_from_runner 填充。
+        skills: Vec::new(),
+        active_skills: Vec::new(),
+    }
+}
+
+/// 用前后状态与 runner 更新构建一帧回放：转换更新行、侧边栏状态与胜负信息。
+pub fn build_frame(
+    updates: &RunUpdates,
+    previous_states: &[BattlePlayerState],
+    states: &[BattlePlayerState],
+    runner: &RuntimeRunner,
+    has_initial_boss: bool,
+) -> BattleReplayFrame {
+    let names = player_names(states);
+    let mut previous = None;
+    let converted = updates
+        .updates
+        .iter()
+        .map(|update| {
+            let display = if has_initial_boss {
+                boss_self_status_display(update, previous)
+            } else {
+                None
+            };
+            previous = Some(update);
+            update_from_runtime(update, &names, display)
+        })
+        .collect::<Vec<_>>();
+    let events = updates
+        .updates
+        .iter()
+        .zip(converted.iter())
+        .map(|(update, view)| ReplayEventView {
+            update,
+            tone: tone_from_name(view.tone),
+            message_rendered: &view.message_rendered,
+        })
+        .collect::<Vec<_>>();
+    let winner_ids = runner.winner_ids();
+    let replay = build_replay_view_frame(&events, previous_states, states, &names, runner.have_winner(), &winner_ids);
+    BattleReplayFrame {
+        frame_index: 0,
+        round_index: 0,
+        finished: runner.have_winner(),
+        winner_ids,
+        updates: converted,
+        rows: replay.rows.into_iter().map(row_from_core).collect(),
+        states: states.to_vec(),
+        total_delay: replay.total_delay,
+    }
+}
+
+/// 从状态列表构造 id -> 显示名映射；克隆体追加序号区分。
+fn player_names(states: &[BattlePlayerState]) -> HashMap<PlrId, String> {
+    states
+        .iter()
+        .map(|state| {
+            let name = if state.minion_kind == Some("clone") && state.display_index > 0 {
+                format!("{} #{}", state.display_name, state.display_index)
+            } else {
+                state.display_name.clone()
+            };
+            (state.id, name)
+        })
+        .collect()
+}
+
+/// Boss 自我状态文案替换：仅在聚气后的攻击力上升等特定消息上生效，返回 (模板, 参数)。
+// 两个事件的 [0] 与 [1] 都指向同一人；仅校正规范模板，沿用原有文本渲染和片段。
+fn boss_self_status_display(update: &RunUpdate, previous: Option<&RunUpdate>) -> Option<(&'static str, i32)> {
+    if update.caster != update.target || update.caster_id().is_none() || update.replay_target_id().is_none() {
+        return None;
+    }
+    match update.message.as_ref() {
+        // 马力欧成长的文案相同，只在同一角色刚开始聚气时替换。
+        "[0]攻击力上升"
+            if previous.is_some_and(|previous| {
+                previous.message == get_lang(keys::SKL_ACCUMULATE)
+                    && previous.caster == update.caster
+                    && previous.target == update.target
+            }) =>
+        {
+            Some((get_lang(keys::SKL_ACCUMULATED), update.delay1))
+        }
+        "[1]从[铁壁]中解除" => Some((get_lang(keys::SKL_IRON_END), 500)),
+        _ => None,
+    }
+}
+
+/// 把单条 runtime 更新转换为回放更新：计算 tone、渲染文本与差值信息。
+fn update_from_runtime(update: &RunUpdate, names: &HashMap<PlrId, String>, display: Option<(&'static str, i32)>) -> BattleUpdate {
+    let tone = classify_tone(update);
+    let is_next_line = matches!(update.update_type, UpdateType::NextLine);
+    let legacy_caster = (!is_next_line).then_some(update.caster);
+    let legacy_target = update.target_id().or(legacy_caster);
+    let legacy_hp_delta = hp_delta_for_tone(tone, update);
+    let damage = update.damage_param();
+    BattleUpdate {
+        update_type: update_type_name(update.update_type),
+        tone: tone_name(tone),
+        message_template: display.map_or(update.message.as_ref(), |(template, _)| template).to_owned(),
+        message_rendered: render_update_message(update, names),
+        caster_id: update.caster_id(),
+        target_id: update.replay_target_id(),
+        target_ids: update.targets.iter().copied().collect(),
+        animation_target_ids: update.animation_targets.as_deref().map(<[_]>::to_vec),
+        param: update.param,
+        param_payload: damage.map(|damage| BattleUpdateParamPayload::Damage { damage }),
+        score: update.score,
+        delay0: update.delay0,
+        delay1: display.map_or(update.delay1, |(_, delay1)| delay1),
+        hp_delta: damage.map(|damage| -(damage as i32)).or(legacy_hp_delta),
+        is_win: matches!(update.update_type, UpdateType::Win),
+        is_next_line,
+        legacy_ids: (legacy_caster.unwrap_or(0), legacy_target.unwrap_or(0)),
+        legacy_hp_delta,
+        legacy_display: display.map(|_| (update.message.clone(), update.delay1)),
+    }
+}
+
+/// 按更新类型与消息内容把更新分类为回放 tone。
+fn classify_tone(update: &crate::RunUpdate) -> ReplayTone {
+    if matches!(update.update_type, UpdateType::Win) {
+        return ReplayTone::Knockout;
+    }
+    let message = update.message.as_ref();
+    if message.contains("回复体力") {
+        ReplayTone::Recover
+    } else if message.contains("被击倒") || message.contains("消失了") || crate::replay_view::is_thanos_dust_update(update)
+    {
+        ReplayTone::Knockout
+    } else if message.contains("点伤害") || is_percent_hp_damage_update(update) {
+        ReplayTone::Damage
+    } else if is_status_exit_message(message) {
+        ReplayTone::StatusExit
+    } else {
+        ReplayTone::Normal
+    }
+}
+
+/// 判断消息是否表示状态解除（识破/中止/打消等）。
+fn is_status_exit_message(message: &str) -> bool {
+    ["中解除", "被识破", "被中止", "被打消", "属性被打消"]
+        .iter()
+        .any(|token| message.contains(token))
+}
+
+/// `UpdateType` 到稳定字符串名。
+fn update_type_name(value: UpdateType) -> &'static str {
+    match value {
+        UpdateType::Win => "win",
+        UpdateType::None => "none",
+        UpdateType::NextLine => "next_line",
+    }
+}
+
+/// `ReplayTone` 到稳定字符串名。
+fn tone_name(value: ReplayTone) -> &'static str {
+    match value {
+        ReplayTone::Normal => "normal",
+        ReplayTone::Damage => "damage",
+        ReplayTone::Recover => "recover",
+        ReplayTone::Knockout => "knockout",
+        ReplayTone::StatusExit => "status_exit",
+    }
+}
+
+/// 稳定字符串名解析回 `ReplayTone`，未知值按 Normal。
+fn tone_from_name(value: &str) -> ReplayTone {
+    match value {
+        "damage" => ReplayTone::Damage,
+        "recover" => ReplayTone::Recover,
+        "knockout" => ReplayTone::Knockout,
+        "status_exit" => ReplayTone::StatusExit,
+        _ => ReplayTone::Normal,
+    }
+}
+
+/// core 回放行转换为 battle DTO 行。
+fn row_from_core(row: ReplayRow<BattlePlayerState>) -> BattleReplayRow {
+    BattleReplayRow {
+        indent: row.indent,
+        clips: row.clips.into_iter().map(clip_from_core).collect(),
+    }
+}
+
+/// core 回放片段转换为 battle DTO 片段，tone 转为字符串名。
+fn clip_from_core(clip: ReplayClip<BattlePlayerState>) -> BattleReplayClip {
+    BattleReplayClip {
+        delay: clip.delay,
+        color: clip.color,
+        tone: tone_name(clip.tone),
+        parts: clip.parts.into_iter().map(part_from_core).collect(),
+        caster_ids: clip.caster_ids,
+        target_ids: clip.target_ids,
+        sidebar_states: clip.sidebar_states,
+        sidebar_previous_states: clip.sidebar_previous_states,
+        winner: clip.winner,
+    }
+}
+
+/// core 文本片段转换为 battle DTO 片段，kind 转为字符串名。
+fn part_from_core(part: ReplayTextPart) -> BattleReplayTextPart {
+    BattleReplayTextPart {
+        kind: match part.kind {
+            ReplayTextPartKind::Text => "text",
+            ReplayTextPartKind::Highlight => "highlight",
+            ReplayTextPartKind::Player => "player",
+            ReplayTextPartKind::Data => "data",
+        },
+        text: part.text,
+        player_id: part.player_id,
+        show_hp: part.show_hp,
+        hp_before: part.hp_before,
+        hp_after: part.hp_after,
+        death_effect: part.death_effect,
+        emoji: part.emoji,
+    }
+}
+
+// 测试按主题拆到同目录子模块：内容与原 `mod tests` / `mod card_control_tests` 一致。
+#[cfg(test)]
+mod card_control_tests;
+#[cfg(test)]
+mod session_tests;

@@ -2,8 +2,53 @@
 
 ## [Unreleased]
 
+- 修复吞噬青雉、斑鸠、马里奥、蚊、索尼克、灭霸、生命之轮和尤里时的技能槽位错配。按原版槽序转移等级，保留 0 级占位，并取马里奥阵亡时的火球等级。
+- 核对 13 个原版 Boss、`SAITAMA@!` 和 Rinick 被吞噬时的技能等级、八围、MP 与行动点。以原版 0.5.5 对照 `rq=4` 和 `rq=6` 共 3,712 局，胜负一致，2,496 次吞噬事件在触发批次对齐。
 - 13 个原版 Boss 使用固定徽章；其他 `name@!` 玩家按自身名字生成徽章，含特殊身份的输入组和史莱姆子体按原版继承图标。PNG 和 RGBA 接口保持原格式。
 - 同公会的评分对局回退完整阵容构建时，先恢复场前实体，避免上局召唤物 ID 或状态泄漏到下一局。
+
+### 新增
+
+- 移植 KODU16 fork 上的 7 只自定义 Boss：Squall（暴政）、被子、曙光、新纪元、咦（含拜谢衍生物）、豹星老虎、沙冰鱼。各自的机制实现（3,289 行）、实体蓝图（130 行）与测试来自原作者，机制逻辑逐字保留。
+- 共享接线一并落地：`RunUpdate.dialogue` 与 `as_dialogue()`、`CombatRuntime.squall_bosses`、`apply_plain_slow_into`、`apply_squall_defense`、`begin_squall_action`／`finish_squall_action`、`record_squall_damage`、`dispel_squall_effects`、`record_smdd_hit`、`record_tiger_damage`、`baixie_mp_scale`、`prepared_init::template_from_name`、`PlainBossDefend::Quilt`，以及被子在 `attack`／`defense`／`round`／`skills_*` 十个文件里的选敌池与伤害传导触点。
+- 7 只 Boss 合计 44 个 `#[test]`。这些测试在原作者分支上从未被声明为模块（`combat/mod.rs` 缺 `mod boss_*_tests`），实际不参与编译；本次一并声明，全部通过。
+- `namerena/icon_render` 新增 `boss_badges` 模块：咦的 16×16 手画徽章 `YI_ICON`、被子一家的 `quilt_icon`（床、猴脸、鱼三种 Emoji），以及新 Boss 名字到徽章的映射规则。
+
+- `MAGIC_POINT_CAP` 定为 100。原作者在 `22c7af3e` 把它改成 128 并加了具名常量，但他的基线同样是 100；该上限作用于能量药水（+40）、蓄力返蓝（+32）与行动恢复这些普通对局也走的路径，改它会动既有行为对齐，而仓库里没有任何测试覆盖该上限。保留具名常量只为消除魔法数字，将来若确认原版规则是 128，改这一行即可。
+- 回放的 `ReplayTone::Dialogue` 投影未接。原作者在 `replay_view.rs` 与 `cli_api/battle/session.rs` 把 `update.dialogue` 投影成新 tone，但 `replay_tone_color()` 并不特殊处理它，渲染与 `Normal` 同色，收益纯装饰；代价却是 `tswn_py` 的 `replay_tone_to_str()` 是穷尽 match、加变体直接编译失败。`RunUpdate.dialogue` 与 `as_dialogue()` 已在位且有测试覆盖，投影随时可补。
+- `runtime/combat` 由 36 个文件平铺改为三族子目录：8 个通用机制文件（`attack`／`defense`／`round`／`infection`／`lifecycle`／`effects`／`passive`／`abilities`）留在 `combat/` 顶层，10 只 Boss 移入 `combat/boss/`（`boss_squall.rs` → `boss/squall.rs`，去掉目录已表达的前缀），10 个技能族移入 `combat/skills/`。命名约定随之从「文件名表达机制类别」改为「目录表达机制类别、文件名表达具体对象」。27 个文件用 `git mv` 保留历史。
+- `combat/skills/boss.rs`（原 `skills_boss.rs`）与 `combat/boss/` 是不同层次：前者是 Boss 技能的 select／prepare／probability 三个 match 派发与 `drain_plain_boss_skill_into`，后者是每只 Boss 的专属实现。这一点已在 `combat/mod.rs`、`boss/mod.rs`、`skills/mod.rs` 三处文档中写明。
+- `thanos` 与 `wheel` 的模块声明由私有 `mod` 提升为 `pub mod`：移入 `boss/` 后 `round.rs` 作为其「伯父」模块按 Rust 规则访问不到私有孙模块。`skills/assassinate` 同样提升，供 `combat/mod.rs` re-export `PlainSkillPreActionOutcome`。`combat` 本身私有，不扩大公开面。
+- 8 个文档文件的 46 处旧路径引用同步更新（`combat/skills_X.rs` → `combat/skills/X.rs`、`combat/boss_wheel.rs` → `combat/boss/wheel.rs`），链接 URL 与显示文本同步。
+
+### 破坏性变更
+
+- **BREAKING**：`BattlePlayerState.source_id` 重命名为 `root_owner_id`，与 `RuntimePlayerSnapshot.root_owner_id` 统一「根主人」命名。字段语义不变（根来源实体 ID），仅字段名变更，不保留旧别名。该字段经 serde 自动序列化，C ABI 的 JSON 输出随之变化；Python dict 键与类型存根、TypeScript 声明已同步。
+
+### 内部结构
+
+- 统一模块目录风格：`rc4`、`replay_view`、`encoder/batch`、`encoder/encode`、`namerena/icon_render`、`runtime/batch`、`runtime/entity`、`runtime/entity/state`、`runtime/effect`、`runtime/extension`、`runtime/model_state`、`runtime/prepared_init`、`bin/tswn_cli/args/cli` 共 13 个模块由 `foo.rs` 改为 `foo/mod.rs`；同时清除 5 处 `#[path = "..."]` 外挂测试声明，改为标准 `#[cfg(test)] mod tests;`。公开 API 路径不变。
+- `runtime` 顶层散落的 `plain_assassinate` / `plain_slime` / `plain_summon` / `plain_zombie` 移入 `runtime/combat/`，并按该目录命名族改名：`skills_assassinate` / `skills_summon` / `skills_zombie`（技能族）与 `boss_slime`（Boss 族）。`plain` 在函数名里是角色类别前缀（对应 `boss_`、`minion_`），而 `runtime/combat/` 的文件名表达机制类别，原名把两个维度混用了；函数名、类型名与 `PlainSkillPreActionOutcome` 等公开项一律不变。`BattleScratch` 由 `runtime::scratch` 并入 `runtime::combat`，`crate::runtime::BattleScratch` 仍可访问，`runtime::scratch` 模块不再存在。`handlers::states` 中的蓄力与聚气技能函数移至新增的 `handlers::skills`。
+- `runtime/batch/score_test` 更名为 `score_session`：该模块承载 `ScoreTestSession` 的生产实现，原名会被误读为测试文件。`ScoreTestSession` 等类型的再导出路径不变。
+- `runtime/tests/` 由 60 个文件合并为 40 个，按机制主题归组（summon_explode、plain_slime、plain_ice、plain_haste、plain_disperse、plain_summon、plain_targeting 等），合并重复的 `slime_runtime` / `messages_of` / `kill` 夹具；`#[test]` 总数保持 433 不变。
+- 删除 2 个无断言价值的测试：`runtime/lang` 的 `test_no_duplicate_keys`（`LANG_DATA` 非公开，重复键不 panic 且已由 `test_all_keys_constants` 覆盖）与 `runtime/combat/boss_thanos` 的 `k4_is_empty_because_the_skill_is_a_pre_action_shield`（零长数组的 `is_empty()` 是编译期重言式）。
+- `runtime/combat` 中 7 个内部辅助函数的可见性统一为 `pub`（原为 `pub(in crate::runtime)`），与 `drain_plain_slime_split_into` 等同类方法一致。这些方法挂在公开类型 `CombatRuntime` 上，公开面因此扩大；不涉及行为变化。
+- `tswn-cli` 的 `bench/winrate.rs` 改名为 `win_rate.rs`，`run_bench_winrate` / `bench_winrate_summary` 等连写标识符统一为 `win_rate` 蛇形，与既有 `win_rate_summary`、`resolve_win_rate_workers` 一致。不影响对外接口。
+- `runtime/combat` 模块文档新增「命名约定」小节：文件名表达机制类别、函数名表达角色与动作，是两套正交维度；并说明 `drain_*_into`（排空累积队列）与 `run_*_into`（执行具体 handler）的边界，以及 `_into` 统一表示输出写入 `RunUpdates`。`cli_api` 补充批量统计的三层窄化关系（`RuntimeBatchSummary` → `WinRateSummary` → `WinRateResult`）与 `BatchSummary` 属已计算聚合结果、不再可合并的说明。
+- 拆分 `runtime/profile`：6 个错误枚举与 21 个 `From` 实现移入 `profile/errors.rs`，导出名常量表移入 `profile/exports.rs`，`profile/mod.rs` 由 1004 行降至 733 行。新模块经 `pub use` 原样再导出，`crate::runtime::profile::*` 下的公开路径全部不变。
+- `cli_api/battle/session.rs`（2061 行）改为目录式：生产代码留在 `session/mod.rs`（1008 行），原内嵌的 `mod tests`（763 行）与 `mod card_control_tests`（286 行）外提为同级文件，测试代码一字未改。`cli_api/battle/mod.rs` 无需改动。
+- `runtime/tests/` 中 4 个测试文件按被测模块改名：`plain_slime_tests` → `boss_slime_tests`、`plain_summon_tests` → `skills_summon_tests`、`plain_zombie_skill_tests` → `skills_zombie_tests`、`plain_assassinate_skill_tests` → `skills_assassinate_tests`，对应 `runtime/combat/` 里的同名模块文件。其余 20 个 `plain_*_tests` 保持原名：它们按测试的行为维度命名（`plain` 是角色前缀，与 `custom_*`、主题名并列的另一套轴），且 `heal`／`protect`／`disperse` 共用 `skills_team`、`damage_and_probability`／`targeting` 属跨切面，套模块名会造成重名或虚假的一对一。
+- 两个名不副实的 `_into` 函数改名：`kill_entity_without_damage_mark_only_into` → `kill_entity_without_damage_mark_only`、`run_plain_weapon_death_note_post_damage_into` → `run_plain_weapon_death_note_post_damage`。二者签名都不收 `&mut RunUpdates`，与 `_into` 的既定含义不符；同名兄弟函数 `kill_entity_without_damage_into`、`run_plain_weapon_xuan_yue_post_damage_into` 确实带 `updates` 参数，未受影响。
+- `runtime/combat` 的「命名约定」小节补充 `_into` 的边界：少数编码／转换入口（`encoder::encode::encode_into`、`namerena::input::raw_namerena_to_id_name_into`）的 `_into` 表示结果写入调用方给出的目标缓冲区，同属输出目标轴，不改名。
+- `namerena/icon_render/test.rs` 改名为 `tests.rs`，与全仓其余 13 处一致。`runtime/entity/derived_stats_tests.rs` 与 `entity/tests.rs` 职责不重叠（前者 6 个 `CloneDerivedStats` 用例，后者 39 个 `EntityArena`／`EntityRecord`／`SkillLoadout`／`StateStore` 用例），
+- 全 workspace 657 处可见性收窄统一为 `pub`（`pub(crate)` 220、`pub(super)` 429、`pub(in ...)` 8），涉及 105 个文件。按 AGENTS.md 约定，`pub` 只表示对父模块可见，外层模块私有则不会泄漏。其中 555 处为等价变换（本来就被私有模块链截断），102 处会真正扩大到 crate 外：`tswn_capi` 的 14 个 FFI 辅助项、`rc4` 的 `PickSkipRange` 与 `pick_skip_span` 等、`cli_api` 的 `ScoreMode`／`NamerPfMode`／`BatchSummary`、`runtime` 下若干工具方法与 `EntityTemplate` 的 `covid_mask`／`native_boss_skills` 字段。这些路径此前不可从 crate 外寻址，现已可寻址；行为不变。
+- `lib.rs:198` 的 `pub(crate) mod time;` 改为纯私有 `mod time;`。全仓无 crate 外引用，仅 `runtime/batch` 与 `runtime/cqp` 两处在 crate 内使用。
+- 8 处 `pub(in crate::runtime)` 改为 `pub` 后作用域不变：它们所在的 `combat`／`prepared_init`／`entity::state` 本身是私有模块，祖先链上第一个私有模块已把可见范围截断。
+- clippy `--lib` 警告由 22 增至 27，新增 5 条 `private_interfaces`，均指向 `prepared_init` 内部方法返回私有类型。该 lint 只比较名义可见性、不沿模块链计算有效可见性，在私有模块树内用 `pub` 表达时必然误报；涉及类型 `PreparedPlayerInit`／`ScoreProfileBuild` 均无 `pub` 且不在 `runtime/mod.rs` 的重导出列表内，
+- `cli_api/battle/session/tests.rs` 改名 `session_tests.rs`、`runtime/entity/tests.rs` 改名 `entity_tests.rs`。原状态是同目录下 `tests.rs`（通用名）与 `card_control_tests.rs`／`derived_stats_tests.rs`（主题名）两种规则并存，现统一为「主题_tests」形式，与 `runtime/tests/` 的目录级约定同构。测试内容零改动。
+- 为移植 KODU16 fork 上的 7 只自定义 Boss（Squall、被子、曙光、新纪元、咦、豹星老虎、沙冰鱼）铺设接线骨架：`BossActionSkill` 新增 7 个变体、`BOSS_NAMES` 由 15 增至 22、`namerena/build.rs` 补 7 组属性构建、`PlayerRuntime` 新增 11 个 boss 字段、`combat/mod.rs` 补 7 个模块与 7 个测试模块声明、`round.rs` 与 `skills_boss.rs` 的穷举 match 补全路由。7 个 `drain_*_action_into` 与 7 个 `XRuntime` 为空实现占位，机制实现随后分组补齐。
+- `PlayerRuntime` 的 11 个 boss 字段在 `from_template`、`reset_score_profile_from_template`、`reset_battle_state_from` 三处全部初始化。原作者只处理了 squall 与 quilt 两个，其余 5 个在新 Boss 进入 batch 复用与克隆路径时不会被重置。
+- 7 个 boss 测试模块此前在原作者分支上从未声明，833 行测试实际不参与编译；本次一并声明 `#[cfg(test)]` 模块，实现补齐后即可生效。
 
 ## [0.7.2] - 2026-11-21
 

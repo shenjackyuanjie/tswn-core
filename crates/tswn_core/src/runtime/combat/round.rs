@@ -1,5 +1,4 @@
 use super::*;
-mod search;
 use crate::runtime::control::TargetWisdom;
 use crate::runtime::forced_action::ForcedFallback;
 
@@ -42,7 +41,8 @@ impl CombatRuntime {
     /// 推进一个最小回合并返回 outcome；没有可见内容时继续推进直到产生。
     pub fn run_minimal_round(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture::<true, _>(round_outcome) }
 
-    pub(crate) fn run_minimal_round_no_capture(&mut self) -> RoundOutcome {
+    #[cfg(test)]
+    pub fn run_minimal_round_no_capture(&mut self) -> RoundOutcome {
         if let Some(winner) = self.world.sync_winner_from_alive_views() {
             return round_outcome(None, None, Some(winner));
         }
@@ -50,7 +50,7 @@ impl CombatRuntime {
     }
 
     /// 调用方已确认当前没有胜者；批量循环只接收本回合的胜者编号。
-    pub(crate) fn run_active_round_no_capture(&mut self) -> Option<usize> {
+    pub fn run_active_round_no_capture(&mut self) -> Option<usize> {
         self.run_minimal_round_with_capture::<false, _>(|_, _, winner| winner)
     }
 
@@ -283,7 +283,7 @@ impl CombatRuntime {
                     if self
                         .entities
                         .get(action.actor)
-                        .is_some_and(|e| e.template.name == crate::runtime::combat::boss_yi::BAIXIE)
+                        .is_some_and(|e| e.template.name == crate::runtime::combat::boss::yi::BAIXIE)
                     {
                         self.drain_baixie_action_into(action.actor, &mut updates);
                     } else if self.quilt_minion_kind(action.actor).is_some() {
@@ -565,7 +565,7 @@ impl CombatRuntime {
         if self
             .entities
             .get(actor)
-            .is_some_and(|e| e.template.name == crate::runtime::combat::boss_fish::ID)
+            .is_some_and(|e| e.template.name == crate::runtime::combat::boss::fish::ID)
         {
             return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
                 selected: crate::namerena::BossActionSkill::Fish,
@@ -576,7 +576,7 @@ impl CombatRuntime {
         if self
             .entities
             .get(actor)
-            .is_some_and(|e| e.template.name == crate::runtime::combat::boss_tiger::ID)
+            .is_some_and(|e| e.template.name == crate::runtime::combat::boss::tiger::ID)
         {
             return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
                 selected: crate::namerena::BossActionSkill::Tiger,
@@ -587,7 +587,7 @@ impl CombatRuntime {
         if self
             .entities
             .get(actor)
-            .is_some_and(|e| e.template.name == crate::runtime::combat::boss_yi::ID)
+            .is_some_and(|e| e.template.name == crate::runtime::combat::boss::yi::ID)
         {
             return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
                 selected: crate::namerena::BossActionSkill::Yi,
@@ -608,7 +608,6 @@ impl CombatRuntime {
                 targets: PreparedTargetList::new(),
             }));
         }
-
         // 外部脚本：引擎自身没有强制动作时，优先执行调用方排好的这一手。
         // 潜行→背刺这类引擎强制动作必须先走完，指令留到该单位的下一次行动。
         let engine_forced = pre_action.forced_skill.is_some();
@@ -668,16 +667,14 @@ impl CombatRuntime {
         if self
             .entities
             .get(actor)
-            .is_some_and(|e| e.template.name == crate::runtime::combat::boss_smdd::ID)
+            .is_some_and(|e| e.template.name == crate::runtime::combat::boss::smdd::ID)
         {
             return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
                 selected: crate::namerena::BossActionSkill::Smdd,
                 targets: PreparedTargetList::new(),
             }));
         }
-        if self.scratch.search_turn.is_some() {
-            return self.prepare_search_action(actor, smart);
-        }
+
         #[cfg(not(feature = "no_debug"))]
         let rng_before = (self.rng.i, self.rng.j);
         let req_mp_byte = self.rng.next_u8();
@@ -824,12 +821,12 @@ impl CombatRuntime {
                 }
                 return Some(PreparedPlainAction::Conan { targets });
             }
-            if boss_name == super::boss_thanos::ID {
+            if boss_name == super::boss::thanos::ID {
                 if let Some(targets) = self.select_plain_thanos_snap_targets(actor) {
                     return Some(PreparedPlainAction::ThanosSnap { targets });
                 }
             }
-            if boss_name == super::boss_wheel::ID {
+            if boss_name == super::boss::wheel::ID {
                 // 两种选敌方式都交给生命之轮的默认行动，执行时按当时体力决定是互换还是普攻。
                 let target = self
                     .select_plain_wheel_exchange_target(actor)
@@ -1239,7 +1236,7 @@ impl CombatRuntime {
         )
     }
 
-    pub(crate) fn preview_current_action_targets(
+    pub fn preview_current_action_targets(
         &mut self,
         actor: EntityIdx,
         skill: PlannedSkill,

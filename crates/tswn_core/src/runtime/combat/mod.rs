@@ -4,35 +4,58 @@
 //! 调度器选行动，hook 读取当前数据并修改受击值或入队，效果提交后同步世界与消息。
 //! 各攻击与状态效果使用各自分支，沿具体技能入口可查看完整的伤害与状态链。
 //! 普通应用通过 [`super::RuntimeRunner`] 或规范 BattleSession 使用本执行器。
+//!
+//! # 命名约定
+//!
+//! **目录表达机制类别，文件名表达具体对象**，函数名表达**角色与动作**，三者各管一个维度：
+//!
+//! - 顶层无前缀文件（`round` / `attack` / `defense` / `effects` / `lifecycle` /
+//!   `passive` / `infection`，以及随 `cards` feature 编译的 `abilities`）是执行阶段或
+//!   横切关注点，不属于下面两族。
+//! - `boss/`：单只 Boss 的专属机制，文件名就是具体 Boss（`thanos` / `wheel` /
+//!   `slime` / `tiger` / `fish` / `quilt` / `smdd` / `squall` / `xjy` / `yi`），
+//!   配套回归放在同目录的 `<boss>_tests.rs`。
+//! - `skills/`：技能族，文件名是技能类别（`offense` / `control` / `team` /
+//!   `lifecycle` / `debuff` / `weapon` / `summon` / `zombie` / `assassinate`）。
+//!
+//! `skills/boss.rs` 与 `boss/` 目录是**不同层次**，别混淆：`skills/boss.rs` 承载
+//! Boss 技能的三个 match 派发（select / prepare / probability）与
+//! `drain_plain_boss_skill_into`，是「技能 → Boss 技能」的派发层；`boss/` 是每只
+//! Boss 的专属实现。
+//!
+//! 函数名里的 `plain_` / `boss_` 是**角色**前缀（普通角色对 Boss），与文件/目录的机制
+//! 类别无关，所以 `skills/control.rs` 里会出现 `drain_plain_ice_skill_into`。
+//!
+//! 两个高频动词的边界：
+//!
+//! - `drain_*_into`：排空累积队列，例如 `drain_plain_update_end_into` 先
+//!   `std::mem::take` 再逐条处理。
+//! - `run_*_into`：执行一个具体 handler，并把结果追加进 updates。
+//!
+//! 两者都接收 `&mut RunUpdates`。`_into` 统一表示「输出写入 RunUpdates」；
+//! `apply_*_on_damage` 一族走的是「触发条件」命名轴（on_damage）而不是输出目标轴，
+//! 因此不带 `_into`。
+//!
+//! 边界：少数编码 / 转换入口的 `_into` 表示「结果写入调用方给出的目标缓冲区」，
+//! 目标不是 `RunUpdates`，例如 `crate::encoder::encode::encode_into` 写
+//! `EncodedBatch`、`crate::namerena::input::raw_namerena_to_id_name_into` 写 `String`。
+//! 它们同属「输出目标」轴，只是落到调用方缓冲，因此保留 `_into`，不按 RunUpdates 变体处理。
 
 use super::*;
-use std::sync::Arc;
 
 #[cfg(feature = "cards")]
 mod abilities;
 mod attack;
-mod boss_fish;
-pub(crate) mod boss_quilt;
-pub(crate) mod boss_smdd;
-mod boss_squall;
-mod boss_thanos;
-mod boss_tiger;
-mod boss_wheel;
-mod boss_xjy;
-mod boss_yi;
+pub mod boss;
 mod defense;
 mod effects;
 mod infection;
 mod lifecycle;
 mod passive;
 mod round;
-mod skills_boss;
-mod skills_control;
-mod skills_debuff;
-mod skills_lifecycle;
-mod skills_offense;
-mod skills_team;
-mod skills_weapon;
+mod skills;
+
+pub use skills::assassinate::PlainSkillPreActionOutcome;
 
 /// 截断后仅对正向余量进一，保留 `ceil() as i32` 的饱和及 NaN 规则。
 #[inline]
@@ -120,6 +143,17 @@ pub enum PreparedPlainAction {
     BossSkill(PreparedBossSkillAction),
 }
 
+/// 一场战斗内的临时行动标记；复位时清空，不跨对局保留。
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct BattleScratch {
+    pub selected_actor_round: u64,
+}
+
+impl BattleScratch {
+    /// 复位临时游标，避免把上一局的选中回合带入下一局。
+    pub fn clear(&mut self) { self.selected_actor_round = 0; }
+}
+
 #[derive(Debug, Clone)]
 /// 一场战斗的完整可变机制容器；跨语言显示数据由会话层投影。
 pub struct CombatRuntime {
@@ -127,21 +161,20 @@ pub struct CombatRuntime {
     pub world: WorldArena,
     pub scheduler: PhaseScheduler,
     pub effects: EffectQueue,
-    /// 注册表与 handler 在战斗试算中只读；克隆战场时共享，修改时写时复制。
-    pub effect_handlers: Arc<EffectHandlers>,
-    pub skill_handlers: Arc<SkillHandlers>,
-    pub state_handlers: Arc<StateHandlers>,
-    pub replay_renderers: Arc<ReplayRenderers>,
-    pub show_renderers: Arc<ShowRenderers>,
+    pub effect_handlers: EffectHandlers,
+    pub skill_handlers: SkillHandlers,
+    pub state_handlers: StateHandlers,
+    pub replay_renderers: ReplayRenderers,
+    pub show_renderers: ShowRenderers,
     /// 固定记录科研 Boss 的实体槽，普通对局不扫描所有实体。
-    pub(crate) squall_bosses: Vec<EntityIdx>,
+    pub squall_bosses: Vec<EntityIdx>,
     pub scratch: BattleScratch,
     pub template_slots: TemplateSlotStorage,
     pub slots: BattleSlotStorage,
-    pub registry: Arc<ExtensionRegistry>,
+    pub registry: ExtensionRegistry,
     pub rng: RC4,
     /// 外部行动脚本与暂停标记；缺省时执行链与自动模式一致。
-    pub(crate) control: BattleControl,
+    pub control: BattleControl,
     #[cfg(not(feature = "no_debug"))]
     pub trace: Option<RuntimeTrace>,
     pub round: u64,

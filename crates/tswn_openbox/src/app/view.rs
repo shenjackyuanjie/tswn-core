@@ -584,7 +584,7 @@ impl OpenboxApp {
 fn compact_log_text_height(line_count: usize) -> f32 { (line_count.clamp(4, 20) as f32 * 17.0 + 12.0).min(360.0) }
 
 /// 工具页标题行：标题、副标题与更多设置按钮。
-pub(super) fn tool_header(ui: &mut egui::Ui, title: &str, subtitle: &str, more_settings_open: Option<&mut bool>) {
+pub fn tool_header(ui: &mut egui::Ui, title: &str, subtitle: &str, more_settings_open: Option<&mut bool>) {
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
             ui.heading(egui::RichText::new(title).color(Palette::of(ui).tool(title)));

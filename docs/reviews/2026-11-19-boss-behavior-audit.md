@@ -33,6 +33,6 @@
 
 ## 回归入口
 
-- [生命之轮证据与伤害回归](../../crates/tswn_core/src/runtime/combat/boss_wheel.rs)、[斑鸠构建回归](../../crates/tswn_core/src/namerena/build.rs)。
+- [生命之轮证据与伤害回归](../../crates/tswn_core/src/runtime/combat/boss/wheel.rs)、[斑鸠构建回归](../../crates/tswn_core/src/namerena/build.rs)。
 - [Boss 状态、诅咒和调度回归](../../crates/tswn_core/src/runtime/tests/plain_boss_skill_tests.rs)、[灭霸响指 × 史莱姆分裂](../../crates/tswn_core/src/runtime/tests/plain_slime_split_tests.rs)。
 - 核心全量：`cargo test -p tswn_core --offline`；冻结对局语料：`cargo test -p tswn_test --offline --features runtime-corpus`。无需更新冻结输入和期望结果。

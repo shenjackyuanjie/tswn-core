@@ -30,7 +30,7 @@ pub struct PlayerSnapshot {
     pub team_index: Option<usize>,
     pub input_team_index: Option<usize>,
     pub owner_id: Option<PlrId>,
-    pub source_id: Option<PlrId>,
+    pub root_owner_id: Option<PlrId>,
     pub display_order: usize,
     pub id_name: String,
     pub id_key_name: String,
@@ -129,7 +129,7 @@ fn snapshot_from_core(snapshot: CorePlayerSnapshot, display_order: usize) -> Pla
         team_index: Some(snapshot.team_index),
         input_team_index: snapshot.input_team_index,
         owner_id: snapshot.owner_id,
-        source_id: snapshot.root_owner_id,
+        root_owner_id: snapshot.root_owner_id,
         display_order,
         id_name: snapshot.id_name,
         icon_key: snapshot.id_key_name.clone(),
@@ -396,7 +396,7 @@ pub fn snapshot_to_pydict<'py>(py: pyo3::Python<'py>, snapshot: &PlayerSnapshot)
     set_optional_usize(&dict, "team_index", snapshot.team_index)?;
     set_optional_usize(&dict, "input_team_index", snapshot.input_team_index)?;
     set_optional_usize(&dict, "owner_id", snapshot.owner_id)?;
-    set_optional_usize(&dict, "source_id", snapshot.source_id)?;
+    set_optional_usize(&dict, "root_owner_id", snapshot.root_owner_id)?;
     dict.set_item("display_order", snapshot.display_order)?;
     dict.set_item("id_name", &snapshot.id_name)?;
     dict.set_item("id_key_name", &snapshot.id_key_name)?;

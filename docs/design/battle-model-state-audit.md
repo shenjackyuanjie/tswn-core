@@ -65,6 +65,6 @@
 
 ## 当前源码依据
 
-- [runtime/model_state.rs](../../crates/tswn_core/src/runtime/model_state.rs)：状态投影、实体引用校验、schema 版本、47 项技能映射，以及压缩状态和 slot 的投影测试。
+- [runtime/model_state.rs](../../crates/tswn_core/src/runtime/model_state/mod.rs)：状态投影、实体引用校验、schema 版本、47 项技能映射，以及压缩状态和 slot 的投影测试。
 - [BattleModelSession](../../crates/tswn_core/src/cli_api/battle/model_session.rs)：复用 BattleDriver 的推进边界；同 seed 与回放逐边界一致、重复读取无副作用和 sticky failure 回归。
 - [generate.rs](../../crates/tswn_pwp/src/generate.rs)、[storage.rs](../../crates/tswn_pwp/src/storage.rs)、[validate.rs](../../crates/tswn_pwp/src/validate.rs)：两遍采样、Parquet 存储与数据集级校验。

@@ -2,36 +2,27 @@ target
 vendor
 .lh
 __pycache__
-*.txt
-!cqp_double_target.txt
-!docs/perf/cqp/
-!docs/perf/cqp/*.txt
-!docs/perf/score/
-!docs/perf/score/*.txt
-!docs/perf/fixed_cases_30/
-!docs/perf/fixed_cases_30/*.txt
-!docs/perf/pgo_training/
-!docs/perf/pgo_training/*.txt
-!docs/perf/pgo_training_v2/
-!docs/perf/pgo_training_v2/**
-tests
-!crates/tswn_core/src/runtime/tests/
-!crates/tswn_core/src/runtime/tests/*.rs
-!crates/tswn_core/src/encoder/encode/tests/
-!crates/tswn_core/src/encoder/encode/tests/*.rs
-!crates/tswn_core/tests/
-!crates/tswn_core/tests/*.rs
-!crates/tswn_wasm/tests/
-!crates/tswn_wasm/tests/*.test.mjs
-!crates/tswn_wasm/tests/README.md
+# 仅忽略仓库根目录与 Openbox 工作目录 setting/ 下的本地临时 .txt；
+# 不再用全局 *.txt（那会误伤 crates/、docs/ 内已 tracked 的 .txt，迫使其逐条 ! 放行）
+/*.txt
+/setting/**/*.txt
+# 本地 ML handoff 暂存目录（模型、名字清单、结果等），整目录不入库
+/crates/nn_handoff/
+# 根目录本地知识库草稿与 Python 虚拟环境
+/wiki-knowledge.json
+.venv/
+.venv-wsl/
+# 仅忽略仓库根目录的 tests/（输入样例、差分结果与 case miner 缓存）；
+# 各 crate 源码内的 tests/ 目录需正常纳入版本控制，无需再逐条 ! 放行
+/tests/
 .claude
 dist
 md5.js
-assets
-!crates/tswn_openbox/assets/
-!crates/tswn_openbox/assets/**
 tswn_ladder.log
 tswn_ladder.log.*
 # Openbox 运行时生成的工作目录：首批启动从内嵌默认资源写出，内容与 crates/tswn_openbox_backend/assets 一致
 crates/tswn_openbox/setting/
 .tmp_namerena_diff
+
+# Python 静态检查缓存
+.ruff_cache/

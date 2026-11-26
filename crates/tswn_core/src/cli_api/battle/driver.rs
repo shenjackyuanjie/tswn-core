@@ -5,7 +5,7 @@ use crate::runtime::{ForcedAction, PlrId, RunUpdates, RuntimeRunner, forced_acti
 
 /// 两种会话共享的逐回合驱动；展示层仍在每个空回合后更新差分快照。
 #[derive(Debug)]
-pub(super) struct BattleDriver {
+pub struct BattleDriver {
     pub runner: RuntimeRunner,
     /// cards 的能力卡快照；指令队列与暂停标记在 runtime 的 control 上，随 runner 一起回滚。
     pub forced: forced_action::ForcedState,
@@ -18,13 +18,12 @@ pub(super) struct BattleDriver {
     pub frames_emitted: usize,
     pub stop_reason: Option<BattleStopReason>,
     pub failure: Option<CliApiError>,
-    pub search: Option<crate::runtime::search::SearchConfig>,
     max_rounds: usize,
     no_progress_rounds: usize,
 }
 
 /// 单步推进结果：本回合更新集合、回合序号与可选帧序号。
-pub(super) struct RoundStep {
+pub struct RoundStep {
     pub updates: RunUpdates,
     pub round_index: usize,
     pub frame_index: Option<usize>,
@@ -66,7 +65,6 @@ impl BattleDriver {
             frames_emitted: 0,
             no_progress_rounds: 0,
             failure: None,
-            search: None,
         })
     }
 
@@ -104,18 +102,7 @@ impl BattleDriver {
         let checkpoint = (!self.runner.runtime().control.controlled_teams().is_empty()).then(|| self.runner.clone());
         // 机制层按队伍查询能力卡，进入推进前把会话快照借给 Runtime。
         self.forced.controlled_team = self.runner.runtime().control.controlled_team();
-        let updates = forced_action::with_state(&mut self.forced, || {
-            if let Some(config) = self.search {
-                self.runner
-                    .runtime_mut()
-                    .run_search_round(config)
-                    .outcome
-                    .frame
-                    .map_or_else(RunUpdates::new, |frame| frame.updates)
-            } else {
-                self.runner.main_round()
-            }
-        });
+        let updates = forced_action::with_state(&mut self.forced, || self.runner.main_round_prevalidated());
         if let Some(actor) = self.runner.runtime().control.awaiting() {
             let forced = self.runner.runtime().control.awaiting_forced_action();
             if let Some(runner) = checkpoint {

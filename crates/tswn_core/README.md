@@ -138,10 +138,10 @@ let summary = runner.run_to_completion(20_000);
 ## 内部结构
 
 - `namerena/`：名字解析、属性和技能模板构建；`runtime/`：实体、状态、调度和战斗执行。
-- `runtime/entity/state.rs` 定义载荷与状态条目；`state/store.rs` 管理状态存储、运行期注册序和查询缓存。
+- `runtime/entity/state/mod.rs` 定义载荷与状态条目；`state/store.rs` 管理状态存储、运行期注册序和查询缓存。
 - `cli_api/battle/`：共享会话、DTO、回放与实验状态接口；CLI 和绑定从这里消费战斗结果。
-- `encoder/encode.rs` 保留 FeatureEncoder 公共入口和批写入编排；`encode/` 按字段登记、引用重映射、校验及张量族写入拆分。公共类型和张量布局不因内部拆分改变。
-- `encoder/encode/tests.rs` 共享测试夹具，`tests/` 按张量输出、非法状态、批缓冲和联合映射组织行为回归。
+- `encoder/encode/mod.rs` 保留 FeatureEncoder 公共入口和批写入编排；`encode/` 按字段登记、引用重映射、校验及张量族写入拆分。公共类型和张量布局不因内部拆分改变。
+- `encoder/encode/tests/mod.rs` 共享测试夹具，`tests/` 按张量输出、非法状态、批缓冲和联合映射组织行为回归。
 
 ## 构建配置
 

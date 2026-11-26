@@ -31,7 +31,7 @@ export interface BattlePlayerState {
     team_index: number;
     input_team_index: number | null;
     owner_id: number | null;
-    source_id: number | null;
+    root_owner_id: number | null;
     id_name: string;
     id_key_name: string;
     icon_key: string;

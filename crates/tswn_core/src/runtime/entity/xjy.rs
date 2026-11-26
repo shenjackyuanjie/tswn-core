@@ -1,4 +1,6 @@
 //! 新纪元 Boss 的行动计数、铁壁与拜谢状态。
+//!
+//! `turn` 是本体实际行动次数，铁壁与拜谢都以它为期限基准；整个结构随实体克隆与恢复。
 use super::super::EntityIdx;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

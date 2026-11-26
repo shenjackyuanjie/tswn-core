@@ -115,7 +115,7 @@ fn runtime_runner_constructs_from_bed2_namerena_raw_fixture_shape() {
     let registry = builder.build();
     let raw_input = "alpha@red+bed2[5]\n\nseed:custom-seed@!\n\nbeta@blue+bed2[8]\n";
 
-    let runner = prepared_init_tests::runtime_runner_from_raw(raw_input, |raw_groups| {
+    let runner = runtime_core_tests::runtime_runner_from_raw(raw_input, |raw_groups| {
         RuntimeRunner::from_bed2_roster(raw_groups, registry, bed2, summon)
     });
     assert_eq!(runner.runtime().entities.len(), 2);
@@ -181,7 +181,7 @@ fn runtime_runner_bed2_raw_can_import_ol_summon_overlay_template_slot() {
     let registry = builder.build();
     let raw_input = "alpha@red+bed2[5]+ol:{\"summon\":{\"attrs\":[46,47,48,49,50,51,52,123],\"skills\":{\"sklfire2\":4,\"sklfire1\":5}}}\n\nseed:custom-seed@!\n\nbeta@blue+bed2[8]\n";
 
-    let runner = prepared_init_tests::runtime_runner_from_raw(raw_input, |raw_groups| {
+    let runner = runtime_core_tests::runtime_runner_from_raw(raw_input, |raw_groups| {
         RuntimeRunner::from_bed2_roster_with_summon_overlay(
             raw_groups,
             registry,
@@ -259,7 +259,7 @@ fn runtime_runner_bed2_raw_can_import_ol_shadow_overlay_template_slot() {
     let registry = builder.build();
     let raw_input = "alpha@red+bed2[5]+ol:{\"shadow\":{\"attrs\":[47,48,49,50,51,52,53,88],\"skills\":{\"phantom:sklpossess\":5}}}\n\nseed:custom-seed@!\n\nbeta@blue+bed2[8]\n";
 
-    let runner = prepared_init_tests::runtime_runner_from_raw(raw_input, |raw_groups| {
+    let runner = runtime_core_tests::runtime_runner_from_raw(raw_input, |raw_groups| {
         RuntimeRunner::from_bed2_roster_with_shadow_overlay(
             raw_groups,
             registry,
@@ -329,7 +329,7 @@ fn runtime_runner_bed2_raw_can_import_ol_zombie_overlay_template_slot() {
     let raw_input =
         "alpha@red+bed2[5]+ol:{\"zombie\":{\"attrs\":[46,47,48,49,50,51,52,77]}}\n\nseed:custom-seed@!\n\nbeta@blue+bed2[8]\n";
 
-    let runner = prepared_init_tests::runtime_runner_from_raw(raw_input, |raw_groups| {
+    let runner = runtime_core_tests::runtime_runner_from_raw(raw_input, |raw_groups| {
         RuntimeRunner::from_bed2_roster_with_zombie_overlay(
             raw_groups,
             registry,
@@ -471,7 +471,7 @@ gamma@red@bed2+ol:{\"zombie\":{\"attrs\":[46,47,48,49,50,51,52,77],\"skills\":{\
 seed:custom-seed@!\n\n\
 delta@blue+bed2[8]\n";
 
-    let runner = prepared_init_tests::runtime_runner_from_raw(raw_input, |raw_groups| {
+    let runner = runtime_core_tests::runtime_runner_from_raw(raw_input, |raw_groups| {
         RuntimeRunner::from_bed2_roster_with_minion_overlays(
             raw_groups,
             registry,

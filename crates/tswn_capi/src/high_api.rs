@@ -107,7 +107,7 @@ struct JsonIconInfo {
 fn nanos_to_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
 
 /// 把 `CliApiError` 映射为 FFI 错误：输入/参数/不支持项映射 `TSWN_ERR_INVALID_ARGUMENT`，其余映射 `TSWN_ERR_RUNNER`，并保留 core 稳定错误码。
-pub(crate) fn cli_api_error(err: CliApiError) -> FfiError {
+pub fn cli_api_error(err: CliApiError) -> FfiError {
     let status = match &err {
         CliApiError::InvalidInput(_) | CliApiError::InvalidArgument(_) | CliApiError::UnsupportedOption(_) => {
             tswn_status_t::TSWN_ERR_INVALID_ARGUMENT

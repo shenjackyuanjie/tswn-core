@@ -16,7 +16,7 @@ use super::args::{CqdPlan, Job, NamerPfPlan, PairPlan};
 use super::plan::SkillBoardPlan;
 
 /// 在 worker 线程执行事件驱动型工具（namer-pf / cqd / pair）。
-pub(super) fn run(job: Job, tx: SyncSender<ProgressEvent>, cancel: Arc<AtomicBool>) {
+pub fn run(job: Job, tx: SyncSender<ProgressEvent>, cancel: Arc<AtomicBool>) {
     let send = |event| {
         let _ = tx.send(event);
     };

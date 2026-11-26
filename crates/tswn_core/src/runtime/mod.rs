@@ -45,18 +45,11 @@ pub mod forced_action;
 mod handlers;
 pub mod lang;
 pub mod model_state;
-pub mod nn_eval;
 mod normalized;
-mod plain_assassinate;
-mod plain_slime;
-mod plain_summon;
-mod plain_zombie;
 mod prepared_init;
 mod profile;
 mod runner;
 pub mod scheduler;
-pub mod scratch;
-pub mod search;
 mod session;
 pub mod slot;
 #[cfg(not(feature = "no_debug"))]
@@ -73,11 +66,22 @@ pub type PlrId = usize;
 pub const MOVE_POINT_THRESHOLD: i32 = 2048;
 
 /// 行动恢复与技能返蓝共用的 MP 上限。
-const MAGIC_POINT_CAP: i32 = 128;
+///
+/// 取 100 是既有行为基线：仓库自 `7e65ecd8` 起，行动恢复（每次行动 +40）一直是
+/// `.min(100)`；随 KODU16 接线一并引入的能量药水（+32）与蓄力返蓝（+16）两处，在
+/// 他 fork 被 `22c7af3e` 改动之前的基线同样是 `.min(100)`。
+///
+/// 128 出自 KODU16 的 `22c7af3e`（修被子 quilt 时顺手把三处 `.min(100)` 换成了这个
+/// 常量），没有原版规则依据。该上限作用于普通对局也走的路径，取 128 会改变既有行为
+/// 对齐，而仓库里没有任何测试覆盖该上限，故保持 100。
+///
+/// 保留具名常量只为消除魔法数字；将来若确认原版规则是 128，改这一行即可。
+pub const MAGIC_POINT_CAP: i32 = 100;
 
 /// namerena 评分机制里的第一个靶子。
 pub const PROFILE_START: u32 = 3355_4431;
 
+pub use combat::BattleScratch;
 pub use effect::{
     CoreReplayEvent, CoreShowEvent, CustomEffect, CustomEffectPayload, EffectContext, EffectContextError, EffectHandlerFn,
     EffectHandlers, EffectQueue, QueuedEffect, RenderedReplay, RenderedShow, ReplayRendererFn, ReplayRenderers, RuntimeFrame,
@@ -100,20 +104,19 @@ pub use normalized::{NormalizedActionBoundary, NormalizedOutcome, NormalizedRngC
 pub use scheduler::{
     ActionPlan, ActionSchedulerMode, PhaseScheduler, SkillHookPlan, SkillHookPlanEntry, StateHookPlan, StateHookPlanEntry,
 };
-pub use scratch::BattleScratch;
 pub use slot::{BattleSlotStorage, EntitySlotStorage, SlotError, SlotValue, TemplateSlotStorage};
 #[cfg(not(feature = "no_debug"))]
 pub use trace::{RngCheckpoint, RuntimeTrace, TraceAction, TraceFrame};
 pub use world::WorldArena;
 
-/// 上游原版评分会话；默认导出继续使用支持 Clever 的扩展会话。
-pub use batch::score_test as upstream_score_test;
-pub use batch::test_session::{ScoreTestProgress, ScoreTestSession, TestSkillFrequency};
 pub use batch::{
-    RuntimeBatchError, RuntimeBatchSummary, prepared_runtime_win_rate, prepared_runtime_win_rate_range,
-    prepared_runtime_win_rate_range_timed, prepared_runtime_win_rate_timed, runtime_groups_win_rate,
-    runtime_groups_win_rate_timed, runtime_score, runtime_score_range, runtime_score_range_timed, runtime_score_timed,
+    RuntimeBatchError, RuntimeBatchSummary, SCORE_TEST_TOTAL, ScoreSkillFrequency, ScoreTestError, ScoreTestProgress,
+    ScoreTestSession, prepared_runtime_win_rate, prepared_runtime_win_rate_range, prepared_runtime_win_rate_range_timed,
+    prepared_runtime_win_rate_timed, runtime_groups_win_rate, runtime_groups_win_rate_timed, runtime_score, runtime_score_range,
+    runtime_score_range_timed, runtime_score_timed,
 };
+pub use combat::PlainSkillPreActionOutcome;
+pub use combat::boss::slime;
 pub use combat::{
     CombatRuntime, PreparedBossSkillAction, PreparedBuiltinSkillAction, PreparedPlainAction, PreparedTargetList, RoundOutcome,
     SelectedBuiltinSkill,
@@ -127,9 +130,8 @@ pub use cqp::{
     runtime_cqp_matchups_observed,
 };
 pub use handlers::*;
-pub use plain_assassinate::PlainSkillPreActionOutcome;
 pub use prepared_init::{PreparedBattleInit, PreparedBattleRoster, RuntimeBattleInitError};
-pub(crate) use prepared_init::{ScoreIdentityBuffer, ScoreRosterBuffers, ScoreRoundScratch};
+pub use prepared_init::{ScoreIdentityBuffer, ScoreRosterBuffers, ScoreRoundScratch};
 pub use profile::*;
 pub use runner::*;
 pub use session::*;

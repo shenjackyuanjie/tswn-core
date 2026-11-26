@@ -1,0 +1,252 @@
+//! # 图标渲染 (icon_render)
+//!
+//! 本模块实现玩家图标的渲染，将 [`IconResult`] 转换为 16×16 RGBA 像素数据或 PNG 图像。
+//!
+//! ## 功能说明
+//!
+//! - **像素渲染** — 将图标颜色选择渲染为 RGBA 像素数据 (1024 字节)
+//! - **PNG 渲染** — 将图标颜色选择渲染为 PNG 字节流 [需要 `png_render` feature]
+//! - **Base64 编码** — 将 PNG 编码为 data URL 格式 [需要 `png_render` feature]
+//! - **便捷接口** — 直接从玩家名称渲染图标
+//!
+//! ## 功能标志
+//!
+//! `png_render` 默认启用；关闭默认 features 的依赖需在编译时显式开启它，
+//! 才能使用 PNG / Base64 输出函数。Cargo package 名和 Rust 导入名均为 `tswn_core`。
+//! 可在仓库中执行：
+//!
+//! ```text
+//! cargo run --locked -p tswn_core --bin tswn-cli --features png_render -- icon b64 mario
+//! ```
+//!
+//! [`render_icon_vec`] 始终可用，返回独立拥有的 RGBA 像素向量；
+//! 图标渲染使用名字派生的局部状态，不消费战斗 Runtime 的 RNG。
+//!
+//! ## 渲染流程
+//!
+//! 复现 JS `Sgls.ts()` / `Sgls.o4()` / `Sgls.tu()` 流程：
+//!
+//! 1. **填充背景** — 用背景色填充内部 14×14 区域
+//! 2. **合成前景** — 使用 source-over 混合模式合成每个前景形状
+//! 3. **绘制边框** — 绘制深色边框覆盖层
+//! 4. **应用掩码** — 应用边框不透明度掩码（直接替换 alpha 通道）
+//! 5. **输出数据** — 返回 RGBA 像素数据或编码为 PNG
+//!
+//! ## 精灵表
+//!
+//! 精灵数据在编译时硬编码，包含：
+//! - 38 个前景形状（每个 16×16 alpha 映射）
+//! - 8 个边框深色覆盖层
+//! - 8 个边框不透明度掩码
+//!
+//! ## 相关模块
+//!
+//! - [`crate::namerena::icon`] — 图标生成，根据玩家名称生成颜色选择
+//!
+//! ## 示例
+//!
+//! ```rust,ignore
+//! use tswn_core::namerena::icon_render::render_icon_vec_from_name;
+//!
+//! let rgba_pixels = render_icon_vec_from_name("mario");
+//! // rgba_pixels 是 16×16 RGBA 像素数据 (1024 字节)
+//! ```
+//!
+//! ## 性能说明
+//!
+//! - 精灵数据直接编译到二进制中，无需运行时解析
+//! - Base64 编码器为标准 RFC 4648 实现，避免额外依赖
+//! - 混合算法复现 HTML Canvas `source-over` 混合模式
+
+use super::icon::{IconResult, icon_from_name, parse_sglname};
+
+/// 图标精灵位图数据。
+mod sprite_data;
+use sprite_data::{BORDERS_DARK, BORDERS_OPACITY, SHAPES};
+
+/// Boss 专属像素徽章（咦、被子一家），与 [`sprite_data`] 的调色板精灵相互独立。
+mod boss_badges;
+use boss_badges::{YI_ICON, quilt_icon};
+
+/// Boss 固定徽章名称表（按字典序排布以供二分检索）。
+// 原版 Vite（rinick.github.io 的 2ab0f562）的单帧 16×16 GIF，经浏览器 Canvas 解码后按名字排序保存 RGBA；
+// Rust 的 PNG 与无 png_render 的像素接口共享这份数据，不需要运行时 GIF 解码。
+const BOSS_ICONS: [&str; 13] = [
+    "aokiji", "conan", "covid", "ikaruga", "lazy", "mario", "mosquito", "saitama", "slime", "sonic", "thanos", "wheel", "yuri",
+];
+/// Boss 徽章的 RGBA 位图数据，每个图标 1024 字节。
+const BOSS_RGBA: &[u8; BOSS_ICONS.len() * 1024] = include_bytes!("boss_rgba.bin");
+
+/// 按 raw 名取 Boss 固定徽章 RGBA：要求 `@!` 修饰且名称在表内。
+fn boss_icon(raw_name: &str) -> Option<&'static [u8]> {
+    let (name, modifiers) = raw_name.split_once('@')?;
+    if modifiers.split(['@', '+']).next()? != "!" {
+        return None;
+    }
+    let index = BOSS_ICONS.binary_search(&name).ok()?;
+    Some(&BOSS_RGBA[index * 1024..(index + 1) * 1024])
+}
+
+/// 此独立名字会使用原版固定像素而非生成调色板。
+pub fn has_boss_icon(raw_name: &str) -> bool { boss_icon(raw_name).is_some() }
+
+// ── 合成 ───────────────────────────────────────────────────────────────
+
+/// HTML Canvas `source-over` 混合: 将纯色像素合成到 `dst` 上。
+#[inline]
+fn blend_over(dst: &mut [u8; 4], src_rgb: [u8; 3], src_a: u8) {
+    if src_a == 0 {
+        return;
+    }
+    if src_a == 255 {
+        *dst = [src_rgb[0], src_rgb[1], src_rgb[2], 255];
+        return;
+    }
+    let sa = src_a as f32 / 255.0;
+    let da = dst[3] as f32 / 255.0;
+    let out_a = sa + da * (1.0 - sa);
+    if out_a <= 0.0 {
+        return;
+    }
+    let ch = |s: u8, d: u8| -> u8 { ((s as f32 * sa + d as f32 * da * (1.0 - sa)) / out_a).round() as u8 };
+    dst[0] = ch(src_rgb[0], dst[0]);
+    dst[1] = ch(src_rgb[1], dst[1]);
+    dst[2] = ch(src_rgb[2], dst[2]);
+    dst[3] = (out_a * 255.0).round() as u8;
+}
+
+/// 使用纯色在 256 像素画布上绘制 alpha 映射形状
+/// (复现 JS `Sgls.o4()` 逻辑, 包括 `source-over` 混合)。
+fn draw_shape(canvas: &mut [[u8; 4]; 256], alpha_map: &[u8; 256], fg: [u8; 3]) {
+    for i in 0..256 {
+        blend_over(&mut canvas[i], fg, alpha_map[i]);
+    }
+}
+
+// ── 公共 API ────────────────────────────────────────────────────────────────
+
+/// 将图标渲染为独立拥有的 1024 字节 RGBA 像素向量，按 16×16 行主序排列。
+///
+/// 输入通常来自 [`crate::namerena::icon::icon_from_raw_name`]。手工构造的 `IconResult`
+/// 需保证形状下标小于 38、边框下标小于 8，且每个形状都有对应前景色，否则会 panic。
+/// 不访问文件或全局战斗状态，透明像素的 RGB 分量归零以保持 Canvas 兼容。
+pub fn render_icon_vec(icon: &IconResult) -> Vec<u8> {
+    let mut canvas = [[0u8; 4]; 256]; // 16×16, 初始完全透明
+
+    // 1. 用背景色填充内部 14×14 区域 (JS: fillRect(1,1,14,14))。
+    let bg = icon.bg_color;
+    for y in 1usize..=14 {
+        for x in 1usize..=14 {
+            canvas[y * 16 + x] = [bg[0], bg[1], bg[2], 255];
+        }
+    }
+
+    // 2. 使用 source-over 混合模式合成每个前景形状。
+    for (i, &shape_idx) in icon.shapes.iter().enumerate() {
+        draw_shape(&mut canvas, &SHAPES[shape_idx], icon.fg_colors[i]);
+    }
+
+    // 3. 绘制深色边框覆盖层 (颜色 [64, 64, 64])。
+    draw_shape(&mut canvas, &BORDERS_DARK[icon.border_style], [64, 64, 64]);
+
+    // 4. 应用边框不透明度掩码 — 直接替换 alpha (JS: pixels[p*4+3] = r[p])。
+    //    如果 alpha 变为 0, 也将 RGB 清零 (匹配 JS canvas 预乘 alpha 行为)。
+    let border_opacity = &BORDERS_OPACITY[icon.border_style];
+    for p in 0..256 {
+        canvas[p][3] = border_opacity[p];
+        if canvas[p][3] == 0 {
+            canvas[p][0] = 0;
+            canvas[p][1] = 0;
+            canvas[p][2] = 0;
+        }
+    }
+
+    // 5. 展平为 1024 字节的 RGBA 数据 (16×16×4)。
+    canvas.iter().flat_map(|&px| px).collect()
+}
+
+/// 将 `IconResult` 渲染为 16×16 RGBA PNG (以原始字节返回)。
+#[cfg(feature = "png_render")]
+pub fn render_icon_png(icon: &IconResult) -> Vec<u8> { encode_rgba_png(&render_icon_vec(icon)) }
+
+/// 把 16x16 RGBA 像素编码为 PNG。
+#[cfg(feature = "png_render")]
+fn encode_rgba_png(flat: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut encoder = png::Encoder::new(&mut out, 16, 16);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    encoder
+        .write_header()
+        .and_then(|mut w| w.write_image_data(flat))
+        .expect("PNG encoding should never fail for a valid image");
+    out
+}
+
+/// 返回 `data:image/png;base64,...` 形式的完整 data URL，可直接交给图像控件。
+///
+/// 像素遵循 Canvas 兼容规则；PNG 的压缩与封装由 png crate 决定，
+/// 不承诺与浏览器 `canvas.toDataURL("image/png")` 的编码字节完全一致。
+#[cfg(feature = "png_render")]
+pub fn render_icon_b64(icon: &IconResult) -> String {
+    let png = render_icon_png(icon);
+    format!("data:image/png;base64,{}", base64_encode(&png))
+}
+
+/// 便捷包装器: 通过玩家名称渲染 → PNG 字节。
+#[cfg(feature = "png_render")]
+pub fn render_icon_png_from_name(name: &str) -> Vec<u8> { encode_rgba_png(&render_icon_vec_from_name(name)) }
+
+/// 便捷包装器: 通过玩家名称渲染 → base64 data URL。
+#[cfg(feature = "png_render")]
+pub fn render_icon_b64_from_name(name: &str) -> String {
+    format!("data:image/png;base64,{}", base64_encode(&render_icon_png_from_name(name)))
+}
+
+/// 便捷包装器: 通过玩家名称渲染 → RGBA 像素数据 (1024 字节)。
+pub fn render_icon_vec_from_name(name: &str) -> Vec<u8> {
+    // Squall Boss 与同名队伍角色共用程序生成图标；smdd（曙光）固定使用 nan@nan 的图标。
+    if name == "咦" || name == "咦@" || name.starts_with("咦@") {
+        return YI_ICON.to_vec();
+    }
+    let mapped = name
+        .split_once('@')
+        .filter(|(_, modifiers)| modifiers.split(['@', '+']).next() == Some("!"))
+        .and_then(|(base, _)| match base {
+            "Squall" => Some("Squall@Squall"),
+            "smdd" => Some("nan@nan"),
+            "新纪元" => Some("新纪元@新纪元"),
+            "Shabby_fish" => Some("Shabby_fish@Shabby_fish"),
+            _ => None,
+        })
+        .unwrap_or(name);
+    // 被子一家使用内置像素徽章，网页与 PNG 接口共享图案，不依赖 Emoji 字体。
+    if let Some(pixels) = quilt_icon(name) {
+        return pixels;
+    }
+    boss_icon(mapped).map_or_else(|| render_icon_vec(&icon_from_name(parse_sglname(mapped))), <[_]>::to_vec)
+}
+
+// ── 内部辅助函数 ──────────────────────────────────────────────────────────
+
+/// 标准 base64 编码（含 `=` 填充）。
+/// 标准 RFC 4648 base64 编码器 — 避免额外的 crate 依赖。
+fn base64_encode(data: &[u8]) -> String {
+    const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as usize;
+        let b1 = if chunk.len() > 1 { chunk[1] as usize } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as usize } else { 0 };
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TABLE[(n >> 18) & 63] as char);
+        out.push(TABLE[(n >> 12) & 63] as char);
+        out.push(if chunk.len() > 1 { TABLE[(n >> 6) & 63] as char } else { '=' });
+        out.push(if chunk.len() > 2 { TABLE[n & 63] as char } else { '=' });
+    }
+    out
+}
+
+/// 渲染结果的位图比对测试。
+#[cfg(all(test, feature = "png_render"))]
+mod tests;

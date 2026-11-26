@@ -130,13 +130,13 @@ impl PartialEq for StateStore {
 impl Eq for StateStore {}
 
 impl StateStore {
-    pub(crate) fn model_compressed_flags(&self) -> u8 { self.compressed_legacy_states }
+    pub fn model_compressed_flags(&self) -> u8 { self.compressed_legacy_states }
 
     /// 按登记顺序返回状态条目。
     pub fn entries(&self) -> &[StateEntry] { &self.entries }
 
     /// 恢复场前状态并复用现有 SmallVec 容量，避免通用 Clone 反复切换内联/堆存储。
-    pub(crate) fn reset_battle_state_from(&mut self, prepared: &Self) {
+    pub fn reset_battle_state_from(&mut self, prepared: &Self) {
         self.entries.clear();
         self.entries.extend(prepared.entries.iter().cloned());
         self.hook_mask = prepared.hook_mask;
@@ -152,7 +152,7 @@ impl StateStore {
     }
 
     /// 清空数字 score profile 的战斗状态，同时保留 SmallVec 容量。
-    pub(crate) fn clear_score_profile_for_reuse(&mut self) {
+    pub fn clear_score_profile_for_reuse(&mut self) {
         self.entries.clear();
         self.hook_mask = ProcMask::NONE;
         self.generation = 0;
@@ -182,24 +182,22 @@ impl StateStore {
     /// 下一个运行期注册序号，供 POST_ACTION 期间追加登记。
     pub fn post_action_registration_cursor(&self) -> u64 { self.next_runtime_registration_order }
 
-    pub(crate) fn reserve_runtime_registration_order(&mut self) -> u64 {
+    pub fn reserve_runtime_registration_order(&mut self) -> u64 {
         let order = self.next_runtime_registration_order;
         self.next_runtime_registration_order = order.wrapping_add(1);
         self.generation = self.generation.wrapping_add(1);
         order
     }
 
-    pub(in crate::runtime::entity) fn register_charge_post_action(&mut self) {
-        self.charge_post_action_cursor = self.next_runtime_registration_order;
-    }
+    pub fn register_charge_post_action(&mut self) { self.charge_post_action_cursor = self.next_runtime_registration_order; }
 
-    pub(crate) fn charge_post_action_cursor(&self) -> u64 { self.charge_post_action_cursor }
+    pub fn charge_post_action_cursor(&self) -> u64 { self.charge_post_action_cursor }
 
-    pub(crate) fn register_assassinate_pre_action(&mut self) {
+    pub fn register_assassinate_pre_action(&mut self) {
         self.assassinate_pre_action_cursor = self.reserve_runtime_registration_order();
     }
 
-    pub(crate) fn assassinate_pre_action_cursor(&self) -> u64 { self.assassinate_pre_action_cursor }
+    pub fn assassinate_pre_action_cursor(&self) -> u64 { self.assassinate_pre_action_cursor }
 
     /// 按兼容键查运行期注册顺序；键不存在返回 None。
     pub fn runtime_registration_order(&self, legacy_order_key: u32) -> Option<u64> {

@@ -36,20 +36,20 @@ impl CombatRuntime {
             .filter_map(|(idx, entity)| entity.runtime.squall.is_some().then_some(idx))
             .collect();
         Self {
-            squall_bosses,
             entities,
             world,
             scheduler,
             effects: EffectQueue::default(),
-            effect_handlers: Arc::new(effect_handlers),
-            skill_handlers: Arc::new(skill_handlers),
-            state_handlers: Arc::new(state_handlers),
-            replay_renderers: Arc::new(replay_renderers),
-            show_renderers: Arc::new(show_renderers),
+            effect_handlers,
+            skill_handlers,
+            state_handlers,
+            replay_renderers,
+            show_renderers,
+            squall_bosses,
             scratch: BattleScratch::default(),
             template_slots,
             slots,
-            registry: Arc::new(registry),
+            registry,
             rng: RC4::default(),
             control: BattleControl::default(),
             #[cfg(not(feature = "no_debug"))]
@@ -66,10 +66,8 @@ impl CombatRuntime {
     /// 读取已收集的 trace；未开启时为 None。
     pub fn trace(&self) -> Option<&RuntimeTrace> { self.trace.as_ref() }
 
-    /// 按需复制共享处理器表，避免搜索克隆互相影响。
-    pub fn set_effect_handler(&mut self, id: EffectHandlerId, handler: EffectHandlerFn) {
-        Arc::make_mut(&mut self.effect_handlers).set(id, handler);
-    }
+    /// 绑定 effect handler，不声明额外能力。
+    pub fn set_effect_handler(&mut self, id: EffectHandlerId, handler: EffectHandlerFn) { self.effect_handlers.set(id, handler); }
 
     /// 绑定 effect handler 并声明其上下文能力。
     pub fn set_effect_handler_with_capabilities(
@@ -78,13 +76,11 @@ impl CombatRuntime {
         handler: EffectHandlerFn,
         capabilities: &[ExtensionCapability],
     ) {
-        Arc::make_mut(&mut self.effect_handlers).set_with_capabilities(id, handler, capabilities);
+        self.effect_handlers.set_with_capabilities(id, handler, capabilities);
     }
 
-    /// 按需复制共享处理器表，避免搜索克隆互相影响。
-    pub fn set_skill_handler(&mut self, id: SkillId, handler: SkillHandlerFn) {
-        Arc::make_mut(&mut self.skill_handlers).set(id, handler);
-    }
+    /// 绑定 skill handler，不声明额外能力。
+    pub fn set_skill_handler(&mut self, id: SkillId, handler: SkillHandlerFn) { self.skill_handlers.set(id, handler); }
 
     /// 绑定 skill handler 并声明其上下文能力。
     pub fn set_skill_handler_with_capabilities(
@@ -93,13 +89,11 @@ impl CombatRuntime {
         handler: SkillHandlerFn,
         capabilities: &[ExtensionCapability],
     ) {
-        Arc::make_mut(&mut self.skill_handlers).set_with_capabilities(id, handler, capabilities);
+        self.skill_handlers.set_with_capabilities(id, handler, capabilities);
     }
 
-    /// 按需复制共享处理器表，避免搜索克隆互相影响。
-    pub fn set_state_handler(&mut self, id: StateId, handler: StateHandlerFn) {
-        Arc::make_mut(&mut self.state_handlers).set(id, handler);
-    }
+    /// 绑定 state handler，不声明额外能力。
+    pub fn set_state_handler(&mut self, id: StateId, handler: StateHandlerFn) { self.state_handlers.set(id, handler); }
 
     /// 绑定 state handler 并声明其上下文能力。
     pub fn set_state_handler_with_capabilities(
@@ -108,18 +102,16 @@ impl CombatRuntime {
         handler: StateHandlerFn,
         capabilities: &[ExtensionCapability],
     ) {
-        Arc::make_mut(&mut self.state_handlers).set_with_capabilities(id, handler, capabilities);
+        self.state_handlers.set_with_capabilities(id, handler, capabilities);
     }
 
     /// 绑定回放渲染器；ID 越界会 panic。
     pub fn set_replay_renderer(&mut self, id: ReplayRendererId, renderer: ReplayRendererFn) {
-        Arc::make_mut(&mut self.replay_renderers).set(id, renderer);
+        self.replay_renderers.set(id, renderer);
     }
 
-    /// 按需复制共享处理器表，避免搜索克隆互相影响。
-    pub fn set_show_renderer(&mut self, id: ShowRendererId, renderer: ShowRendererFn) {
-        Arc::make_mut(&mut self.show_renderers).set(id, renderer);
-    }
+    /// 绑定展示渲染器；ID 越界会 panic。
+    pub fn set_show_renderer(&mut self, id: ShowRendererId, renderer: ShowRendererFn) { self.show_renderers.set(id, renderer); }
 
     /// 检查实体与模板槽使用的技能是否都有可用 handler。
     pub fn validate_ready(&self) -> Result<(), RuntimeReadyError> {
@@ -284,7 +276,7 @@ impl CombatRuntime {
 
     /// 直接执行借用的技能条目切片，避免私有分段计划为了执行再包装成大容量容器。
     #[inline]
-    pub(super) fn drain_skill_hook_entries_into(
+    pub fn drain_skill_hook_entries_into(
         &mut self,
         owner: EntityIdx,
         hook: ProcMask,
@@ -447,7 +439,7 @@ impl CombatRuntime {
     }
 
     /// 执行单个防御技能钩子，供动态合并计划直接调用，避免为一项钩子临时构造计划容器。
-    pub(super) fn drain_skill_hook_entry_with_defend_value_and_on_damage_into(
+    pub fn drain_skill_hook_entry_with_defend_value_and_on_damage_into(
         &mut self,
         entry: SkillHookPlanEntry,
         updates: &mut RunUpdates,
@@ -564,7 +556,7 @@ impl CombatRuntime {
         self.drain_state_hook_entry_with_deferred_clears_into(hook, entry, updates, None)
     }
 
-    pub(crate) fn drain_state_hook_entry_with_deferred_clears_into(
+    pub fn drain_state_hook_entry_with_deferred_clears_into(
         &mut self,
         hook: ProcMask,
         entry: StateHookPlanEntry,
@@ -616,7 +608,7 @@ impl CombatRuntime {
         action_intercepted
     }
 
-    pub(crate) fn flush_deferred_owner_state_clears(&mut self, owner: EntityIdx, clears: &[u32]) {
+    pub fn flush_deferred_owner_state_clears(&mut self, owner: EntityIdx, clears: &[u32]) {
         let Some(owner) = self.entities.get_mut(owner) else {
             return;
         };
@@ -639,7 +631,7 @@ impl CombatRuntime {
         self.drain_state_hook_plan_with_pre_action_order_into(plan, updates, action_smart, None)
     }
 
-    pub(super) fn drain_state_hook_plan_with_pre_action_order_into(
+    pub fn drain_state_hook_plan_with_pre_action_order_into(
         &mut self,
         plan: &StateHookPlan,
         updates: &mut RunUpdates,

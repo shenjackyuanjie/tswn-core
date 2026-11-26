@@ -116,7 +116,7 @@ pub fn bench_batch_rate_for_group(
         }
 
         let raw = format!("{player}\n\n{target}");
-        match bench_winrate_summary(&raw, n, threads, eval_rq) {
+        match bench_win_rate_summary(&raw, n, threads, eval_rq) {
             Ok(summary) => {
                 if verbose {
                     let _ = writeln!(
@@ -189,7 +189,7 @@ pub fn namer_pf_score(
 }
 
 #[cfg(test)]
-fn bench_winrate_summary(raw: &str, n: usize, threads: Option<usize>, eval_rq: f64) -> Result<BenchSummary, String> {
+fn bench_win_rate_summary(raw: &str, n: usize, threads: Option<usize>, eval_rq: f64) -> Result<BenchSummary, String> {
     let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_owned());
     let thread = threads.and_then(|value| u32::try_from(value).ok()).unwrap_or(0);
     runtime_groups_win_rate(&groups, n, eval_rq, thread)
@@ -201,10 +201,10 @@ fn bench_winrate_summary(raw: &str, n: usize, threads: Option<usize>, eval_rq: f
 }
 
 /// 把 GUI 侧的线程设置转换成 [`tswn_core::bench_sched::low_accuracy_outer_workers`] 所需的口径。
-pub(super) fn outer_thread_spec(threads: Option<usize>) -> u32 { threads.and_then(|x| u32::try_from(x).ok()).unwrap_or(0) }
+pub fn outer_thread_spec(threads: Option<usize>) -> u32 { threads.and_then(|x| u32::try_from(x).ok()).unwrap_or(0) }
 
 /// 返回评分口径：keep_rq 用默认口径，否则用胜率口径。
-pub(super) fn eval_rq(keep_rq: bool) -> f64 {
+pub fn eval_rq(keep_rq: bool) -> f64 {
     if keep_rq {
         tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ
     } else {
@@ -224,7 +224,7 @@ pub struct NamerPfScores {
 
 impl NamerPfScores {
     /// 按指标读取对应分数。
-    pub(super) fn get(&self, metric: NamerPfMetric) -> f64 {
+    pub fn get(&self, metric: NamerPfMetric) -> f64 {
         match metric {
             NamerPfMetric::Pp => self.pp,
             NamerPfMetric::Pd => self.pd,

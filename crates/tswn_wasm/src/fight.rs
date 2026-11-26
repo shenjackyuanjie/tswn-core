@@ -278,7 +278,7 @@ mod tests {
             team_index: 0,
             input_team_index: Some(0),
             owner_id: Some(7),
-            source_id: Some(3),
+            root_owner_id: Some(3),
             id_name: "minion".into(),
             id_key_name: "minion".into(),
             icon_key: "minion".into(),

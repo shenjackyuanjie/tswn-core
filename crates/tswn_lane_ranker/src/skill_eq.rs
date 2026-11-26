@@ -70,7 +70,7 @@ pub fn compute_group_skill_summary(members: &[String]) -> GroupSkillSummary {
     }
 
     for member in &mut group {
-        member.get_43();
+        member.compute_feature_x();
     }
 
     let display_order = member_display_order_by_cfz(&raw_members, &group);
@@ -352,7 +352,7 @@ impl Name {
     /// 返回某技能的等效熟练度：铁壁（idx 18）在护盾存在时取 x\[45\]；非主动技能按 0.85 折算。
     fn effective_skill_value(&self, idx: usize) -> f64 {
         // 对齐修复版 CPP 的 write_sparse_skill_row：
-        // get_43() 中如果存在护盾，会把 x[26] 移到 x[45] 并清零 x[26]。
+        // compute_feature_x() 中如果存在护盾，会把 x[26] 移到 x[45] 并清零 x[26]。
         // x[26] 对应技能“铁壁”；x[45] 是模型特征拆分，不代表铁壁技能不存在。
         let value = if idx == 18 && self.x[45] != 0.0 {
             self.x[45]
@@ -379,7 +379,7 @@ impl Name {
     }
 
     /// 由 name_base 计算 50 维特征 x：HP、七项属性、技能频率（含衰减）与影子修正。
-    fn get_43(&mut self) {
+    fn compute_feature_x(&mut self) {
         self.name_base[..10].sort();
 
         self.x = [0.0; 50];

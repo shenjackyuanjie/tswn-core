@@ -154,10 +154,10 @@ cargo --config 'build.rustc-wrapper=""' check -p tswn_core --lib --locked
 | --- | --- | --- |
 | 高 | [lane 缓存读取](../crates/tswn_lane_ranker/src/db/groups.rs) 与 [pairwise 复用](../crates/tswn_lane_ranker/src/pairwise/rates.rs) 主要按 ID 读取，不按采样/core 机制版本完整区分 | 定义缓存身份，加入采样策略、样本数、eval_rq 与机制版本，再补同 ID 跨版本失效回归和数据迁移 |
 | 高 | [ladder 存储](../crates/tswn_ladder/src/storage.rs) 与 [回写编排](../crates/tswn_ladder/src/updator.rs) 的分数、handicap、排名和历史不是一个跨步骤事务；数值解码还需核实数据库 schema | 在独立 PostgreSQL 做中途失败注入，确定事务边界与失败补偿；先确认 NUMERIC 实际使用再改解码 |
-| 中 | [lane HTTP](../crates/tswn_lane_ranker/src/web.rs) 与 [name HTTP](../crates/tswn_name_ranker/src/web.rs) 有同步重计算；[lane 任务](../crates/tswn_lane_ranker/src/service.rs) 缺同赛道互斥和 panic 终态恢复 | 统一 blocking 任务入口、限并发、取消和终态；用并发请求压测响应与资源释放 |
-| 中 | [DIY 导出](../crates/tswn_core/src/bin/tswn_cli/to_diy.rs) 有写入错误被忽略；[编码批次分配](../crates/tswn_core/src/encoder/batch.rs) 缺总字节预算；[调度缓冲](../crates/tswn_core/src/bench_sched.rs) 乱序积压可随任务量增长 | 分别补失败 writer、超大 shape/预算和慢首项等真实行为回归，再传播 I/O 错误、引入 checked 分配或背压 |
+| 中 | [lane HTTP](../crates/tswn_lane_ranker/src/web.rs) 与 [name HTTP](../crates/tswn_name_ranker/src/web.rs) 有同步重计算；[lane 任务](../crates/tswn_lane_ranker/src/service/mod.rs) 缺同赛道互斥和 panic 终态恢复 | 统一 blocking 任务入口、限并发、取消和终态；用并发请求压测响应与资源释放 |
+| 中 | [DIY 导出](../crates/tswn_core/src/bin/tswn_cli/to_diy.rs) 有写入错误被忽略；[编码批次分配](../crates/tswn_core/src/encoder/batch/mod.rs) 缺总字节预算；[调度缓冲](../crates/tswn_core/src/bench_sched.rs) 乱序积压可随任务量增长 | 分别补失败 writer、超大 shape/预算和慢首项等真实行为回归，再传播 I/O 错误、引入 checked 分配或背压 |
 | 中 | [PWP 统计](../crates/tswn_pwp/src/stats.rs) 与 [校准](../crates/tswn_pwp/src/calibrate.rs) 的 manifest 前置校验需加强；[基准 CPU 统计](../crates/tswn_pwp/src/bench.rs) 是累计值 | 以损坏 manifest 和阶段边界建立独立回归，区分累计与阶段增量，再调整校验/显示 |
-| 低 | [随机整数 API](../crates/tswn_core/src/rc4.rs) 有既有有效上界限制；[DS4 输出复制](../crates/tswn_ds4/src/pipeline.rs) 双次追加意图待确认 | 随机接口另设计 checked/typed 入口，保留旧消费契约；双追加先与 C++/golden 对照，不直接当作已确认缺陷修改 |
+| 低 | [随机整数 API](../crates/tswn_core/src/rc4/mod.rs) 有既有有效上界限制；[DS4 输出复制](../crates/tswn_ds4/src/pipeline.rs) 双次追加意图待确认 | 随机接口另设计 checked/typed 入口，保留旧消费契约；双追加先与 C++/golden 对照，不直接当作已确认缺陷修改 |
 
 
 ## 旧传递分支清单

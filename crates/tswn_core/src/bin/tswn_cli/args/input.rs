@@ -22,7 +22,7 @@ use super::parsed::{NamerPfMetric, NamerPfMetricSpec};
 ///
 /// CLI 的 `fight` / `bench auto` / `namer-pf` 都允许省略 `--raw` 和 `--file`，
 /// 此时这里就是最终兜底。跳过非 UTF-8 行后，拒绝空输入或纯空白输入。
-pub(super) fn read_stdin() -> Result<String, clap::Error> {
+pub fn read_stdin() -> Result<String, clap::Error> {
     let mut bytes = Vec::new();
     io::stdin()
         .read_to_end(&mut bytes)
@@ -38,17 +38,17 @@ pub(super) fn read_stdin() -> Result<String, clap::Error> {
 }
 
 /// 从指定文件读取完整文本输入，去掉 BOM 并跳过非 UTF-8 行。
-pub(super) fn read_file(path: &Path) -> Result<String, clap::Error> {
+pub fn read_file(path: &Path) -> Result<String, clap::Error> {
     read_text_file(path).map_err(|err| cli_error(format!("读取文件失败: {}: {err}", path.display())))
 }
 
 /// 将命令行里的字面量 `\n` 还原成真实换行。
 ///
 /// 这允许用户在 shell 中直接写一条短 raw，而不必专门准备文件。
-pub(super) fn decode_raw(raw: &str) -> String { raw.replace("\\n", "\n") }
+pub fn decode_raw(raw: &str) -> String { raw.replace("\\n", "\n") }
 
 /// 解析并校验 benchmark 线程数参数。
-pub(super) fn parse_thread_count(raw: &str) -> Result<usize, String> {
+pub fn parse_thread_count(raw: &str) -> Result<usize, String> {
     let value = raw.parse::<usize>().map_err(|_| "线程数必须是正整数".to_string())?;
     if value == 0 {
         Err("线程数必须大于 0".to_string())
@@ -58,7 +58,7 @@ pub(super) fn parse_thread_count(raw: &str) -> Result<usize, String> {
 }
 
 /// 解析严格大于 0 的整数。
-pub(super) fn parse_positive_usize(raw: &str) -> Result<usize, String> {
+pub fn parse_positive_usize(raw: &str) -> Result<usize, String> {
     let value = raw.parse::<usize>().map_err(|_| "参数必须是正整数".to_string())?;
     if value == 0 {
         Err("参数必须大于 0".to_string())
@@ -68,7 +68,7 @@ pub(super) fn parse_positive_usize(raw: &str) -> Result<usize, String> {
 }
 
 /// 解析并校验百分比阈值参数 (0~100)。
-pub(super) fn parse_percent_0_100(raw: &str) -> Result<f64, String> {
+pub fn parse_percent_0_100(raw: &str) -> Result<f64, String> {
     let value = raw.parse::<f64>().map_err(|_| "阈值必须是 0~100 之间的数字".to_string())?;
     if !(0.0..=100.0).contains(&value) {
         Err("阈值必须在 0~100 之间".to_string())
@@ -80,7 +80,7 @@ pub(super) fn parse_percent_0_100(raw: &str) -> Result<f64, String> {
 /// 解析有限的非负浮点阈值。
 ///
 /// 接受零与负零；拒绝 NaN、无穷和解析时溢出的数值，避免后续大小比较静默失效。
-pub(super) fn parse_non_negative_f64(raw: &str) -> Result<f64, String> {
+pub fn parse_non_negative_f64(raw: &str) -> Result<f64, String> {
     let value = raw.parse::<f64>().map_err(|_| "阈值必须是非负数字".to_string())?;
     if !value.is_finite() {
         Err("阈值必须是有限非负数字".to_string())
@@ -92,7 +92,7 @@ pub(super) fn parse_non_negative_f64(raw: &str) -> Result<f64, String> {
 }
 
 /// 解析胜率输出的小数位数。
-pub(super) fn parse_wr_precision(raw: &str) -> Result<usize, String> {
+pub fn parse_wr_precision(raw: &str) -> Result<usize, String> {
     let value = raw.parse::<usize>().map_err(|_| "小数位数必须是 0~9 之间的整数".to_string())?;
     if value > 9 {
         Err("小数位数必须在 0~9 之间".to_string())
@@ -104,14 +104,12 @@ pub(super) fn parse_wr_precision(raw: &str) -> Result<usize, String> {
 /// 构造统一风格的 CLI 参数校验错误。
 ///
 /// 把错误构造集中在这里，是为了保证所有手写校验都以和 `clap` 原生错误一致的形式输出。
-pub(super) fn cli_error(message: impl Into<String>) -> clap::Error {
-    Cli::command().error(ErrorKind::ValueValidation, message.into())
-}
+pub fn cli_error(message: impl Into<String>) -> clap::Error { Cli::command().error(ErrorKind::ValueValidation, message.into()) }
 
 /// 解析 `to-diy --file` 输入。
 ///
 /// 文件模式按“每行一个名字”解释；空行会被忽略，但若最后没有任何有效名字则直接报错。
-pub(super) fn parse_to_diy_file_names(content: &str) -> Result<Vec<String>, clap::Error> {
+pub fn parse_to_diy_file_names(content: &str) -> Result<Vec<String>, clap::Error> {
     let names = parse_line_list(content);
     if names.is_empty() {
         Err(cli_error("to-diy 文件中没有有效名字"))
@@ -121,7 +119,7 @@ pub(super) fn parse_to_diy_file_names(content: &str) -> Result<Vec<String>, clap
 }
 
 /// 解析“每个非空行是一项”的纯行列表。
-pub(super) fn parse_line_list(content: &str) -> Vec<String> {
+pub fn parse_line_list(content: &str) -> Vec<String> {
     content
         .lines()
         .map(str::trim)
@@ -136,7 +134,7 @@ pub(super) fn parse_line_list(content: &str) -> Vec<String> {
 /// 这是 `bench batch-rate` / `bench pair` 的靶子列表和部分玩家列表的标准格式。
 /// `double_plus=true` 时组内分隔符改成 `++`，避免拆开名字里的 `+diy[...]` /
 /// `+ol:...`。
-pub(super) fn parse_plus_separated_groups(content: &str, double_plus: bool) -> Vec<String> {
+pub fn parse_plus_separated_groups(content: &str, double_plus: bool) -> Vec<String> {
     let separator = if double_plus { "++" } else { "+" };
     content
         .lines()
@@ -154,7 +152,7 @@ pub(super) fn parse_plus_separated_groups(content: &str, double_plus: bool) -> V
 /// FILE 段按“最后一段是可解析数字才算 MIN_FILE”的规则回切，因此 Windows 的
 /// `C:\dir\out.txt` 这类带盘符冒号的路径不会被切碎。阈值必须有限且非负；
 /// 除开头盘符的冒号外，FILE 中的其他冒号一律拒绝，UNC 路径不受影响。
-pub(super) fn parse_metric_spec(raw: &str) -> Result<NamerPfMetricSpec, String> {
+pub fn parse_metric_spec(raw: &str) -> Result<NamerPfMetricSpec, String> {
     let mut segments = raw.split(':');
     let name = segments.next().unwrap_or_default().trim();
     let metric = match name.to_ascii_lowercase().as_str() {
@@ -212,7 +210,7 @@ fn path_has_illegal_colon(path: &Path) -> bool {
 }
 
 /// 解析带权靶子 TOML。每个 `[[targets]]` 项包含正数 `factor` 和非空 `players` 数组。
-pub(super) fn parse_factored_target_groups(content: &str) -> Result<(Vec<String>, Vec<f64>), clap::Error> {
+pub fn parse_factored_target_groups(content: &str) -> Result<(Vec<String>, Vec<f64>), clap::Error> {
     let table = toml::from_str::<toml::Table>(content).map_err(|err| cli_error(format!("带权靶子 TOML 解析失败: {err}")))?;
     let entries = table
         .get("targets")
@@ -258,7 +256,7 @@ pub(super) fn parse_factored_target_groups(content: &str) -> Result<(Vec<String>
 /// 解析 `bench win-rate` 的两队输入。
 ///
 /// 输入中每个非空行是一队；默认队内用 `+` 分隔，`double_plus=true` 时改用 `++` 分隔。
-pub(super) fn parse_win_rate_teams(content: &str, double_plus: bool) -> Result<(String, String), clap::Error> {
+pub fn parse_win_rate_teams(content: &str, double_plus: bool) -> Result<(String, String), clap::Error> {
     let separator = if double_plus { "++" } else { "+" };
     let teams = content
         .lines()
@@ -280,7 +278,7 @@ pub(super) fn parse_win_rate_teams(content: &str, double_plus: bool) -> Result<(
 ///
 /// `double_plus=true` 时，组内分隔符改成 `++`，用来避免把玩家名字里的 `+diy[...]`
 /// 或 `+ol:...` 误切开。返回的 groups 与 labels 等长，展示标签保留去除首尾空白后的整行文本。
-pub(super) fn parse_player_groups_with_labels(content: &str, double_plus: bool) -> (Vec<String>, Vec<String>) {
+pub fn parse_player_groups_with_labels(content: &str, double_plus: bool) -> (Vec<String>, Vec<String>) {
     let mut groups = Vec::new();
     let mut labels = Vec::new();
     let separator = if double_plus { "++" } else { "+" };

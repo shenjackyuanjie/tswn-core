@@ -55,3 +55,18 @@ main 与 tag 同理（例如 `git push github main; git push gitea main`）。�
 ## Clever 独立发布约定
 
 本工作目录的 Clever 引擎和前端以这里发布到 KODU16/tswn-core-clever main 的修改为准，仅在用户明确要求时同步上游主仓库，并保留 Clever 扩展。功能修改完成后验证并发布 Clever main，前端与 WASM 必须由同一提交构建。前端地址及同步机制见 docs/clever-search.md。本 fork 仅发布 origin，不推送 shenjackyuanjie 的 github/gitea remote；上文双 remote 规则适用于上游仓库。
+
+### 当前 clone 可能只配了其中一个
+
+不同来源的 clone 未必两个 remote 都在（从 gitea 镜像拉的就可能只有 gitea，手动加的也可能只加了 github）。**动手推送前先 `git remote -v` 看一遍**，缺哪个补哪个，不要因为缺一个就只推一边：
+
+```powershell
+# 只有 gitea，补 github
+git remote add github git@github.com:shenjackyuanjie/tswn-core.git
+
+# 只有 github，补 gitea
+git remote add gitea ssh://git@git.shenjack.top:5101/shenjack/tswn-core.git
+```n
+如果唯一的 remote 叫 `origin`，先确认它指向哪个仓库，把它当作对应的那一个，再补另一个缺失的；不要为了统一名字去改 `origin`。补齐后照常两边都推，推完核对 `ls-remote`。
+
+某个 remote 临时不可达（网络、SSH、权限）而另一边已经推成功时，两端就此分叉。GitHub 侧有禁止非快进推送的 ruleset，用 force push 硬推会被直接拒绝；正确做法是尽快把缺的一边补上，别用改写历史去掩盖。

@@ -5,6 +5,9 @@
 ### 内部整理
 
 - 按职责拆分 SQLite 存储、Raw/Golden 排名、Correct/Python 校准与服务任务模块；SQL、评分公式、求解器脚本与 HTTP 调用契约保持原状。
+- `db`、`pairwise`、`ranker`、`service` 四个模块改为 `*/mod.rs`。`pairwise` 与 `service` 内的 `include_str!` 按模块文件所在目录解析，路径相应
+- 219 处 `pub(super)` 统一改为 `pub`（`service/compression.rs` 单文件 97 处，含 `InheritedCompressionMetrics` 的全部字段）。该 crate 无 lib target，bin-only，`pub` 不会泄漏到 crate 之外，
+- `skill_eq.rs` 的 `get_43` 改名 `compute_feature_x`，与 `tswn_ds4` 同名函数统一。该函数由 `name_base` 重算 50 维特征 x 并派生 `cfz`、`freq` 与影子修正，`get_` 前缀与实际行为不符、数字后缀无语义。Python 校准器里的同名函数是 legacy 严格对照复刻，保留原名以维持可对照性。
 - 默认阈值和替换槽位策略留在 README，删除只比较固定返回值的两项测试，保留七项实际行为回归。
 - 2026-10-13 使用正常 SQLite/mimalloc 配置执行 `cargo test -p tswn_lane_ranker`，全部通过。
 

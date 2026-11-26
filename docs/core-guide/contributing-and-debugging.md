@@ -14,7 +14,7 @@
 | 行动条、冰冻、谁先行动 | `runtime/scheduler.rs` | 初始行动点、world round_order 与 RNG |
 | 攻击、闪避、护盾、反弹 | `combat/attack.rs`、`defense.rs`、`profile/hooks.rs` | Atp → Damage → HP 与嵌套效果 |
 | 状态持续、注册与解除 | `entity/state`、`handlers/`、`combat/round.rs` | 载荷、游标和 deferred 清理 |
-| 召唤、分身、亡灵、吞噬 | `combat/skills_lifecycle.rs`、`lifecycle.rs` | 蓝图、owner、策略与世界视图 |
+| 召唤、分身、亡灵、吞噬 | `combat/skills/lifecycle.rs`、`lifecycle.rs` | 蓝图、owner、策略与世界视图 |
 | 帧、终止、DTO | `cli_api/battle` | driver 与 session 投影 |
 | 播放片段、HP/盾变化 | `replay_view.rs` | rows、clips 与帧前后快照 |
 | 网页视觉和交互 | `tswn_wasm/examples` | renderer、CSS、播放游标和 UI |

@@ -18,7 +18,7 @@ use wasm_bindgen::prelude::*;
 const BATTLE_TYPES: &str = include_str!("battle_types.d.ts");
 
 /// 把 DTO 序列化为 JSON 兼容的 JsValue。
-pub(crate) fn dto_to_js<T: Serialize + ?Sized>(dto: &T) -> WasmResult<JsValue> {
+pub fn dto_to_js<T: Serialize + ?Sized>(dto: &T) -> WasmResult<JsValue> {
     dto.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
         .map_err(|error| internal_error(error.to_string()))
 }

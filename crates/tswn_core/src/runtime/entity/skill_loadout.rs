@@ -16,33 +16,33 @@ static NEXT_SKILL_LOADOUT_BASELINE_ID: AtomicU64 = AtomicU64::new(1);
 fn next_skill_loadout_baseline_id() -> u64 { NEXT_SKILL_LOADOUT_BASELINE_ID.fetch_add(1, Ordering::Relaxed) }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CachedSkillHookEntry {
+pub struct CachedSkillHookEntry {
     hook_index: u8,
-    pub(crate) skill_id: SkillId,
-    pub(crate) target_policy: TargetPolicy,
-    pub(crate) priority: SkillPriority,
-    pub(crate) post_action_phase: SkillPostActionPhase,
-    pub(crate) active_order: usize,
-    pub(crate) fixed_lane: usize,
-    pub(crate) registration_order: RegistrationOrder,
+    pub skill_id: SkillId,
+    pub target_policy: TargetPolicy,
+    pub priority: SkillPriority,
+    pub post_action_phase: SkillPostActionPhase,
+    pub active_order: usize,
+    pub fixed_lane: usize,
+    pub registration_order: RegistrationOrder,
 }
 
 /// 默认 score 技能表在 registry 构造期固化的 hook 元数据。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ScoreSkillHookPlanEntry {
-    pub(crate) legacy_key: usize,
-    pub(crate) hook_index: u8,
-    pub(crate) skill_id: SkillId,
-    pub(crate) target_policy: TargetPolicy,
-    pub(crate) priority: SkillPriority,
-    pub(crate) post_action_phase: SkillPostActionPhase,
-    pub(crate) registration_order: RegistrationOrder,
+pub struct ScoreSkillHookPlanEntry {
+    pub legacy_key: usize,
+    pub hook_index: u8,
+    pub skill_id: SkillId,
+    pub target_policy: TargetPolicy,
+    pub priority: SkillPriority,
+    pub post_action_phase: SkillPostActionPhase,
+    pub registration_order: RegistrationOrder,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CachedBuiltinActionEntry {
-    pub(crate) fixed_lane: u16,
-    pub(crate) skill: BuiltinActiveSkill,
+pub struct CachedBuiltinActionEntry {
+    pub fixed_lane: u16,
+    pub skill: BuiltinActiveSkill,
 }
 
 /// dirty 位：当前等级被修改。
@@ -268,7 +268,7 @@ impl SkillLoadout {
     }
 
     /// 原地重填标准 score profile 的固定 35-lane 技能表，复用上一场的堆容量。
-    pub(crate) fn reset_score_profile(
+    pub fn reset_score_profile(
         &mut self,
         skill_ids: &[Option<SkillId>; 35],
         hook_plan: &[ScoreSkillHookPlanEntry],
@@ -362,13 +362,13 @@ impl SkillLoadout {
     }
 
     /// 将当前技能表封为可复用 runner 的场前基线。
-    pub(crate) fn mark_battle_baseline(&mut self) {
+    pub fn mark_battle_baseline(&mut self) {
         self.battle_dirty = 0;
         self.hook_generation = 0;
     }
 
     /// 恢复一场战斗会修改的技能字段；未发生修改时完全跳过 SmallVec 深拷贝。
-    pub(crate) fn reset_battle_fields_from(&mut self, prepared: &Self) {
+    pub fn reset_battle_fields_from(&mut self, prepared: &Self) {
         if self.baseline_id != prepared.baseline_id {
             self.clone_from(prepared);
             return;
@@ -418,7 +418,7 @@ impl SkillLoadout {
     }
 
     /// 预计算八类技能钩子的稳定顺序，避免每次行动重复扫描并排序完整技能表。
-    pub(crate) fn prepare_hook_cache(&mut self, registry: &ExtensionRegistry) {
+    pub fn prepare_hook_cache(&mut self, registry: &ExtensionRegistry) {
         if self.hook_cache_ready {
             return;
         }
@@ -484,7 +484,7 @@ impl SkillLoadout {
 
     /// 只在已知该阶段无非零等级的技能时返回 false；未缓存的扩展阶段仍走通用查询。
     #[inline]
-    pub(crate) fn may_have_enabled_hook(&self, hook: ProcMask) -> bool {
+    pub fn may_have_enabled_hook(&self, hook: ProcMask) -> bool {
         let absent_hooks = u64::from(!self.enabled_hook_mask);
         hook.0 & !absent_hooks != 0
     }
@@ -503,7 +503,7 @@ impl SkillLoadout {
         self.enabled_hook_mask = enabled_hooks;
     }
 
-    pub(crate) fn cached_hook_entries(&self, hook: ProcMask) -> Option<&[CachedSkillHookEntry]> {
+    pub fn cached_hook_entries(&self, hook: ProcMask) -> Option<&[CachedSkillHookEntry]> {
         if !self.hook_cache_ready || !hook.0.is_power_of_two() {
             return None;
         }
@@ -519,7 +519,7 @@ impl SkillLoadout {
         Some(&self.hook_cache[start..end])
     }
 
-    pub(crate) fn cached_builtin_actions(&self) -> Option<&[CachedBuiltinActionEntry]> {
+    pub fn cached_builtin_actions(&self) -> Option<&[CachedBuiltinActionEntry]> {
         self.action_cache_ready.then_some(self.action_cache.as_slice())
     }
 
@@ -577,7 +577,7 @@ impl SkillLoadout {
     /// 主动技能的遍历顺序（lane 排列）。
     pub fn active_order(&self) -> &[usize] { &self.active_order }
 
-    pub(crate) fn with_effective_skill_weights(
+    pub fn with_effective_skill_weights(
         mut self,
         weights: Option<&[(usize, EffectiveSkillWeight)]>,
         redistribution: Option<EffectiveSkillWeight>,
@@ -608,7 +608,7 @@ impl SkillLoadout {
         self
     }
 
-    pub(crate) fn effective_action_weights(&self) -> Option<impl Iterator<Item = (usize, f64)> + '_> {
+    pub fn effective_action_weights(&self) -> Option<impl Iterator<Item = (usize, f64)> + '_> {
         self.effective_skill_weights.as_ref().map(|weights| {
             weights.entries.iter().filter_map(|&(lane, initial_level, weight)| {
                 let level = self.levels[lane];
@@ -618,7 +618,7 @@ impl SkillLoadout {
         })
     }
 
-    pub(crate) fn effective_skill_redistribution(&self) -> f64 {
+    pub fn effective_skill_redistribution(&self) -> f64 {
         self.effective_skill_weights
             .as_ref()
             .and_then(|weights| weights.redistribution)
@@ -626,11 +626,11 @@ impl SkillLoadout {
             .min(1.0)
     }
 
-    pub(crate) fn uses_compact_effective_skills(&self) -> bool {
+    pub fn uses_compact_effective_skills(&self) -> bool {
         self.effective_skill_weights.as_ref().is_some_and(|weights| weights.adjustment.is_some())
     }
 
-    pub(crate) fn effective_skill_cut(&self, lane: usize) -> Option<f64> {
+    pub fn effective_skill_cut(&self, lane: usize) -> Option<f64> {
         self.effective_skill_weights
             .as_ref()?
             .adjustment
@@ -640,7 +640,7 @@ impl SkillLoadout {
             .map(|&(_, cut)| cut.value())
     }
 
-    pub(crate) fn uses_effective_skill_weights(&self) -> bool { self.effective_skill_weights.is_some() }
+    pub fn uses_effective_skill_weights(&self) -> bool { self.effective_skill_weights.is_some() }
 
     /// PRE_ACTION 阶段的 lane 顺序。
     pub fn pre_action_order(&self) -> &[usize] { &self.pre_action_order }
@@ -651,7 +651,7 @@ impl SkillLoadout {
     /// 延后到状态之后执行的 POST_ACTION 条目：(状态游标, lane)。
     pub fn post_action_after_states(&self) -> &[(u64, usize)] { &self.post_action_after_states }
 
-    pub(crate) const fn hook_generation(&self) -> u32 { self.hook_generation }
+    pub const fn hook_generation(&self) -> u32 { self.hook_generation }
 
     /// 是否没有任何技能。
     pub fn is_empty(&self) -> bool { self.skills.is_empty() }
@@ -684,7 +684,7 @@ impl SkillLoadout {
         clone
     }
 
-    pub(crate) fn rebuilt_for_score_clone(&self, plan: &super::ScoreCloneSkillBoostPlan) -> Self {
+    pub fn rebuilt_for_score_clone(&self, plan: &super::ScoreCloneSkillBoostPlan) -> Self {
         let mut clone = self.clone();
         let mut eligibility_changed = false;
         for lane in 0..clone.levels.len() {
@@ -878,14 +878,7 @@ impl SkillLoadout {
             MergePolicy::FixedLane | MergePolicy::FixedLaneHalfResources => {
                 // legacy 的 Merge 只会按双方 `slot_skill` 的位置配对；store 中额外注册的
                 // 分摊伤害等技能不属于固定槽位，不能挤进普通技能槽位。
-                let lane_count = self.merge_lane_order.len().min(source.merge_lane_order.len());
-                (0..lane_count)
-                    .map(|position| {
-                        let owner_idx = self.merge_lane_order[position];
-                        let source_idx = source.merge_lane_order[position];
-                        self.merge_level_at(owner_idx, source.levels[source_idx])
-                    })
-                    .fold(false, |changed, lane_changed| changed || lane_changed)
+                self.merge_slot_levels_from(source.merge_lane_order.iter().map(|&lane| source.levels[lane]))
             }
             MergePolicy::DropUnmappedSkills => {
                 let mut changed = false;
@@ -900,6 +893,15 @@ impl SkillLoadout {
                 changed
             }
         }
+    }
+
+    /// 按固定槽位顺序合并来源等级，双方都存在的槽位才参与比较。
+    pub fn merge_slot_levels_from(&mut self, source_levels: impl IntoIterator<Item = u32>) -> bool {
+        let mut changed = false;
+        for (position, level) in source_levels.into_iter().take(self.merge_lane_order.len()).enumerate() {
+            changed |= self.merge_level_at(self.merge_lane_order[position], level);
+        }
+        changed
     }
 
     /// 把来源等级合并到指定 lane：仅在提升时写入；从 0 抬到正等级时重排行动序与 POST_DAMAGE 序，并作废 hook 缓存。

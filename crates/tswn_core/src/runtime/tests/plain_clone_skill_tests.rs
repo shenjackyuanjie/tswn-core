@@ -193,7 +193,7 @@ fn auto_effective_skill_draw_reuses_the_interval_after_target_failure() {
 
 #[test]
 fn plain_clone_inherits_summon_blueprint_and_can_summon() {
-    let mut runtime = super::plain_summon_skill_tests::summon_runtime();
+    let mut runtime = super::skills_summon_tests::summon_runtime();
     let owner = EntityIdx(1);
     let clone_lane = {
         let skills = &runtime.entities.get(owner).unwrap().template.skills;

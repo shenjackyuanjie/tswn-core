@@ -125,7 +125,7 @@ flowchart TD
 
 ## 玩家快照如何理解
 
-身份和关系：`id`、`input_team_index`、`team_index`、`owner_id`、`source_id`。
+身份和关系：`id`、`input_team_index`、`team_index`、`owner_id`、`root_owner_id`。
 
 显示：`display_name`、`display_index`、`icon_key`、可选 PNG Base64。
 
@@ -158,7 +158,7 @@ flowchart TD
 ## 源码入口
 
 - [battle/session.rs](../../crates/tswn_core/src/cli_api/battle/session.rs)、[driver.rs](../../crates/tswn_core/src/cli_api/battle/driver.rs)、[model_session.rs](../../crates/tswn_core/src/cli_api/battle/model_session.rs)。
-- [replay_view.rs](../../crates/tswn_core/src/replay_view.rs)：消息到 row/clip 的投影。
+- [replay_view.rs](../../crates/tswn_core/src/replay_view/mod.rs)：消息到 row/clip 的投影。
 - [runtime/control.rs](../../crates/tswn_core/src/runtime/control.rs)：受控队伍、指令队列、暂停标记与决策批次。
 - [公共 API 契约](../reference/public-api.md)：跨语言一致的字段、错误和生命周期。
 

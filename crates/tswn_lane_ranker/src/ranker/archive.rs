@@ -8,14 +8,14 @@ use super::*;
 
 #[derive(Debug, Clone)]
 /// 一条自动封存候选：组 ID、原因列表与平均 CQD。
-pub(super) struct ArchiveCandidate {
-    pub(super) group_id: GroupId,
-    pub(super) reason: String,
-    pub(super) average_cqd: f64,
+pub struct ArchiveCandidate {
+    pub group_id: GroupId,
+    pub reason: String,
+    pub average_cqd: f64,
 }
 
 /// 汇总低于踢出/封存阈值与折叠超限的候选，跳过手动屏蔽组合并按组 ID 排序。
-pub(super) fn find_archive_candidates(rows: &[LaneResultRow], nodes: &[RankNode]) -> Vec<ArchiveCandidate> {
+pub fn find_archive_candidates(rows: &[LaneResultRow], nodes: &[RankNode]) -> Vec<ArchiveCandidate> {
     let members_by_group_id: HashMap<GroupId, Vec<String>> =
         nodes.iter().map(|node| (node.group.id, node.group.members.clone())).collect();
 
@@ -65,7 +65,7 @@ pub(super) fn find_archive_candidates(rows: &[LaneResultRow], nodes: &[RankNode]
 }
 
 /// 向候选表追加去重后的封存原因，同组多原因用分号连接。
-pub(super) fn push_archive_reason(
+pub fn push_archive_reason(
     by_group_id: &mut HashMap<GroupId, ArchiveCandidate>,
     group_id: GroupId,
     average_cqd: f64,
@@ -88,7 +88,7 @@ pub(super) fn push_archive_reason(
 }
 
 /// 按折叠分组结果找出超出保留上限且未屏蔽的子项。
-pub(super) fn folded_children_outside_keep_limit(
+pub fn folded_children_outside_keep_limit(
     rows: &[LaneResultRow],
     members_by_group_id: &HashMap<GroupId, Vec<String>>,
     keep_limit: usize,
@@ -110,7 +110,7 @@ pub(super) fn folded_children_outside_keep_limit(
 }
 
 /// 按成员重叠把行折叠为父子组；屏蔽行优先折叠到更低的未屏蔽重叠行。
-pub(super) fn folded_result_groups_for_archive(
+pub fn folded_result_groups_for_archive(
     rows: &[LaneResultRow],
     members_by_group_id: &HashMap<GroupId, Vec<String>>,
 ) -> Vec<(usize, Vec<usize>)> {
@@ -178,7 +178,7 @@ pub(super) fn folded_result_groups_for_archive(
 }
 
 /// 在后续行中寻找第一个未屏蔽且成员重叠的行下标。
-pub(super) fn find_lower_unblocked_overlap(
+pub fn find_lower_unblocked_overlap(
     rows: &[LaneResultRow],
     members_by_group_id: &HashMap<GroupId, Vec<String>>,
     consumed: &[bool],
@@ -203,7 +203,7 @@ pub(super) fn find_lower_unblocked_overlap(
 }
 
 /// 判断两个成员列表是否有交集；空列表视为不重叠。
-pub(super) fn has_member_overlap(a: &[String], b: &[String]) -> bool {
+pub fn has_member_overlap(a: &[String], b: &[String]) -> bool {
     if a.is_empty() || b.is_empty() {
         return false;
     }

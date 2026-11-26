@@ -28,11 +28,11 @@ use super::output::{
     format_rate, groups_have_same_players, open_batch_rate_output, print_perf_lines, write_batch_rate_record,
 };
 use super::progress::{BatchProgress, PROGRESS_BAR_WIDTH};
-use super::winrate::bench_winrate_summary;
+use super::win_rate::bench_win_rate_summary;
 
 /// 单个 player group 批量测试后的汇总；`pair` 也复用同一次单组计算的结果。
 #[derive(Debug)]
-pub(super) struct BatchRateSummary {
+pub struct BatchRateSummary {
     pub avg: f64,
     pub aggregate_rate: f64,
     pub wins: usize,
@@ -56,7 +56,6 @@ impl BatchRateSummary {
 }
 
 /// `bench batch-rate` / `bench cqp` 入口。
-#[allow(clippy::too_many_arguments)]
 pub fn run_bench_batch_rate(
     target_groups: &[String],
     target_factors: &[f64],
@@ -208,7 +207,6 @@ pub fn run_bench_batch_rate(
 /// 每个 `player × target` matchup 都是独立任务，core 在一组持久 worker 上动态窃取任务；
 /// 这样复杂 player 不会独占一个 worker 形成长尾，高精度档也不再为每个 matchup 重建线程组。
 /// core 返回值按矩阵原始顺序排列，因此这里仍按 player 输入顺序汇总、打印和落盘。
-#[allow(clippy::too_many_arguments)]
 fn run_bench_batch_rate_parallel(
     target_groups: &[String],
     player_groups: &[String],
@@ -413,7 +411,6 @@ fn run_bench_batch_rate_parallel(
 /// `show_matchups` 时屏幕输出切换为 openbox 块状格式（`平均胜率 名字` + 逐行缩进的
 /// `胜率 靶子组`），此时以它为准不再打印 `-v` 的逐靶明细，避免同一内容输出两遍；
 /// `clean_label` 同时作用于屏幕与文件标签。
-#[allow(clippy::too_many_arguments)]
 fn emit_batch_rate_player(
     label: &str,
     summary: &BatchRateSummary,
@@ -562,8 +559,7 @@ fn group_label_for_display(raw: &str, clean: bool) -> String {
 /// 计算单个 player group 对整个 target 列表的平均胜率（不收集明细）。
 ///
 /// `pair` 复用同一次单组计算结果，因此对 `bench` 模块内可见。
-#[allow(clippy::too_many_arguments)]
-pub(super) fn bench_batch_rate_for_group(
+pub fn bench_batch_rate_for_group(
     player: &str,
     target_groups: &[String],
     target_factors: &[f64],
@@ -596,7 +592,6 @@ pub(super) fn bench_batch_rate_for_group(
 ///
 /// `detail_rates` 为 `None` 时行为完全一致；`Some` 时按靶子输入顺序记录有效对局
 /// （镜像 50% 也记录，重复号跳过不记录），供 `--show-matchups` 块状明细使用。
-#[allow(clippy::too_many_arguments)]
 fn bench_batch_rate_for_group_detailed(
     player: &str,
     target_groups: &[String],
@@ -660,7 +655,7 @@ fn bench_batch_rate_for_group_detailed(
         }
 
         let raw = format!("{player}\n\n{target}");
-        let summary = bench_winrate_summary(&raw, n, mode, threads, eval_rq, true);
+        let summary = bench_win_rate_summary(&raw, n, mode, threads, eval_rq, true);
         if let Some(sink) = detail_rates.as_mut() {
             sink.push((summary.win_rate_percent(), target.clone()));
         }

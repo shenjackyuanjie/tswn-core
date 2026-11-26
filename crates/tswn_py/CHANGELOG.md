@@ -2,6 +2,15 @@
 
 ## [Unreleased] - 0.5.5
 
+### 破坏性变更
+
+- **BREAKING**：玩家快照的 `source_id` 更名为 `root_owner_id`，同时改动 Python dict 键、运行期序列化与类型存根（`_types_battle.pyi` / `_types_replay.pyi`）。语义不变（根来源实体 ID）。
+- 读取根来源字段请改用 `root_owner_id`，不保留旧键名。
+
+### 内部整理
+
+- 5 处 `pub(crate)` 改为 `pub`；`cli_api::map_cli_error` 此前不可从 crate 外寻址，现已可见。Python 绑定签名与行为不变。
+
 ### 修复
 
 - 恢复合并 instant 前的受控暂停面板、回合计数和 MP/目标预览；自动战斗与 Python 调用签名保持不变。绑定显式开启 core 的行动前暂停视图，独立于 WASM 卡牌的提交边界契约。

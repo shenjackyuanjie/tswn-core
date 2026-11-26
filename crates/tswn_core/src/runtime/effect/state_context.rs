@@ -83,7 +83,7 @@ impl<'a> StateContext<'a> {
     /// owner 实体记录；实体已不存在时返回 None。
     pub fn owner(&self) -> Option<&EntityRecord> { self.entities.get(self.owner) }
 
-    pub(crate) fn owner_has_boss_infection(&self, key: u32) -> bool {
+    pub fn owner_has_boss_infection(&self, key: u32) -> bool {
         self.owner()
             .and_then(|owner| owner.states.entry(key))
             .is_some_and(|entry| entry.is_boss_infection(self.entities))

@@ -163,7 +163,7 @@ legacy 侧同样出现计数残留，甚至出现一次“`Q == 1` 但两队存�
 复活是内置主动技能，不是自定义扩展：
 
 - legacy：`T.SklRevive.prototype.v`（`md5.js` 15702-15748），技能 ID 16，等级半衰。
-- Rust：`BuiltinActiveSkill::Revive` / `core.skill.revive`，`skills_lifecycle.rs` 的
+- Rust：`BuiltinActiveSkill::Revive` / `core.skill.revive`，`skills/lifecycle.rs` 的
   `select_plain_revive_targets` / `drain_plain_revive_skill_into`。
 - 召唤、僵尸化、幻影等也会通过 `add_spawned_alive` / `revive_alive` 把实体放回存活视图。
 
@@ -210,5 +210,5 @@ node scripts/md5_winner_probe.cjs ..\fast-namerena\md5.js --names tests/sqp5900.
 | 存活视图维护 | [world.rs](../../crates/tswn_core/src/runtime/world.rs) `add_spawned_alive` / `revive_alive` / `remove_alive` | `T.Grp.prototype.aZ`（17707-17725）、`dj` |
 | 队伍计数 | [world.rs](../../crates/tswn_core/src/runtime/world.rs#L273) `alive_group_count` | `Engine.y.a.Q`（初始化 17267、递减 17742、使用 18883） |
 | 回合循环 | [round.rs](../../crates/tswn_core/src/runtime/combat/round.rs) `run_minimal_round_with_capture` | `T.Engine.prototype.O`（17514-17588） |
-| 复活技能 | [skills_lifecycle.rs](../../crates/tswn_core/src/runtime/combat/skills_lifecycle.rs) | `T.SklRevive.prototype.v`（15702-15748） |
+| 复活技能 | [skills/lifecycle.rs](../../crates/tswn_core/src/runtime/combat/skills/lifecycle.rs) | `T.SklRevive.prototype.v`（15702-15748） |
 | 回归测试 | [winner_path_divergence_tests.rs](../../crates/tswn_core/src/runtime/tests/winner_path_divergence_tests.rs)、[world.rs 单测](../../crates/tswn_core/src/runtime/world.rs#L592) | [md5_winner_probe.cjs](../../scripts/md5_winner_probe.cjs) |

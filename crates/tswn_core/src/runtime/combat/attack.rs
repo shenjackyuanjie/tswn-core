@@ -125,7 +125,7 @@ impl CombatRuntime {
         scored.first().map(|(target, _)| *target)
     }
 
-    pub(super) fn plain_smart_attack_score(world: &WorldArena, target: EntityIdx, runtime: &PlayerRuntime) -> f64 {
+    pub fn plain_smart_attack_score(world: &WorldArena, target: EntityIdx, runtime: &PlayerRuntime) -> f64 {
         let hp = match runtime.hp {
             ..=19 => 30.0,
             301.. => 300.0,
@@ -163,7 +163,7 @@ impl CombatRuntime {
     }
 
     #[cfg(feature = "no_debug")]
-    pub(super) fn rank_two_plain_enemy_targets(
+    pub fn rank_two_plain_enemy_targets(
         &mut self,
         candidates: [EntityIdx; 2],
         smart: bool,
@@ -197,7 +197,7 @@ impl CombatRuntime {
     }
 
     /// 保留受限技能的两个停止条件：重复抽中与抽中无效目标各自计数。
-    pub(in crate::runtime) fn select_plain_filtered_enemy_targets(
+    pub fn select_plain_filtered_enemy_targets(
         &mut self,
         actor: EntityIdx,
         smart: bool,
@@ -614,7 +614,7 @@ impl CombatRuntime {
     /// `T.mE()`（冰冻术/冰河时代）与 `T.oH()`（`SklAttack` 物理分支）。
     ///
     /// 伤害决策批次在进入 PRE_DEFEND 之前开启：回避预演要挂在该批次上，退出时成对关闭。
-    pub(crate) fn drain_plain_attack_with_atp_covid_kind_and_on_damage_into(
+    pub fn drain_plain_attack_with_atp_covid_kind_and_on_damage_into(
         &mut self,
         actor: EntityIdx,
         target: EntityIdx,
@@ -787,7 +787,6 @@ impl CombatRuntime {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     /// 回避判定后的普攻结算：按防御折算伤害、过 POST_DEFEND 并落地。
     pub fn drain_plain_attack_after_dodge_into(
         &mut self,

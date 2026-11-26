@@ -10,7 +10,7 @@ use tswn_core::cli_api::{BattleOptions, BattleSession};
 use tswn_core::runtime::{BuiltinActiveSkill, PassiveDecision, PlannedAction, PlannedSkill};
 
 /// 从 Python 参数构造 BattleOptions：未提供的项用 core 默认值，手动对战强制开启行动前预览。
-pub(crate) fn options(
+pub fn options(
     eval_rq: Option<f64>,
     include_icons: bool,
     include_skills: bool,
@@ -51,7 +51,7 @@ pub(crate) fn options(
 /// 把 Python 侧的技能名转换成 core 的行动技能。
 ///
 /// 接受 `basic` / `magic` 以及内置主动技能的导出名（`core.skill.fire`）。
-pub(crate) fn parse_planned_skill(value: &str) -> PyResult<PlannedSkill> {
+pub fn parse_planned_skill(value: &str) -> PyResult<PlannedSkill> {
     match value.trim().to_ascii_lowercase().as_str() {
         "basic" | "basic_attack" | "attack" => Ok(PlannedSkill::BasicAttack),
         "magic" | "magic_attack" => Ok(PlannedSkill::MagicAttack),
@@ -63,7 +63,7 @@ pub(crate) fn parse_planned_skill(value: &str) -> PyResult<PlannedSkill> {
 }
 
 /// 把 actor、技能与消耗参数组装为 PlannedAction。
-pub(crate) fn parse_planned_action(actor: usize, skill: &str, magic_cost: Option<u8>, potion: u32) -> PyResult<PlannedAction> {
+pub fn parse_planned_action(actor: usize, skill: &str, magic_cost: Option<u8>, potion: u32) -> PyResult<PlannedAction> {
     Ok(PlannedAction {
         target_team: None,
         actor,
@@ -74,7 +74,7 @@ pub(crate) fn parse_planned_action(actor: usize, skill: &str, magic_cost: Option
 }
 
 /// 把可序列化 DTO 经 JSON 转换为 Python 对象（dict/list 副本）。
-pub(crate) fn dto_to_python<T: serde::Serialize + ?Sized>(py: Python<'_>, dto: &T) -> PyResult<Py<PyAny>> {
+pub fn dto_to_python<T: serde::Serialize + ?Sized>(py: Python<'_>, dto: &T) -> PyResult<Py<PyAny>> {
     let json = serde_json::to_string(dto)
         .map_err(|error| map_cli_error(tswn_core::cli_api::CliApiError::Internal(error.to_string())))?;
     Ok(PyModule::import(py, "json")?.getattr("loads")?.call1((json,))?.unbind())

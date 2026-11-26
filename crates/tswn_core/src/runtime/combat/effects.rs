@@ -1,7 +1,7 @@
 use super::*;
 
 impl CombatRuntime {
-    pub(super) fn drain_fire_attack_effect_into(
+    pub fn drain_fire_attack_effect_into(
         &mut self,
         caster: EntityIdx,
         target: EntityIdx,
@@ -190,7 +190,7 @@ impl CombatRuntime {
                         "[0]使用[自爆]",
                         0,
                     ));
-                    let killed_caster = self.kill_entity_without_damage_mark_only_into(caster);
+                    let killed_caster = self.kill_entity_without_damage_mark_only(caster);
                     self.drain_pre_defend_hooks_with_on_damage_into(
                         target,
                         updates,
@@ -559,6 +559,7 @@ impl CombatRuntime {
     pub fn apply_plain_merge_into(&mut self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) -> bool {
         self.ensure_effect_entity("merge", "caster", caster);
         self.ensure_effect_entity("merge", "target", target);
+        let boss_merge_levels = self.plain_boss_merge_levels(target);
         let target_skills = self.entities.get(target).unwrap().template.skills.clone();
         let target_build = self.entities.get(target).unwrap().template.clone_build.clone();
         // 吞噬转移的 MP 与行动点按能力倍率放大，不改变目标自身属性。
@@ -589,10 +590,14 @@ impl CombatRuntime {
             }
             let post_action_state_cursor = caster_entity.states.post_action_registration_cursor();
             let before_levels = caster_entity.template.skills.levels().to_vec();
-            let merged_skills = caster_entity
-                .template
-                .skills
-                .merge_fixed_lanes_from(&target_skills, caster_entity.runtime.policies.merge);
+            let merge_policy = caster_entity.runtime.policies.merge;
+            let caster_skills = &mut caster_entity.template.skills;
+            let merged_skills = match (merge_policy, boss_merge_levels) {
+                (MergePolicy::FixedLane | MergePolicy::FixedLaneHalfResources, Some(levels)) => {
+                    caster_skills.merge_slot_levels_from(levels)
+                }
+                _ => caster_skills.merge_fixed_lanes_from(&target_skills, merge_policy),
+            };
             if merged_skills {
                 let skills = caster_entity.template.skills.skills().to_vec();
                 let after_levels = caster_entity.template.skills.levels().to_vec();

@@ -7,7 +7,7 @@
 use super::*;
 
 /// 在 Tokio blocking 池启动重算任务；失败时尽力回写 job/lane 错误状态。
-pub(super) fn spawn_recompute_job(db: Db, config: RankerConfig, lane: usize, job_id: JobId) {
+pub fn spawn_recompute_job(db: Db, config: RankerConfig, lane: usize, job_id: JobId) {
     task::spawn_blocking(move || {
         if let Err(err) = run_recompute_job(&db, &config, lane, job_id) {
             let error = format!("{err:#}");
@@ -20,7 +20,7 @@ pub(super) fn spawn_recompute_job(db: Db, config: RankerConfig, lane: usize, job
 }
 
 /// 执行单赛道重算并推进 job 状态：running → done，失败向上传播。
-pub(super) fn run_recompute_job(db: &Db, config: &RankerConfig, lane: usize, job_id: JobId) -> anyhow::Result<()> {
+pub fn run_recompute_job(db: &Db, config: &RankerConfig, lane: usize, job_id: JobId) -> anyhow::Result<()> {
     db.set_job_status(job_id, "running", None)?;
     recompute_lane_until_stable(db, lane, config).with_context(|| format!("recompute lane {lane}, job #{job_id}"))?;
     db.set_job_status(job_id, "done", None)?;
@@ -28,7 +28,7 @@ pub(super) fn run_recompute_job(db: &Db, config: &RankerConfig, lane: usize, job
 }
 
 /// 启动约束选择（校准）任务，失败时回写错误状态。
-pub(super) fn spawn_constrained_selection_job(db: Db, config: RankerConfig, lane: usize, job_id: JobId, threshold: f64) {
+pub fn spawn_constrained_selection_job(db: Db, config: RankerConfig, lane: usize, job_id: JobId, threshold: f64) {
     task::spawn_blocking(move || {
         if let Err(err) = run_constrained_selection_job(&db, &config, lane, job_id, threshold) {
             let error = format!("{err:#}");
@@ -41,7 +41,7 @@ pub(super) fn spawn_constrained_selection_job(db: Db, config: RankerConfig, lane
 }
 
 /// 执行单赛道校准并推进 job 状态。
-pub(super) fn run_constrained_selection_job(
+pub fn run_constrained_selection_job(
     db: &Db,
     config: &RankerConfig,
     lane: usize,

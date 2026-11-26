@@ -7,9 +7,11 @@
 use super::*;
 
 mod minions;
+mod skills;
 mod states;
 
 pub use minions::*;
+pub use skills::*;
 pub use states::*;
 
 /// 召唤 handler 错误：上下文失败、模板槽缺失/非法，或重施目标仍然存活。

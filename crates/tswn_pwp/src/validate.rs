@@ -31,7 +31,7 @@ pub struct Summary {
 
 impl Summary {
     /// 把另一份汇总合并进当前汇总。
-    pub(crate) fn add(&mut self, other: Self) {
+    pub fn add(&mut self, other: Self) {
         self.battles += other.battles;
         self.samples += other.samples;
         self.resolved += other.resolved;
@@ -88,7 +88,7 @@ pub fn validate_dataset(out: &Path) -> Result<Summary> {
 }
 
 /// 校验 manifest 内容并返回总对局数。
-pub(crate) fn check_config(config: &DatasetConfig) -> Result<usize> {
+pub fn check_config(config: &DatasetConfig) -> Result<usize> {
     ensure!(
         config.format_version == 1 && config.state_schema_version == tswn_core::runtime::model_state::MODEL_STATE_SCHEMA_VERSION,
         "不支持的数据版本"
@@ -130,7 +130,7 @@ fn check_layout(out: &Path, shard_count: usize) -> Result<()> {
 /// `generate` 覆盖全部分片时，每个分片在提交前都已由 `validate_shard` 回读校验；
 /// 这里只做数据集级检查并合并摘要，不再让 `validate_dataset` 把全部 Parquet
 /// 重解一遍。已有分片来自续跑时没有本轮摘要，仍必须走完整校验。
-pub(crate) fn summarize_fresh(config: &DatasetConfig, out: &Path, total: usize, parts: Vec<(usize, Summary)>) -> Result<Summary> {
+pub fn summarize_fresh(config: &DatasetConfig, out: &Path, total: usize, parts: Vec<(usize, Summary)>) -> Result<Summary> {
     let shard_count = total.div_ceil(config.battles_per_shard);
     let expected_total = check_config(config)?;
     ensure!(expected_total == total, "总对局数不匹配");
@@ -145,7 +145,7 @@ pub(crate) fn summarize_fresh(config: &DatasetConfig, out: &Path, total: usize, 
 }
 
 /// 校验单个分片的对局顺序、范围与 receipt 一致性。
-pub(crate) fn validate_shard(dir: &Path, config: &DatasetConfig, receipt: &ShardReceipt) -> Result<Summary> {
+pub fn validate_shard(dir: &Path, config: &DatasetConfig, receipt: &ShardReceipt) -> Result<Summary> {
     let mut summary = Summary::default();
     let mut battles = Vec::new();
     storage::read_rows::<BattleRow>(&dir.join("battles.parquet"), |row| {

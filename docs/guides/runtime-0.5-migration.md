@@ -45,7 +45,7 @@ cargo run -p tswn_core --bin tswn-cli -- runtime diff -f input.txt
 cargo run -p tswn_core --bin tswn-cli -- runtime normalized-run -f input.txt --max-rounds 20000
 ```
 
-删除的命令面包括 `--runtime legacy`、其他执行器选择值、`runtime parity`、顶层 `diff` / `raw` 和 `fight --out-raw`。结构化增量输出使用 `fight --jsonl`；诊断文本使用 `runtime diff`，normalized-run JSON 使用 `runtime normalized-run`。参数依据见 [CLI 定义](../../crates/tswn_core/src/bin/tswn_cli/args/cli.rs)。需要验证行为时运行冻结 corpus。
+删除的命令面包括 `--runtime legacy`、其他执行器选择值、`runtime parity`、顶层 `diff` / `raw` 和 `fight --out-raw`。结构化增量输出使用 `fight --jsonl`；诊断文本使用 `runtime diff`，normalized-run JSON 使用 `runtime normalized-run`。参数依据见 [CLI 定义](../../crates/tswn_core/src/bin/tswn_cli/args/cli/mod.rs)。需要验证行为时运行冻结 corpus。
 
 ## Python
 

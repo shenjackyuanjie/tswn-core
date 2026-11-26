@@ -81,7 +81,7 @@ pub fn observe<T>(subject: &str, run: impl FnOnce() -> T) -> (T, Vec<SkillObserv
     (result, observations)
 }
 
-pub(super) fn set_first_group(group: &[EntityIdx]) {
+pub fn set_first_group(group: &[EntityIdx]) {
     ACTIVE.with(|active| {
         if let Some(observer) = active.borrow_mut().as_mut() {
             observer.roots.clear();
@@ -91,20 +91,20 @@ pub(super) fn set_first_group(group: &[EntityIdx]) {
 }
 
 #[derive(Clone, Copy)]
-pub(super) enum ScanResult {
+pub enum ScanResult {
     GateFailed,
     Miss,
     NoTarget,
     Committed,
 }
 
-pub(super) struct Scan {
+pub struct Scan {
     actor_mode: Option<(usize, usize)>,
     attempts: SmallVec<[(BuiltinActiveSkill, u32, ScanResult); 8]>,
 }
 
 impl Scan {
-    pub(super) fn new(runtime: &CombatRuntime, actor: EntityIdx, smart: bool) -> Self {
+    pub fn new(runtime: &CombatRuntime, actor: EntityIdx, smart: bool) -> Self {
         let actor_mode = ACTIVE.with(|active| {
             let active = active.borrow();
             let observer = active.as_ref()?;
@@ -124,15 +124,15 @@ impl Scan {
         }
     }
 
-    pub(super) fn enabled(&self) -> bool { self.actor_mode.is_some() }
+    pub fn enabled(&self) -> bool { self.actor_mode.is_some() }
 
-    pub(super) fn record(&mut self, skill: BuiltinActiveSkill, level: u32, result: ScanResult) {
+    pub fn record(&mut self, skill: BuiltinActiveSkill, level: u32, result: ScanResult) {
         if self.enabled() {
             self.attempts.push((skill, level, result));
         }
     }
 
-    pub(super) fn finish(self, selected_skill: bool) {
+    pub fn finish(self, selected_skill: bool) {
         let Some((descendant, smart)) = self.actor_mode else { return };
         ACTIVE.with(|active| {
             let mut active = active.borrow_mut();

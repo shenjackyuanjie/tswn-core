@@ -183,22 +183,22 @@ pub struct tswn_updates_t {
 }
 
 /// crate 内统一的 FFI 错误：状态码、稳定错误码与信息，是 `FfiResult` 的错误类型。
-pub(crate) struct FfiError {
+pub struct FfiError {
     status: tswn_status_t,
     code: &'static str,
     message: String,
 }
 
 /// FFI 内部函数使用的 Result 别名，错误类型为 `FfiError`。
-pub(crate) type FfiResult<T> = Result<T, FfiError>;
+pub type FfiResult<T> = Result<T, FfiError>;
 
 /// 按状态码构造 `FfiError`，错误码由 `error_code_for_status` 推导。
-pub(crate) fn ffi_error(status: tswn_status_t, message: impl Into<String>) -> FfiError {
+pub fn ffi_error(status: tswn_status_t, message: impl Into<String>) -> FfiError {
     ffi_error_with_code(status, error_code_for_status(status), message)
 }
 
 /// 用显式稳定错误码构造 `FfiError`，供需要自定义 code 的路径使用。
-pub(crate) fn ffi_error_with_code(status: tswn_status_t, code: &'static str, message: impl Into<String>) -> FfiError {
+pub fn ffi_error_with_code(status: tswn_status_t, code: &'static str, message: impl Into<String>) -> FfiError {
     FfiError {
         status,
         code,
@@ -219,10 +219,10 @@ fn error_code_for_status(status: tswn_status_t) -> &'static str {
 }
 
 /// 记录线程级错误，使用默认错误码 `INTERNAL_ERROR`。
-pub(crate) fn set_last_error(message: impl Into<String>) { set_last_error_with_code("INTERNAL_ERROR", message); }
+pub fn set_last_error(message: impl Into<String>) { set_last_error_with_code("INTERNAL_ERROR", message); }
 
 /// 记录线程级错误并指定稳定错误码，覆盖同一线程的上一条记录。
-pub(crate) fn set_last_error_with_code(code: &'static str, message: impl Into<String>) {
+pub fn set_last_error_with_code(code: &'static str, message: impl Into<String>) {
     LAST_ERROR.with(|slot| {
         *slot.borrow_mut() = Some(LastError {
             code,
@@ -235,7 +235,7 @@ pub(crate) fn set_last_error_with_code(code: &'static str, message: impl Into<St
 fn clear_last_error() { LAST_ERROR.with(|slot| *slot.borrow_mut() = None); }
 
 /// 把 `String` 移交为 FFI 字符串：Box 泄露所有权，由 `tswn_str_free` 回收。
-pub(crate) fn into_tswn_str(value: String) -> tswn_str_t {
+pub fn into_tswn_str(value: String) -> tswn_str_t {
     let boxed = value.into_bytes().into_boxed_slice();
     let len = boxed.len();
     let ptr = Box::into_raw(boxed) as *const u8 as *const c_char;
@@ -243,7 +243,7 @@ pub(crate) fn into_tswn_str(value: String) -> tswn_str_t {
 }
 
 /// 把 `Vec<u8>` 移交为 FFI 字节数组，由 `tswn_bytes_free` 回收。
-pub(crate) fn into_tswn_bytes(value: Vec<u8>) -> tswn_bytes_t {
+pub fn into_tswn_bytes(value: Vec<u8>) -> tswn_bytes_t {
     let boxed = value.into_boxed_slice();
     let len = boxed.len();
     let ptr = Box::into_raw(boxed) as *const [u8] as *const u8;
@@ -261,7 +261,7 @@ unsafe fn free_boxed_bytes(ptr: *const u8, len: usize) {
 }
 
 /// FFI 统一入口包装：先清理旧错误，再用 `catch_unwind` 捕获 Rust panic 并转换为 `TSWN_ERR_PANIC`，防止 unwinding 跨越 FFI 边界。
-pub(crate) fn ffi_boundary<F>(f: F) -> tswn_status_t
+pub fn ffi_boundary<F>(f: F) -> tswn_status_t
 where
     F: FnOnce() -> FfiResult<()>,
 {
@@ -280,7 +280,7 @@ where
 }
 
 /// 从 C 字符串指针读取 UTF-8 `String`；空指针报 `TSWN_ERR_NULL`，非 UTF-8 报 `TSWN_ERR_INVALID_UTF8`，错误信息带参数名定位。
-pub(crate) unsafe fn read_utf8(ptr: *const c_char, name: &str) -> FfiResult<String> {
+pub unsafe fn read_utf8(ptr: *const c_char, name: &str) -> FfiResult<String> {
     if ptr.is_null() {
         return Err(ffi_error(tswn_status_t::TSWN_ERR_NULL, format!("{name} is null")));
     }
@@ -292,7 +292,7 @@ pub(crate) unsafe fn read_utf8(ptr: *const c_char, name: &str) -> FfiResult<Stri
 }
 
 /// 读取 C 字符串数组为 `Vec<String>`；长度为 0 返回空 Vec，逐项委托 `read_utf8` 校验空指针与 UTF-8。
-pub(crate) unsafe fn read_utf8_array(ptr: *const *const c_char, len: usize, name: &str) -> FfiResult<Vec<String>> {
+pub unsafe fn read_utf8_array(ptr: *const *const c_char, len: usize, name: &str) -> FfiResult<Vec<String>> {
     if len == 0 {
         return Ok(Vec::new());
     }
@@ -308,7 +308,7 @@ pub(crate) unsafe fn read_utf8_array(ptr: *const *const c_char, len: usize, name
 }
 
 /// 把字符串结果写入调用方的 `tswn_str_t` 出参；出参为空报 `TSWN_ERR_NULL`。
-pub(crate) fn write_string_result(out: *mut tswn_str_t, value: String) -> FfiResult<()> {
+pub fn write_string_result(out: *mut tswn_str_t, value: String) -> FfiResult<()> {
     if out.is_null() {
         return Err(ffi_error(tswn_status_t::TSWN_ERR_NULL, "out_result is null"));
     }
@@ -319,7 +319,7 @@ pub(crate) fn write_string_result(out: *mut tswn_str_t, value: String) -> FfiRes
 }
 
 /// 把值序列化为 JSON 字符串后写入出参；序列化失败映射 `TSWN_ERR_PANIC`。
-pub(crate) fn write_json_result<T: serde::Serialize>(out: *mut tswn_str_t, value: &T) -> FfiResult<()> {
+pub fn write_json_result<T: serde::Serialize>(out: *mut tswn_str_t, value: &T) -> FfiResult<()> {
     let json = serde_json::to_string(value)
         .map_err(|err| ffi_error(tswn_status_t::TSWN_ERR_PANIC, format!("failed to serialize JSON: {err}")))?;
     write_string_result(out, json)
@@ -351,7 +351,7 @@ pub extern "C" fn tswn_last_error_message() -> tswn_str_t {
 }
 
 /// 从 C f64 数组拷贝为 `Vec<f64>`；长度 0 返回空 Vec，非零长度而指针为空报 `TSWN_ERR_NULL`。
-pub(crate) unsafe fn read_f64_array(ptr: *const f64, len: usize, name: &str) -> FfiResult<Vec<f64>> {
+pub unsafe fn read_f64_array(ptr: *const f64, len: usize, name: &str) -> FfiResult<Vec<f64>> {
     if len == 0 {
         return Ok(Vec::new());
     }

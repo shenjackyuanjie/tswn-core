@@ -80,7 +80,7 @@ impl CombatRuntime {
     }
 
     /// 判胜按真实存活队伍；被魅惑者也可能清空自己的原队。
-    pub(super) fn plain_battle_has_ended(&mut self) -> bool {
+    pub fn plain_battle_has_ended(&mut self) -> bool {
         self.world.has_declared_winner()
             || self
                 .world
@@ -689,7 +689,7 @@ impl CombatRuntime {
         self.apply_plain_legacy_damage_with_fire_into(caster, target, amount, None, updates)
     }
 
-    pub(super) fn apply_plain_legacy_damage_with_fire_into(
+    pub fn apply_plain_legacy_damage_with_fire_into(
         &mut self,
         caster: EntityIdx,
         target: EntityIdx,
@@ -838,7 +838,7 @@ impl CombatRuntime {
         ));
     }
 
-    pub(super) fn plain_dodge_chance(accuracy: i32, dodge_value: i32) -> u8 {
+    pub fn plain_dodge_chance(accuracy: i32, dodge_value: i32) -> u8 {
         let temp = 24 + dodge_value - accuracy;
         let chance = if temp < 7 {
             7
@@ -902,7 +902,7 @@ impl CombatRuntime {
     }
 
     /// 雷击逐段暂停时需要保留前面各段已产生的伤害与状态快照。
-    pub(super) fn roll_plain_dodge_with_updates(
+    pub fn roll_plain_dodge_with_updates(
         &mut self,
         target: EntityIdx,
         accuracy: i32,
@@ -1030,7 +1030,7 @@ impl CombatRuntime {
 
     /// 不经过伤害直接击倒目标，走完整移出与连带清理；目标原本已死返回 false。
     pub fn kill_entity_without_damage_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) -> bool {
-        let killed = self.kill_entity_without_damage_mark_only_into(target);
+        let killed = self.kill_entity_without_damage_mark_only(target);
         if killed {
             let team = self
                 .entities
@@ -1045,7 +1045,7 @@ impl CombatRuntime {
     }
 
     /// 只把目标体力置零并返回原存活状态，不走死亡链。
-    pub fn kill_entity_without_damage_mark_only_into(&mut self, target: EntityIdx) -> bool {
+    pub fn kill_entity_without_damage_mark_only(&mut self, target: EntityIdx) -> bool {
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime self-death target entity: {}", target.0);
         };

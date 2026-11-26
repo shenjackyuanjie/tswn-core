@@ -95,7 +95,7 @@ actions = []                         → paused_actor = 0（等玩家出牌）
 actions = [0, 21, 0]                 → 玩家 0 用潜行；之后再次暂停
 ```
 
-护盾字段中，`shield` 是当前剩余吸收量，合计普通蓄盾与 `ShieldValue`，死亡时为 0；铁壁由独立状态表达。`max_shield` 是当前护盾技能熟练度，供展示条计算比例，实际盾值可以超过它。它和 `max_hp` 都随当前模板更新，能反映吞噬等机制的变化。身份字段 `owner_id` 表示直接主人，`source_id` 表示根来源。
+护盾字段中，`shield` 是当前剩余吸收量，合计普通蓄盾与 `ShieldValue`，死亡时为 0；铁壁由独立状态表达。`max_shield` 是当前护盾技能熟练度，供展示条计算比例，实际盾值可以超过它。它和 `max_hp` 都随当前模板更新，能反映吞噬等机制的变化。身份字段 `owner_id` 表示直接主人，`root_owner_id` 表示根来源。
 
 技能熟练度默认不导出：`BattleOptions.include_skills`（WASM 选项同名）为 true 时，每个 `BattlePlayerState` 附带 `skills: Array<{ export_name, level }>`。`export_name` 与 overlay 导出的技能键一致，0 级技能不出现；同名技能只保留一项并取最高等级，分身等派生单位给的是衰减后的值。关闭时该键被省略，既有载荷和 DTO 形状不变。
 
@@ -222,6 +222,6 @@ FeatureEncoder 与 WinProbFeatures（tswn_core::encoder；全八族核心张量�
 模型结构与推理接口
 ```
 
-当前 [FeatureEncoder](../../crates/tswn_core/src/encoder/encode.rs) 写入 global / entity / template / lane / state / slot / list / extra 八族，完整注册表见 [TENSOR_SPECS](../../crates/tswn_core/src/encoder/batch.rs)。[tswn-pwp encode](../../crates/tswn_pwp/src/encode.rs) 导出版本 2 流式训练包，包含完整 encoder manifest、features/exact/labels/audit 四个通道、逐行源位置和文件摘要；[NumPy loader](../../scripts/read_encoded_batches.py) 校验文件后逐批读取已编码数组。
+当前 [FeatureEncoder](../../crates/tswn_core/src/encoder/encode/mod.rs) 写入 global / entity / template / lane / state / slot / list / extra 八族，完整注册表见 [TENSOR_SPECS](../../crates/tswn_core/src/encoder/batch/mod.rs)。[tswn-pwp encode](../../crates/tswn_pwp/src/encode/mod.rs) 导出版本 2 流式训练包，包含完整 encoder manifest、features/exact/labels/audit 四个通道、逐行源位置和文件摘要；[NumPy loader](../../scripts/read_encoded_batches.py) 校验文件后逐批读取已编码数组。
 
 完整数据格式、支持域和训练包约定见 [FeatureEncoder 规格](../design/feature-encoder-spec.md#14-接口边界)，运行流程见 [PWP README](../../crates/tswn_pwp/README.md#离线张量编码)。在线 Python/WASM 编码绑定、模型训练与推理属于后续目标，继续复用同一核心 encoder 和契约。

@@ -10,7 +10,7 @@ use tswn_core::runtime::{RuntimeCqpMatchup, runtime_cqp_matchups_observed};
 use super::super::parse::{first_duplicate_name_in_matchup, normalized_group_players};
 
 /// 配队矩阵的输入快照：选手、队友、靶子、权重与运行参数。
-pub(super) struct PairMatrixInput<'a> {
+pub struct PairMatrixInput<'a> {
     pub players: &'a [String],
     pub teammates: &'a [String],
     pub targets: &'a [String],
@@ -40,7 +40,7 @@ enum Slot {
 }
 
 /// 以默认窗口执行配队矩阵。
-pub(super) fn run_pair_matrix(
+pub fn run_pair_matrix(
     input: &PairMatrixInput<'_>,
     on_progress: impl FnMut(usize),
     on_player: impl FnMut(usize, Vec<(f64, usize)>) -> Result<(), String>,
@@ -49,7 +49,7 @@ pub(super) fn run_pair_matrix(
 }
 
 /// 带逐对回调的矩阵执行，用于发布结构化增量。
-pub(super) fn run_pair_matrix_observed(
+pub fn run_pair_matrix_observed(
     input: &PairMatrixInput<'_>,
     on_progress: impl FnMut(usize),
     on_player: impl FnMut(usize, Vec<(f64, usize)>) -> Result<(), String>,

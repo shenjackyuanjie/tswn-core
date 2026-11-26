@@ -81,7 +81,7 @@ impl PreparedBattleInit {
     /// 输入分组对应的实体下标。
     pub fn input_groups(&self) -> &[Vec<EntityIdx>] { &self.input_groups }
 
-    pub(crate) fn has_score_reuse_buffers(&self) -> bool { self.score_buffers.is_some() }
+    pub fn has_score_reuse_buffers(&self) -> bool { self.score_buffers.is_some() }
 
     /// 把初始状态应用到 Runtime；实体数与准备值不一致时返回错误。
     pub fn apply(self, runtime: &mut CombatRuntime) -> Result<(), RuntimeBattleInitError> {
@@ -89,7 +89,7 @@ impl PreparedBattleInit {
     }
 
     /// 应用本轮初始化并收回 seed 缓冲区，供同一 worker 的下一轮复用。
-    pub(crate) fn apply_and_recover_seed(
+    pub fn apply_and_recover_seed(
         mut self,
         runtime: &mut CombatRuntime,
     ) -> Result<(PreparedBattleSeed, Option<ScoreRosterBuffers>), RuntimeBattleInitError> {
@@ -157,6 +157,7 @@ impl PreparedBattleInit {
             entity.template.skills.prepare_hook_cache(&runtime.registry);
             entity.template.clone_build = prepared_template.clone_build;
             entity.template.covid_mask = prepared_template.covid_mask;
+            entity.template.native_boss_skills = prepared_template.native_boss_skills;
             entity.template.rinick = prepared_template.rinick;
             if score_profile_reset {
                 entity
@@ -272,7 +273,7 @@ impl PreparedBattleInit {
         Ok((seed, score_buffers))
     }
 
-    pub(super) fn set_prepared_team(prepared: &mut PreparedPlayerInit, team: usize) {
+    pub fn set_prepared_team(prepared: &mut PreparedPlayerInit, team: usize) {
         prepared.template.team = team;
         for blueprint in [
             &mut prepared.shadow_blueprint,
@@ -285,7 +286,7 @@ impl PreparedBattleInit {
         }
     }
 
-    pub(crate) fn prepare_namerena_player(
+    pub fn prepare_namerena_player(
         player: &crate::namerena::PreparedPlayer,
         team: usize,
         registry: &ExtensionRegistry,
@@ -315,6 +316,11 @@ impl PreparedBattleInit {
         }
         let mut template = Self::template_from_namerena_player(player, player.id, team, skills.clone());
         template.kind = kind;
+        template.native_boss_skills = player.class == crate::namerena::PlayerClass::Boss
+            && player
+                .overlay
+                .as_ref()
+                .is_none_or(|overlay| overlay.skills.is_none() && overlay.effective_skills.is_none());
         template.clone_build = Some(clone_build);
         template.rinick = player.rinick.as_ref().map(|data| {
             Box::new(crate::runtime::RinickTemplateData {
@@ -368,12 +374,6 @@ impl PreparedBattleInit {
             "saitama" if player.class == crate::namerena::PlayerClass::Boss => PreparedBossState::Saitama,
             _ => PreparedBossState::None,
         };
-        // 沙冰鱼固定只带 200 熟练度净化，避免默认血祭触发召唤蓝图。
-        if player.name == "Shabby_fish"
-            && let Some(purify) = registry.skill_id_by_export_name("core.skill.disperse")
-        {
-            template.skills = SkillLoadout::from_skill_levels([(purify, 200)]);
-        }
         PreparedPlayerInit {
             template,
             hp: player.status.hp,
@@ -464,7 +464,7 @@ impl PreparedBattleInit {
     ///
     /// 召唤物不会继承 `!` / `\x02` profile 的特殊变换，因此这里直接复刻
     /// 名字竞技场的普通召唤物路径，并避免临时 Vec。
-    pub(crate) fn plain_minion_name_base(team: &str, name: &str) -> ([u8; 128], RC4) {
+    pub fn plain_minion_name_base(team: &str, name: &str) -> ([u8; 128], RC4) {
         assert!(name.len() <= NAME_MAX_LEN, "召唤物名字过长");
         let mut name_key = [0u8; NAME_MAX_LEN + 1];
         name_key[1..1 + name.len()].copy_from_slice(name.as_bytes());
@@ -505,11 +505,11 @@ impl PreparedBattleInit {
     ///
     /// 原版在 `updateStates()` 里对七围做 `round(v * (1 - nameDens / 128))`，
     /// 智力额外用 `/80`；体力不缩放。
-    pub(crate) fn plain_minion_status_with_factor(attrs: [u32; 8], name_factor: f64) -> PlayerStats {
+    pub fn plain_minion_status_with_factor(attrs: [u32; 8], name_factor: f64) -> PlayerStats {
         crate::namerena::status_from_attrs(attrs, name_factor, true)
     }
 
-    pub(crate) fn plain_minion_status(attrs: [u32; 8]) -> PlayerStats {
+    pub fn plain_minion_status(attrs: [u32; 8]) -> PlayerStats {
         let attack = attrs[0] as i32;
         let defense = attrs[1] as i32;
         let speed_attr = attrs[2] as i32;
@@ -539,7 +539,7 @@ impl PreparedBattleInit {
     }
 
     /// 直接构造普通 score profile 的召唤物模板。
-    pub(super) fn build_plain_score_minion_blueprint(
+    pub fn build_plain_score_minion_blueprint(
         base_name: &str,
         clan_name: &str,
         owner_attrs: [u32; 8],
@@ -634,13 +634,13 @@ impl PreparedBattleInit {
         template
     }
 
-    pub(super) fn base_names_sorted(raw_groups: &[Vec<String>]) -> Vec<String> {
+    pub fn base_names_sorted(raw_groups: &[Vec<String>]) -> Vec<String> {
         let mut names = Vec::new();
         Self::refill_base_names_sorted(raw_groups, &mut names);
         names
     }
 
-    pub(super) fn refill_base_names_sorted(raw_groups: &[Vec<String>], names: &mut Vec<String>) {
+    pub fn refill_base_names_sorted(raw_groups: &[Vec<String>], names: &mut Vec<String>) {
         let player_count = raw_groups.iter().flatten().filter(|raw| !is_seed_line(raw)).count();
         names.resize_with(player_count, String::new);
         let mut index = 0usize;
@@ -657,7 +657,7 @@ impl PreparedBattleInit {
         names.dedup();
     }
 
-    pub(super) fn refill_rc4_key_with_seed(base_names_sorted: &[String], seed: &[String], output: &mut String) {
+    pub fn refill_rc4_key_with_seed(base_names_sorted: &[String], seed: &[String], output: &mut String) {
         output.clear();
         if seed.is_empty() {
             for (index, name) in base_names_sorted.iter().enumerate() {
@@ -710,7 +710,7 @@ impl PreparedBattleInit {
     /// 为批量胜率的连续数字 seed 预计算第一轮 KSA 的稳定前缀。
     ///
     /// 实际密钥每轮仍会逐字节校验前缀；名字排序位置发生变化时自动回退完整 KSA。
-    pub(super) fn profile_seed_rc4_prefix(base_names_sorted: &[String]) -> Option<Rc4KeySchedulePrefix> {
+    pub fn profile_seed_rc4_prefix(base_names_sorted: &[String]) -> Option<Rc4KeySchedulePrefix> {
         let seed = format!("seed:{}@!", crate::runtime::PROFILE_START as usize + 1);
         let mut key = String::new();
         Self::refill_rc4_key_with_seed(base_names_sorted, std::slice::from_ref(&seed), &mut key);
@@ -719,14 +719,14 @@ impl PreparedBattleInit {
         (prefix_len != 0).then(|| Rc4KeySchedulePrefix::new(&key.as_bytes()[..prefix_len]))
     }
 
-    pub(super) fn cmp_player_keys(sort_ints: &[i32], id_key_names: &[String], left: PlrId, right: PlrId) -> std::cmp::Ordering {
+    pub fn cmp_player_keys(sort_ints: &[i32], id_key_names: &[String], left: PlrId, right: PlrId) -> std::cmp::Ordering {
         sort_ints[left]
             .cmp(&sort_ints[right])
             .then_with(|| id_key_names[left].cmp(&id_key_names[right]))
             .then_with(|| left.cmp(&right))
     }
 
-    pub(super) fn two_score_profiles_mut(
+    pub fn two_score_profiles_mut(
         players: &mut [ScoreProfileBuild],
         left: usize,
         right: usize,
@@ -741,9 +741,9 @@ impl PreparedBattleInit {
         }
     }
 
-    pub(super) fn entity_order(players: &[PlrId]) -> Vec<EntityIdx> { players.iter().copied().map(Self::entity_idx).collect() }
+    pub fn entity_order(players: &[PlrId]) -> Vec<EntityIdx> { players.iter().copied().map(Self::entity_idx).collect() }
 
-    pub(super) fn entity_idx(player: PlrId) -> EntityIdx {
+    pub fn entity_idx(player: PlrId) -> EntityIdx {
         EntityIdx(player.try_into().expect("runtime prepared player id overflowed entity index"))
     }
 }

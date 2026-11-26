@@ -7,12 +7,12 @@ use crate::namerena::{
 use super::CliApiResult;
 
 /// 导出单个玩家为 diy 文本，默认 `+` 分隔。
-pub(super) fn export_player(raw: &str, old: bool, minions: bool) -> CliApiResult<String> {
+pub fn export_player(raw: &str, old: bool, minions: bool) -> CliApiResult<String> {
     export_player_with_separator(raw, old, minions, "+")
 }
 
 /// 按指定分隔符导出；old 与 minions 互斥，输入不能为空。
-pub(super) fn export_player_with_separator(raw: &str, old: bool, minions: bool, separator: &str) -> CliApiResult<String> {
+pub fn export_player_with_separator(raw: &str, old: bool, minions: bool, separator: &str) -> CliApiResult<String> {
     if old && minions {
         return Err(super::invalid_input("old and minions are mutually exclusive"));
     }
@@ -91,7 +91,7 @@ fn export_group(group: &[String], old: bool, minions: bool, separator: &str) -> 
 }
 
 /// 把已构建玩家导出为 diy 文本；old 模式会合并 effective_skills 字段。
-pub(super) fn export_built_player(player: &PreparedPlayer, old: bool, minions: bool) -> String {
+pub fn export_built_player(player: &PreparedPlayer, old: bool, minions: bool) -> String {
     let skills = skills_to_json(&player.skills, SkillExportContext::Player);
     let effective = effective_skills_to_json(&player.skills);
     if old {
@@ -320,7 +320,7 @@ fn minion_to_json(blueprint: &PreparedMinionBlueprint) -> String {
 }
 
 /// 把 raw 按非空行解析为多个 `+` 分组，空组过滤。
-pub(super) fn parse_plus_separated_groups(raw: &str) -> Vec<Vec<String>> {
+pub fn parse_plus_separated_groups(raw: &str) -> Vec<Vec<String>> {
     raw.lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())

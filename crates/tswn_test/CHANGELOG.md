@@ -13,6 +13,7 @@
 - 将 Runtime v2 corpus 迁移为正式 `runtime` corpus，保留 87 项共享 exact trace，并冻结 37 项 legacy Runtime golden 作为删除旧对象模型后的对账基线。
 - 将大型 fight fixture 拆分为独立文件和多片测试模块；压力输入按来源、模式和首个差异归档，修复后持续保留并接入回归。
 - 统一 golden 输入换行与 `\x02` 控制字符还原规则，确保跨平台加载和摘要校验稳定。
+- `suite/` 下 12 个 `large_*.rs` 与各自的 `large_*/` 目录合并为 `large_*/mod.rs`；`large_11_17/case_17.rs` 改名为 `large_17.rs`，与同目录的 `large_11` 至 `large_16` 一致。fixture 数据、断言与 124 项 runtime corpus 结果不变。
 
 ### 文档
 

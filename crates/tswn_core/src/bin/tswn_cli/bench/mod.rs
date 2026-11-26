@@ -8,7 +8,7 @@
 //! - 共享摘要类型和少量时间格式化工具。
 //!
 //! 现在改成目录级 `mod.rs` 后，`batch_rate.rs`、`common.rs`、`output.rs`、
-//! `pair.rs`、`progress.rs`、`score.rs`、`skill_board.rs`、`winrate.rs`
+//! `pair.rs`、`progress.rs`、`score.rs`、`skill_board.rs`、`win_rate.rs`
 //! 都能按默认规则被加载，不需要再写 `#[path = ...]`。batch-rate 与 pair 曾是
 //! 同一个 `batch.rs`，随 openbox 对齐功能膨胀到 1300+ 行后按职责拆分。
 
@@ -27,10 +27,10 @@ mod score;
 /// `namer-pf` 技能榜。
 mod skill_board;
 /// 胜率 benchmark 的入口与调度。
-mod winrate;
+mod win_rate;
 
 pub use batch_rate::run_bench_batch_rate;
 pub use output::ScoreOutputOptions;
 pub use pair::{PairOptions, run_bench_pair};
 pub use score::{NamerPfOutputOptions, run_namer_pf};
-pub use winrate::{run_bench_group_win_rate, run_bench_winrate, run_benchmark};
+pub use win_rate::{run_bench_group_win_rate, run_bench_win_rate, run_benchmark};

@@ -113,7 +113,7 @@ pub fn groups_have_same_players(left: &str, right: &str) -> bool {
 }
 
 /// 把分组规范化为排序后的玩家标识列表，用于镜像判定。
-pub(super) fn normalized_group_players(group: &str) -> Vec<String> {
+pub fn normalized_group_players(group: &str) -> Vec<String> {
     let mut players: Vec<_> = group
         .lines()
         .map(str::trim)

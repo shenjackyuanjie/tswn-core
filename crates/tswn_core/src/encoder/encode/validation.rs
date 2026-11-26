@@ -7,7 +7,7 @@
 use super::*;
 
 /// 容量维度名 → 错误路径名（供 `CapacityExceeded` 定位）。
-pub(super) fn dim_path(dim: &str) -> String {
+pub fn dim_path(dim: &str) -> String {
     let name = match dim {
         "e" => "entities",
         "t" => "input_teams",
@@ -39,7 +39,7 @@ impl FeatureEncoder {
     /// 注意 [`BattleModelState::validate`] 不是替代品：它未覆盖 charm `group_id` 实体引用、
     /// 槽内 U64 实体引用与载荷分支一致性（规格第 16 节第 7 条）。
     /// 成功返回本次容量计量，供写入结束后核对精确旁路行数，避免再次遍历输入。
-    pub(super) fn validate_state(&self, state: &BattleModelState) -> Result<CapacityMeasure, EncodeError> {
+    pub fn validate_state(&self, state: &BattleModelState) -> Result<CapacityMeasure, EncodeError> {
         if state.schema_version != MODEL_STATE_SCHEMA_VERSION {
             return Err(EncodeError::SchemaMismatch {
                 path: "schema_version".to_owned(),

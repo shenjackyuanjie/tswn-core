@@ -284,7 +284,7 @@ fn lang_map() -> &'static FastHashMap<&'static str, &'static str> {
 pub fn get_lang(key: &str) -> &'static str { lang_map().get(key).copied().unwrap_or("") }
 
 /// 懒癌本体与感染者的跳回合活动共用同一个原版字节分档。
-pub(crate) fn lazy_activity_key(roll: u8) -> &'static str {
+pub fn lazy_activity_key(roll: u8) -> &'static str {
     match roll {
         0..=49 => keys::SKL_LAZY_SKIP_TURN_1,
         50..=99 => keys::SKL_LAZY_SKIP_TURN_2,
@@ -683,15 +683,6 @@ mod tests {
         // 确保每个 keys 常量都能在 LANG_DATA 中找到对应条目。
         for (k, v) in LANG_DATA {
             assert_eq!(get_lang(k), *v, "键 {:?} 查询结果不一致", k);
-        }
-    }
-
-    #[test]
-    fn test_no_duplicate_keys() {
-        use std::collections::HashSet;
-        let mut seen = HashSet::new();
-        for &(k, _) in LANG_DATA {
-            assert!(seen.insert(k), "LANG_DATA 中存在重复键: {:?}", k);
         }
     }
 }

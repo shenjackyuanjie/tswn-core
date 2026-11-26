@@ -46,7 +46,7 @@ impl Eq for WorldArena {}
 
 impl WorldArena {
     /// 克隆当前索引视图为 `ModelWorld` 快照，供 model_state 导出或外部核对。
-    pub(crate) fn model_state(&self) -> super::model_state::ModelWorld {
+    pub fn model_state(&self) -> super::model_state::ModelWorld {
         super::model_state::ModelWorld {
             round_order: self.round_order.clone(),
             team_roster: self.team_roster.clone(),
@@ -129,7 +129,7 @@ impl WorldArena {
     }
 
     /// 接收本局的初始视图，把上一局的向量交还给 seed 缓冲区。
-    pub(crate) fn swap_initial_views(
+    pub fn swap_initial_views(
         &mut self,
         entities: &EntityArena,
         round_order: &mut Vec<EntityIdx>,
@@ -203,7 +203,7 @@ impl WorldArena {
 
     /// 沿行动序列访问第一个可以推进的实体，跳过空槽和已死亡的实体。
     #[inline]
-    pub(crate) fn next_round_actor_with<T>(&mut self, mut visit: impl FnMut(EntityIdx) -> Option<T>) -> Option<T> {
+    pub fn next_round_actor_with<T>(&mut self, mut visit: impl FnMut(EntityIdx) -> Option<T>) -> Option<T> {
         let len = self.round_order.len() as i32;
         for _ in 0..len {
             let next = self.round_pos + 1;
@@ -302,7 +302,7 @@ impl WorldArena {
     }
 
     /// 找不到行动者时按原版语义让游标继续后退（用 -1 参与比较）。
-    pub(crate) fn repeat_round_actor_removal(&mut self) {
+    pub fn repeat_round_actor_removal(&mut self) {
         // 原版找不到行动者时用 -1 参与游标比较。
         if self.round_pos < 0 {
             self.round_pos -= 1;
@@ -326,7 +326,7 @@ impl WorldArena {
     pub fn team_alive(&self, team: usize) -> Option<&[EntityIdx]> { self.team_alive.get(team).map(Vec::as_slice) }
 
     /// 仅供目标预选使用的双队视图；不提交到真实战场，也不推进战斗。
-    pub(crate) fn targeting_duel(&self, actor_team: usize, target_team: usize) -> Self {
+    pub fn targeting_duel(&self, actor_team: usize, target_team: usize) -> Self {
         let mut view = self.clone();
         for (team, alive) in view.team_alive.iter_mut().enumerate() {
             if team != actor_team && team != target_team {
@@ -478,7 +478,7 @@ impl WorldArena {
     /// 判据必须按 `team_alive` 的非空槽位数来数，不能复用 `alive_group_count`：后者保留
     /// legacy 语义，队伍被清空后复活不会把计数加回来（见 [`Self::revive_alive`]），
     /// 直接用它判胜会把“某队被清空又被复活”的残局误判为已经分出胜负。
-    pub(crate) fn sync_winner_from_alive_views(&mut self) -> Option<usize> {
+    pub fn sync_winner_from_alive_views(&mut self) -> Option<usize> {
         if self.winner_views_dirty && !self.winner_declared {
             self.recompute_winner_from_alive_views();
         }
@@ -498,13 +498,13 @@ impl WorldArena {
     pub fn winner_team(&self) -> Option<usize> { self.winner_team }
 
     /// 强制判定胜者队伍并锁定，之后的胜者同步返回缓存结果。
-    pub(crate) fn declare_winner(&mut self, team: usize) {
+    pub fn declare_winner(&mut self, team: usize) {
         self.winner_team = Some(team);
         self.winner_declared = true;
     }
 
     /// 是否已通过 `declare_winner` 强制锁定胜者。
-    pub(crate) fn has_declared_winner(&self) -> bool { self.winner_declared }
+    pub fn has_declared_winner(&self) -> bool { self.winner_declared }
 }
 
 #[cfg(test)]
