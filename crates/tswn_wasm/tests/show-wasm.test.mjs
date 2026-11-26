@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { actorToken, buildFrameRows } from "../examples/show-render.js";
-import { createBattleStreamSource } from "../examples/show-wasm.js";
+import { createBattleStreamSource, normalizeStateRateRounds } from "../examples/show-wasm.js";
 import { actorHpMetrics } from "../examples/show-utils.js";
 import { BattleStreamController } from "../examples/show-stream.js";
 
@@ -38,6 +38,47 @@ test("state rates finish ten thousand samples once per frame and reuse history",
   assert.equal(samples, 30000);
   nextBattle.dispose();
   assert.equal(freed, 2);
+});
+
+// 非整批采样必须精确计数，且会话创建后不受外部配置变化影响。
+test("state rate sample counts are exact and fixed for the battle", async () => {
+  for (const total of [1, 7, 13, 10001]) {
+    const batches = [];
+    let frames = 0;
+    const states = [{id: 0, team_index: 0}, {id: 1, team_index: 1}];
+    const api = { BattleSession: class {
+      initial_states() { return states; }
+      next_frame() { return {frame_index: frames++, states, rows: []}; }
+      current_win_rate_batch(start, count) { batches.push([start, count]); return [count, 0, 0]; }
+      is_done() { return frames === 2; }
+      result() { return {status: "finished", final_states: states}; }
+      free() {}
+    }};
+    const options = {api, strategy: "legacy", stateRates: true, stateRateRounds: total};
+    const controller = new BattleStreamController(await createBattleStreamSource("a\n\nb", null, null, null, options), {paused: true});
+    options.stateRateRounds = 19;
+    const first = await controller.ensureFrame(0);
+    assert.deepEqual(first.state_rates, {counts: [total, 0, 0], rounds: total});
+    assert.equal(batches.at(-1)[1], total % 8 || 8);
+    assert.ok(batches.every(([start, count]) => start + count <= total));
+    const calls = batches.length;
+    controller.setPlaybackFrame(-1);
+    assert.equal(await controller.ensureFrame(0), first);
+    assert.equal(batches.length, calls);
+    const second = await controller.ensureFrame(1);
+    assert.equal(second.state_rates.rounds, total);
+    assert.equal(batches.reduce((sum, [, count]) => sum + count, 0), 2 * total);
+    controller.dispose();
+  }
+});
+
+// 空值、零和非法数回到默认值，避免除零或无效 WASM 参数。
+test("state rate sample counts normalize to positive u32 values", () => {
+  for (const value of [undefined, "", 0, -1, 1.5, NaN, Infinity, "abc"]) {
+    assert.equal(normalizeStateRateRounds(value), 10000);
+  }
+  assert.equal(normalizeStateRateRounds("13"), 13);
+  assert.equal(normalizeStateRateRounds(4294967296), 4294967295);
 });
 
 function streamApi({ failAt = -1, initialFailure = false } = {}) {

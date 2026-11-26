@@ -20,6 +20,11 @@ input[type="checkbox"] { width: auto; padding: 0; }
 .checkbox-option { display: flex; align-items: flex-start; gap: 8px; text-align: left; }
 .checkbox-option input[type="checkbox"] { flex: 0 0 auto; margin: 4px 0 0; }
 .checkbox-option span { flex: 1; min-width: 0; }
+/* 局数与测算文字同行；独立输入框避免编辑时切换勾选状态。 */
+.state-rate-option { display: flex; align-items: center; gap: 6px; }
+.state-rate-option .checkbox-option { align-items: center; flex: 0 0 auto; }
+.state-rate-option input[type="checkbox"] { margin-top: 0; }
+#stateRateRounds { flex: 0 1 88px; width: 88px; min-width: 45px; padding: 4px 6px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-strong); color: var(--ink); font: inherit; text-align: right; }
 .rate-team { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; }
 /* 只给右侧胜率数字着浅色；等待状态使用中性底色。 */
 .rate-value { align-self: flex-start; flex: 0 0 auto; min-width: 78px; padding: 5px 9px; border: 1px solid hsl(var(--rate-hue) 55% 73%); border-radius: 7px; background: hsl(var(--rate-hue) 75% 90%); color: #111; white-space: nowrap; text-align: center; font-variant-numeric: tabular-nums; }

@@ -151,6 +151,12 @@ function playersFromBattleReplayStates(states) {
         }));
 }
 
+/** 单场固定正整数采样量，限制在 WASM u32 可表示的范围内。 */
+export function normalizeStateRateRounds(value) {
+    const rounds = Number(value);
+    return Number.isSafeInteger(rounds) && rounds > 0 ? Math.min(rounds, 0xffffffff) : 10000;
+}
+
 /** 创建一个增量驱动的 WASM 会话。启动时不拉取任何帧。
  * `api` 是供适配器测试使用的可选依赖注入点。
  */
@@ -188,6 +194,7 @@ export async function createBattleStreamSource(rawInput, versionInfo, coreVersio
             session.set_search(16, 128, 4, 1);
         }
         const initialStates = session.initial_states();
+        const stateRateRounds = normalizeStateRateRounds(options.stateRateRounds);
         const measureRates = options.stateRates === true && options.strategy !== "search" && new Set(initialStates.map(s => s.team_index)).size === 2;
         captureResult();
         options.metrics?.sessionCreated(performance.now() - createStart);
@@ -206,16 +213,17 @@ export async function createBattleStreamSource(rawInput, versionInfo, coreVersio
                     if (frame && measureRates) {
                         const counts = [0, 0, 0];
                         let yieldedAt = performance.now();
-                        for (let start = 0; start < 10000; start += 8) {
+                        for (let start = 0; start < stateRateRounds; start += 8) {
                             if (disposed) return null;
-                            session.current_win_rate_batch(start, 8).forEach((n, i) => counts[i] += n);
+                            // 尾批只取剩余局数，任意正整数均不超采样。
+                            session.current_win_rate_batch(start, Math.min(8, stateRateRounds - start)).forEach((n, i) => counts[i] += n);
                             if (performance.now() - yieldedAt >= 12) {
                                 await new Promise(resolve => setTimeout(resolve, 0));
                                 yieldedAt = performance.now();
                             }
                         }
                         if (disposed) return null;
-                        frame.state_rates = { counts, rounds: 10000 };
+                        frame.state_rates = { counts, rounds: stateRateRounds };
                     }
                     captureResult();
                     if (frame == null && terminalResult == null) {
