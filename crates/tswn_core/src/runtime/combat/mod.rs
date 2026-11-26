@@ -12,9 +12,9 @@
 //! - 顶层无前缀文件（`round` / `attack` / `defense` / `effects` / `lifecycle` /
 //!   `passive` / `infection`，以及随 `cards` feature 编译的 `abilities`）是执行阶段或
 //!   横切关注点，不属于下面两族。
-//! - `boss/`：单只 Boss 的专属机制，文件名就是具体 Boss（`thanos` / `wheel` /
-//!   `slime` / `tiger` / `fish` / `quilt` / `smdd` / `squall` / `xjy` / `yi`），
-//!   配套回归放在同目录的 `<boss>_tests.rs`。
+//! - `boss/`：单只 Boss 的专属机制，文件名就是具体 Boss（`conan` / `mario` /
+//!   `yuri` / `thanos` / `wheel` / `slime` / `tiger` / `fish` / `quilt` / `smdd` /
+//!   `squall` / `xjy` / `yi`），配套回归放在同目录的 `<boss>_tests.rs`。
 //! - `skills/`：技能族，文件名是技能类别（`offense` / `control` / `team` /
 //!   `lifecycle` / `debuff` / `weapon` / `summon` / `zombie` / `assassinate`）。
 //!
