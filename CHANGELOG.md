@@ -2,6 +2,15 @@
 
 本文件记录跨 crate 的维护与兼容性变更；各 crate 的版本发布历史仍以对应 CHANGELOG 为准。
 
+## 未发布 · 2026-11-26 模块结构与仓库边界整理
+
+- **BREAKING**：`BattlePlayerState.source_id` 全链路更名为 `root_owner_id`（core DTO / Python dict 键与类型存根 / TypeScript 声明 / C ABI 的 JSON 输出同步），与 `RuntimePlayerSnapshot.root_owner_id` 统一「根主人」命名。语义不变，不保留旧名。见 [核心更新日志](crates/tswn_core/CHANGELOG.md#unreleased)、[WASM 更新日志](crates/tswn_wasm/CHANGELOG.md#unreleased)、[Python 更新日志](crates/tswn_py/CHANGELOG.md#unreleased)。
+- `tswn_core` 的 13 个模块由 `foo.rs` 改为 `foo/mod.rs`，并清除 5 处 `#[path = "..."]` 外挂测试声明，全 crate 不再混用这两种风格。公开 API 路径保持不变。
+- `runtime/` 顶层散落的 4 个 `plain_*.rs` 收进 `runtime/combat/` 并按该目录命名族改名：`plain_summon` / `plain_zombie` / `plain_assassinate` → `skills_summon` / `skills_zombie` / `skills_assassinate`，`plain_slime` → `boss_slime`。原因是 `plain` 在函数名里表示角色类别（对应 `boss_`），而 `/combat` 的文件名表达机制类别（对应 `skills_*`），原名把角色前缀当成了文件名。函数名与类型名不变。`BattleScratch` 由 `runtime::scratch` 并入 `runtime::combat`（`crate::runtime::BattleScratch` 仍可访问）；`handlers/states.rs` 的蓄力与聚气技能函数拆到新增的 `handlers/skills.rs`。
+- `runtime/tests/` 由 60 个文件合并为 40 个，同主题碎片测试归组并去除重复夹具，`#[test]` 总数保持 433 不变；另删 2 个无断言价值的测试（静态表去重自洽、零长数组重言式）。
+- `tswn-cli` 的 `bench/winrate.rs` 改名为 `win_rate.rs`，`run_bench_winrate` 等连写标识符统一为蛇形；`runtime/combat` 新增命名约定说明（文件名表机制类别、函数名表角色，以及 `drain_*_into` 与 `run_*_into` 的边界）。
+- `.gitignore` 的 `tests` / `*.txt` / `assets` 三条全局通配改为锚定规则，反向 `!` 放行由 20 行降为 0；`icon_sprites.png` 移入 `crates/tswn_core/assets/`，两个 md5 探针脚本移入 `scripts/`。见 [核心更新日志](crates/tswn_core/CHANGELOG.md#unreleased)。
+
 ## 未发布 · 2026-11-23 Boss 吞噬对齐
 
 - 吞噬 Boss 时按原版技能槽序转移等级，修复蚊、索尼克等八个 Boss 的技能等级错位。两场多 Boss 对局已加入 CLI 回归测试。见 [核心更新日志](crates/tswn_core/CHANGELOG.md#unreleased)。

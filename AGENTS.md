@@ -22,6 +22,8 @@
 
 新增或修改的代码注释（包括 Rust 文档注释）和项目文档原则上使用中文，清楚说明意图、约束与行为。API 名称、代码标识符、命令、路径、协议字段及必要的技术术语保留原文，不强行翻译。此约定不改变代码标识符和文档文件名的命名规则，也不要求为统一语言而批量改写无关的既有内容。
 
+可见性默认写 `pub`，不要用 `pub(crate)` / `pub(super)` / `pub(in ...)` 收窄范围。Rust 的 `pub` 只表示「对父模块可见」，外层模块本身私有的话 `pub` 不会泄漏到 crate 之外，所以这些修饰在这里基本不提供额外保护；反倒会在模块移动、目录重排时（例如把 `runtime/plain_slime.rs` 移进 `runtime/combat/boss_slime.rs`，`pub(super)` 的可见范围随之收窄）不断失效并连带打断调用方。确实不想暴露的东西用不带 `pub` 的私有项表达，而不是可见性修饰。
+
 遵循 Rust 默认命名：模块、函数和文件用 `snake_case`，类型与 trait 用 `PascalCase`，常量用 `SCREAMING_SNAKE_CASE`。避免无关重排或大规模格式差异。格式检查与格式化**必须**使用 nightly：`cargo +nightly fmt`（检查用 `cargo +nightly fmt --check`）。`rustfmt.toml` 启用了 `fn_single_line`、`unstable_features` 等 nightly 专属选项；stable 的 `cargo fmt` 会产生伪差异且可能按错误配置改写代码。提交前确保该检查无输出。
 
 ## 测试要求

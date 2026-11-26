@@ -104,10 +104,10 @@ PWP 另外将阵容、seed 派生、采样和分片写入 manifest，再用两�
 
 ## 源码入口
 
-- [rc4.rs](../../crates/tswn_core/src/rc4.rs)、[eval_name.rs](../../crates/tswn_core/src/namerena/eval_name.rs)。
+- [rc4.rs](../../crates/tswn_core/src/rc4/mod.rs)、[eval_name.rs](../../crates/tswn_core/src/namerena/eval_name.rs)。
 - [prepared_init/](../../crates/tswn_core/src/runtime/prepared_init)：初始化与 seed。
 - [normalized.rs](../../crates/tswn_core/src/runtime/normalized.rs)、[trace.rs](../../crates/tswn_core/src/runtime/trace.rs)。
-- [batch.rs](../../crates/tswn_core/src/runtime/batch.rs)：局号与复用执行。
+- [batch.rs](../../crates/tswn_core/src/runtime/batch/mod.rs)：局号与复用执行。
 - [测试框架](../../crates/tswn_test/src/lib.rs)、[差分文档](../diff/README.md)。
 
 ---

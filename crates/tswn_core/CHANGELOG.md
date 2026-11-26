@@ -7,6 +7,21 @@
 - 13 个原版 Boss 使用固定徽章；其他 `name@!` 玩家按自身名字生成徽章，含特殊身份的输入组和史莱姆子体按原版继承图标。PNG 和 RGBA 接口保持原格式。
 - 同公会的评分对局回退完整阵容构建时，先恢复场前实体，避免上局召唤物 ID 或状态泄漏到下一局。
 
+### 破坏性变更
+
+- **BREAKING**：`BattlePlayerState.source_id` 重命名为 `root_owner_id`，与 `RuntimePlayerSnapshot.root_owner_id` 统一「根主人」命名。字段语义不变（根来源实体 ID），仅字段名变更，不保留旧别名。该字段经 serde 自动序列化，C ABI 的 JSON 输出随之变化；Python dict 键与类型存根、TypeScript 声明已同步。
+
+### 内部结构
+
+- 统一模块目录风格：`rc4`、`replay_view`、`encoder/batch`、`encoder/encode`、`namerena/icon_render`、`runtime/batch`、`runtime/entity`、`runtime/entity/state`、`runtime/effect`、`runtime/extension`、`runtime/model_state`、`runtime/prepared_init`、`bin/tswn_cli/args/cli` 共 13 个模块由 `foo.rs` 改为 `foo/mod.rs`；同时清除 5 处 `#[path = "..."]` 外挂测试声明，改为标准 `#[cfg(test)] mod tests;`。公开 API 路径不变。
+- `runtime` 顶层散落的 `plain_assassinate` / `plain_slime` / `plain_summon` / `plain_zombie` 移入 `runtime/combat/`，并按该目录命名族改名：`skills_assassinate` / `skills_summon` / `skills_zombie`（技能族）与 `boss_slime`（Boss 族）。`plain` 在函数名里是角色类别前缀（对应 `boss_`、`minion_`），而 `runtime/combat/` 的文件名表达机制类别，原名把两个维度混用了；函数名、类型名与 `PlainSkillPreActionOutcome` 等公开项一律不变。`BattleScratch` 由 `runtime::scratch` 并入 `runtime::combat`，`crate::runtime::BattleScratch` 仍可访问，`runtime::scratch` 模块不再存在。`handlers::states` 中的蓄力与聚气技能函数移至新增的 `handlers::skills`。
+- `runtime/batch/score_test` 更名为 `score_session`：该模块承载 `ScoreTestSession` 的生产实现，原名会被误读为测试文件。`ScoreTestSession` 等类型的再导出路径不变。
+- `runtime/tests/` 由 60 个文件合并为 40 个，按机制主题归组（summon_explode、plain_slime、plain_ice、plain_haste、plain_disperse、plain_summon、plain_targeting 等），合并重复的 `slime_runtime` / `messages_of` / `kill` 夹具；`#[test]` 总数保持 433 不变。
+- 删除 2 个无断言价值的测试：`runtime/lang` 的 `test_no_duplicate_keys`（`LANG_DATA` 非公开，重复键不 panic 且已由 `test_all_keys_constants` 覆盖）与 `runtime/combat/boss_thanos` 的 `k4_is_empty_because_the_skill_is_a_pre_action_shield`（零长数组的 `is_empty()` 是编译期重言式）。
+- `runtime/combat` 中 7 个内部辅助函数的可见性统一为 `pub`（原为 `pub(in crate::runtime)`），与 `drain_plain_slime_split_into` 等同类方法一致。这些方法挂在公开类型 `CombatRuntime` 上，公开面因此扩大；不涉及行为变化。
+- `tswn-cli` 的 `bench/winrate.rs` 改名为 `win_rate.rs`，`run_bench_winrate` / `bench_winrate_summary` 等连写标识符统一为 `win_rate` 蛇形，与既有 `win_rate_summary`、`resolve_win_rate_workers` 一致。不影响对外接口。
+- `runtime/combat` 模块文档新增「命名约定」小节：文件名表达机制类别、函数名表达角色与动作，是两套正交维度；并说明 `drain_*_into`（排空累积队列）与 `run_*_into`（执行具体 handler）的边界，以及 `_into` 统一表示输出写入 `RunUpdates`。`cli_api` 补充批量统计的三层窄化关系（`RuntimeBatchSummary` → `WinRateSummary` → `WinRateResult`）与 `BatchSummary` 属已计算聚合结果、不再可合并的说明。
+
 ## [0.7.2] - 2026-11-21
 
 ### 新增

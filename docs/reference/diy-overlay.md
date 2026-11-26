@@ -11,7 +11,7 @@
 - [input.rs](../../crates/tswn_core/src/namerena/input.rs)：从名字行里切出 `+diy[...]` / `+ol:{...}` 段。
 - [build.rs](../../crates/tswn_core/src/namerena/build.rs)：把 overlay 应用到本体与幻影／使魔／丧尸的构造结果。
 - [stats.rs](../../crates/tswn_core/src/namerena/stats.rs)、[skill.rs](../../crates/tswn_core/src/namerena/skill.rs)：属性与技能构成的最终值。
-- [minions.rs](../../crates/tswn_core/src/runtime/handlers/minions.rs)、[plain_summon.rs](../../crates/tswn_core/src/runtime/plain_summon.rs)：使魔／召唤物的运行期行为。
+- [minions.rs](../../crates/tswn_core/src/runtime/handlers/minions.rs)、[skills_summon.rs](../../crates/tswn_core/src/runtime/combat/skills_summon.rs)：使魔／召唤物的运行期行为。
 - [skills_control.rs](../../crates/tswn_core/src/runtime/combat/skills_control.rs)、[skill_loadout.rs](../../crates/tswn_core/src/runtime/entity/skill_loadout.rs)：幻影等分身技能的构造与技能表重建。
 
 （旧 `crates/tswn_core/src/player/**` 是 0.x 时期布局，已随旧执行器一并删除。）

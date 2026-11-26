@@ -138,7 +138,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 源码入口
 
-- [extension.rs](../../crates/tswn_core/src/runtime/extension.rs)：spec、ID、策略与 builder。
+- [extension.rs](../../crates/tswn_core/src/runtime/extension/mod.rs)：spec、ID、策略与 builder。
 - [scheduler.rs](../../crates/tswn_core/src/runtime/scheduler.rs)：排序和 POST_ACTION 分区。
 - [effect/](../../crates/tswn_core/src/runtime/effect)：上下文、handler 和队列。
 - [profile/registry.rs](../../crates/tswn_core/src/runtime/profile/registry.rs)、[hooks.rs](../../crates/tswn_core/src/runtime/profile/hooks.rs)：默认规则的元数据与实现。

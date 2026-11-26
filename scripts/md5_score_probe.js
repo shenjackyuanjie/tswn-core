@@ -2,7 +2,7 @@ const fs = require("fs");
 const vm = require("vm");
 const path = require("path");
 
-const filename = path.resolve(__dirname, "../../../../fast-namerena/md5.js");
+const filename = path.resolve(__dirname, "../../fast-namerena/md5.js");
 let code = fs.readFileSync(filename, "utf8");
 code = code.replace(/this_\.ch\s*%\s*100\s*==\s*0/g, "this_.ch % 1 == 0");
 code = code.replace(/round_count\s*<\s*100/g, "round_count < 1");

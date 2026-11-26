@@ -102,7 +102,7 @@ flowchart TD
 
 ## 源码入口
 
-- [entity/state.rs](../../crates/tswn_core/src/runtime/entity/state.rs)、[state/store.rs](../../crates/tswn_core/src/runtime/entity/state/store.rs)。
+- [entity/state.rs](../../crates/tswn_core/src/runtime/entity/state/mod.rs)、[state/store.rs](../../crates/tswn_core/src/runtime/entity/state/store.rs)。
 - [profile/hooks.rs](../../crates/tswn_core/src/runtime/profile/hooks.rs)：护盾、反弹、防御、护身符等。
 - [handlers/](../../crates/tswn_core/src/runtime/handlers)：导出的默认状态 handler。
 - [combat/skills_lifecycle.rs](../../crates/tswn_core/src/runtime/combat/skills_lifecycle.rs)、[lifecycle.rs](../../crates/tswn_core/src/runtime/combat/lifecycle.rs)：实体生命周期。

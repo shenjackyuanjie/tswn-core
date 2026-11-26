@@ -1,5 +1,11 @@
 # 更新日志
 
+## [Unreleased]
+
+### 破坏性变更
+
+- **BREAKING**：`BattlePlayerState` 的 TypeScript 字段 `source_id` 更名为 `root_owner_id`（`battle_types.d.ts`），与 core DTO 及 `RuntimePlayerSnapshot.root_owner_id` 对齐。语义不变（根来源实体 ID）。JS/TS 消费方读取根来源字段请改用 `root_owner_id`，不保留旧名。
+
 ## [0.5.13] - 2026-11-21
 
 ### 新增

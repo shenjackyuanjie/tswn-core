@@ -63,7 +63,7 @@ x < -rq     : name_factor = (x + rq) / (rq - 3)
 
 ## 3. 对属性的影响
 
-普通构造的缩放见 [namerena/build.rs](../../crates/tswn_core/src/namerena/build.rs#L469-L486)；分身使用同类公式重新派生，见 [runtime/entity.rs](../../crates/tswn_core/src/runtime/entity.rs#L229-L250)。
+普通构造的缩放见 [namerena/build.rs](../../crates/tswn_core/src/namerena/build.rs#L469-L486)；分身使用同类公式重新派生，见 [runtime/entity.rs](../../crates/tswn_core/src/runtime/entity/mod.rs#L229-L250)。
 
 ```text
 攻击 / 防御 / 基础速度 / 敏捷 / 魔法 / 抗性:
@@ -93,7 +93,7 @@ HP:
 
 ## 4. seed 与 rq 是两个独立维度
 
-当前胜率批处理的 [profile_seed_for_round](../../crates/tswn_core/src/runtime/batch.rs#L375-L381) 不按 rq 分支：
+当前胜率批处理的 [profile_seed_for_round](../../crates/tswn_core/src/runtime/batch/mod.rs#L375-L381) 不按 rq 分支：
 
 ```text
 round == 0  -> 不附加 profile seed
@@ -105,7 +105,7 @@ round > 0   -> seed:{PROFILE_START + round}@!
 ## 5. 如何对齐比较
 
 - Rust / Python / WASM / C 调用时使用对应入口的显式 `eval_rq` 参数；普通战斗选项与进阶 runner 的位置见 [公共 API](../reference/public-api.md)。
-- CLI 的 `bench win-rate`、`bench group-win-rate`、`bench batch-rate`、`bench pair` 与 `namer-pf` 支持 `--keep-rq`，用于保留普通对打的 rq=4；`bench auto` 没有这个开关。当前参数以 [CLI 定义](../../crates/tswn_core/src/bin/tswn_cli/args/cli.rs) 为准。
+- CLI 的 `bench win-rate`、`bench group-win-rate`、`bench batch-rate`、`bench pair` 与 `namer-pf` 支持 `--keep-rq`，用于保留普通对打的 rq=4；`bench auto` 没有这个开关。当前参数以 [CLI 定义](../../crates/tswn_core/src/bin/tswn_cli/args/cli/mod.rs) 为准。
 - `PreparedRunner` 已固定构造属性；比较不同 rq 时分别准备 roster，而不是只替换运行期 seed。
 - 对照输出时同时记录名字、队名、overlay 的 `name_factor_enabled`、rq、输入分组与 seed。
 
