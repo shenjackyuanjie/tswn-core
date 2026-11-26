@@ -10,6 +10,7 @@
 ### 内部整理
 
 - 1 处 `pub(crate)` 改为 `pub`，按 AGENTS.md 的可见性约定。
+- `src/score_test.rs` 改名 `src/score.rs`：它承载 `ScoreTestSession` 的生产实现，原名会被误读为测试文件。兄弟模块 `battle`／`fight`／`win_rate` 都是简短生产名，改名后与 `win_rate.rs` 对称。类型名 `ScoreTestSession` 不变——「Test」在此指 10000 场跑分测试这一领域行为，且 core 侧同名，两边保持一致更重要。
 
 ## [0.5.13] - 2026-11-21
 

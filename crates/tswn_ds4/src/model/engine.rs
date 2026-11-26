@@ -179,7 +179,7 @@ impl NameFeature {
         shadow.load_shadowname(&shadow_name);
         main.shadowi = shadow.shadowi;
         main.shadowcfz = shadow.cfz;
-        main.get_43();
+        main.compute_feature_x();
 
         let shadow_props = [
             median(shadow.name_base[10], shadow.name_base[11], shadow.name_base[12]) as f64,
@@ -232,7 +232,7 @@ impl NameFeature {
         core.freq15 = self.freq15;
         core.shadowi = self.shadowi;
         core.shadowcfz = self.shadowcfz;
-        core.get_43();
+        core.compute_feature_x();
         core.x
     }
 }
@@ -466,7 +466,7 @@ impl NameCore {
     }
 
     /// 由 name_base 计算 46 维特征 x：HP、七项属性、技能频率与影子修正。
-    fn get_43(&mut self) {
+    fn compute_feature_x(&mut self) {
         self.base_hp.copy_from_slice(&self.name_base[0..10]);
         self.base_hp.sort_unstable();
         self.x = [0.0; 46];

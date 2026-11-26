@@ -30,7 +30,8 @@
 - 全 workspace 657 处可见性收窄统一为 `pub`（`pub(crate)` 220、`pub(super)` 429、`pub(in ...)` 8），涉及 105 个文件。按 AGENTS.md 约定，`pub` 只表示对父模块可见，外层模块私有则不会泄漏。其中 555 处为等价变换（本来就被私有模块链截断），102 处会真正扩大到 crate 外：`tswn_capi` 的 14 个 FFI 辅助项、`rc4` 的 `PickSkipRange` 与 `pick_skip_span` 等、`cli_api` 的 `ScoreMode`／`NamerPfMode`／`BatchSummary`、`runtime` 下若干工具方法与 `EntityTemplate` 的 `covid_mask`／`native_boss_skills` 字段。这些路径此前不可从 crate 外寻址，现已可寻址；行为不变。
 - `lib.rs:198` 的 `pub(crate) mod time;` 改为纯私有 `mod time;`。全仓无 crate 外引用，仅 `runtime/batch` 与 `runtime/cqp` 两处在 crate 内使用。
 - 8 处 `pub(in crate::runtime)` 改为 `pub` 后作用域不变：它们所在的 `combat`／`prepared_init`／`entity::state` 本身是私有模块，祖先链上第一个私有模块已把可见范围截断。
-- clippy `--lib` 警告由 22 增至 27，新增 5 条 `private_interfaces`，均指向 `prepared_init` 内部方法返回私有类型。该 lint 只比较名义可见性、不沿模块链计算有效可见性，在私有模块树内用 `pub` 表达时必然误报；涉及类型 `PreparedPlayerInit`／`ScoreProfileBuild` 均无 `pub` 且不在 `runtime/mod.rs` 的重导出列表内，外部不可达，故保留不回退。
+- clippy `--lib` 警告由 22 增至 27，新增 5 条 `private_interfaces`，均指向 `prepared_init` 内部方法返回私有类型。该 lint 只比较名义可见性、不沿模块链计算有效可见性，在私有模块树内用 `pub` 表达时必然误报；涉及类型 `PreparedPlayerInit`／`ScoreProfileBuild` 均无 `pub` 且不在 `runtime/mod.rs` 的重导出列表内，
+- `cli_api/battle/session/tests.rs` 改名 `session_tests.rs`、`runtime/entity/tests.rs` 改名 `entity_tests.rs`。原状态是同目录下 `tests.rs`（通用名）与 `card_control_tests.rs`／`derived_stats_tests.rs`（主题名）两种规则并存，现统一为「主题_tests」形式，与 `runtime/tests/` 的目录级约定同构。测试内容零改动。
 
 ## [0.7.2] - 2026-11-21
 

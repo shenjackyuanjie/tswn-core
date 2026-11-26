@@ -677,4 +677,4 @@ impl PlayerTemplate {
 #[cfg(test)]
 mod derived_stats_tests;
 #[cfg(test)]
-mod tests;
+mod entity_tests;

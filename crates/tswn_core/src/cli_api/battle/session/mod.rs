@@ -1005,4 +1005,4 @@ fn part_from_core(part: ReplayTextPart) -> BattleReplayTextPart {
 #[cfg(test)]
 mod card_control_tests;
 #[cfg(test)]
-mod tests;
+mod session_tests;

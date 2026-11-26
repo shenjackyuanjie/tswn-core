@@ -63,7 +63,7 @@ mod model;
 /// 旧版 UpdateView 的状态标签兼容。
 mod render;
 /// 评分测试会话导出。
-mod score_test;
+mod score;
 /// 分批胜率会话导出。
 mod win_rate;
 
@@ -81,7 +81,7 @@ use model::{
     CliScoreResult, CliWinRateResult, FightOptions, FightReplay, FightSummary, GroupWinRateResult, RuntimeNormalizedRunView,
     WinRateOptions, WinRateResult,
 };
-pub use score_test::ScoreTestSession;
+pub use score::ScoreTestSession;
 use wasm_bindgen::prelude::*;
 pub use win_rate::WinRateSession;
 
