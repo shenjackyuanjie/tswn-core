@@ -1,6 +1,10 @@
-# Rosmontic/namerena 的自定义 Boss 清单（待移植）
+# Rosmontic/namerena 的自定义 Boss 清单
 
-来源：https://github.com/Rosmontic/namerena （只有编译产物 touhou/index.dart.js 与 lang/*.json，没有 Dart 源码）。
+当前移植参考：https://github.com/Rosmontic/namerena/blob/2ff2bbb700d3e42c0293c870277efa7fd2ab3aa2/md5.js 。这是带 lazy 编码常量的 Dart2JS 编译产物。根目录 md5.js 与 namerena.github.io/master、touhou/md5.js 不是同一版本，不能混用。
+
+用户指定的 30 个 Boss 均有自定义 16×16 PNG。原图保存在 assets/rosmontic-boss-icons/，来源、文件摘要见 manifest.json。scripts/rosmontic/extract-icons.cjs 可重建图标与核心引擎使用的 RGBA 数据。图标接口、战斗回放和胜率图导出共用这些像素；普通同名角色不受影响。
+
+机制当前已接入琪露诺、冴月麟、露米娅、megia，共 4 个；其余 26 个尚未接入战斗，不能以图标迁移完成代替机制完成。下面是参考站的历史角色清单，不代表全部已实现。
 
 共有 78 个自定义 Boss：Revue Starlight 10 个、东方 Project 20 个、侦探歌剧 4 个、突击莉莉/蔚蓝档案等联动若干，另有兵种靶机 A01~D04 与 ironbird、tigershark、hell、dark。
 
@@ -90,8 +94,16 @@
 - 只有混淆后的 Dart JS，每个 Boss 的技能、数值、状态与台词都要逐个反编译并人工核对。
 - 多数 Boss 带自定义状态机（如 Revue Starlight 的闪耀/再生产），无法直接套用现有 8 个自定义 Boss 的模板。
 
-## 建议顺序
+## 当前范围
 
-1. 先做一个主题（推荐 Revue Starlight 10 个）。
-2. 每个 Boss：数值/技能/状态 → Rust 模块 → 测试 → 文档。
-3. 完成后统一决定是否加回挑战下拉。
+当前用户要求完成东方 Project 的前 20 个 Boss（含冴月麟），以及 AL1S、fox1～fox4、ribbit1～ribbit4、megia，共 30 个。继续移植时逐个实现技能、被动与召唤状态，再开放对应的挑战入口。
+
+运行 node scripts/rosmontic/extract-reference.cjs SOURCE_MD5_JS OUTPUT_DIR 可导出各角色实际初始化数值、完整技能对象、顺序和关联 hook。技能 f 是逐项概率等级，不是抽取权重。
+
+## 已接入的额外机制
+
+- 冴月麟：保留参考版 -26 攻击与魔力；普通攻击威力归零；偶数次行动输出四段台词，第八次自行退场；八种强状态免疫等级为 240。
+- 露米娅：黑雾以 16 ×（防御 + 抗性）反击，跳过前置防御以避免递归反射；境界线群攻、夜盲症命中附加狂暴、月的阴暗面仅施放两次并分别增加 50 防御和抗性。存活且 HP ≤ 100 时一次性进入五倍攻防魔抗智的毁灭模式。
+- megia：虚伪的剑闪锁定目标并蓄力；下一次行动从三次魔法威力中取最大值，HP > 199 时六倍，否则十二倍。高体力开始蓄力时挂受伤中断钩子，跨越血量阈值的伤害也会中断。首次致死恢复 199 HP，之后正常死亡。
+
+运行态随快照和战斗复用接口复制或重置。行为测试位于 runtime/combat/boss/rosmontic_tests.rs。上述新增角色已完成机制分支与实际整场战斗验证；其余角色继续按当前范围移植。

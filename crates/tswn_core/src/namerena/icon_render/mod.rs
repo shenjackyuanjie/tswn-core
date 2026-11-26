@@ -83,6 +83,43 @@ fn boss_icon(raw_name: &str) -> Option<&'static [u8]> {
     if modifiers.split(['@', '+']).next()? != "!" {
         return None;
     }
+    // Rosmontic 图标仅绑定 Boss 修饰符，普通同名角色继续使用生成图标。
+    const ROSMONTIC_NAMES: [&str; 30] = [
+        "AL1S",
+        "alice",
+        "chen",
+        "cirno",
+        "daiyousei",
+        "flandre",
+        "fox1",
+        "fox2",
+        "fox3",
+        "fox4",
+        "hong",
+        "koakuma",
+        "letty",
+        "marisa",
+        "megia",
+        "patchouli",
+        "phantom",
+        "ran",
+        "reimu",
+        "remilia",
+        "ribbit1",
+        "ribbit2",
+        "ribbit3",
+        "ribbit4",
+        "rin",
+        "rumia",
+        "sakuya",
+        "youmu",
+        "yukari",
+        "yuyuko",
+    ];
+    const ROSMONTIC_RGBA: &[u8; 30 * 1024] = include_bytes!("rosmontic_rgba.bin");
+    if let Ok(index) = ROSMONTIC_NAMES.binary_search(&name) {
+        return Some(&ROSMONTIC_RGBA[index * 1024..(index + 1) * 1024]);
+    }
     let index = BOSS_ICONS.binary_search(&name).ok()?;
     Some(&BOSS_RGBA[index * 1024..(index + 1) * 1024])
 }
@@ -169,11 +206,17 @@ pub fn render_icon_vec(icon: &IconResult) -> Vec<u8> {
 #[cfg(feature = "png_render")]
 pub fn render_icon_png(icon: &IconResult) -> Vec<u8> { encode_rgba_png(&render_icon_vec(icon)) }
 
-/// 把 16x16 RGBA 像素编码为 PNG。
+/// 按实际像素数编码 16×16 普通图标或 32×32 Boss 徽章。
 #[cfg(feature = "png_render")]
 fn encode_rgba_png(flat: &[u8]) -> Vec<u8> {
     let mut out = Vec::new();
-    let mut encoder = png::Encoder::new(&mut out, 16, 16);
+    // 固定 Boss 徽章可能使用 32×32 像素，不能沿用普通图标的尺寸。
+    let side = match flat.len() {
+        1024 => 16,
+        4096 => 32,
+        length => panic!("unsupported icon RGBA byte length: {length}"),
+    };
+    let mut encoder = png::Encoder::new(&mut out, side, side);
     encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);
     encoder

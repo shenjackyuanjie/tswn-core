@@ -3,6 +3,9 @@
 //! 与 [`super::skills::boss`]（Boss 技能的三个 match 派发）是不同层次：这里是单只
 //! Boss 的专属实现，`skills/boss.rs` 是「技能 → Boss 技能」的派发逻辑。
 
+pub mod cirno;
+#[cfg(test)]
+pub mod cirno_tests;
 pub mod conan;
 pub mod fish;
 #[cfg(test)]
@@ -11,6 +14,10 @@ pub mod mario;
 pub mod quilt;
 #[cfg(test)]
 pub mod quilt_tests;
+pub mod rosmontic;
+#[cfg(test)]
+mod rosmontic_tests;
+mod rumia;
 pub mod slime;
 pub mod smdd;
 #[cfg(test)]

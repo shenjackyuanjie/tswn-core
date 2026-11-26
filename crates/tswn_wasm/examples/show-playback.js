@@ -1,6 +1,6 @@
 /** 句子级播放、跳转和检查点；通过访问器读取同一份页面会话状态。 */
 import { formatError, sleep } from "./show-utils.js?v=20261124stats4";
-import { renderPlayers } from "./show-render.js?v=20261124stats4";
+import { renderPlayers } from "./show-render.js?v=20261126ui1";
 import { createReplayPlan, appendFrameToReplayPlan, markReplayPlanComplete, renderReplayIntro, updateSpeedButtons, playbackDelay, buildReplayResultTableHtml } from "./show-replay.js?v=20261124stats4";
 
 const SEEK_CHECKPOINT_FRAME_INTERVAL = 20;
@@ -79,10 +79,8 @@ export function createShowPlayback(state, { playerList, battleRows, endPanel, he
   }
 
   function scrollBattleToBottom() {
-    const hbody = battleRows.closest(".hbody");
-    if (hbody) {
-      hbody.scrollTop = hbody.scrollHeight;
-    }
+    // 只滚动日志区域，标题与名字属性表不参与日志滚动。
+    battleRows.scrollTop = battleRows.scrollHeight;
   }
 
   function appendPlaybackChunk(chunk) {

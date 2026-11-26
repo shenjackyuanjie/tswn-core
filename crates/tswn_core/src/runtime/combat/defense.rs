@@ -3,6 +3,8 @@ use super::*;
 /// 0.5.5 中两个 Boss 专属 POST_DEFEND 吸收技能。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PlainBossDefend {
+    /// 琪露诺只免疫冰属性伤害，仍可被附加冰冻。
+    Cirno,
     /// 青雉：吸收冰冻伤害，免疫物理伤害。
     Aokiji,
     /// 斑鸠：吸收奇数伤害。
@@ -113,6 +115,12 @@ impl CombatRuntime {
         defend_value: &mut RuntimeDefendValue,
         on_damage: PlainAttackOnDamage,
     ) {
+        // 黑雾反击绕过 PRE_DEFEND，避免反射双方递归互弹。
+        self.reflect_rumia_into(target, defend_value.caster(), updates);
+        // 冴月麟的被动在防御前将所有正威力归零。
+        if self.is_rosmontic_boss(target, "rin") {
+            defend_value.set_atp(0.0);
+        }
         let defender = self.entities.get(target).expect("runtime pre-defend target missing");
         let skills = &defender.template.skills;
         let protect_split = (!defender.runtime.protect_from.is_empty())
@@ -565,6 +573,7 @@ impl CombatRuntime {
             "aokiji" => Some((SkillPriority(10_000), PlainBossDefend::Aokiji)),
             "ikaruga" => Some((SkillPriority(20_000), PlainBossDefend::Ikaruga)),
             "quilt" => Some((SkillPriority(30_000), PlainBossDefend::Quilt)),
+            "cirno" => Some((SkillPriority(10_000), PlainBossDefend::Cirno)),
             _ => None,
         }
     }
@@ -600,6 +609,17 @@ impl CombatRuntime {
                 DamageKind::Physical => defend_value.set_damage(0),
                 DamageKind::Default => {}
             },
+            PlainBossDefend::Cirno => {
+                if defend_value.kind() == DamageKind::Ice {
+                    updates.add(RunUpdate::new(
+                        "[0][免疫]冰冻伤害",
+                        target.0 as usize,
+                        target.0 as usize,
+                        damage as u32,
+                    ));
+                    defend_value.set_damage(0);
+                }
+            }
             PlainBossDefend::Quilt => defend_value.set_damage(0),
             PlainBossDefend::Ikaruga => {
                 if damage & 1 == 1 {
@@ -634,6 +654,10 @@ impl CombatRuntime {
 
     /// 执行目标的死亡 hook：护身符、史莱姆分裂、马里奥复活等。
     pub fn drain_die_hooks_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) {
+        // 无名的决意在首次致死时恢复 199 HP，并中止死亡链。
+        if self.revive_megia_into(target, updates) {
+            return;
+        }
         // 猴区的 HOUQU_BLAST 先于其它死亡钩子结算，分裂出的子体不再继续分裂。
         self.drain_quilt_split_into(target, updates);
         // 史莱姆分裂的死亡钩子优先级为 0，先于马里奥复活（10）和通用死亡链；

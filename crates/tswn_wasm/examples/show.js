@@ -7,8 +7,9 @@
  * @typedef {import("./show-types.js").InvolvedSet} InvolvedSet
  */
 
-import { createShowPlayback } from "./show-playback.js?v=20261125rates1";
+import { createShowPlayback } from "./show-playback.js?v=20261126ui1";
 import { createRateChart } from "./show-rate-chart.js?v=20261125line1";
+import { setupBossPicker } from "./show-boss-picker.js?v=20261126grid1";
 import { setupRateWindow } from "./show-rate-window.js?v=20261125png1";
 import { createThemeControls, setupPlayerHighlight, isEditableKeyTarget, copyTextToClipboard } from "./show-ui.js?v=20261125rates1";
 import {
@@ -18,7 +19,7 @@ import {
   validateReplayInput,
 } from "./show-utils.js?v=20261125rates1";
 import { buildPlayerDetailHtml } from "./show-detail.js?v=20261125rates1";
-import { renderIdleState, statsPanelHtml } from "./show-render.js?v=20261125rates1";
+import { renderIdleState, statsPanelHtml } from "./show-render.js?v=20261126ui1";
 import {
   createReplayPlan,
   appendFrameToReplayPlan,
@@ -351,7 +352,7 @@ function updateStats(states) {
   updateStateRates();
   let panel = document.querySelector("#battleStats");
   if (!panel) {
-    // 回放开始时容器可能被重建，属性表就动态补在战报前面。
+    // 回放重建后仍将属性表补在标题下方，日志使用独立滚动容器。
     const rows = document.querySelector("#battleRows");
     if (!rows || !rows.parentElement) return;
     panel = document.createElement("div");
@@ -366,7 +367,10 @@ function updateStats(states) {
     return;
   }
   panel.hidden = false;
+  // 帧刷新保留名单自己的滚动位置。
+  const scrollTop = panel.scrollTop;
   panel.innerHTML = html;
+  panel.scrollTop = scrollTop;
 }
 
 /**
@@ -1201,7 +1205,8 @@ async function main() {
   }
 
   try {
-    await ensureApi(versionInfo, coreVersionInfo, modulePathInfo);
+    const api = await ensureApi(versionInfo, coreVersionInfo, modulePathInfo);
+    setupBossPicker(bossSelect, bossChallenge, name => api.name_to_png_base64(name + "@!"));
     if (staticInput?.ok) {
       await startBattle({ persistInput: false });
       return;

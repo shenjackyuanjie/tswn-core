@@ -566,6 +566,38 @@ impl PlayerBuild {
             status.hp = 487;
             status.max_hp = 487;
         }
+        // 琪露诺：从固定参考版本初始化得到的属性，速度另补行动条基值。
+        if self.class == PlayerClass::Boss && self.name == "cirno" {
+            self.name_factor = 0.0;
+            attrs = [44, 39, 54, 44, 45, 54, 63, 810];
+            status = status_from_attrs(attrs, 0.0, true);
+            status.speed = 214;
+        }
+        // 冴月麟的负攻击属性保留在有符号 status 中，避免转为 u32 后溢出。
+        if self.class == PlayerClass::Boss && matches!(self.name.as_str(), "rin" | "megia") {
+            self.name_factor = 0.0;
+            attrs = if self.name == "rin" {
+                [0, 963, 14, 963, 0, 963, 63, 1000]
+            } else {
+                [63, 63, 63, 63, 63, 63, 63, 399]
+            };
+            status = status_from_attrs(attrs, 0.0, true);
+            status.speed = attrs[2] as i32 + 160;
+            if self.name == "rin" {
+                status.attack = -26;
+                status.magic = -26;
+                status.attr_sum = 2914;
+                status.atk_sum = -2902;
+                status.all_sum = 9742;
+            }
+        }
+        // 露米娅的固定八围来自参考角色初始化。
+        if self.class == PlayerClass::Boss && self.name == "rumia" {
+            self.name_factor = 0.0;
+            attrs = [49, 64, 44, 39, 44, 64, 44, 1000];
+            status = status_from_attrs(attrs, 0.0, true);
+            status.speed = 204;
+        }
         // 被子是后排 Boss：1000 HP、其余 100，速度同样不追加 160 点。
         if self.class == PlayerClass::Boss && self.name == "quilt" {
             self.name_factor = 0.0;

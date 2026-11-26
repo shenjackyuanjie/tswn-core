@@ -1,7 +1,7 @@
 //! Boss 专属像素徽章：咦（YI）与被子一家（quilt）。
 //!
 //! 这些徽章既不走 `assets/icon_sprites.png` 的精灵提取（见 `sprite_data`），
-//! 也不走名字派生的调色板生成，而是为新 Boss 手画的固定 16×16 RGBA 图案。
+//! 也不走名字派生的调色板生成，而是为新 Boss 绘制的固定 RGBA 图案（包含 32×32 徽章）。
 //! 网页接口与 `png_render` 的 PNG 输出共享同一份数据，不依赖 Emoji 字体。
 //! 数据与绘图逻辑移植自 kodu 的 `namerena/icon_render.rs`。
 

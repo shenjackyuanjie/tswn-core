@@ -563,6 +563,20 @@ impl CombatRuntime {
                 amount: 0,
             });
         }
+        // Rosmontic 的台词与蓄力直接进入专属行动；快照保留每个阶段。
+        if self.entities.get(actor).is_some_and(|e| e.runtime.rosmontic.is_some()) {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Rosmontic,
+                targets: PreparedTargetList::new(),
+            }));
+        }
+        // 琪露诺的行动完全由专属脚本决定。
+        if self.entities.get(actor).is_some_and(|e| e.runtime.cirno.is_some()) {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Cirno,
+                targets: PreparedTargetList::new(),
+            }));
+        }
         // 沙冰鱼的行动完全由专属脚本决定。
         if self
             .entities

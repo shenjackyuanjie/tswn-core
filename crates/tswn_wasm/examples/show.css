@@ -1,7 +1,7 @@
 /* 按原始层叠顺序组织主题、角色、正文与面板；保持分发入口不变。 */
 @import url("./show-base.css");
 @import url("./show-players.css");
-@import url("./show-replay.css?v=20261124stats2");
+@import url("./show-replay.css?v=20261126ui1");
 @import url("./show-panels.css");
 
 /* 胜率面板固定左下，长队伍名单支持滚动。 */
@@ -174,6 +174,22 @@ body.highlight-active [data-player-id].hl-active.player-row .name {
         flex: 1 1 auto;
     }
 }
+/* 标题与名字表位于固定网格行；只有战报和名字表各自滚动。 */
+.hbody { overflow: hidden; }
+@media (max-width: 900px) {
+    .hbody { height: 70vh; min-height: 360px; }
+}
+/* Boss 选择改为图标列表，原 select 仅负责保存值。 */
+.boss-picker-trigger { display: flex; align-items: center; gap: 8px; min-height: 44px; width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--ink); text-align: left; box-shadow: none; }
+.boss-picker-trigger img, .boss-choice img { flex: 0 0 24px; image-rendering: pixelated; }
+.boss-picker-arrow { margin-left: auto; }
+.boss-choice-list { position: fixed; z-index: 40; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; align-content: start; overflow: auto; overscroll-behavior: contain; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--paper); box-shadow: 0 6px 22px #0004; }
+.boss-choice-list[hidden] { display: none; }
+.boss-choice { display: flex; align-items: center; gap: 5px; min-width: 0; min-height: 54px; padding: 6px; border: 3px solid transparent; border-radius: 5px; background: var(--surface); color: var(--ink); box-shadow: none; text-align: left; font-size: 12px; }
+.boss-choice span { min-width: 0; overflow-wrap: anywhere; line-height: 1.35; }
+.boss-choice[aria-selected="true"] { border-color: #1976d2; font-weight: 700; background: var(--surface-strong); }
+.boss-choice:disabled, .boss-picker-trigger:disabled { opacity: .5; cursor: default; }
+.boss-choice:focus-visible, .boss-picker-trigger:focus-visible { outline: 2px solid #1976d2; outline-offset: 1px; }
 /* 战斗属性表：每个角色一行，人数多也全部展示。 */
 .battle-stats {
     display: flex;
@@ -184,11 +200,13 @@ body.highlight-active [data-player-id].hl-active.player-row .name {
     background: var(--sidebar-bg);
     font-size: 12px;
     line-height: 1.45;
-    max-height: 30vh;
+    --stat-row-height: 24px;
+    /* 十行、九个行间距与上下内边距；超出部分仅在名单内滚动。 */
+    max-height: min(calc(10 * var(--stat-row-height) + 9 * 2px + 12px), 35vh);
     overflow: auto;
 }
 .battle-stats[hidden] { display: none; }
-.battle-stat-row { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.battle-stat-row { display: flex; flex: 0 0 var(--stat-row-height); height: var(--stat-row-height); align-items: center; gap: 8px; white-space: nowrap; }
 .battle-stat-row.is-dead { opacity: 0.45; }
 .battle-stat-name { min-width: 9em; font-weight: 600; }
 .battle-stat-hp { min-width: 7.5em; }

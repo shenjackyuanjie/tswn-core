@@ -1,0 +1,156 @@
+{
+  "source": "https://github.com/Rosmontic/namerena/blob/2ff2bbb700d3e42c0293c870277efa7fd2ab3aa2/md5.js",
+  "source_sha256": "b7dc47862dc64b8ce9a2705b53d49784815f0ff9642235494918b983f3c888d7",
+  "icons": [
+    {
+      "name": "AL1S",
+      "file": "AL1S.png",
+      "sha256": "51455c7f7f5b167c68f63bd27099021a23f57d48767131dbfacfe0afd5321404"
+    },
+    {
+      "name": "alice",
+      "file": "alice.png",
+      "sha256": "52be7cd95c80ba037bf9f66804565e5122a21203e1ae250d530fa68a3bf14435"
+    },
+    {
+      "name": "chen",
+      "file": "chen.png",
+      "sha256": "25b7398f38405eadaf63d6f97985e43161097203dc6cfbf4292bed5fd52b4bb8"
+    },
+    {
+      "name": "cirno",
+      "file": "cirno.png",
+      "sha256": "0baf0c8ba9bfaffdc2bf65086fdea555c4926ece795d628446869630067e999a"
+    },
+    {
+      "name": "daiyousei",
+      "file": "daiyousei.png",
+      "sha256": "7a85be411343e6c9666313893db1c33c37054b80e183783b200c55ef199fd1d1"
+    },
+    {
+      "name": "flandre",
+      "file": "flandre.png",
+      "sha256": "7d8d27ff549c3a14c10b6689dc8a3663f68ba1f15dc3dc01ba6fe85d2503dd49"
+    },
+    {
+      "name": "fox1",
+      "file": "fox1.png",
+      "sha256": "982e810038df0f5859139275caf11790aadc23f22676d07b049163d2105afa5e"
+    },
+    {
+      "name": "fox2",
+      "file": "fox2.png",
+      "sha256": "f5b5333a30a1db431720d398f0738c2b2aeeb9723f627effcebec3e0dc18ae30"
+    },
+    {
+      "name": "fox3",
+      "file": "fox3.png",
+      "sha256": "d8cc865b843ad7e2d0bda2057170c391c66a67ad2448c73ef0fb90cb5317db59"
+    },
+    {
+      "name": "fox4",
+      "file": "fox4.png",
+      "sha256": "037fabd7c40cdea4f073c9a7f2e5940bc1fb3d9b1be1bd6c6b9bb2720c6c34fd"
+    },
+    {
+      "name": "hong",
+      "file": "hong.png",
+      "sha256": "f81a8fd43b426d93f6e364bceb3803e2907f2b79247221b2af075e0211d28fb8"
+    },
+    {
+      "name": "koakuma",
+      "file": "koakuma.png",
+      "sha256": "a29c2653c4aa2cf7844efa8332f88f4650a58929c9d7b5fdb73fb7f4e6086bca"
+    },
+    {
+      "name": "letty",
+      "file": "letty.png",
+      "sha256": "9584ce7d04ba21ff38d5fa4043692d95dc5192d43f3504cfa24df38f7e4ec084"
+    },
+    {
+      "name": "marisa",
+      "file": "marisa.png",
+      "sha256": "6bd58a7a7e0edfb67ec7b133e4e73a0ca689ee7ce8466dc4ddea1bac41d13f5a"
+    },
+    {
+      "name": "megia",
+      "file": "megia.png",
+      "sha256": "1139db496c8df2011e4e2b21e535afb84175cb5fbd595cc36512a328ec1b9b4e"
+    },
+    {
+      "name": "patchouli",
+      "file": "patchouli.png",
+      "sha256": "971dce5052dc7bd848fee7bf0d00b38d5a79147022d6471d60b09cea2ecc3c88"
+    },
+    {
+      "name": "phantom",
+      "file": "phantom.png",
+      "sha256": "6bfdbed112f1c85532120e3a096696877f9950573d77325ab7ab45a224ceaae8"
+    },
+    {
+      "name": "ran",
+      "file": "ran.png",
+      "sha256": "e38e9188487d91a6f107d52d08a5ff932f718be47af9db38fe8ff9c5c88018ee"
+    },
+    {
+      "name": "reimu",
+      "file": "reimu.png",
+      "sha256": "9bc19ca79f8077c0fd7896054387647cff0cd902b9a3aa28e7925f442f1eb107"
+    },
+    {
+      "name": "remilia",
+      "file": "remilia.png",
+      "sha256": "90a8a0572bdd8081d2249358ceec8989f419e633c1ba307457e2f757ce1c7752"
+    },
+    {
+      "name": "ribbit1",
+      "file": "ribbit1.png",
+      "sha256": "e2c0e1a201b55c6bd9b4d1e42de60ae4792ddc12506182f59a577c0443d3d7d5"
+    },
+    {
+      "name": "ribbit2",
+      "file": "ribbit2.png",
+      "sha256": "2347b798809430f9dbf9d8c4f72b0def141f29d293ba06f3575e4d1eb2332715"
+    },
+    {
+      "name": "ribbit3",
+      "file": "ribbit3.png",
+      "sha256": "cf3547ef72d4cabc4a7389222adf3eaeb793aa7229e63b1243b61f0721264d12"
+    },
+    {
+      "name": "ribbit4",
+      "file": "ribbit4.png",
+      "sha256": "975f62d1f9cf7140c6c5075317e2d4173a32299555d5ed7d7440ddc167709ab7"
+    },
+    {
+      "name": "rin",
+      "file": "rin.png",
+      "sha256": "abd295885cf89e2e8edd75bd83bc94524f316552353b32904277f4eda91ef7c0"
+    },
+    {
+      "name": "rumia",
+      "file": "rumia.png",
+      "sha256": "ba1ac56f0c5738126240e4c66c53ec6670d038ecb83247983cdcf36ef730fc8c"
+    },
+    {
+      "name": "sakuya",
+      "file": "sakuya.png",
+      "sha256": "fb22a81eacf6a4b25eabb58736669d78d9033f119174d01670138bdbfa1fe3b6"
+    },
+    {
+      "name": "youmu",
+      "file": "youmu.png",
+      "sha256": "231fccb757d7772cf91da19c2a0b5765cea6fb521d63ef5dbdb5d8e746e55ea6"
+    },
+    {
+      "name": "yukari",
+      "file": "yukari.png",
+      "sha256": "8c950f5f44877b91a5dc7aa3e808f120ca4987e27c682fd5f13e53eaf8276e97"
+    },
+    {
+      "name": "yuyuko",
+      "file": "yuyuko.png",
+      "sha256": "76a3844711e7dd08fa4197ca3630c73a763af85b7c579c2688f80eed2300bc11"
+    }
+  ]
+}

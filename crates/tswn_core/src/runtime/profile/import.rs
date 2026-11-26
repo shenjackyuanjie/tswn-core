@@ -354,7 +354,10 @@ impl CustomBed2Import {
                         message: "native namerena importer returned no player".to_owned(),
                     })?;
                     let status = player.status;
-                    if status.max_hp <= 0 || status.attack < 0 || status.defense < 0 || status.resistance < 0 {
+                    // 冴月麟参考属性允许负攻击；其余导入仍保持原有的非负约束。
+                    let signed_rin =
+                        player.class == crate::namerena::PlayerClass::Boss && player.name == "rin" && status.attack == -26;
+                    if status.max_hp <= 0 || (status.attack < 0 && !signed_rin) || status.defense < 0 || status.resistance < 0 {
                         return Err(CustomMixedRosterImportError {
                             team_index,
                             player_index,
