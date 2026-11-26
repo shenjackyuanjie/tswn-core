@@ -90,7 +90,14 @@ impl CombatRuntime {
                     self.select_plain_default_enemy_targets_with_count(actor, smart, if smart { 6 } else { 5 })
                 }
                 BossActionSkill::YuriControl => self.select_plain_yuri_control_targets(actor, smart),
-                BossActionSkill::MarioGet => PreparedTargetList::new(),
+                BossActionSkill::MarioGet
+                | BossActionSkill::Squall
+                | BossActionSkill::Quilt
+                | BossActionSkill::Smdd
+                | BossActionSkill::Xjy
+                | BossActionSkill::Yi
+                | BossActionSkill::Tiger
+                | BossActionSkill::Fish => PreparedTargetList::new(),
                 // `SklSaitama.au` 的基础概率在等级 0 时恒为 false，`aa` 不会执行。
                 BossActionSkill::Saitama => continue,
             };
@@ -160,6 +167,13 @@ impl CombatRuntime {
     /// 结算扫描选中的 Boss 主动技能；通用技能沿用现有内置实现。
     pub fn drain_plain_boss_skill_into(&mut self, actor: EntityIdx, prepared: PreparedBossSkillAction, updates: &mut RunUpdates) {
         match prepared.selected {
+            BossActionSkill::Squall => self.drain_squall_action_into(actor, updates),
+            BossActionSkill::Quilt => self.drain_quilt_action_into(actor, updates),
+            BossActionSkill::Smdd => self.drain_smdd_action_into(actor, updates),
+            BossActionSkill::Xjy => self.drain_xjy_action_into(actor, updates),
+            BossActionSkill::Yi => self.drain_yi_action_into(actor, updates),
+            BossActionSkill::Tiger => self.drain_tiger_action_into(actor, updates),
+            BossActionSkill::Fish => self.drain_fish_action_into(actor, updates),
             BossActionSkill::Fire => {
                 let target = prepared.targets[0];
                 self.drain_plain_fire_skill_into(actor, target, updates);

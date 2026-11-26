@@ -4,7 +4,7 @@
 pub const SAITAMA_RETIREMENT_WINNER: &str = "SAITAMA";
 
 /// 内置 Boss 名字表；用于身份分类、默认技能与免疫规则查询。
-pub const BOSS_NAMES: [&str; 15] = [
+pub const BOSS_NAMES: [&str; 22] = [
     "mario",
     "sonic",
     "mosquito",
@@ -20,6 +20,13 @@ pub const BOSS_NAMES: [&str; 15] = [
     "thanos",
     "wheel",
     SAITAMA_RETIREMENT_WINNER,
+    "Squall",
+    "quilt",
+    "smdd",
+    "新纪元",
+    "咦",
+    "TigerStar",
+    "Shabby_fish",
 ];
 
 /// 加成角色名字表；对应 [`boost_value`] 的加成来源。
@@ -58,6 +65,12 @@ pub fn boss_display_name(name: &str) -> &str {
         "testsubject" => "实验体 #C8",
         "thanos" => "灭霸",
         "wheel" => "生命之轮",
+        "quilt" => "被子",
+        "smdd" => "曙光",
+        "新纪元" => "新纪元",
+        "咦" => "咦",
+        "TigerStar" => "豹星",
+        "Shabby_fish" => "沙冰鱼",
         _ => name,
     }
 }
@@ -116,6 +129,20 @@ pub enum BossActionSkill {
     MarioGet,
     YuriControl,
     Saitama,
+    /// Squall 的科研技能与研究助手统一进入专属结算器。
+    Squall,
+    /// 被子的钻出被子、多重魂、占领与鱼我所欲也统一进入专属结算器。
+    Quilt,
+    /// smdd 的十个做局技能统一进入专属结算器。
+    Smdd,
+    /// 新纪元的猎豹与人海技能统一进入专属结算器。
+    Xjy,
+    /// 咦与拜谢的行动统一进入专属结算器。
+    Yi,
+    /// TigerStar 的行动统一进入专属结算器。
+    Tiger,
+    /// 沙冰鱼的行动统一进入专属结算器。
+    Fish,
 }
 
 /// 按 0.5.5 中 `k4` 的插入顺序返回 Boss 主动技能及基础等级。

@@ -178,6 +178,36 @@ pub struct PlayerRuntime {
     pub conan_thinking: Option<i32>,
     /// 史莱姆 Boss 的分裂代数；0 为原始 Boss，1 为第一代子体，2 起不再分裂。
     pub slime_split_generation: Option<u32>,
+    /// 科研 Boss、助手角色和临时嘲讽覆盖随克隆与存档完整保存。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub squall: Option<Box<SquallRuntime>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub squall_helper: Option<(EntityIdx, u8, u32)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub squall_taunt: Option<(EntityIdx, u64)>,
+    /// smdd 的做局层数与技能冷却。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub smdd: Option<Box<SmddRuntime>>,
+    /// 沙冰鱼的运行态。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fish: Option<Box<FishRuntime>>,
+    /// TigerStar 的运行态。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tiger: Option<Box<TigerRuntime>>,
+    /// 咦 Boss 与拜谢衍生物的运行态。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub yi: Option<Box<YiRuntime>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baixie: Option<Box<BaixieRuntime>>,
+    /// 新纪元的行动计数、铁壁与拜谢状态。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xjy: Option<Box<XjyRuntime>>,
+    /// 被子衍生物的行动计数与睡眠、钻被、得意等临时标记。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quilt_minion: Option<Box<QuiltMinionState>>,
+    /// 独立的逮捕效果保存来源、每跳伤害和剩余跳数。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub quilt_arrests: Vec<(EntityIdx, i32, u8)>,
     pub corpse: RuntimeCorpseKind,
 }
 
@@ -243,6 +273,20 @@ impl PlayerRuntime {
             rinick_reraise_lives: template.rinick.as_ref().is_some_and(|data| data.revive_attrs.is_some()).then_some(2),
             conan_thinking,
             slime_split_generation,
+            squall: (flags.contains(PlayerKindFlags::BOSS) && template.name == "Squall")
+                .then(|| Box::new(SquallRuntime::default())),
+            squall_helper: None,
+            squall_taunt: None,
+            smdd: (flags.contains(PlayerKindFlags::BOSS) && template.name == "smdd").then(|| Box::new(SmddRuntime::default())),
+            xjy: (flags.contains(PlayerKindFlags::BOSS) && template.name == "新纪元").then(|| Box::new(XjyRuntime::default())),
+            yi: (flags.contains(PlayerKindFlags::BOSS) && template.name == "咦").then(|| Box::new(YiRuntime::default())),
+            tiger: (flags.contains(PlayerKindFlags::BOSS) && template.name == "TigerStar")
+                .then(|| Box::new(TigerRuntime::default())),
+            fish: (flags.contains(PlayerKindFlags::BOSS) && template.name == "Shabby_fish")
+                .then(|| Box::new(FishRuntime::default())),
+            baixie: None,
+            quilt_minion: None,
+            quilt_arrests: Vec::new(),
             corpse: RuntimeCorpseKind::None,
         }
     }
@@ -289,6 +333,17 @@ impl PlayerRuntime {
         self.rinick_reraise_lives = None;
         self.conan_thinking = None;
         self.slime_split_generation = None;
+        self.squall = None;
+        self.squall_helper = None;
+        self.squall_taunt = None;
+        self.smdd = None;
+        self.xjy = None;
+        self.yi = None;
+        self.tiger = None;
+        self.fish = None;
+        self.baixie = None;
+        self.quilt_minion = None;
+        self.quilt_arrests.clear();
         self.corpse = RuntimeCorpseKind::None;
     }
 
@@ -334,6 +389,17 @@ impl PlayerRuntime {
         self.rinick_reraise_lives = prepared.rinick_reraise_lives;
         self.conan_thinking = prepared.conan_thinking;
         self.slime_split_generation = prepared.slime_split_generation;
+        self.squall.clone_from(&prepared.squall);
+        self.squall_helper = prepared.squall_helper;
+        self.squall_taunt = prepared.squall_taunt;
+        self.smdd.clone_from(&prepared.smdd);
+        self.xjy.clone_from(&prepared.xjy);
+        self.yi.clone_from(&prepared.yi);
+        self.tiger.clone_from(&prepared.tiger);
+        self.fish.clone_from(&prepared.fish);
+        self.baixie.clone_from(&prepared.baixie);
+        self.quilt_minion.clone_from(&prepared.quilt_minion);
+        self.quilt_arrests.clone_from(&prepared.quilt_arrests);
         self.corpse = prepared.corpse;
     }
 

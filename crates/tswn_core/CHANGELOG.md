@@ -32,6 +32,9 @@
 - 8 处 `pub(in crate::runtime)` 改为 `pub` 后作用域不变：它们所在的 `combat`／`prepared_init`／`entity::state` 本身是私有模块，祖先链上第一个私有模块已把可见范围截断。
 - clippy `--lib` 警告由 22 增至 27，新增 5 条 `private_interfaces`，均指向 `prepared_init` 内部方法返回私有类型。该 lint 只比较名义可见性、不沿模块链计算有效可见性，在私有模块树内用 `pub` 表达时必然误报；涉及类型 `PreparedPlayerInit`／`ScoreProfileBuild` 均无 `pub` 且不在 `runtime/mod.rs` 的重导出列表内，
 - `cli_api/battle/session/tests.rs` 改名 `session_tests.rs`、`runtime/entity/tests.rs` 改名 `entity_tests.rs`。原状态是同目录下 `tests.rs`（通用名）与 `card_control_tests.rs`／`derived_stats_tests.rs`（主题名）两种规则并存，现统一为「主题_tests」形式，与 `runtime/tests/` 的目录级约定同构。测试内容零改动。
+- 为移植 KODU16 fork 上的 7 只自定义 Boss（Squall、被子、曙光、新纪元、咦、豹星老虎、沙冰鱼）铺设接线骨架：`BossActionSkill` 新增 7 个变体、`BOSS_NAMES` 由 15 增至 22、`namerena/build.rs` 补 7 组属性构建、`PlayerRuntime` 新增 11 个 boss 字段、`combat/mod.rs` 补 7 个模块与 7 个测试模块声明、`round.rs` 与 `skills_boss.rs` 的穷举 match 补全路由。7 个 `drain_*_action_into` 与 7 个 `XRuntime` 为空实现占位，机制实现随后分组补齐。
+- `PlayerRuntime` 的 11 个 boss 字段在 `from_template`、`reset_score_profile_from_template`、`reset_battle_state_from` 三处全部初始化。原作者只处理了 squall 与 quilt 两个，其余 5 个在新 Boss 进入 batch 复用与克隆路径时不会被重置。
+- 7 个 boss 测试模块此前在原作者分支上从未声明，833 行测试实际不参与编译；本次一并声明 `#[cfg(test)]` 模块，实现补齐后即可生效。
 
 ## [0.7.2] - 2026-11-21
 

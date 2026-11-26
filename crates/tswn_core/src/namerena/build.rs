@@ -542,6 +542,37 @@ impl PlayerBuild {
             status = status_from_attrs(attrs, self.name_factor, true);
             status.magic_point = 1000;
         }
+        // Squall 与 smdd 的 106 只是外显值；实际战斗速度按普通公式补上 160。
+        if self.class == PlayerClass::Boss
+            && matches!(self.name.as_str(), "Squall" | "smdd" | "新纪元" | "TigerStar" | "Shabby_fish")
+        {
+            self.name_factor = 0.0;
+            attrs = [106, 106, 106, 106, 106, 106, 106, 360];
+            status = status_from_attrs(attrs, 0.0, true);
+            status.speed = 266;
+        }
+        // 咦：固定属性，外显速度 89，实战速度 249。
+        if self.class == PlayerClass::Boss && self.name == "咦" {
+            self.name_factor = 0.0;
+            attrs = [99, 87, 89, 82, 98, 89, 56, 487];
+            status = status_from_attrs(attrs, 0.0, true);
+            status.attack = 99;
+            status.defense = 87;
+            status.speed = 249;
+            status.agility = 82;
+            status.magic = 98;
+            status.resistance = 89;
+            status.wisdom = 89;
+            status.hp = 487;
+            status.max_hp = 487;
+        }
+        // 被子是后排 Boss：1000 HP、其余 100，速度同样不追加 160 点。
+        if self.class == PlayerClass::Boss && self.name == "quilt" {
+            self.name_factor = 0.0;
+            attrs = [100, 100, 100, 100, 100, 100, 100, 1000];
+            status = status_from_attrs(attrs, 0.0, true);
+            status.speed = 100;
+        }
         let mut skills = overlay_skills.map_or_else(
             || SkillLoadoutSpec::standard(&levels, &boosted, &boosts, &self.action_order),
             |skills| SkillLoadoutSpec::player_overlay(skills, effective_skills),

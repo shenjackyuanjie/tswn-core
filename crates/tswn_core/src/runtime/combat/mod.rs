@@ -39,9 +39,30 @@ use super::*;
 #[cfg(feature = "cards")]
 mod abilities;
 mod attack;
+pub mod boss_fish;
+#[cfg(test)]
+pub mod boss_fish_tests;
+pub mod boss_quilt;
+#[cfg(test)]
+pub mod boss_quilt_tests;
 pub mod boss_slime;
+pub mod boss_smdd;
+#[cfg(test)]
+pub mod boss_smdd_tests;
+pub mod boss_squall;
+#[cfg(test)]
+pub mod boss_squall_tests;
 mod boss_thanos;
+pub mod boss_tiger;
+#[cfg(test)]
+pub mod boss_tiger_tests;
 mod boss_wheel;
+pub mod boss_xjy;
+#[cfg(test)]
+pub mod boss_xjy_tests;
+pub mod boss_yi;
+#[cfg(test)]
+pub mod boss_yi_tests;
 mod defense;
 mod effects;
 mod infection;

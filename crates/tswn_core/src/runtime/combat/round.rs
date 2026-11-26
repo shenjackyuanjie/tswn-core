@@ -536,6 +536,53 @@ impl CombatRuntime {
         pre_action: PlainSkillPreActionOutcome,
     ) -> Option<PreparedPlainAction> {
         crate::runtime::forced_action::hit();
+        // 沙冰鱼的行动完全由专属脚本决定。
+        if self
+            .entities
+            .get(actor)
+            .is_some_and(|e| e.template.name == crate::runtime::combat::boss_fish::ID)
+        {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Fish,
+                targets: PreparedTargetList::new(),
+            }));
+        }
+        // TigerStar 的行动完全由专属脚本决定。
+        if self
+            .entities
+            .get(actor)
+            .is_some_and(|e| e.template.name == crate::runtime::combat::boss_tiger::ID)
+        {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Tiger,
+                targets: PreparedTargetList::new(),
+            }));
+        }
+        // 咦的行动完全由专属脚本决定。
+        if self
+            .entities
+            .get(actor)
+            .is_some_and(|e| e.template.name == crate::runtime::combat::boss_yi::ID)
+        {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Yi,
+                targets: PreparedTargetList::new(),
+            }));
+        }
+        // 新纪元的行动完全由专属脚本决定。
+        if self.entities.get(actor).is_some_and(|e| e.template.name == "新纪元") {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Xjy,
+                targets: PreparedTargetList::new(),
+            }));
+        }
+        // 被子的行动完全由专属脚本决定：不扫描普攻，也不消耗概率随机数。
+        if self.is_quilt(actor) {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Quilt,
+                targets: PreparedTargetList::new(),
+            }));
+        }
         // 外部脚本：引擎自身没有强制动作时，优先执行调用方排好的这一手。
         // 潜行→背刺这类引擎强制动作必须先走完，指令留到该单位的下一次行动。
         let engine_forced = pre_action.forced_skill.is_some();
@@ -579,6 +626,28 @@ impl CombatRuntime {
                 target,
                 amount: (f64::from(amount) * 1.2000000476837158).round() as i32,
             });
+        }
+
+        if self
+            .entities
+            .get(actor)
+            .is_some_and(|e| e.runtime.squall.is_some() || e.runtime.squall_helper.is_some())
+        {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Squall,
+                targets: PreparedTargetList::new(),
+            }));
+        }
+        // smdd 同样走专属脚本，不消耗概率随机数。
+        if self
+            .entities
+            .get(actor)
+            .is_some_and(|e| e.template.name == crate::runtime::combat::boss_smdd::ID)
+        {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Smdd,
+                targets: PreparedTargetList::new(),
+            }));
         }
 
         #[cfg(not(feature = "no_debug"))]
