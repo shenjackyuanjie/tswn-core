@@ -1,6 +1,10 @@
 # 更新日志
 
-## [Unreleased]
+## [0.6.0] - 2026-11-26
+
+### 分发
+
+- `fast-namerena` 的 `branch/tswn/pkg/` 产物已更新到本版 `0.6.0`（由 `scripts/build_wasm.py --release` 构建），包含 `0.5.13` 与本次全部变更；该部署点此前停留在 `0.5.12`。
 
 ### 破坏性变更
 
