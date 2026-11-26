@@ -138,10 +138,10 @@ impl BattleSlotStorage {
     }
 
     /// 封存 prepared runner 的全局槽位基线。
-    pub(crate) fn mark_battle_baseline(&mut self) { self.battle_dirty = false; }
+    pub fn mark_battle_baseline(&mut self) { self.battle_dirty = false; }
 
     /// 仅在本局写过全局槽位时恢复内容，常见只读路径不再克隆 Vec。
-    pub(crate) fn reset_battle_state_from(&mut self, prepared: &Self) {
+    pub fn reset_battle_state_from(&mut self, prepared: &Self) {
         if self.baseline_id != prepared.baseline_id {
             self.clone_from(prepared);
             return;
@@ -225,7 +225,7 @@ impl EntitySlotStorage {
     }
 
     /// 仅在蓝图队伍确实变化时写入并标脏，避免种子复位的只读命中触发整槽深拷贝。
-    pub(crate) fn update_player_template_team(&mut self, id: EntitySlotId, team: usize) {
+    pub fn update_player_template_team(&mut self, id: EntitySlotId, team: usize) {
         let Some(Some(SlotValue::PlayerTemplate(template))) = self.values.get_mut(id.0 as usize) else {
             return;
         };
@@ -236,7 +236,7 @@ impl EntitySlotStorage {
     }
 
     /// 取出并清空指定槽位，若原先有值则标记值脏位；越界返回 `None`。
-    pub(crate) fn remove(&mut self, id: EntitySlotId) -> Option<SlotValue> {
+    pub fn remove(&mut self, id: EntitySlotId) -> Option<SlotValue> {
         let index = id.0 as usize;
         let removed = self.values.get_mut(index).and_then(Option::take);
         if removed.is_some() {
@@ -255,10 +255,10 @@ impl EntitySlotStorage {
     }
 
     /// 封存 prepared runner 的实体槽位基线。
-    pub(crate) fn mark_battle_baseline(&mut self) { self.battle_dirty_words.fill(0); }
+    pub fn mark_battle_baseline(&mut self) { self.battle_dirty_words.fill(0); }
 
     /// 仅恢复本局写过的槽位，计数器变化不再连带深拷贝同表中的 PlayerTemplate。
-    pub(crate) fn reset_battle_state_from(&mut self, prepared: &Self) {
+    pub fn reset_battle_state_from(&mut self, prepared: &Self) {
         if self.baseline_id != prepared.baseline_id {
             self.clone_from(prepared);
             return;

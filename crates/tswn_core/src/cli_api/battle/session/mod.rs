@@ -592,7 +592,7 @@ impl BattleSession {
 }
 
 /// 把 runner 的全部玩家快照转换为 `BattlePlayerState`，按开关决定是否带图标与技能，图标经缓存去重。
-pub(super) fn states_from_runner(
+pub fn states_from_runner(
     runner: &RuntimeRunner,
     include_icons: bool,
     include_skills: bool,
@@ -787,7 +787,7 @@ fn state_from_snapshot(snapshot: RuntimePlayerSnapshot, include_icons: bool) -> 
 }
 
 /// 用前后状态与 runner 更新构建一帧回放：转换更新行、侧边栏状态与胜负信息。
-pub(super) fn build_frame(
+pub fn build_frame(
     updates: &RunUpdates,
     previous_states: &[BattlePlayerState],
     states: &[BattlePlayerState],

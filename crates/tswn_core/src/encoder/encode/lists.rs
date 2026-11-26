@@ -54,7 +54,7 @@ fn entity_list_record(
 
 impl FeatureEncoder {
     /// 把列表族写入编码批次：按模板 / lane 展开记录并按排序键稳定输出。
-    pub(super) fn write_list_family(
+    pub fn write_list_family(
         &self,
         state: &BattleModelState,
         index: &SampleIndex<'_>,

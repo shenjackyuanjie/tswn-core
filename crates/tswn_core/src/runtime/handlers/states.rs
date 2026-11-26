@@ -193,10 +193,7 @@ fn planned_covid_strain(
         .position(|strain| strain.registration_order.unwrap_or(original_order) == entry.runtime_registration_order)
 }
 
-pub(crate) fn propose_boss_infection_pre_action(
-    context: &mut StateContext<'_>,
-    entry: &StateHookPlanEntry,
-) -> Option<StateHandlerFn> {
+pub fn propose_boss_infection_pre_action(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) -> Option<StateHandlerFn> {
     match context.owner_state_payload(entry.legacy_order_key)? {
         StatePayload::CovidInfection {
             mut entries,

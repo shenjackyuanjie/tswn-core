@@ -32,7 +32,7 @@ use super::win_rate::bench_win_rate_summary;
 
 /// 单个 player group 批量测试后的汇总；`pair` 也复用同一次单组计算的结果。
 #[derive(Debug)]
-pub(super) struct BatchRateSummary {
+pub struct BatchRateSummary {
     pub avg: f64,
     pub aggregate_rate: f64,
     pub wins: usize,
@@ -559,7 +559,7 @@ fn group_label_for_display(raw: &str, clean: bool) -> String {
 /// 计算单个 player group 对整个 target 列表的平均胜率（不收集明细）。
 ///
 /// `pair` 复用同一次单组计算结果，因此对 `bench` 模块内可见。
-pub(super) fn bench_batch_rate_for_group(
+pub fn bench_batch_rate_for_group(
     player: &str,
     target_groups: &[String],
     target_factors: &[f64],

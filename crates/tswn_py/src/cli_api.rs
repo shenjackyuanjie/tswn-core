@@ -469,7 +469,7 @@ impl PyIconInfo {
 }
 
 /// 把 core CliApiError 映射为对应的 Python 异常，保持稳定 code。
-pub(crate) fn map_cli_error(err: CliApiError) -> pyo3::PyErr {
+pub fn map_cli_error(err: CliApiError) -> pyo3::PyErr {
     match err {
         CliApiError::InvalidInput(message) => pyo3::PyErr::new::<PyInvalidInputError, _>(message),
         CliApiError::RunnerInit(err) => wrapper::error::PyRunnerError::new(err).into(),

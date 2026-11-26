@@ -9,7 +9,7 @@ pub const TEAM_MAX_LEN: usize = 256;
 /// seed 行前缀；匹配区分大小写。
 pub const SEED_PREFIX: &str = "seed:";
 /// Rinick 属性修改器的 Boss 别名输入。
-pub(crate) const RINICK_MODIFIER_BOSS_ALIAS: &str = "Rinick属性修改器@!";
+pub const RINICK_MODIFIER_BOSS_ALIAS: &str = "Rinick属性修改器@!";
 
 /// 名字的身份分类：普通、分身、Boss、加成、seed 与各类测试身份。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -212,7 +212,7 @@ pub fn raw_namerena_to_id_name(raw: &str) -> String {
 }
 
 /// 把 raw 玩家输入归一化为 `名字@队伍` 形式的 id 名称写入 output。
-pub(crate) fn raw_namerena_to_id_name_into(raw: &str, output: &mut String) {
+pub fn raw_namerena_to_id_name_into(raw: &str, output: &mut String) {
     output.clear();
     let raw = canonical_player_input(raw);
     let no_weapon = raw.split_once('+').map_or(raw, |(left, _)| left);
@@ -307,7 +307,7 @@ fn is_js_trim_name_char(ch: char) -> bool {
 }
 
 /// 按 JS 行尾空白语义 trim 行尾。
-pub(crate) fn trim_js_line_end(value: &str) -> &str { value.trim_end_matches(is_js_regex_space) }
+pub fn trim_js_line_end(value: &str) -> &str { value.trim_end_matches(is_js_regex_space) }
 
 /// 按 JS 名字 trim 语义 trim 两端，并处理 NEL 边界字符。
 fn trim_js_name_like(value: &str) -> &str {

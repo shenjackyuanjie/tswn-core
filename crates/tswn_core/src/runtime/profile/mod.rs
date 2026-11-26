@@ -400,7 +400,7 @@ impl BuiltinSkillImportMap {
     }
 
     /// 只解析数字 score 召唤物需要的四个技能，避免首次触发时扫描整张 legacy 映射表。
-    pub(crate) fn new_score_minions(registry: &ExtensionRegistry) -> Self {
+    pub fn new_score_minions(registry: &ExtensionRegistry) -> Self {
         Self {
             plain_by_legacy_key: [None; 35],
             score_hook_plan: Vec::new(),
@@ -510,7 +510,7 @@ impl BuiltinSkillImportMap {
     }
 
     /// 原地重填标准 score profile 技能表，复用上一轮的所有 SmallVec 容量。
-    pub(crate) fn reset_score_profile(
+    pub fn reset_score_profile(
         &self,
         loadout: &mut SkillLoadout,
         levels: &[u32; 35],
@@ -530,7 +530,7 @@ impl BuiltinSkillImportMap {
     }
 
     /// 直接构造无 overlay 幻影的唯一技能，跳过 legacy SkillStorage。
-    pub(crate) fn import_score_shadow_minion(&self, base_level: u32) -> SkillLoadout {
+    pub fn import_score_shadow_minion(&self, base_level: u32) -> SkillLoadout {
         let possess = self.special_skill_id(3);
         let (level, boosted, boost) = if base_level > 0 {
             (
@@ -550,7 +550,7 @@ impl BuiltinSkillImportMap {
     }
 
     /// 直接构造无 overlay 使魔的固定四技能布局，保持 legacy 洗牌与末位加成顺序。
-    pub(crate) fn import_score_summon_minion(&self, slot_levels: [u32; 3], action_order: [usize; 3]) -> SkillLoadout {
+    pub fn import_score_summon_minion(&self, slot_levels: [u32; 3], action_order: [usize; 3]) -> SkillLoadout {
         let mut levels = [0u32; 3];
         for (slot, &key) in action_order.iter().enumerate() {
             levels[key] = slot_levels[slot];

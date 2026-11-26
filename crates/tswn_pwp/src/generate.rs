@@ -159,7 +159,7 @@ pub fn generate(args: &GenerateArgs) -> Result<()> {
 }
 
 /// 计算第 index 个分片负责的 battle_id 区间。
-pub(crate) fn range(config: &DatasetConfig, index: usize, total: usize) -> (usize, usize) {
+pub fn range(config: &DatasetConfig, index: usize, total: usize) -> (usize, usize) {
     let first = index * config.battles_per_shard;
     (first, first.saturating_add(config.battles_per_shard).min(total))
 }
@@ -282,7 +282,7 @@ impl Drop for ActiveBattle<'_> {
 }
 
 /// 生成单局数据：同 seed 跑两遍并比对边界与结果，返回对局行与样本行。
-pub(crate) fn generate_battle(
+pub fn generate_battle(
     config: &DatasetConfig,
     battle_id: usize,
     prepared: &PreparedRuntimeRunner,

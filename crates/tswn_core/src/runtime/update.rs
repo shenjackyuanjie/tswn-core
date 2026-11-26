@@ -245,25 +245,25 @@ impl RunUpdate {
     pub fn replay_target_id(&self) -> Option<PlrId> { (self.has_target && !self.hide_replay_target).then_some(self.target) }
 
     /// 隐藏规范回放中的单体目标；旧兼容投影 `target_id` 仍可见。
-    pub(crate) fn without_replay_target(mut self) -> Self {
+    pub fn without_replay_target(mut self) -> Self {
         self.hide_replay_target = true;
         self
     }
 
     /// 清除“有真实施法者”标记，使 `caster_id` 返回 `None`；legacy `caster` 字段仍可读。
-    pub(crate) fn without_caster(mut self) -> Self {
+    pub fn without_caster(mut self) -> Self {
         self.has_caster = false;
         self
     }
 
     /// 收集多目标动画目标并顺带隐藏单体回放目标（多目标动画不暴露单一 replay target）。
-    pub(crate) fn with_animation_targets(mut self, targets: impl ExactSizeIterator<Item = PlrId>) -> Self {
+    pub fn with_animation_targets(mut self, targets: impl ExactSizeIterator<Item = PlrId>) -> Self {
         self.animation_targets = Some(targets.collect());
         self.without_replay_target()
     }
 
     /// 记录一次处决/致死伤害：置位伤害参数标记，并为目标登记 before→0 的生命变化。
-    pub(crate) fn with_execution_damage(mut self, before: i32) -> Self {
+    pub fn with_execution_damage(mut self, before: i32) -> Self {
         self.has_damage_param = true;
         let player = self.target;
         self.with_hp_changes([RunUpdateHp {
@@ -274,7 +274,7 @@ impl RunUpdate {
     }
 
     /// 由目标的生命变化反推本次伤害值（before-after，饱和到非负）；无伤害参数或找不到对应变化时返回 `None`。
-    pub(crate) fn damage_param(&self) -> Option<u32> {
+    pub fn damage_param(&self) -> Option<u32> {
         if !self.has_damage_param {
             return None;
         }
@@ -283,13 +283,13 @@ impl RunUpdate {
     }
 
     /// 清除目标存在标记，使 `target_id` 与 `replay_target_id` 都返回 `None`。
-    pub(crate) fn without_target(mut self) -> Self {
+    pub fn without_target(mut self) -> Self {
         self.has_target = false;
         self
     }
 
     /// 将定长生命变化数组装箱存入 `hp_changes`。
-    pub(crate) fn with_hp_changes<const N: usize>(mut self, changes: [RunUpdateHp; N]) -> Self {
+    pub fn with_hp_changes<const N: usize>(mut self, changes: [RunUpdateHp; N]) -> Self {
         self.hp_changes = Some(Box::new(changes));
         self
     }
@@ -376,7 +376,7 @@ impl RunUpdates {
 
     /// 批量调度没有产生行动或事件，推进批次编号即可。
     #[inline]
-    pub(crate) fn skip_empty_batch() { next_run_updates_id(); }
+    pub fn skip_empty_batch() { next_run_updates_id(); }
 
     /// 清理批次内容，复用分配。
     pub fn reset(&mut self) {

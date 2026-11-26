@@ -5,7 +5,7 @@ use crate::win_rate::WinRateTiming;
 use super::{BatchSummary, CliApiResult, PairRateEntry, PairRateResult};
 
 /// 对基础组（duplicate 时复制为双人同名组）运行评分并折算为百分制分数。
-pub(super) fn namer_pf_score(
+pub fn namer_pf_score(
     base_group: &[String],
     modifier: &str,
     duplicate: bool,
@@ -24,7 +24,7 @@ pub(super) fn namer_pf_score(
 }
 
 /// 对单个选手遍历全部靶子组累计批量胜率汇总；带权时按因子加权，跳过无效对阵。
-pub(super) fn batch_rate_for_group(
+pub fn batch_rate_for_group(
     player: &str,
     target_groups: &[String],
     target_factors: Option<&[f64]>,
@@ -87,7 +87,7 @@ pub(super) fn batch_rate_for_group(
 }
 
 /// 对单个选手与各队友组合累计 pair 胜率，并按乘权分数取前 head 名求和。
-pub(super) fn pair_rate_for_player(
+pub fn pair_rate_for_player(
     player: &str,
     target_groups: &[String],
     target_factors: Option<&[f64]>,

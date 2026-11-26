@@ -2,12 +2,7 @@ use super::*;
 
 impl CombatRuntime {
     /// 预读被动的真实 MP 消耗，不推进随机流；被动使用 r3x3，而非主动技的 8~23。
-    pub(crate) fn passive_mp_costs(
-        &self,
-        owner: EntityIdx,
-        skill: &str,
-        intercept: bool,
-    ) -> std::collections::BTreeMap<String, u32> {
+    pub fn passive_mp_costs(&self, owner: EntityIdx, skill: &str, intercept: bool) -> std::collections::BTreeMap<String, u32> {
         let payable = match skill {
             "core.skill.reflect" | "core.skill.defend" | "core.skill.counter" => Some(skill),
             "core.skill.protect" if intercept => Some(skill),
@@ -230,7 +225,7 @@ impl CombatRuntime {
         self.try_covid_spread_on_damage_with_threshold_into(boss, target, mutation, damage, updates, false);
     }
 
-    pub(super) fn try_covid_spread_on_damage_with_threshold_into(
+    pub fn try_covid_spread_on_damage_with_threshold_into(
         &mut self,
         boss: EntityIdx,
         target: EntityIdx,
@@ -255,7 +250,7 @@ impl CombatRuntime {
     }
 
     /// Boss 受击后的被动传播：裸脸直接感染，仅口罩需要抽一次 c75。
-    pub(super) fn try_covid_spread_to_attacker_into(
+    pub fn try_covid_spread_to_attacker_into(
         &mut self,
         boss: EntityIdx,
         attacker: EntityIdx,
@@ -347,7 +342,7 @@ impl CombatRuntime {
         true
     }
 
-    pub(super) fn drain_covid_strains_into(&mut self, owner: EntityIdx, order: Option<u64>, updates: &mut RunUpdates) {
+    pub fn drain_covid_strains_into(&mut self, owner: EntityIdx, order: Option<u64>, updates: &mut RunUpdates) {
         let mut index = 0;
         loop {
             let StatePayload::CovidInfection { entries, .. } = &self

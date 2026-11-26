@@ -1,11 +1,11 @@
 //! 深浅主题共用的语义配色，状态始终同时保留文字。
 
 /// 渲染小号弱化提示文本。
-pub(super) fn hint(ui: &mut egui::Ui, text: &str) -> egui::Response { ui.label(egui::RichText::new(text).size(13.0)) }
+pub fn hint(ui: &mut egui::Ui, text: &str) -> egui::Response { ui.label(egui::RichText::new(text).size(13.0)) }
 
 #[derive(Clone, Copy)]
 /// 语义配色：信息/成功/警告/强调/紫。
-pub(super) struct Palette {
+pub struct Palette {
     pub info: egui::Color32,
     pub success: egui::Color32,
     pub warning: egui::Color32,

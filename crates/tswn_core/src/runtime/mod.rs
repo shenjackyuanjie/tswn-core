@@ -118,7 +118,7 @@ pub use cqp::{
 };
 pub use handlers::*;
 pub use prepared_init::{PreparedBattleInit, PreparedBattleRoster, RuntimeBattleInitError};
-pub(crate) use prepared_init::{ScoreIdentityBuffer, ScoreRosterBuffers, ScoreRoundScratch};
+pub use prepared_init::{ScoreIdentityBuffer, ScoreRosterBuffers, ScoreRoundScratch};
 pub use profile::*;
 pub use runner::*;
 pub use session::*;

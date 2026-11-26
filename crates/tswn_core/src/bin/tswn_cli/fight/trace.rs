@@ -53,11 +53,7 @@ fn normalize_diff_trace_line(line: String) -> String {
 }
 
 /// 推进最多 max_rounds 个回合并收集 diff 行，返回 (行, 回合数, 总分数)；normalize 控制是否规整行文本。
-pub(super) fn collect_runtime_diff_lines(
-    runner: &mut RuntimeRunner,
-    max_rounds: usize,
-    normalize: bool,
-) -> (Vec<String>, usize, u64) {
+pub fn collect_runtime_diff_lines(runner: &mut RuntimeRunner, max_rounds: usize, normalize: bool) -> (Vec<String>, usize, u64) {
     let mut lines = Vec::new();
     let mut guard = 0usize;
     let mut total_score = 0u64;

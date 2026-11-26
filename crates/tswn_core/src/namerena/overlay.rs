@@ -22,7 +22,7 @@ impl EffectiveSkillWeight {
     pub fn value(self) -> f64 { self.0 as f64 / 1_000_000.0 }
 
     /// 把内部等级值换算为默认展示等级（按百万分比取整）。
-    pub(super) fn default_level(self) -> u32 { self.0.div_ceil(1_000_000) as u32 }
+    pub fn default_level(self) -> u32 { self.0.div_ceil(1_000_000) as u32 }
 }
 
 /// 战斗召唤物（幻影 / 使魔 / 丧尸）的覆盖配置。

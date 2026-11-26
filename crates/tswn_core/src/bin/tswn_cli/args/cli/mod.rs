@@ -34,7 +34,7 @@ use super::parsed::{BenchThreadMode, NamerPfMetric, NamerPfMetricSpec, PairDetai
     arg_required_else_help = true
 )]
 /// 顶层 clap 命令结构：唯一字段是子命令，`main` 据此分派到各入口。
-pub(super) struct Cli {
+pub struct Cli {
     /// 顶层 CLI 子命令。
     #[command(subcommand)]
     command: CliCommand,

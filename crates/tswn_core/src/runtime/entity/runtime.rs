@@ -248,13 +248,7 @@ impl PlayerRuntime {
     }
 
     /// 从标准数字 score profile 原地复位运行态，并保留保护链向量的容量。
-    pub(crate) fn reset_score_profile_from_template(
-        &mut self,
-        template: &PlayerTemplate,
-        owner: EntityIdx,
-        hp: i32,
-        alive: bool,
-    ) {
+    pub fn reset_score_profile_from_template(&mut self, template: &PlayerTemplate, owner: EntityIdx, hp: i32, alive: bool) {
         debug_assert_eq!(template.kind, PlayerTemplate::DEFAULT_KIND);
         self.hp = hp;
         self.alive = alive;
@@ -299,7 +293,7 @@ impl PlayerRuntime {
     }
 
     /// 从场前模板原地恢复运行态，并保留保护链向量已经申请的容量。
-    pub(crate) fn reset_battle_state_from(&mut self, prepared: &Self) {
+    pub fn reset_battle_state_from(&mut self, prepared: &Self) {
         self.hp = prepared.hp;
         self.alive = prepared.alive;
         self.attack = prepared.attack;
@@ -452,7 +446,7 @@ pub struct ChargeRuntime {
 }
 
 impl ChargeRuntime {
-    pub(crate) fn from_permanent(permanent: bool) -> Self {
+    pub fn from_permanent(permanent: bool) -> Self {
         Self {
             active: permanent,
             post_action_active: false,
@@ -826,7 +820,7 @@ impl EntityArena {
     pub fn is_empty(&self) -> bool { self.entities.is_empty() }
 
     /// 封存 prepared runner 的技能基线，后续未修改的技能表不再逐局深拷贝。
-    pub(crate) fn mark_battle_baseline(&mut self) {
+    pub fn mark_battle_baseline(&mut self) {
         for entity in self.entities.iter_mut().flatten() {
             entity.template.skills.mark_battle_baseline();
             entity.slots.mark_battle_baseline();
@@ -851,7 +845,7 @@ impl EntityArena {
     ///
     /// 动态 profile 的模板、runtime、状态和槽位随后会在同一应用循环中覆盖或清空；
     /// 这里不提前触碰它们，避免跨两个循环重复扫描实体数据。
-    pub(crate) fn reset_score_battle_state_from(&mut self, prepared: &Self, fixed_count: usize) {
+    pub fn reset_score_battle_state_from(&mut self, prepared: &Self, fixed_count: usize) {
         self.entities.truncate(prepared.entities.len());
         if self.entities.len() < prepared.entities.len() {
             self.entities.resize_with(prepared.entities.len(), || None);

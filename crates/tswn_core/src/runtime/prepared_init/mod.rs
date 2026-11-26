@@ -92,16 +92,16 @@ struct ScoreProfileBuild {
 
 /// 连续 score 轮次之间回收的动态 profile 身份字符串。
 #[derive(Debug, Default)]
-pub(crate) struct ScoreIdentityBuffer {
-    pub(crate) name: String,
-    pub(crate) id_key_name: String,
-    pub(crate) clan_name: String,
-    pub(crate) display_name: String,
+pub struct ScoreIdentityBuffer {
+    pub name: String,
+    pub id_key_name: String,
+    pub clan_name: String,
+    pub display_name: String,
 }
 
 /// score 每轮构造动态 profile 时复用的临时向量。
 #[derive(Default)]
-pub(crate) struct ScoreRoundScratch {
+pub struct ScoreRoundScratch {
     dynamic_inputs: Vec<(usize, usize, usize)>,
     dynamic_groups: Vec<Vec<usize>>,
     name_keys: Vec<[u8; NAME_MAX_LEN + 1]>,
@@ -113,7 +113,7 @@ pub(crate) struct ScoreRoundScratch {
 
 /// score roster 构造与应用完成后交还下一轮的输出向量。
 #[derive(Debug, Default, Clone)]
-pub(crate) struct ScoreRosterBuffers {
+pub struct ScoreRosterBuffers {
     players: Vec<Option<PreparedPlayerInit>>,
     player_alive: Vec<bool>,
     input_groups: Vec<Vec<PlrId>>,

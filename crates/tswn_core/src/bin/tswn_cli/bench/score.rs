@@ -25,7 +25,7 @@ use super::output::{format_rate, print_perf_lines};
 use super::skill_board::{SkillBoardConfig, evaluate_skill_board};
 
 /// 标准 score benchmark 入口，同时输出普通评分与 `!评分`。
-pub(super) fn run_bench_score(
+pub fn run_bench_score(
     raw: &str,
     n: usize,
     mode: BenchThreadMode,
@@ -347,7 +347,7 @@ struct NamerPfJobResult {
 
 /// `namer-pf` 五项评分；未参与计算的项为 `0.0`（GUI 同样语义）。
 #[derive(Debug, Clone, Copy)]
-pub(super) struct NamerPfScores {
+pub struct NamerPfScores {
     pub pp: f64,
     pub pd: f64,
     pub qp: f64,

@@ -284,7 +284,7 @@ fn lang_map() -> &'static FastHashMap<&'static str, &'static str> {
 pub fn get_lang(key: &str) -> &'static str { lang_map().get(key).copied().unwrap_or("") }
 
 /// 懒癌本体与感染者的跳回合活动共用同一个原版字节分档。
-pub(crate) fn lazy_activity_key(roll: u8) -> &'static str {
+pub fn lazy_activity_key(roll: u8) -> &'static str {
     match roll {
         0..=49 => keys::SKL_LAZY_SKIP_TURN_1,
         50..=99 => keys::SKL_LAZY_SKIP_TURN_2,

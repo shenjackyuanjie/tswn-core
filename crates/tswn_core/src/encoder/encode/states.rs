@@ -8,7 +8,7 @@ use super::*;
 
 impl FeatureEncoder {
     /// 写入状态族：逐状态条目展开 payload 数值、引用与分组字段。
-    pub(super) fn write_state_family(
+    pub fn write_state_family(
         &self,
         state: &BattleModelState,
         index: &SampleIndex<'_>,

@@ -8,7 +8,7 @@ use super::trace::collect_runtime_diff_lines;
 use tswn_core::cli_api::{self as core_cli_api, CliApiError, JsonRuntimeNormalizedRun};
 
 /// `runtime diff` 入口：以默认回合上限生成 diff 行并打印；失败时打印错误并以退出码 1 结束。
-pub(super) fn run_runtime_diff(raw: String) {
+pub fn run_runtime_diff(raw: String) {
     match runtime_diff_lines(&raw, 20_000) {
         Ok(lines) if !lines.is_empty() => println!("{}", lines.join("\n")),
         Ok(_) => {}

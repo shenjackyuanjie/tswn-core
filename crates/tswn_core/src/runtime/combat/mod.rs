@@ -176,7 +176,7 @@ pub struct CombatRuntime {
     pub registry: ExtensionRegistry,
     pub rng: RC4,
     /// 外部行动脚本与暂停标记；缺省时执行链与自动模式一致。
-    pub(crate) control: BattleControl,
+    pub control: BattleControl,
     #[cfg(not(feature = "no_debug"))]
     pub trace: Option<RuntimeTrace>,
     pub round: u64,

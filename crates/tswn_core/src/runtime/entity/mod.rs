@@ -125,22 +125,18 @@ impl CloneBuildData {
         }
     }
 
-    pub(crate) fn with_child_name_factor(mut self, child_name_factor: f64) -> Self {
+    pub fn with_child_name_factor(mut self, child_name_factor: f64) -> Self {
         self.child_name_factor_bits = child_name_factor.to_bits();
         self
     }
 
-    pub(crate) fn with_score_skill_boost_plan(mut self, score_skill_boost_plan: ScoreCloneSkillBoostPlan) -> Self {
+    pub fn with_score_skill_boost_plan(mut self, score_skill_boost_plan: ScoreCloneSkillBoostPlan) -> Self {
         self.score_skill_boost_plan = Some(score_skill_boost_plan);
         self
     }
 
     /// 直接构造未叠加武器和名字系数的数字 score profile 分身数据。
-    pub(crate) fn from_score_profile(
-        attrs: [u32; 8],
-        child_name_factor: f64,
-        score_skill_boost_plan: ScoreCloneSkillBoostPlan,
-    ) -> Self {
+    pub fn from_score_profile(attrs: [u32; 8], child_name_factor: f64, score_skill_boost_plan: ScoreCloneSkillBoostPlan) -> Self {
         Self {
             attrs,
             weapon_attr_bonus: [0; 8],
@@ -165,9 +161,9 @@ impl CloneBuildData {
     }
 
     /// 返回子分身与召唤物已经计算好的名字系数，避免技能触发时重复解析名字。
-    pub(crate) fn child_name_factor(&self) -> f64 { f64::from_bits(self.child_name_factor_bits) }
+    pub fn child_name_factor(&self) -> f64 { f64::from_bits(self.child_name_factor_bits) }
 
-    pub(crate) fn score_skill_boost_plan(&self) -> Option<&ScoreCloneSkillBoostPlan> { self.score_skill_boost_plan.as_ref() }
+    pub fn score_skill_boost_plan(&self) -> Option<&ScoreCloneSkillBoostPlan> { self.score_skill_boost_plan.as_ref() }
 
     /// 本体衰减：前七维按衰减系数向上取整，第八维减半。
     pub fn decay_owner(&mut self) {
@@ -188,7 +184,7 @@ impl CloneBuildData {
         child
     }
 
-    pub(crate) fn rinick_child(&self) -> Self {
+    pub fn rinick_child(&self) -> Self {
         let mut child = self.clone();
         child.attrs[..7].fill(63);
         child.attrs[7] = child.attrs[7].max(324);
@@ -197,7 +193,7 @@ impl CloneBuildData {
         child
     }
 
-    pub(crate) fn derive_rinick_floor(attrs: &mut [u32; 8], name_factor: f64) -> CloneDerivedStats {
+    pub fn derive_rinick_floor(attrs: &mut [u32; 8], name_factor: f64) -> CloneDerivedStats {
         let mut stats = Self::derive_raw(*attrs, name_factor);
         for (index, (attr, panel)) in attrs
             .iter_mut()
@@ -271,7 +267,7 @@ impl CloneBuildData {
     pub fn all_sum(&self) -> u32 { self.attrs[..7].iter().sum::<u32>() * 3 + self.attrs[7] }
 
     /// 返回构造召唤物蓝图所需的 owner 原始八围。
-    pub(crate) fn attrs(&self) -> [u32; 8] { self.attrs }
+    pub fn attrs(&self) -> [u32; 8] { self.attrs }
 
     /// 由原始八围与名字系数计算分身派生统计：按各自除数缩放八围并补速度基准，汇总 `attr_sum` 与 `atk_sum`，倍率取默认值。
     fn derive_raw(attrs: [u32; 8], name_factor: f64) -> CloneDerivedStats {
@@ -343,9 +339,9 @@ pub struct PlayerTemplate {
     /// 桂月奖杯注入的常驻 `charge` 标记；存在但不提供攻击倍率、也无法解除。
     pub permanent_charge: bool,
     /// 防止新冠接触传播的武器后缀标记，不改变武器原有数值。
-    pub(crate) covid_mask: bool,
+    pub covid_mask: bool,
     /// 未覆盖技能表的原版 Boss 使用专属槽位顺序参与吞噬。
-    pub(crate) native_boss_skills: bool,
+    pub native_boss_skills: bool,
     /// 使魔复活重施时是否沿用死亡对象上的当前技能表。
     pub reuse_skills_on_recast: bool,
     /// 使魔复活重施时是否沿用死亡对象上的持久属性。
@@ -406,7 +402,7 @@ impl PlayerTemplate {
     }
 
     /// 消费已经回收的身份字符串，直接构造数字 score profile 模板。
-    pub(crate) fn from_score_profile(
+    pub fn from_score_profile(
         id: PlrId,
         name: String,
         id_key_name: String,

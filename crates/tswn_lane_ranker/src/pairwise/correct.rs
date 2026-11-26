@@ -7,7 +7,7 @@
 use super::*;
 
 /// Rust 闭式 Correct 校准：按 Raw 阈值选成员不重叠的参考池，按公式回写 pair_score/pair_rank 并生成目标轨迹；参考池为空或 Golden 质量不为 50 时报错。
-pub(super) fn run_fast_correct(
+pub fn run_fast_correct(
     db: &Db,
     lane_size: usize,
     rows: &mut [LaneResultRow],
@@ -220,22 +220,22 @@ pub(super) fn run_fast_correct(
 
 #[derive(Debug, Clone)]
 /// 校准视图中的一行：组 ID、Raw 分、屏蔽标记与是否可进入训练集。
-pub(super) struct CalibGroup {
-    pub(super) group_id: GroupId,
-    pub(super) raw_score: f64,
-    pub(super) is_blocked: bool,
-    pub(super) train_eligible: bool,
+pub struct CalibGroup {
+    pub group_id: GroupId,
+    pub raw_score: f64,
+    pub is_blocked: bool,
+    pub train_eligible: bool,
 }
 
 #[derive(Debug, Clone)]
 /// 以 groups 下标表示的一对候选边。
-pub(super) struct Edge {
-    pub(super) ia: usize,
-    pub(super) ib: usize,
+pub struct Edge {
+    pub ia: usize,
+    pub ib: usize,
 }
 
 /// 由 lane 结果行构建校准组视图，Raw 分优先取 raw_average_cqd。
-pub(super) fn build_groups(rows: &[LaneResultRow], threshold: f64) -> Vec<CalibGroup> {
+pub fn build_groups(rows: &[LaneResultRow], threshold: f64) -> Vec<CalibGroup> {
     rows.iter()
         .map(|row| {
             let raw_score = if row.raw_average_cqd.is_finite() {
@@ -254,7 +254,7 @@ pub(super) fn build_groups(rows: &[LaneResultRow], threshold: f64) -> Vec<CalibG
 }
 
 /// 用独立连接读取 group_rates 中有效边，规范为升序下标对并去重。
-pub(super) fn load_edges(db: &Db, groups: &[CalibGroup]) -> anyhow::Result<Vec<Edge>> {
+pub fn load_edges(db: &Db, groups: &[CalibGroup]) -> anyhow::Result<Vec<Edge>> {
     let mut group_to_idx = HashMap::new();
     for (idx, g) in groups.iter().enumerate() {
         group_to_idx.insert(g.group_id, idx);
@@ -292,4 +292,4 @@ pub(super) fn load_edges(db: &Db, groups: &[CalibGroup]) -> anyhow::Result<Vec<E
 }
 
 /// 把浮点值四舍五入到 6 位小数。
-pub(super) fn round_to_6(x: f64) -> f64 { (x * 1_000_000.0).round() / 1_000_000.0 }
+pub fn round_to_6(x: f64) -> f64 { (x * 1_000_000.0).round() / 1_000_000.0 }

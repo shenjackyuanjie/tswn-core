@@ -175,7 +175,7 @@ pub struct SkillLoadoutSpec {
 }
 
 /// effective_skills 调整项的数量上限。
-pub(crate) const MAX_EFFECTIVE_SKILL_ADJUSTMENTS: usize = 10;
+pub const MAX_EFFECTIVE_SKILL_ADJUSTMENTS: usize = 10;
 
 /// 条件受战况影响较大的主动技，以及需要保留发动位置的分身。
 const DYNAMIC_EFFECTIVE_SKILLS: [usize; MAX_EFFECTIVE_SKILL_ADJUSTMENTS] = [4, 8, 9, 15, 16, 18, 19, 21, 23, 24];
@@ -212,7 +212,7 @@ const EFFECTIVE_SKILL_CONSUMPTION: [f64; 25] = [
 
 impl SkillLoadoutSpec {
     /// 用等级 / 加成 / 行动序数组构造标准技能装载。
-    pub(crate) fn standard(
+    pub fn standard(
         levels: &[u32; 40],
         boosted: &[bool; 40],
         boosts: &[Option<SkillBoost>; 40],
@@ -243,10 +243,7 @@ impl SkillLoadoutSpec {
     }
 
     /// 用 overlay 的技能与 effective 列表构造玩家技能装载；含分类技能时走分类条目。
-    pub(crate) fn player_overlay(
-        skills: &[(String, SkillBoost)],
-        effective_skills: Option<&[(String, EffectiveSkillWeight)]>,
-    ) -> Self {
+    pub fn player_overlay(skills: &[(String, SkillBoost)], effective_skills: Option<&[(String, EffectiveSkillWeight)]>) -> Self {
         let classified = skills.iter().any(|(name, _)| is_player_classified_skill_name(name))
             || effective_skills
                 .into_iter()
@@ -308,7 +305,7 @@ impl SkillLoadoutSpec {
     }
 
     /// 按 active_order 与等级自动分配 effective_skills 权重。
-    pub(crate) fn enable_auto_effective_skills(&mut self) {
+    pub fn enable_auto_effective_skills(&mut self) {
         let mut weights = Vec::new();
         let mut adjustments = Vec::new();
         let mut remaining = 1.0;
@@ -351,7 +348,7 @@ impl SkillLoadoutSpec {
     }
 
     /// 用技能列表构造通用小兵 overlay。
-    pub(crate) fn generic_minion_overlay(skills: &[(String, SkillBoost)]) -> Self {
+    pub fn generic_minion_overlay(skills: &[(String, SkillBoost)]) -> Self {
         if skills.iter().any(|(name, _)| parse_prefixed_classified_skill_name(name).is_some()) {
             let mut entries = classified_player_entries();
             let mut active_order = Vec::new();
@@ -388,7 +385,7 @@ impl SkillLoadoutSpec {
     }
 
     /// 用技能列表构造召唤小兵 overlay；share_damage 控制分担伤害技能。
-    pub(crate) fn summon_overlay(skills: &[(String, SkillBoost)], share_damage: bool) -> Self {
+    pub fn summon_overlay(skills: &[(String, SkillBoost)], share_damage: bool) -> Self {
         let classified = skills.iter().any(|(name, _)| parse_prefixed_classified_skill_name(name).is_some());
         let (mut entries, fixed_lanes) = if classified {
             let entries = classified_summon_entries();
@@ -438,7 +435,7 @@ impl SkillLoadoutSpec {
     }
 
     /// 构造默认影子（附身）overlay。
-    pub(crate) fn shadow_default(base_level: u32) -> Self {
+    pub fn shadow_default(base_level: u32) -> Self {
         let boost = (base_level > 0).then_some(SkillBoost::LastBoost(base_level));
         Self::from_entries(
             vec![SkillEntrySpec {
@@ -454,7 +451,7 @@ impl SkillLoadoutSpec {
     }
 
     /// 按槽位等级与行动序构造默认召唤 overlay。
-    pub(crate) fn summon_default(slot_levels: [u32; 3], action_order: [usize; 3]) -> Self {
+    pub fn summon_default(slot_levels: [u32; 3], action_order: [usize; 3]) -> Self {
         let mut entries = vec![
             empty_entry(0, BuiltinSkillRef::SummonFire),
             empty_entry(1, BuiltinSkillRef::SummonFire),
@@ -522,7 +519,7 @@ impl SkillLoadoutSpec {
     /// k1 与 k2，玄月奖杯只注册 k1 受击回调。`e=true` 在产物中不参与末位翻倍
     /// 与槽位强化，这里仅保留标记。属性修改器在身份分支还会追加
     /// `SklAokijiIceAge`（20 级）与 `SklYuriControl`（10 级，随后吃末位翻倍到 20）。
-    pub(crate) fn append_weapon_skills(&mut self, kind: WeaponKind, rinick_identity: bool) {
+    pub fn append_weapon_skills(&mut self, kind: WeaponKind, rinick_identity: bool) {
         if kind == WeaponKind::RinickModifier && rinick_identity {
             self.entries.push(SkillEntrySpec {
                 key: WEAPON_RINICK_ICE_AGE_SKILL_KEY,

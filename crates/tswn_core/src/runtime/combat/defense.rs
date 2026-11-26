@@ -76,7 +76,7 @@ impl CombatRuntime {
     }
 
     /// 判胜按真实存活队伍；被魅惑者也可能清空自己的原队。
-    pub(super) fn plain_battle_has_ended(&mut self) -> bool {
+    pub fn plain_battle_has_ended(&mut self) -> bool {
         self.world.has_declared_winner()
             || self
                 .world
@@ -674,7 +674,7 @@ impl CombatRuntime {
         self.apply_plain_legacy_damage_with_fire_into(caster, target, amount, None, updates)
     }
 
-    pub(super) fn apply_plain_legacy_damage_with_fire_into(
+    pub fn apply_plain_legacy_damage_with_fire_into(
         &mut self,
         caster: EntityIdx,
         target: EntityIdx,
@@ -807,7 +807,7 @@ impl CombatRuntime {
         ));
     }
 
-    pub(super) fn plain_dodge_chance(accuracy: i32, dodge_value: i32) -> u8 {
+    pub fn plain_dodge_chance(accuracy: i32, dodge_value: i32) -> u8 {
         let temp = 24 + dodge_value - accuracy;
         let chance = if temp < 7 {
             7
@@ -871,7 +871,7 @@ impl CombatRuntime {
     }
 
     /// 雷击逐段暂停时需要保留前面各段已产生的伤害与状态快照。
-    pub(super) fn roll_plain_dodge_with_updates(
+    pub fn roll_plain_dodge_with_updates(
         &mut self,
         target: EntityIdx,
         accuracy: i32,

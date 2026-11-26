@@ -334,7 +334,7 @@ pub struct IconInfo {
 
 /// 评分模式：Normal 与 Bang，决定导出与评分使用的修饰符。
 #[derive(Debug, Clone, Copy)]
-pub(super) enum ScoreMode {
+pub enum ScoreMode {
     Normal,
     Bang,
 }
@@ -351,7 +351,7 @@ impl ScoreMode {
 
 /// namer-pf 的四个评分维度。
 #[derive(Debug, Clone, Copy)]
-pub(super) enum NamerPfMode {
+pub enum NamerPfMode {
     Pp,
     Pd,
     Qp,
@@ -388,7 +388,7 @@ impl NamerPfMode {
 /// 与 `WinRateSummary` 不同，它持有 `avg` / `aggregate_rate` 这类**已计算值**，
 /// 不再可合并，因此不遵循「`*Summary` 只存可累加计数」的约定。
 #[derive(Debug, Clone, Copy, Default)]
-pub(super) struct BatchSummary {
+pub struct BatchSummary {
     avg: f64,
     aggregate_rate: f64,
     wins: usize,
@@ -758,7 +758,7 @@ pub fn battle_replay_with_actions(raw: &str, options: BattleOptions, actions: &[
 }
 
 /// 构造 `InvalidInput` 错误。
-pub(super) fn invalid_input(message: impl Into<String>) -> CliApiError { CliApiError::InvalidInput(message.into()) }
+pub fn invalid_input(message: impl Into<String>) -> CliApiError { CliApiError::InvalidInput(message.into()) }
 
 /// 校验带权靶子：组非空、权重长度匹配且均为有限正数。
 fn validate_factored_targets(target_groups: &[String], target_factors: &[f64], api: &str) -> CliApiResult<()> {

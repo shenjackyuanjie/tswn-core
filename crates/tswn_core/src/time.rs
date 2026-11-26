@@ -10,7 +10,7 @@
 //! `Instant::now()` 就会 `RuntimeError: unreachable` 整个实例，胜率、评分等接口全部不可用。
 
 #[cfg(target_family = "wasm")]
-pub(crate) use self::wasm::Stopwatch;
+pub use self::wasm::Stopwatch;
 /// WASM 平台的计时实现：基于 `Date::now()` 毫秒墙钟。
 #[cfg(target_family = "wasm")]
 mod wasm {
@@ -62,7 +62,7 @@ mod wasm {
 }
 
 #[cfg(not(target_family = "wasm"))]
-pub(crate) use self::native::Stopwatch;
+pub use self::native::Stopwatch;
 /// 原生平台的计时实现：包装 `std::time::Instant` 单调时钟。
 #[cfg(not(target_family = "wasm"))]
 mod native {

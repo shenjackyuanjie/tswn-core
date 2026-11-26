@@ -13,7 +13,7 @@ enum BossMergeSlot {
 
 impl CombatRuntime {
     /// 吞噬按原版 Boss 技能数组的位置取等级，包含不参与主动扫描的 0 级槽。
-    pub(super) fn plain_boss_merge_levels(&self, target: EntityIdx) -> Option<smallvec::SmallVec<[u32; 3]>> {
+    pub fn plain_boss_merge_levels(&self, target: EntityIdx) -> Option<smallvec::SmallVec<[u32; 3]>> {
         use BossActionSkill::{Fire, IceAge, IkarugaAttack, MarioGet, YuriControl};
         use BossMergeSlot::{Action, Normal, Unleveled};
 
@@ -270,7 +270,7 @@ impl CombatRuntime {
         self.select_plain_conan_targets_in_mode(actor, true)
     }
 
-    pub(in crate::runtime) fn select_plain_conan_action_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
+    pub fn select_plain_conan_action_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let mut targets = self.select_plain_conan_targets_in_mode(actor, smart);
         if targets.is_empty() {
             let team = self.plain_effective_team(actor);

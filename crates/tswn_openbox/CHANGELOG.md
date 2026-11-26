@@ -5,7 +5,8 @@
 ### 内部整理
 
 - `app`、`app/results`、`app/results/view`、`bin/openbox_cli/args` 改为目录式 `mod.rs`。`app` 里的 `include_bytes!` 字体按文件所在目录解析，路径相应上溯一层，字体内容不变。
-- 删除两处 `#[path = "..."]` 外挂测试声明：`view_tests.rs` 与 `args_tests.rs` 分别并入 `view/tests.rs` 和 `args/tests.rs`，改为标准 `#[cfg(test)] mod tests;`。界面行为不变，84 项 bin 测试全通过。
+- 删除两处 `#[path = "..."]` 外挂测试声明：`view_tests.rs` 与 `args_tests.rs` 分别并入 `view/tests.rs` 和 `args/tests.rs`，改为标准 `#[cfg(test)] mod tests;`。
+- 46 处 `pub(super)` 统一改为 `pub`，按 AGENTS.md 的可见性约定。相关模块均为私有子模块，可见范围实际不变。
 
 ## [0.5.4] - 2026-11-21
 

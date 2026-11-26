@@ -20,13 +20,13 @@ use super::score::NamerPfScores;
 
 /// 技能榜阈值配置：技能 key -> 各指标阈值。
 #[derive(Debug, Clone)]
-pub(super) struct SkillBoardConfig {
+pub struct SkillBoardConfig {
     entries: HashMap<String, SkillBoardThreshold>,
 }
 
 /// 单个技能的阈值配置；未配置的指标不参与筛选。
 #[derive(Debug, Clone, Copy, Deserialize)]
-pub(super) struct SkillBoardThreshold {
+pub struct SkillBoardThreshold {
     pub pp: Option<u64>,
     pub pd: Option<u64>,
     pub qp: Option<u64>,
@@ -36,7 +36,7 @@ pub(super) struct SkillBoardThreshold {
 
 /// 一条技能榜输出行。
 #[derive(Debug, Clone)]
-pub(super) struct SkillBoardLine {
+pub struct SkillBoardLine {
     pub title: String,
     pub score: f64,
 }
@@ -65,7 +65,7 @@ const SKILL_CN_NAMES: [&str; 35] = [
 
 impl SkillBoardConfig {
     /// 从 TOML 文件加载技能榜阈值。
-    pub(super) fn load(path: &Path) -> Result<Self, String> {
+    pub fn load(path: &Path) -> Result<Self, String> {
         let raw = read_text_file(path).map_err(|err| format!("读取技能榜配置失败: {}: {err}", path.display()))?;
         let entries = toml::from_str::<HashMap<String, SkillBoardThreshold>>(&raw)
             .map_err(|err| format!("解析技能榜配置失败: {}: {err}", path.display()))?;
@@ -82,11 +82,7 @@ impl SkillBoardConfig {
 }
 
 /// 对单个名字组计算技能榜输出行。
-pub(super) fn evaluate_skill_board(
-    name_group: &[String],
-    scores: &NamerPfScores,
-    config: &SkillBoardConfig,
-) -> Vec<SkillBoardLine> {
+pub fn evaluate_skill_board(name_group: &[String], scores: &NamerPfScores, config: &SkillBoardConfig) -> Vec<SkillBoardLine> {
     let name_skills = name_group.iter().filter_map(|raw| skills_from_name(raw)).collect::<Vec<_>>();
     evaluate_skill_board_for_skills(&name_skills, scores, config)
 }

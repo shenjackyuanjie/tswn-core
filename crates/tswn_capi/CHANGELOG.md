@@ -6,7 +6,12 @@
 
 - `tswn_name_to_png_base64()` 复用统一 FFI 错误边界：非法 UTF-8 / 空指针保留各自稳定错误码，成功时清除当前线程旧错误；成功返回的 data URL 仍由调用方用 `tswn_str_free()` 释放。
 - 战斗会话与回放的规范 JSON 玩家状态随 core 增加 `shield` / `max_shield`，分别表示实际剩余护盾与当前熟练度展示上限；C 函数签名、定长快照结构和 ABI 4 不变。
+
 - 补充句柄、输出缓冲所有权、选项前缀及失败状态的接入文档；panic 可恢复保证维持现有范围。
+
+### 内部整理
+
+- 14 个 crate 内部 FFI 辅助项（`FfiError`、`FfiResult`、`ffi_error`、`set_last_error`、`into_tswn_str`、`read_utf8`、`write_json_result` 等）的可见性由 `pub(crate)` 改为 `pub`，统一按 AGENTS.md 的 `pub` 约定。这些项此前不可从 crate 外寻址，现已出现在 `tswn_capi::` 命名空间下；C ABI 的函数签名、错误码与所有权契约完全不变。
 
 ### 文档
 

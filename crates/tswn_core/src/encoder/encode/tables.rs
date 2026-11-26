@@ -10,7 +10,7 @@ impl FeatureEncoder {
     // ---------------------------------------------------------------- global
 
     /// 写入 global 表：回合数、槽位数等全局标量。
-    pub(super) fn write_global(
+    pub fn write_global(
         &self,
         state: &BattleModelState,
         index: &SampleIndex<'_>,
@@ -39,7 +39,7 @@ impl FeatureEncoder {
     // ---------------------------------------------------------------- entity
 
     /// 写入实体表族：逐实体展开 runtime 数值字段。
-    pub(super) fn write_entity_family(
+    pub fn write_entity_family(
         &self,
         state: &BattleModelState,
         index: &SampleIndex<'_>,
@@ -136,7 +136,7 @@ impl FeatureEncoder {
     // ---------------------------------------------------------------- template
 
     /// 写入模板表族：逐模板行展开字段，含 clan 分组信息。
-    pub(super) fn write_template_family(
+    pub fn write_template_family(
         &self,
         index: &SampleIndex<'_>,
         batch_index: usize,
@@ -274,7 +274,7 @@ impl FeatureEncoder {
     }
 
     /// 写入 lane 表族：按模板的 lane 布局展开。
-    pub(super) fn write_lane_family(
+    pub fn write_lane_family(
         &self,
         index: &SampleIndex<'_>,
         batch_index: usize,

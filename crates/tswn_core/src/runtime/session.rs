@@ -91,7 +91,7 @@ impl RuntimeRunner {
         prepared.new_with_seed(seed).map_err(Into::into)
     }
 
-    pub(crate) fn new_from_groups_with_options(
+    pub fn new_from_groups_with_options(
         groups: &[Vec<String>],
         seed: &[String],
         eval_rq: f64,
@@ -125,7 +125,7 @@ impl RuntimeRunner {
     }
 
     /// 调用方已检查本回合的 handler 绑定；按公开入口相同的方式提取更新。
-    pub(crate) fn main_round_prevalidated(&mut self) -> RunUpdates {
+    pub fn main_round_prevalidated(&mut self) -> RunUpdates {
         self.run_round_unchecked().frame.map_or_else(RunUpdates::new, |frame| frame.updates)
     }
 

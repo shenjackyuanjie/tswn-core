@@ -72,7 +72,7 @@ pub struct RuntimeCompletionSummary {
 #[derive(Debug, Clone)]
 pub struct PreparedRuntimeRunner {
     prototype: RuntimeRunner,
-    pub(super) battle_roster: PreparedBattleRoster,
+    pub battle_roster: PreparedBattleRoster,
     skill_import: BuiltinSkillImportMap,
 }
 
@@ -587,14 +587,14 @@ impl RuntimeRunner {
     }
 
     /// 就绪校验；未就绪时 panic 并附完整错误文本。
-    pub(super) fn assert_ready(&self) {
+    pub fn assert_ready(&self) {
         if let Err(error) = self.validate_ready() {
             panic!("{error}");
         }
     }
 
     /// 跳过就绪校验，直接推进一个最小回合。
-    pub(super) fn run_round_unchecked(&mut self) -> RoundOutcome { self.runtime.run_minimal_round() }
+    pub fn run_round_unchecked(&mut self) -> RoundOutcome { self.runtime.run_minimal_round() }
 
     /// 推进一个 Runtime 回合；可能没有可见帧。未就绪时会 panic，高层会话会先校验。
     pub fn run_round(&mut self) -> RoundOutcome {
@@ -706,7 +706,7 @@ impl PreparedRuntimeRunner {
         Self::from_custom_mixed_roster_with_options(raw_groups, eval_rq, config, true)
     }
 
-    pub(crate) fn from_custom_mixed_roster_with_options(
+    pub fn from_custom_mixed_roster_with_options(
         raw_groups: &[Vec<String>],
         eval_rq: f64,
         config: CustomRuntimeImportConfig<'_>,
@@ -759,7 +759,7 @@ impl PreparedRuntimeRunner {
         self.reset_with_seed_state(runner, |roster, state| roster.refill_seed_state(seed, state))
     }
 
-    pub(super) fn reset_with_seed_rng(&self, runner: &mut RuntimeRunner, rng: RC4) -> Result<(), CustomRuntimeImportError> {
+    pub fn reset_with_seed_rng(&self, runner: &mut RuntimeRunner, rng: RC4) -> Result<(), CustomRuntimeImportError> {
         self.reset_with_seed_state(runner, |roster, state| roster.refill_seed_state_with_rng(state, rng))
     }
 
@@ -809,7 +809,7 @@ impl PreparedRuntimeRunner {
         self.reset_with_init(runner, battle_roster.into_with_seed(seed))
     }
 
-    pub(crate) fn reset_score_groups_with_seed_and_eval_rq(
+    pub fn reset_score_groups_with_seed_and_eval_rq(
         &self,
         runner: &mut RuntimeRunner,
         raw_groups: &[Vec<String>],

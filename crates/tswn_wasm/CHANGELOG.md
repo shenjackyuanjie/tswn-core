@@ -4,7 +4,12 @@
 
 ### 破坏性变更
 
-- **BREAKING**：`BattlePlayerState` 的 TypeScript 字段 `source_id` 更名为 `root_owner_id`（`battle_types.d.ts`），与 core DTO 及 `RuntimePlayerSnapshot.root_owner_id` 对齐。语义不变（根来源实体 ID）。JS/TS 消费方读取根来源字段请改用 `root_owner_id`，不保留旧名。
+- **BREAKING**：`BattlePlayerState` 的 TypeScript 字段 `source_id` 更名为 `root_owner_id`（`battle_types.d.ts`），与 core DTO 及 `RuntimePlayerSnapshot.root_owner_id` 对齐。语义不变（根来源实体 ID）。
+- JS/TS 消费方读取根来源字段请改用 `root_owner_id`，不保留旧名。
+
+### 内部整理
+
+- 1 处 `pub(crate)` 改为 `pub`，按 AGENTS.md 的可见性约定。
 
 ## [0.5.13] - 2026-11-21
 

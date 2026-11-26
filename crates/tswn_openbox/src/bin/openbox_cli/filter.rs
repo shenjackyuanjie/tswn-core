@@ -5,7 +5,7 @@ use tswn_core::runtime::BuiltinActiveSkill;
 
 #[derive(Debug)]
 /// filter 执行计划：输入文本、输出路径与条件列表。
-pub(super) struct FilterPlan {
+pub struct FilterPlan {
     pub raw: String,
     pub output: PathBuf,
     pub conditions: Vec<Condition>,
@@ -23,7 +23,7 @@ enum Field {
 
 #[derive(Debug)]
 /// 单条过滤条件：字段、阈值与比较方向。
-pub(super) struct Condition {
+pub struct Condition {
     field: Field,
     threshold: f64,
     less: bool,
@@ -146,7 +146,7 @@ fn effective_skill_level(player: &PreparedPlayer, id: usize) -> f64 {
 }
 
 /// 逐行构建玩家，按条件过滤后写出到输出文件。
-pub(super) fn run(plan: FilterPlan) -> Result<(), String> {
+pub fn run(plan: FilterPlan) -> Result<(), String> {
     let mut output = String::new();
     for line in plan.raw.lines().map(str::trim).filter(|line| !line.is_empty()) {
         let input =

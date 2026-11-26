@@ -5,15 +5,13 @@ impl PreparedBattleSeed {
     pub fn input_groups(&self) -> &[Vec<EntityIdx>] { &self.input_groups }
 
     /// 把本轮已排好的输入分组交给 runner，并接管 runner 上一轮的向量作为下次复用缓冲。
-    pub(crate) fn swap_input_groups(&mut self, target: &mut Vec<Vec<EntityIdx>>) {
-        std::mem::swap(target, &mut self.input_groups);
-    }
+    pub fn swap_input_groups(&mut self, target: &mut Vec<Vec<EntityIdx>>) { std::mem::swap(target, &mut self.input_groups); }
 
-    pub(super) fn into_init(self, players: Vec<Option<PreparedPlayerInit>>) -> PreparedBattleInit {
+    pub fn into_init(self, players: Vec<Option<PreparedPlayerInit>>) -> PreparedBattleInit {
         self.into_init_with_score_buffers(players, None)
     }
 
-    pub(super) fn into_init_with_score_buffers(
+    pub fn into_init_with_score_buffers(
         self,
         mut players: Vec<Option<PreparedPlayerInit>>,
         score_buffers: Option<ScoreRosterBuffers>,
@@ -42,7 +40,7 @@ impl PreparedBattleSeed {
         }
     }
 
-    pub(super) fn apply_entity_seed_values(
+    pub fn apply_entity_seed_values(
         teams: &[usize],
         speed_points: &[i32],
         runtime: &mut CombatRuntime,
@@ -116,7 +114,7 @@ impl PreparedBattleSeed {
     }
 
     /// 为已复位的批量 runner 交换场前视图；旧视图由下一局 seed 重新填写。
-    pub(crate) fn apply_swapping_views(&mut self, runtime: &mut CombatRuntime) -> Result<(), RuntimeBattleInitError> {
+    pub fn apply_swapping_views(&mut self, runtime: &mut CombatRuntime) -> Result<(), RuntimeBattleInitError> {
         self.apply_entities(runtime)?;
         runtime.world.swap_initial_views(
             &runtime.entities,
@@ -132,7 +130,7 @@ impl PreparedBattleSeed {
 
 impl CombatRuntime {
     /// 为 score 的动态 profile 按需生成一类召唤物蓝图，并写回实体槽供本场复用。
-    pub(crate) fn ensure_plain_minion_blueprint(&mut self, actor: EntityIdx, kind: crate::namerena::MinionKind) -> bool {
+    pub fn ensure_plain_minion_blueprint(&mut self, actor: EntityIdx, kind: crate::namerena::MinionKind) -> bool {
         let export = match kind {
             crate::namerena::MinionKind::Shadow => DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT,
             crate::namerena::MinionKind::Summon => DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT,
@@ -158,11 +156,7 @@ impl CombatRuntime {
     }
 
     /// 纯计算蓝图：可读取现有缓存，但不写槽位、不使用战斗随机数。
-    pub(crate) fn preview_plain_minion_blueprint(
-        &self,
-        actor: EntityIdx,
-        kind: crate::namerena::MinionKind,
-    ) -> Option<PlayerTemplate> {
+    pub fn preview_plain_minion_blueprint(&self, actor: EntityIdx, kind: crate::namerena::MinionKind) -> Option<PlayerTemplate> {
         use crate::namerena::MinionKind;
 
         let blueprint_export = match kind {

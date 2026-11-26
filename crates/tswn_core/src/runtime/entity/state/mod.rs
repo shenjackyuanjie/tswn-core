@@ -602,7 +602,7 @@ impl StateEntry {
         }
     }
 
-    pub(crate) fn is_boss_infection(&self, entities: &EntityArena) -> bool {
+    pub fn is_boss_infection(&self, entities: &EntityArena) -> bool {
         use crate::runtime::profile::{PLAIN_COVID_INFECTION_STATE_KEY, PLAIN_LAZY_INFECTION_STATE_KEY};
 
         let from_boss = |source, name| {
@@ -624,7 +624,7 @@ impl StateEntry {
         }
     }
 
-    pub(crate) fn plan_priority_for_hook(&self, hook: ProcMask, entities: &EntityArena) -> SkillPriority {
+    pub fn plan_priority_for_hook(&self, hook: ProcMask, entities: &EntityArena) -> SkillPriority {
         use crate::runtime::profile::{PLAIN_COVID_INFECTION_STATE_KEY, PLAIN_LAZY_INFECTION_STATE_KEY};
 
         if hook.intersects(ProcMask::POST_ACTION) {

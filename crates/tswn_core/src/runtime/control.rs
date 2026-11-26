@@ -12,7 +12,7 @@ use super::{BuiltinActiveSkill, CombatRuntime, PlrId};
 use std::fmt;
 
 /// 即时对局自动技能的概率倍率。1x 保留原单字节随机流，其他倍率用 24 位精度判定。
-pub(crate) fn roll_scaled_skill(rng: &mut crate::rc4::RC4, level: u32, range: u32, multiplier: f64) -> bool {
+pub fn roll_scaled_skill(rng: &mut crate::rc4::RC4, level: u32, range: u32, multiplier: f64) -> bool {
     if multiplier == 1.0 {
         return (u32::from(rng.next_u8()) & (range - 1)) < level;
     }
@@ -33,14 +33,14 @@ pub enum PlannedSkill {
 
 /// 按行动保存索敌口径。旧版自选席位只把该回合的智慧用于首目标。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TargetWisdom {
+pub enum TargetWisdom {
     Off,
     FirstOnly,
     WholeAction,
 }
 
 impl TargetWisdom {
-    pub(crate) fn for_action(use_turn_wisdom: bool, include_followups: bool) -> Self {
+    pub fn for_action(use_turn_wisdom: bool, include_followups: bool) -> Self {
         match (use_turn_wisdom, include_followups) {
             (false, _) => Self::Off,
             (true, false) => Self::FirstOnly,
@@ -393,7 +393,7 @@ impl BattleControl {
         self.take_for_with_wisdom(actor).map(|(action, _)| action)
     }
 
-    pub(crate) fn take_for_with_wisdom(&mut self, actor: PlrId) -> Option<(PlannedAction, TargetWisdom)> {
+    pub fn take_for_with_wisdom(&mut self, actor: PlrId) -> Option<(PlannedAction, TargetWisdom)> {
         let index = self.queue.iter().position(|(action, _)| action.actor == actor)?;
         // 诊断计数：绑定层据此确认脚本确实被消费，而不是靠回放外观推断。
         crate::runtime::forced_action::note_taken();
@@ -401,7 +401,7 @@ impl BattleControl {
     }
 
     /// 按原始脚本顺序附加席位选择；在首次推进前设置。
-    pub(crate) fn set_action_target_teams(
+    pub fn set_action_target_teams(
         &mut self,
         teams: &[Option<usize>],
         turn_wisdom: Option<&[bool]>,
@@ -426,7 +426,7 @@ impl BattleControl {
     pub fn set_awaiting(&mut self, actor: PlrId) { self.set_awaiting_forced_action(actor, None, false); }
 
     /// 仅在实际缺指令暂停的位置写入，不能用角色状态标签推测。
-    pub(crate) fn set_awaiting_forced_action(&mut self, actor: PlrId, forced_action: Option<ForcedAction>, smart: bool) {
+    pub fn set_awaiting_forced_action(&mut self, actor: PlrId, forced_action: Option<ForcedAction>, smart: bool) {
         self.awaiting = Some((actor, forced_action, smart));
     }
 
@@ -436,7 +436,7 @@ impl BattleControl {
     /// 暂停边界上引擎仍将接管的行动类型。
     pub fn awaiting_forced_action(&self) -> Option<ForcedAction> { self.awaiting.and_then(|(_, forced, _)| forced) }
 
-    pub(crate) fn awaiting_smart(&self, actor: PlrId) -> bool { matches!(self.awaiting, Some((id, _, true)) if id == actor) }
+    pub fn awaiting_smart(&self, actor: PlrId) -> bool { matches!(self.awaiting, Some((id, _, true)) if id == actor) }
 
     /// 取走暂停标记及附属元数据；会话层每个边界只读一次，避免残留到下一场战斗。
     pub fn take_awaiting(&mut self) -> Option<PlrId> { self.awaiting.take().map(|(actor, _, _)| actor) }
@@ -481,7 +481,7 @@ impl BattleControl {
     }
 
     /// 仅消费匹配的旧决策；自动护身符不能拿走后续其他被动的脚本。
-    pub(crate) fn next_passive_decision_for(&mut self, actor: PlrId, skill: &str) -> Option<PassiveDecision> {
+    pub fn next_passive_decision_for(&mut self, actor: PlrId, skill: &str) -> Option<PassiveDecision> {
         let next = self.passive_decisions.get(self.passive_cursor)?;
         if next.actor != actor || next.skill != skill {
             return None;
@@ -501,7 +501,7 @@ impl BattleControl {
     /// 当前雷击的暂停上下文；不在雷击内为 None。
     pub fn thunder_context(&self) -> Option<ThunderContext> { self.thunder }
 
-    pub(crate) fn begin_thunder(&mut self, attacker: PlrId, target: PlrId) {
+    pub fn begin_thunder(&mut self, attacker: PlrId, target: PlrId) {
         if !self.passive_decision_mode {
             return;
         }
@@ -516,7 +516,7 @@ impl BattleControl {
         });
     }
 
-    pub(crate) fn set_thunder_hit(&mut self, hit: u32, is_evade: bool, previous_level: Option<u32>) {
+    pub fn set_thunder_hit(&mut self, hit: u32, is_evade: bool, previous_level: Option<u32>) {
         if let Some(thunder) = self.thunder.as_mut() {
             thunder.hit = hit;
             thunder.is_evade = is_evade;
@@ -524,7 +524,7 @@ impl BattleControl {
         }
     }
 
-    pub(crate) fn finish_thunder(&mut self) { self.thunder = None; }
+    pub fn finish_thunder(&mut self) { self.thunder = None; }
 
     /// 保留被动暂停解除回合前已产生的更新。
     pub fn set_pending_updates(&mut self, updates: &crate::runtime::update::RunUpdates) {
@@ -536,7 +536,7 @@ impl BattleControl {
 
     /// 没有被动决策或回放的攻击仍保留原来的批次编号序列。
     #[inline]
-    pub(crate) fn advance_damage_batch_id(&mut self) -> u64 {
+    pub fn advance_damage_batch_id(&mut self) -> u64 {
         self.next_damage_batch_id = self.next_damage_batch_id.saturating_add(1);
         self.next_damage_batch_id
     }
@@ -606,7 +606,7 @@ impl BattleControl {
     }
 
     /// 雷击等直接执行回避的路径，不经过预演缓存。
-    pub(crate) fn record_direct_evade_result(&mut self, success: bool) {
+    pub fn record_direct_evade_result(&mut self, success: bool) {
         if let Some(index) = self.passive_cursor.checked_sub(1) {
             self.evade_results.insert(index, success);
         }

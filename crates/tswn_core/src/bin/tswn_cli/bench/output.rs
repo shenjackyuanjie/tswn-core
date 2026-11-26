@@ -18,7 +18,7 @@ use tswn_core::text_input::read_text_file;
 use tswn_core::win_rate::WinRateTiming;
 
 /// 打印 total/init/fight 的耗时拆分。
-pub(super) fn print_perf_lines(total_elapsed: Duration, timing: WinRateTiming, total: usize) {
+pub fn print_perf_lines(total_elapsed: Duration, timing: WinRateTiming, total: usize) {
     let total_f = total.max(1) as f64;
     let total_secs = total_elapsed.as_secs_f64();
     let throughput = if total_secs > 0.0 { total_f / total_secs } else { 0.0 };
@@ -42,14 +42,14 @@ pub(super) fn print_perf_lines(total_elapsed: Duration, timing: WinRateTiming, t
 }
 
 /// 把一组 raw 名字打印成更适合终端展示的逗号分隔格式。
-pub(super) fn display_group(raw: &str) -> String {
+pub fn display_group(raw: &str) -> String {
     raw.lines().map(str::trim).filter(|line| !line.is_empty()).collect::<Vec<_>>().join(", ")
 }
 
 /// 检查一次 matchup 中是否出现了同名玩家。
 ///
 /// 比较时会先转成 id_name，因此 overlay 后缀不会绕过重复号检查。
-pub(super) fn first_duplicate_name_in_matchup(groups: &[&str]) -> Option<String> {
+pub fn first_duplicate_name_in_matchup(groups: &[&str]) -> Option<String> {
     let mut seen = HashSet::new();
     for group in groups {
         for name in group.lines().map(str::trim).filter(|line| !line.is_empty()) {
@@ -63,7 +63,7 @@ pub(super) fn first_duplicate_name_in_matchup(groups: &[&str]) -> Option<String>
 }
 
 /// 判断两组文本的玩家集合是否相同：归一化为 id 名称后排序比较。
-pub(super) fn groups_have_same_players(left: &str, right: &str) -> bool {
+pub fn groups_have_same_players(left: &str, right: &str) -> bool {
     let mut left = normalized_group_players(left);
     let mut right = normalized_group_players(right);
     left.sort_unstable();
@@ -88,7 +88,7 @@ enum ExistingFileAction {
 }
 
 /// 打开 batch-rate / pair 的输出文件。
-pub(super) fn open_batch_rate_output(path: &Path, force: bool) -> io::Result<File> {
+pub fn open_batch_rate_output(path: &Path, force: bool) -> io::Result<File> {
     if path.file_name().is_none() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -183,14 +183,14 @@ fn open_tty_for_read() -> io::Result<File> { File::open("CONIN$") }
 fn open_tty_for_read() -> io::Result<File> { File::open("/dev/tty") }
 
 /// 以单行文本的形式写入一条 batch 记录。
-pub(super) fn write_batch_rate_record(file: &mut File, line: &str) -> io::Result<()> {
+pub fn write_batch_rate_record(file: &mut File, line: &str) -> io::Result<()> {
     file.write_all(line.as_bytes())?;
     file.write_all(b"\n")?;
     file.flush()
 }
 
 /// 构造 batch-rate JSONL 记录。
-pub(super) fn format_batch_rate_record(
+pub fn format_batch_rate_record(
     label: &str,
     avg_rate: f64,
     aggregate_rate: f64,
@@ -213,15 +213,15 @@ pub(super) fn format_batch_rate_record(
 }
 
 /// 构造默认 `winrate<space>label` 输出格式。
-pub(super) fn format_batch_rate_log_record(label: &str, avg_rate: f64, wr_precision: usize) -> String {
+pub fn format_batch_rate_log_record(label: &str, avg_rate: f64, wr_precision: usize) -> String {
     format!("{} {label}", format_rate(avg_rate, wr_precision))
 }
 
 /// 只输出 label 的极简格式。
-pub(super) fn format_batch_rate_pure_record(label: &str) -> String { label.to_string() }
+pub fn format_batch_rate_pure_record(label: &str) -> String { label.to_string() }
 
 /// 构造 pair JSONL 记录。
-pub(super) fn format_pair_rate_record(
+pub fn format_pair_rate_record(
     label: &str,
     final_score: f64,
     selected_count: usize,
@@ -261,7 +261,7 @@ pub(super) fn format_pair_rate_record(
 /// 剥掉展示标签里的 overlay 后缀，只保留可读名字（对齐 openbox `clean_name_label`）。
 ///
 /// `+ol:...` 与 `+diy[...]` 是给引擎用的覆盖数据，日志和输出文件里通常只需要名字本体。
-pub(super) fn clean_name_label(raw: &str) -> String {
+pub fn clean_name_label(raw: &str) -> String {
     raw.split('+')
         .map(str::trim)
         .filter(|part| !part.is_empty() && !part.starts_with("ol:") && !part.starts_with("diy["))
@@ -270,7 +270,7 @@ pub(super) fn clean_name_label(raw: &str) -> String {
 }
 
 /// 多行分组的展示标签版本：逐行清洗后再用 `+` 拼回一行（对齐 openbox `clean_group_label`）。
-pub(super) fn clean_group_label(raw: &str) -> String {
+pub fn clean_group_label(raw: &str) -> String {
     raw.lines()
         .map(clean_name_label)
         .filter(|part| !part.is_empty())
@@ -283,7 +283,7 @@ pub(super) fn clean_group_label(raw: &str) -> String {
 /// `pure` 模式不排序；Log 模式取每行行首的数字作为分数，JSONL 模式取
 /// `avg_win_rate`（batch-rate）或 `score`（pair）字段。无法解析分数的行
 /// 排在最后，同分按行文本字典序保证稳定。
-pub(super) fn sort_score_output_file(path: &Path, jsonl: bool, pure: bool) -> io::Result<()> {
+pub fn sort_score_output_file(path: &Path, jsonl: bool, pure: bool) -> io::Result<()> {
     if pure {
         return Ok(());
     }
@@ -321,7 +321,7 @@ fn score_output_line_value(line: &str, jsonl: bool) -> Option<f64> {
 
 /// batch-rate / pair 共用的文件输出模式。
 #[derive(Debug, Clone, Copy)]
-pub(super) enum BatchFileOutputMode {
+pub enum BatchFileOutputMode {
     Log,
     Json,
     Pure,
@@ -340,7 +340,7 @@ pub struct ScoreOutputOptions {
 ///
 /// `sort = false` 或未指定输出文件时为空操作；`Pure` 模式由
 /// [`sort_score_output_file`] 内部跳过。错误信息带上路径，方便定位。
-pub(super) fn finalize_score_output(path: Option<&Path>, mode: BatchFileOutputMode, sort: bool) -> Result<(), String> {
+pub fn finalize_score_output(path: Option<&Path>, mode: BatchFileOutputMode, sort: bool) -> Result<(), String> {
     let Some(path) = path.filter(|_| sort) else {
         return Ok(());
     };
@@ -353,7 +353,7 @@ pub(super) fn finalize_score_output(path: Option<&Path>, mode: BatchFileOutputMo
 }
 
 /// 统一处理小数位数和负零问题。
-pub(super) fn format_rate(value: f64, precision: usize) -> String {
+pub fn format_rate(value: f64, precision: usize) -> String {
     let value = if value.abs() < 0.5_f64 * 10_f64.powi(-(precision as i32)) {
         0.0
     } else {
@@ -363,7 +363,7 @@ pub(super) fn format_rate(value: f64, precision: usize) -> String {
 }
 
 /// 将选手或队友列表里的普通名字转换成 `+ol`，保持 pair 组合输入稳定。
-pub(super) fn player_to_ol_or_exit(raw: &str) -> String {
+pub fn player_to_ol_or_exit(raw: &str) -> String {
     if raw.contains("+diy[") || raw.contains("+ol:") {
         return raw.to_string();
     }

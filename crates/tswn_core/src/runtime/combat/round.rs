@@ -42,7 +42,7 @@ impl CombatRuntime {
     pub fn run_minimal_round(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture::<true, _>(round_outcome) }
 
     #[cfg(test)]
-    pub(crate) fn run_minimal_round_no_capture(&mut self) -> RoundOutcome {
+    pub fn run_minimal_round_no_capture(&mut self) -> RoundOutcome {
         if let Some(winner) = self.world.sync_winner_from_alive_views() {
             return round_outcome(None, None, Some(winner));
         }
@@ -50,7 +50,7 @@ impl CombatRuntime {
     }
 
     /// 调用方已确认当前没有胜者；批量循环只接收本回合的胜者编号。
-    pub(crate) fn run_active_round_no_capture(&mut self) -> Option<usize> {
+    pub fn run_active_round_no_capture(&mut self) -> Option<usize> {
         self.run_minimal_round_with_capture::<false, _>(|_, _, winner| winner)
     }
 
@@ -1142,7 +1142,7 @@ impl CombatRuntime {
         )
     }
 
-    pub(crate) fn preview_current_action_targets(
+    pub fn preview_current_action_targets(
         &mut self,
         actor: EntityIdx,
         skill: PlannedSkill,

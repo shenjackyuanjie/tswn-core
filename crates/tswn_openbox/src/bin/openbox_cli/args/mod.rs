@@ -34,14 +34,14 @@ use super::plan::{MetricSpec, SkillBoardPlan};
     arg_required_else_help = true
 )]
 /// openbox-cli 顶层参数：一个子命令。
-pub(super) struct Cli {
+pub struct Cli {
     #[command(subcommand)]
-    pub(super) command: Command,
+    pub command: Command,
 }
 
 #[derive(Debug, Subcommand)]
 /// openbox-cli 子命令集合：to-diy / base / namer-pf / cqd / pair / filter。
-pub(super) enum Command {
+pub enum Command {
     /// 将名字导出为 DIY / OL 覆盖格式（对齐 GUI 的 to-diy 面板）。
     ///
     /// 用 `-r/--raw` 给名字时，未指定 `-o` 的每一行都会按 `+` 语义整队构建，并在这行
@@ -179,7 +179,7 @@ pub(super) enum Command {
 
 /// 四个工具共用的基准参数（对齐 GUI 的公共设置区）。
 #[derive(Debug, Args)]
-pub(super) struct BenchOptions {
+pub struct BenchOptions {
     /// 运行场数（默认 10000；GUI 的 1%/10%/100% 分别对应 100/1000/10000）。
     #[arg(short = 'n', long = "count", value_name = "N")]
     count: Option<usize>,
@@ -205,7 +205,7 @@ pub(super) struct BenchOptions {
 
 #[derive(Debug, Args)]
 /// to-diy 参数：名字/文件、输出与旧版/随从开关。
-pub(super) struct ToDiyArgs {
+pub struct ToDiyArgs {
     /// 单个玩家名字（namerena raw 格式，支持 @ 队伍名和 + 武器名）。
     #[arg(
         short = 'r',
@@ -239,7 +239,7 @@ pub(super) struct ToDiyArgs {
 
 #[derive(Debug, Args)]
 /// filter 参数：输入文件、输出文件与隐藏的条件列表。
-pub(super) struct FilterArgs {
+pub struct FilterArgs {
     /// 每行一个名字的 UTF-8 文件。
     #[arg(short = 'f', long = "file")]
     file: PathBuf,
@@ -252,7 +252,7 @@ pub(super) struct FilterArgs {
 
 #[derive(Debug, Args)]
 /// base 参数：单个原始名字或其文件。
-pub(super) struct BaseArgs {
+pub struct BaseArgs {
     /// 单个玩家名字（namerena raw 格式，只支持原始名字，不支持 `+diy` / `+ol` / 武器）。
     #[arg(
         short = 'r',
@@ -269,7 +269,7 @@ pub(super) struct BaseArgs {
 
 #[derive(Debug, Args)]
 /// namer-pf 参数：输入、靶子预设、指标阈值与输出。
-pub(super) struct NamerPfArgs {
+pub struct NamerPfArgs {
     /// 每行一个名字组、组内 `+` 分隔的输入文本（支持 `\n` 换行转义）。
     #[arg(
         short = 'r',
@@ -314,7 +314,7 @@ pub(super) struct NamerPfArgs {
 
 #[derive(Debug, Args)]
 /// cqd 参数：靶子来源、选手输入、阈值与输出。
-pub(super) struct CqdArgs {
+pub struct CqdArgs {
     /// 靶子列表文件；每行一组、组内默认 `+` 分隔。使用 `--target-factored` 时读带权 TOML。
     #[arg(
         short = 'l',
@@ -396,7 +396,7 @@ pub(super) struct CqdArgs {
 
 #[derive(Debug, Args)]
 /// pair 参数：靶子、队友、保留数量与输出。
-pub(super) struct PairArgs {
+pub struct PairArgs {
     /// 靶子列表文件；每行一组、组内 `+` 分隔；带权 TOML 时按 factor 加权。
     #[arg(
         short = 'l',
@@ -504,7 +504,7 @@ pub(super) struct PairArgs {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 /// cqp 详情模式的命令行取值。
-pub(super) enum PairDetailArg {
+pub enum PairDetailArg {
     None,
     Every,
     Top,
@@ -547,7 +547,7 @@ impl BenchOptions {
 }
 
 /// 解析命令行并归一化为执行计划（含预设解析与文件读取）。
-pub(super) fn parse() -> Result<Cli, clap::Error> { parse_from(std::env::args_os()) }
+pub fn parse() -> Result<Cli, clap::Error> { parse_from(std::env::args_os()) }
 
 /// 从参数迭代解析 CLI，并重写 filter 条件语法。
 fn parse_from<I, T>(args: I) -> Result<Cli, clap::Error>
@@ -732,7 +732,7 @@ fn resolve_teammate(
 
 /// namer-pf 的执行计划（不含 cancel，由 runner 注入）。
 #[derive(Debug)]
-pub(super) struct NamerPfPlan {
+pub struct NamerPfPlan {
     pub raw: String,
     pub count: usize,
     pub threads: Option<usize>,
@@ -745,14 +745,14 @@ pub(super) struct NamerPfPlan {
 
 /// cqd / pair 共用的输出计划。
 #[derive(Debug)]
-pub(super) struct OutputPlan {
+pub struct OutputPlan {
     pub mode: OutputMode,
     pub out_file: Option<PathBuf>,
 }
 
 #[derive(Debug)]
 /// cqd 执行计划：靶子/选手文本、阈值与输出。
-pub(super) struct CqdPlan {
+pub struct CqdPlan {
     pub target_text: String,
     pub target_factor_enabled: bool,
     pub target_double_plus: bool,
@@ -770,7 +770,7 @@ pub(super) struct CqdPlan {
 
 #[derive(Debug)]
 /// pair 执行计划：靶子/队友文本、head 与详情模式。
-pub(super) struct PairPlan {
+pub struct PairPlan {
     pub target_text: String,
     pub target_factor_enabled: bool,
     pub player_text: String,
@@ -792,7 +792,7 @@ pub(super) struct PairPlan {
 
 #[derive(Debug)]
 /// to-diy 执行计划：文本、开关与输出文件。
-pub(super) struct ToDiyPlan {
+pub struct ToDiyPlan {
     pub raw: String,
     pub old: bool,
     pub minions: bool,
@@ -802,7 +802,7 @@ pub(super) struct ToDiyPlan {
 
 #[derive(Debug)]
 /// base 执行计划：单个原始名字。
-pub(super) struct BasePlan {
+pub struct BasePlan {
     pub raw: String,
 }
 
@@ -819,7 +819,7 @@ fn output_mode(log: bool, pure: bool) -> OutputMode {
 
 impl Cli {
     /// 把 clap 结果归一化为执行计划（读文件、解析预设、校验参数组合）。
-    pub(super) fn plan(self) -> Result<Job, clap::Error> {
+    pub fn plan(self) -> Result<Job, clap::Error> {
         Ok(match self.command {
             Command::ToDiy(args) => {
                 let (raw, from_file) = match (args.raw, args.file) {
@@ -937,7 +937,7 @@ impl Cli {
 
 /// 归一化后的执行计划。
 #[derive(Debug)]
-pub(super) enum Job {
+pub enum Job {
     ToDiy(ToDiyPlan),
     Base(BasePlan),
     Filter(super::filter::FilterPlan),

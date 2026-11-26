@@ -143,7 +143,7 @@ pub fn required_normalization() -> Vec<(&'static str, TransformKind)> {
 }
 
 /// `entity_num` 原始值；absent Option 的槽位填 0（presence 另行记录）。
-pub(super) fn entity_num_values(runtime: &ModelPlayerRuntime) -> [f64; 24] {
+pub fn entity_num_values(runtime: &ModelPlayerRuntime) -> [f64; 24] {
     let mut values = [0.0f64; 24];
     values[0] = f64::from(runtime.hp);
     values[1] = f64::from(runtime.attack);
@@ -175,7 +175,7 @@ pub(super) fn entity_num_values(runtime: &ModelPlayerRuntime) -> [f64; 24] {
 }
 
 /// `entity_num_present`：只有 `[14]` 与 hide 的 `[19..23]` 跟随 Option，其余跟随实体行。
-pub(super) fn entity_num_present(runtime: &ModelPlayerRuntime) -> [bool; 24] {
+pub fn entity_num_present(runtime: &ModelPlayerRuntime) -> [bool; 24] {
     let mut present = [true; 24];
     present[14] = runtime.protect_pre_defend_skill_count.is_some();
     for slot in present.iter_mut().skip(19).take(5) {
@@ -185,7 +185,7 @@ pub(super) fn entity_num_present(runtime: &ModelPlayerRuntime) -> [bool; 24] {
 }
 
 /// `template_num` 原始值；`[17..30]` 在 `clone_build` 缺失时保持 0。
-pub(super) fn template_num_values(template: &ModelTemplate) -> [f64; 31] {
+pub fn template_num_values(template: &ModelTemplate) -> [f64; 31] {
     let mut values = [0.0f64; 31];
     values[0] = f64::from(template.max_hp);
     values[1] = f64::from(template.attack);
@@ -226,7 +226,7 @@ pub(super) fn template_num_values(template: &ModelTemplate) -> [f64; 31] {
 
 /// `template_num_present`：`[0..16]`（含 `move_state` 槽 16）跟随模板行，
 /// `[17..30]` 跟随 `clone_build` 整体存在性。
-pub(super) fn template_num_present(template: &ModelTemplate) -> [bool; 31] {
+pub fn template_num_present(template: &ModelTemplate) -> [bool; 31] {
     let mut present = [false; 31];
     for slot in present.iter_mut().take(17) {
         *slot = true;
@@ -240,7 +240,7 @@ pub(super) fn template_num_present(template: &ModelTemplate) -> [bool; 31] {
 }
 
 /// `RuntimeCorpseKind` 的固定词表：枚举 `None` 是真实类 1，不是缺失。
-pub(super) fn corpse_kind_id(corpse: RuntimeCorpseKind) -> i32 {
+pub fn corpse_kind_id(corpse: RuntimeCorpseKind) -> i32 {
     match corpse {
         RuntimeCorpseKind::None => 1,
         RuntimeCorpseKind::Merge => 2,
@@ -250,7 +250,7 @@ pub(super) fn corpse_kind_id(corpse: RuntimeCorpseKind) -> i32 {
 }
 
 /// `owner_resolution` 的固定词表（1 起，与规格第 4 节分类落域表一致）。
-pub(super) fn owner_resolution_id(policy: OwnerResolutionPolicy) -> i32 {
+pub fn owner_resolution_id(policy: OwnerResolutionPolicy) -> i32 {
     match policy {
         OwnerResolutionPolicy::SelfEntity => 1,
         OwnerResolutionPolicy::RootOwner => 2,
@@ -258,7 +258,7 @@ pub(super) fn owner_resolution_id(policy: OwnerResolutionPolicy) -> i32 {
 }
 
 /// `damage_share` 的固定词表。
-pub(super) fn damage_share_id(policy: DamageSharePolicy) -> i32 {
+pub fn damage_share_id(policy: DamageSharePolicy) -> i32 {
     match policy {
         DamageSharePolicy::None => 1,
         DamageSharePolicy::ShareToOwner => 2,
@@ -267,7 +267,7 @@ pub(super) fn damage_share_id(policy: DamageSharePolicy) -> i32 {
 }
 
 /// `merge` 的固定词表。
-pub(super) fn merge_id(policy: MergePolicy) -> i32 {
+pub fn merge_id(policy: MergePolicy) -> i32 {
     match policy {
         MergePolicy::None => 1,
         MergePolicy::FixedLane => 2,

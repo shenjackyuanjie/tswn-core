@@ -1,7 +1,7 @@
 //! 名竞内置角色与数值规则。
 
 /// 埼玉退场判定使用的身份名。
-pub(crate) const SAITAMA_RETIREMENT_WINNER: &str = "SAITAMA";
+pub const SAITAMA_RETIREMENT_WINNER: &str = "SAITAMA";
 
 /// 内置 Boss 名字表；用于身份分类、默认技能与免疫规则查询。
 pub const BOSS_NAMES: [&str; 15] = [
@@ -26,7 +26,7 @@ pub const BOSS_NAMES: [&str; 15] = [
 pub const BOOST_NAMES: [&str; 3] = ["云剑狄卡敢", "云剑穸跄祇", "田一人"];
 
 /// Boss 战斗名归一化：埼玉统一为小写，其余原样返回。
-pub(crate) fn boss_combat_name(name: &str) -> &str {
+pub fn boss_combat_name(name: &str) -> &str {
     match name {
         SAITAMA_RETIREMENT_WINNER => "saitama",
         _ => name,
@@ -34,7 +34,7 @@ pub(crate) fn boss_combat_name(name: &str) -> &str {
 }
 
 /// Boss 身份覆盖：仅埼玉返回固定小写身份。
-pub(crate) fn boss_combat_identity_override(identity: &str) -> Option<&'static str> {
+pub fn boss_combat_identity_override(identity: &str) -> Option<&'static str> {
     match identity {
         "SAITAMA@!" => Some("saitama@!"),
         _ => None,

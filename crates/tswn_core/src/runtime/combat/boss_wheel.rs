@@ -143,7 +143,7 @@ impl CombatRuntime {
         entity.runtime.move_state.speed_points = spsum_after_defend(current, damage);
     }
 
-    pub(super) fn plain_wheel_action_amount(&self, actor: EntityIdx, target: EntityIdx) -> i32 {
+    pub fn plain_wheel_action_amount(&self, actor: EntityIdx, target: EntityIdx) -> i32 {
         let owner = &self.entities.get(actor).unwrap().runtime;
         let enemy = &self.entities.get(target).unwrap().runtime;
         if is_valid_target(owner.hp, enemy.hp) {

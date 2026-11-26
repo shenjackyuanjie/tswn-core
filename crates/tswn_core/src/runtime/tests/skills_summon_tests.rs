@@ -2,7 +2,7 @@
 use super::*;
 
 /// 用自定义混合输入构建召唤场景的 CombatRuntime。
-pub(super) fn summon_runtime() -> CombatRuntime {
+pub fn summon_runtime() -> CombatRuntime {
     let raw = "Stupefy #rkISERW8@Shabby_fish\n日落·日出 #Pd3J7shds@Shabby_fish";
     let config = default_custom_runtime_import_config().expect("default runtime profile should build");
     RuntimeRunner::from_custom_mixed_namerena_raw(raw.to_owned(), config)

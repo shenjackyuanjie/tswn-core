@@ -31,7 +31,7 @@ impl OpenboxApp {
     }
 
     /// 在命名线程中执行任务并捕获 panic，异常时以完成事件反馈错误。
-    pub(super) fn spawn_worker(&mut self, task: impl FnOnce(&LiveFeed) + Send + 'static) {
+    pub fn spawn_worker(&mut self, task: impl FnOnce(&LiveFeed) + Send + 'static) {
         let feed = LiveFeed::default();
         self.live_feed = Some(feed.clone());
         if let Err(err) = std::thread::Builder::new().name("openbox-task".into()).spawn(move || {

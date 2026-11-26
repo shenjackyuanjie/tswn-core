@@ -195,7 +195,7 @@ pub mod replay_view;
 pub mod runtime;
 pub mod text_input;
 /// crate 内共用的计时与时间戳工具。
-pub(crate) mod time;
+mod time;
 pub mod win_rate;
 
 /// 主 Runtime 对局入口。

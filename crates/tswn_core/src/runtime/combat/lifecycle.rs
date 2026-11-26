@@ -271,7 +271,7 @@ impl CombatRuntime {
 
     /// 直接执行借用的技能条目切片，避免私有分段计划为了执行再包装成大容量容器。
     #[inline]
-    pub(super) fn drain_skill_hook_entries_into(
+    pub fn drain_skill_hook_entries_into(
         &mut self,
         owner: EntityIdx,
         hook: ProcMask,
@@ -434,7 +434,7 @@ impl CombatRuntime {
     }
 
     /// 执行单个防御技能钩子，供动态合并计划直接调用，避免为一项钩子临时构造计划容器。
-    pub(super) fn drain_skill_hook_entry_with_defend_value_and_on_damage_into(
+    pub fn drain_skill_hook_entry_with_defend_value_and_on_damage_into(
         &mut self,
         entry: SkillHookPlanEntry,
         updates: &mut RunUpdates,
@@ -551,7 +551,7 @@ impl CombatRuntime {
         self.drain_state_hook_entry_with_deferred_clears_into(hook, entry, updates, None)
     }
 
-    pub(crate) fn drain_state_hook_entry_with_deferred_clears_into(
+    pub fn drain_state_hook_entry_with_deferred_clears_into(
         &mut self,
         hook: ProcMask,
         entry: StateHookPlanEntry,
@@ -603,7 +603,7 @@ impl CombatRuntime {
         action_intercepted
     }
 
-    pub(crate) fn flush_deferred_owner_state_clears(&mut self, owner: EntityIdx, clears: &[u32]) {
+    pub fn flush_deferred_owner_state_clears(&mut self, owner: EntityIdx, clears: &[u32]) {
         let Some(owner) = self.entities.get_mut(owner) else {
             return;
         };
@@ -626,7 +626,7 @@ impl CombatRuntime {
         self.drain_state_hook_plan_with_pre_action_order_into(plan, updates, action_smart, None)
     }
 
-    pub(super) fn drain_state_hook_plan_with_pre_action_order_into(
+    pub fn drain_state_hook_plan_with_pre_action_order_into(
         &mut self,
         plan: &StateHookPlan,
         updates: &mut RunUpdates,

@@ -54,7 +54,7 @@ const XUAN_YUE_CLANS: [&str; 22] = [
 
 /// 武器种类：通用、S11、死亡笔记、BossEx、Rinick 修改器、桂月、玄月、无武器。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WeaponKind {
+pub enum WeaponKind {
     Generic,
     S11,
     DeathNote,
@@ -82,9 +82,9 @@ const RINICK_FIRST_PASSIVE_SKILL_KEY: usize = 25;
 
 /// 武器构建态：种子、属性加成、技能因子与种类。
 #[derive(Debug, Clone)]
-pub(crate) struct WeaponBuild {
+pub struct WeaponBuild {
     seed: Vec<u8>,
-    pub(crate) attr_bonus: [i32; ATTR_COUNT],
+    pub attr_bonus: [i32; ATTR_COUNT],
     skill_index: usize,
     skill_factor: i32,
     kind: WeaponKind,
@@ -94,13 +94,13 @@ pub(crate) struct WeaponBuild {
 
 impl WeaponBuild {
     /// 取武器种类。
-    pub(crate) fn kind(&self) -> WeaponKind { self.kind }
+    pub fn kind(&self) -> WeaponKind { self.kind }
 
     /// 是否走 Rinick 身份分支（角色名恰为 Rinick 的属性修改器）。
-    pub(crate) fn is_rinick_identity(&self) -> bool { self.identity }
+    pub fn is_rinick_identity(&self) -> bool { self.identity }
 
     /// 按武器名、队伍名与 id 名解析武器；diy 数据与空名不产生武器。
-    pub(crate) fn parse(name: &str, clan_name: &str, id_key_name: &str) -> Option<Self> {
+    pub fn parse(name: &str, clan_name: &str, id_key_name: &str) -> Option<Self> {
         // 0.5.5 中 `+diy...` 直接作为自定义数据，不会创建武器。
         if name.is_empty() || name.starts_with("diy") {
             return None;
@@ -190,7 +190,7 @@ impl WeaponBuild {
     }
 
     /// 升级前处理：BossEx 强化 HP 三元组，其余按种类强化名字三元组。
-    pub(crate) fn pre_upgrade(&mut self, raw_name_base: &[u8; 128], name_base: &mut [u8; 128]) {
+    pub fn pre_upgrade(&mut self, raw_name_base: &[u8; 128], name_base: &mut [u8; 128]) {
         if self.kind == WeaponKind::BossEx {
             // BossEx 还强化 HP 名字三元组，但这组三槽不计入技能因子。
             self.adjust_name_triplet(raw_name_base, name_base, 7);
@@ -230,13 +230,7 @@ impl WeaponBuild {
     }
 
     /// 升级后处理：按武器种类应用属性加成与技能因子；桂月 / 玄月 / 无武器不参与。
-    pub(crate) fn post_upgrade(
-        &self,
-        attrs: &mut [u32; 8],
-        levels: &mut [u32; 40],
-        boosted: &mut [bool; 40],
-        action_order: &[u32; 40],
-    ) {
+    pub fn post_upgrade(&self, attrs: &mut [u32; 8], levels: &mut [u32; 40], boosted: &mut [bool; 40], action_order: &[u32; 40]) {
         // 桂月/玄月奖杯与无效武器在 0.5.5 中的 `b3()/bn()` 均为空，不参与属性与技能。
         if matches!(self.kind, WeaponKind::GuiYue | WeaponKind::XuanYue | WeaponKind::NoWeapon) {
             return;

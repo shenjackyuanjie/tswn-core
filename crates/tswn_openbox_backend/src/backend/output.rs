@@ -14,7 +14,7 @@ use tswn_core::text_input::read_text_file;
 use super::types::OutputMode;
 
 /// 创建或截断输出文件，必要时创建父目录；目录路径和缺失文件名均返回错误。
-pub(super) fn create_output_file(path: &Path) -> Result<File, String> {
+pub fn create_output_file(path: &Path) -> Result<File, String> {
     if path.file_name().is_none() {
         return Err(format!("输出路径必须包含文件名: {}", path.display()));
     }
@@ -30,7 +30,7 @@ pub(super) fn create_output_file(path: &Path) -> Result<File, String> {
 }
 
 /// 收尾输出文件：先刷新，再按输出模式排序分数行。
-pub(super) fn finalize_sorted_output_file(mut output: Option<File>, path: Option<&Path>, mode: OutputMode) -> Result<(), String> {
+pub fn finalize_sorted_output_file(mut output: Option<File>, path: Option<&Path>, mode: OutputMode) -> Result<(), String> {
     let Some(path) = path else {
         return Ok(());
     };
@@ -89,7 +89,7 @@ fn score_output_line_value(line: &str, mode: OutputMode) -> Option<f64> {
 }
 
 /// 有输出文件时写入并返回完成提示，否则原样返回文本。
-pub(super) fn finish_output(output_file: Option<&Path>, out: String) -> Result<String, String> {
+pub fn finish_output(output_file: Option<&Path>, out: String) -> Result<String, String> {
     match output_file {
         Some(path) => {
             let mut file = create_output_file(path)?;

@@ -13,19 +13,19 @@ use std::collections::HashMap;
 /// 徽章原生边长（像素）；图标是 16×16 RGBA，最外圈是 1 像素透明边框。
 const ICON_SIDE: usize = 16;
 /// 徽章显示边长上限；行高更矮时按行高收缩，避免裁切或撑高虚拟列表行。
-pub(super) const ICON_SIZE_MAX: f32 = 16.0;
+pub const ICON_SIZE_MAX: f32 = 16.0;
 /// 徽章组与右侧文字的间距。
-pub(super) const ICON_TEXT_GAP: f32 = 4.0;
+pub const ICON_TEXT_GAP: f32 = 4.0;
 
 /// 按名字缓存徽章纹理；纹理句柄由 egui 的纹理管理器持有，克隆只复制句柄。
 #[derive(Default)]
-pub(super) struct IconCache {
+pub struct IconCache {
     textures: HashMap<String, egui::TextureHandle>,
 }
 
 impl IconCache {
     /// 取单个名字的徽章纹理；空名返回 `None`，调用方退化为纯文本。
-    pub(super) fn texture(&mut self, ctx: &egui::Context, name: &str) -> Option<egui::TextureHandle> {
+    pub fn texture(&mut self, ctx: &egui::Context, name: &str) -> Option<egui::TextureHandle> {
         let name = name.trim();
         if name.is_empty() {
             return None;
@@ -42,7 +42,7 @@ impl IconCache {
     }
 
     /// 拆分组合标签并取各成员的徽章；没有可用成员时返回空向量。
-    pub(super) fn textures_for_label(&mut self, ctx: &egui::Context, label: &str) -> Vec<egui::TextureHandle> {
+    pub fn textures_for_label(&mut self, ctx: &egui::Context, label: &str) -> Vec<egui::TextureHandle> {
         label
             .split('+')
             .map(str::trim)

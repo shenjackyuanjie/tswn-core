@@ -171,7 +171,7 @@ fn hp_delta_value(update: &RunUpdate) -> u32 {
 }
 
 /// 是否百分比体力减少消息。
-pub(crate) fn is_percent_hp_damage_update(update: &RunUpdate) -> bool {
+pub fn is_percent_hp_damage_update(update: &RunUpdate) -> bool {
     update.message.contains("体力减少") && update.message.contains("[2]%")
 }
 
@@ -580,7 +580,7 @@ fn push_data_part(parts: &mut Vec<ReplayTextPart>, value: &str) {
 }
 
 /// 是否灭霸响指（化灰）消息。
-pub(crate) fn is_thanos_dust_update(update: &RunUpdate) -> bool { update.message == get_lang(keys::SKL_THANOS_DUST) }
+pub fn is_thanos_dust_update(update: &RunUpdate) -> bool { update.message == get_lang(keys::SKL_THANOS_DUST) }
 
 /// 是否触发死亡特效的消息（化灰 / 击倒 / 消失）。
 fn is_death_effect_update(update: &RunUpdate) -> bool {

@@ -1,7 +1,7 @@
 use super::*;
 
 impl CombatRuntime {
-    pub(super) fn drain_fire_attack_effect_into(
+    pub fn drain_fire_attack_effect_into(
         &mut self,
         caster: EntityIdx,
         target: EntityIdx,

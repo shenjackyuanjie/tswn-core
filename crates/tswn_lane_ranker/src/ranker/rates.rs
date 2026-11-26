@@ -7,15 +7,15 @@
 use super::*;
 
 /// 胜率矩阵：O(n²) 槽位、对角线 50、反向值 100-rate，并记录已覆盖的标准列。
-pub(super) struct RateMatrix {
-    pub(super) rates: Vec<Vec<Option<f64>>>,
-    pub(super) covered_standard_indices: HashSet<usize>,
-    pub(super) loaded_pairs: usize,
+pub struct RateMatrix {
+    pub rates: Vec<Vec<Option<f64>>>,
+    pub covered_standard_indices: HashSet<usize>,
+    pub loaded_pairs: usize,
 }
 
 impl RateMatrix {
     /// 创建全空矩阵并把对角线初始化为 50。
-    pub(super) fn new(size: usize) -> Self {
+    pub fn new(size: usize) -> Self {
         let mut rates = vec![vec![None; size]; size];
         for i in 0..size {
             rates[i][i] = Some(50.0);
@@ -29,13 +29,13 @@ impl RateMatrix {
     }
 
     /// 读取矩阵胜率；未加载说明调用顺序错误，直接 panic。
-    pub(super) fn get(&self, i: usize, j: usize) -> f64 { self.rates[i][j].expect("rate should be loaded before fight") }
+    pub fn get(&self, i: usize, j: usize) -> f64 { self.rates[i][j].expect("rate should be loaded before fight") }
 
     /// 返回已加载的配对数量。
-    pub(super) fn loaded_pair_count(&self) -> usize { self.loaded_pairs }
+    pub fn loaded_pair_count(&self) -> usize { self.loaded_pairs }
 
     /// 写入一对胜率并同步反向值；对角线固定为 50。
-    pub(super) fn set_pair(&mut self, i: usize, j: usize, rate_i_to_j: f64) {
+    pub fn set_pair(&mut self, i: usize, j: usize, rate_i_to_j: f64) {
         if i == j {
             self.rates[i][j] = Some(50.0);
             return;
@@ -50,7 +50,7 @@ impl RateMatrix {
     }
 
     /// 为新标准列补齐与全部候选的胜率：先用数据库缓存，缺失项并行计算后批量入库。
-    pub(super) fn ensure_rates_for_standard(
+    pub fn ensure_rates_for_standard(
         &mut self,
         db: &Db,
         lane_size: usize,
@@ -331,16 +331,16 @@ impl RateMatrix {
 }
 
 /// 把一对下标规范为升序。
-pub(super) fn ordered_index_pair(a: usize, b: usize) -> (usize, usize) { if a <= b { (a, b) } else { (b, a) } }
+pub fn ordered_index_pair(a: usize, b: usize) -> (usize, usize) { if a <= b { (a, b) } else { (b, a) } }
 
 /// 判断是否上报补算进度：每 10 对或最后一对。
-pub(super) fn should_report_rate_progress(done: usize, total: usize) -> bool { done == total || done % 10 == 0 }
+pub fn should_report_rate_progress(done: usize, total: usize) -> bool { done == total || done % 10 == 0 }
 
 /// 胜率检查点的累积条数：满 100 条或强制时落库。
-pub(super) const RATE_PERSIST_CHECKPOINT_SIZE: usize = 100;
+pub const RATE_PERSIST_CHECKPOINT_SIZE: usize = 100;
 
 /// 按检查点大小批量保存已算胜率并清空待写缓冲。
-pub(super) fn persist_rate_checkpoint(
+pub fn persist_rate_checkpoint(
     db: &Db,
     pending: &mut Vec<(GroupId, GroupId, f64)>,
     samples: usize,

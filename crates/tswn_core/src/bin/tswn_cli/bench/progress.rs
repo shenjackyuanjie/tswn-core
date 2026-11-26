@@ -10,15 +10,15 @@ use std::time::{Duration, Instant};
 use super::common::format_duration;
 
 /// 进度条的字符宽度。
-pub(super) const PROGRESS_BAR_WIDTH: usize = 30;
+pub const PROGRESS_BAR_WIDTH: usize = 30;
 /// ETA 估算使用的滑动窗口大小（按最近完成的玩家数）。
-pub(super) const SLIDING_WINDOW: usize = 5;
+pub const SLIDING_WINDOW: usize = 5;
 
 /// 批量评估共用的终端进度条（`batch-rate` 与 `pair` 的外层循环都在用）。
 ///
 /// 以“对局”（player × target）为最小进度单位，但 ETA 以“已完成 player 的平均耗时”估算，
 /// 这样既能在细粒度上持续动起来，又不会被单个 matchup 的抖动放大。
-pub(super) struct BatchProgress {
+pub struct BatchProgress {
     enabled: bool,
     total_players: usize,
     completed_players: usize,
@@ -30,7 +30,7 @@ pub(super) struct BatchProgress {
 
 impl BatchProgress {
     /// 构造进度条：仅在 stderr 为终端时启用，并按总玩家数预分配耗时样本。
-    pub(super) fn new(total_players: usize, targets_per_player: usize) -> Self {
+    pub fn new(total_players: usize, targets_per_player: usize) -> Self {
         Self {
             enabled: io::stderr().is_terminal(),
             total_players,
@@ -43,20 +43,20 @@ impl BatchProgress {
     }
 
     /// 完成当前选手的一个 target 对局后刷新进度条。
-    pub(super) fn tick_target(&mut self) {
+    pub fn tick_target(&mut self) {
         self.completed_targets_in_current += 1;
         self.draw();
     }
 
     /// 完成一个 player 的全部 matchups，并记录耗时用于 ETA。
-    pub(super) fn complete_player(&mut self, duration: Duration) {
+    pub fn complete_player(&mut self, duration: Duration) {
         self.completed_players += 1;
         self.completed_targets_in_current = 0;
         self.player_durations.push(duration);
     }
 
     /// 清除当前进度行，给详细输出腾地方。
-    pub(super) fn clear(&self) {
+    pub fn clear(&self) {
         if !self.enabled {
             return;
         }
@@ -65,7 +65,7 @@ impl BatchProgress {
     }
 
     /// 绘制 / 刷新进度条。
-    pub(super) fn draw(&self) {
+    pub fn draw(&self) {
         if !self.enabled {
             return;
         }
@@ -110,7 +110,7 @@ impl BatchProgress {
     }
 
     /// 全部完成时打印汇总信息。
-    pub(super) fn finish(&self) {
+    pub fn finish(&self) {
         if !self.enabled {
             return;
         }

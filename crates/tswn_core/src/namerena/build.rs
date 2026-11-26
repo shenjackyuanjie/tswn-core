@@ -33,7 +33,7 @@ pub struct PreparedPlayer {
     pub skills: SkillLoadoutSpec,
     /// 0.5.5 桂月奖杯注入的常驻 `charge` 标记：存在但不提供攻击倍率、也无法解除。
     pub permanent_charge: bool,
-    pub(crate) covid_mask: bool,
+    pub covid_mask: bool,
     pub name_factor: f64,
     pub weapon_attr_bonus: [i32; 8],
     pub name_base: [u8; 128],
@@ -146,7 +146,7 @@ impl PreparedRoster {
 
 impl PreparedPlayer {
     /// Boss 的战斗名（归一化后），其余返回原名。
-    pub(crate) fn combat_name(&self) -> &str {
+    pub fn combat_name(&self) -> &str {
         if self.class == PlayerClass::Boss {
             boss_combat_name(&self.name)
         } else {
@@ -253,7 +253,7 @@ impl PreparedPlayer {
 }
 
 /// 预先计算 score profile 共用的队名 KSA 状态。
-pub(crate) fn score_profile_team_rng(team: &str) -> RC4 {
+pub fn score_profile_team_rng(team: &str) -> RC4 {
     assert!(team.len() <= TEAM_MAX_LEN, "score profile team name is too long");
     let mut key = [0u8; TEAM_MAX_LEN + 1];
     key[1..1 + team.len()].copy_from_slice(team.as_bytes());
@@ -706,7 +706,7 @@ fn name_rng(team: &str, name: &str) -> RC4 {
 }
 
 /// 把 8 项属性与名字系数换算为 `PlayerStats`。
-pub(crate) fn status_from_attrs(attrs: [u32; 8], name_factor: f64, alive: bool) -> PlayerStats {
+pub fn status_from_attrs(attrs: [u32; 8], name_factor: f64, alive: bool) -> PlayerStats {
     let scale = |value: i32, factor: i32| (value as f64 * (1.0 - name_factor / factor as f64)).round() as i32;
     let attr_sum = attrs[..7].iter().sum();
     let atk_sum = (attrs[0] as i32 - attrs[1] as i32 + attrs[2] as i32 + attrs[4] as i32 - attrs[5] as i32) * 2

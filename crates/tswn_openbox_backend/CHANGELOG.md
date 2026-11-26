@@ -5,7 +5,8 @@
 ### 内部整理
 
 - `backend`、`backend/pair`、`backend/to_diy` 改为目录式 `mod.rs`。`pair` 里的 `include_str!` 资产按文件所在目录解析，路径上溯一层，内嵌内容不变。
-- `backend/live_tests.rs:3` 的 `#[path = "legacy_tests.rs"]` 改为标准模块声明，文件并入 `live_tests/tests.rs`。51 项 lib 测试全通过。
+- `backend/live_tests.rs:3` 的 `#[path = "legacy_tests.rs"]` 改为标准模块声明，
+- 12 处 `pub(super)` 统一改为 `pub`，按 AGENTS.md 的可见性约定。相关模块均为私有子模块，可见范围实际不变。
 
 ## [0.5.4] - 2026-11-21
 

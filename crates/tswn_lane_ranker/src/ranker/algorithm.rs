@@ -8,15 +8,15 @@ use super::*;
 
 #[derive(Debug)]
 /// 核心算法一次完整运行的结果：结果行、终止轮次、是否提前停止与封存候选。
-pub(super) struct CoreAlgorithmResult {
-    pub(super) rows: Vec<LaneResultRow>,
-    pub(super) final_round: usize,
-    pub(super) early_stopped: bool,
-    pub(super) archive_candidates: Vec<ArchiveCandidate>,
+pub struct CoreAlgorithmResult {
+    pub rows: Vec<LaneResultRow>,
+    pub final_round: usize,
+    pub early_stopped: bool,
+    pub archive_candidates: Vec<ArchiveCandidate>,
 }
 impl CoreAlgorithmResult {
     /// 构造空结果，用于合法标准集合不足时提前结束。
-    pub(super) fn empty(final_round: usize) -> Self {
+    pub fn empty(final_round: usize) -> Self {
         Self {
             rows: Vec::new(),
             final_round,
@@ -27,7 +27,7 @@ impl CoreAlgorithmResult {
 }
 
 /// 执行 Raw/Golden 核心迭代：懒加载标准列胜率、逐轮战斗与平滑、记录 Golden，稳定后按 Golden 重放 Raw 分数并核对恒等式，最终生成结果行与封存候选。
-pub(super) fn run_core_algorithm(
+pub fn run_core_algorithm(
     db: &Db,
     lane_size: usize,
     groups: Vec<StoredGroup>,
@@ -273,7 +273,7 @@ pub(super) fn run_core_algorithm(
 }
 
 /// 用 Golden 权重与胜率矩阵重放 Raw 分数；无 Golden 支持时退回平均 CQD。
-pub(super) fn replay_raw_scores_from_golden(nodes: &[RankNode], rate_matrix: &RateMatrix) -> anyhow::Result<Vec<f64>> {
+pub fn replay_raw_scores_from_golden(nodes: &[RankNode], rate_matrix: &RateMatrix) -> anyhow::Result<Vec<f64>> {
     let golden_support = nodes
         .iter()
         .enumerate()
@@ -307,11 +307,7 @@ pub(super) fn replay_raw_scores_from_golden(nodes: &[RankNode], rate_matrix: &Ra
 }
 
 /// 核对 Raw/Golden 恒等式：统计窗口一致、Golden 总和等于标准规模、重放分数与迭代分数差在 1e-9 内。
-pub(super) fn validate_raw_golden_identity(
-    nodes: &[RankNode],
-    raw_scores: &[f64],
-    rate_matrix: &RateMatrix,
-) -> anyhow::Result<()> {
+pub fn validate_raw_golden_identity(nodes: &[RankNode], raw_scores: &[f64], rate_matrix: &RateMatrix) -> anyhow::Result<()> {
     let Some(sample_count) = nodes.iter().find(|node| node.bz > 0).map(|node| node.odds_n) else {
         return Ok(());
     };
@@ -351,7 +347,7 @@ pub(super) fn validate_raw_golden_identity(
 }
 
 /// 按标准集合计算全部节点的平均 CQD。
-pub(super) fn fight_in_memory(nodes: &mut [RankNode], standard: &[usize], rate_matrix: &RateMatrix) {
+pub fn fight_in_memory(nodes: &mut [RankNode], standard: &[usize], rate_matrix: &RateMatrix) {
     let standard_len = standard.len() as f64;
 
     for (idx, node) in nodes.iter_mut().enumerate() {
@@ -364,7 +360,7 @@ pub(super) fn fight_in_memory(nodes: &mut [RankNode], standard: &[usize], rate_m
 }
 
 /// 只对活跃节点子集按标准集合计算平均 CQD。
-pub(super) fn fight_in_memory_for_indices(
+pub fn fight_in_memory_for_indices(
     nodes: &mut [RankNode],
     active_indices: &[usize],
     standard: &[usize],
@@ -382,7 +378,7 @@ pub(super) fn fight_in_memory_for_indices(
 }
 
 /// 生成初始标准集合：优先从历史 Score 前列选取，不足再按当前神秘系数补齐；第二项标记是否用上历史靶子，决定是否从第 1 轮开始平滑。
-pub(super) fn make_initial_standard_indices(
+pub fn make_initial_standard_indices(
     db: &Db,
     lane_size: usize,
     nodes: &[RankNode],
@@ -456,13 +452,13 @@ pub(super) fn make_initial_standard_indices(
     Ok((selected, used_history_target))
 }
 /// 对全部候选生成标准集合。
-pub(super) fn make_standard_indices(nodes: &[RankNode], dsu: &mut TeamDsu) -> Vec<usize> {
+pub fn make_standard_indices(nodes: &[RankNode], dsu: &mut TeamDsu) -> Vec<usize> {
     let candidates = (0..nodes.len()).collect::<Vec<_>>();
     make_standard_indices_from_candidates(nodes, &candidates, dsu)
 }
 
 /// 在给定候选范围内按神秘系数降序选取标准集合。
-pub(super) fn make_standard_indices_from_candidates(nodes: &[RankNode], candidates: &[usize], dsu: &mut TeamDsu) -> Vec<usize> {
+pub fn make_standard_indices_from_candidates(nodes: &[RankNode], candidates: &[usize], dsu: &mut TeamDsu) -> Vec<usize> {
     let mut order = candidates.to_vec();
     order.sort_by(|&a, &b| nodes[b].shenmixishu.total_cmp(&nodes[a].shenmixishu));
 
@@ -492,7 +488,7 @@ pub(super) fn make_standard_indices_from_candidates(nodes: &[RankNode], candidat
 }
 
 /// 尝试把节点加入标准集合：遵守屏蔽排除、战队上限与成员不重复，成功返回 true。
-pub(super) fn try_select_standard_index(
+pub fn try_select_standard_index(
     idx: usize,
     nodes: &[RankNode],
     dsu: &mut TeamDsu,
@@ -546,7 +542,7 @@ pub(super) fn try_select_standard_index(
     true
 }
 /// 推进一轮全部节点的统计与神秘系数平滑。
-pub(super) fn data(nodes: &mut [RankNode], round: usize, warmup_rounds: usize, stickiness: usize, smooth_from_start: bool) {
+pub fn data(nodes: &mut [RankNode], round: usize, warmup_rounds: usize, stickiness: usize, smooth_from_start: bool) {
     let alpha = 1.0 / stickiness.max(1) as f64;
     let should_smooth = smooth_from_start || round >= warmup_rounds;
     let starts_smoothing_this_round = (smooth_from_start && round == 1) || (!smooth_from_start && round == warmup_rounds);
@@ -557,7 +553,7 @@ pub(super) fn data(nodes: &mut [RankNode], round: usize, warmup_rounds: usize, s
 }
 
 /// 只对活跃节点子集推进统计与平滑，尺度约定与全量版一致。
-pub(super) fn data_for_indices(
+pub fn data_for_indices(
     nodes: &mut [RankNode],
     active_indices: &[usize],
     round: usize,
@@ -590,7 +586,7 @@ pub(super) fn data_for_indices(
 }
 
 /// 更新单节点一轮数据：热身后的 CQD 统计与神秘系数平滑，平滑首轮初始化为 cqd*100。
-pub(super) fn update_node_data(
+pub fn update_node_data(
     node: &mut RankNode,
     round: usize,
     warmup_rounds: usize,
@@ -618,7 +614,7 @@ pub(super) fn update_node_data(
 }
 
 /// 记录本轮 Golden：累计 odds_n，并把本轮入选标准的节点计入 bz。
-pub(super) fn record_golden_round(
+pub fn record_golden_round(
     nodes: &mut [RankNode],
     active_indices: Option<&[usize]>,
     standard: &[usize],
@@ -650,7 +646,7 @@ pub(super) fn record_golden_round(
 }
 
 /// 判断全部节点三位小数平均 CQD 相较上轮是否无变化。
-pub(super) fn avg_cqd_rounded_unchanged(nodes: &[RankNode], last: &mut [i64]) -> bool {
+pub fn avg_cqd_rounded_unchanged(nodes: &[RankNode], last: &mut [i64]) -> bool {
     let mut changed = false;
 
     for (idx, node) in nodes.iter().enumerate() {
@@ -665,7 +661,7 @@ pub(super) fn avg_cqd_rounded_unchanged(nodes: &[RankNode], last: &mut [i64]) ->
 }
 
 /// 判断活跃子集三位小数平均 CQD 相较上轮是否无变化。
-pub(super) fn avg_cqd_rounded_unchanged_for_indices(nodes: &[RankNode], indices: &[usize], last: &mut [i64]) -> bool {
+pub fn avg_cqd_rounded_unchanged_for_indices(nodes: &[RankNode], indices: &[usize], last: &mut [i64]) -> bool {
     let mut changed = false;
 
     for &idx in indices {
@@ -680,15 +676,15 @@ pub(super) fn avg_cqd_rounded_unchanged_for_indices(nodes: &[RankNode], indices:
 }
 
 /// 把浮点值四舍五入到 3 位小数。
-pub(super) fn round_to_3(value: f64) -> f64 { round_to_3_int(value) as f64 / 1000.0 }
+pub fn round_to_3(value: f64) -> f64 { round_to_3_int(value) as f64 / 1000.0 }
 
 /// 把浮点值转换为千分位整数，用于稳定比较。
-pub(super) fn round_to_3_int(value: f64) -> i64 { (value * 1000.0).round() as i64 }
+pub fn round_to_3_int(value: f64) -> i64 { (value * 1000.0).round() as i64 }
 #[cfg(test)]
 mod raw_core_tests {
     use super::*;
 
-    pub(super) fn test_node(id: GroupId) -> RankNode {
+    pub fn test_node(id: GroupId) -> RankNode {
         RankNode::new(StoredGroup {
             id,
             canonical: format!("group-{id}"),
@@ -701,7 +697,7 @@ mod raw_core_tests {
     }
 
     #[test]
-    pub(super) fn core_only_golden_round_does_not_update_inactive_nodes() {
+    pub fn core_only_golden_round_does_not_update_inactive_nodes() {
         let mut nodes = vec![test_node(1), test_node(2), test_node(3)];
         let mut selected_flags = vec![false; nodes.len()];
 
@@ -714,7 +710,7 @@ mod raw_core_tests {
     }
 
     #[test]
-    pub(super) fn final_raw_is_exactly_replayed_for_inactive_nodes() {
+    pub fn final_raw_is_exactly_replayed_for_inactive_nodes() {
         let mut nodes = (0..=STANDARD_SIZE as i64).map(test_node).collect::<Vec<_>>();
         let mut rate_matrix = RateMatrix::new(nodes.len());
         for i in 0..nodes.len() {

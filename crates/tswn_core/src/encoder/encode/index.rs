@@ -13,17 +13,17 @@ use super::*;
 ///   与 [`CapacityMeasure`] 的 `h` 计费口径一致；
 /// - `runtime_teams`：runtime team 原值 → 关系行（原值升序，跨 entities/templates/world 统一）；
 /// - `player_keys`：`PlrId` → 局内相等关系键（模板表行序首次出现）。
-pub(super) struct SampleIndex<'a> {
-    pub(super) entity_rows: BTreeMap<u32, usize>,
-    pub(super) template_rows: Vec<&'a ModelTemplate>,
-    pub(super) template_row_of_entity: Vec<usize>,
-    pub(super) runtime_teams: BTreeMap<usize, usize>,
-    pub(super) player_keys: BTreeMap<PlrId, usize>,
+pub struct SampleIndex<'a> {
+    pub entity_rows: BTreeMap<u32, usize>,
+    pub template_rows: Vec<&'a ModelTemplate>,
+    pub template_row_of_entity: Vec<usize>,
+    pub runtime_teams: BTreeMap<usize, usize>,
+    pub player_keys: BTreeMap<PlrId, usize>,
 }
 
 impl SampleIndex<'_> {
     /// Runtime 的 fixed_lane 是所属模板内的数组下标，不是 fixed_lane_key。
-    pub(super) fn lane_row(&self, template_row: usize, fixed_lane: usize, path: &str) -> Result<usize, EncodeError> {
+    pub fn lane_row(&self, template_row: usize, fixed_lane: usize, path: &str) -> Result<usize, EncodeError> {
         let offset: usize = self
             .template_rows
             .iter()
@@ -44,7 +44,7 @@ impl SampleIndex<'_> {
 
 impl SampleIndex<'_> {
     /// 把实体 id 映射为样本行；未登记报 `InvalidReference`。
-    pub(super) fn entity_row(&self, id: EntityIdx, path: &str) -> Result<usize, EncodeError> {
+    pub fn entity_row(&self, id: EntityIdx, path: &str) -> Result<usize, EncodeError> {
         self.entity_rows.get(&id.0).copied().ok_or_else(|| EncodeError::InvalidReference {
             path: path.to_owned(),
             raw: id.0.to_string(),
@@ -56,7 +56,7 @@ impl FeatureEncoder {
     // ---------------------------------------------------------------- 重映射
 
     /// 为模型态构建样本索引：实体行、模板行（含槽内模板）与 lane 行。
-    pub(super) fn build_index<'a>(&self, state: &'a BattleModelState) -> Result<SampleIndex<'a>, EncodeError> {
+    pub fn build_index<'a>(&self, state: &'a BattleModelState) -> Result<SampleIndex<'a>, EncodeError> {
         let mut entity_rows: BTreeMap<u32, usize> = BTreeMap::new();
         for (row, entity) in state.entities.iter().enumerate() {
             entity_rows.insert(entity.id.0, row);

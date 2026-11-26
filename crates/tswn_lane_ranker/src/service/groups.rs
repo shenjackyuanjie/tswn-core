@@ -402,28 +402,28 @@ impl AppService {
 
 #[derive(Debug, Clone)]
 /// 一条待手动补算的胜率批次项：序号与两侧组合。
-pub(super) struct ManualWinratePair {
-    pub(super) pair_index: usize,
-    pub(super) group_a: StoredGroup,
-    pub(super) group_b: StoredGroup,
+pub struct ManualWinratePair {
+    pub pair_index: usize,
+    pub group_a: StoredGroup,
+    pub group_b: StoredGroup,
 }
 
 #[derive(Debug, Clone)]
 /// 手动补算完成的一行结果：序号、两侧名称/ID、lane 与胜率采样数。
-pub(super) struct ComputedManualWinrate {
-    pub(super) pair_index: usize,
-    pub(super) group_a: String,
-    pub(super) group_b: String,
-    pub(super) group_a_id: i64,
-    pub(super) group_b_id: i64,
-    pub(super) lane_size: usize,
-    pub(super) win_rate_a: f64,
-    pub(super) samples: usize,
+pub struct ComputedManualWinrate {
+    pub pair_index: usize,
+    pub group_a: String,
+    pub group_b: String,
+    pub group_a_id: i64,
+    pub group_b_id: i64,
+    pub lane_size: usize,
+    pub win_rate_a: f64,
+    pub samples: usize,
 }
 
 impl ComputedManualWinrate {
     /// 由待算批次与计算结果构造导出行。
-    pub(super) fn from_pair(pair: &ManualWinratePair, win_rate_a: f64, samples: usize) -> Self {
+    pub fn from_pair(pair: &ManualWinratePair, win_rate_a: f64, samples: usize) -> Self {
         Self {
             pair_index: pair.pair_index,
             group_a: pair.group_a.canonical.clone(),
@@ -438,7 +438,7 @@ impl ComputedManualWinrate {
 }
 
 /// 确定手动补算的外层 worker 数；总量为 0 时返回 0。
-pub(super) fn resolve_manual_winrate_workers(requested_outer_workers: usize, total: usize) -> usize {
+pub fn resolve_manual_winrate_workers(requested_outer_workers: usize, total: usize) -> usize {
     if total == 0 {
         return 0;
     }
@@ -450,7 +450,7 @@ pub(super) fn resolve_manual_winrate_workers(requested_outer_workers: usize, tot
 }
 
 /// 按检查点大小批量保存手动补算胜率并清空待写缓冲。
-pub(super) fn persist_service_rate_checkpoint(
+pub fn persist_service_rate_checkpoint(
     db: &Db,
     pending: &mut Vec<(crate::model::GroupId, crate::model::GroupId, f64)>,
     samples: usize,

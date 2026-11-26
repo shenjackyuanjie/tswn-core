@@ -247,11 +247,11 @@ pub struct BattleUpdate {
     pub is_win: bool,
     pub is_next_line: bool,
     #[serde(skip)]
-    pub(super) legacy_ids: (usize, usize),
+    pub legacy_ids: (usize, usize),
     #[serde(skip)]
-    pub(super) legacy_hp_delta: Option<i32>,
+    pub legacy_hp_delta: Option<i32>,
     #[serde(skip)]
-    pub(super) legacy_display: Option<(Cow<'static, str>, i32)>,
+    pub legacy_display: Option<(Cow<'static, str>, i32)>,
 }
 
 impl BattleUpdate {

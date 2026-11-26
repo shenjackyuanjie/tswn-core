@@ -12,7 +12,7 @@ use tswn_openbox::backend::NamerPfMetric;
 /// 语法 `NAME[:MIN_SCREEN[:FILE[:MIN_FILE]]]`，与 `tswn-cli namer-pf --metric`
 /// 保持一致，两条 CLI 的输出行为因此相同。
 #[derive(Debug, Clone)]
-pub(super) struct MetricSpec {
+pub struct MetricSpec {
     pub metric: NamerPfMetric,
     pub min_screen: Option<f64>,
     pub output_file: Option<PathBuf>,
@@ -21,7 +21,7 @@ pub(super) struct MetricSpec {
 
 impl MetricSpec {
     /// 返回指标的显示名。
-    pub(super) fn metric_label(&self) -> &'static str { self.metric.label() }
+    pub fn metric_label(&self) -> &'static str { self.metric.label() }
 }
 
 /// 技能榜开关与落点。
@@ -30,7 +30,7 @@ impl MetricSpec {
 /// `./setting/score_now.toml`，由后端解析。屏幕输出与否由 `enabled` 与
 /// 顶层 `--no-screen` 在 `tools::skill_board_options` 统一推导。
 #[derive(Debug, Clone, Default)]
-pub(super) struct SkillBoardPlan {
+pub struct SkillBoardPlan {
     pub enabled: bool,
     pub output_file: Option<PathBuf>,
     pub config: Option<PathBuf>,

@@ -887,7 +887,7 @@ pub struct ExtensionRegistry {
 }
 
 impl ExtensionRegistry {
-    pub(crate) fn seed_blueprint_slots(&self) -> [Option<EntitySlotId>; 3] { self.seed_blueprint_slots }
+    pub fn seed_blueprint_slots(&self) -> [Option<EntitySlotId>; 3] { self.seed_blueprint_slots }
 
     /// 已安装扩展列表，按安装顺序排列。
     pub fn installed_extensions(&self) -> &[InstalledExtensionSpec] { &self.installed_extensions }
@@ -911,7 +911,7 @@ impl ExtensionRegistry {
     /// 按 ID 查技能；越界返回 None。
     pub fn skill(&self, id: SkillId) -> Option<&SkillSpec> { self.skills.get(id.0 as usize) }
 
-    pub(crate) fn builtin_active_skill(&self, id: SkillId) -> Option<BuiltinActiveSkill> {
+    pub fn builtin_active_skill(&self, id: SkillId) -> Option<BuiltinActiveSkill> {
         self.builtin_active_skills.get(id.0 as usize).copied().flatten()
     }
 

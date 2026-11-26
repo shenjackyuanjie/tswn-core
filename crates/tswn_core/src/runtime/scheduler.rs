@@ -48,13 +48,13 @@ pub struct SkillHookPlan {
 }
 
 #[derive(Debug)]
-pub(crate) struct SkillPostActionPlans {
-    pub(crate) generation: u32,
+pub struct SkillPostActionPlans {
+    pub generation: u32,
     /// 行动后早期技能通常只有少量条目，私有计划内联两项覆盖常见阵容。
-    pub(crate) early: SmallVec<[SkillHookPlanEntry; 2]>,
-    pub(crate) deferred: SmallVec<[(u64, SkillHookPlanEntry); 4]>,
+    pub early: SmallVec<[SkillHookPlanEntry; 2]>,
+    pub deferred: SmallVec<[(u64, SkillHookPlanEntry); 4]>,
     /// 行动后末尾技能与早期段分开内联，超过两项时仍可按需扩容。
-    pub(crate) late: SmallVec<[SkillHookPlanEntry; 2]>,
+    pub late: SmallVec<[SkillHookPlanEntry; 2]>,
 }
 
 /// 状态 hook 计划条目；同时携带编译期与运行期两种注册序。
@@ -102,7 +102,7 @@ impl Default for PhaseScheduler {
 }
 
 impl PhaseScheduler {
-    pub(crate) fn model_ice_events(&self) -> Vec<EntityIdx> { self.ice_release_events.to_vec() }
+    pub fn model_ice_events(&self) -> Vec<EntityIdx> { self.ice_release_events.to_vec() }
 
     /// 从实体推断调度模式并构造调度器。
     pub fn from_entities(entities: &EntityArena) -> Self {
@@ -296,7 +296,7 @@ impl PhaseScheduler {
         self.skill_hook_plan_for_loadout(&entity.template.skills, registry, owner, hook)
     }
 
-    pub(super) fn skill_hook_plan_for_loadout(
+    pub fn skill_hook_plan_for_loadout(
         &self,
         skills: &SkillLoadout,
         registry: &ExtensionRegistry,
@@ -382,7 +382,7 @@ impl PhaseScheduler {
 
     /// 一次扫描 POST_ACTION 缓存并分成即时、状态间穿插和末尾三段。
     /// 调用方用 generation 判断执行期间是否发生技能写入，再按需重建。
-    pub(crate) fn skill_post_action_plans(
+    pub fn skill_post_action_plans(
         &self,
         skills: &SkillLoadout,
         registry: &ExtensionRegistry,

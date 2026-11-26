@@ -26,7 +26,11 @@
 - `runtime/tests/` 中 4 个测试文件按被测模块改名：`plain_slime_tests` → `boss_slime_tests`、`plain_summon_tests` → `skills_summon_tests`、`plain_zombie_skill_tests` → `skills_zombie_tests`、`plain_assassinate_skill_tests` → `skills_assassinate_tests`，对应 `runtime/combat/` 里的同名模块文件。其余 20 个 `plain_*_tests` 保持原名：它们按测试的行为维度命名（`plain` 是角色前缀，与 `custom_*`、主题名并列的另一套轴），且 `heal`／`protect`／`disperse` 共用 `skills_team`、`damage_and_probability`／`targeting` 属跨切面，套模块名会造成重名或虚假的一对一。
 - 两个名不副实的 `_into` 函数改名：`kill_entity_without_damage_mark_only_into` → `kill_entity_without_damage_mark_only`、`run_plain_weapon_death_note_post_damage_into` → `run_plain_weapon_death_note_post_damage`。二者签名都不收 `&mut RunUpdates`，与 `_into` 的既定含义不符；同名兄弟函数 `kill_entity_without_damage_into`、`run_plain_weapon_xuan_yue_post_damage_into` 确实带 `updates` 参数，未受影响。
 - `runtime/combat` 的「命名约定」小节补充 `_into` 的边界：少数编码／转换入口（`encoder::encode::encode_into`、`namerena::input::raw_namerena_to_id_name_into`）的 `_into` 表示结果写入调用方给出的目标缓冲区，同属输出目标轴，不改名。
-- `namerena/icon_render/test.rs` 改名为 `tests.rs`，与全仓其余 13 处一致。`runtime/entity/derived_stats_tests.rs` 与 `entity/tests.rs` 职责不重叠（前者 6 个 `CloneDerivedStats` 用例，后者 39 个 `EntityArena`／`EntityRecord`／`SkillLoadout`／`StateStore` 用例），保留并存并在文件头补充分工说明。
+- `namerena/icon_render/test.rs` 改名为 `tests.rs`，与全仓其余 13 处一致。`runtime/entity/derived_stats_tests.rs` 与 `entity/tests.rs` 职责不重叠（前者 6 个 `CloneDerivedStats` 用例，后者 39 个 `EntityArena`／`EntityRecord`／`SkillLoadout`／`StateStore` 用例），
+- 全 workspace 657 处可见性收窄统一为 `pub`（`pub(crate)` 220、`pub(super)` 429、`pub(in ...)` 8），涉及 105 个文件。按 AGENTS.md 约定，`pub` 只表示对父模块可见，外层模块私有则不会泄漏。其中 555 处为等价变换（本来就被私有模块链截断），102 处会真正扩大到 crate 外：`tswn_capi` 的 14 个 FFI 辅助项、`rc4` 的 `PickSkipRange` 与 `pick_skip_span` 等、`cli_api` 的 `ScoreMode`／`NamerPfMode`／`BatchSummary`、`runtime` 下若干工具方法与 `EntityTemplate` 的 `covid_mask`／`native_boss_skills` 字段。这些路径此前不可从 crate 外寻址，现已可寻址；行为不变。
+- `lib.rs:198` 的 `pub(crate) mod time;` 改为纯私有 `mod time;`。全仓无 crate 外引用，仅 `runtime/batch` 与 `runtime/cqp` 两处在 crate 内使用。
+- 8 处 `pub(in crate::runtime)` 改为 `pub` 后作用域不变：它们所在的 `combat`／`prepared_init`／`entity::state` 本身是私有模块，祖先链上第一个私有模块已把可见范围截断。
+- clippy `--lib` 警告由 22 增至 27，新增 5 条 `private_interfaces`，均指向 `prepared_init` 内部方法返回私有类型。该 lint 只比较名义可见性、不沿模块链计算有效可见性，在私有模块树内用 `pub` 表达时必然误报；涉及类型 `PreparedPlayerInit`／`ScoreProfileBuild` 均无 `pub` 且不在 `runtime/mod.rs` 的重导出列表内，外部不可达，故保留不回退。
 
 ## [0.7.2] - 2026-11-21
 

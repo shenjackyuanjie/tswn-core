@@ -118,7 +118,7 @@ impl ExtraWriter<'_> {
 
 impl FeatureEncoder {
     /// 把 slot 族（实体 / 模板 / 战斗槽位）写入编码批次。
-    pub(super) fn write_slot_family(
+    pub fn write_slot_family(
         &self,
         state: &BattleModelState,
         index: &SampleIndex<'_>,
@@ -193,7 +193,7 @@ impl FeatureEncoder {
     }
 
     /// 把 extra 原始字段族写入编码批次。
-    pub(super) fn write_extra_family(
+    pub fn write_extra_family(
         &self,
         state: &BattleModelState,
         index: &SampleIndex<'_>,

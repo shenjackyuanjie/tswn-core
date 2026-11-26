@@ -7,7 +7,7 @@ use crate::runtime::update::RunUpdateHp;
 ///
 /// 第一代子体把名字头固定为 16 并给前 50 项或上 16；第二代固定为 -5 并或上 32。
 /// legacy 的 `t` 是普通 JS 数字数组，负值会保留下来参与体力求和，因此这里用 `i32`。
-pub(crate) fn slime_child_attrs(name_base: &[u8; 128], generation: u32) -> [u32; 8] {
+pub fn slime_child_attrs(name_base: &[u8; 128], generation: u32) -> [u32; 8] {
     let mut base = [0i32; 128];
     for (slot, &value) in base.iter_mut().zip(name_base) {
         *slot = i32::from(value);

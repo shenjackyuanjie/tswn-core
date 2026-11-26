@@ -26,7 +26,7 @@ impl PreparedBattleRoster {
         Self::from_groups_with_eval_rq_and_skill_import_selected(raw_groups, eval_rq, registry, skill_import, &[])
     }
 
-    pub(crate) fn from_groups_with_team_upgrades(
+    pub fn from_groups_with_team_upgrades(
         raw_groups: &[Vec<String>],
         eval_rq: f64,
         registry: &ExtensionRegistry,
@@ -42,7 +42,7 @@ impl PreparedBattleRoster {
     /// target 的名字、技能与召唤物蓝图不会随轮次变化，因此无需再次解析和 build。
     /// 如果遇到非标准布局，或 profile 与同组固定 target 同 clan、需要跨边界升级，
     /// 则回退到完整构造，保证公共 score 入口对任意合法输入仍保持原语义。
-    pub(crate) fn from_score_groups_with_cached_targets(
+    pub fn from_score_groups_with_cached_targets(
         raw_groups: &[Vec<String>],
         eval_rq: f64,
         registry: &ExtensionRegistry,
@@ -271,7 +271,7 @@ impl PreparedBattleRoster {
         })
     }
 
-    pub(super) fn from_groups_with_eval_rq_and_skill_import_selected(
+    pub fn from_groups_with_eval_rq_and_skill_import_selected(
         raw_groups: &[Vec<String>],
         eval_rq: f64,
         registry: &ExtensionRegistry,
@@ -378,7 +378,7 @@ impl PreparedBattleRoster {
     }
 
     /// 用已有 seed 缓冲区生成本轮初始化数据，保留所有小向量的容量。
-    pub(crate) fn into_with_reused_seed(self, seed: &[String], mut state: PreparedBattleSeed) -> PreparedBattleInit {
+    pub fn into_with_reused_seed(self, seed: &[String], mut state: PreparedBattleSeed) -> PreparedBattleInit {
         self.refill_seed_state(seed, &mut state);
         self.into_init_with_seed_state(state)
     }
@@ -414,7 +414,7 @@ impl PreparedBattleRoster {
         state
     }
 
-    pub(in crate::runtime) fn new_seed_state(&self) -> PreparedBattleSeed {
+    pub fn new_seed_state(&self) -> PreparedBattleSeed {
         PreparedBattleSeed {
             input_groups: Vec::with_capacity(self.input_groups.len()),
             round_order: Vec::with_capacity(self.players.len()),
@@ -442,13 +442,13 @@ impl PreparedBattleRoster {
         self.refill_seed_state_with_rng(state, rng);
     }
 
-    pub(in crate::runtime) fn refill_seed_key(&self, seed: &[String], key: &mut String) {
+    pub fn refill_seed_key(&self, seed: &[String], key: &mut String) {
         PreparedBattleInit::refill_rc4_key_with_seed(&self.base_names_sorted, seed, key);
     }
 
     /// 预拼八位 profile 编号的密钥模板，并返回数字起始下标。
     /// 同名或同前缀的固定名字可能改变 seed 的位置，交给逐局排序。
-    pub(in crate::runtime) fn profile_seed_key_template(&self) -> Option<(usize, Vec<u8>)> {
+    pub fn profile_seed_key_template(&self) -> Option<(usize, Vec<u8>)> {
         /// 预拼密钥时使用的占位 seed 行；已有 `seed:` 开头名字时放弃模板路径。
         const MARKER: &str = "seed:00000000@!";
         if self.base_names_sorted.iter().any(|name| name.starts_with("seed:")) {
@@ -461,7 +461,7 @@ impl PreparedBattleRoster {
         Some((digit_start, key.into_bytes()))
     }
 
-    pub(in crate::runtime) fn prepare_seed_rngs<const N: usize>(&self, keys: [&[u8]; N]) -> [RC4; N] {
+    pub fn prepare_seed_rngs<const N: usize>(&self, keys: [&[u8]; N]) -> [RC4; N] {
         let mut rngs = RC4::new_interleaved_with_key_schedule_prefix(keys, self.profile_seed_rc4_prefix.as_ref());
         RC4::mix_key_bytes_interleaved(&mut rngs, keys);
         rngs
@@ -497,7 +497,7 @@ impl PreparedBattleRoster {
     }
 
     /// 复用已完成密钥调度和密钥混入的随机状态，继续计算排序和初始移动点。
-    pub(in crate::runtime) fn refill_seed_state_with_rng(&self, state: &mut PreparedBattleSeed, mut rng: RC4) {
+    pub fn refill_seed_state_with_rng(&self, state: &mut PreparedBattleSeed, mut rng: RC4) {
         state.sort_ints.clear();
         state.sort_ints.resize(self.players.len(), 0);
         for &id in &self.sorted_by_id_name {

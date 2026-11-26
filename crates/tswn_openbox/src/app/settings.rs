@@ -112,7 +112,7 @@ impl Default for UiSettings {
 
 impl OpenboxApp {
     /// 从存储恢复 UI 偏好：逐字段校验，旧版本少一页时在 base 位补默认值。
-    pub(super) fn from_storage(storage: Option<&dyn eframe::Storage>) -> Self {
+    pub fn from_storage(storage: Option<&dyn eframe::Storage>) -> Self {
         let mut app = Self::default();
         if let Some(settings) = storage.and_then(|storage| eframe::get_value::<UiSettings>(storage, UI_SETTINGS_KEY)) {
             app.theme_preference = settings.theme;
@@ -140,7 +140,7 @@ impl OpenboxApp {
     }
 
     /// 把当前主题、工具页与各页排版写回存储。
-    pub(super) fn save_ui_settings(&self, storage: &mut dyn eframe::Storage) {
+    pub fn save_ui_settings(&self, storage: &mut dyn eframe::Storage) {
         let mut result_modes = Vec::with_capacity(self.views.len());
         let mut view_layouts = Vec::with_capacity(self.views.len());
         for view in &self.views {

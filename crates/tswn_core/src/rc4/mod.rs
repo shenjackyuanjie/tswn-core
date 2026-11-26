@@ -219,14 +219,14 @@ pub struct RC4 {
 
 /// 排除抽样只读取首下标与数量，不修正非连续名单的 legacy 语义。
 #[derive(Clone, Copy, Default)]
-pub(crate) struct PickSkipRange {
+pub struct PickSkipRange {
     first: usize,
     len: usize,
 }
 
 impl PickSkipRange {
     /// 把一个跳过的下标并入区间：记录首个下标并延长长度。
-    pub(crate) fn push(&mut self, index: usize) {
+    pub fn push(&mut self, index: usize) {
         if self.len == 0 {
             self.first = index;
         }
@@ -240,14 +240,14 @@ impl PickSkipRange {
     /// 返回恰好剩下两个候选时的下标，沿用首项与数量定义的排除区间。
     #[cfg(feature = "no_debug")]
     #[inline]
-    pub(crate) fn two_remaining_indices(self, list_len: usize) -> Option<[usize; 2]> {
+    pub fn two_remaining_indices(self, list_len: usize) -> Option<[usize; 2]> {
         (list_len.checked_sub(self.len) == Some(2)).then(|| [self.offset_sample(0), self.offset_sample(1)])
     }
 
     /// 返回这一排除区间恰好剩下一个候选时的下标，不推进随机流。
     #[cfg(feature = "no_debug")]
     #[inline]
-    pub(crate) fn single_remaining_index(self, list_len: usize) -> Option<usize> {
+    pub fn single_remaining_index(self, list_len: usize) -> Option<usize> {
         (list_len.checked_sub(self.len) == Some(1)).then(|| self.offset_sample(0))
     }
 }
@@ -422,7 +422,7 @@ impl RC4 {
     }
 
     /// 交错构造多局的独立初始状态。同长密钥共享循环下标，命中前缀时从同一个检查点开始。
-    pub(crate) fn new_interleaved_with_key_schedule_prefix<const N: usize>(
+    pub fn new_interleaved_with_key_schedule_prefix<const N: usize>(
         keys: [&[u8]; N],
         prefix: Option<&Rc4KeySchedulePrefix>,
     ) -> [Self; N] {
@@ -470,7 +470,7 @@ impl RC4 {
     }
 
     /// 对 2～4 个独立状态交错执行相同轮数的 KSA；其他宽度回退到普通路径。
-    pub(crate) fn update_interleaved(states: &mut [Self], keys: &[&[u8]], round: usize) {
+    pub fn update_interleaved(states: &mut [Self], keys: &[&[u8]], round: usize) {
         assert_eq!(states.len(), keys.len(), "RC4 交错 KSA 的状态和密钥数量必须一致");
         assert!(keys.iter().all(|key| !key.is_empty()), "RC4 密钥不能为空");
         let same_key_len = keys.windows(2).all(|pair| pair[0].len() == pair[1].len());
@@ -523,7 +523,7 @@ impl RC4 {
     /// 仅推进随机状态，适用于没有调用点探针且调用方无需这些输出字节的路径。
     #[cfg(feature = "no_debug")]
     #[inline]
-    pub(crate) fn discard_bytes<const N: usize>(&mut self) {
+    pub fn discard_bytes<const N: usize>(&mut self) {
         for _ in 0..N {
             self.next_u8_untracked();
         }
@@ -597,7 +597,7 @@ impl RC4 {
     }
 
     /// 同长密钥逐字节交错推进，仍按各自随机状态应用反馈混入规则。
-    pub(crate) fn mix_key_bytes_interleaved<const N: usize>(states: &mut [Self; N], keys: [&[u8]; N]) {
+    pub fn mix_key_bytes_interleaved<const N: usize>(states: &mut [Self; N], keys: [&[u8]; N]) {
         let key_len = keys.first().map_or(0, |key| key.len());
         if keys.iter().any(|key| key.len() != key_len) {
             for (state, key) in states.iter_mut().zip(keys) {
@@ -984,7 +984,7 @@ impl RC4 {
 
     /// 标量排除区间保持旧 API 的首项、数量与随机流消费规则。
     #[inline]
-    pub(crate) fn pick_skip_span<T>(&mut self, list: &[T], skips: PickSkipRange) -> Option<usize> {
+    pub fn pick_skip_span<T>(&mut self, list: &[T], skips: PickSkipRange) -> Option<usize> {
         if skips.len == 0 {
             return self.pick(list);
         }

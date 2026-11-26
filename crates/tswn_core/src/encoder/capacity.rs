@@ -179,7 +179,7 @@ impl CapacityMeasure {
 ///
 /// 包含实体槽蓝图及全局槽模板；空 world 团队行同样存在。容量计费与编码重映射
 /// 共用此函数，避免 stats 只统计 world 行而低报稀疏团队编号的实际占用。
-pub(crate) fn runtime_team_ids(state: &BattleModelState) -> BTreeSet<usize> {
+pub fn runtime_team_ids(state: &BattleModelState) -> BTreeSet<usize> {
     let mut teams: BTreeSet<usize> = (0..state.world.team_roster.len().max(state.world.team_alive.len())).collect();
     for entity in &state.entities {
         teams.insert(entity.runtime.team);
