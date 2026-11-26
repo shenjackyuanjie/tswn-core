@@ -748,7 +748,7 @@ fn state_from_snapshot(snapshot: RuntimePlayerSnapshot, include_icons: bool) -> 
         team_index: snapshot.team_index,
         input_team_index: snapshot.input_team_index,
         owner_id: snapshot.owner_id,
-        source_id: snapshot.root_owner_id,
+        root_owner_id: snapshot.root_owner_id,
         id_name: snapshot.id_name,
         id_key_name: snapshot.id_key_name,
         icon_key,

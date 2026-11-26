@@ -104,7 +104,7 @@ pub struct BattlePlayerState {
     /// 直接主人实体 ID，无主人时为 None。
     pub owner_id: Option<usize>,
     /// 根来源实体 ID；与直接 owner 可能不同。
-    pub source_id: Option<usize>,
+    pub root_owner_id: Option<usize>,
     /// 面向兼容接口的身份名，不作为本场主键。
     pub id_name: String,
     /// 名字推导使用的身份键。

@@ -51,7 +51,7 @@ class TeamUpgradeTests(unittest.TestCase):
                 self.assertEqual(frames, list(disabled))
                 spawned = [state for frame in frames for state in frame["states"] if state["minion_kind"] == kind]
                 self.assertTrue(spawned)
-                self.assertTrue(all(state["source_id"] == 0 and state["input_team_index"] == 0 for state in spawned))
+                self.assertTrue(all(state["root_owner_id"] == 0 and state["input_team_index"] == 0 for state in spawned))
                 self.assertEqual(enabled.result(), disabled.result())
 
     def test_replay_and_preview_are_deterministic_for_each_setting(self):

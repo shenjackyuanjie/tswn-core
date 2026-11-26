@@ -27,7 +27,7 @@ class BattlePlayerState(TypedDict):
     team_index: int
     input_team_index: int | None
     owner_id: int | None
-    source_id: int | None
+    root_owner_id: int | None
     id_name: str
     id_key_name: str
     icon_key: str
