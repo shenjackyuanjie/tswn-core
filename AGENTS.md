@@ -58,7 +58,8 @@ Co-authored-by: <模型标识> <模型标识@厂商域名>
 | Claude Opus | `claude-opus-4-7 <claude-opus-4-7@anthropic.com>` |
 | DeepSeek Flash | `deepseek-flash <deepseek-flash@deepseek.com>` |
 | Step 5 Preview | `step-5-preview <step-5-preview@stepfun.com>` |
-| GitHub Copilot | `Copilot <223556219+Copilot@users.noreply.github.com>` |
+
+署名要落到**具体模型**上。`Copilot` 这类产品名不是模型，它是入口不是能力来源，被它调起来跑的那个模型才该署名，所以不进这张表。同理，认不出底层模型时宁可写厂商-模型，也别拿产品名顶替。
 
 同一个模型固定用同一种写法。历史上 `step5preview` 与 `step-5-preview`、`Codex GPT-5.5` 与 `GPT-5.5` 并存，除了让统计碎成一地没有别的作用。自己是什么模型就用什么标识署名，不要借用别人的模型名。
 
