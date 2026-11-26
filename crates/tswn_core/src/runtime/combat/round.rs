@@ -577,6 +577,7 @@ impl CombatRuntime {
             return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
                 selected: crate::namerena::BossActionSkill::Fish,
                 targets: PreparedTargetList::new(),
+                smart,
             }));
         }
         // TigerStar 的行动完全由专属脚本决定。
@@ -588,6 +589,7 @@ impl CombatRuntime {
             return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
                 selected: crate::namerena::BossActionSkill::Tiger,
                 targets: PreparedTargetList::new(),
+                smart,
             }));
         }
         // 咦的行动完全由专属脚本决定。
@@ -599,6 +601,7 @@ impl CombatRuntime {
             return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
                 selected: crate::namerena::BossActionSkill::Yi,
                 targets: PreparedTargetList::new(),
+                smart,
             }));
         }
         // 新纪元的行动完全由专属脚本决定。
@@ -606,6 +609,7 @@ impl CombatRuntime {
             return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
                 selected: crate::namerena::BossActionSkill::Xjy,
                 targets: PreparedTargetList::new(),
+                smart,
             }));
         }
         // 被子的行动完全由专属脚本决定：不扫描普攻，也不消耗概率随机数。
@@ -613,6 +617,7 @@ impl CombatRuntime {
             return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
                 selected: crate::namerena::BossActionSkill::Quilt,
                 targets: PreparedTargetList::new(),
+                smart,
             }));
         }
         // 外部脚本：引擎自身没有强制动作时，优先执行调用方排好的这一手。
@@ -668,6 +673,7 @@ impl CombatRuntime {
             return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
                 selected: crate::namerena::BossActionSkill::Squall,
                 targets: PreparedTargetList::new(),
+                smart,
             }));
         }
         // smdd 同样走专属脚本，不消耗概率随机数。
@@ -679,6 +685,7 @@ impl CombatRuntime {
             return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
                 selected: crate::namerena::BossActionSkill::Smdd,
                 targets: PreparedTargetList::new(),
+                smart,
             }));
         }
 

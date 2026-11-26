@@ -203,7 +203,7 @@ impl CombatRuntime {
     }
 
     /// 结算本回合选中的实验体招式，并推进阶段计数与无实体轮换。
-    pub fn drain_testsubject_action_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+    pub fn drain_testsubject_action_into(&mut self, actor: EntityIdx, smart: bool, updates: &mut RunUpdates) {
         let skill = self
             .entities
             .get(actor)
@@ -211,9 +211,9 @@ impl CombatRuntime {
             .and_then(|state| state.pending_skill);
         match skill {
             Some(TestSubjectSkill::SkullSmash) => self.drain_testsubject_skull_smash_into(actor, updates),
-            Some(TestSubjectSkill::MultiClaw) => self.drain_testsubject_multi_claw_into(actor, updates),
-            Some(TestSubjectSkill::Rupture) => self.drain_testsubject_rupture_into(actor, updates),
-            Some(TestSubjectSkill::GreatPounce) => self.drain_testsubject_great_pounce_into(actor, updates),
+            Some(TestSubjectSkill::MultiClaw) => self.drain_testsubject_multi_claw_into(actor, smart, updates),
+            Some(TestSubjectSkill::Rupture) => self.drain_testsubject_rupture_into(actor, smart, updates),
+            Some(TestSubjectSkill::GreatPounce) => self.drain_testsubject_great_pounce_into(actor, smart, updates),
             Some(TestSubjectSkill::BurningRoar) => self.drain_testsubject_burning_roar_into(actor, updates),
             // 未选中招式时 k4 扫描已经回落到普攻，这里只推进阶段计数。
             None => {}
@@ -271,8 +271,8 @@ impl CombatRuntime {
     }
 
     /// 多段爪击：60% 物理 ×（已用次数 + 3）段，累计伤害为正时叠一层迟缓。
-    fn drain_testsubject_multi_claw_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
-        let Some(target) = self.select_plain_default_attack_target(actor, true) else {
+    fn drain_testsubject_multi_claw_into(&mut self, actor: EntityIdx, smart: bool, updates: &mut RunUpdates) {
+        let Some(target) = self.select_plain_default_attack_target(actor, smart) else {
             return;
         };
         let hit_count = self
@@ -304,8 +304,8 @@ impl CombatRuntime {
     }
 
     /// 割裂：60% 物理 × 3。
-    fn drain_testsubject_rupture_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
-        let Some(target) = self.select_plain_default_attack_target(actor, true) else {
+    fn drain_testsubject_rupture_into(&mut self, actor: EntityIdx, smart: bool, updates: &mut RunUpdates) {
+        let Some(target) = self.select_plain_default_attack_target(actor, smart) else {
             return;
         };
         updates.add_with(|| RunUpdate::new("[0]使用[割裂]", actor.0 as usize, target.0 as usize, 1));
@@ -325,8 +325,8 @@ impl CombatRuntime {
     }
 
     /// 大猛扑：225% 物理。
-    fn drain_testsubject_great_pounce_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
-        let Some(target) = self.select_plain_default_attack_target(actor, true) else {
+    fn drain_testsubject_great_pounce_into(&mut self, actor: EntityIdx, smart: bool, updates: &mut RunUpdates) {
+        let Some(target) = self.select_plain_default_attack_target(actor, smart) else {
             return;
         };
         updates.add_with(|| RunUpdate::new("[0]使用[大猛扑]", actor.0 as usize, target.0 as usize, 1));
@@ -729,6 +729,43 @@ mod tests {
     }
 
     #[test]
+    fn single_target_skills_follow_action_wisdom() {
+        let actor = EntityIdx(0);
+        let cases = [
+            (1, 3, TestSubjectSkill::MultiClaw, "[0]使用[多段爪击]"),
+            (2, 49, TestSubjectSkill::Rupture, "[0]使用[割裂]"),
+            (2, 3, TestSubjectSkill::GreatPounce, "[0]使用[大猛扑]"),
+        ];
+        // 固定随机流前缀选出指定招式；目标 1 更吸引聪明攻击，随机评分则偏向目标 2。
+        let targets = cases.map(|(phase, rng_skip, skill, message)| {
+            [0, 64].map(|wisdom| {
+                let mut runtime = testsubject_runtime(2, 100_000);
+                force_phase(&mut runtime, phase);
+                let boss = &mut runtime.entities.get_mut(actor).unwrap().runtime;
+                boss.wisdom = wisdom;
+                boss.magic_point = PHASE_MAGIC_POINT;
+                runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.attract_bits = 2.0_f64.to_bits();
+                runtime.entities.get_mut(EntityIdx(2)).unwrap().runtime.attract_bits = 1.0_f64.to_bits();
+                for _ in 0..rng_skip {
+                    runtime.rng.next_u8();
+                }
+                let smart = runtime.roll_actor_smart(actor);
+                assert_eq!(smart, wisdom != 0);
+                let Some(PreparedPlainAction::BossSkill(prepared)) =
+                    runtime.prepare_plain_action(actor, smart, Default::default())
+                else {
+                    panic!("没有选中实验体招式：{skill:?}");
+                };
+                assert_eq!(pending_skill(&runtime), Some(skill));
+                let mut updates = RunUpdates::new();
+                runtime.drain_plain_boss_skill_into(actor, prepared, &mut updates);
+                updates.updates.iter().find(|update| update.message == message).unwrap().target
+            })
+        });
+        assert_eq!(targets, [[2, 1]; 3]);
+    }
+
+    #[test]
     fn phase_one_miss_falls_back_to_plain_attack() {
         let mut runtime = testsubject_runtime(1, 500);
         advance_until_phase_misses(&mut runtime, SKULL_SMASH_LEVEL);
@@ -768,7 +805,7 @@ mod tests {
         let mut runtime = testsubject_runtime(3, 400);
         queue_skill(&mut runtime, TestSubjectSkill::SkullSmash);
         let mut updates = RunUpdates::new();
-        runtime.drain_testsubject_action_into(EntityIdx(0), &mut updates);
+        runtime.drain_testsubject_action_into(EntityIdx(0), true, &mut updates);
         let messages = messages_of(&updates);
         assert!(messages.contains(&"[0]使用[颅骨重击]".to_owned()), "{messages:?}");
         let fractured = (1..=3)
@@ -844,7 +881,7 @@ mod tests {
                 .unwrap()
                 .multi_claw_used = used;
             let mut updates = RunUpdates::new();
-            runtime.drain_testsubject_action_into(EntityIdx(0), &mut updates);
+            runtime.drain_testsubject_action_into(EntityIdx(0), true, &mut updates);
             let state = runtime.entities.get(EntityIdx(0)).unwrap().runtime.testsubject.as_ref().unwrap();
             assert_eq!(state.multi_claw_used, used + 1, "used={used}");
             assert!(
@@ -869,7 +906,7 @@ mod tests {
         let mut seen = Vec::new();
         for _ in 0..4 {
             let mut updates = RunUpdates::new();
-            runtime.drain_testsubject_action_into(EntityIdx(0), &mut updates);
+            runtime.drain_testsubject_action_into(EntityIdx(0), true, &mut updates);
             seen.push(runtime.has_testsubject_no_entity(EntityIdx(0)));
         }
         assert_eq!(seen, vec![true, false, true, false]);

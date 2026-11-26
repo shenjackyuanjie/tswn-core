@@ -118,6 +118,8 @@ impl CombatRuntime {
 
     /// 所以说我现在要发11.7T帮测：一次不可反弹的普攻，未回避则直接击杀，伤害外显 11.7T。
     pub fn fish_eleven_tera(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+        // 此 Boss 由 KODU16 fork 新增，Legacy 的 md5.js 没有对应的 aa 实现。
+        // 上游固定传 true；保持移植行为，不跟随本次行动的智慧检定。
         let Some(target) = self.select_plain_default_attack_target(actor, true) else {
             return;
         };
@@ -224,6 +226,8 @@ impl CombatRuntime {
 
     /// 令人咦：与猴咦射日同效果，只是名字不同。
     pub fn fish_lingrenyi(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+        // 此 Boss 由 KODU16 fork 新增，Legacy 的 md5.js 没有对应的 aa 实现。
+        // 上游固定传 true；保持移植行为，不跟随本次行动的智慧检定。
         let Some(target) = self.select_plain_default_attack_target(actor, true) else {
             return;
         };

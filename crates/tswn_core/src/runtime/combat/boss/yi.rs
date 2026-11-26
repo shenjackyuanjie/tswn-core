@@ -106,6 +106,8 @@ impl CombatRuntime {
 
     /// 猴咦射日：一次 150% 魔攻，之后攻击力永久 +50%。
     fn yi_sun(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+        // 此 Boss 由 KODU16 fork 新增，Legacy 的 md5.js 没有对应的 aa 实现。
+        // 上游固定传 true；保持移植行为，不跟随本次行动的智慧检定。
         let Some(target) = self.select_plain_default_attack_target(actor, true) else {
             return;
         };
@@ -121,6 +123,8 @@ impl CombatRuntime {
 
     /// 咦的普通攻击：使用当前攻击力（含猴咦射日的永久加成）。
     fn yi_plain_attack(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
+        // 此 Boss 由 KODU16 fork 新增，Legacy 的 md5.js 没有对应的 aa 实现。
+        // 上游固定传 true；保持移植行为，不跟随本次行动的智慧检定。
         let Some(target) = self.select_plain_default_attack_target(actor, true) else {
             return;
         };

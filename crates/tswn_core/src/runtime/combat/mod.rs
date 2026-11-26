@@ -94,6 +94,8 @@ pub struct PreparedBuiltinSkillAction {
 pub struct PreparedBossSkillAction {
     pub selected: crate::namerena::BossActionSkill,
     pub targets: PreparedTargetList,
+    /// 本次行动的智慧检定结果，供结算时才选敌的实验体使用。
+    pub smart: bool,
 }
 
 /// 普通攻击命中时附加的伤害效果；新冠（covid）与懒羊羊（lazy）变体记录传染源与变异值。

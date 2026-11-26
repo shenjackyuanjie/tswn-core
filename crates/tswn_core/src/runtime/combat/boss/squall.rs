@@ -455,6 +455,8 @@ impl CombatRuntime {
             return;
         }
         let Some(skill) = self.select_research_skill(actor) else {
+            // 此 Boss 由 KODU16 fork 新增，Legacy 的 md5.js 没有对应的 aa 实现。
+            // 上游固定传 true；保持移植行为，不跟随本次行动的智慧检定。
             if let Some(target) = self.select_plain_default_attack_target(actor, true) {
                 let amp = self.squall_take_amplify(actor);
                 updates.add(RunUpdate::new("[0]发起攻击", actor.0 as usize, target.0 as usize, 0));

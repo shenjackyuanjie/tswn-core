@@ -108,6 +108,7 @@ impl CombatRuntime {
             return Some(PreparedBossSkillAction {
                 selected: skill,
                 targets,
+                smart,
             });
         }
         None
@@ -168,7 +169,7 @@ impl CombatRuntime {
             BossActionSkill::Yi => self.drain_yi_action_into(actor, updates),
             BossActionSkill::Tiger => self.drain_tiger_action_into(actor, updates),
             BossActionSkill::Fish => self.drain_fish_action_into(actor, updates),
-            BossActionSkill::TestSubject => self.drain_testsubject_action_into(actor, updates),
+            BossActionSkill::TestSubject => self.drain_testsubject_action_into(actor, prepared.smart, updates),
             BossActionSkill::Fire => {
                 let target = prepared.targets[0];
                 self.drain_plain_fire_skill_into(actor, target, updates);
