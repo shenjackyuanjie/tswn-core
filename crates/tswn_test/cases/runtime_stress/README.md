@@ -78,7 +78,7 @@
 | `cqd-p28-t26-r0447.txt` | player 28 × target 26 | 447 / `33554878` | 13 | 首次迟缓未刷新待生效强化疾走倍率，调度 RNG、地裂术伤害与护身符复活链随后分叉 | 已闭环并接入回归 |
 | `cqd-p21-t31-r5997-guard.txt` | player 21 × target 31 | 5997 / `33560428` | 16 | 同一使魔清理缺口最终形成 0 个存活组，runtime 在 10 万与 100 万行动上限下都无法产生 winner；legacy 20 个行动结束 | 已闭环并接入回归 |
 
-2026-07-16 修复后复验：player 6 × target 26、player 19 × target 26、player 21 × target 39、player 28 × target 26 各扫描 1000 个 seed，player 21 × target 31 扫描 10000 个 seed，共 14000 个 seed，异常数为 0；包含上述 5 个输入的 release Runtime corpus 当时为 123/123，加入下述 benchmark score case 后当前为 124/124。
+2026-07-16 修复后复验：player 6 × target 26、player 19 × target 26、player 21 × target 39、player 28 × target 26 各扫描 1000 个 seed，player 21 × target 31 扫描 10000 个 seed，共 14000 个 seed，异常数为 0；包含上述 5 个输入的 release Runtime corpus 当时为 123/123，加入下述 benchmark score case 后为 124/124。
 
 以下输入来自 2026-07-16 修复后的 Runtime 完整 benchmark。mario 普通 score 从历史 `4171/13000` 变为 `4170/13000`，定点 legacy/runtime 对账定位到 round 11350；`out_md5.ts` 与 legacy 一致。文件中的 `\x02` 是普通 score modifier 控制字符的可逆文本转义，回归加载时会还原为单字节 `0x02`：
 
@@ -86,10 +86,18 @@
 | --- | --- | ---: | --- | --- |
 | `score-mario-r11350.txt` | score/normal，round 11350 | 17 | 首次施加冰冻时未复刻 legacy `set_state` 的属性刷新，待生效强化疾走仍按旧倍率递减冰冻步数，导致解冻延后一轮并改变胜负 | 已闭环并接入回归 |
 
+以下两局为补齐魅惑路径覆盖而定向构造，不是随机抽样得到的差异。以 `md5.js` 的 `run_any` 对同字节输入采集胜者队伍、可见帧数、总分和最终 RC4；可见帧数不含空推进和单独的终局胜利播报。
+
+| 输入 | 来源 | 首差异 / 症状 | oracle | 状态 |
+| --- | --- | --- | --- | --- |
+| `yuri-d.txt` | 尤里对 `d` 的定向单挑，未加 seed 修饰 | 四项无差异；第 1 个可见帧命中心灵控制 `yuri_control` | JS `md5.js` | 已接入回归 |
+| `yuri-charm-52.txt` | 尤里与两名带 `+charm` 的普通角色各一队，定向扫描命中 `seed:52@!` | 四项无差异；第 5 个可见帧中 `mage-b` 重魅 `mage-a`，将来源从尤里换为自身，命中 `source_change` | JS `md5.js` | 已接入回归 |
+
 维护规则：
 
 - 新发现且尚未闭环的压力差异，先把原始 input 原样放入本目录并更新上表。
 - 修复完成后，把该 input 接入长期 Runtime strict-diff 回归，记录随回归一并保留。
 - 只有 oracle、Runtime 输出、RNG/帧序列全部一致，才可把状态改为“已闭环”。
-- `golden.json` 冻结删除旧对象模型前的 37 项 legacy 基线；每例记录有效输入 SHA-256、`eval_rq`、胜者队伍、回合数、总分、最终 RC4 和逐回合 canonical digest。87 项 JS exact trace 继续内嵌在共享 suite 中，JSON 同时固定两部分的数量为 87 + 37。
+- `golden.json` 保留删除旧对象模型前的 37 项 legacy 基线，继续断言 `rounds`（含空推进的 `run_round` 调用次数）和逐回合 canonical digest。新增的 2 项 JS 基线用 `visible_rounds` 记录可见帧数，`round_digests` 为空；这两项的 `rounds` 来自 Rust，仅作为检测推进次数变化的哨兵，并非 JS 期望值。
+- JS 基线的输入采用 LF，并以 `.gitattributes` 保证取出后仍是 LF。哈希层才会规范化换行，战斗直接读取原始文本；已有 37 份输入不改换行。87 项 JS exact trace 继续内嵌在共享 suite 中，当前语料共 87 + 37 + 2 = 126 局。
 - 当前语料用于只读比较；历史 `freeze_runtime_golden` 二进制已删除，不能再使用旧重建命令。本轮维护不重生成输入或 golden。确需改变 oracle 语义时，先单独审查再生工具、输入来源与新预期，再审查基线差异并运行 `python scripts/check_runtime_release.py --corpus`；实际测试范围由当前 corpus 目标决定。

@@ -1,7 +1,7 @@
-//! Runtime corpus 的冻结 legacy 基线读取与严格比较。
+//! Runtime corpus 的冻结基线读取与严格比较。
 //!
-//! 输入和 JSON 在编译时嵌入；按换行规范化后的 SHA-256 与 eval_rq 查找 case，
-//! 用当前 Runtime 重放并比较胜者、轮数、积分、最终 RC4 和逐轮摘要。
+//! 输入和 JSON 在编译时嵌入；按换行规范化后的 SHA-256 与 eval_rq 查找 case。
+//! 重放比较胜者、推进次数、积分和最终 RC4；按基线记录比较可见帧数或逐轮摘要。
 //! 本模块只断言，不生成或覆写基线；未知输入、清单不符、运行超限或任一差异都会 panic。
 
 use std::collections::HashSet;
@@ -16,8 +16,8 @@ use crate::{EngineAdapter, EventSnapshot, RuntimeEngine, SnapshotKind};
 pub const STRESS_GOLDEN_SCHEMA_VERSION: u32 = 1;
 /// 逐轮精确追踪的 case 数：87。
 pub const EXACT_TRACE_CASE_COUNT: usize = 87;
-/// stress case 总数：37。
-pub const STRESS_CASE_COUNT: usize = 37;
+/// stress case 总数：39。
+pub const STRESS_CASE_COUNT: usize = 39;
 /// golden 比对允许的最大轮数：20000；超过即失败。
 pub const MAX_GOLDEN_ROUNDS: usize = 20_000;
 /// 逐轮摘要的规范化摘要格式（字段与顺序）。
@@ -117,6 +117,8 @@ pub const STRESS_CASES: &[StressCaseSpec] = &[
     stress_case!("ffa_8-fee2c41a2508ad16.txt"),
     stress_case!("score_round_7.txt", eval_rq = tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ),
     stress_case!("score-mario-r11350.txt", unescape_x02),
+    stress_case!("yuri-d.txt"),
+    stress_case!("yuri-charm-52.txt"),
 ];
 
 /// 冻结的 RC4 状态：i 与 j。
@@ -133,7 +135,11 @@ pub struct StressCaseGolden {
     pub input_sha256: String,
     pub eval_rq: f64,
     pub winner_team_index: usize,
+    /// 含空推进的调用次数；对 JS oracle 条目，这是 Rust 侧的哨兵。
     pub rounds: usize,
+    /// JS oracle 的可见帧数，不含空推进和单独的终局胜利播报。
+    #[serde(default)]
+    pub visible_rounds: Option<u64>,
     pub total_score: u64,
     pub final_rc4: Rc4Golden,
     pub round_digests: Vec<String>,
@@ -224,10 +230,14 @@ fn canonical_round_digest(
 fn capture_case<E: EngineAdapter>(mut runner: E::Runner, spec: StressCaseSpec) -> StressCaseGolden {
     let input = spec.effective_input();
     let mut round_digests = Vec::new();
+    let mut visible_rounds = 0;
     let mut total_score = 0u64;
 
     while !E::have_winner(&runner) && round_digests.len() < MAX_GOLDEN_ROUNDS {
         let events = E::main_round(&mut runner);
+        if !events.is_empty() {
+            visible_rounds += 1;
+        }
         total_score += events
             .iter()
             .filter(|event| !matches!(event.kind, SnapshotKind::NextLine))
@@ -256,6 +266,7 @@ fn capture_case<E: EngineAdapter>(mut runner: E::Runner, spec: StressCaseSpec) -
         eval_rq: spec.eval_rq,
         winner_team_index,
         rounds: round_digests.len(),
+        visible_rounds: Some(visible_rounds),
         total_score,
         final_rc4: Rc4Golden {
             i: i as u64,
@@ -354,9 +365,16 @@ pub fn assert_runtime_matches_frozen_golden_with_eval_rq(raw: &str, case_name: &
         "{case_name}: winner team changed"
     );
     assert_eq!(actual.rounds, expected.rounds, "{case_name}: round count changed");
+    if let Some(visible_rounds) = expected.visible_rounds {
+        assert_eq!(
+            actual.visible_rounds,
+            Some(visible_rounds),
+            "{case_name}: visible round count changed"
+        );
+    }
     assert_eq!(actual.total_score, expected.total_score, "{case_name}: total score changed");
     assert_eq!(actual.final_rc4, expected.final_rc4, "{case_name}: final RC4 changed");
-    if actual.round_digests != expected.round_digests {
+    if !expected.round_digests.is_empty() && actual.round_digests != expected.round_digests {
         let mismatch = actual
             .round_digests
             .iter()

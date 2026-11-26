@@ -294,3 +294,16 @@ fn stress_score_mario_r11350() {
     let input = include_str!("cases/runtime_stress/score-mario-r11350.txt").replace("\\x02", "\x02");
     tswn_test::suite::assert_runtime_matches_frozen_golden(&input, "stress score-mario-r11350");
 }
+
+#[test]
+fn stress_yuri_d() {
+    tswn_test::suite::assert_runtime_matches_frozen_golden(include_str!("cases/runtime_stress/yuri-d.txt"), "stress yuri-d");
+}
+
+#[test]
+fn stress_yuri_charm_52() {
+    tswn_test::suite::assert_runtime_matches_frozen_golden(
+        include_str!("cases/runtime_stress/yuri-charm-52.txt"),
+        "stress yuri-charm-52",
+    );
+}

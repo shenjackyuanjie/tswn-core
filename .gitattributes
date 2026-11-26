@@ -1,0 +1,3 @@
+# 新增的 JS oracle 语料统一 LF：golden.rs 只在哈希层规范化换行，战斗使用原始文本。
+crates/tswn_test/cases/runtime_stress/yuri-d.txt text eol=lf
+crates/tswn_test/cases/runtime_stress/yuri-charm-52.txt text eol=lf

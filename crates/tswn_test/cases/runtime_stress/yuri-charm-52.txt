@@ -1,0 +1,6 @@
+yuri@!
+
+mage-a+charm
+
+mage-b+charm
+seed:52@!

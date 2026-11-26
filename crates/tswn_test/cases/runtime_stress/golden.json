@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "exact_trace_case_count": 87,
-  "stress_case_count": 37,
+  "stress_case_count": 39,
   "canonical_digest_format": "sha256-v1(round-index,event-kind,message,caster-name,score,post-round-rc4,winner-team)",
   "cases": [
     {
@@ -2635,6 +2635,34 @@
         "cd40190e74f45ccd5215807ca797ef2a6d5f3f95c31324b91103e5ff74cc36b8",
         "660dcc4d2ea77548ebd8b2ee19b573c18b1b74d0914c78f11f232ca0ae9e2d49"
       ]
+    },
+    {
+      "file_name": "yuri-d.txt",
+      "input_sha256": "4f3b44eaf659d520266eca822084838d5a2deb38d9ed856658a4e665462bd2d2",
+      "eval_rq": 4.0,
+      "winner_team_index": 0,
+      "rounds": 9,
+      "visible_rounds": 6,
+      "total_score": 473,
+      "final_rc4": {
+        "i": 223,
+        "j": 80
+      },
+      "round_digests": []
+    },
+    {
+      "file_name": "yuri-charm-52.txt",
+      "input_sha256": "d2e9f31c757d41d2aab60d3ae3439445caa7145689764b0db19c97a2cb484f6e",
+      "eval_rq": 4.0,
+      "winner_team_index": 1,
+      "rounds": 23,
+      "visible_rounds": 17,
+      "total_score": 1626,
+      "final_rc4": {
+        "i": 139,
+        "j": 129
+      },
+      "round_digests": []
     }
   ]
 }
