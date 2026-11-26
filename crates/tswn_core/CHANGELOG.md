@@ -20,6 +20,8 @@
 - `combat/skills/boss.rs`（原 `skills_boss.rs`）与 `combat/boss/` 是不同层次：前者是 Boss 技能的 select／prepare／probability 三个 match 派发与 `drain_plain_boss_skill_into`，后者是每只 Boss 的专属实现。这一点已在 `combat/mod.rs`、`boss/mod.rs`、`skills/mod.rs` 三处文档中写明。
 - `thanos` 与 `wheel` 的模块声明由私有 `mod` 提升为 `pub mod`：移入 `boss/` 后 `round.rs` 作为其「伯父」模块按 Rust 规则访问不到私有孙模块。`skills/assassinate` 同样提升，供 `combat/mod.rs` re-export `PlainSkillPreActionOutcome`。`combat` 本身私有，不扩大公开面。
 - 8 个文档文件的 46 处旧路径引用同步更新（`combat/skills_X.rs` → `combat/skills/X.rs`、`combat/boss_wheel.rs` → `combat/boss/wheel.rs`），链接 URL 与显示文本同步。
+- `combat/skills/boss.rs` 由 708 行降至 271 行：马里奥（火球等级／夺舍／复活）、柯南（思考态／三种选敌模式）、尤里（控制选敌与结算）三只 Boss 的机制分别抽到 `combat/boss/{mario,conan,yuri}.rs`，共 455 行。留下的是 Boss 技能的 select／prepare／probability／drain 四个派发函数，加上青雉冰河时代（35 行）与斑鸠攻击（32 行）——这两个只是「特殊多目标普攻」的配方，实际伤害结算在 `attack.rs` 的通用管线里，拆出去会变成空壳。所有跨模块调用方都是 `self.xxx()` 形式，无需改引用；仅 `plain_mario_fire_level` 因被 `skills/boss.rs` 调用而从私有提升为 `pub`。`plain_group_initial_player_count` 全仓只有尤里一处调用，随之搬走。
+- `combat/infection.rs` 由 965 行拆为 `infection/mod.rs`（547 行生产代码）与 `infection/tests.rs`（417 行）：11 个 `#[test]` 与 7 个辅助函数外提，测试正文零改动，无需任何可见性调整。
 
 ### 破坏性变更
 
