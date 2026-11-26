@@ -669,6 +669,33 @@ fn boss_yuri_control_charms_with_initial_group_floor_and_stacks_on_recharm() {
 }
 
 #[test]
+fn boss_yuri_recharm_keeps_effective_team_until_refresh() {
+    let mut runtime = yuri_runtime();
+    let [boss, target, other_source] = [EntityIdx(0), EntityIdx(1), EntityIdx(5)];
+    let mut updates = RunUpdates::new();
+    let charm_value = |runtime: &CombatRuntime| {
+        runtime
+            .entities
+            .get(target)
+            .unwrap()
+            .states
+            .entry(PLAIN_CHARM_STATE_KEY)
+            .and_then(StateEntry::charm_value)
+    };
+
+    // 直接调用以覆盖心灵控制的重魅：正常选目标会拒绝已有魅惑的角色。
+    runtime.drain_plain_yuri_control_into(other_source, target, &mut updates);
+    assert_eq!(charm_value(&runtime), Some((5, Some(2), Some(2), Some(1), 4)));
+    runtime.drain_plain_yuri_control_into(boss, target, &mut updates);
+    assert_eq!(charm_value(&runtime), Some((0, Some(2), Some(0), Some(1), 8)));
+    assert_eq!(runtime.protect_target_candidates(target), [other_source]);
+
+    runtime.entities.get_mut(target).unwrap().activate_charge_runtime();
+    assert_eq!(charm_value(&runtime), Some((0, Some(0), Some(0), Some(1), 8)));
+    assert_eq!(runtime.protect_target_candidates(target), [boss]);
+}
+
+#[test]
 fn boss_skill_attack_uses_magic_only_for_aokiji_and_ikaruga() {
     for (name, levels) in [("aokiji", &[70u32, 80][..]), ("ikaruga", &[48][..])] {
         let mut runtime = boss_runtime(name);

@@ -594,11 +594,13 @@ impl EntityRecord {
     /// 应用派生属性到模板并同步运行态。
     pub fn apply_derived_stats(&mut self, stats: CloneDerivedStats) {
         self.template.apply_derived_stats(stats);
-        self.apply_runtime_stats_from_template();
+        self.apply_runtime_stats_from_template(true);
     }
 
-    /// 从模板重算运行态，应用隐匿、垂死、聚气与状态修正。
-    pub fn refresh_runtime_stats_from_template(&mut self) {
+    /// 从模板重算运行态，并提交原版 updateStates 钩子的结果。
+    pub fn refresh_runtime_stats_from_template(&mut self) { self.refresh_runtime_stats_from_template_with_update_hooks(true); }
+
+    fn refresh_runtime_stats_from_template_with_update_hooks(&mut self, commit_update_hooks: bool) {
         if self.template.rinick.is_some()
             && let Some(build) = &mut self.template.clone_build
         {
@@ -606,29 +608,32 @@ impl EntityRecord {
             let stats = CloneBuildData::derive_rinick_floor(&mut build.attrs, name_factor);
             self.template.apply_derived_stats(stats);
         }
-        self.apply_runtime_stats_from_template();
+        self.apply_runtime_stats_from_template(commit_update_hooks);
     }
 
-    /// 把模板八围与派生数值同步到运行态：套用垂死增益、重算 at_boost 与仇恨修正，并按隐匿等级折算属性。
-    fn apply_runtime_stats_from_template(&mut self) {
-        #[cfg(not(feature = "no_debug"))]
-        let probe_pending_haste = crate::debug::probe_refresh()
-            .filter(|needle| self.template.name.contains(needle))
-            .and_then(|_| {
-                self.states
-                    .entries()
-                    .iter()
-                    .find_map(StateEntry::haste_runtime_value)
-                    .filter(|(faster, effective_faster, _)| faster != effective_faster)
-            });
-        self.states.refresh_effective_haste_faster();
-        #[cfg(not(feature = "no_debug"))]
-        if let Some(haste) = probe_pending_haste {
-            eprintln!(
-                "[refresh_probe:runtime] name={} pending={haste:?}\n{}",
-                self.template.name,
-                std::backtrace::Backtrace::force_capture(),
-            );
+    /// 把模板八围与派生数值同步到运行态；只有原版 updateStates 对应的入口才提交挂载钩子的结果。
+    fn apply_runtime_stats_from_template(&mut self, commit_update_hooks: bool) {
+        if commit_update_hooks {
+            #[cfg(not(feature = "no_debug"))]
+            let probe_pending_haste = crate::debug::probe_refresh()
+                .filter(|needle| self.template.name.contains(needle))
+                .and_then(|_| {
+                    self.states
+                        .entries()
+                        .iter()
+                        .find_map(StateEntry::haste_runtime_value)
+                        .filter(|(faster, effective_faster, _)| faster != effective_faster)
+                });
+            self.states.refresh_effective_haste_faster();
+            self.states.refresh_effective_charm_team();
+            #[cfg(not(feature = "no_debug"))]
+            if let Some(haste) = probe_pending_haste {
+                eprintln!(
+                    "[refresh_probe:runtime] name={} pending={haste:?}\n{}",
+                    self.template.name,
+                    std::backtrace::Backtrace::force_capture(),
+                );
+            }
         }
         let hide_level = self.runtime.hide.map(|hide| hide.level);
         self.runtime.attack = self.template.attack;
@@ -809,9 +814,18 @@ impl EntityRecord {
         self.runtime.shield = 0;
         self.states.clear_compressed_legacy_state(CompressedLegacyState::Shield);
         let generation = self.states.generation();
+        // 原版护盾只解绑自身，空净化或仅清护盾都不执行 updateStates。
+        // 疾走、铁壁、蘑菇解除时会重算；聚气、蓄力、垂死已由各自的解除逻辑重算。
+        let commit_update_hooks = self.states.entries().iter().any(|entry| {
+            entry.is_positive_state()
+                && matches!(
+                    entry.payload,
+                    StatePayload::Haste { .. } | StatePayload::Iron { .. } | StatePayload::MarioBoss { .. }
+                )
+        });
         let messages = self.states.clear_positive_states_with_ordered_messages(emit_state_cancel);
         if self.template.rinick.is_none() || generation != self.states.generation() {
-            self.refresh_runtime_stats_from_template();
+            self.refresh_runtime_stats_from_template_with_update_hooks(commit_update_hooks);
         }
         messages
     }

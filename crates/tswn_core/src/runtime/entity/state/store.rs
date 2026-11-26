@@ -287,6 +287,29 @@ impl StateStore {
         }
     }
 
+    /// 将仍挂载的魅惑来源队伍提交为有效队伍；缺失来源的兼容载荷保持原值。
+    pub fn refresh_effective_charm_team(&mut self) {
+        if !self.may_contain(StatePayloadKind::Charm) {
+            return;
+        }
+        let mut changed = false;
+        for entry in &mut self.entries {
+            if let StatePayload::Charm {
+                effective_team_idx,
+                source_team_idx: Some(source_team_idx),
+                ..
+            } = &mut entry.payload
+                && *effective_team_idx != Some(*source_team_idx)
+            {
+                *effective_team_idx = Some(*source_team_idx);
+                changed = true;
+            }
+        }
+        if changed {
+            self.generation = self.generation.wrapping_add(1);
+        }
+    }
+
     /// 应用诅咒倍率后的攻击总和。
     pub fn effective_atk_sum(&self, base_atk_sum: i32) -> i32 {
         if !self.may_contain(StatePayloadKind::Curse) {

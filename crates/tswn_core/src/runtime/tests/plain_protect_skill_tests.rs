@@ -71,6 +71,7 @@ fn plain_protect_can_target_clone_and_preserves_legacy_rng_consumption() {
 
 #[test]
 fn deferred_plain_protect_keeps_expiring_charm_team_until_state_chain_tail() {
+    // 此处只锁定 Rust 当前的延期清除顺序；原版魅惑到期时会在自己的回调里同步解除。
     let config = default_custom_runtime_import_config().expect("default runtime profile should build");
     let protect = config
         .registry

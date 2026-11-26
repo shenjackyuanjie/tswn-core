@@ -224,61 +224,125 @@ fn plain_charm_first_application_refreshes_pending_haste_multiplier() {
     assert!(target.states.entry(76).is_some());
 }
 
+/// 从当前 RC4 状态推进到下一次不会闪避的普通魅惑。
+fn cast_charm_with_hit(runtime: &mut CombatRuntime, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
+    let caster_magic = runtime.entities.get(caster).unwrap().runtime.magic;
+    let victim = &runtime.entities.get(target).unwrap().runtime;
+    let dodge_value = victim.agility + victim.resistance;
+    while PlayerRuntime::dodge(caster_magic, dodge_value, &mut runtime.rng.clone()) {
+        runtime.rng.next_u8();
+    }
+    runtime.drain_plain_charm_skill_into(caster, target, updates);
+}
+
 #[test]
-fn plain_charm_recharm_hands_target_to_latest_charmer_team() {
-    let config = default_custom_runtime_import_config().expect("default runtime profile should build");
-    let charm = config
-        .registry
-        .state_id_by_export_name(DEFAULT_CORE_CHARM_STATE_EXPORT)
-        .expect("default profile should register charm state");
+fn plain_charm_recharm_changes_source_before_effective_team() {
+    let config = default_custom_runtime_import_config().unwrap();
+    let heal = config.registry.skill_id_by_export_name(BuiltinActiveSkill::Heal.export_name()).unwrap();
     let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
         vec![
-            PlayerTemplate::new(1, "charmer_a", 0, 100, 3).with_magic(10_000),
-            PlayerTemplate::new(2, "victim", 1, 100, 3),
-            PlayerTemplate::new(3, "charmer_c", 2, 100, 3).with_magic(10_000),
+            PlayerTemplate::new(1, "Alice", 0, 100, 3).with_magic(10_000),
+            PlayerTemplate::new(2, "Bob", 1, 100, 3),
+            PlayerTemplate::new(3, "Carol", 2, 100, 3)
+                .with_magic(10_000)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(heal, 64)])),
         ],
         config.registry,
     ));
-    // 预置「charmer_a（实体 0，队伍 0）已魅惑 victim（实体 1，队伍 1）」的状态，
-    // 直接构造重魅惑前置条件，避免依赖首次施魅的命中滚签。
-    {
-        let target = runtime.entities.get_mut(EntityIdx(1)).unwrap();
-        target.states.add_entry(StateEntry::charm(
-            76,
-            charm,
-            0,
-            Some(0),
-            Some(0),
-            Some(1),
-            2,
-            SkillPriority(210),
-        ));
-    }
-    assert_eq!(runtime.plain_effective_team(EntityIdx(1)), 0);
-
-    // 强制命中：克隆 RNG 预演回避判定，会闪避就消费一粒随机数，直到必然命中。
-    // 沿用仓库内 berserk 测试相同的写法，避免 7/255 保底闪避把测试打抖。
-    while {
-        let mut probe = runtime.rng.clone();
-        PlayerRuntime::dodge(
-            runtime.entities.get(EntityIdx(2)).unwrap().runtime.magic,
-            runtime.entities.get(EntityIdx(1)).unwrap().runtime.agility
-                + runtime.entities.get(EntityIdx(1)).unwrap().runtime.resistance,
-            &mut probe,
-        )
-    } {
-        runtime.rng.next_u8();
-    }
-
+    let [alice, bob, carol] = [EntityIdx(0), EntityIdx(1), EntityIdx(2)];
+    let charm_value = |runtime: &CombatRuntime| {
+        runtime
+            .entities
+            .get(bob)
+            .unwrap()
+            .states
+            .entry(PLAIN_CHARM_STATE_KEY)
+            .and_then(StateEntry::charm_value)
+    };
     let mut updates = RunUpdates::new();
-    runtime.drain_plain_charm_skill_into(EntityIdx(2), EntityIdx(1), &mut updates);
 
-    // 二次魅惑（更换施魅者）后有效队伍必须跟上最新施魅者：legacy 在此覆盖魅惑
-    // 状态里的继承队伍（charm_state.r），目标 allyGroup 的延迟刷新由后续状态
-    // 行动（如减速）触发；本 Runtime 的 plain_effective_team 直接读状态载荷，
-    // 重魅惑不同步 effective_team_idx 就会让目标永远留在第一个施魅者的队伍，
-    // 与 legacy 相反。Boss 版魅惑（yuri）同样三个字段一起更新。
-    assert_eq!(runtime.plain_effective_team(EntityIdx(1)), 2);
+    cast_charm_with_hit(&mut runtime, alice, bob, &mut updates);
+    assert_eq!(charm_value(&runtime), Some((0, Some(0), Some(0), Some(1), 1)));
+    assert_eq!(runtime.protect_target_candidates(bob), [alice]);
+
+    cast_charm_with_hit(&mut runtime, carol, bob, &mut updates);
+    assert_eq!(charm_value(&runtime), Some((2, Some(0), Some(2), Some(1), 1)));
+    assert_eq!(runtime.protect_target_candidates(bob), [alice]);
+
+    cast_charm_with_hit(&mut runtime, carol, bob, &mut updates);
+    assert_eq!(charm_value(&runtime), Some((2, Some(0), Some(2), Some(1), 2)));
+    assert_eq!(runtime.protect_target_candidates(bob), [alice]);
+
+    // 首次迟缓会重算 Bob 本人；这时才应用新来源。
+    runtime.apply_plain_slow_into(carol, bob, false, &mut updates);
+    assert_eq!(charm_value(&runtime), Some((2, Some(2), Some(2), Some(1), 2)));
+    assert_eq!(runtime.protect_target_candidates(bob), [carol]);
+
+    runtime.entities.get_mut(bob).unwrap().runtime.hp -= 1;
+    runtime.drain_plain_heal_skill_into(carol, 0, bob, &mut updates);
+    assert!(charm_value(&runtime).is_none());
+    assert_eq!(runtime.plain_effective_team(bob), 1);
+}
+
+#[test]
+fn plain_charm_only_commits_when_disperse_removes_an_update_state_hook() {
+    let config = default_custom_runtime_import_config().unwrap();
+    let charm = config.registry.state_id_by_export_name(DEFAULT_CORE_CHARM_STATE_EXPORT).unwrap();
+    let haste = config.registry.state_id_by_export_name(DEFAULT_CORE_HASTE_STATE_EXPORT).unwrap();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "Alice", 0, 100, 3),
+            PlayerTemplate::new(2, "Bob", 1, 100, 3),
+            PlayerTemplate::new(3, "Carol", 2, 100, 3),
+        ],
+        config.registry,
+    ));
+    let [alice, bob, carol] = [EntityIdx(0), EntityIdx(1), EntityIdx(2)];
+    let owner = runtime.entities.get_mut(bob).unwrap();
+    owner.states.add_entry(StateEntry::charm(
+        PLAIN_CHARM_STATE_KEY,
+        charm,
+        2,
+        Some(0),
+        Some(2),
+        Some(1),
+        2,
+        SkillPriority(210),
+    ));
+
+    for effect in ["空净化", "护盾", "疾走", "蓄力"] {
+        let mut runtime = runtime.clone();
+        let owner = runtime.entities.get_mut(bob).unwrap();
+        match effect {
+            "护盾" => {
+                owner.runtime.shield = 10;
+                owner.states.register_compressed_legacy_state(CompressedLegacyState::Shield);
+            }
+            "疾走" => {
+                owner.states.add_entry(StateEntry::haste_with_effective_faster(
+                    PLAIN_HASTE_STATE_KEY,
+                    haste,
+                    2,
+                    2,
+                    3,
+                    SkillPriority(210),
+                ));
+            }
+            "蓄力" => {
+                // 预置蓄力；正常开启蓄力本身就会先提交，此处只验证解除的刷新行为。
+                owner.runtime.charge.active = true;
+            }
+            _ => {}
+        }
+        runtime.apply_disperse_hit_into(carol, bob, &mut RunUpdates::new());
+        let owner = runtime.entities.get(bob).unwrap();
+        assert_eq!(owner.runtime.shield, 0);
+        assert!(!owner.runtime.charge.active);
+        assert!(owner.states.entry(PLAIN_HASTE_STATE_KEY).is_none());
+        assert!(owner.states.entry(PLAIN_CHARM_STATE_KEY).is_some());
+        let ally = if matches!(effect, "疾走" | "蓄力") { carol } else { alice };
+        assert_eq!(runtime.protect_target_candidates(bob), [ally], "{effect}");
+    }
 }
 
 #[test]

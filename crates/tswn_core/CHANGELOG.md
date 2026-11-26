@@ -6,7 +6,11 @@
 - 核对 13 个原版 Boss、`SAITAMA@!` 和 Rinick 被吞噬时的技能等级、八围、MP 与行动点。以原版 0.5.5 对照 `rq=4` 和 `rq=6` 共 3,712 局，胜负一致，2,496 次吞噬事件在触发批次对齐。
 - 13 个原版 Boss 使用固定徽章；其他 `name@!` 玩家按自身名字生成徽章，含特殊身份的输入组和史莱姆子体按原版继承图标。PNG 和 RGBA 接口保持原格式。
 - 同公会的评分对局回退完整阵容构建时，先恢复场前实体，避免上局召唤物 ID 或状态泄漏到下一局。
-- 修复重魅惑时目标的有效队伍不更新：`drain_plain_charm_skill_into` 的「更换施魅者」分支只更新了 `group_id` 与 `source_team_idx`，`effective_team_idx` 仍透传第一个施魅者的旧值，导致 `plain_effective_team` 等读者把目标当成旧队伍的人。现在无论叠层还是更换施魅者，有效队伍一律取本次施魅者的值——与 Boss 版魅惑（`boss/yuri.rs` 本就三个字段一起更新）的写法对齐。legacy 是「延迟到目标下次状态行动才翻转」，本 Runtime 没有那份 allyGroup 缓存，直接取最新值；37 个冻结语料用例实测事件流与胜者逐字节一致，差异窗口无可观测影响，该差异已写进代码注释。
+- 修正魅惑的「重魅」语义：目标的有效队伍应当**延迟**提交，而不是在重魅瞬间翻转。原版有三份队伍信息——`Plr.y`（实际归属，魅惑不搬动实体、不改存活名册与胜负）、`CharmState.r`（本次要求继承的队伍，重魅时立即更新）、`Plr.z`（已生效的 allyGroup）。`updateStates()` 先令 `z = y`，再遍历状态更新钩子，仍挂载的魅惑才把 `z` 赋为 `CharmState.r`。所以只有受术者本人执行完整重算、且魅惑仍挂载时，才从旧队翻到新队；别人的重算、普通行动、单独 `calcAttrSum`、施术者后来换队或死亡都不提交。
+- `drain_plain_charm_skill_into` 与 `drain_plain_yuri_control_into` 的「更换施魅者」分支现在只更新 `source_team_idx`（尤里另有 `old_step + max(3, 初始人数)` 的时长规则），保留目标当前的 `effective_team_idx`。首施仍立即生效并完整重算。对缺少该字段的旧载荷，先固化旧 `group_id` 的读取结果，避免改来源就提前换队。
+- 刷新挂点放在 `EntityRecord::apply_runtime_stats_from_template`，与疾走倍率的提交并列，同时覆盖 `refresh_runtime_stats_from_template()` 与 `apply_derived_stats()` 两条入口。不挂在 `add_entry`／`clear_legacy_key`／`set_payload`——那些是容器操作，不是原版的重算边界。
+- 净化边界：空净化或只卸护盾时**不**提交魅惑队伍；解除疾走或蓄力时**提交**（对应原版这两个状态的解除会调 `updateStates`）。
+- 回归测试覆盖：异源重魅后 `group / source / effective` 为 `2 / 2 / 0`、保护候选仍是旧施魅者；同源叠层不翻转；目标首次迟缓后变为 `2 / 2 / 2`、候选切到新施魅者；治愈解除后回实际队伍 `1`；尤里异源重魅另有独立断言；四种净化边界分别验证。
 
 ### 新增
 

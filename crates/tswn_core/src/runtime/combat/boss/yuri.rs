@@ -75,13 +75,22 @@ impl CombatRuntime {
             .get(target)
             .and_then(|entity| entity.states.entry(PLAIN_CHARM_STATE_KEY))
             .and_then(StateEntry::charm_value);
-        if let Some((_group_id, _effective_team_idx, _source_team_idx, state_target, old_step)) = existing {
+        #[cfg(not(feature = "no_debug"))]
+        if crate::debug::probe_charm().is_some() {
+            eprintln!(
+                "[charm_probe:runtime:yuri_control] actor={} target={} source={caster_effective_team_idx} existing={existing:?}",
+                actor.0, target.0,
+            );
+        }
+        if let Some((_, effective_team_idx, _, state_target, old_step)) = existing {
+            // 心灵控制的重施增加整段步数，但同普通魅惑一样等待目标重算有效队伍。
+            let effective_team_idx = effective_team_idx.or_else(|| Some(self.plain_effective_team(target)));
             assert!(
                 self.entities.get_mut(target).unwrap().states.set_payload(
                     PLAIN_CHARM_STATE_KEY,
                     StatePayload::Charm {
                         group_id: actor.0 as usize,
-                        effective_team_idx: Some(caster_effective_team_idx),
+                        effective_team_idx,
                         source_team_idx: Some(caster_effective_team_idx),
                         target: state_target,
                         step: old_step + step,

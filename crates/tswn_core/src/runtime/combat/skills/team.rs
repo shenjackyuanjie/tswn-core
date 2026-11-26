@@ -224,9 +224,8 @@ impl CombatRuntime {
             .get(target)
             .and_then(|entity| entity.states.entry(76))
             .and_then(StateEntry::charm_value);
-        // 解构时丢弃旧 effective_team_idx：下面的比较只看 source_team_idx，
-        // 而载荷写回前会用本次施魅者的有效队伍整体覆盖，旧值没有读者。
-        if let Some((mut group_id, _, mut source_team_idx, state_target, mut step)) = existing {
+        // 重魅只更新继承来源；目标的有效队伍等自己的 updateStates 再提交。
+        if let Some((mut group_id, mut effective_team_idx, mut source_team_idx, state_target, mut step)) = existing {
             let existing_team_idx = source_team_idx.or_else(|| {
                 u32::try_from(group_id)
                     .ok()
@@ -236,16 +235,18 @@ impl CombatRuntime {
             if existing_team_idx == Some(caster_effective_team_idx) {
                 step += 1;
             } else {
+                // 旧载荷没有有效队伍时，先固化旧 group_id 的读取结果，避免改来源就提前换队。
+                effective_team_idx = effective_team_idx.or_else(|| Some(self.plain_effective_team(target)));
                 group_id = actor.0 as usize;
                 source_team_idx = Some(caster_effective_team_idx);
+                #[cfg(not(feature = "no_debug"))]
+                if crate::debug::probe_charm().is_some() {
+                    eprintln!(
+                        "[charm_probe:runtime:source_change] actor={} target={} source={caster_effective_team_idx} effective={effective_team_idx:?}",
+                        actor.0, target.0,
+                    );
+                }
             }
-            // 无论叠层还是更换施魅者，有效队伍都以本次施魅者的有效队伍为准：
-            // plain_effective_team 等读者只认 effective_team_idx，不同步就会让目标
-            // 永远停留在第一个施魅者的队伍。legacy 在此覆盖魅惑状态里的继承队伍
-            // （charm_state.r），目标 allyGroup 的延迟刷新由后续状态行动触发；
-            // 本 Runtime 没有那份延迟缓存，直接取最新值。Boss 版魅惑（yuri）
-            // 同样三个字段一起更新，见 boss/yuri.rs。
-            let effective_team_idx = Some(caster_effective_team_idx);
             if charge_active {
                 step += 3;
             }
