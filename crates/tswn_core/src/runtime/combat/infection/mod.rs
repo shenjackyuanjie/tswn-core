@@ -537,7 +537,8 @@ impl CombatRuntime {
             .wisdom
             + 64;
         if (self.rng.r127() as i32) < recover_threshold {
-            self.entities.get_mut(actor).unwrap().runtime.magic_point += 16;
+            let caster = self.entities.get_mut(actor).unwrap();
+            caster.runtime.magic_point = (caster.runtime.magic_point + 16).min(MAGIC_POINT_CAP);
         }
         updates.add_newline();
     }

@@ -4,7 +4,7 @@
 pub const SAITAMA_RETIREMENT_WINNER: &str = "SAITAMA";
 
 /// 内置 Boss 名字表；用于身份分类、默认技能与免疫规则查询。
-pub const BOSS_NAMES: [&str; 22] = [
+pub const BOSS_NAMES: [&str; 42] = [
     "mario",
     "sonic",
     "mosquito",
@@ -27,6 +27,26 @@ pub const BOSS_NAMES: [&str; 22] = [
     "咦",
     "TigerStar",
     "Shabby_fish",
+    "cirno",
+    "rin",
+    "megia",
+    "rumia",
+    "reimu",
+    "marisa",
+    "daiyousei",
+    "hong",
+    "koakuma",
+    "patchouli",
+    "sakuya",
+    "remilia",
+    "flandre",
+    "letty",
+    "chen",
+    "alice",
+    "phantom",
+    "youmu",
+    "yuyuko",
+    "ran",
 ];
 
 /// 加成角色名字表；对应 [`boost_value`] 的加成来源。
@@ -71,6 +91,26 @@ pub fn boss_display_name(name: &str) -> &str {
         "咦" => "咦",
         "TigerStar" => "豹星",
         "Shabby_fish" => "沙冰鱼",
+        "cirno" => "琪露诺",
+        "rin" => "冴月麟",
+        "megia" => "megia",
+        "rumia" => "露米娅",
+        "reimu" => "博丽灵梦",
+        "marisa" => "雾雨魔理沙",
+        "daiyousei" => "大妖精",
+        "hong" => "红美铃",
+        "koakuma" => "小恶魔",
+        "patchouli" => "帕秋莉",
+        "sakuya" => "十六夜咲夜",
+        "remilia" => "蕾米莉亚",
+        "flandre" => "芙兰朵露",
+        "letty" => "蕾蒂",
+        "chen" => "橙",
+        "alice" => "爱丽丝",
+        "phantom" => "幽灵乐团",
+        "youmu" => "魂魄妖梦",
+        "yuyuko" => "西行寺幽幽子",
+        "ran" => "八云蓝",
         _ => name,
     }
 }
@@ -109,6 +149,8 @@ pub fn boss_default_skill_levels(name: &str) -> &'static [(usize, u32)] {
         "yuri" => &[(25, 48), (27, 48)],
         "thanos" => &[(29, 80)],
         "wheel" => &[(30, 48)],
+        // 红美铃的守护仍复用普通被动。
+        "hong" => &[(26, 200)],
         _ => &[],
     }
 }
@@ -145,6 +187,10 @@ pub enum BossActionSkill {
     Fish,
     /// 实验体的三阶段行动表统一进入专属结算器。
     TestSubject,
+    /// 琪露诺的冰属性连招统一进入专属结算器。
+    Cirno,
+    /// Rosmontic 的专属行动与蓄力。
+    Rosmontic,
 }
 
 /// 按 0.5.5 中 `k4` 的插入顺序返回 Boss 主动技能及基础等级。
@@ -179,7 +225,29 @@ pub fn boost_value(name: &str) -> u32 {
 }
 
 /// 0.5.5 中 `k3` 使用 `SklAttack` 的 Boss；它们的默认攻击可以走魔法分支。
-pub fn boss_uses_skill_attack(name: &str) -> bool { matches!(boss_combat_name(name), "aokiji" | "ikaruga") }
+pub fn boss_uses_skill_attack(name: &str) -> bool {
+    matches!(
+        boss_combat_name(name),
+        "aokiji"
+            | "ikaruga"
+            | "reimu"
+            | "marisa"
+            | "daiyousei"
+            | "hong"
+            | "koakuma"
+            | "patchouli"
+            | "sakuya"
+            | "remilia"
+            | "flandre"
+            | "letty"
+            | "chen"
+            | "alice"
+            | "phantom"
+            | "youmu"
+            | "yuyuko"
+            | "ran"
+    )
+}
 
 /// Boss 行动概率的抽样条目数；`covid` / `lazy` / `testsubject` 为 0，其余为 1。
 pub fn boss_action_prob_count(name: &str) -> usize {
@@ -193,6 +261,20 @@ pub fn boss_action_prob_count(name: &str) -> usize {
 /// 返回 0 表示恒不免疫且不抽样；`piston` 是毒状态在 0.5.5 中的键名。
 pub fn boss_immune_threshold(name: &str, key: &str) -> i32 {
     match boss_combat_name(name) {
+        // 琪露诺没有状态免疫名单，冰伤免疫另由防御 hook 处理。
+        "cirno" | "megia" | "rumia" | "marisa" | "daiyousei" | "hong" | "koakuma" | "patchouli" | "sakuya" | "remilia"
+        | "flandre" | "letty" | "chen" | "alice" | "phantom" | "youmu" | "yuyuko" | "ran" => 0,
+        "reimu" => {
+            if matches!(key, "piston" | "poison" | "slow" | "ice") {
+                192
+            } else {
+                0
+            }
+        }
+        "rin" => match key {
+            "assassinate" | "charm" | "berserk" | "half" | "curse" | "exchange" | "slow" | "ice" => 240,
+            _ => 0,
+        },
         "saitama" => match key {
             "half" | "exchange" => 240,
             "berserk" | "slow" | "ice" => 192,
@@ -334,10 +416,32 @@ mod tests {
     }
 
     #[test]
-    fn boss_uses_skill_attack_only_for_aokiji_and_ikaruga() {
+    fn boss_uses_skill_attack_for_native_and_rosmontic_attackers() {
         assert!(boss_uses_skill_attack("aokiji"));
         assert!(boss_uses_skill_attack("ikaruga"));
-        for name in BOSS_NAMES.iter().copied().filter(|name| !matches!(*name, "aokiji" | "ikaruga")) {
+        for name in BOSS_NAMES.iter().copied().filter(|name| {
+            !matches!(
+                *name,
+                "aokiji"
+                    | "ikaruga"
+                    | "reimu"
+                    | "marisa"
+                    | "daiyousei"
+                    | "hong"
+                    | "koakuma"
+                    | "patchouli"
+                    | "sakuya"
+                    | "remilia"
+                    | "flandre"
+                    | "letty"
+                    | "chen"
+                    | "alice"
+                    | "phantom"
+                    | "youmu"
+                    | "yuyuko"
+                    | "ran"
+            )
+        }) {
             assert!(!boss_uses_skill_attack(name), "{name} 的 k3 不是 SklAttack");
         }
         assert!(!boss_uses_skill_attack("unknown"));
@@ -362,6 +466,10 @@ mod tests {
         assert_eq!(boss_immune_threshold("covid", "charm"), 192);
         assert_eq!(boss_immune_threshold("lazy", "curse"), 192);
         assert_eq!(boss_immune_threshold("aokiji", "charm"), 192);
+        // 科研 Boss 与其他 Boss 一样吃兜底免疫：净化按 84 抽样，控制类按 192。
+        assert_eq!(boss_immune_threshold("Squall", "disperse"), 84);
+        assert_eq!(boss_immune_threshold("Squall", "charm"), 192);
+        assert_eq!(boss_immune_threshold("Squall", "fire"), 84);
         assert_eq!(boss_immune_threshold("unknown", "charm"), 192);
     }
 }

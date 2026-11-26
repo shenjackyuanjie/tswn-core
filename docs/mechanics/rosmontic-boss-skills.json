@@ -1,0 +1,1186 @@
+{
+ "reimu": {
+  "len": 647,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "tha1b1",
+    "params": []
+   },
+   {
+    "cls": "tha1s1",
+    "params": [
+     "f=20"
+    ]
+   },
+   {
+    "cls": "tha1n1",
+    "params": [
+     "r=10",
+     "f=45"
+    ]
+   },
+   {
+    "cls": "tha1n2",
+    "params": [
+     "f=65"
+    ]
+   },
+   {
+    "cls": "tha1n3",
+    "params": [
+     "f=100"
+    ]
+   },
+   {
+    "cls": "tha1b2",
+    "params": [
+     "f=100"
+    ]
+   }
+  ]
+ },
+ "marisa": {
+  "len": 504,
+  "skills": [
+   {
+    "cls": "tha2ak",
+    "params": []
+   },
+   {
+    "cls": "tha2b1",
+    "params": [
+     "f=1000"
+    ]
+   },
+   {
+    "cls": "tha2s1",
+    "params": [
+     "f=33"
+    ]
+   },
+   {
+    "cls": "tha2n1",
+    "params": [
+     "f=54"
+    ]
+   },
+   {
+    "cls": "tha2n2",
+    "params": [
+     "f=65"
+    ]
+   },
+   {
+    "cls": "tha2n3",
+    "params": [
+     "f=150"
+    ]
+   }
+  ]
+ },
+ "rumia": {
+  "len": 449,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "tha3b2",
+    "params": []
+   },
+   {
+    "cls": "tha3n1",
+    "params": [
+     "f=45"
+    ]
+   },
+   {
+    "cls": "tha3n2",
+    "params": [
+     "f=85"
+    ]
+   },
+   {
+    "cls": "tha3s1",
+    "params": [
+     "f=200"
+    ]
+   },
+   {
+    "cls": "tha3b1",
+    "params": [
+     "f=100"
+    ]
+   }
+  ]
+ },
+ "daiyousei": {
+  "len": 456,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "tha4s1",
+    "params": [
+     "f=100"
+    ]
+   },
+   {
+    "cls": "tha4n1",
+    "params": [
+     "f=80"
+    ]
+   },
+   {
+    "cls": "tha4n2",
+    "params": [
+     "f=70"
+    ]
+   },
+   {
+    "cls": "tha4n3",
+    "params": [
+     "f=60"
+    ]
+   },
+   {
+    "cls": "tha4b1",
+    "params": [
+     "f=80"
+    ]
+   }
+  ]
+ },
+ "cirno": {
+  "len": 430,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "tha5b1",
+    "params": []
+   },
+   {
+    "cls": "tha5n1",
+    "params": [
+     "f=55"
+    ]
+   },
+   {
+    "cls": "tha5n2",
+    "params": [
+     "f=60"
+    ]
+   },
+   {
+    "cls": "tha5n3",
+    "params": [
+     "f=60"
+    ]
+   },
+   {
+    "cls": "tha5s1",
+    "params": [
+     "f=90"
+    ]
+   }
+  ]
+ },
+ "hong": {
+  "len": 543,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "tha6b1",
+    "params": [
+     "f=100"
+    ]
+   },
+   {
+    "cls": "tha6n2",
+    "params": [
+     "f=50"
+    ]
+   },
+   {
+    "cls": "tha6n3",
+    "params": [
+     "f=65"
+    ]
+   },
+   {
+    "cls": "tha6s1",
+    "params": [
+     "f=150"
+    ]
+   },
+   {
+    "cls": "dV",
+    "params": [
+     "f=200"
+    ]
+   }
+  ]
+ },
+ "koakuma": {
+  "len": 436,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "tha7b1",
+    "params": []
+   },
+   {
+    "cls": "tha7t1",
+    "params": [
+     "f=200"
+    ]
+   },
+   {
+    "cls": "tha7s1",
+    "params": [
+     "f=50"
+    ]
+   },
+   {
+    "cls": "tha7n1",
+    "params": [
+     "f=56"
+    ]
+   },
+   {
+    "cls": "tha7n2",
+    "params": [
+     "f=100"
+    ]
+   }
+  ]
+ },
+ "patchouli": {
+  "len": 743,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "tha8n1",
+    "params": [
+     "f=35"
+    ]
+   },
+   {
+    "cls": "tha8t1",
+    "params": [
+     "f=35"
+    ]
+   },
+   {
+    "cls": "tha8n2",
+    "params": [
+     "f=45"
+    ]
+   },
+   {
+    "cls": "tha8t2",
+    "params": [
+     "f=45"
+    ]
+   },
+   {
+    "cls": "tha8n3",
+    "params": [
+     "f=60"
+    ]
+   },
+   {
+    "cls": "tha8t3",
+    "params": [
+     "f=60"
+    ]
+   },
+   {
+    "cls": "tha8n4",
+    "params": [
+     "f=67"
+    ]
+   },
+   {
+    "cls": "tha8t4",
+    "params": [
+     "f=67"
+    ]
+   },
+   {
+    "cls": "tha8n5",
+    "params": [
+     "f=120"
+    ]
+   },
+   {
+    "cls": "tha8t5",
+    "params": [
+     "f=120"
+    ]
+   },
+   {
+    "cls": "tha8s1",
+    "params": [
+     "f=300"
+    ]
+   }
+  ]
+ },
+ "sakuya": {
+  "len": 456,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "tha9s1",
+    "params": [
+     "f=50"
+    ]
+   },
+   {
+    "cls": "tha9n2",
+    "params": [
+     "f=35"
+    ]
+   },
+   {
+    "cls": "tha9n1",
+    "params": [
+     "f=45"
+    ]
+   },
+   {
+    "cls": "tha9n3",
+    "params": [
+     "f=126"
+    ]
+   },
+   {
+    "cls": "tha9b1",
+    "params": [
+     "f=100"
+    ]
+   }
+  ]
+ },
+ "remilia": {
+  "len": 466,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "tha10b1",
+    "params": [
+     "f=70"
+    ]
+   },
+   {
+    "cls": "tha10n1",
+    "params": [
+     "f=50"
+    ]
+   },
+   {
+    "cls": "tha10n2",
+    "params": [
+     "f=70"
+    ]
+   },
+   {
+    "cls": "tha10s1",
+    "params": [
+     "f=300"
+    ]
+   }
+  ]
+ },
+ "flandre": {
+  "len": 456,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "tha11t1",
+    "params": [
+     "f=44"
+    ]
+   },
+   {
+    "cls": "tha11n1",
+    "params": [
+     "f=45"
+    ]
+   },
+   {
+    "cls": "tha11n2",
+    "params": [
+     "f=60"
+    ]
+   },
+   {
+    "cls": "tha11s1",
+    "params": [
+     "f=120"
+    ]
+   }
+  ]
+ },
+ "rin": {
+  "len": 306,
+  "skills": [
+   {
+    "cls": "tha12ak",
+    "params": []
+   },
+   {
+    "cls": "tha12b1",
+    "params": []
+   }
+  ]
+ },
+ "letty": {
+  "len": 480,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "tha5b1",
+    "params": []
+   },
+   {
+    "cls": "thb1b1",
+    "params": [
+     "f=48"
+    ]
+   },
+   {
+    "cls": "thb1n1",
+    "params": [
+     "f=48"
+    ]
+   },
+   {
+    "cls": "thb1s1",
+    "params": [
+     "f=132"
+    ]
+   },
+   {
+    "cls": "thb1n2",
+    "params": [
+     "f=66"
+    ]
+   },
+   {
+    "cls": "thb1n3",
+    "params": [
+     "f=132"
+    ]
+   }
+  ]
+ },
+ "chen": {
+  "len": 431,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "thb2b1",
+    "params": []
+   },
+   {
+    "cls": "thb2n2",
+    "params": [
+     "f=50"
+    ]
+   },
+   {
+    "cls": "thb2n1",
+    "params": [
+     "f=55"
+    ]
+   },
+   {
+    "cls": "thb2s1",
+    "params": [
+     "f=60"
+    ]
+   },
+   {
+    "cls": "thb2n3",
+    "params": [
+     "f=140"
+    ]
+   }
+  ]
+ },
+ "alice": {
+  "len": 1034,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "thb3n9",
+    "params": [
+     "f=5"
+    ]
+   },
+   {
+    "cls": "thb3s2",
+    "params": [
+     "f=1080"
+    ]
+   },
+   {
+    "cls": "thb3s1",
+    "params": [
+     "f=80"
+    ]
+   },
+   {
+    "cls": "thb3n1",
+    "params": [
+     "f=28"
+    ]
+   },
+   {
+    "cls": "thb3n2",
+    "params": [
+     "f=31"
+    ]
+   },
+   {
+    "cls": "thb3n3",
+    "params": [
+     "f=35"
+    ]
+   },
+   {
+    "cls": "thb3n4",
+    "params": [
+     "f=40"
+    ]
+   },
+   {
+    "cls": "thb3n8",
+    "params": [
+     "f=50"
+    ]
+   },
+   {
+    "cls": "thb3n6",
+    "params": [
+     "f=64"
+    ]
+   },
+   {
+    "cls": "thb3n7",
+    "params": [
+     "f=80"
+    ]
+   },
+   {
+    "cls": "thb3n5",
+    "params": [
+     "f=400"
+    ]
+   }
+  ]
+ },
+ "phantom": {
+  "len": 485,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "thb5s1",
+    "params": [
+     "f=0"
+    ]
+   },
+   {
+    "cls": "thb5n1",
+    "params": [
+     "f=40"
+    ]
+   },
+   {
+    "cls": "thb5n2",
+    "params": [
+     "f=58"
+    ]
+   },
+   {
+    "cls": "thb5n3",
+    "params": [
+     "f=110"
+    ]
+   },
+   {
+    "cls": "thb5b2",
+    "params": []
+   },
+   {
+    "cls": "thb5b1",
+    "params": [
+     "f=100"
+    ]
+   }
+  ]
+ },
+ "youmu": {
+  "len": 479,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "thb6s1",
+    "params": [
+     "f=30"
+    ]
+   },
+   {
+    "cls": "thb6n1",
+    "params": [
+     "f=36"
+    ]
+   },
+   {
+    "cls": "thb6n2",
+    "params": [
+     "f=51"
+    ]
+   },
+   {
+    "cls": "thb6n3",
+    "params": [
+     "f=82"
+    ]
+   },
+   {
+    "cls": "thb6b1",
+    "params": []
+   },
+   {
+    "cls": "thb6b2",
+    "params": [
+     "f=100"
+    ]
+   }
+  ]
+ },
+ "yuyuko": {
+  "len": 574,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "thb7s1",
+    "params": [
+     "f=29"
+    ]
+   },
+   {
+    "cls": "thb7t1",
+    "params": [
+     "f=55"
+    ]
+   },
+   {
+    "cls": "thb7n1",
+    "params": [
+     "f=56"
+    ]
+   },
+   {
+    "cls": "thb7n2",
+    "params": [
+     "f=81"
+    ]
+   },
+   {
+    "cls": "thb7b1",
+    "params": [
+     "f=100"
+    ]
+   },
+   {
+    "cls": "thb7b3",
+    "params": [
+     "f=300"
+    ]
+   },
+   {
+    "cls": "thb7b2",
+    "params": []
+   }
+  ]
+ },
+ "ran": {
+  "len": 403,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "thb8t1",
+    "params": [
+     "f=50"
+    ]
+   },
+   {
+    "cls": "thb8t2",
+    "params": [
+     "f=70"
+    ]
+   },
+   {
+    "cls": "thb8s1",
+    "params": [
+     "f=80"
+    ]
+   },
+   {
+    "cls": "thb8n1",
+    "params": [
+     "f=80"
+    ]
+   }
+  ]
+ },
+ "yukari": {
+  "len": 669,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "thb9s1",
+    "params": [
+     "f=25"
+    ]
+   },
+   {
+    "cls": "thb9n1",
+    "params": [
+     "r=10",
+     "f=40"
+    ]
+   },
+   {
+    "cls": "thb9n2",
+    "params": [
+     "f=63"
+    ]
+   },
+   {
+    "cls": "thb9t1",
+    "params": [
+     "f=223"
+    ]
+   },
+   {
+    "cls": "thb9t2",
+    "params": [
+     "f=223"
+    ]
+   },
+   {
+    "cls": "thb9b1",
+    "params": [
+     "f=100"
+    ]
+   },
+   {
+    "cls": "thb9b2",
+    "params": []
+   }
+  ]
+ },
+ "AL1S": {
+  "len": 940,
+  "skills": [
+   {
+    "cls": "baals1n1",
+    "params": []
+   },
+   {
+    "cls": "baals1b2",
+    "params": []
+   },
+   {
+    "cls": "baals1n5",
+    "params": [
+     "f=1000"
+    ]
+   },
+   {
+    "cls": "baals1n6",
+    "params": [
+     "f=1000"
+    ]
+   },
+   {
+    "cls": "baals1n2",
+    "params": [
+     "f=210"
+    ]
+   },
+   {
+    "cls": "baals1n4",
+    "params": [
+     "f=100"
+    ]
+   },
+   {
+    "cls": "baals1n3",
+    "params": [
+     "f=100"
+    ]
+   },
+   {
+    "cls": "baals1b1",
+    "params": [
+     "f=300"
+    ]
+   }
+  ]
+ },
+ "fox1": {
+  "len": 877,
+  "skills": [
+   {
+    "cls": "fox1a1",
+    "params": []
+   },
+   {
+    "cls": "fox1n0",
+    "params": [
+     "f=1000"
+    ]
+   },
+   {
+    "cls": "fox1n2",
+    "params": [
+     "f=1000"
+    ]
+   },
+   {
+    "cls": "fox1n3",
+    "params": [
+     "f=300"
+    ]
+   },
+   {
+    "cls": "fox1b2",
+    "params": [
+     "f=100"
+    ]
+   },
+   {
+    "cls": "fox1b1",
+    "params": [
+     "f=100"
+    ]
+   },
+   {
+    "cls": "fox1n1",
+    "params": [
+     "f=80"
+    ]
+   }
+  ]
+ },
+ "fox2": {
+  "len": 727,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "fox2n3",
+    "params": [
+     "f=0"
+    ]
+   },
+   {
+    "cls": "fox2n2",
+    "params": [
+     "f=55"
+    ]
+   },
+   {
+    "cls": "fox2n1",
+    "params": [
+     "f=66"
+    ]
+   },
+   {
+    "cls": "fox2a1",
+    "params": [
+     "f=256"
+    ]
+   }
+  ]
+ },
+ "fox3": {
+  "len": 824,
+  "skills": [
+   {
+    "cls": "fox3a1",
+    "params": []
+   },
+   {
+    "cls": "fox3n2",
+    "params": [
+     "f=5"
+    ]
+   },
+   {
+    "cls": "fox3n1",
+    "params": [
+     "f=160"
+    ]
+   },
+   {
+    "cls": "fox3b1",
+    "params": [
+     "f=100"
+    ]
+   }
+  ]
+ },
+ "fox4": {
+  "len": 650,
+  "skills": [
+   {
+    "cls": "fox4a1",
+    "params": []
+   },
+   {
+    "cls": "fox4n1",
+    "params": [
+     "f=200"
+    ]
+   },
+   {
+    "cls": "fox4n2",
+    "params": [
+     "f=40"
+    ]
+   }
+  ]
+ },
+ "ribbit1": {
+  "len": 793,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "ribbit1n0",
+    "params": [
+     "f=1000"
+    ]
+   },
+   {
+    "cls": "ribbit1n2",
+    "params": [
+     "f=60"
+    ]
+   },
+   {
+    "cls": "ribbit1n3",
+    "params": [
+     "f=64"
+    ]
+   },
+   {
+    "cls": "ribbit1b2",
+    "params": [
+     "f=100"
+    ]
+   },
+   {
+    "cls": "ribbit1b1",
+    "params": [
+     "f=100"
+    ]
+   }
+  ]
+ },
+ "ribbit2": {
+  "len": 771,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "ribbit2n3",
+    "params": [
+     "f=25"
+    ]
+   },
+   {
+    "cls": "ribbit2n1",
+    "params": [
+     "f=0"
+    ]
+   },
+   {
+    "cls": "ribbit2n2",
+    "params": [
+     "f=110"
+    ]
+   },
+   {
+    "cls": "ribbit2a1",
+    "params": [
+     "f=150"
+    ]
+   },
+   {
+    "cls": "ribbit2b1",
+    "params": []
+   }
+  ]
+ },
+ "ribbit3": {
+  "len": 770,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "ribbit3n3",
+    "params": [
+     "f=256"
+    ]
+   },
+   {
+    "cls": "ribbit3n1",
+    "params": [
+     "f=200"
+    ]
+   },
+   {
+    "cls": "ribbit3n2",
+    "params": [
+     "f=3000"
+    ]
+   },
+   {
+    "cls": "ribbit3b2",
+    "params": [
+     "f=100"
+    ]
+   },
+   {
+    "cls": "ribbit3b1",
+    "params": []
+   }
+  ]
+ },
+ "ribbit4": {
+  "len": 777,
+  "skills": [
+   {
+    "cls": "ribbit4a1",
+    "params": []
+   },
+   {
+    "cls": "ribbit4b1",
+    "params": []
+   },
+   {
+    "cls": "ribbit4n2",
+    "params": [
+     "f=66"
+    ]
+   },
+   {
+    "cls": "ribbit4b2",
+    "params": [
+     "f=100"
+    ]
+   },
+   {
+    "cls": "ribbit4n1",
+    "params": [
+     "f=100"
+    ]
+   },
+   {
+    "cls": "ribbit4b3",
+    "params": [
+     "f=100"
+    ]
+   }
+  ]
+ },
+ "megia": {
+  "len": 349,
+  "skills": [
+   {
+    "cls": "aK",
+    "params": []
+   },
+   {
+    "cls": "hKm",
+    "params": [
+     "f=300"
+    ]
+   },
+   {
+    "cls": "i9m",
+    "params": [
+     "f=300"
+    ]
+   }
+  ]
+ }
+}

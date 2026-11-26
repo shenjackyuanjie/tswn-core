@@ -313,6 +313,75 @@ fn step_suffix(step: i32) -> String { if step > 0 { format!(" ({step})") } else 
 /// 汇总实体当前的状态标签：聚气、蓄力、隐匿、潜行、各类状态效果与垂死。
 fn status_labels(entity: &EntityRecord) -> Vec<String> {
     let mut labels = Vec::new();
+    // 显示独立状态，便于区分得意与传统疾走、逮捕与中毒。
+    if let Some(s) = &entity.runtime.quilt_minion {
+        if s.sleeping {
+            push_status_label(&mut labels, "钻进被子");
+        }
+        if !s.pride.is_empty() {
+            push_status_label(&mut labels, format!("得意 ×{}", s.pride.len()));
+        }
+    }
+    if !entity.runtime.quilt_arrests.is_empty() {
+        push_status_label(&mut labels, "逮捕");
+    }
+    if let Some(s) = &entity.runtime.rosmontic {
+        // 回放直接读取随快照保存的专属计时与阶段。
+        if s.cat {
+            push_status_label(&mut labels, "化猫");
+        }
+        if s.phantom_members > 0 {
+            push_status_label(&mut labels, format!("乐团 {}人", s.phantom_members.count_ones()));
+        }
+        if s.guard == 1 {
+            push_status_label(&mut labels, "招架");
+        }
+        if s.butterfly_prepared || s.butterfly_revived {
+            push_status_label(&mut labels, format!("反魂蝶 {}", s.butterfly_turns));
+        }
+        if s.divine_turns > 0 {
+            push_status_label(&mut labels, format!("神现 {}", s.divine_turns));
+        }
+        if s.charged_skill.is_some() && matches!(entity.template.name.as_str(), "flandre" | "yuyuko") {
+            push_status_label(&mut labels, "蓄力");
+        }
+        if s.dream > 0 {
+            push_status_label(&mut labels, format!("梦想天生 {}", s.dream));
+        }
+        if s.barrier_turns > 0 {
+            push_status_label(&mut labels, format!("二重结界 {}", s.barrier_turns));
+        }
+        if s.aura {
+            push_status_label(&mut labels, "气场");
+        }
+        if s.scarlet > 0 {
+            push_status_label(&mut labels, format!("鲜红印记 {}", s.scarlet));
+        }
+        if s.time_stop > 0 {
+            push_status_label(&mut labels, "世界：时停中");
+        }
+        if s.burn_turns > 0 {
+            push_status_label(&mut labels, format!("烧伤 {}", s.burn_turns));
+        }
+        if entity.template.name == "marisa" && entity.runtime.flags.contains(PlayerKindFlags::BOSS) {
+            push_status_label(&mut labels, format!("八卦炉 {}", s.energy));
+        }
+    }
+    if let Some(s) = &entity.runtime.squall {
+        push_status_label(&mut labels, format!("测试样本 {}", s.samples));
+        if s.attendance {
+            push_status_label(&mut labels, "出勤：防抗翻倍");
+        }
+        if s.turn == 2 {
+            push_status_label(&mut labels, "正在出勤回来的路上");
+        }
+        if s.red {
+            push_status_label(&mut labels, "红温");
+        }
+    }
+    if entity.runtime.squall_taunt.is_some() {
+        push_status_label(&mut labels, "嘲讽变换");
+    }
     if entity.runtime.accumulate.active {
         push_status_label(&mut labels, "聚气");
     }

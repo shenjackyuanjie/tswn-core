@@ -2,8 +2,106 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { actorToken, buildFrameRows } from "../examples/show-render.js";
-import { createBattleStreamSource } from "../examples/show-wasm.js";
+import { createBattleStreamSource, normalizeStateRateRounds, loadBattleIcon } from "../examples/show-wasm.js";
 import { actorHpMetrics } from "../examples/show-utils.js";
+import { BattleStreamController } from "../examples/show-stream.js";
+
+// 验证召唤物与本体实际绘制的 Emoji，普通名字仍由引擎生成。
+test("boss and summoned animal icons use the requested emoji", () => {
+  const oldDocument = globalThis.document;
+  const painted = [];
+  globalThis.document = {createElement() {return {
+    getContext() {return {fillText(value) {painted.push(value);}};},
+    toDataURL() {return 'data:image/png;base64,' + painted.at(-1);},
+  };}};
+  const api = {name_to_png_base64(key) {return 'fallback:' + key;}};
+  try {
+    for (const [key, emoji] of [['quilt@!', '🛏️'], ['quilt-monkey', '🐵'], ['quilt-fish', '🐟️'], ['smdd-leopard', '🐆']]) {
+      assert.equal(loadBattleIcon(api, key), 'data:image/png;base64,' + emoji);
+      assert.equal(loadBattleIcon(api, key), 'data:image/png;base64,' + emoji);
+    }
+    assert.deepEqual(painted, ['🛏️', '🐵', '🐟️', '🐆']);
+    assert.equal(loadBattleIcon(api, 'quilt@red'), 'fallback:quilt@red');
+  } finally {
+    if (oldDocument === undefined) delete globalThis.document;
+    else globalThis.document = oldDocument;
+  }
+});
+
+// 真实流适配器与历史控制器共同验证采样缓存的生命周期。
+test("state rates finish ten thousand samples once per frame and reuse history", async () => {
+  let samples = 0, freed = 0;
+  const states = [{id: 0, team_index: 0, owner_id: null}, {id: 1, team_index: 1, owner_id: null}];
+  const api = { BattleSession: class {
+    constructor() { this.frames = 0; }
+    initial_states() { return states; }
+    next_frame() { return {frame_index: this.frames++, states, rows: []}; }
+    current_win_rate_batch(start, count) { samples += count; return [count, 0, 0]; }
+    is_done() { return this.frames === 2; }
+    result() { return {status: 'finished', final_states: states}; }
+    free() { freed++; }
+  }};
+  const makeSource = () => createBattleStreamSource('a\n\nb', null, null, null, {api, strategy: 'legacy', stateRates: true});
+  const controller = new BattleStreamController(await makeSource(), {paused: true});
+  const first = await controller.ensureFrame(0);
+  assert.deepEqual(first.state_rates, {counts: [10000, 0, 0], rounds: 10000});
+  await controller.ensureFrame(1);
+  assert.equal(samples, 20000);
+  controller.setPlaybackFrame(-1);
+  assert.equal(await controller.ensureFrame(0), first);
+  controller.setPlaybackFrame(0);
+  await controller.ensureFrame(1);
+  assert.equal(samples, 20000);
+  controller.dispose();
+  assert.equal(controller.history.length, 0);
+  const nextBattle = new BattleStreamController(await makeSource(), {paused: true});
+  const newFirst = await nextBattle.ensureFrame(0);
+  assert.notEqual(newFirst, first);
+  assert.equal(samples, 30000);
+  nextBattle.dispose();
+  assert.equal(freed, 2);
+});
+
+// 非整批采样必须精确计数，且会话创建后不受外部配置变化影响。
+test("state rate sample counts are exact and fixed for the battle", async () => {
+  for (const total of [1, 7, 13, 10001]) {
+    const batches = [];
+    let frames = 0;
+    const states = [{id: 0, team_index: 0}, {id: 1, team_index: 1}];
+    const api = { BattleSession: class {
+      initial_states() { return states; }
+      next_frame() { return {frame_index: frames++, states, rows: []}; }
+      current_win_rate_batch(start, count) { batches.push([start, count]); return [count, 0, 0]; }
+      is_done() { return frames === 2; }
+      result() { return {status: "finished", final_states: states}; }
+      free() {}
+    }};
+    const options = {api, strategy: "legacy", stateRates: true, stateRateRounds: total};
+    const controller = new BattleStreamController(await createBattleStreamSource("a\n\nb", null, null, null, options), {paused: true});
+    options.stateRateRounds = 19;
+    const first = await controller.ensureFrame(0);
+    assert.deepEqual(first.state_rates, {counts: [total, 0, 0], rounds: total});
+    assert.equal(batches.at(-1)[1], total % 8 || 8);
+    assert.ok(batches.every(([start, count]) => start + count <= total));
+    const calls = batches.length;
+    controller.setPlaybackFrame(-1);
+    assert.equal(await controller.ensureFrame(0), first);
+    assert.equal(batches.length, calls);
+    const second = await controller.ensureFrame(1);
+    assert.equal(second.state_rates.rounds, total);
+    assert.equal(batches.reduce((sum, [, count]) => sum + count, 0), 2 * total);
+    controller.dispose();
+  }
+});
+
+// 空值、零和非法数回到默认值，避免除零或无效 WASM 参数。
+test("state rate sample counts normalize to positive u32 values", () => {
+  for (const value of [undefined, "", 0, -1, 1.5, NaN, Infinity, "abc"]) {
+    assert.equal(normalizeStateRateRounds(value), 10000);
+  }
+  assert.equal(normalizeStateRateRounds("13"), 13);
+  assert.equal(normalizeStateRateRounds(4294967296), 4294967295);
+});
 
 function streamApi({ failAt = -1, initialFailure = false } = {}) {
   const calls = { pulls: 0, frees: 0, eager: 0, options: null };
@@ -142,4 +240,23 @@ test("canonical clips preserve multi-target recovery, death, delay and dynamic e
   assert.equal(chunks.reduce((sum, chunk) => sum + chunk.delay, 0), 190);
   assert.equal(players.get(3).minion_kind, "summon");
   assert.deepEqual(buildFrameRows({ states, updates: frame.updates }, 0, [], new Map()), []);
+});
+
+test("search strategy configures the session before reading initial state", async () => {
+  const fake = streamApi();
+  fake.api.BattleSession.prototype.set_search = function (...budget) {
+    fake.calls.budget = budget;
+    assert.equal(fake.calls.pulls, 0);
+  };
+  const source = await createBattleStreamSource("alpha", null, null, null, { api: fake.api, strategy: "search" });
+  assert.deepEqual(fake.calls.budget, [16, 128, 4, 1]);
+  assert.equal(fake.calls.pulls, 0);
+  source.dispose();
+  assert.equal(fake.calls.frees, 1);
+});
+
+test("search refuses stale WASM and releases its session", async () => {
+  const fake = streamApi();
+  await assert.rejects(createBattleStreamSource("alpha", null, null, null, { api: fake.api, strategy: "search" }), /Clever/);
+  assert.equal(fake.calls.frees, 1);
 });

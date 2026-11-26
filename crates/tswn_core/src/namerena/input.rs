@@ -3,9 +3,10 @@ use std::fmt;
 use super::{BOOST_NAMES, BOSS_NAMES, PlayerOverlay};
 
 /// 单个名字的最大字节数（UTF-8）。
-pub const NAME_MAX_LEN: usize = 256;
+/// 放宽到 1024：511 字节特殊名字与影子名后缀（?shadow）需要超过原版 256 上限。
+pub const NAME_MAX_LEN: usize = 1024;
 /// 单个阵营名的最大字节数（UTF-8）。
-pub const TEAM_MAX_LEN: usize = 256;
+pub const TEAM_MAX_LEN: usize = 1024;
 /// seed 行前缀；匹配区分大小写。
 pub const SEED_PREFIX: &str = "seed:";
 /// Rinick 属性修改器的 Boss 别名输入。

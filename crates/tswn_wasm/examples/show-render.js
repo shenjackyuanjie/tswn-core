@@ -861,3 +861,39 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
   }
   return buildStructuredFrameRows(frame, roundIndex, playersById);
 }
+
+/** 内部属性转为外显口径；速度先移除行动条基值，所有七围补回 36。 */
+export function displayBattleAttribute(value, key) {
+  if (!Number.isFinite(value)) return "-";
+  return value + 36 - (key === "speed" ? 160 : 0);
+}
+
+/** 战斗属性表：每个角色一行，全部保留并由容器限制可见行数。 */
+export function statsPanelHtml(states) {
+  if (!Array.isArray(states) || !states.length) {
+    return "";
+  }
+  try {
+    return states
+      .map((s) => {
+        const hp = Number.isFinite(s.hp) ? s.hp : 0;
+        const maxHp = Number.isFinite(s.max_hp) ? s.max_hp : 0;
+        const alive = s.alive !== false;
+        let icon = "";
+        try {
+          icon = renderIconSprite(s.icon_class_id ?? s.id, "stat-icon icon-sprite");
+        } catch {
+          icon = "";
+        }
+        return `<div class="battle-stat-row${alive ? "" : " is-dead"}">
+      <span class="battle-stat-icon">${icon}</span>
+      <span class="battle-stat-name">${escapeHtml(s.display_name ?? s.id_name ?? String(s.id))}</span>
+      <span class="battle-stat-hp">HP ${hp}/${maxHp}</span>
+      <span>攻 ${displayBattleAttribute(s.attack, "attack")}</span><span>防 ${displayBattleAttribute(s.defense, "defense")}</span><span>速 ${displayBattleAttribute(s.speed, "speed")}</span><span>敏 ${displayBattleAttribute(s.agility, "agility")}</span><span>魔 ${displayBattleAttribute(s.magic, "magic")}</span><span>抗 ${displayBattleAttribute(s.resistance, "resistance")}</span><span>智 ${displayBattleAttribute(s.wisdom, "wisdom")}</span>
+    </div>`;
+      })
+      .join("");
+  } catch {
+    return "";
+  }
+}

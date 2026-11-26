@@ -34,6 +34,24 @@ pub struct BattleSession {
 
 #[wasm_bindgen]
 impl BattleSession {
+    /// 返回当前状态续局的双方胜场（运行队伍升序）和未决场数。
+    pub fn current_win_rate_batch(&self, start: u32, count: u32) -> WasmResult<Vec<u32>> {
+        self.inner.current_win_rate_batch(start, count).map_err(cli_api_error)
+    }
+
+    /// 启用 Clever 搜索；未调用时保持原版策略，预算由 core 校验。
+    pub fn set_search(&mut self, samples: u32, horizon: u32, shortlist: u32, seed: u32) -> WasmResult<()> {
+        self.inner
+            .set_search(tswn_core::runtime::search::SearchConfig {
+                team: None,
+                samples: samples as usize,
+                horizon: horizon as usize,
+                shortlist: shortlist as usize,
+                seed: seed as u64,
+            })
+            .map_err(cli_api_error)
+    }
+
     #[wasm_bindgen(constructor)]
     /// 解析空行分队的 raw 和可选 options；max_rounds 为正数回合预算。
     /// 未提供选项时使用 core 默认值；错误抛出 `{code, message}`，不是 Error 实例。

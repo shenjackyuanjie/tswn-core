@@ -239,6 +239,8 @@ fn classify_message_tone(update: &RunUpdate, rendered: &str) -> &'static str {
 /// 把事件语气字符串映射为 ReplayTone。
 fn replay_tone_from_event_tone(tone: &str) -> ReplayTone {
     match tone {
+        // 独立台词与核心回放使用相同的稳定类型名。
+        "dialogue" => ReplayTone::Dialogue,
         "damage" => ReplayTone::Damage,
         "recover" => ReplayTone::Recover,
         "knockout" | "win" => ReplayTone::Knockout,
@@ -250,6 +252,7 @@ fn replay_tone_from_event_tone(tone: &str) -> ReplayTone {
 /// 把 ReplayTone 转换为稳定字符串。
 fn replay_tone_to_str(tone: ReplayTone) -> &'static str {
     match tone {
+        ReplayTone::Dialogue => "dialogue",
         ReplayTone::Normal => "normal",
         ReplayTone::Damage => "damage",
         ReplayTone::Recover => "recover",

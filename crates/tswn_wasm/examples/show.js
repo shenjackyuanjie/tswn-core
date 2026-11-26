@@ -7,30 +7,36 @@
  * @typedef {import("./show-types.js").InvolvedSet} InvolvedSet
  */
 
-import { createShowPlayback } from "./show-playback.js";
-import { createThemeControls, setupPlayerHighlight, isEditableKeyTarget, copyTextToClipboard } from "./show-ui.js";
+import { createShowPlayback } from "./show-playback.js?v=20261126ui1";
+import { createRateChart } from "./show-rate-chart.js?v=20261125line1";
+import { setupBossPicker } from "./show-boss-picker.js?v=20261126grid1";
+import { setupRateWindow } from "./show-rate-window.js?v=20261125png1";
+import { createThemeControls, setupPlayerHighlight, isEditableKeyTarget, copyTextToClipboard } from "./show-ui.js?v=20261125rates1";
 import {
   buildIconClassCss,
+  escapeHtml,
   formatError,
   validateReplayInput,
-} from "./show-utils.js";
-import { buildPlayerDetailHtml } from "./show-detail.js";
-import { renderIdleState } from "./show-render.js";
+} from "./show-utils.js?v=20261125rates1";
+import { buildPlayerDetailHtml } from "./show-detail.js?v=20261125rates1";
+import { renderIdleState, statsPanelHtml } from "./show-render.js?v=20261126ui1";
 import {
   createReplayPlan,
   appendFrameToReplayPlan,
   markReplayPlanComplete,
-} from "./show-replay.js";
+} from "./show-replay.js?v=20261125rates1";
 import {
   buildShowShareUrl,
   readStaticReplayInputFromSearch,
-} from "./show-routing.js";
-import { ensureApi, createBattleStreamSource } from "./show-wasm.js";
-import { parseScoreTestInput, scoreCheckpointHtml, startScoreWorker } from "./show-score-test.js";
+} from "./show-routing.js?v=20261125rates1";
+import { ensureApi, createBattleStreamSource, normalizeStateRateRounds, loadBattleIcon } from "./show-wasm.js?v=20261126boss12";
 
-import { BattleStreamController } from "./show-stream.js";
-import { BattleDisplay } from "./show-display.js";
-import { BattleMetrics } from "./show-metrics.js";
+import { parseScoreTestInput, scoreCheckpointHtml } from "./show-score-test.js?v=20261125rates1";
+import { winRateTableHtml } from "./show-win-rate.js?v=20261125rates1";
+
+import { BattleStreamController } from "./show-stream.js?v=20261125rates1";
+import { BattleDisplay } from "./show-display.js?v=20261125rates1";
+import { BattleMetrics } from "./show-metrics.js?v=20261125rates1";
 
 // ============================================================================
 // 默认示例输入 — 可在页面中直接点击"示例"按钮填入
@@ -73,8 +79,6 @@ const inputStatus = document.querySelector("#inputStatus");
 const plistMeta = document.querySelector("#plistMeta");
 /** @type {HTMLElement} */
 const headerMeta = document.querySelector("#headerMeta");
-const runtimeModeInfo = document.querySelector("#runtimeModeInfo");
-const replayModeText = runtimeModeInfo.textContent;
 /** @type {HTMLElement} */
 const detailContent = document.querySelector("#detailContent");
 /** @type {HTMLInputElement} */
@@ -86,6 +90,45 @@ const versionInfo = document.querySelector("#versionInfo");
 const coreVersionInfo = document.querySelector("#coreVersionInfo");
 /** @type {HTMLElement} */
 const modulePathInfo = document.querySelector("#modulePathInfo");
+/** @type {HTMLInputElement} */
+const stateRateToggle = document.querySelector("#stateRateToggle");
+/** @type {HTMLInputElement} 每场开始时捕获局数，回放不改变缓存口径。 */
+const stateRateRounds = document.querySelector("#stateRateRounds");
+stateRateRounds.addEventListener("input", () => {
+  stateRateRounds.value = stateRateRounds.value.replace(/[^0-9]/g, "");
+});
+function readStateRateRounds() {
+  const rounds = normalizeStateRateRounds(stateRateRounds.value);
+  stateRateRounds.value = String(rounds);
+  return rounds;
+}
+stateRateRounds.addEventListener("change", readStateRateRounds);
+const strategySelect = document.querySelector("#strategySelect");
+/** @type {HTMLInputElement} 评分验证需显式勾选，普通对局不读取此选项。 */
+const scoreLegacyOpponents = document.querySelector("#scoreLegacyOpponents");
+scoreLegacyOpponents.checked = false;
+/** @type {HTMLInputElement} 挑战 Boss：勾选后自动把所选 Boss 追加为对手，无需手写 xx@!。 */
+const bossChallenge = document.querySelector("#bossChallenge");
+/** @type {HTMLSelectElement} */
+const bossSelect = document.querySelector("#bossSelect");
+bossChallenge.checked = false;
+bossSelect.disabled = true;
+bossChallenge.addEventListener("change", () => {
+  bossSelect.disabled = !bossChallenge.checked;
+});
+// 默认原版；开启测算切换到原版，选择 Clever 关闭测算。
+strategySelect.value = new URLSearchParams(window.location.search).get("strategy") === "search" ? "search" : "legacy";
+stateRateToggle.addEventListener("change", () => {
+  if (stateRateToggle.checked) strategySelect.value = "legacy";
+  // 局数未变时继续复用同场历史；重新开启且局数变化时创建新测算。
+  const rounds = readStateRateRounds();
+  if (stateRateToggle.checked && currentBattle && (!currentBattle.state_rates_enabled || currentBattle.state_rate_rounds !== rounds)) void startBattle();
+  else updateStateRates();
+});
+strategySelect.addEventListener("change", () => {
+  if (strategySelect.value === "search") stateRateToggle.checked = false;
+  updateStateRates();
+});
 /** @type {HTMLButtonElement} */
 const startBtn = document.querySelector("#startBtn");
 /** @type {HTMLButtonElement} */
@@ -174,12 +217,13 @@ stepForwardFrameBtn.setAttribute("aria-keyshortcuts", "ArrowDown");
 /** @type {FightReplay|null} 当前已生成的回放数据 */
 let currentBattle = null;
 let streamController = null;
+let scoreWorker = null;
+window.addEventListener("pagehide", () => scoreWorker?.terminate());
 let battleDisplay = null;
 let battleMetrics = null;
 let metricsReported = false;
 let streamError = null;
 let battleGenerationToken = 0;
-let stopScoreWorker = null;
 /** @type {FightState[]} 当前左侧面板对应的状态快照 */
 let currentVisibleStates = [];
 /** @type {number|null} 当前详情面板打开的 playerId */
@@ -240,11 +284,107 @@ const {
   get playbackStartedAt() { return playbackStartedAt; }, set playbackStartedAt(value) { playbackStartedAt = value; },
   get playbackPaused() { return playbackPaused; }, set playbackPaused(value) { playbackPaused = value; },
   get playbackFinished() { return playbackFinished; }, set playbackFinished(value) { playbackFinished = value; },
-}, { playerList, battleRows, endPanel, headerMeta, plistMeta, normalBtn, fastBtn, pauseBtn, shareBtn, stepControls, stepBackEventBtn, stepForwardEventBtn, stepBackFrameBtn, stepForwardFrameBtn, rememberPlayers, clearPlayerHighlight, closePanel, visibleStatesForCursor });
+}, { playerList, battleRows, endPanel, headerMeta, plistMeta, normalBtn, fastBtn, pauseBtn, shareBtn, stepControls, stepBackEventBtn, stepForwardEventBtn, stepBackFrameBtn, stepForwardFrameBtn, rememberPlayers, clearPlayerHighlight, closePanel, visibleStatesForCursor, updateStats, updateStateRates });
 
 // ============================================================================
 // 胶水函数（直接操作 DOM 或全局状态）
 // ============================================================================
+
+// 图表独立保留 DOM，避免胜率刷新时中断历史滑块拖动。
+let stateRateChart = null;
+
+/** 只显示已播放完的边界，回退时复用对应帧的胜率。 */
+function updateStateRates() {
+  let panel = document.querySelector("#stateRates");
+  if (!panel) { panel = document.createElement("section"); panel.id = "stateRates"; setupRateWindow(panel, exportStateRatesPng); document.body.append(panel); }
+  const enabled = stateRateToggle.checked && currentBattle?.state_rates_enabled && currentBattle.strategy !== "search" && new Set(currentBattle.players.map(p => p.team_index)).size === 2;
+  panel.hidden = !enabled;
+  // 完整播至终局后解锁；同场回退或重播仍保留导出资格。
+  if (currentBattle?.source_done && playbackFinished) currentBattle.rate_export_ready = true;
+  panel.querySelector('.rate-export-png').disabled = !enabled || !currentBattle?.rate_export_ready || panel.dataset.exporting === 'true';
+  const content = panel.querySelector(".rate-window-content");
+  if (!enabled) { content.innerHTML = ""; stateRateChart = null; return; }
+  if (!stateRateChart) {
+    content.innerHTML = '<div class="rate-summary"></div><div class="rate-chart"></div>';
+    stateRateChart = createRateChart(panel.querySelector(".rate-chart"), cursor => stepPlaybackTo(cursor));
+  }
+  const completed = currentPlan?.frames.filter(f => playbackCursor >= f.end).at(-1);
+  const rates = completed?.frame.state_rates;
+  const teams = [...new Set(currentBattle.players.map(p => p.team_index))].sort((a,b) => a-b);
+  const rows = teams.map((team, i) => {
+    const names = currentBattle.players.filter(p => p.team_index === team).map(p => {
+      battleDisplay.state(p);
+      const icon = battleDisplay.iconBase64.get(p.icon_key ?? p.id_name ?? ('#' + p.id)) ?? '';
+      return '<span class="rate-member"><img alt="" src="' + escapeHtml(icon) + '">' + escapeHtml(p.id_name ?? p.display_name) + '</span>';
+    }).join("");
+    // 0% 红、50% 黄、100% 绿；高明度底色保持黑字清晰。
+    const percent = rates ? Math.max(0, Math.min(100, rates.counts[i] / rates.rounds * 100)) : null;
+    const badgeStyle = percent == null ? '' : ' style="--rate-hue:' + (percent * 1.2).toFixed(2) + '"';
+    return '<div class="rate-team"><div>' + names + '</div><strong class="rate-value' + (percent == null ? ' is-pending' : '') + '"' + badgeStyle + '>' + (percent == null ? '等待测算' : percent.toFixed(2) + '%') + '</strong></div>';
+  }).join("");
+  const summaryHtml = '<div>' + (rates ? '100% · ' + rates.rounds.toLocaleString() + ' 场' : '每步完整测算 ' + currentBattle.state_rate_rounds.toLocaleString() + ' 场') + '</div>' + rows + (rates?.counts[2] ? '<small>未决 ' + rates.counts[2] + ' 场（计入总场数）</small>' : '');
+  const summary = panel.querySelector(".rate-summary");
+  if (summary.innerHTML !== summaryHtml) summary.innerHTML = summaryHtml;
+  const inputTeams = [...teams].sort((a,b) => {
+    const group = team => currentBattle.players.find(p => p.team_index === team)?.input_team_index ?? team;
+    return group(a) - group(b);
+  });
+  const icons = inputTeams.map(team => {
+    const player = currentBattle.players.find(p => p.team_index === team);
+    battleDisplay.state(player);
+    return battleDisplay.iconBase64.get(player.icon_key ?? player.id_name ?? ('#' + player.id));
+  });
+  stateRateChart.update(currentBattle, currentPlan, playbackCursor, icons);
+}
+
+/** 结束后导出整场缓存，名单读取本场原始输入而非可修改的输入框。 */
+async function exportStateRatesPng() {
+  if (!currentBattle?.rate_export_ready || !stateRateChart) return;
+  const panel = document.querySelector('#stateRates'), button = panel.querySelector('.rate-export-png');
+  panel.dataset.exporting = 'true'; button.disabled = true; button.textContent = '正在导出…';
+  const players = [...currentBattle.players].sort((a,b)=>a.id-b.id);
+  let playerIndex = 0;
+  const rawLines = currentBattle.raw_input.split(/\r?\n/).map(line=>line.trim());
+  const seedLines = rawLines.filter(line=>/^seed:/i.test(line));
+  const rosterLines = rawLines.filter(line=>!/^seed:/i.test(line)).join('\n').trim().replace(/\n{3,}/g,'\n\n').split('\n');
+  const footer = rosterLines.map(text=>{
+    if(!text) return {text:''};
+    const player=players[playerIndex++];
+    if(!player) return {text};
+    battleDisplay.state(player);
+    return {text,icon:battleDisplay.iconBase64.get(player.icon_key ?? player.id_name ?? ('#'+player.id))};
+  });
+  footer.push({text:''},... (seedLines.length ? seedLines : ['seed：（空 seed）']).map(text=>({text})));
+  try { await stateRateChart.downloadPng(footer); }
+  catch (error) { setInputStatus(formatError(error),true); }
+  finally { delete panel.dataset.exporting; button.textContent = '导出 PNG'; updateStateRates(); }
+}
+
+/** 刷新战斗属性表：始终展示全部角色，每行一个。 */
+function updateStats(states) {
+  updateStateRates();
+  let panel = document.querySelector("#battleStats");
+  if (!panel) {
+    // 回放重建后仍将属性表补在标题下方，日志使用独立滚动容器。
+    const rows = document.querySelector("#battleRows");
+    if (!rows || !rows.parentElement) return;
+    panel = document.createElement("div");
+    panel.id = "battleStats";
+    panel.className = "battle-stats";
+    rows.parentElement.insertBefore(panel, rows);
+  }
+  const html = statsPanelHtml(states);
+  if (!html) {
+    panel.hidden = true;
+    panel.innerHTML = "";
+    return;
+  }
+  panel.hidden = false;
+  // 帧刷新保留名单自己的滚动位置。
+  const scrollTop = panel.scrollTop;
+  panel.innerHTML = html;
+  panel.scrollTop = scrollTop;
+}
 
 /**
  * 记住玩家列表，建立 id→player 的快速查找表。
@@ -361,13 +501,15 @@ function setInputStatus(message, isError = false) {
  */
 function setLoading(loading) {
   startBtn.disabled = loading;
+  strategySelect.disabled = loading;
+  stateRateToggle.disabled = loading;
+  stateRateRounds.disabled = loading;
   sampleBtn.disabled = loading;
 }
 
 function clearCurrentReplayView() {
-  stopScoreWorker?.();
-  stopScoreWorker = null;
-  runtimeModeInfo.textContent = replayModeText;
+  scoreWorker?.terminate();
+  scoreWorker = null;
   clearPlayerHighlight();
   streamController?.dispose();
   streamController = null;
@@ -437,6 +579,7 @@ function showShareToast(message = "分享链接已复制") {
 function buildShareUrl(rawInput) {
   return buildShowShareUrl(rawInput, {
     href: window.location.href,
+    strategy: currentBattle?.strategy ?? strategySelect.value,
   });
 }
 
@@ -605,49 +748,117 @@ function clearCurrentNickname() {
  * @param {FightReplay} replay
  * @returns {Promise<void>}
  */
-function showScoreTest(scoreInput) {
-  const { input, label } = scoreInput;
+/**
+ * 开始一场新战斗：校验输入 → 生成回放 → 自动播放。
+ * @param {{ persistInput?: boolean }} [options]
+ * @returns {Promise<void>}
+ */
+function startWinRateTest(input, { persistInput }) {
+  if (persistInput) persistInputValue();
+  const generation = ++battleGenerationToken;
+  stopPlaybackLoop();
+  clearCurrentReplayView();
+  playerList.textContent = input.input;
+  plistMeta.textContent = `${input.label} · ${input.groups.length} 组`;
+  headerMeta.textContent = input.label + " · 计算中";
+  battleRows.innerHTML = "";
   const cancel = document.createElement("button");
-  cancel.className = "goBtn";
   cancel.textContent = "停止测试";
-  const names = document.createElement("div");
-  names.className = "score-test-names";
-  names.textContent = input;
-  playerList.replaceChildren(names);
-  plistMeta.textContent = label + " · 固定 10000 场";
-  runtimeModeInfo.textContent = "使用 Worker 在后台评分。";
-  headerMeta.textContent = label + " · 计算中，累计 1000 场和 10000 场时显示结果。";
-  battleRows.replaceChildren(cancel);
+  cancel.className = "goBtn";
+  battleRows.append(cancel);
   closePanel(inputPanel);
-  setLoading(false);
-  setInputStatus("正在后台评分。");
-
-  function finish(message, isError = false) {
-    stopScoreWorker?.();
-    stopScoreWorker = null;
+  setInputStatus("正在后台计算各组对其余组的胜率。");
+  let worker;
+  function finish(message, failed = false) {
+    worker?.terminate();
+    if (scoreWorker === worker) scoreWorker = null;
     cancel.disabled = true;
     headerMeta.textContent = message;
-    setInputStatus(message, isError);
+    setInputStatus(message, failed);
   }
-
-  cancel.onclick = () => finish(label + " · 已停止，保留已完成的结果。");
   try {
-    stopScoreWorker = startScoreWorker(scoreInput, {
-      onCheckpoint(progress) {
-        battleRows.insertAdjacentHTML("beforeend", scoreCheckpointHtml(progress));
-        if (progress.done) {
-          finish(label + " · 完成 10000 场。");
-        } else {
-          headerMeta.textContent = label + " · 已完成 10%，继续计算。";
-        }
-      },
-      onError(message) {
-        finish("评分失败：" + message, true);
-      },
-    });
+    worker = new Worker(new URL("./show-rate-worker.js", import.meta.url), { type: "module" });
+    scoreWorker = worker;
+    cancel.onclick = () => finish("胜率测试已停止；保留已完成的分组。");
+    worker.onmessage = ({ data }) => {
+      if (generation !== battleGenerationToken || scoreWorker !== worker) return;
+      if (data.type === "progress") {
+        battleRows.innerHTML = "";
+        battleRows.insertAdjacentHTML("beforeend", winRateTableHtml(data.progress));
+        headerMeta.textContent = `${input.label} · 已完成 ${data.progress.length}/${input.groups.length} 组`;
+      } else if (data.type === "done") {
+        battleRows.innerHTML = "";
+        battleRows.insertAdjacentHTML("beforeend", winRateTableHtml(data.results));
+        finish(input.label + " · 已完成");
+      } else if (data.type === "error") {
+        finish("胜率测试失败：" + data.message, true);
+      }
+    };
+    worker.onerror = event => {
+      if (generation === battleGenerationToken && scoreWorker === worker) finish("胜率测试失败：" + (event.message || "后台计算异常"), true);
+    };
+    worker.postMessage({ groups: input.groups });
+  } catch (error) {
+    finish("胜率测试启动失败：" + formatError(error), true);
+  }
+}
+
+function startScoreTest(input, { persistInput }) {
+  if (persistInput) persistInputValue();
+  const generation = ++battleGenerationToken;
+  stopPlaybackLoop();
+  clearCurrentReplayView();
+  const strategy = strategySelect.value;
+  const legacyOpponents = strategy === "search" && scoreLegacyOpponents.checked;
+  // 始终展示模式和策略，避免把普通与强化、单挑与评分混淆。
+  const label = (strategy === "search" ? (legacyOpponents ? "己方 Clever / 对手原版 · " : "双方 Clever · ") : "全员原版 · ") + input.label;
+  playerList.textContent = input.input;
+  plistMeta.textContent = input.label + " · 固定 10000 场";
+  headerMeta.textContent = label + " · 计算中，1000 / 10000 场各展示一次";
+  battleRows.innerHTML = "";
+  const cancel = document.createElement("button");
+  cancel.textContent = "停止测试";
+  cancel.className = "goBtn";
+  battleRows.append(cancel);
+  closePanel(inputPanel);
+  setInputStatus("正在后台评分，仅展示 10% 和 100% 结果。");
+  let worker;
+  function finish(message, failed = false) {
+    worker?.terminate();
+    if (scoreWorker === worker) scoreWorker = null;
+    cancel.disabled = true;
+    headerMeta.textContent = message;
+    setInputStatus(message, failed);
+  }
+  try {
+    worker = new Worker(new URL("./show-score-worker.js", import.meta.url), { type: "module" });
+    scoreWorker = worker;
+    cancel.onclick = () => finish("评分已停止；保留已完成的检查点。");
+    worker.onmessage = ({ data }) => {
+      if (generation !== battleGenerationToken || scoreWorker !== worker) return;
+      if (data.type === "checkpoint") {
+        battleRows.insertAdjacentHTML("beforeend", scoreCheckpointHtml(data.progress));
+        headerMeta.textContent = label + (data.progress.done ? " · 已完成" : " · 已完成 10%，继续测试至 10000 场");
+      } else if (data.type === "done") {
+        finish(label + " · 已完成 10000 场，已停止。");
+      } else if (data.type === "error") {
+        finish("评分失败：" + data.message, true);
+      }
+    };
+    worker.onerror = event => {
+      if (generation === battleGenerationToken && scoreWorker === worker) finish("评分失败：" + (event.message || "后台计算异常"), true);
+    };
+    worker.postMessage({ input: { ...input, legacyOpponents }, strategy });
   } catch (error) {
     finish("评分启动失败：" + formatError(error), true);
   }
+}
+
+/** 勾选“挑战 Boss”时把所选 Boss 作为独立对手组追加到输入，省去手写 xx@!。 */
+function withChallengeBoss(raw) {
+  if (!bossChallenge.checked) return raw;
+  const boss = bossSelect.value.trim();
+  return boss ? `${raw}\n\n${boss}@!` : raw;
 }
 
 async function startBattle({ persistInput = true } = {}) {
@@ -659,43 +870,47 @@ async function startBattle({ persistInput = true } = {}) {
     return;
   }
   let scoreInput;
-  try {
-    scoreInput = parseScoreTestInput(rawInput);
-  } catch (error) {
-    setInputStatus(error.message, true);
-    openInputEditor();
-    return;
-  }
-  const inputError = validateReplayInput(scoreInput?.input ?? rawInput);
+  try { scoreInput = parseScoreTestInput(rawInput); }
+  catch (error) { setInputStatus(formatError(error), true); openInputEditor(); return; }
+  const battleInput = scoreInput == null ? withChallengeBoss(rawInput) : rawInput;
+  const inputError = validateReplayInput(scoreInput?.input ?? battleInput);
   if (inputError) {
     setInputStatus(inputError, true);
     openInputEditor();
     return;
   }
 
-  if (!scoreInput) speedMode = DEFAULT_SPEED_MODE;
+  if (scoreInput != null) {
+    if ((scoreInput.groups?.length ?? 0) > 1) {
+      startWinRateTest(scoreInput, { persistInput });
+    } else {
+      startScoreTest(scoreInput, { persistInput });
+    }
+    return;
+  }
+
+  speedMode = DEFAULT_SPEED_MODE;
   if (persistInput) {
     persistInputValue();
   }
   const generation = ++battleGenerationToken;
   stopPlaybackLoop();
   clearCurrentReplayView();
-  if (scoreInput) {
-    showScoreTest(scoreInput);
-    return;
-  }
-
   battleMetrics = new BattleMetrics({ startedAt: clickStartedAt });
   metricsReported = false;
   setLoading(true);
   setInputStatus("正在准备战斗...");
 
+  // 在异步加载前固定本场配置，避免同一条胜率曲线混用采样量。
+  const rateRounds = readStateRateRounds();
+  const strategy = strategySelect.value;
+  const ratesEnabled = stateRateToggle.checked;
   let source = null;
   try {
-    source = await createBattleStreamSource(rawInput, versionInfo, coreVersionInfo, modulePathInfo, { metrics: battleMetrics });
+    source = await createBattleStreamSource(battleInput, versionInfo, coreVersionInfo, modulePathInfo, { metrics: battleMetrics, strategy, stateRates: ratesEnabled, stateRateRounds: rateRounds });
     if (generation !== battleGenerationToken) { source.dispose(); return; }
     currentBattle = {
-      raw_input: source.raw_input, seed_line: source.seed_line,
+      raw_input: source.raw_input, seed_line: source.seed_line, strategy, state_rates_enabled: ratesEnabled, state_rate_rounds: rateRounds,
       players: source.players, initial_states: source.initial_states,
       frames: [], result: null, source_done: false,
       winner_ids: [], final_states: source.initial_states,
@@ -754,8 +969,6 @@ function failStreaming(error) {
 window.addEventListener("pagehide", () => {
   battleGenerationToken += 1;
   stopPlaybackLoop();
-  stopScoreWorker?.();
-  stopScoreWorker = null;
   streamController?.dispose();
 });
 
@@ -1010,7 +1223,8 @@ async function main() {
   }
 
   try {
-    await ensureApi(versionInfo, coreVersionInfo, modulePathInfo);
+    const api = await ensureApi(versionInfo, coreVersionInfo, modulePathInfo);
+    setupBossPicker(bossSelect, bossChallenge, name => loadBattleIcon(api, name + "@!"));
     if (staticInput?.ok) {
       await startBattle({ persistInput: false });
       return;

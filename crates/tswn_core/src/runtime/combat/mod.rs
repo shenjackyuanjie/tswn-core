@@ -103,13 +103,22 @@ pub struct PreparedBossSkillAction {
 pub enum PlainAttackOnDamage {
     None,
     Absorb,
+    /// 红魔乡专属命中回调。
+    Disperse,
+    RosmonticBurn,
+    RosmonticAbsorbFifth,
     Berserk,
     Curse,
     Fire(u32),
     Ice,
     Poison,
-    CovidDefaultSpread { mutation: i32 },
-    CovidSpread { boss: EntityIdx, mutation: i32 },
+    CovidDefaultSpread {
+        mutation: i32,
+    },
+    CovidSpread {
+        boss: EntityIdx,
+        mutation: i32,
+    },
     LazyDefaultSpread,
 }
 
@@ -149,13 +158,17 @@ pub enum PreparedPlainAction {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct BattleScratch {
     pub selected_actor_round: u64,
+    /// 搜索逐回合推演时的临时状态；普通对局为 None。
+    pub(crate) search_turn: Option<crate::runtime::search::SearchTurn>,
 }
 
 impl BattleScratch {
     /// 复位临时游标，避免把上一局的选中回合带入下一局。
-    pub fn clear(&mut self) { self.selected_actor_round = 0; }
+    pub fn clear(&mut self) {
+        self.selected_actor_round = 0;
+        self.search_turn = None;
+    }
 }
-
 #[derive(Debug, Clone)]
 /// 一场战斗的完整可变机制容器；跨语言显示数据由会话层投影。
 pub struct CombatRuntime {

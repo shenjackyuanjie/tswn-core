@@ -5,6 +5,17 @@
 
 use super::*;
 
+#[cfg(feature = "png_render")]
+#[test]
+fn png_encoding_uses_actual_boss_badge_dimensions() {
+    // PNG IHDR 的宽高必须与实际 RGBA 数量一致，避免网页载入 Boss 图标时 panic。
+    for (name, side) in [("mario@!", 16u32), ("咦@!", 32), ("quilt@!", 16)] {
+        let png = render_icon_png_from_name(name);
+        assert_eq!(u32::from_be_bytes(png[16..20].try_into().unwrap()), side, "{name}");
+        assert_eq!(u32::from_be_bytes(png[20..24].try_into().unwrap()), side, "{name}");
+    }
+}
+
 /// 把 PNG 字节解码为 RGBA 像素，供渲染结果比对。
 fn png_to_rgba(png_bytes: &[u8]) -> Vec<u8> {
     let decoder = png::Decoder::new(std::io::Cursor::new(png_bytes));

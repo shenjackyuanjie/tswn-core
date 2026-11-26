@@ -1,4 +1,6 @@
 use super::*;
+// Clever 候选准备与原版行动共用正式结算入口。
+mod search;
 use crate::runtime::control::TargetWisdom;
 use crate::runtime::forced_action::ForcedFallback;
 use smallvec::SmallVec;
@@ -49,7 +51,7 @@ impl CombatRuntime {
     /// 推进一个最小回合并返回 outcome；没有可见内容时继续推进直到产生。
     pub fn run_minimal_round(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture::<true, _>(round_outcome) }
 
-    #[cfg(test)]
+    /// 搜索试算不收集展示更新，生产构建也保留此入口。
     pub fn run_minimal_round_no_capture(&mut self) -> RoundOutcome {
         if let Some(winner) = self.world.sync_winner_from_alive_views() {
             return round_outcome(None, None, Some(winner));
@@ -200,6 +202,7 @@ impl CombatRuntime {
             }
             // 专属计时只在真正获得行动时推进，冰冻期间保留剪枝预告。
             self.begin_squall_action(action.actor, &mut updates);
+            self.begin_rosmontic_action(action.actor, &mut updates);
             let forced_pre_action_skill = plain_skill_pre_action.forced_skill.is_some();
             let prepared = self.prepare_plain_action(action.actor, smart, plain_skill_pre_action);
             // 卡牌兼容模式：点名的技能放不出来时引擎改用普攻，这里补一条说明战报。
@@ -358,6 +361,7 @@ impl CombatRuntime {
                 updates.add_newline();
             }
             self.drain_post_action_chain_into(action.actor, &mut updates);
+            self.end_rosmontic_action(action.actor, &mut updates);
             self.quilt_post_action(action.actor, &mut updates);
             if !legacy_plain_action || !self.plain_battle_has_ended() {
                 self.drain_plain_update_end_into(&mut updates);
@@ -595,6 +599,21 @@ impl CombatRuntime {
                 amount: 0,
             });
         }
+        // Rosmontic 的台词与蓄力直接进入专属行动；快照保留每个阶段。
+        if self.has_rosmontic_action(actor) {
+            self.entities.get_mut(actor).unwrap().runtime.rosmontic.as_mut().unwrap().smart = smart;
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Rosmontic,
+                targets: PreparedTargetList::new(),
+            }));
+        }
+        // 琪露诺的行动完全由专属脚本决定。
+        if self.entities.get(actor).is_some_and(|e| e.runtime.cirno.is_some()) {
+            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                selected: crate::namerena::BossActionSkill::Cirno,
+                targets: PreparedTargetList::new(),
+            }));
+        }
         // 沙冰鱼的行动完全由专属脚本决定。
         if self
             .entities
@@ -716,6 +735,10 @@ impl CombatRuntime {
             }));
         }
 
+        // 搜索只替换候选选择，仍由原回合管线执行与结算。
+        if self.scratch.search_turn.is_some() {
+            return self.prepare_search_action(actor, smart);
+        }
         #[cfg(not(feature = "no_debug"))]
         let rng_before = (self.rng.i, self.rng.j);
         let req_mp_byte = self.rng.next_u8();

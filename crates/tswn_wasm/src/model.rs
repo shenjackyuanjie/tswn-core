@@ -278,6 +278,8 @@ pub struct RuntimeUpdateFrameView {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Tsify)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageTone {
+    /// 纯台词，使用浅灰色背景。
+    Dialogue,
     /// 普通消息（无特殊视觉效果）
     Normal,
     /// 伤害消息

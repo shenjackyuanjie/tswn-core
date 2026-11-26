@@ -1,0 +1,10 @@
+{
+  "schema_version": "pbb-score-1124-v1",
+  "feature_columns": [
+    "pbb_flag", "pbb_sum",
+    "pbb_prop_0", "pbb_prop_1", "pbb_prop_2", "pbb_prop_3", "pbb_prop_4", "pbb_prop_5", "pbb_prop_6", "pbb_prop_7",
+    "pbb_score_qp", "pbb_score_qd", "pbb_score_pp", "pbb_score_pd", "pbb_score_cqd", "pbb_score_cp", "pbb_score_fp", "pbb_score_wc", "pbb_score_fs", "pbb_score_pj",
+    "pbb_skill_0", "pbb_skill_1", "pbb_skill_2", "pbb_skill_3", "pbb_skill_4", "pbb_skill_5", "pbb_skill_6", "pbb_skill_7", "pbb_skill_8", "pbb_skill_9", "pbb_skill_10", "pbb_skill_11", "pbb_skill_12", "pbb_skill_13", "pbb_skill_14", "pbb_skill_15",
+    "pbb_freq_0", "pbb_freq_1", "pbb_freq_2", "pbb_freq_3", "pbb_freq_4", "pbb_freq_5", "pbb_freq_6", "pbb_freq_7", "pbb_freq_8", "pbb_freq_9", "pbb_freq_10", "pbb_freq_11", "pbb_freq_12", "pbb_freq_13", "pbb_freq_14", "pbb_freq_15"
+  ]
+}

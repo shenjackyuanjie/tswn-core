@@ -132,6 +132,15 @@ uv run scripts/serve_wasm.py
 uv run scripts/serve_wasm.py --port 8080 --no-open
 ```
 
+## serve_wasm.py
+
+复用 `build_wasm.py` 构建 release WASM，在 `127.0.0.1` 启动两个示例页面，并自动打开完整回放页。需要 Python 3.11 或更高版本及 [WASM 构建依赖](../crates/tswn_wasm/README.md#构建)。
+
+```powershell
+uv run scripts/serve_wasm.py
+uv run scripts/serve_wasm.py --port 8080 --no-open
+```
+
 ## build_wasm.py
 
 构建 `tswn_wasm`，并整理出浏览器可直接消费的分发目录。

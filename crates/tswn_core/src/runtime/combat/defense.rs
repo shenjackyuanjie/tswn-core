@@ -1,8 +1,12 @@
 use super::*;
 
-/// 0.5.5 中两个 Boss 专属 POST_DEFEND 吸收技能。
+/// Boss 专属 POST_DEFEND 吸收和免伤技能。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PlainBossDefend {
+    /// 冴月麟在伤害换算后归零，也覆盖跳过回避的攻击。
+    Rin,
+    /// 琪露诺只免疫冰属性伤害，仍可被附加冰冻。
+    Cirno,
     /// 青雉：吸收冰冻伤害，免疫物理伤害。
     Aokiji,
     /// 斑鸠：吸收奇数伤害。
@@ -16,6 +20,7 @@ impl CombatRuntime {
     pub fn apply_disperse_hit_into(&mut self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         // 净化也能解除科研 Boss 的铁壁、蓄势、剪枝与嘲讽交换。
         self.dispel_squall_effects(target, updates);
+        self.dispel_rosmontic_into(target, updates);
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime disperse target entity: {}", target.0);
         };
@@ -113,6 +118,24 @@ impl CombatRuntime {
         defend_value: &mut RuntimeDefendValue,
         on_damage: PlainAttackOnDamage,
     ) {
+        self.pcb_letty_shield(target, updates);
+        // 大妖精支付自己的反射消耗，成功后本次入射威力归零。
+        if self.is_rosmontic_boss(target, "daiyousei")
+            && self.entities.get(defend_value.caster()).is_some_and(|e| e.runtime.hp > 0)
+            && self.rng.next_u8() < 85
+        {
+            let byte = i32::from(self.rng.next_u8());
+            let cost = ((((byte & 15) + 1) * (((byte >> 4) & 15) + 1)) >> 5) + 1;
+            let r = &mut self.entities.get_mut(target).unwrap().runtime;
+            if r.hp > 0 && r.magic_point >= cost {
+                r.magic_point -= cost;
+                defend_value.set_atp(0.0);
+                self.rosmontic_message(target, "[0]反射并抵消了攻击", updates);
+                return;
+            }
+        }
+        // 黑雾反击绕过 PRE_DEFEND，避免反射双方递归互弹。
+        self.reflect_rumia_into(target, defend_value.caster(), updates);
         let defender = self.entities.get(target).expect("runtime pre-defend target missing");
         let skills = &defender.template.skills;
         let protect_split = (!defender.runtime.protect_from.is_empty())
@@ -403,6 +426,9 @@ impl CombatRuntime {
             defend_value.set_damage(0);
             return;
         }
+        if self.pcb_defend(target, defend_value, updates) {
+            return;
+        }
         #[derive(Clone, Copy)]
         enum DefendHookPlanEntry {
             Skill(SkillHookPlanEntry),
@@ -529,6 +555,25 @@ impl CombatRuntime {
             }
         }
         // 科研铁壁和复查易伤应用于完成常规防御后的正伤害。
+        // 灵梦的常驻减伤和结界、蕾米莉亚的鲜红印记都作用于换算后的伤害。
+        if let Some(damage) = defend_value.damage().filter(|n| *n > 0) {
+            if self.is_rosmontic_boss(target, "reimu") {
+                let mut damage = damage * 4 / 5;
+                if self.entities.get(target).unwrap().runtime.rosmontic.as_ref().unwrap().barrier_turns > 0 {
+                    if damage <= 100 {
+                        damage = 1;
+                    } else {
+                        damage -= 100;
+                        self.entities.get_mut(target).unwrap().runtime.rosmontic.as_mut().unwrap().barrier_turns = 0;
+                        self.rosmontic_message(target, "[0]的[结界]被打破了", updates);
+                    }
+                }
+                defend_value.set_damage(damage);
+            } else if self.is_rosmontic_boss(target, "remilia") {
+                let count = self.entities.get(target).unwrap().runtime.rosmontic.as_ref().unwrap().scarlet;
+                defend_value.set_damage((f64::from(damage) * (1.0 + 0.75 * f64::from(count))).floor() as i32);
+            }
+        }
         self.apply_squall_defense(target, defend_value);
     }
 
@@ -565,6 +610,8 @@ impl CombatRuntime {
             "aokiji" => Some((SkillPriority(10_000), PlainBossDefend::Aokiji)),
             "ikaruga" => Some((SkillPriority(20_000), PlainBossDefend::Ikaruga)),
             "quilt" => Some((SkillPriority(30_000), PlainBossDefend::Quilt)),
+            "cirno" => Some((SkillPriority(10_000), PlainBossDefend::Cirno)),
+            "rin" => Some((SkillPriority(10_000), PlainBossDefend::Rin)),
             _ => None,
         }
     }
@@ -600,7 +647,18 @@ impl CombatRuntime {
                 DamageKind::Physical => defend_value.set_damage(0),
                 DamageKind::Default => {}
             },
-            PlainBossDefend::Quilt => defend_value.set_damage(0),
+            PlainBossDefend::Cirno => {
+                if defend_value.kind() == DamageKind::Ice {
+                    updates.add(RunUpdate::new(
+                        "[0][免疫]冰冻伤害",
+                        target.0 as usize,
+                        target.0 as usize,
+                        damage as u32,
+                    ));
+                    defend_value.set_damage(0);
+                }
+            }
+            PlainBossDefend::Quilt | PlainBossDefend::Rin => defend_value.set_damage(0),
             PlainBossDefend::Ikaruga => {
                 if damage & 1 == 1 {
                     updates.add_with(|| {
@@ -634,6 +692,15 @@ impl CombatRuntime {
 
     /// 执行目标的死亡 hook：护身符、史莱姆分裂、马里奥复活等。
     pub fn drain_die_hooks_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) {
+        // 反魂蝶先恢复生命，式神死亡返还只执行一次。
+        if self.revive_pcb_into(target, updates) {
+            return;
+        }
+        self.pcb_child_died(target);
+        // 无名的决意在首次致死时恢复 199 HP，并中止死亡链。
+        if self.revive_megia_into(target, updates) {
+            return;
+        }
         // 猴区的 HOUQU_BLAST 先于其它死亡钩子结算，分裂出的子体不再继续分裂。
         self.drain_quilt_split_into(target, updates);
         // 史莱姆分裂的死亡钩子优先级为 0，先于马里奥复活（10）和通用死亡链；
@@ -915,6 +982,10 @@ impl CombatRuntime {
         unavoidable: bool,
         updates: Option<&RunUpdates>,
     ) -> bool {
+        // 即使外部脚本直接提交目标，固定回避也先于必中特例。
+        if self.is_quilt(target) {
+            return true;
+        }
         if self.control.passive_decision_mode() {
             if let Some(decision) = self.control.take_evade_decision() {
                 return !decision.unavoidable && decision.activate && decision.success;
@@ -987,7 +1058,13 @@ impl CombatRuntime {
             return;
         }
         let charge_active = self.entities.get(caster).is_some_and(|entity| entity.runtime.charge.active);
-        let frozen_step = 1024 + if charge_active { 2048 } else { 0 };
+        // 蕾蒂的延长冬日与寒流额外冻结时长独立于普通蓄力。
+        let frost = self
+            .entities
+            .get(caster)
+            .and_then(|e| e.runtime.rosmontic.as_ref())
+            .map_or(0, |s| i32::from(s.frost_mode) * 1024);
+        let frozen_step = 1024 + frost + if charge_active { 2048 } else { 0 };
         let target_entity = self.entities.get_mut(target).unwrap();
         let first_application = target_entity.states.entry(PLAIN_ICE_STATE_KEY).is_none();
         target_entity.states.add_ice_frozen_step(PLAIN_ICE_STATE_KEY, frozen_step);
@@ -1006,6 +1083,10 @@ impl CombatRuntime {
 
     /// 目标对指定状态是否免疫：Boss 与加成角色按阈值判定。
     pub fn status_immune(&mut self, target: EntityIdx, status: &'static str) -> bool {
+        // 明确指定目标的异常状态也无法命中被子。
+        if self.is_quilt(target) {
+            return true;
+        }
         let Some(target_entity) = self.entities.get(target) else {
             panic!("unknown runtime {status} immune target entity: {}", target.0);
         };

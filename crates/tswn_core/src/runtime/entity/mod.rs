@@ -23,8 +23,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{MOVE_POINT_THRESHOLD, PlrId};
 
+mod cirno;
 mod fish;
 mod quilt;
+mod rosmontic;
 mod runtime;
 mod skill_loadout;
 mod smdd;
@@ -35,8 +37,10 @@ mod tiger;
 mod xjy;
 mod yi;
 
+pub use cirno::*;
 pub use fish::*;
 pub use quilt::*;
+pub use rosmontic::*;
 pub use runtime::*;
 pub use skill_loadout::*;
 pub use smdd::*;
@@ -378,8 +382,12 @@ impl PlayerTemplate {
     /// 指定玩家类型构造模板；约束与 [`Self::new`] 相同。
     pub fn with_kind(id: PlrId, name: impl Into<String>, kind: PlayerKindId, team: usize, max_hp: i32, attack: i32) -> Self {
         assert!(max_hp > 0, "runtime player max_hp must be positive");
-        assert!(attack >= 0, "runtime player attack must be non-negative");
         let name = name.into();
+        // 冴月麟固定为 -26 攻击，保留有符号语义而不改写普通角色约束。
+        assert!(
+            attack >= 0 || (name == "rin" && attack == -26),
+            "runtime player attack must be non-negative"
+        );
         Self {
             id,
             reserved_player_ids_before_spawn: 0,
@@ -500,7 +508,11 @@ impl PlayerTemplate {
 
     /// 设置魔法攻击力；必须非负。
     pub fn with_magic(mut self, magic: i32) -> Self {
-        assert!(magic >= 0, "runtime player magic must be non-negative");
+        // 与攻击一样，参考版冴月麟的魔力为 -26。
+        assert!(
+            magic >= 0 || (self.name == "rin" && magic == -26),
+            "runtime player magic must be non-negative"
+        );
         self.magic = magic;
         self
     }

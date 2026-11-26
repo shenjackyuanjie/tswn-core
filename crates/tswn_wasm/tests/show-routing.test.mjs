@@ -41,3 +41,11 @@ test("show share URL removes obsolete runtime selection", () => {
   assert.equal(parsed.searchParams.has("data"), false);
   assert.equal(decodeBase64UrlUtf8(parsed.searchParams.get("input") ?? ""), rawInput);
 });
+
+test("shared battles retain the strategy used for the battle", () => {
+  for (const strategy of ["search", "legacy"]) {
+    const url = new URL(buildShowShareUrl("alpha\n\nbeta", { href: "https://example.test/", strategy }));
+    assert.equal(url.searchParams.get("strategy"), strategy);
+    assert.equal(decodeBase64UrlUtf8(url.searchParams.get("input")), "alpha\n\nbeta");
+  }
+});

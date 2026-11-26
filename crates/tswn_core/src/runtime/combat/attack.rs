@@ -368,7 +368,8 @@ impl CombatRuntime {
                     crate::namerena::boss_uses_skill_attack(&entity.template.name)
                 } else {
                     self.entities.get(target).is_some_and(|target| {
-                        target.runtime.flags.contains(PlayerKindFlags::BOSS) && target.template.name == "aokiji"
+                        target.runtime.flags.contains(PlayerKindFlags::BOSS)
+                            && matches!(target.template.name.as_str(), "aokiji" | "koakuma")
                     })
                 }
             }) {
@@ -654,6 +655,14 @@ impl CombatRuntime {
                 let (accuracy, dodge, active) = Self::plain_dodge_values_for(actor_runtime, defender, use_magic);
                 if active && PlayerRuntime::dodge(accuracy, dodge, &mut self.rng) {
                     updates.add_with(|| RuntimeFrame::replay_update(target.0 as usize, actor.0 as usize, "[0][回避]了攻击", 20));
+                    // 咦成功闪避后立刻反击 1~x-2 名敌人。
+                    if self
+                        .entities
+                        .get(target)
+                        .is_some_and(|e| e.template.name == crate::runtime::combat::boss::yi::ID)
+                    {
+                        self.yi_dodge_counter(target, updates);
+                    }
                     0
                 } else {
                     let defense = if use_magic {
@@ -731,6 +740,14 @@ impl CombatRuntime {
         }
         if dodged {
             updates.add_with(|| RuntimeFrame::replay_update(target.0 as usize, actor.0 as usize, "[0][回避]了攻击", 20));
+            // 咦成功闪避后立刻反击 1~x-2 名敌人。
+            if self
+                .entities
+                .get(target)
+                .is_some_and(|e| e.template.name == crate::runtime::combat::boss::yi::ID)
+            {
+                self.yi_dodge_counter(target, updates);
+            }
             if let Some(batch_id) = batch_id {
                 self.control.finish_damage_batch(batch_id);
             }
@@ -797,7 +814,17 @@ impl CombatRuntime {
                 target_runtime.defense + 64
             }
         };
-        let amount = ceil_damage_to_i32(atp / defense as f64);
+        let mut amount = ceil_damage_to_i32(atp / defense as f64);
+        // 蕾蒂也免疫带冰冻回调、但未显式标记 Ice 类型的原生攻击。
+        let kind = if self.is_rosmontic_boss(target, "letty") && on_damage == PlainAttackOnDamage::Ice {
+            DamageKind::Ice
+        } else {
+            kind
+        };
+        // 小恶魔只削弱带命中回调的攻击，空回调技能保持原伤害。
+        if self.is_rosmontic_boss(target, "koakuma") && (on_damage != PlainAttackOnDamage::None || kind != DamageKind::Default) {
+            amount = amount * 13 / 20;
+        }
         let mut defend_value = RuntimeDefendValue::Damage {
             value: amount,
             caster: actor,
@@ -914,6 +941,13 @@ impl CombatRuntime {
             self.try_covid_spread_on_damage_into(boss, target, mutation, amount, updates);
         }
         match on_damage {
+            PlainAttackOnDamage::Disperse => {
+                if amount > 0 {
+                    self.apply_disperse_hit_into(caster, target, updates);
+                }
+            }
+            PlainAttackOnDamage::RosmonticBurn => self.apply_rosmontic_burn(caster, target, amount, updates),
+            PlainAttackOnDamage::RosmonticAbsorbFifth => self.apply_absorb_on_damage(caster, (amount / 5) * 2, updates),
             PlainAttackOnDamage::None => {}
             PlainAttackOnDamage::Absorb => self.apply_absorb_on_damage(caster, amount, updates),
             PlainAttackOnDamage::Berserk => self.apply_berserk_on_damage(caster, target, amount, updates),

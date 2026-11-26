@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light dark">
     <meta name="darkreader-lock">
     <title>tswn_wasm Show Demo</title>
-    <link rel="stylesheet" href="./show.css?v=0.5.13">
+    <link rel="stylesheet" href="./show.css?v=20261126rounds1">
     <script>
         (() => {
             try {
@@ -58,6 +58,7 @@
                         <div id="runtimeModeInfo" class="version-note small dim">使用 BattleSession 边计算边播放战斗。</div>
                         <div id="themeNotice" class="theme-notice" role="status" hidden></div>
                     </div>
+                    <div id="battleStats" class="battle-stats" hidden></div>
                     <div id="battleRows" class="battleRows">
                         <div class="welcome">
                             <div><strong>原始网页风格的 show 页面</strong></div>
@@ -67,6 +68,74 @@
                     </div>
                 </div>
             </section>
+
+            <aside class="hlist rlist" id="settingsSidebar">
+                <div class="plist-header">
+                    <div class="plist-title">对局设置</div>
+                    <div class="plist-subtitle">原站输入框之外的选项集中在这里，中间只保留名字输入。</div>
+                </div>
+                <div class="side-controls">
+                    <label for="strategySelect">出招策略 </label>
+                    <select id="strategySelect"><option value="legacy">原版策略（默认）</option><option value="search">Clever 搜索（当前实验版）</option></select>
+                    <div class="input-note">默认双方采用所选策略。搜索预算：最多 16 次续局采样 / 128 调度轮 / 4 个入围候选，另有短续局初筛。</div>
+                    <label class="checkbox-option"><input type="checkbox" id="scoreLegacyOpponents"><span>评分验证：仅被测侧及队友使用 Clever，对手使用原版</span></label>
+                    <div class="input-note">仅对 Clever 评分生效；不勾选时双方均使用 Clever。与全员原版评分比较，评分差即提升量。</div>
+                    <label class="boss-picker checkbox-option"><input type="checkbox" id="bossChallenge"><span>挑战 Boss</span></label>
+                    <select id="bossSelect" class="boss-select" disabled>
+<!-- 暂时隐藏（代码保留）：                        <option value="Shabby_fish">沙冰鱼</option> -->
+<!-- 暂时隐藏（代码保留）：                        <option value="TigerStar">豹星</option> -->
+                        <option value="cirno">琪露诺</option>
+                        <option value="reimu">博丽灵梦</option>
+                        <option value="marisa">雾雨魔理沙</option>
+                        <option value="daiyousei">大妖精</option>
+                        <option value="hong">红美铃</option>
+                        <option value="koakuma">小恶魔</option>
+                        <option value="patchouli">帕秋莉</option>
+                        <option value="sakuya">十六夜咲夜</option>
+                        <option value="remilia">蕾米莉亚</option>
+                        <!-- 挑战表格自动复用 Boss 图标与实际名称提示。 -->
+                        <option value="flandre">芙兰朵露</option>
+                        <option value="letty">蕾蒂</option>
+                        <option value="chen">橙</option>
+                        <option value="alice">爱丽丝</option>
+                        <option value="phantom">幽灵乐团</option>
+                        <option value="youmu">魂魄妖梦</option>
+                        <option value="yuyuko">西行寺幽幽子</option>
+                        <option value="ran">八云蓝</option>
+                        <option value="rumia">露米娅</option>
+                        <option value="rin">冴月麟</option>
+                        <option value="megia">megia</option>
+                        <option value="咦">咦</option>
+<!-- 暂时隐藏（代码保留）：                        <option value="新纪元">新纪元</option> -->
+<!-- 暂时隐藏（代码保留）：                        <option value="smdd">曙光</option> -->
+                        <option value="quilt">被子</option>
+                        <option value="Squall">Squall</option>
+                        <option value="thanos">灭霸</option>
+                        <option value="wheel">生命之轮</option>
+                        <option value="mario">马里奥</option>
+                        <option value="sonic">索尼克</option>
+                        <option value="mosquito">蚊</option>
+                        <option value="yuri">尤里</option>
+                        <option value="slime">史莱姆</option>
+                        <option value="ikaruga">斑鸠</option>
+                        <option value="conan">柯南</option>
+                        <option value="aokiji">青雉</option>
+                        <option value="lazy">懒癌</option>
+                        <option value="covid">新冠病毒</option>
+                        <option value="saitama">一拳超人</option>
+                        <option value="testsubject">实验体 #C8</option>
+                    </select>
+                    <div class="input-note">勾选后无需在名字里写 xx@!，开始时会自动把所选 Boss 作为对手加入战斗。</div>
+                    <div class="input-note">评分：首行 !test!，随后输入名字为普通评分；同名连续两行是普通单挑。在 !test! 后单独加一行 !，切换为强化评分／强化单挑。使用所选策略测试 10000 场，仅展示 10% / 100% 及技能频率。</div>
+                    <!-- 测算属于对局设置，与其它选项共用同一列布局。 -->
+                    <div class="state-rate-option">
+                        <label class="checkbox-option" for="stateRateToggle"><input id="stateRateToggle" type="checkbox"><span>逐步胜率测算</span></label>
+                        <input id="stateRateRounds" type="text" inputmode="numeric" pattern="[0-9]*" value="10000" aria-label="逐步胜率测算局数" title="每步测算局数，范围 1–4294967295；修改后在下次开启测算或新战斗时生效">
+                        <span>局</span>
+                    </div>
+                    <div class="input-note">仅适用于两支队伍对战；与 Clever 互斥。按指定局数测算每步胜率，回放时复用结果；修改局数于下次开启测算或新战斗时生效。</div>
+                </div>
+            </aside>
         </div>
 
         <div class="panels">
@@ -131,6 +200,7 @@
                 <svg class="svgicon collapse-icon" fill="white" height="24" width="24" viewBox="0 0 24 24"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
                 <svg class="svgicon expand-icon" fill="white" height="24" width="24" viewBox="0 0 24 24"><path d="M7.41 15.41 12 10.83l4.59 4.58L18 14l-6-6-6 6z"/></svg>
             </button>
+
             <div id="stepControls" class="step-controls">
                 <button id="stepBackEventBtn" class="micon" title="后退一个事件 (←)" aria-label="后退一个事件">
                     <svg class="svgicon" fill="white" height="24" width="24" viewBox="0 0 24 24"><path d="M5 7v10h2V7zm5 5l8-5v10l-8-5z"/></svg>
@@ -177,7 +247,7 @@
 
     </div>
 
-    <script type="module" src="./show-theme-compat.js?v=20261013c"></script>
-    <script type="module" src="./show.js?v=0.5.13"></script>
+    <script type="module" src="./show-theme-compat.js?v=20261123squall2"></script>
+    <script type="module" src="./show.js?v=20261126boss20"></script>
 </body>
 </html>

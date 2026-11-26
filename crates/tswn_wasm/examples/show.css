@@ -1,8 +1,53 @@
 /* 按原始层叠顺序组织主题、角色、正文与面板；保持分发入口不变。 */
 @import url("./show-base.css");
 @import url("./show-players.css");
-@import url("./show-replay.css?v=0.5.13");
+@import url("./show-replay.css?v=20261126ui1");
 @import url("./show-panels.css");
+
+/* 胜率面板固定左下，长队伍名单支持滚动。 */
+#stateRates { position: fixed; left: 12px; bottom: 12px; z-index: 20; width: min(370px, calc(100vw - 24px)); max-height: 65vh; display: flex; flex-direction: column; overflow: hidden; padding: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--sidebar-bg); color: var(--ink); font-size: 14px; box-shadow: 0 3px 14px #0003; }
+#stateRates[hidden] { display: none; }
+/* 只有标题栏和缩放角接管指针，正文图表与历史滑块保持原有行为。 */
+.rate-window-header { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border); cursor: move; touch-action: none; user-select: none; }
+.rate-window-header button { font-size: 12px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-strong); color: var(--ink); box-shadow: none; cursor: pointer; }
+.rate-window-actions { display: flex; align-items: center; gap: 6px; }
+.rate-window-header button:disabled { opacity: .45; cursor: not-allowed; background: var(--surface-soft); }
+.rate-window-content { min-height: 0; overflow: auto; padding: 10px 12px 22px; flex: 1 1 auto; }
+.rate-window-resize { position: absolute; bottom: 2px; right: 2px; width: 20px; height: 20px; cursor: nwse-resize; touch-action: none; background: repeating-linear-gradient(135deg, transparent 0 4px, var(--muted) 4px 5px); clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+#stateRates.is-adjusting { user-select: none; }
+/* 勾选框保持自然宽度，并与左侧文字同行，避免继承文本框的整行宽度。 */
+input[type="checkbox"] { width: auto; padding: 0; }
+.checkbox-option { display: flex; align-items: flex-start; gap: 8px; text-align: left; }
+.checkbox-option input[type="checkbox"] { flex: 0 0 auto; margin: 4px 0 0; }
+.checkbox-option span { flex: 1; min-width: 0; }
+/* 局数与测算文字同行；独立输入框避免编辑时切换勾选状态。 */
+.state-rate-option { display: flex; align-items: center; gap: 6px; }
+.state-rate-option .checkbox-option { align-items: center; flex: 0 0 auto; }
+.state-rate-option input[type="checkbox"] { margin-top: 0; }
+#stateRateRounds { flex: 0 1 88px; width: 88px; min-width: 45px; padding: 4px 6px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-strong); color: var(--ink); font: inherit; text-align: right; }
+.rate-team { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; }
+/* 只给右侧胜率数字着浅色；等待状态使用中性底色。 */
+.rate-value { align-self: flex-start; flex: 0 0 auto; min-width: 78px; padding: 5px 9px; border: 1px solid hsl(var(--rate-hue) 55% 73%); border-radius: 7px; background: hsl(var(--rate-hue) 75% 90%); color: #111; white-space: nowrap; text-align: center; font-variant-numeric: tabular-nums; }
+.rate-value.is-pending { background: #f1f3f5; border-color: #cbd1d6; }
+.rate-member { display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.rate-member img { width: 24px; height: 24px; image-rendering: pixelated; }
+
+/* 蓝色折线只读取缓存；透明大点击区让节点在触屏和鼠标下都易选中。 */
+.rate-chart { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.rate-chart-title { font-weight: 600; margin-bottom: 5px; }
+.rate-chart-plot svg { display: block; width: 100%; overflow: visible; }
+.rate-chart-label { fill: var(--ink); font-size: 11px; }
+.rate-chart-grid { stroke: var(--border); fill: none; stroke-dasharray: 3 3; }
+.rate-chart-line { stroke: #2484e4; stroke-width: 2.5; fill: none; stroke-linejoin: round; }
+.rate-chart-node { cursor: pointer; outline: none; }
+.rate-chart-hit { fill: transparent; }
+.rate-chart-dot { fill: #2484e4; stroke: var(--surface-strong); stroke-width: 1.5; }
+.rate-chart-node.is-current .rate-chart-dot, .rate-chart-node:hover .rate-chart-dot, .rate-chart-node:focus .rate-chart-dot { fill: #0856b6; stroke: #0856b6; stroke-width: 3; }
+.rate-chart-tip, .rate-chart-window { font-size: 12px; line-height: 1.5; min-height: 18px; }
+.rate-chart-nav { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.rate-chart-nav input[type="range"] { flex: 1; min-width: 0; width: auto; padding: 0; accent-color: #2484e4; }
+.rate-chart-nav button { flex: 0 0 auto; border-radius: 5px; font-size: 12px; padding: 3px 6px; color: var(--ink); background: var(--surface-strong); border: 1px solid var(--border); box-shadow: none; }
+
 
 .version-marker {
     position: absolute;
@@ -67,3 +112,111 @@ body.highlight-active [data-player-id].hl-active .summary-actor-name {
 body.highlight-active [data-player-id].hl-active.player-row .name {
     color: var(--damage);
 }
+
+.score-test-result { margin: 16px 0; padding: 16px; border: 1px solid currentColor; border-radius: 8px; overflow-wrap: anywhere; }
+.score-test-result table { width: 100%; border-collapse: collapse; }
+.score-test-result th, .score-test-result td { padding: 8px 4px; border-bottom: 1px solid #8886; text-align: right; }
+.score-test-result th:first-child, .score-test-result td:first-child { text-align: left; }
+.score-test-result .input-note { line-height: 1.6; }
+
+/* 右侧设置栏：与左侧角色栏对称，中间输入面板保持原站的大框观感。 */
+.rlist {
+    inset: 0 0 0 auto;
+    border-right: none;
+    border-left: 1px solid var(--sky-1);
+}
+
+.side-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 16px;
+}
+
+.side-controls select {
+    width: 100%;
+}
+
+#inputPanel {
+    width: min(760px, calc(100vw - var(--sidebar-width) * 2 - 24px));
+    height: calc(100vh - 32px);
+    max-height: calc(100vh - 32px);
+}
+
+#inputPanel #textdiv {
+    height: auto;
+    flex: 1 1 auto;
+    min-height: 50vh;
+}
+
+@media (min-width: 901px) {
+    .hbody {
+        inset: 0 var(--sidebar-width) 0 var(--sidebar-width);
+    }
+
+    /* 右下角控制按钮贴最右侧，允许覆盖在设置栏上方。 */
+    .right-controls {
+        right: 12px;
+        z-index: 6;
+    }
+}
+
+@media (max-width: 900px) {
+    .rlist {
+        display: none;
+    }
+
+    /* 手机版：输入面板占满宽度，避免 calc(100vw - 2×sidebar) 变成负值把面板压成细条。 */
+    #inputPanel {
+        width: calc(100vw - 16px);
+        height: auto;
+        max-height: calc(100vh - 16px);
+    }
+
+    #inputPanel #textdiv {
+        height: 46vh;
+        min-height: 0;
+        flex: 1 1 auto;
+    }
+}
+/* 标题与名字表位于固定网格行；只有战报和名字表各自滚动。 */
+.hbody { overflow: hidden; }
+@media (max-width: 900px) {
+    .hbody { height: 70vh; min-height: 360px; }
+}
+/* Boss 选择改为图标列表，原 select 仅负责保存值。 */
+.boss-picker-trigger { display: flex; align-items: center; gap: 8px; min-height: 44px; width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--ink); text-align: left; box-shadow: none; }
+.boss-picker-trigger img, .boss-choice img { flex: 0 0 24px; image-rendering: pixelated; }
+.boss-picker-arrow { margin-left: auto; }
+.boss-choice-list { position: fixed; z-index: 40; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; align-content: start; overflow: auto; overscroll-behavior: contain; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--paper); box-shadow: 0 6px 22px #0004; }
+.boss-choice-list[hidden] { display: none; }
+.boss-choice { display: flex; align-items: center; gap: 5px; min-width: 0; min-height: 54px; padding: 6px; border: 3px solid transparent; border-radius: 5px; background: var(--surface); color: var(--ink); box-shadow: none; text-align: left; font-size: 12px; }
+.boss-choice span { min-width: 0; overflow-wrap: anywhere; line-height: 1.35; }
+.boss-choice[aria-selected="true"] { border-color: #1976d2; font-weight: 700; background: var(--surface-strong); }
+.boss-choice:disabled, .boss-picker-trigger:disabled { opacity: .5; cursor: default; }
+.boss-choice:focus-visible, .boss-picker-trigger:focus-visible { outline: 2px solid #1976d2; outline-offset: 1px; }
+/* 战斗属性表：每个角色一行，人数多也全部展示。 */
+.battle-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--sidebar-bg);
+    font-size: 12px;
+    line-height: 1.45;
+    --stat-row-height: 24px;
+    /* 十行、九个行间距与上下内边距；超出部分仅在名单内滚动。 */
+    max-height: min(calc(10 * var(--stat-row-height) + 9 * 2px + 12px), 35vh);
+    overflow: auto;
+}
+.battle-stats[hidden] { display: none; }
+.battle-stat-row { display: flex; flex: 0 0 var(--stat-row-height); height: var(--stat-row-height); align-items: center; gap: 8px; white-space: nowrap; }
+.battle-stat-row.is-dead { opacity: 0.45; }
+.battle-stat-name { min-width: 9em; font-weight: 600; }
+.battle-stat-hp { min-width: 7.5em; }
+.stat-icon { width: 16px; height: 16px; display: inline-block; }
+.dmg-mark { display: inline-block; width: 16px; height: 16px; background-size: 16px 16px; background-repeat: no-repeat; vertical-align: -3px; }
+.s_dmg0 { background-image: url("data:image/gif;base64,R0lGODlhFAAUAMQAAAAAAP///98AJDsBRZbFU6LPYqPPY63aba3ZbbfgfcPuhcLthcHrhM/1mdL1n9H0n9/9tXqpNYi3Q6TOZMDog7bHjv///wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEAABYALAAAAAAUABQAAAWT4CCO5GCdKDoEbNuaabrOAS1aAppbq/sqB4EQNyyJaguFQsgcyhoipTLYjA0aDYhUSt2psBDtVokQwE6DSngwZisWB8l54IiOFaPDAcZmM+5SFAMHESZueICIeoU8iXcHBYxsD45KcJGGBQdhjnoFcmgHlUCQcxOid2yeBGc8engkpAesMTyDenoIkAUFrVZGIzEhADs="); }
+.s_dmg120 { background-image: url("data:image/gif;base64,R0lGODlhFAAUAMQAAAAAAP///98AJNzo/+vx/JbFU6LPYqLOYq3abcPuhcLthc/1mc3ymNL1n9/9tXqpNYi3Q6PMYa7XbKLGacLshMPrhMDog8DphL7mg3ymNTMqKf///wAAAAAAAAAAAAAAACH5BAEAABsALAAAAAAUABQAAAWj4CaOo6aRaCpqyam+bFKcwlircZIgQr/1N5JmoSsCj6jhwlHcHYOrxSIX4/mEDBOzaEpMBK5VQxMIUMsshKk0RnPdCPUq0SCYFE3TYId4nGJle00BBHtxfhuAAQM5CYR7EhGILA1uOY8VkRl/BgiEMYCFcQcQLhqeBAFNjqIIBmEaBoQBChQWFxizrjNCj0V4urwoBK1xCMQDryqFjCYmzGEiIQA7"); }
+.s_dmg160 { background-image: url("data:image/gif;base64,R0lGODlhFAAUAKUAAAAAAP///98AJP+vvP++yPmSo//J0pbFU6LPYqLOYq3aba3ZbarWa8Puhc/1mdL1n9/9tXqpNYi3Q8Dpg87wnHymNUBAKzw5LTs3KjcxKjs0LzUuKjQsKTUtKjMrKTQrKTMqKf8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEKAD8ALAAAAAAUABQAAAbHwJ9wOASBiMikENQ4KochIrNx2PwEQ+wvKm14GwqB+DoOcX8fR9PYELvH2x8o7QAF7qDwmxgKgBwQdnhgbkhmIBCBd35eYRpQGkYhEF5GU40aj0JmIWyXX2AKmkwUU5cGBgQEoREWcl4TbF4EBbWrCgoRGK9NvQ20tQMEAwoIERmvD2uztQUDzwoJFR1yCAqJvarO0NESHksKoEyoBgOhCNRL1qBeBo3FB05CHrjs7woH30gfF7i4CwsYIBiYTsmGTAgRckASBAA7"); }

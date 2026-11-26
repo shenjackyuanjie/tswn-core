@@ -128,7 +128,7 @@ impl CombatRuntime {
         let actor_team = self.plain_effective_team(actor);
         let mut enemies = PreparedTargetList::new();
         for &idx in self.world.flat_alive() {
-            if idx == actor {
+            if idx == actor || self.is_quilt(idx) {
                 continue;
             }
             if self.entities.get(idx).is_some_and(|entity| entity.runtime.team != actor_team) {

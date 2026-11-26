@@ -842,6 +842,13 @@ pub struct ModelCounter {
 /// 实体运行态投影；不含引擎内部的注册游标等簿记字段。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelPlayerRuntime {
+    /// 科研进度、助手行动计数与嘲讽覆盖必须参与可重现状态比较。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub squall: Option<Box<crate::runtime::entity::SquallRuntime>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub squall_helper: Option<(EntityIdx, u8, u32)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub squall_taunt: Option<(EntityIdx, u64)>,
     pub hp: i32,
     pub alive: bool,
     pub attack: i32,
@@ -881,6 +888,9 @@ impl From<&PlayerRuntime> for ModelPlayerRuntime {
     /// 把运行态投影为模型运行态：八围、倍率位模式与各类运行期结构逐字段导出。
     fn from(value: &PlayerRuntime) -> Self {
         Self {
+            squall: value.squall.clone(),
+            squall_helper: value.squall_helper,
+            squall_taunt: value.squall_taunt,
             hp: value.hp,
             alive: value.alive,
             attack: value.attack,

@@ -45,11 +45,14 @@ pub mod forced_action;
 mod handlers;
 pub mod lang;
 pub mod model_state;
+pub mod nn_eval;
 mod normalized;
 mod prepared_init;
 mod profile;
 mod runner;
 pub mod scheduler;
+/// Clever 搜索与局面估值入口，供 CLI 和跨语言适配层使用。
+pub mod search;
 mod session;
 pub mod slot;
 #[cfg(not(feature = "no_debug"))]
@@ -109,11 +112,14 @@ pub use slot::{BattleSlotStorage, EntitySlotStorage, SlotError, SlotValue, Templ
 pub use trace::{RngCheckpoint, RuntimeTrace, TraceAction, TraceFrame};
 pub use world::WorldArena;
 
+/// 上游原版评分会话保留独立命名空间。
+pub use batch::score_session as upstream_score_test;
+pub use batch::test_session::{ScoreTestProgress, ScoreTestSession, TestSkillFrequency};
 pub use batch::{
-    RuntimeBatchError, RuntimeBatchSummary, SCORE_TEST_TOTAL, ScoreSkillFrequency, ScoreTestError, ScoreTestProgress,
-    ScoreTestSession, prepared_runtime_win_rate, prepared_runtime_win_rate_range, prepared_runtime_win_rate_range_timed,
-    prepared_runtime_win_rate_timed, runtime_groups_win_rate, runtime_groups_win_rate_timed, runtime_score, runtime_score_range,
-    runtime_score_range_timed, runtime_score_timed,
+    RuntimeBatchError, RuntimeBatchSummary, SCORE_TEST_TOTAL, ScoreSkillFrequency, ScoreTestError, prepared_runtime_win_rate,
+    prepared_runtime_win_rate_range, prepared_runtime_win_rate_range_timed, prepared_runtime_win_rate_timed,
+    runtime_groups_win_rate, runtime_groups_win_rate_timed, runtime_score, runtime_score_range, runtime_score_range_timed,
+    runtime_score_timed,
 };
 pub use combat::PlainSkillPreActionOutcome;
 pub use combat::boss::slime;

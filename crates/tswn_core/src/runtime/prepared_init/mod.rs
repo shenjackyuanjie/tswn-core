@@ -12,7 +12,7 @@ use crate::namerena::{
 use crate::rc4::Rc4KeySchedulePrefix;
 use crate::runtime::entity::ScoreCloneSkillBoostPlan;
 
-mod init;
+pub(crate) mod init;
 mod roster;
 mod seed;
 #[cfg(test)]

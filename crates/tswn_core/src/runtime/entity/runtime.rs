@@ -191,6 +191,12 @@ pub struct PlayerRuntime {
     /// 沙冰鱼的运行态。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fish: Option<Box<FishRuntime>>,
+    /// 琪露诺的绝对零度概率等级。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cirno: Option<Box<CirnoRuntime>>,
+    /// Rosmontic 的回合计数、蓄力目标与一次性复活。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rosmontic: Option<Box<RosmonticRuntime>>,
     /// TigerStar 的运行态。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tiger: Option<Box<TigerRuntime>>,
@@ -285,6 +291,32 @@ impl PlayerRuntime {
             yi: (flags.contains(PlayerKindFlags::BOSS) && template.name == "咦").then(|| Box::new(YiRuntime::default())),
             tiger: (flags.contains(PlayerKindFlags::BOSS) && template.name == "TigerStar")
                 .then(|| Box::new(TigerRuntime::default())),
+            rosmontic: (flags.contains(PlayerKindFlags::BOSS)
+                && matches!(
+                    template.name.as_str(),
+                    "rin"
+                        | "megia"
+                        | "rumia"
+                        | "reimu"
+                        | "marisa"
+                        | "daiyousei"
+                        | "hong"
+                        | "koakuma"
+                        | "patchouli"
+                        | "sakuya"
+                        | "remilia"
+                        | "flandre"
+                        | "letty"
+                        | "chen"
+                        | "alice"
+                        | "phantom"
+                        | "youmu"
+                        | "yuyuko"
+                        | "ran"
+                ))
+            .then(|| Box::new(RosmonticRuntime::for_boss(&template.name))),
+            cirno: (flags.contains(PlayerKindFlags::BOSS) && template.name == crate::runtime::combat::boss::cirno::ID)
+                .then(|| Box::new(CirnoRuntime::default())),
             fish: (flags.contains(PlayerKindFlags::BOSS) && template.name == "Shabby_fish")
                 .then(|| Box::new(FishRuntime::default())),
             baixie: None,
@@ -346,6 +378,8 @@ impl PlayerRuntime {
         self.yi = None;
         self.tiger = None;
         self.fish = None;
+        self.cirno = None;
+        self.rosmontic = None;
         self.baixie = None;
         self.quilt_minion = None;
         self.testsubject = None;
@@ -403,6 +437,8 @@ impl PlayerRuntime {
         self.yi.clone_from(&prepared.yi);
         self.tiger.clone_from(&prepared.tiger);
         self.fish.clone_from(&prepared.fish);
+        self.cirno.clone_from(&prepared.cirno);
+        self.rosmontic.clone_from(&prepared.rosmontic);
         self.baixie.clone_from(&prepared.baixie);
         self.quilt_minion.clone_from(&prepared.quilt_minion);
         self.testsubject.clone_from(&prepared.testsubject);
@@ -579,6 +615,12 @@ impl EntityRecord {
     #[inline]
     /// 含状态修正与垂死增益的有效速度。
     pub fn effective_speed(&self) -> i32 {
+        // 调度器也读取专属速度变化，不能只让状态面板显示加速。
+        if self.runtime.rosmontic.as_ref().is_some_and(|s| {
+            s.stat_add[2] != 0 || s.stat_scale_bits[2] != 0 || s.divine_turns > 0 || (s.aura && self.template.name == "remilia")
+        }) {
+            return self.states.effective_speed(self.runtime.speed);
+        }
         let mut speed = self.states.effective_speed(self.template.speed);
         if self.runtime.upgrade_active {
             // 增益量独立乘算，保留原始技能等级。
@@ -660,6 +702,65 @@ impl EntityRecord {
             self.runtime.resistance += (30.0 * power).round() as i32;
             self.runtime.speed += (20.0 * power).round() as i32;
             self.runtime.wisdom += (20.0 * power).round() as i32;
+        }
+        // 出勤只维持到第二次实际行动结束，不写进永久模板。
+        if self.runtime.squall.as_ref().is_some_and(|s| s.attendance) {
+            self.runtime.defense *= 2;
+            self.runtime.resistance *= 2;
+        }
+        // 黑雾形态与月影增防属于持续修正，重建状态时仍需恢复。
+        if self.runtime.flags.contains(PlayerKindFlags::BOSS)
+            && self.template.name == "rumia"
+            && let Some(state) = &self.runtime.rosmontic
+        {
+            let multiplier = if state.rumia_destroy { 5 } else { 1 };
+            self.runtime.attack *= multiplier;
+            self.runtime.magic *= multiplier;
+            self.runtime.wisdom *= multiplier;
+            self.runtime.defense = self.runtime.defense * multiplier + state.rumia_def_bonus;
+            self.runtime.resistance = self.runtime.resistance * multiplier + state.rumia_def_bonus;
+        }
+        // 专属变化在普通状态重建后恢复，燃烧本身不会赋予行动能力。
+        let r = &mut self.runtime;
+        if let Some(s) = &r.rosmontic {
+            for (i, value) in [
+                &mut r.attack,
+                &mut r.defense,
+                &mut r.speed,
+                &mut r.agility,
+                &mut r.magic,
+                &mut r.resistance,
+                &mut r.wisdom,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let factor = if s.stat_scale_bits[i] == 0 {
+                    1.0
+                } else {
+                    f64::from_bits(s.stat_scale_bits[i])
+                };
+                *value = (f64::from(*value) * factor) as i32 + s.stat_add[i];
+            }
+            // 神现只翻倍六围，智力与 MP 不变，解除后从模板恢复。
+            if s.divine_turns > 0 {
+                r.attack *= 2;
+                r.defense *= 2;
+                r.speed *= 2;
+                r.agility *= 2;
+                r.magic *= 2;
+                r.resistance *= 2;
+            }
+            if s.aura && self.template.name == "hong" {
+                r.defense = (f64::from(r.defense) * (1.8 + if s.aura_bonus { 1.0 } else { 0.0 })) as i32;
+            }
+            if s.aura && self.template.name == "remilia" {
+                let bonus = if s.aura_bonus { 1.0 } else { 0.0 };
+                let power = 1.7 + bonus + 0.8 * f64::from(s.scarlet);
+                r.attack = (f64::from(r.attack) * power) as i32;
+                r.magic = (f64::from(r.magic) * power) as i32;
+                r.speed = (f64::from(r.speed) * (1.7 + bonus + 0.5 * f64::from(s.scarlet))) as i32;
+            }
         }
         self.refresh_runtime_at_boost();
         if let Some(level) = hide_level {
@@ -856,6 +957,22 @@ impl EntityRecord {
             .is_some_and(|(grow, _)| grow > 0)
         {
             at_boost *= 1.5;
+        }
+        // 气场的威力倍率独立于普通聚气，驱散后可恢复基底。
+        if let Some(s) = &self.runtime.rosmontic
+            && s.aura
+        {
+            let bonus = if s.aura_bonus { 1.0 } else { 0.0 };
+            if self.template.name == "hong" {
+                at_boost *= 1.8 + bonus;
+            }
+            if self.template.name == "remilia" {
+                at_boost *= 1.7 + bonus + 0.5 * f64::from(s.scarlet);
+            }
+        }
+        // 化猫额外提升威力，与速敏变化独立保存。
+        if self.runtime.rosmontic.as_ref().is_some_and(|s| s.cat) {
+            at_boost *= 2.0;
         }
         self.runtime.at_boost_bits = at_boost.to_bits();
         self.runtime.at_boost_millionths = at_boost_to_millionths(at_boost);
