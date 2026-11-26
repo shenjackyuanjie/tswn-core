@@ -1,4 +1,6 @@
 use super::*;
+// Clever 候选准备与原版行动共用正式结算入口。
+mod search;
 use crate::runtime::control::TargetWisdom;
 use crate::runtime::forced_action::ForcedFallback;
 
@@ -41,7 +43,7 @@ impl CombatRuntime {
     /// 推进一个最小回合并返回 outcome；没有可见内容时继续推进直到产生。
     pub fn run_minimal_round(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture::<true, _>(round_outcome) }
 
-    #[cfg(test)]
+    /// 搜索试算不收集展示更新，生产构建也保留此入口。
     pub fn run_minimal_round_no_capture(&mut self) -> RoundOutcome {
         if let Some(winner) = self.world.sync_winner_from_alive_views() {
             return round_outcome(None, None, Some(winner));
@@ -675,6 +677,10 @@ impl CombatRuntime {
             }));
         }
 
+        // 搜索只替换候选选择，仍由原回合管线执行与结算。
+        if self.scratch.search_turn.is_some() {
+            return self.prepare_search_action(actor, smart);
+        }
         #[cfg(not(feature = "no_debug"))]
         let rng_before = (self.rng.i, self.rng.j);
         let req_mp_byte = self.rng.next_u8();

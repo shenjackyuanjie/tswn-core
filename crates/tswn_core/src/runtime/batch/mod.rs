@@ -30,8 +30,10 @@ use super::{
     ScoreRosterBuffers, ScoreRoundScratch, SkillLoadout, default_custom_runtime_import_config,
 };
 
-mod score_session;
-pub use score_session::{SCORE_TEST_TOTAL, ScoreSkillFrequency, ScoreTestError, ScoreTestProgress, ScoreTestSession};
+pub mod score_session;
+// 保留 Clever 扩展评分会话，与上游原版评分分别编译。
+pub mod test_session;
+pub use score_session::{SCORE_TEST_TOTAL, ScoreSkillFrequency, ScoreTestError};
 
 /// 胜率并行阈值：轮次总数低于该值时即使有 worker 预算也串行执行，避免线程创建与争用开销。
 const BATCH_PARALLEL_THRESHOLD: usize = 100;

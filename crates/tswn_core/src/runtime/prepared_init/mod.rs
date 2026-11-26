@@ -456,4 +456,3 @@ pub struct PreparedBattleSeed {
     battle_groups: Vec<Vec<PlrId>>,
     rc4_key: String,
 }
-

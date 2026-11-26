@@ -148,7 +148,7 @@ pub enum PreparedPlainAction {
 pub struct BattleScratch {
     pub selected_actor_round: u64,
     /// 搜索逐回合推演时的临时状态；普通对局为 None。
-    pub search_turn: Option<crate::runtime::search::SearchTurn>,
+    pub(crate) search_turn: Option<crate::runtime::search::SearchTurn>,
 }
 
 impl BattleScratch {

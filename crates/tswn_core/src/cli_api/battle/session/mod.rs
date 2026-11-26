@@ -53,7 +53,89 @@ pub struct BattleSession {
     pending_passive: Option<crate::runtime::PassiveRequest>,
 }
 
+#[cfg(test)]
+mod state_rate_tests {
+    use super::*;
+    #[test]
+    fn current_state_rates_preserve_live_battle_and_partition_samples() {
+        let raw = "alpha@red\n\nbeta@blue\nseed:state-rate-test@!";
+        let mut measured = BattleSession::new(raw, BattleOptions::default()).unwrap();
+        let mut reference = BattleSession::new(raw, BattleOptions::default()).unwrap();
+        assert_eq!(measured.next_frame().unwrap(), reference.next_frame().unwrap());
+        let whole = measured.current_win_rate_batch(0, 16).unwrap();
+        let a = measured.current_win_rate_batch(0, 8).unwrap();
+        let b = measured.current_win_rate_batch(8, 8).unwrap();
+        assert_eq!(whole, a.iter().zip(b).map(|(a, b)| a + b).collect::<Vec<_>>());
+        assert_eq!(whole.iter().sum::<u32>(), 16);
+        while !measured.is_done() {
+            assert_eq!(measured.next_frame().unwrap(), reference.next_frame().unwrap());
+        }
+        let terminal = measured.current_win_rate_batch(0, 8).unwrap();
+        assert_eq!(terminal.iter().sum::<u32>(), 8);
+        assert!(terminal[0] == 8 || terminal[1] == 8);
+        assert_eq!(terminal[2], 0);
+        let multi = BattleSession::new("a\n\nb\n\nc", BattleOptions::default()).unwrap();
+        assert!(multi.current_win_rate_batch(0, 8).is_err());
+    }
+}
+
 impl BattleSession {
+    /// 克隆完整边界独立续局，只替换试算 RNG，不消费正式对局随机流。
+    pub fn current_win_rate_batch(&self, start: u32, count: u32) -> CliApiResult<Vec<u32>> {
+        if self.driver.search.is_some()
+            || self.driver.runner.input_groups().len() != 2
+            || count == 0
+            || count > 32
+            || start.saturating_add(count) > 10000
+        {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "state rates require two legacy teams, count 1..32, total <= 10000".into(),
+            ));
+        }
+        if let Some(error) = &self.driver.failure {
+            return Err(error.clone());
+        }
+        let teams: Vec<_> = self
+            .initial_states
+            .iter()
+            .map(|s| s.team_index)
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        if teams.len() != 2 {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "state rates require exactly two runtime teams".into(),
+            ));
+        }
+        let mut counts = vec![0, 0, 0];
+        for sample in start..start + count {
+            let mut trial = self.driver.runner.clone();
+            trial.runtime_mut().rng = crate::rc4::RC4::new(format!("state-win-rate:{sample}").as_bytes(), 1);
+            let result = trial.run_to_completion(10000);
+            match result.winner_team.and_then(|team| teams.iter().position(|id| *id == team)) {
+                Some(index) => counts[index] += 1,
+                None => counts[2] += 1,
+            }
+        }
+        Ok(counts)
+    }
+
+    /// 在推进前选择搜索预算；受控对局不能同时交给搜索策略。
+    pub fn set_search(&mut self, config: crate::runtime::search::SearchConfig) -> CliApiResult<()> {
+        if self.driver.rounds_advanced != 0 || !self.driver.runner.runtime().control.controlled_teams().is_empty() {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "search requires an unstarted automatic battle".into(),
+            ));
+        }
+        if !(1..=32).contains(&config.samples) || !(1..=256).contains(&config.horizon) || !(1..=8).contains(&config.shortlist) {
+            return Err(crate::cli_api::CliApiError::InvalidArgument(
+                "search budget: samples 1..32, horizon 1..256, shortlist 1..8".into(),
+            ));
+        }
+        self.driver.search = Some(config);
+        Ok(())
+    }
+
     /// 解析并初始化对局，不推进回合；空输入、零上限或非有限 eval_rq 返回错误。
     ///
     /// 未启用 `png_render` 时，请求 `include_icons=true` 返回 `UnsupportedOption`，
@@ -1007,3 +1089,76 @@ fn part_from_core(part: ReplayTextPart) -> BattleReplayTextPart {
 mod card_control_tests;
 #[cfg(test)]
 mod session_tests;
+
+#[cfg(test)]
+mod clever_search_tests {
+    use super::*;
+    use crate::runtime::search::SearchConfig;
+    const RAW: &str = "alpha@red\n\nbeta@blue\nseed:clever-check@!";
+
+    #[test]
+    fn search_session_matches_cpu_runtime_and_keeps_round_budget() {
+        let config = SearchConfig {
+            samples: 2,
+            horizon: 8,
+            ..SearchConfig::default()
+        };
+        let mut session = BattleSession::new(
+            RAW,
+            BattleOptions {
+                max_rounds: 12,
+                ..BattleOptions::default()
+            },
+        )
+        .unwrap();
+        let mut cpu = session.driver.runner.clone();
+        session.set_search(config).unwrap();
+        while session.next_frame().unwrap().is_some() {}
+        for _ in 0..session.driver.rounds_advanced {
+            cpu.runtime_mut().run_search_round(config);
+        }
+        assert_eq!(session.driver.runner.model_state().unwrap(), cpu.model_state().unwrap());
+        assert!(session.driver.rounds_advanced <= 12);
+        assert!(session.result().is_some());
+    }
+
+    #[test]
+    fn search_rejects_invalid_budget_and_late_configuration() {
+        let mut session = BattleSession::new(RAW, BattleOptions::default()).unwrap();
+        assert!(
+            session
+                .set_search(SearchConfig {
+                    samples: 0,
+                    ..SearchConfig::default()
+                })
+                .is_err()
+        );
+        assert!(
+            session
+                .set_search(SearchConfig {
+                    horizon: 257,
+                    ..SearchConfig::default()
+                })
+                .is_err()
+        );
+        assert!(
+            session
+                .set_search(SearchConfig {
+                    shortlist: 9,
+                    ..SearchConfig::default()
+                })
+                .is_err()
+        );
+        session.next_frame().unwrap();
+        assert!(session.set_search(SearchConfig::default()).is_err());
+        let mut controlled = BattleSession::new(
+            RAW,
+            BattleOptions {
+                controlled_team: Some(0),
+                ..BattleOptions::default()
+            },
+        )
+        .unwrap();
+        assert!(controlled.set_search(SearchConfig::default()).is_err());
+    }
+}

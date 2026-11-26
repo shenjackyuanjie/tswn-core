@@ -18,6 +18,8 @@ pub struct BattleDriver {
     pub frames_emitted: usize,
     pub stop_reason: Option<BattleStopReason>,
     pub failure: Option<CliApiError>,
+    /// 可选 Clever 搜索配置，普通对局保持原版推进。
+    pub search: Option<crate::runtime::search::SearchConfig>,
     max_rounds: usize,
     no_progress_rounds: usize,
 }
@@ -65,6 +67,7 @@ impl BattleDriver {
             frames_emitted: 0,
             no_progress_rounds: 0,
             failure: None,
+            search: None,
         })
     }
 
@@ -102,7 +105,18 @@ impl BattleDriver {
         let checkpoint = (!self.runner.runtime().control.controlled_teams().is_empty()).then(|| self.runner.clone());
         // 机制层按队伍查询能力卡，进入推进前把会话快照借给 Runtime。
         self.forced.controlled_team = self.runner.runtime().control.controlled_team();
-        let updates = forced_action::with_state(&mut self.forced, || self.runner.main_round_prevalidated());
+        let updates = forced_action::with_state(&mut self.forced, || {
+            if let Some(config) = self.search {
+                self.runner
+                    .runtime_mut()
+                    .run_search_round(config)
+                    .outcome
+                    .frame
+                    .map_or_else(RunUpdates::new, |frame| frame.updates)
+            } else {
+                self.runner.main_round_prevalidated()
+            }
+        });
         if let Some(actor) = self.runner.runtime().control.awaiting() {
             let forced = self.runner.runtime().control.awaiting_forced_action();
             if let Some(runner) = checkpoint {
