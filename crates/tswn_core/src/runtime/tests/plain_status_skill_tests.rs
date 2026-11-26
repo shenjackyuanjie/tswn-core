@@ -225,6 +225,63 @@ fn plain_charm_first_application_refreshes_pending_haste_multiplier() {
 }
 
 #[test]
+fn plain_charm_recharm_hands_target_to_latest_charmer_team() {
+    let config = default_custom_runtime_import_config().expect("default runtime profile should build");
+    let charm = config
+        .registry
+        .state_id_by_export_name(DEFAULT_CORE_CHARM_STATE_EXPORT)
+        .expect("default profile should register charm state");
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "charmer_a", 0, 100, 3).with_magic(10_000),
+            PlayerTemplate::new(2, "victim", 1, 100, 3),
+            PlayerTemplate::new(3, "charmer_c", 2, 100, 3).with_magic(10_000),
+        ],
+        config.registry,
+    ));
+    // 预置「charmer_a（实体 0，队伍 0）已魅惑 victim（实体 1，队伍 1）」的状态，
+    // 直接构造重魅惑前置条件，避免依赖首次施魅的命中滚签。
+    {
+        let target = runtime.entities.get_mut(EntityIdx(1)).unwrap();
+        target.states.add_entry(StateEntry::charm(
+            76,
+            charm,
+            0,
+            Some(0),
+            Some(0),
+            Some(1),
+            2,
+            SkillPriority(210),
+        ));
+    }
+    assert_eq!(runtime.plain_effective_team(EntityIdx(1)), 0);
+
+    // 强制命中：克隆 RNG 预演回避判定，会闪避就消费一粒随机数，直到必然命中。
+    // 沿用仓库内 berserk 测试相同的写法，避免 7/255 保底闪避把测试打抖。
+    while {
+        let mut probe = runtime.rng.clone();
+        PlayerRuntime::dodge(
+            runtime.entities.get(EntityIdx(2)).unwrap().runtime.magic,
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.agility
+                + runtime.entities.get(EntityIdx(1)).unwrap().runtime.resistance,
+            &mut probe,
+        )
+    } {
+        runtime.rng.next_u8();
+    }
+
+    let mut updates = RunUpdates::new();
+    runtime.drain_plain_charm_skill_into(EntityIdx(2), EntityIdx(1), &mut updates);
+
+    // 二次魅惑（更换施魅者）后有效队伍必须跟上最新施魅者：legacy 在此覆盖魅惑
+    // 状态里的继承队伍（charm_state.r），目标 allyGroup 的延迟刷新由后续状态
+    // 行动（如减速）触发；本 Runtime 的 plain_effective_team 直接读状态载荷，
+    // 重魅惑不同步 effective_team_idx 就会让目标永远留在第一个施魅者的队伍，
+    // 与 legacy 相反。Boss 版魅惑（yuri）同样三个字段一起更新。
+    assert_eq!(runtime.plain_effective_team(EntityIdx(1)), 2);
+}
+
+#[test]
 fn plain_slow_first_application_refreshes_pending_haste_multiplier() {
     let config = default_custom_runtime_import_config().expect("default runtime profile should build");
     let haste = config
