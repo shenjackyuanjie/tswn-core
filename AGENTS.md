@@ -36,6 +36,32 @@
 
 近期历史采用 Conventional Commit 风格，如 `feat(openbox): 添加版本信息弹窗`、`docs(repo): 添加 Agent 工作约定`。使用 `feat`、`fix`、`docs`、`chore` 等类型和简短 scope；提交主题和正文均使用中文。PR 应说明动机、关键实现与验证命令；关联 issue；若更改 Openbox 或 WASM 可见界面，附截图或录屏。避免混入无关格式化、构建产物或本地配置。
 
+### AI 协作者署名
+
+提交里有 AI 模型参与（写代码、审查、跑验证、整理文档都算），**必须**用 `Co-authored-by` 标出来。不要把 AI 的产出记在人名下，也不要因为怕麻烦就省掉——署名是回溯“这段是谁写的、哪个模型想出来的”的唯一线索。
+
+```text
+Co-authored-by: <模型标识> <模型标识@厂商域名>
+```
+
+- 多个模型参与就写多行，放在提交正文末尾的 trailer 区（GitHub 靠这个统计贡献）。整批提交保持同一组署名，不要挑着加。
+- `<模型标识>` 用小写连字符拼接「厂商-模型-变体」，不要出现空格和大写。带空格的 `GPT 6 Luna` 这类写法会让 trailer 解析和 mailmap 都对不上。
+- 邮箱域名按厂商固定：OpenAI 用 `@openai.com`、Anthropic 用 `@anthropic.com`、DeepSeek 用 `@deepseek.com`、StepFun 用 `@stepfun.com`。不要用 `@example.invalid` 之类的占位域名，那等于没署名。
+- 真人协作者不适用这条：`KODU16` 这种 `Co-authored-by` 是真人往来，照常保留。
+
+当前生效的写法（新模型按同一规则推名字，并补进这张表）：
+
+| 模型 | 署名 |
+| --- | --- |
+| Codex | `Codex <codex@openai.com>` |
+| GPT-6.2 Sol | `gpt-6.2-sol <gpt-6.2-sol@openai.com>` |
+| Claude Opus | `claude-opus-4-7 <claude-opus-4-7@anthropic.com>` |
+| DeepSeek Flash | `deepseek-flash <deepseek-flash@deepseek.com>` |
+| Step 5 Preview | `step-5-preview <step-5-preview@stepfun.com>` |
+| GitHub Copilot | `Copilot <223556219+Copilot@users.noreply.github.com>` |
+
+同一个模型固定用同一种写法。历史上 `step5preview` 与 `step-5-preview`、`Codex GPT-5.5` 与 `GPT-5.5` 并存，除了让统计碎成一地没有别的作用。自己是什么模型就用什么标识署名，不要借用别人的模型名。
+
 ## 远程仓库与推送
 
 主线对应两个必须保持同步的 remote：
