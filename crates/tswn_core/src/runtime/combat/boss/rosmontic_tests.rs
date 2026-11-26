@@ -104,3 +104,22 @@ fn new_bosses_finish_real_battles_and_preserve_snapshot_state() {
         );
     }
 }
+
+#[test]
+fn rin_immunity_also_covers_attacks_that_skip_dodge() {
+    let (mut runner, boss, enemy) = battle("rin");
+    let rt = runner.runtime_mut();
+    let before = rt.entities.get(boss).unwrap().runtime.hp;
+    let mut updates = RunUpdates::new();
+    rt.drain_plain_attack_after_dodge_into(
+        enemy,
+        boss,
+        true,
+        100000.0,
+        DamageKind::Default,
+        None,
+        PlainAttackOnDamage::None,
+        &mut updates,
+    );
+    assert_eq!(rt.entities.get(boss).unwrap().runtime.hp, before);
+}

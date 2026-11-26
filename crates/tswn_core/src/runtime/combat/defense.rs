@@ -1,8 +1,10 @@
 use super::*;
 
-/// 0.5.5 中两个 Boss 专属 POST_DEFEND 吸收技能。
+/// Boss 专属 POST_DEFEND 吸收和免伤技能。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PlainBossDefend {
+    /// 冴月麟在伤害换算后归零，也覆盖跳过回避的攻击。
+    Rin,
     /// 琪露诺只免疫冰属性伤害，仍可被附加冰冻。
     Cirno,
     /// 青雉：吸收冰冻伤害，免疫物理伤害。
@@ -117,10 +119,6 @@ impl CombatRuntime {
     ) {
         // 黑雾反击绕过 PRE_DEFEND，避免反射双方递归互弹。
         self.reflect_rumia_into(target, defend_value.caster(), updates);
-        // 冴月麟的被动在防御前将所有正威力归零。
-        if self.is_rosmontic_boss(target, "rin") {
-            defend_value.set_atp(0.0);
-        }
         let defender = self.entities.get(target).expect("runtime pre-defend target missing");
         let skills = &defender.template.skills;
         let protect_split = (!defender.runtime.protect_from.is_empty())
@@ -574,6 +572,7 @@ impl CombatRuntime {
             "ikaruga" => Some((SkillPriority(20_000), PlainBossDefend::Ikaruga)),
             "quilt" => Some((SkillPriority(30_000), PlainBossDefend::Quilt)),
             "cirno" => Some((SkillPriority(10_000), PlainBossDefend::Cirno)),
+            "rin" => Some((SkillPriority(10_000), PlainBossDefend::Rin)),
             _ => None,
         }
     }
@@ -620,7 +619,7 @@ impl CombatRuntime {
                     defend_value.set_damage(0);
                 }
             }
-            PlainBossDefend::Quilt => defend_value.set_damage(0),
+            PlainBossDefend::Quilt | PlainBossDefend::Rin => defend_value.set_damage(0),
             PlainBossDefend::Ikaruga => {
                 if damage & 1 == 1 {
                     updates.add_with(|| {
