@@ -118,6 +118,7 @@ impl CombatRuntime {
         defend_value: &mut RuntimeDefendValue,
         on_damage: PlainAttackOnDamage,
     ) {
+        self.pcb_letty_shield(target, updates);
         // 来源：KODU16。大妖精支付自己的反射消耗，成功后本次入射威力归零。
         if self.is_rosmontic_boss(target, "daiyousei")
             && self.entities.get(defend_value.caster()).is_some_and(|e| e.runtime.hp > 0)
@@ -425,6 +426,9 @@ impl CombatRuntime {
             defend_value.set_damage(0);
             return;
         }
+        if self.pcb_defend(target, defend_value, updates) {
+            return;
+        }
         #[derive(Clone, Copy)]
         enum DefendHookPlanEntry {
             Skill(SkillHookPlanEntry),
@@ -701,7 +705,7 @@ impl CombatRuntime {
             return;
         }
         // 来源：KODU16。无名的决意在首次致死时恢复 199 HP，并中止死亡链。
-        if self.revive_megia_into(target, updates) {
+        if self.revive_megia_into(target, updates) || self.revive_pcb_into(target, updates) {
             return;
         }
         let die_skill_plan = self.scheduler.skill_hook_plan(&self.entities, &self.registry, target, ProcMask::DIE);
@@ -713,6 +717,7 @@ impl CombatRuntime {
         }
         let die_state_plan = self.scheduler.state_hook_plan(&self.entities, target, ProcMask::DIE);
         self.drain_state_hook_plan_into(&die_state_plan, updates);
+        self.pcb_child_died(target);
     }
 
     /// 执行击杀者的 KILL hook。
@@ -1042,8 +1047,13 @@ impl CombatRuntime {
         if target_entity.runtime.hp <= 0 || !target_entity.runtime.alive || self.ice_immune(target) {
             return;
         }
-        let charge_active = self.entities.get(caster).is_some_and(|entity| entity.runtime.charge.active);
-        let frozen_step = 1024 + if charge_active { 2048 } else { 0 };
+        let caster_entity = self.entities.get(caster);
+        let charge_active = caster_entity.is_some_and(|entity| entity.runtime.charge.active);
+        // 来源：KODU16。蕾蒂的延长冬日与寒流额外冻结时长独立于普通蓄力。
+        let frost = caster_entity
+            .and_then(|e| e.runtime.rosmontic.as_ref())
+            .map_or(0, |s| i32::from(s.frost_mode) * 1024);
+        let frozen_step = 1024 + frost + if charge_active { 2048 } else { 0 };
         let target_entity = self.entities.get_mut(target).unwrap();
         let first_application = target_entity.states.entry(PLAIN_ICE_STATE_KEY).is_none();
         target_entity.states.add_ice_frozen_step(PLAIN_ICE_STATE_KEY, frozen_step);

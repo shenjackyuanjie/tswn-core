@@ -300,6 +300,7 @@ impl PlayerRuntime {
                 .map(|levels| {
                     Box::new(RosmonticRuntime {
                         levels: levels.to_vec(),
+                        phantom_members: if template.name == "phantom" { 7 } else { 0 },
                         ..Default::default()
                     })
                 }),
@@ -600,12 +601,9 @@ impl EntityRecord {
     /// 含状态修正与垂死增益的有效速度。
     pub fn effective_speed(&self) -> i32 {
         // 来源：KODU16。调度器也读取专属速度变化，不能只让状态面板显示加速。
-        if self
-            .runtime
-            .rosmontic
-            .as_ref()
-            .is_some_and(|s| s.stat_add[2] != 0 || s.stat_scale_bits[2] != 0 || (s.aura && self.template.name == "remilia"))
-        {
+        if self.runtime.rosmontic.as_ref().is_some_and(|s| {
+            s.stat_add[2] != 0 || s.stat_scale_bits[2] != 0 || s.divine_turns > 0 || (s.aura && self.template.name == "remilia")
+        }) {
             return self.states.effective_speed(self.runtime.speed);
         }
         let mut speed = self.states.effective_speed(self.template.speed);
@@ -721,6 +719,15 @@ impl EntityRecord {
                     *value = (f64::from(*value) * f64::from_bits(s.stat_scale_bits[i])) as i32;
                 }
                 *value += s.stat_add[i];
+            }
+            // 来源：KODU16。神现只翻倍六围，智力与 MP 不变，解除后从模板恢复。
+            if s.divine_turns > 0 {
+                r.attack *= 2;
+                r.defense *= 2;
+                r.speed *= 2;
+                r.agility *= 2;
+                r.magic *= 2;
+                r.resistance *= 2;
             }
             let bonus = if s.aura_bonus { 1.0 } else { 0.0 };
             if s.aura && self.template.name == "hong" {
@@ -939,6 +946,10 @@ impl EntityRecord {
                 "remilia" => at_boost *= 1.7 + bonus + 0.5 * f64::from(s.scarlet),
                 _ => {}
             }
+        }
+        // 来源：KODU16。化猫额外提升威力，与速敏变化独立保存。
+        if self.runtime.rosmontic.as_ref().is_some_and(|s| s.cat) {
+            at_boost *= 2.0;
         }
         self.runtime.at_boost_bits = at_boost.to_bits();
         self.runtime.at_boost_millionths = at_boost_to_millionths(at_boost);

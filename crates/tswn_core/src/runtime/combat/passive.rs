@@ -35,6 +35,7 @@ impl CombatRuntime {
         // 来源：KODU16。高体力阶段的剑技受到实际伤害后中断，低体力阶段不挂中断钩子。
         self.interrupt_megia_into(target, updates);
         self.upgrade_rumia_into(target, updates);
+        self.pcb_after_damage(target, updates);
 
         #[derive(Debug, Clone, Copy)]
         enum PlainPostDamageSkill {

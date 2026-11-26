@@ -3,7 +3,7 @@
 //! 与 [`super::skills::boss`]（Boss 技能的三个 match 派发）是不同层次：这里是单只
 //! Boss 的专属实现，`skills/boss.rs` 是「技能 → Boss 技能」的派发逻辑。
 
-// 冻结延长、化猫和招架留给第三批，当前无调用方。
+pub mod alice_ran;
 pub mod cirno;
 #[cfg(test)]
 pub mod cirno_tests;
@@ -11,7 +11,13 @@ pub mod conan;
 pub mod fish;
 #[cfg(test)]
 pub mod fish_tests;
+pub mod flandre_letty_chen;
 pub mod mario;
+pub mod pcb_hooks;
+pub mod pcb_summons;
+#[cfg(test)]
+pub mod pcb_tests;
+pub mod phantom_youmu_yuyuko;
 pub mod quilt;
 #[cfg(test)]
 pub mod quilt_tests;

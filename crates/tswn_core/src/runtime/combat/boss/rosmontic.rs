@@ -9,7 +9,7 @@ impl CombatRuntime {
         self.entities.get(actor).is_some_and(|e| {
             e.runtime.rosmontic.as_ref().is_some_and(|s| {
                 (e.runtime.flags.contains(PlayerKindFlags::BOSS) && RosmonticRuntime::boss_levels(&e.template.name).is_some())
-                    || (e.runtime.is_combat_minion() && matches!(s.child_kind, 1..=3))
+                    || (e.runtime.is_combat_minion() && matches!(s.child_kind, 1..=4 | 10..=18 | 20..=23))
             })
         })
     }

@@ -118,6 +118,7 @@ impl CombatRuntime {
                 self.rosmontic_message(actor, "[0]的[世界]结束了", updates);
             }
         }
+        self.begin_pcb_action(actor, updates);
     }
 
     /// 结界四次自身行动后解除；燃烧的剩余威力分两轮衰减并走真实伤害链。
@@ -153,6 +154,7 @@ impl CombatRuntime {
                 self.drain_plain_lethal_damage_into(caster, actor, updates);
             }
         }
+        self.end_pcb_action(actor, updates);
     }
 
     /// 驱散只清除可解除的结界和气场，不重置已经消耗的招式或五行进度。
@@ -160,14 +162,21 @@ impl CombatRuntime {
         let Some(s) = self.entities.get_mut(target).and_then(|e| e.runtime.rosmontic.as_mut()) else {
             return;
         };
-        let changed = s.aura || s.barrier_turns > 0;
+        let changed = s.aura || s.barrier_turns > 0 || s.divine_turns > 0;
+        let divine = std::mem::take(&mut s.divine_turns) > 0;
+        let aura_or_barrier = s.aura || s.barrier_turns > 0;
         s.aura = false;
         s.aura_bonus = false;
         s.barrier_turns = 0;
         s.scarlet = 0;
         if changed {
             self.entities.get_mut(target).unwrap().apply_runtime_stats_from_template(false);
-            self.rosmontic_message(target, "[0]的[结界／气场]被打破了", updates);
+            if aura_or_barrier {
+                self.rosmontic_message(target, "[0]的[结界／气场]被打破了", updates);
+            }
+            if divine {
+                self.rosmontic_message(target, "[0]从[神现]中解除", updates);
+            }
         }
     }
 
@@ -213,7 +222,11 @@ impl CombatRuntime {
         }
         let child_kind = self.ros_state(actor).child_kind;
         if child_kind != 0 {
-            self.ros_child_action(actor, child_kind, updates);
+            if child_kind <= 3 {
+                self.ros_child_action(actor, child_kind, updates);
+            } else {
+                self.pcb_child_action(actor, child_kind, updates);
+            }
             return;
         }
         let name = self.entities.get(actor).unwrap().template.name.clone();
@@ -227,10 +240,22 @@ impl CombatRuntime {
             "patchouli" => &[4, 9, 7, 2, 0, 10, 8, 1, 5, 3, 6],
             "sakuya" => &[0, 3, 1, 2],
             "remilia" => &[3, 4, 1, 2],
+            "flandre" => &[0, 2, 1, 3],
+            "letty" => &[2, 5, 3, 4],
+            "chen" => &[4, 3, 1, 2],
+            "alice" => &[0, 7, 3, 5, 1, 10, 8, 4, 2, 6, 9],
+            "phantom" => &[2, 0, 3, 1],
+            "youmu" => &[1, 2, 0, 3],
+            "yuyuko" => &[0, 2, 1, 3],
+            "ran" => &[0, 2, 3, 1],
             _ => return,
         };
         if let Some(skill) = self.ros_state(actor).charged_skill.take() {
-            let targets = self.ros_enemies(actor, 1);
+            let targets = if matches!(name.as_str(), "flandre" | "yuyuko") {
+                self.ros_skill_targets(actor, skill, smart)
+            } else {
+                self.ros_enemies(actor, 1)
+            };
             self.ros_cast(actor, skill, targets, updates);
             return;
         }
@@ -288,6 +313,46 @@ impl CombatRuntime {
                         && s.child.is_none_or(|id| !self.entities.get(id).is_some_and(|e| e.runtime.hp > 0)))
             }
             "remilia" => skill != 1 || !smart || e.runtime.hp >= 100 + 100 * s.scarlet as i32,
+            "flandre" => skill != 0 || !smart || e.runtime.hp >= 4,
+            "letty" => skill != 3 || e.runtime.hp * 100 <= e.template.max_hp * 49,
+            "chen" => !(s.cat && matches!(skill, 2..=4)) && (skill != 3 || s.levels[3] <= 100),
+            "alice" => {
+                let dolls = self.pcb_dolls(actor);
+                if skill == 1 {
+                    return dolls.len() >= 3 && e.runtime.hp * 10 <= e.template.max_hp * 3;
+                }
+                if skill == 2 {
+                    return dolls.len() >= 5 && e.runtime.hp * 10 >= e.template.max_hp * 3;
+                }
+                let role = match skill {
+                    0 => 18,
+                    3 => 10,
+                    4 => 11,
+                    5 => 12,
+                    6 => 13,
+                    7 => 17,
+                    8 => 15,
+                    9 => 16,
+                    _ => 14,
+                };
+                !dolls
+                    .into_iter()
+                    .any(|id| self.entities.get(id).unwrap().runtime.rosmontic.as_ref().unwrap().child_kind == role)
+            }
+            "phantom" => {
+                if skill == 0 {
+                    s.phantom_members == 7
+                } else {
+                    s.phantom_members & (1 << (skill - 1)) != 0
+                }
+            }
+            "youmu" => skill != 0 || s.guard != 2,
+            "yuyuko" => match skill {
+                0 => !smart || !e.states.entries().iter().any(|x| matches!(x.payload, StatePayload::Poison { .. })),
+                1 => !s.butterfly_prepared && !s.butterfly_revived,
+                _ => true,
+            },
+            "ran" => skill != 2 || s.divine_turns == 0,
             _ => true,
         }
     }
@@ -295,6 +360,34 @@ impl CombatRuntime {
     fn ros_skill_targets(&mut self, actor: EntityIdx, skill: usize, smart: bool) -> Vec<EntityIdx> {
         let name = self.entities.get(actor).unwrap().template.name.as_str();
         match (name, skill) {
+            ("flandre", 0) | ("chen", 1) | ("youmu", 0) | ("yuyuko", 1) | ("ran", 0 | 1 | 3) => vec![actor],
+            ("alice", 1) | ("ran", 2) => self.world.flat_alive().to_vec(),
+            ("alice", 2) => self.ros_enemies(actor, self.pcb_dolls(actor).len()),
+            ("alice", _) => vec![actor],
+            ("phantom", _) => {
+                let mut targets = self.world.flat_alive().to_vec();
+                self.rng.sort_list(&mut targets);
+                targets.truncate(3);
+                targets
+            }
+            ("letty", 2) | ("chen", 4) | ("youmu", 3) => self.ros_enemies(actor, 2),
+            ("letty", 5) => self.ros_enemies(actor, 4),
+            ("chen", 3) => {
+                let count = 1 + (self.rng.next_u8() % 5) as usize;
+                self.ros_enemies(actor, count)
+            }
+            ("yuyuko", 0 | 2) => self.ros_enemies(actor, 3),
+            ("flandre", 1) if smart => {
+                let targets = self.ros_enemies(actor, 999);
+                targets
+                    .into_iter()
+                    .filter(|id| {
+                        let e = self.entities.get(*id).unwrap();
+                        e.runtime.hp >= 80 && e.states.entry(78).and_then(StateEntry::slow_value).unwrap_or(0) <= 1
+                    })
+                    .take(1)
+                    .collect()
+            }
             ("reimu", 2) | ("daiyousei", 2) | ("hong", 1 | 4) | ("koakuma", 1) | ("sakuya", 1) | ("remilia", 1) => vec![actor],
             ("daiyousei", 0) => self.select_plain_revive_targets(actor, smart).into_iter().collect(),
             ("daiyousei", 1) => self.select_plain_heal_targets(actor, smart).into_iter().collect(),
@@ -332,6 +425,14 @@ impl CombatRuntime {
             "patchouli" => self.ros_patchouli(actor, skill, targets, updates),
             "sakuya" => self.ros_sakuya(actor, skill, targets, updates),
             "remilia" => self.ros_remilia(actor, skill, targets, updates),
+            "flandre" => self.ros_flandre(actor, skill, targets, updates),
+            "letty" => self.ros_letty(actor, skill, targets, updates),
+            "chen" => self.ros_chen(actor, skill, targets, updates),
+            "alice" => self.ros_alice(actor, skill, targets, updates),
+            "phantom" => self.ros_phantom(actor, skill, targets, updates),
+            "youmu" => self.ros_youmu(actor, skill, targets, updates),
+            "yuyuko" => self.ros_yuyuko(actor, skill, targets, updates),
+            "ran" => self.ros_ran(actor, skill, targets, updates),
             _ => {}
         }
     }
