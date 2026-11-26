@@ -41,7 +41,7 @@ pub struct StressCaseSpec {
 impl StressCaseSpec {
     /// 返回调用方拥有的实际战斗文本，必要时仅展开历史样例中的 x02 标记。
     ///
-    /// 不在此处统一换行；输入哈希另行将 CRLF/CR 规范为 LF，战斗仍使用实际文本。
+    /// 换行不在此处处理：战斗输入解析与输入哈希分别将 CRLF/CR 规范为 LF。
     pub fn effective_input(self) -> String {
         if self.unescape_x02 {
             self.input.replace("\\x02", "\x02")

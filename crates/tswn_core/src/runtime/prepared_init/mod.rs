@@ -15,6 +15,8 @@ use crate::runtime::entity::ScoreCloneSkillBoostPlan;
 mod init;
 mod roster;
 mod seed;
+#[cfg(test)]
+mod tests;
 
 /// 对局初始化失败：单个玩家构造错误，或准备好的实体数与 Runtime 不一致。
 #[derive(Debug, Clone, PartialEq, Eq)]

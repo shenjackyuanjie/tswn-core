@@ -99,5 +99,5 @@
 - 修复完成后，把该 input 接入长期 Runtime strict-diff 回归，记录随回归一并保留。
 - 只有 oracle、Runtime 输出、RNG/帧序列全部一致，才可把状态改为“已闭环”。
 - `golden.json` 保留删除旧对象模型前的 37 项 legacy 基线，继续断言 `rounds`（含空推进的 `run_round` 调用次数）和逐回合 canonical digest。新增的 2 项 JS 基线用 `visible_rounds` 记录可见帧数，`round_digests` 为空；这两项的 `rounds` 来自 Rust，仅作为检测推进次数变化的哨兵，并非 JS 期望值。
-- JS 基线的输入采用 LF，并以 `.gitattributes` 保证取出后仍是 LF。哈希层才会规范化换行，战斗直接读取原始文本；已有 37 份输入不改换行。87 项 JS exact trace 继续内嵌在共享 suite 中，当前语料共 87 + 37 + 2 = 126 局。
+- Rust 的对局输入解析与输入哈希都会规范化换行，语料不依赖工作区使用 LF 还是 CRLF。取证见[语料换行与构建产物复用](../../../../docs/diff/runtime-corpus-line-endings.md)。87 项 JS exact trace 继续内嵌在共享 suite 中，当前语料共 87 + 37 + 2 = 126 局。
 - 当前语料用于只读比较；历史 `freeze_runtime_golden` 二进制已删除，不能再使用旧重建命令。本轮维护不重生成输入或 golden。确需改变 oracle 语义时，先单独审查再生工具、输入来源与新预期，再审查基线差异并运行 `python scripts/check_runtime_release.py --corpus`；实际测试范围由当前 corpus 目标决定。
