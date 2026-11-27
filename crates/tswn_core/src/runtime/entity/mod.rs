@@ -381,6 +381,19 @@ impl PlayerTemplate {
 
     /// 指定玩家类型构造模板；约束与 [`Self::new`] 相同。
     pub fn with_kind(id: PlrId, name: impl Into<String>, kind: PlayerKindId, team: usize, max_hp: i32, attack: i32) -> Self {
+        Self::with_kind_and_loadout(id, name, kind, team, max_hp, attack, SkillLoadout::default())
+    }
+
+    /// 构造已有技能表的玩家，避免为立即被覆盖的空技能表分配基线。
+    pub fn with_kind_and_loadout(
+        id: PlrId,
+        name: impl Into<String>,
+        kind: PlayerKindId,
+        team: usize,
+        max_hp: i32,
+        attack: i32,
+        skills: SkillLoadout,
+    ) -> Self {
         assert!(max_hp > 0, "runtime player max_hp must be positive");
         assert!(attack >= 0, "runtime player attack must be non-negative");
         let name = name.into();
@@ -392,7 +405,7 @@ impl PlayerTemplate {
             clan_name: name.clone(),
             name,
             kind,
-            skills: SkillLoadout::default(),
+            skills,
             team,
             max_hp,
             attack,

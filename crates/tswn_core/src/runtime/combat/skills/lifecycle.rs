@@ -324,17 +324,16 @@ impl CombatRuntime {
             .unwrap_or_else(|| panic!("unknown runtime shadow actor: {}", actor.0))
             .runtime
             .root_owner;
-        let (root_name, next_minion_index) = {
+        let next_minion_index = {
             let root = self
                 .entities
                 .get(root_owner)
                 .unwrap_or_else(|| panic!("unknown runtime shadow root owner: {}", root_owner.0));
-            let next = match root.slots.get(counter_slot) {
+            match root.slots.get(counter_slot) {
                 Some(SlotValue::U64(next)) => *next,
                 Some(_) => panic!("runtime core minion counter slot has invalid value"),
                 None => 0,
-            };
-            (root.template.name.clone(), next)
+            }
         };
         self.entities
             .get_mut(root_owner)
@@ -342,6 +341,7 @@ impl CombatRuntime {
             .slots
             .set(counter_slot, SlotValue::U64(next_minion_index + 1))
             .expect("runtime core minion counter slot must exist");
+        let root_name = &self.entities.get(root_owner).unwrap().template.name;
         shadow_template.name = format!("{root_name}?{next_minion_index}");
         shadow_template.move_state.speed_points = if self.entities.get(actor).is_some_and(|entity| entity.runtime.charge.active) {
             2048
@@ -349,12 +349,7 @@ impl CombatRuntime {
             -2048
         };
 
-        updates.add(RuntimeFrame::replay_update(
-            actor.0 as usize,
-            actor.0 as usize,
-            "[0]使用[幻术]",
-            60,
-        ));
+        updates.add_with(|| RuntimeFrame::replay_update(actor.0 as usize, actor.0 as usize, "[0]使用[幻术]", 60));
         self.effects.push(QueuedEffect::SpawnWithMessage {
             caster: actor,
             template: shadow_template,

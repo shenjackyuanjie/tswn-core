@@ -1101,9 +1101,7 @@ impl EntityArena {
                 .clone();
             template.set_runtime_clan_name(root_clan_name);
         }
-        if template.skills.skills().iter().all(|skill_id| registry.skill(*skill_id).is_some()) {
-            template.skills.prepare_hook_cache(registry);
-        }
+        template.skills.prepare_registered_hook_cache(registry);
         let runtime = PlayerRuntime::from_template(&template, registry, owner, root_owner);
         let mut states = StateStore::default();
         if runtime.is_minion() {

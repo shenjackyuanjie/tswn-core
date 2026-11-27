@@ -266,7 +266,6 @@ impl CombatRuntime {
 
         let (
             root_owner,
-            root_name,
             owner_clan_name,
             owner_display_name,
             owner_team,
@@ -284,13 +283,6 @@ impl CombatRuntime {
                 .get(actor)
                 .unwrap_or_else(|| panic!("unknown runtime clone actor: {}", actor.0));
             let root_owner = owner.runtime.root_owner;
-            let root_name = self
-                .entities
-                .get(root_owner)
-                .unwrap_or_else(|| panic!("unknown runtime clone root owner: {}", root_owner.0))
-                .template
-                .name
-                .clone();
             let clone_build_data = owner
                 .template
                 .clone_build
@@ -321,7 +313,6 @@ impl CombatRuntime {
             let zombie_blueprint = zombie_blueprint_slot.and_then(|slot| owner.slots.share_player_template(slot));
             (
                 root_owner,
-                root_name,
                 rinick_clone.then(|| owner.template.clan_name.clone()),
                 owner.template.display_name.clone(),
                 owner.runtime.team,
@@ -382,14 +373,16 @@ impl CombatRuntime {
 
         let clone_stats = clone_build.derive_stats();
         let next_entity = self.entities.len();
+        let root_name = &self.entities.get(root_owner).unwrap().template.name;
         let clone_name = format!("{root_name}?{next_minion_index}");
-        let mut clone_template = PlayerTemplate::with_kind(
+        let mut clone_template = PlayerTemplate::with_kind_and_loadout(
             next_entity + 1,
             clone_name,
             clone_kind,
             owner_team,
             clone_stats.max_hp.max(1),
             clone_stats.attack.max(0),
+            clone_skills,
         )
         .with_display_name(owner_display_name)
         .with_magic(clone_stats.magic.max(0))
@@ -404,8 +397,7 @@ impl CombatRuntime {
             clone_stats.atk_sum,
             f64::from_bits(clone_stats.attract_bits),
         )
-        .with_speed_points(clone_move_points)
-        .with_skill_loadout(clone_skills);
+        .with_speed_points(clone_move_points);
         clone_template.clone_build = Some(clone_build);
         clone_template.covid_mask = covid_mask;
         if let Some(clan_name) = owner_clan_name {
@@ -415,12 +407,7 @@ impl CombatRuntime {
         }
         let clone_idx = EntityIdx(next_entity.try_into().expect("runtime clone entity index overflow"));
 
-        updates.add(crate::runtime::update::RunUpdate::new(
-            "[0]使用[分身]",
-            actor.0 as usize,
-            actor.0 as usize,
-            60,
-        ));
+        updates.add_with(|| crate::runtime::update::RunUpdate::new("[0]使用[分身]", actor.0 as usize, actor.0 as usize, 60));
         self.effects.push(QueuedEffect::SpawnWithMessage {
             caster: actor,
             template: clone_template,

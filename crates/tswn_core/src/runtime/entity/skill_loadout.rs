@@ -417,6 +417,13 @@ impl SkillLoadout {
         self.hook_generation = prepared.hook_generation;
     }
 
+    /// 召唤实体沿用已准备的缓存；外部模板的技能全部登记后才构建缓存。
+    pub fn prepare_registered_hook_cache(&mut self, registry: &ExtensionRegistry) {
+        if !self.hook_cache_ready && self.skills.iter().all(|&id| registry.skill(id).is_some()) {
+            self.prepare_hook_cache(registry);
+        }
+    }
+
     /// 预计算八类技能钩子的稳定顺序，避免每次行动重复扫描并排序完整技能表。
     pub fn prepare_hook_cache(&mut self, registry: &ExtensionRegistry) {
         if self.hook_cache_ready {
