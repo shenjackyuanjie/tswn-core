@@ -348,3 +348,27 @@ fn small_range_sampling_preserves_full_rng_state_and_large_range_fallback() {
         }
     }
 }
+
+#[test]
+fn feedback_mix_matches_in_place_across_cursor_wrap() {
+    for (i, j) in [(0, 0), (0x1ff, 0x2fe)] {
+        for input in ["", "a", "甲队@乙队\0a@b"] {
+            let mut initial = RC4::new(b"fixed roster", 1);
+            initial.i = i;
+            initial.j = j;
+            let mut expected = initial.clone();
+            expected.encrypt_bytes(&mut input.as_bytes().to_vec());
+            let mut identity = initial.clone();
+            identity.encrypt_bytes_no_change(input);
+            let mut key = initial;
+            key.js_xor_str(input);
+
+            for actual in [identity, key] {
+                assert_eq!(
+                    (actual.i, actual.j, actual.main_val),
+                    (expected.i, expected.j, expected.main_val)
+                );
+            }
+        }
+    }
+}

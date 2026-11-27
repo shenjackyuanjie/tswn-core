@@ -584,9 +584,24 @@ impl RC4 {
     /// 按字节序列混合密钥。
     #[inline]
     fn mix_key_bytes(&mut self, bytes: &[u8]) {
-        for &byte in bytes {
-            self.mix_key_byte(byte);
+        if bytes.is_empty() {
+            return;
         }
+        // 整段只在末尾提交游标，保留每字节交换及密文反馈的先后。
+        let mut i = self.i as u8;
+        let mut j = self.j as u8;
+        for &byte in bytes {
+            i = i.wrapping_add(1);
+            let si = self.main_val[usize::from(i)];
+            j = j.wrapping_add(si);
+            let sj = self.main_val[usize::from(j)];
+            self.main_val[usize::from(i)] = sj;
+            self.main_val[usize::from(j)] = si;
+            let encrypted = byte ^ self.main_val[usize::from(si.wrapping_add(sj))];
+            j = j.wrapping_add(encrypted);
+        }
+        self.i = u32::from(i);
+        self.j = u32::from(j);
     }
 
     /// 混合单个密钥字节：与未跟踪输出异或后累加 j。
@@ -643,12 +658,7 @@ impl RC4 {
     ///
     /// 状态变化等价于复制字节后调用 [`Self::encrypt_bytes`]；用于初始化时混入身份，
     /// 无需为仅关心随机状态的调用创建临时字节缓冲。
-    pub fn encrypt_bytes_no_change(&mut self, bytes: &str) {
-        for byte in bytes.as_bytes() {
-            let encrypted = *byte ^ self.next_u8_untracked();
-            self.j = u32::from((self.j as u8).wrapping_add(encrypted));
-        }
-    }
+    pub fn encrypt_bytes_no_change(&mut self, bytes: &str) { self.mix_key_bytes(bytes.as_bytes()); }
 
     /// 原地解码反馈异或字节，并将覆盖前的密文字节累加到 j。
     ///
