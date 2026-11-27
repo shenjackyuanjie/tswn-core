@@ -14,6 +14,7 @@
 use crate::runtime::entity::PlayerTemplate;
 use crate::runtime::{BattleSlotId, EntitySlotId, ExtensionRegistry, TemplateSlotId};
 use smallvec::SmallVec;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// 全局自增计数器，为每个 slot storage 分配唯一 baseline_id，用于复位时识别是否同源。
@@ -167,10 +168,62 @@ const ENTITY_SLOT_DIRTY_VALUE: u64 = 2;
 /// 每个脏位字覆盖的实体槽数量；每槽占 2 bit（team/value 各 1 bit）。
 const ENTITY_SLOTS_PER_DIRTY_WORD: usize = 32;
 
+/// 供分身继承的蓝图快照。写入任一实体槽时按需分离副本。
+#[derive(Debug, Clone)]
+pub struct SharedPlayerTemplateSlot(Arc<SlotValue>);
+
+#[derive(Debug)]
+enum EntitySlotValue {
+    Inline(SlotValue),
+    Shared(SharedPlayerTemplateSlot),
+}
+
+impl EntitySlotValue {
+    fn from_value(value: SlotValue) -> Self {
+        if matches!(value, SlotValue::PlayerTemplate(_)) {
+            Self::Shared(SharedPlayerTemplateSlot(Arc::new(value)))
+        } else {
+            Self::Inline(value)
+        }
+    }
+
+    fn value(&self) -> &SlotValue {
+        match self {
+            Self::Inline(value) => value,
+            Self::Shared(value) => &value.0,
+        }
+    }
+
+    fn value_mut(&mut self) -> &mut SlotValue {
+        match self {
+            Self::Inline(value) => value,
+            Self::Shared(value) => Arc::make_mut(&mut value.0),
+        }
+    }
+
+    fn into_value(self) -> SlotValue {
+        match self {
+            Self::Inline(value) => value,
+            Self::Shared(value) => Arc::unwrap_or_clone(value.0),
+        }
+    }
+}
+
+impl Clone for EntitySlotValue {
+    // 原型与各 worker 的首发蓝图独立持有。跨局复位后通常可原地调整队伍。
+    fn clone(&self) -> Self { Self::from_value(self.value().clone()) }
+}
+
+impl PartialEq for EntitySlotValue {
+    fn eq(&self, other: &Self) -> bool { self.value() == other.value() }
+}
+
+impl Eq for EntitySlotValue {}
+
 /// 按 [`EntitySlotId`] 索引的单实体扩展槽存储，用脏位标记本局改动以支持精细化复位。
 #[derive(Debug, Clone)]
 pub struct EntitySlotStorage {
-    values: Vec<Option<SlotValue>>,
+    values: Vec<Option<EntitySlotValue>>,
     baseline_id: u64,
     /// 每槽 2 bit 区分蓝图 team-only 与完整值写入；默认 core 槽位只占一个栈内 word。
     battle_dirty_words: SmallVec<[u64; 1]>,
@@ -207,12 +260,36 @@ impl EntitySlotStorage {
             return Err(SlotError::InvalidEntitySlot(id));
         }
         self.mark_battle_dirty(index, ENTITY_SLOT_DIRTY_VALUE);
-        self.values[index] = Some(value);
+        self.values[index] = Some(EntitySlotValue::from_value(value));
         Ok(())
     }
 
     /// 读取指定槽位；未设置或越界返回 `None`。
-    pub fn get(&self, id: EntitySlotId) -> Option<&SlotValue> { self.values.get(id.0 as usize).and_then(Option::as_ref) }
+    pub fn get(&self, id: EntitySlotId) -> Option<&SlotValue> {
+        self.values.get(id.0 as usize)?.as_ref().map(EntitySlotValue::value)
+    }
+
+    /// 取得蓝图快照，供同一局中新建的分身继承。
+    pub fn share_player_template(&self, id: EntitySlotId) -> Option<SharedPlayerTemplateSlot> {
+        let stored = self.values.get(id.0 as usize)?.as_ref()?;
+        assert!(
+            matches!(stored.value(), SlotValue::PlayerTemplate(_)),
+            "runtime core minion blueprint slot has invalid value"
+        );
+        Some(match stored {
+            EntitySlotValue::Shared(shared) => shared.clone(),
+            EntitySlotValue::Inline(value) => SharedPlayerTemplateSlot(Arc::new(value.clone())),
+        })
+    }
+
+    /// 将继承的蓝图装入分身槽位，保留独立的写入语义。
+    pub fn set_shared_player_template(&mut self, id: EntitySlotId, value: SharedPlayerTemplateSlot) -> Result<(), SlotError> {
+        let index = id.0 as usize;
+        let slot = self.values.get_mut(index).ok_or(SlotError::InvalidEntitySlot(id))?;
+        *slot = Some(EntitySlotValue::Shared(value));
+        self.mark_battle_dirty(index, ENTITY_SLOT_DIRTY_VALUE);
+        Ok(())
+    }
 
     /// 取得指定槽位的可变引用并标记值脏位；未设置或越界返回 `None`。
     pub fn get_mut(&mut self, id: EntitySlotId) -> Option<&mut SlotValue> {
@@ -221,15 +298,18 @@ impl EntitySlotStorage {
             return None;
         }
         self.mark_battle_dirty(index, ENTITY_SLOT_DIRTY_VALUE);
-        self.values[index].as_mut()
+        self.values[index].as_mut().map(EntitySlotValue::value_mut)
     }
 
     /// 仅在蓝图队伍确实变化时写入并标脏，避免种子复位的只读命中触发整槽深拷贝。
     pub fn update_player_template_team(&mut self, id: EntitySlotId, team: usize) {
-        let Some(Some(SlotValue::PlayerTemplate(template))) = self.values.get_mut(id.0 as usize) else {
+        let Some(Some(slot)) = self.values.get_mut(id.0 as usize) else {
             return;
         };
-        if template.team != team {
+        if matches!(slot.value(), SlotValue::PlayerTemplate(template) if template.team != team) {
+            let SlotValue::PlayerTemplate(template) = slot.value_mut() else {
+                unreachable!()
+            };
             template.team = team;
             self.mark_battle_dirty(id.0 as usize, ENTITY_SLOT_DIRTY_TEAM);
         }
@@ -242,7 +322,7 @@ impl EntitySlotStorage {
         if removed.is_some() {
             self.mark_battle_dirty(index, ENTITY_SLOT_DIRTY_VALUE);
         }
-        removed
+        removed.map(EntitySlotValue::into_value)
     }
 
     /// 清空所有槽位为未设置，保留容量，并标记相关脏位。
@@ -276,9 +356,10 @@ impl EntitySlotStorage {
                 if flags & ENTITY_SLOT_DIRTY_VALUE != 0 {
                     self.values[index].clone_from(&prepared.values[index]);
                 } else if flags & ENTITY_SLOT_DIRTY_TEAM != 0 {
-                    let (Some(SlotValue::PlayerTemplate(current)), Some(SlotValue::PlayerTemplate(prepared))) =
-                        (self.values[index].as_mut(), prepared.values[index].as_ref())
-                    else {
+                    let (Some(SlotValue::PlayerTemplate(current)), Some(SlotValue::PlayerTemplate(prepared))) = (
+                        self.values[index].as_mut().map(EntitySlotValue::value_mut),
+                        prepared.values[index].as_ref().map(EntitySlotValue::value),
+                    ) else {
                         unreachable!("team-only 实体槽必须保留玩家蓝图")
                     };
                     current.team = prepared.team;
@@ -310,6 +391,41 @@ impl EntitySlotStorage {
 mod tests {
     use super::*;
     use crate::runtime::ExtensionRegistryBuilder;
+
+    #[test]
+    fn inherited_blueprint_stays_independent_after_mutation_and_reset() {
+        let slot = EntitySlotId(0);
+        let blueprint = PlayerTemplate::new(1, "blueprint", 2, 10, 3);
+        let mut prepared = EntitySlotStorage::with_len(1);
+        prepared.set(slot, SlotValue::PlayerTemplate(Box::new(blueprint.clone()))).unwrap();
+        prepared.mark_battle_baseline();
+
+        let mut owner = prepared.clone();
+        let mut child = EntitySlotStorage::with_len(1);
+        child
+            .set_shared_player_template(slot, owner.share_player_template(slot).unwrap())
+            .unwrap();
+        let mut sibling = EntitySlotStorage::with_len(1);
+        sibling
+            .set_shared_player_template(slot, owner.share_player_template(slot).unwrap())
+            .unwrap();
+
+        owner.update_player_template_team(slot, 3);
+        assert!(matches!(owner.get(slot), Some(SlotValue::PlayerTemplate(template)) if template.team == 3));
+        assert!(matches!(child.get(slot), Some(SlotValue::PlayerTemplate(template)) if template.team == 2));
+
+        let SlotValue::PlayerTemplate(child_template) = child.get_mut(slot).unwrap() else {
+            panic!("child blueprint should exist");
+        };
+        child_template.max_hp = 14;
+        owner.reset_battle_state_from(&prepared);
+        assert_eq!(owner.get(slot), prepared.get(slot));
+        assert_eq!(sibling.get(slot), prepared.get(slot));
+        assert!(
+            matches!(child.remove(slot), Some(SlotValue::PlayerTemplate(template)) if template.team == 2 && template.max_hp == 14)
+        );
+        assert_eq!(owner.remove(slot), Some(SlotValue::PlayerTemplate(Box::new(blueprint))));
+    }
 
     #[test]
     fn slot_storages_size_from_registry_specs() {

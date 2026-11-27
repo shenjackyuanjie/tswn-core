@@ -316,21 +316,9 @@ impl CombatRuntime {
             } else {
                 clone_build_data.child()
             };
-            let shadow_blueprint = shadow_blueprint_slot.and_then(|slot| match owner.slots.get(slot) {
-                Some(SlotValue::PlayerTemplate(template)) => Some(template.as_ref().clone()),
-                Some(_) => panic!("runtime core shadow blueprint slot has invalid value"),
-                None => None,
-            });
-            let summon_blueprint = summon_blueprint_slot.and_then(|slot| match owner.slots.get(slot) {
-                Some(SlotValue::PlayerTemplate(template)) => Some(template.as_ref().clone()),
-                Some(_) => panic!("runtime core summon blueprint slot has invalid value"),
-                None => None,
-            });
-            let zombie_blueprint = zombie_blueprint_slot.and_then(|slot| match owner.slots.get(slot) {
-                Some(SlotValue::PlayerTemplate(template)) => Some(template.as_ref().clone()),
-                Some(_) => panic!("runtime core zombie blueprint slot has invalid value"),
-                None => None,
-            });
+            let shadow_blueprint = shadow_blueprint_slot.and_then(|slot| owner.slots.share_player_template(slot));
+            let summon_blueprint = summon_blueprint_slot.and_then(|slot| owner.slots.share_player_template(slot));
+            let zombie_blueprint = zombie_blueprint_slot.and_then(|slot| owner.slots.share_player_template(slot));
             (
                 root_owner,
                 root_name,
@@ -447,19 +435,19 @@ impl CombatRuntime {
         if let (Some(slot), Some(template)) = (shadow_blueprint_slot, shadow_blueprint) {
             clone_entity
                 .slots
-                .set(slot, SlotValue::PlayerTemplate(Box::new(template)))
+                .set_shared_player_template(slot, template)
                 .expect("runtime core shadow blueprint slot must exist");
         }
         if let (Some(slot), Some(template)) = (summon_blueprint_slot, summon_blueprint) {
             clone_entity
                 .slots
-                .set(slot, SlotValue::PlayerTemplate(Box::new(template)))
+                .set_shared_player_template(slot, template)
                 .expect("runtime core summon blueprint slot must exist");
         }
         if let (Some(slot), Some(template)) = (zombie_blueprint_slot, zombie_blueprint) {
             clone_entity
                 .slots
-                .set(slot, SlotValue::PlayerTemplate(Box::new(template)))
+                .set_shared_player_template(slot, template)
                 .expect("runtime core zombie blueprint slot must exist");
         }
     }
