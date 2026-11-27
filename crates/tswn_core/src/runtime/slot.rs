@@ -244,11 +244,11 @@ impl EntitySlotStorage {
     /// 按 registry 的 entity_slots 数量分配等长存储。
     pub fn from_registry(registry: &ExtensionRegistry) -> Self { Self::with_len(registry.entity_slots().len()) }
 
-    /// 分配指定长度的空存储与脏位字，并领取新的基线 ID。
+    /// 分配指定长度的空存储与脏位字。基线编号在封存时领取。
     pub fn with_len(len: usize) -> Self {
         Self {
             values: vec![None; len],
-            baseline_id: next_slot_baseline_id(),
+            baseline_id: 0,
             battle_dirty_words: std::iter::repeat_n(0, len.div_ceil(ENTITY_SLOTS_PER_DIRTY_WORD)).collect(),
         }
     }
@@ -335,11 +335,14 @@ impl EntitySlotStorage {
     }
 
     /// 封存 prepared runner 的实体槽位基线。
-    pub fn mark_battle_baseline(&mut self) { self.battle_dirty_words.fill(0); }
+    pub fn mark_battle_baseline(&mut self) {
+        self.baseline_id = next_slot_baseline_id();
+        self.battle_dirty_words.fill(0);
+    }
 
     /// 仅恢复本局写过的槽位，计数器变化不再连带深拷贝同表中的 PlayerTemplate。
     pub fn reset_battle_state_from(&mut self, prepared: &Self) {
-        if self.baseline_id != prepared.baseline_id {
+        if self.baseline_id == 0 || self.baseline_id != prepared.baseline_id {
             self.clone_from(prepared);
             return;
         }
