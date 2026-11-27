@@ -89,9 +89,10 @@ pub use effect::{
 };
 pub use entity::{
     AssassinateRuntime, CloneBuildData, CloneDerivedStats, CloneStatAdjustments, CompressedLegacyState, CounterRuntime,
-    CovidInfectionEntry, EntityArena, EntityIdx, EntityRecord, HideRuntime, MoveState, PlayerPolicyOverrides, PlayerRuntime,
-    PlayerTemplate, ProtectLinkRuntime, RinickTemplateData, RuntimeCorpseKind, ScoreCloneSkillBoostPlan, SkillLoadout,
-    StateEntry, StatePayload, StatePayloadKind, StateStore, TestSubjectRuntime, TestSubjectSkill,
+    CovidInfectionEntry, CovidInfectionState, EntityArena, EntityIdx, EntityRecord, HideRuntime, MoveState,
+    PlayerPolicyOverrides, PlayerRuntime, PlayerTemplate, ProtectLinkRuntime, RinickTemplateData, RuntimeCorpseKind,
+    SaitamaBossState, ScoreCloneSkillBoostPlan, SkillLoadout, StateEntry, StatePayload, StatePayloadKind, StateStore,
+    TestSubjectRuntime, TestSubjectSkill,
 };
 pub use extension::{
     BattleSlotId, BattleSlotSpec, DamageSharePolicy, EffectHandlerId, EffectHandlerSpec, EntitySlotId, EntitySlotSpec,

@@ -53,7 +53,7 @@ impl CombatRuntime {
         #[cfg(not(feature = "no_debug"))]
         let before = (self.rng.i, self.rng.j);
         let actor_team = self.plain_effective_team(actor);
-        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let target_pool = Self::target_pool(self.has_boss_entities, &self.entities, &self.world);
         let all_alive = target_pool.as_ref();
         let mut candidates = smallvec::SmallVec::<[EntityIdx; 8]>::new();
         let mut enemy_skip_indices = crate::rc4::PickSkipRange::default();
@@ -581,7 +581,7 @@ impl CombatRuntime {
     /// 驱散选目标：敌方存活者，按共用评分排序。
     pub fn select_plain_disperse_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
-        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let target_pool = Self::target_pool(self.has_boss_entities, &self.entities, &self.world);
         let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return PreparedTargetList::new();

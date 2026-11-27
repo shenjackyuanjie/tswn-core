@@ -69,7 +69,7 @@ fn preserves_hidden_payloads_registration_order_and_compressed_states() {
             target: Some(1),
             step: 2,
         },
-        StatePayload::CovidInfection {
+        StatePayload::CovidInfection(Box::new(crate::runtime::CovidInfectionState {
             entries: vec![CovidInfectionEntry {
                 registration_order: None,
                 boss: EntityIdx(1),
@@ -79,13 +79,13 @@ fn preserves_hidden_payloads_registration_order_and_compressed_states() {
             .into(),
             mutation_set: vec![7].into(),
             recovered: false,
-        },
-        StatePayload::SaitamaBoss {
+        })),
+        StatePayload::SaitamaBoss(Box::new(crate::runtime::SaitamaBossState {
             turns: 8,
             damages: 99,
             hitters: vec![EntityIdx(1)].into(),
             minions: vec![EntityIdx(0)].into(),
-        },
+        })),
         StatePayload::LazyInfection { boss: EntityIdx(1) },
         StatePayload::Iron { protect: 15, step: 2 },
     ];

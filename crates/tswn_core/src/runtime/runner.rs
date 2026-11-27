@@ -954,6 +954,7 @@ impl PreparedRuntimeRunner {
         runner.runtime.scratch.clear();
         // 复用对局恢复原始 Boss 槽，不能携带上场新增实体的科研状态。
         runner.runtime.squall_bosses.clone_from(&self.prototype.runtime.squall_bosses);
+        runner.runtime.has_boss_entities = self.prototype.runtime.has_boss_entities;
         runner.runtime.slots.reset_battle_state_from(&self.prototype.runtime.slots);
         // 外部脚本与受控队伍属于单场设置，下一场必须从零开始，避免暂停或残留指令跨局泄漏。
         runner.runtime.control.reset();

@@ -21,7 +21,7 @@ impl CombatRuntime {
         }
         self.begin_fish_turn(actor, updates);
         let turn = {
-            let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.fish.as_mut()) else {
+            let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.boss_mut().fish.as_mut()) else {
                 return;
             };
             state.turn = state.turn.saturating_add(1);
@@ -106,8 +106,8 @@ impl CombatRuntime {
         let idx = self.entities.next_spawn_idx(&template);
         self.effects.push(QueuedEffect::SpawnWithMessage {
             caster: actor,
-            template,
-            message: "[1]加入了己方".to_owned(),
+            template: Box::new(template),
+            message: std::borrow::Cow::Borrowed("[1]加入了己方"),
         });
         self.drain_effects_into(updates);
         if let Some(spawned) = self.entities.get_mut(idx) {
@@ -277,7 +277,7 @@ impl CombatRuntime {
             if let Some(entity) = self.entities.get_mut(target) {
                 entity.runtime.magic = 0;
             }
-            if let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.fish.as_mut()) {
+            if let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.boss_mut().fish.as_mut()) {
                 let turn = state.turn;
                 state.magic_zero.push((target, turn + 2, magic));
             }
@@ -305,7 +305,7 @@ impl CombatRuntime {
     pub fn begin_fish_turn(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
         let mut expired: smallvec::SmallVec<[(EntityIdx, i32); 4]> = smallvec::SmallVec::new();
         {
-            let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.fish.as_mut()) else {
+            let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.boss_mut().fish.as_mut()) else {
                 return;
             };
             let turn = state.turn;

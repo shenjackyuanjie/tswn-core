@@ -687,11 +687,11 @@ fn custom_minion_heal_fixture_does_not_share_with_owner_or_summons() {
     ));
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::with_kind(4, "summon-a", summon_kind, 0, 10, 1),
+        template: Box::new(PlayerTemplate::with_kind(4, "summon-a", summon_kind, 0, 10, 1)),
     });
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::with_kind(5, "summon-b", summon_kind, 0, 10, 1),
+        template: Box::new(PlayerTemplate::with_kind(5, "summon-b", summon_kind, 0, 10, 1)),
     });
     runtime.flush_effects().expect("minion spawns should emit updates");
     runtime.effects.push(QueuedEffect::Damage {
@@ -752,11 +752,11 @@ fn custom_minion_owner_death_removes_linked_minions_in_entity_order() {
     ));
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::with_kind(3, "owner?0", minion_kind, 0, 4, 1),
+        template: Box::new(PlayerTemplate::with_kind(3, "owner?0", minion_kind, 0, 4, 1)),
     });
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::with_kind(4, "owner?1", minion_kind, 0, 4, 1),
+        template: Box::new(PlayerTemplate::with_kind(4, "owner?1", minion_kind, 0, 4, 1)),
     });
     runtime.flush_effects().expect("minion spawns should emit updates");
 
@@ -822,11 +822,11 @@ fn custom_minion_owner_remove_cleans_linked_minions_in_entity_order() {
     ));
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::with_kind(3, "owner?0", minion_kind, 0, 4, 1),
+        template: Box::new(PlayerTemplate::with_kind(3, "owner?0", minion_kind, 0, 4, 1)),
     });
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::with_kind(4, "owner?1", minion_kind, 0, 4, 1),
+        template: Box::new(PlayerTemplate::with_kind(4, "owner?1", minion_kind, 0, 4, 1)),
     });
     runtime.flush_effects().expect("minion spawns should emit updates");
 

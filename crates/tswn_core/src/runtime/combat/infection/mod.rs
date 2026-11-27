@@ -130,7 +130,7 @@ impl CombatRuntime {
                     .states
                     .entries()
                     .iter()
-                    .any(|entry| matches!(&entry.payload, StatePayload::CovidInfection { .. }))
+                    .any(|entry| matches!(&entry.payload, StatePayload::CovidInfection(_)))
         })
     }
 
@@ -286,31 +286,25 @@ impl CombatRuntime {
                 .get_mut(target)
                 .unwrap_or_else(|| panic!("unknown runtime covid target entity: {}", target.0));
             if let Some(entry) = target_entity.states.entry(PLAIN_COVID_INFECTION_STATE_KEY) {
-                let StatePayload::CovidInfection {
-                    mutation_set, recovered, ..
-                } = &entry.payload
-                else {
+                let StatePayload::CovidInfection(covid) = &entry.payload else {
                     panic!("runtime covid infection key is occupied by a different state");
                 };
                 // 首次康复后永久接纳此前未见的新株，即使已有其他活跃株。
-                if !*recovered || mutation_set.contains(&mutation) {
+                if !covid.recovered || covid.mutation_set.contains(&mutation) {
                     false
                 } else {
                     let order = target_entity.states.reserve_runtime_registration_order();
                     let entry = target_entity.states.entry_mut(PLAIN_COVID_INFECTION_STATE_KEY).unwrap();
-                    let StatePayload::CovidInfection {
-                        entries, mutation_set, ..
-                    } = &mut entry.payload
-                    else {
+                    let StatePayload::CovidInfection(covid) = &mut entry.payload else {
                         unreachable!();
                     };
-                    entries.push(CovidInfectionEntry {
+                    covid.entries.push(CovidInfectionEntry {
                         boss,
                         mutation,
                         days: 0,
                         registration_order: Some(order),
                     });
-                    mutation_set.push(mutation);
+                    covid.mutation_set.push(mutation);
                     true
                 }
             } else {
@@ -345,7 +339,7 @@ impl CombatRuntime {
     pub fn drain_covid_strains_into(&mut self, owner: EntityIdx, order: Option<u64>, updates: &mut RunUpdates) {
         let mut index = 0;
         loop {
-            let StatePayload::CovidInfection { entries, .. } = &self
+            let StatePayload::CovidInfection(covid) = &self
                 .entities
                 .get(owner)
                 .unwrap()
@@ -356,7 +350,7 @@ impl CombatRuntime {
             else {
                 unreachable!("runtime covid infection key has an unexpected payload");
             };
-            let Some(infection) = entries.get(index).copied() else {
+            let Some(infection) = covid.entries.get(index).copied() else {
                 return;
             };
             if let Some(order) = order {
@@ -378,7 +372,7 @@ impl CombatRuntime {
             }
             if infection.days > 6 {
                 let target = self.entities.get_mut(owner).unwrap();
-                let StatePayload::CovidInfection { entries, recovered, .. } = &mut target
+                let StatePayload::CovidInfection(covid) = &mut target
                     .states
                     .entry_mut(PLAIN_COVID_INFECTION_STATE_KEY)
                     .expect("runtime covid state must still exist")
@@ -386,8 +380,8 @@ impl CombatRuntime {
                 else {
                     unreachable!("runtime covid infection key has an unexpected payload");
                 };
-                entries.remove(index);
-                *recovered = true;
+                covid.entries.remove(index);
+                covid.recovered = true;
                 target.refresh_runtime_stats_from_template();
             } else {
                 index += 1;

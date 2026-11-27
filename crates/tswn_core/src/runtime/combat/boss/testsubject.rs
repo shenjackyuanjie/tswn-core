@@ -133,13 +133,17 @@ impl CombatRuntime {
     pub fn plain_testsubject_phase(&self, actor: EntityIdx) -> i32 {
         self.entities
             .get(actor)
-            .and_then(|entity| entity.runtime.testsubject.as_ref())
+            .and_then(|entity| entity.runtime.boss.as_deref().and_then(|b| b.testsubject.as_ref()))
             .map_or(1, |state| state.phase())
     }
 
     /// 一阶段伤害倍率：非一阶段恒为 1.0。
     pub fn plain_testsubject_phase_attack_scale(&self, actor: EntityIdx) -> f64 {
-        let Some(state) = self.entities.get(actor).and_then(|entity| entity.runtime.testsubject.as_ref()) else {
+        let Some(state) = self
+            .entities
+            .get(actor)
+            .and_then(|entity| entity.runtime.boss.as_deref().and_then(|b| b.testsubject.as_ref()))
+        else {
             return 1.0;
         };
         if state.phase() == 1 {
@@ -195,7 +199,7 @@ impl CombatRuntime {
         let Some(entity) = self.entities.get_mut(actor) else {
             return false;
         };
-        let Some(state) = entity.runtime.testsubject.as_mut() else {
+        let Some(state) = entity.runtime.boss_mut().testsubject.as_mut() else {
             return false;
         };
         state.pending_skill = skill;
@@ -207,7 +211,7 @@ impl CombatRuntime {
         let skill = self
             .entities
             .get(actor)
-            .and_then(|entity| entity.runtime.testsubject.as_ref())
+            .and_then(|entity| entity.runtime.boss.as_deref().and_then(|b| b.testsubject.as_ref()))
             .and_then(|state| state.pending_skill);
         match skill {
             Some(TestSubjectSkill::SkullSmash) => self.drain_testsubject_skull_smash_into(actor, updates),
@@ -278,7 +282,7 @@ impl CombatRuntime {
         let hit_count = self
             .entities
             .get(actor)
-            .and_then(|entity| entity.runtime.testsubject.as_ref())
+            .and_then(|entity| entity.runtime.boss.as_deref().and_then(|b| b.testsubject.as_ref()))
             .map_or(MULTI_CLAW_EXTRA_HITS, |state| state.multi_claw_used + MULTI_CLAW_EXTRA_HITS);
         updates.add_with(|| RunUpdate::new("[0]使用[多段爪击]", actor.0 as usize, target.0 as usize, 1));
         let mut total_damage = 0;
@@ -295,7 +299,11 @@ impl CombatRuntime {
                 * MULTI_CLAW_SCALE;
             total_damage += self.drain_plain_attack_with_atp_into(actor, target, false, atp, updates).max(0);
         }
-        if let Some(state) = self.entities.get_mut(actor).and_then(|entity| entity.runtime.testsubject.as_mut()) {
+        if let Some(state) = self
+            .entities
+            .get_mut(actor)
+            .and_then(|entity| entity.runtime.boss_mut().testsubject.as_mut())
+        {
             state.multi_claw_used += 1;
         }
         if total_damage > 0 {
@@ -376,7 +384,7 @@ impl CombatRuntime {
             let Some(entity) = self.entities.get_mut(actor) else {
                 return;
             };
-            let Some(state) = entity.runtime.testsubject.as_mut() else {
+            let Some(state) = entity.runtime.boss_mut().testsubject.as_mut() else {
                 return;
             };
             state.pending_skill = None;
@@ -501,7 +509,7 @@ impl CombatRuntime {
         if !is_testsubject(entity) || entity.runtime.hp > 0 {
             return false;
         }
-        let Some(state) = entity.runtime.testsubject.as_ref() else {
+        let Some(state) = entity.runtime.boss.as_deref().and_then(|b| b.testsubject.as_ref()) else {
             return false;
         };
         if state.revives_used >= MAX_REVIVES {
@@ -511,7 +519,7 @@ impl CombatRuntime {
         let attr = phase_attr(next_revives);
         let hp = phase_hp(next_revives);
         {
-            let state = entity.runtime.testsubject.as_mut().expect("testsubject state checked above");
+            let state = entity.runtime.boss_mut().testsubject.as_mut().expect("testsubject state checked above");
             state.revives_used = next_revives;
             state.phase_action_count = 0;
             state.multi_claw_used = 0;
@@ -575,6 +583,7 @@ mod tests {
             .get_mut(EntityIdx(0))
             .unwrap()
             .runtime
+            .boss_mut()
             .testsubject
             .as_mut()
             .unwrap()
@@ -591,7 +600,7 @@ mod tests {
         let attr = phase_attr(revives_used);
         let hp = phase_hp(revives_used);
         let entity = runtime.entities.get_mut(EntityIdx(0)).unwrap();
-        entity.runtime.testsubject = Some(Box::new(TestSubjectRuntime {
+        entity.runtime.boss_mut().testsubject = Some(Box::new(TestSubjectRuntime {
             revives_used,
             phase_action_count: 0,
             multi_claw_used: 0,
@@ -655,8 +664,9 @@ mod tests {
             .get(EntityIdx(0))
             .unwrap()
             .runtime
-            .testsubject
-            .as_ref()
+            .boss
+            .as_deref()
+            .and_then(|b| b.testsubject.as_ref())
             .unwrap()
             .pending_skill
     }
@@ -876,13 +886,22 @@ mod tests {
                 .get_mut(EntityIdx(0))
                 .unwrap()
                 .runtime
+                .boss_mut()
                 .testsubject
                 .as_mut()
                 .unwrap()
                 .multi_claw_used = used;
             let mut updates = RunUpdates::new();
             runtime.drain_testsubject_action_into(EntityIdx(0), true, &mut updates);
-            let state = runtime.entities.get(EntityIdx(0)).unwrap().runtime.testsubject.as_ref().unwrap();
+            let state = runtime
+                .entities
+                .get(EntityIdx(0))
+                .unwrap()
+                .runtime
+                .boss
+                .as_deref()
+                .and_then(|b| b.testsubject.as_ref())
+                .unwrap();
             assert_eq!(state.multi_claw_used, used + 1, "used={used}");
             assert!(
                 runtime
@@ -947,7 +966,10 @@ mod tests {
         assert_eq!(entity.runtime.attack, 120);
         assert_eq!(entity.template.attack, 120);
         assert_eq!(entity.runtime.magic_point, PHASE_MAGIC_POINT);
-        assert_eq!(entity.runtime.testsubject.as_ref().unwrap().revives_used, 1);
+        assert_eq!(
+            entity.runtime.boss.as_deref().and_then(|b| b.testsubject.as_ref()).unwrap().revives_used,
+            1
+        );
         assert!(messages_of(&updates).contains(&"[1]发生了异常再生".to_owned()));
         assert!(messages_of(&updates).contains(&"[1]长出了一个新的头颅".to_owned()));
     }

@@ -776,30 +776,21 @@ impl From<&StatePayload> for ModelPayload {
                 result.kind = "covid_boss".into();
                 result.covid_boss = Some(CovidBossPayload { mutation: *mutation });
             }
-            StatePayload::CovidInfection {
-                entries,
-                mutation_set,
-                recovered,
-            } => {
+            StatePayload::CovidInfection(covid) => {
                 result.kind = "covid_infection".into();
                 result.covid_infection = Some(CovidInfectionPayload {
-                    entries: entries.to_vec(),
-                    mutation_set: mutation_set.to_vec(),
-                    recovered: *recovered,
+                    entries: covid.entries.to_vec(),
+                    mutation_set: covid.mutation_set.to_vec(),
+                    recovered: covid.recovered,
                 });
             }
-            StatePayload::SaitamaBoss {
-                turns,
-                damages,
-                hitters,
-                minions,
-            } => {
+            StatePayload::SaitamaBoss(saitama) => {
                 result.kind = "saitama_boss".into();
                 result.saitama_boss = Some(SaitamaBossPayload {
-                    turns: *turns,
-                    damages: *damages,
-                    hitters: hitters.to_vec(),
-                    minions: minions.to_vec(),
+                    turns: saitama.turns,
+                    damages: saitama.damages,
+                    hitters: saitama.hitters.to_vec(),
+                    minions: saitama.minions.to_vec(),
                 });
             }
             StatePayload::LazyBoss { at_boost_bits } => {

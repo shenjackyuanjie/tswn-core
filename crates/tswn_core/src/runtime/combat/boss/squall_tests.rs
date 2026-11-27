@@ -6,7 +6,13 @@ use crate::runtime::update::UpdateType;
 fn battle() -> (RuntimeRunner, EntityIdx, Vec<EntityIdx>) {
     let config = default_custom_runtime_import_config().unwrap();
     let runner = RuntimeRunner::from_custom_mixed_namerena_raw("Squall@!\n\nalpha\nbeta\n\nseed:1".into(), config).unwrap();
-    let boss = runner.runtime().entities.iter().find(|(_, e)| e.runtime.squall.is_some()).unwrap().0;
+    let boss = runner
+        .runtime()
+        .entities
+        .iter()
+        .find(|(_, e)| e.runtime.boss.as_deref().is_some_and(|b| b.squall.is_some()))
+        .unwrap()
+        .0;
     let enemies = runner.runtime().world.flat_alive().iter().copied().filter(|idx| *idx != boss).collect();
     (runner, boss, enemies)
 }
@@ -37,7 +43,13 @@ fn fixed_stats_identity_and_icon_match_requested_character() {
     );
     let config = default_custom_runtime_import_config().unwrap();
     let normal = RuntimeRunner::from_custom_mixed_namerena_raw("Squall@Squall\n\nalpha".into(), config).unwrap();
-    assert!(normal.runtime().entities.iter().all(|(_, e)| e.runtime.squall.is_none()));
+    assert!(
+        normal
+            .runtime()
+            .entities
+            .iter()
+            .all(|(_, e)| e.runtime.boss.as_deref().is_none_or(|b| b.squall.is_none()))
+    );
 }
 
 #[test]
@@ -49,7 +61,18 @@ fn samples_use_real_enemy_actions_cap_at_six_and_put_quote_next() {
         rt.finish_squall_action(Some(enemies[0]), &mut u);
         rt.finish_squall_action(Some(boss), &mut u);
     }
-    assert_eq!(rt.entities.get(boss).unwrap().runtime.squall.as_ref().unwrap().samples, 6);
+    assert_eq!(
+        rt.entities
+            .get(boss)
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.squall.as_ref())
+            .unwrap()
+            .samples,
+        6
+    );
     let m = messages(&u);
     for update in &u.updates {
         if SAMPLE_QUOTES.contains(&update.message.as_ref()) {
@@ -77,7 +100,7 @@ fn sample_quotes_vary_without_consuming_combat_randomness() {
     let mut seen = std::collections::HashSet::new();
     let mut previous = None;
     for turn in 0..100 {
-        rt.entities.get_mut(boss).unwrap().runtime.squall.as_mut().unwrap().turn = turn;
+        rt.entities.get_mut(boss).unwrap().runtime.boss_mut().squall.as_mut().unwrap().turn = turn;
         let quote = rt.next_squall_sample_quote(boss);
         assert!(SAMPLE_QUOTES.contains(&quote));
         assert_ne!(Some(quote), previous);
@@ -94,7 +117,7 @@ fn sample_quotes_vary_without_consuming_combat_randomness() {
 fn weighted_attacks_consume_samples_and_report_real_damage() {
     let (mut runner, boss, enemies) = battle();
     let rt = runner.runtime_mut();
-    let s = rt.entities.get_mut(boss).unwrap().runtime.squall.as_mut().unwrap();
+    let s = rt.entities.get_mut(boss).unwrap().runtime.boss_mut().squall.as_mut().unwrap();
     s.samples = 5;
     s.marked = Some(enemies[1]);
     let before: Vec<_> = enemies.iter().map(|idx| rt.entities.get(*idx).unwrap().runtime.hp).collect();
@@ -109,7 +132,18 @@ fn weighted_attacks_consume_samples_and_report_real_damage() {
             .enumerate()
             .any(|(i, idx)| rt.entities.get(*idx).unwrap().runtime.hp < before[i])
     );
-    assert_eq!(rt.entities.get(boss).unwrap().runtime.squall.as_ref().unwrap().samples, 3);
+    assert_eq!(
+        rt.entities
+            .get(boss)
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.squall.as_ref())
+            .unwrap()
+            .samples,
+        3
+    );
 }
 
 #[test]
@@ -131,14 +165,25 @@ fn taunt_overlay_restores_without_damaging_original_stats() {
     rt.dispel_squall_effects(enemies[0], &mut u);
     assert_eq!(rt.entities.get(enemies[0]).unwrap().runtime.attract(), 100.0);
     assert_eq!(rt.entities.get(enemies[1]).unwrap().runtime.attract(), 900.0);
-    assert!(rt.entities.get(boss).unwrap().runtime.squall.as_ref().unwrap().taunt.is_none());
+    assert!(
+        rt.entities
+            .get(boss)
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.squall.as_ref())
+            .unwrap()
+            .taunt
+            .is_none()
+    );
 }
 
 #[test]
 fn iron_and_exposure_modify_real_defend_values_and_dispel_clears_boost() {
     let (mut runner, boss, enemies) = battle();
     let rt = runner.runtime_mut();
-    let s = rt.entities.get_mut(boss).unwrap().runtime.squall.as_mut().unwrap();
+    let s = rt.entities.get_mut(boss).unwrap().runtime.boss_mut().squall.as_mut().unwrap();
     s.turn = 1;
     s.iron_until = 4;
     s.amplify = 75;
@@ -151,7 +196,7 @@ fn iron_and_exposure_modify_real_defend_values_and_dispel_clears_boost() {
     rt.drain_post_defend_hooks_into(boss, &mut RunUpdates::new(), &mut v);
     assert_eq!(v.damage(), Some(60));
     rt.dispel_squall_effects(boss, &mut RunUpdates::new());
-    let s = rt.entities.get_mut(boss).unwrap().runtime.squall.as_mut().unwrap();
+    let s = rt.entities.get_mut(boss).unwrap().runtime.boss_mut().squall.as_mut().unwrap();
     assert_eq!(s.amplify, 0);
     s.exposed = true;
     let mut v = RuntimeDefendValue::Damage {
@@ -173,7 +218,7 @@ fn team_creates_two_distinct_limited_helpers_that_can_act() {
     let helpers: Vec<_> = rt
         .entities
         .iter()
-        .filter(|(_, e)| e.runtime.squall_helper.is_some())
+        .filter(|(_, e)| e.runtime.boss.as_deref().is_some_and(|b| b.squall_helper.is_some()))
         .map(|(idx, _)| idx)
         .collect();
     assert_eq!(helpers.len(), 2);
@@ -184,12 +229,22 @@ fn team_creates_two_distinct_limited_helpers_that_can_act() {
         assert_eq!(e.runtime.attack, 128);
         assert_eq!(e.runtime.root_owner, boss);
         assert!(e.runtime.is_minion());
-        assert!(e.runtime.squall.is_none());
+        assert!(e.runtime.boss.as_deref().is_none_or(|b| b.squall.is_none()));
         for _ in 0..2 {
             rt.drain_squall_action_into(helper, &mut u);
         }
     }
-    assert!(rt.entities.get(boss).unwrap().runtime.squall.as_ref().unwrap().summoned);
+    assert!(
+        rt.entities
+            .get(boss)
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.squall.as_ref())
+            .unwrap()
+            .summoned
+    );
 }
 
 #[test]
@@ -201,9 +256,20 @@ fn healing_is_limited_and_uses_actual_recovery_and_amplify_cap() {
         rt.entities.get_mut(boss).unwrap().runtime.hp = 100;
         rt.squall_heal(boss, &mut u);
         assert_eq!(rt.entities.get(boss).unwrap().runtime.hp, 154);
-        assert_eq!(rt.entities.get(boss).unwrap().runtime.squall.as_ref().unwrap().heal_count, i);
+        assert_eq!(
+            rt.entities
+                .get(boss)
+                .unwrap()
+                .runtime
+                .boss
+                .as_deref()
+                .and_then(|b| b.squall.as_ref())
+                .unwrap()
+                .heal_count,
+            i
+        );
     }
-    let s = rt.entities.get_mut(boss).unwrap().runtime.squall.as_mut().unwrap();
+    let s = rt.entities.get_mut(boss).unwrap().runtime.boss_mut().squall.as_mut().unwrap();
     s.amplify = 500;
     assert_eq!(rt.squall_take_amplify(boss), 2.0);
     assert_eq!(rt.squall_take_amplify(boss), 1.0);
@@ -213,18 +279,36 @@ fn healing_is_limited_and_uses_actual_recovery_and_amplify_cap() {
 fn fourth_active_misfires_and_exposure_expires_on_next_action() {
     let (mut runner, boss, _) = battle();
     let rt = runner.runtime_mut();
-    let s = rt.entities.get_mut(boss).unwrap().runtime.squall.as_mut().unwrap();
+    let s = rt.entities.get_mut(boss).unwrap().runtime.boss_mut().squall.as_mut().unwrap();
     s.active_count = 3;
     s.samples = 1;
     let mut u = RunUpdates::new();
     rt.drain_squall_action_into(boss, &mut u);
-    let s = rt.entities.get(boss).unwrap().runtime.squall.as_ref().unwrap();
+    let s = rt
+        .entities
+        .get(boss)
+        .unwrap()
+        .runtime
+        .boss
+        .as_deref()
+        .and_then(|b| b.squall.as_ref())
+        .unwrap();
     assert!(s.exposed);
     assert_eq!(s.samples, 0);
     assert_eq!(s.active_count, 0);
     assert!(messages(&u).iter().any(|m| m.contains("失去1层")));
     rt.begin_squall_action(boss, &mut u);
-    assert!(!rt.entities.get(boss).unwrap().runtime.squall.as_ref().unwrap().exposed);
+    assert!(
+        !rt.entities
+            .get(boss)
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.squall.as_ref())
+            .unwrap()
+            .exposed
+    );
 }
 
 #[test]
@@ -234,14 +318,14 @@ fn burn_is_once_preserves_base_stats_and_can_kill_itself() {
     {
         let e = rt.entities.get_mut(boss).unwrap();
         e.runtime.hp = 90;
-        e.runtime.squall.as_mut().unwrap().samples = 6;
+        e.runtime.boss_mut().squall.as_mut().unwrap().samples = 6;
     }
     let mut u = RunUpdates::new();
     rt.try_squall_burn(boss, &mut u);
     let e = rt.entities.get(boss).unwrap();
     assert_eq!(e.runtime.attack, 150);
     assert_eq!(e.runtime.speed, 409);
-    assert_eq!(e.runtime.squall.as_ref().unwrap().samples, 0);
+    assert_eq!(e.runtime.boss.as_deref().and_then(|b| b.squall.as_ref()).unwrap().samples, 0);
     rt.try_squall_burn(boss, &mut u);
     assert_eq!(rt.entities.get(boss).unwrap().runtime.attack, 150);
     rt.entities.get_mut(boss).unwrap().refresh_runtime_stats_from_template();
@@ -265,11 +349,30 @@ fn delayed_pruning_only_marks_summons_and_can_be_dispelled() {
     let mut u = RunUpdates::new();
     rt.squall_prune(boss, &mut u);
     assert_eq!(
-        rt.entities.get(boss).unwrap().runtime.squall.as_ref().unwrap().pruning,
+        rt.entities
+            .get(boss)
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.squall.as_ref())
+            .unwrap()
+            .pruning,
         vec![target]
     );
     rt.dispel_squall_effects(target, &mut u);
-    assert!(rt.entities.get(boss).unwrap().runtime.squall.as_ref().unwrap().pruning.is_empty());
+    assert!(
+        rt.entities
+            .get(boss)
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.squall.as_ref())
+            .unwrap()
+            .pruning
+            .is_empty()
+    );
 }
 
 #[test]
@@ -280,13 +383,23 @@ fn red_starts_below_half_hp_once_and_cannot_be_dispelled() {
     // 恰好 50% HP 不触发，必须严格低于一半。
     rt.entities.get_mut(boss).unwrap().runtime.hp = 180;
     rt.try_squall_red(boss, &mut u);
-    assert!(!rt.entities.get(boss).unwrap().runtime.squall.as_ref().unwrap().red);
+    assert!(
+        !rt.entities
+            .get(boss)
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.squall.as_ref())
+            .unwrap()
+            .red
+    );
     assert_eq!(rt.entities.get(boss).unwrap().runtime.attack, 106);
     assert_eq!(u.updates.len(), 0);
     rt.entities.get_mut(boss).unwrap().runtime.hp = 179;
     rt.try_squall_red(boss, &mut u);
     let e = rt.entities.get(boss).unwrap();
-    assert!(e.runtime.squall.as_ref().unwrap().red);
+    assert!(e.runtime.boss.as_deref().and_then(|b| b.squall.as_ref()).unwrap().red);
     assert_eq!(
         [
             e.runtime.attack,
@@ -312,7 +425,7 @@ fn red_starts_below_half_hp_once_and_cannot_be_dispelled() {
     assert_eq!(rt.entities.get(boss).unwrap().runtime.attack, 159);
     rt.dispel_squall_effects(boss, &mut u);
     let e = rt.entities.get(boss).unwrap();
-    assert!(e.runtime.squall.as_ref().unwrap().red);
+    assert!(e.runtime.boss.as_deref().and_then(|b| b.squall.as_ref()).unwrap().red);
     assert_eq!(e.runtime.attack, 159);
 }
 
@@ -324,12 +437,22 @@ fn red_triggers_from_action_end_hook_when_hp_drops() {
     let mut u = RunUpdates::new();
     rt.finish_squall_action(Some(enemies[0]), &mut u);
     let e = rt.entities.get(boss).unwrap();
-    assert!(e.runtime.squall.as_ref().unwrap().red);
+    assert!(e.runtime.boss.as_deref().and_then(|b| b.squall.as_ref()).unwrap().red);
     assert_eq!(e.runtime.speed, 399);
     // 红温不属于普通状态，后续行动与净化都不会撤销它。
     rt.begin_squall_action(boss, &mut u);
     rt.dispel_squall_effects(boss, &mut u);
-    assert!(rt.entities.get(boss).unwrap().runtime.squall.as_ref().unwrap().red);
+    assert!(
+        rt.entities
+            .get(boss)
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.squall.as_ref())
+            .unwrap()
+            .red
+    );
     assert_eq!(rt.entities.get(boss).unwrap().runtime.speed, 399);
 }
 
@@ -350,7 +473,15 @@ fn tyranny_mutes_every_enemy_mp_and_reports_one_line_per_target() {
     assert!(lines.contains(&"[1]被[0]禁言1分钟"));
     assert!(messages(&u).contains(&"[0]使用[暴政一下]"));
     assert!(u.updates.iter().any(|update| update.dialogue && update.message == TYRANNY_QUOTE));
-    let s = rt.entities.get(boss).unwrap().runtime.squall.as_ref().unwrap();
+    let s = rt
+        .entities
+        .get(boss)
+        .unwrap()
+        .runtime
+        .boss
+        .as_deref()
+        .and_then(|b| b.squall.as_ref())
+        .unwrap();
     assert_eq!(s.next_skill[6], s.turn + 4);
 }
 
@@ -358,13 +489,13 @@ fn tyranny_mutes_every_enemy_mp_and_reports_one_line_per_target() {
 fn tyranny_is_chosen_after_first_turn_and_skips_targets_already_muted() {
     let (mut runner, boss, enemies) = battle();
     let rt = runner.runtime_mut();
-    rt.entities.get_mut(boss).unwrap().runtime.squall.as_mut().unwrap().turn = 1;
+    rt.entities.get_mut(boss).unwrap().runtime.boss_mut().squall.as_mut().unwrap().turn = 1;
     assert_eq!(rt.select_research_skill(boss), Some(ResearchSkill::Tyranny));
     let mut u = RunUpdates::new();
     rt.squall_tyranny(boss, &mut u);
     // 冷却期内不再施放；被压到下限的目标也不会重复触发。
     assert_ne!(rt.select_research_skill(boss), Some(ResearchSkill::Tyranny));
-    let s = rt.entities.get_mut(boss).unwrap().runtime.squall.as_mut().unwrap();
+    let s = rt.entities.get_mut(boss).unwrap().runtime.boss_mut().squall.as_mut().unwrap();
     s.next_skill[6] = 0;
     for idx in &enemies {
         rt.entities.get_mut(*idx).unwrap().runtime.magic_point = TYRANNY_MP_FLOOR;

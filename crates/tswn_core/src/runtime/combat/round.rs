@@ -199,8 +199,10 @@ impl CombatRuntime {
                 return None;
             }
             // 专属计时只在真正获得行动时推进，冰冻期间保留剪枝预告。
-            self.begin_squall_action(action.actor, &mut updates);
-            self.begin_rosmontic_action(action.actor, &mut updates);
+            if self.has_boss_entities {
+                self.begin_squall_action(action.actor, &mut updates);
+                self.begin_rosmontic_action(action.actor, &mut updates);
+            }
             let forced_pre_action_skill = plain_skill_pre_action.forced_skill.is_some();
             let prepared = self.prepare_plain_action(action.actor, smart, plain_skill_pre_action);
             // 卡牌兼容模式：点名的技能放不出来时引擎改用普攻，这里补一条说明战报。
@@ -289,7 +291,9 @@ impl CombatRuntime {
             self.drain_action_damage_phase_into(action.actor, ProcMask::PRE_DAMAGE, &mut updates);
             match prepared_plain_action.take() {
                 Some(PreparedPlainAction::BasicAttack { target, use_magic, .. }) => {
-                    if self
+                    if !self.has_boss_entities {
+                        self.drain_plain_default_attack_into(action.actor, target, use_magic, &mut updates);
+                    } else if self
                         .entities
                         .get(action.actor)
                         .is_some_and(|e| e.template.name == crate::runtime::combat::boss::yi::BAIXIE)
@@ -476,7 +480,7 @@ impl CombatRuntime {
                             | StatePayload::Haste { .. }
                             | StatePayload::Slow { .. }
                             | StatePayload::Iron { .. } => PostActionPriority::Infinity,
-                            StatePayload::CovidInfection { .. } | StatePayload::LazyInfection { .. }
+                            StatePayload::CovidInfection(_) | StatePayload::LazyInfection { .. }
                                 if state.is_boss_infection(&self.entities) =>
                             {
                                 PostActionPriority::Infinity
@@ -489,7 +493,9 @@ impl CombatRuntime {
             chain.push(((priority, entry.runtime_registration_order), PostActionHook::State(entry)));
         }
         // 原版 MList.j 先按 sortId 插入，再按同一 sortId 的登记顺序执行。
-        chain.sort_by_key(|(key, _)| *key);
+        if chain.len() > 1 {
+            chain.sort_by_key(|(key, _)| *key);
+        }
         let mut deferred_owner_state_clears = Vec::new();
         let mut skip_states = false;
         for (_, hook) in chain {
@@ -588,80 +594,86 @@ impl CombatRuntime {
         pre_action: PlainSkillPreActionOutcome,
     ) -> Option<PreparedPlainAction> {
         crate::runtime::forced_action::hit();
-        // 衍生物即使暂无可攻击目标，也可以睡觉、钻被或使用自身技能。
-        if self.quilt_minion_kind(actor).is_some() {
-            let target = self.select_plain_default_attack_target(actor, smart).unwrap_or(actor);
-            return Some(PreparedPlainAction::BasicAttack {
-                target,
-                use_magic: false,
-                amount: 0,
-            });
-        }
-        if self.has_rosmontic_action(actor) {
-            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
-                selected: crate::namerena::BossActionSkill::Rosmontic,
-                targets: PreparedTargetList::new(),
-                smart,
-            }));
-        }
-        if self.entities.get(actor).is_some_and(|e| e.runtime.cirno.is_some()) {
-            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
-                selected: crate::namerena::BossActionSkill::Cirno,
-                targets: PreparedTargetList::new(),
-                smart,
-            }));
-        }
-        // 沙冰鱼的行动完全由专属脚本决定。
-        if self
-            .entities
-            .get(actor)
-            .is_some_and(|e| e.template.name == crate::runtime::combat::boss::fish::ID)
-        {
-            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
-                selected: crate::namerena::BossActionSkill::Fish,
-                targets: PreparedTargetList::new(),
-                smart,
-            }));
-        }
-        // TigerStar 的行动完全由专属脚本决定。
-        if self
-            .entities
-            .get(actor)
-            .is_some_and(|e| e.template.name == crate::runtime::combat::boss::tiger::ID)
-        {
-            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
-                selected: crate::namerena::BossActionSkill::Tiger,
-                targets: PreparedTargetList::new(),
-                smart,
-            }));
-        }
-        // 咦的行动完全由专属脚本决定。
-        if self
-            .entities
-            .get(actor)
-            .is_some_and(|e| e.template.name == crate::runtime::combat::boss::yi::ID)
-        {
-            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
-                selected: crate::namerena::BossActionSkill::Yi,
-                targets: PreparedTargetList::new(),
-                smart,
-            }));
-        }
-        // 新纪元的行动完全由专属脚本决定。
-        if self.entities.get(actor).is_some_and(|e| e.template.name == "新纪元") {
-            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
-                selected: crate::namerena::BossActionSkill::Xjy,
-                targets: PreparedTargetList::new(),
-                smart,
-            }));
-        }
-        // 被子的行动完全由专属脚本决定：不扫描普攻，也不消耗概率随机数。
-        if self.is_quilt(actor) {
-            return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
-                selected: crate::namerena::BossActionSkill::Quilt,
-                targets: PreparedTargetList::new(),
-                smart,
-            }));
+        if self.has_boss_entities {
+            // 衍生物即使暂无可攻击目标，也可以睡觉、钻被或使用自身技能。
+            if self.quilt_minion_kind(actor).is_some() {
+                let target = self.select_plain_default_attack_target(actor, smart).unwrap_or(actor);
+                return Some(PreparedPlainAction::BasicAttack {
+                    target,
+                    use_magic: false,
+                    amount: 0,
+                });
+            }
+            if self.has_rosmontic_action(actor) {
+                return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                    selected: crate::namerena::BossActionSkill::Rosmontic,
+                    targets: PreparedTargetList::new(),
+                    smart,
+                }));
+            }
+            if self
+                .entities
+                .get(actor)
+                .is_some_and(|e| e.runtime.boss.as_ref().is_some_and(|b| b.cirno.is_some()))
+            {
+                return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                    selected: crate::namerena::BossActionSkill::Cirno,
+                    targets: PreparedTargetList::new(),
+                    smart,
+                }));
+            }
+            // 沙冰鱼的行动完全由专属脚本决定。
+            if self
+                .entities
+                .get(actor)
+                .is_some_and(|e| e.template.name == crate::runtime::combat::boss::fish::ID)
+            {
+                return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                    selected: crate::namerena::BossActionSkill::Fish,
+                    targets: PreparedTargetList::new(),
+                    smart,
+                }));
+            }
+            // TigerStar 的行动完全由专属脚本决定。
+            if self
+                .entities
+                .get(actor)
+                .is_some_and(|e| e.template.name == crate::runtime::combat::boss::tiger::ID)
+            {
+                return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                    selected: crate::namerena::BossActionSkill::Tiger,
+                    targets: PreparedTargetList::new(),
+                    smart,
+                }));
+            }
+            // 咦的行动完全由专属脚本决定。
+            if self
+                .entities
+                .get(actor)
+                .is_some_and(|e| e.template.name == crate::runtime::combat::boss::yi::ID)
+            {
+                return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                    selected: crate::namerena::BossActionSkill::Yi,
+                    targets: PreparedTargetList::new(),
+                    smart,
+                }));
+            }
+            // 新纪元的行动完全由专属脚本决定。
+            if self.entities.get(actor).is_some_and(|e| e.template.name == "新纪元") {
+                return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                    selected: crate::namerena::BossActionSkill::Xjy,
+                    targets: PreparedTargetList::new(),
+                    smart,
+                }));
+            }
+            // 被子的行动完全由专属脚本决定：不扫描普攻，也不消耗概率随机数。
+            if self.is_quilt(actor) {
+                return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
+                    selected: crate::namerena::BossActionSkill::Quilt,
+                    targets: PreparedTargetList::new(),
+                    smart,
+                }));
+            }
         }
         // 外部脚本：引擎自身没有强制动作时，优先执行调用方排好的这一手。
         // 潜行→背刺这类引擎强制动作必须先走完，指令留到该单位的下一次行动。
@@ -711,7 +723,7 @@ impl CombatRuntime {
         if self
             .entities
             .get(actor)
-            .is_some_and(|e| e.runtime.squall.is_some() || e.runtime.squall_helper.is_some())
+            .is_some_and(|e| e.runtime.boss.as_ref().is_some_and(|b| b.squall.is_some() || b.squall_helper.is_some()))
         {
             return Some(PreparedPlainAction::BossSkill(PreparedBossSkillAction {
                 selected: crate::namerena::BossActionSkill::Squall,
@@ -1401,7 +1413,7 @@ impl CombatRuntime {
     }
 
     pub fn select_plain_berserk_forced_attack_target(&mut self, smart: bool) -> Option<EntityIdx> {
-        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let target_pool = Self::target_pool(self.has_boss_entities, &self.entities, &self.world);
         let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return None;

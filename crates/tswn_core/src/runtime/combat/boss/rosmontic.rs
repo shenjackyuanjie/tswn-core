@@ -7,17 +7,20 @@ impl CombatRuntime {
     /// 专属行动只由正式 Boss 和有专属角色标记的召唤物接管。
     pub fn has_rosmontic_action(&self, actor: EntityIdx) -> bool {
         self.entities.get(actor).is_some_and(|e| {
-            e.runtime.rosmontic.as_ref().is_some_and(|s| {
+            e.runtime.boss.as_deref().and_then(|b| b.rosmontic.as_ref()).is_some_and(|s| {
                 (e.runtime.flags.contains(PlayerKindFlags::BOSS) && RosmonticRuntime::boss_levels(&e.template.name).is_some())
                     || (e.runtime.is_combat_minion() && matches!(s.child_kind, 1..=4 | 10..=18 | 20..=23))
             })
         })
     }
 
+    #[inline]
     pub fn is_rosmontic_boss(&self, actor: EntityIdx, name: &str) -> bool {
-        self.entities
-            .get(actor)
-            .is_some_and(|e| e.runtime.flags.contains(PlayerKindFlags::BOSS) && e.template.name == name)
+        self.has_boss_entities
+            && self
+                .entities
+                .get(actor)
+                .is_some_and(|e| e.runtime.flags.contains(PlayerKindFlags::BOSS) && e.template.name == name)
     }
 
     pub fn rosmontic_message(&self, actor: EntityIdx, text: &'static str, updates: &mut RunUpdates) {
@@ -28,7 +31,7 @@ impl CombatRuntime {
     pub fn drain_rosmontic_action_into(&mut self, actor: EntityIdx, smart: bool, updates: &mut RunUpdates) {
         if self.is_rosmontic_boss(actor, "rin") {
             let entity = self.entities.get_mut(actor).unwrap();
-            let state = entity.runtime.rosmontic.as_mut().unwrap();
+            let state = entity.runtime.boss_mut().rosmontic.as_mut().unwrap();
             state.actions += 1;
             let turn = state.actions;
             let text = match turn {
@@ -63,6 +66,7 @@ impl CombatRuntime {
             .get_mut(actor)
             .unwrap()
             .runtime
+            .boss_mut()
             .rosmontic
             .as_mut()
             .unwrap()
@@ -109,9 +113,10 @@ impl CombatRuntime {
             return;
         }
         entity.runtime.magic_point -= cost;
-        let state = entity.runtime.rosmontic.as_mut().unwrap();
+        let break_on_damage = entity.runtime.hp > 199;
+        let state = entity.runtime.boss_mut().rosmontic.as_mut().unwrap();
         state.charge_target = Some(target);
-        state.break_on_damage = entity.runtime.hp > 199;
+        state.break_on_damage = break_on_damage;
         entity.runtime.move_state.speed_points += entity.runtime.magic * 3;
         if entity.runtime.hp <= 199 {
             entity.runtime.move_state.speed_points += 1600;
@@ -125,7 +130,7 @@ impl CombatRuntime {
             return;
         }
         let entity = self.entities.get_mut(target).unwrap();
-        let state = entity.runtime.rosmontic.as_mut().unwrap();
+        let state = entity.runtime.boss_mut().rosmontic.as_mut().unwrap();
         if state.break_on_damage && state.charge_target.take().is_some() {
             self.rosmontic_message(target, "[0]的剑技被打断了", updates);
         }
@@ -136,8 +141,11 @@ impl CombatRuntime {
             return false;
         }
         let entity = self.entities.get_mut(target).unwrap();
-        let state = entity.runtime.rosmontic.as_mut().unwrap();
-        if entity.runtime.hp > 0 || state.resolve_used {
+        if entity.runtime.hp > 0 {
+            return false;
+        }
+        let state = entity.runtime.boss_mut().rosmontic.as_mut().unwrap();
+        if state.resolve_used {
             return false;
         }
         state.resolve_used = true;

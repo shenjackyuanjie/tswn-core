@@ -446,7 +446,14 @@ mod tests {
         for i in 0..summons {
             runtime.effects.push(QueuedEffect::SpawnSilent {
                 caster: EntityIdx(1),
-                template: PlayerTemplate::with_kind(5 + i, format!("linked-summon-{i}"), summon, 1, 100, 3),
+                template: Box::new(PlayerTemplate::with_kind(
+                    5 + i,
+                    format!("linked-summon-{i}"),
+                    summon,
+                    1,
+                    100,
+                    3,
+                )),
             });
         }
         runtime.flush_effects();

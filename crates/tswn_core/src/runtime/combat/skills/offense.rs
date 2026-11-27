@@ -701,7 +701,7 @@ impl CombatRuntime {
     /// 连击选目标：聪明抽 5 个、普通抽 3 个敌人并按评分排序。
     pub fn select_plain_rapid_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
-        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let target_pool = Self::target_pool(self.has_boss_entities, &self.entities, &self.world);
         let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return PreparedTargetList::new();
@@ -773,7 +773,7 @@ impl CombatRuntime {
         }
         let rounds = if self.rng.c50() { 3.0 } else { 2.0 };
         targets.truncate(3);
-        let mut hit_scores = vec![0.0f64; targets.len()];
+        let mut hit_scores = [0.0f64; 3];
         let mut position = 0usize;
         let mut round = 0.0f64;
         while round < rounds {
@@ -795,12 +795,14 @@ impl CombatRuntime {
                     .get_at(false, &mut self.rng)
                     * (0.75 - hit_scores[position] * 0.15000000596046448);
                 hit_scores[position] += 1.0;
-                updates.add(crate::runtime::update::RunUpdate::new(
-                    if round == 0.0 { "[0]发起攻击" } else { "[0][连击]" },
-                    actor.0 as usize,
-                    target.0 as usize,
-                    if round == 0.0 { 0 } else { 1 },
-                ));
+                updates.add_with(|| {
+                    crate::runtime::update::RunUpdate::new(
+                        if round == 0.0 { "[0]发起攻击" } else { "[0][连击]" },
+                        actor.0 as usize,
+                        target.0 as usize,
+                        if round == 0.0 { 0 } else { 1 },
+                    )
+                });
                 let damage = self.drain_plain_attack_with_atp_into(actor, target, false, atp, updates);
                 // 原版 group.die 判胜时直接退出连击，不追加换行、也不抽取下一目标。
                 if damage <= 0 || self.plain_battle_has_ended() {

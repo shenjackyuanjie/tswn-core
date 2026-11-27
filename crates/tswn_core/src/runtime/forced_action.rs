@@ -22,6 +22,7 @@ pub struct ForcedState {
 
 thread_local! {
     static ACTIVE: RefCell<ForcedState> = RefCell::new(ForcedState::default());
+    static FALLBACK_SLOT: Cell<Option<(u32, &'static str)>> = const { Cell::new(None) };
     static HITS: Cell<u32> = const { Cell::new(0) };
     static TAKEN: Cell<u32> = const { Cell::new(0) };
     static FALLBACK_MODE: Cell<ForcedFallback> = const { Cell::new(ForcedFallback::Strict) };
@@ -36,9 +37,16 @@ pub fn with_state<R>(state: &mut ForcedState, f: impl FnOnce() -> R) -> R {
     }
     impl Drop for Restore<'_> {
         /// 守卫析构：把线程本地强制状态恢复为进入前的快照。
-        fn drop(&mut self) { *self.state = ACTIVE.with(|cell| cell.replace(std::mem::take(&mut self.previous))); }
+        fn drop(&mut self) {
+            let current_fallback = FALLBACK_SLOT.with(|cell| cell.replace(self.previous.fallback.take()));
+            let mut finished = ACTIVE.with(|cell| cell.replace(std::mem::take(&mut self.previous)));
+            finished.fallback = current_fallback;
+            *self.state = finished;
+        }
     }
-    let previous = ACTIVE.with(|cell| cell.replace(std::mem::take(state)));
+    let next_fallback = state.fallback.take();
+    let mut previous = ACTIVE.with(|cell| cell.replace(std::mem::take(state)));
+    previous.fallback = FALLBACK_SLOT.with(|cell| cell.replace(next_fallback));
     let _restore = Restore { state, previous };
     f()
 }
@@ -76,12 +84,13 @@ pub fn with_fallback_mode<R>(mode: ForcedFallback, f: impl FnOnce() -> R) -> R {
 }
 
 /// 记录一条降级说明；战报措辞沿用卡牌前端的既有文案。
-pub fn record_fallback(actor: u32, reason: &'static str) {
-    ACTIVE.with(|cell| cell.borrow_mut().fallback = Some((actor, reason)));
-}
+pub fn record_fallback(actor: u32, reason: &'static str) { FALLBACK_SLOT.with(|cell| cell.set(Some((actor, reason)))); }
 
 /// 取走本次推进记录的一条降级说明（行动者与原因）。
-pub fn take_fallback() -> Option<(u32, &'static str)> { ACTIVE.with(|cell| cell.borrow_mut().fallback.take()) }
+#[inline]
+pub fn take_fallback() -> Option<(u32, &'static str)> {
+    FALLBACK_SLOT.with(|cell| if cell.get().is_some() { cell.take() } else { None })
+}
 
 /// 诊断计数：引擎实际走到「这一次行动要谁出招」的次数。
 pub fn hit() { HITS.with(|cell| cell.set(cell.get() + 1)); }

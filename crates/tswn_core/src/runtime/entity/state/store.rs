@@ -72,8 +72,8 @@ impl StatePayloadKind {
             StatePayload::Slow { .. } => Self::Slow,
             StatePayload::Iron { .. } => Self::Iron,
             StatePayload::CovidBoss { .. } => Self::CovidBoss,
-            StatePayload::CovidInfection { .. } => Self::CovidInfection,
-            StatePayload::SaitamaBoss { .. } => Self::SaitamaBoss,
+            StatePayload::CovidInfection(_) => Self::CovidInfection,
+            StatePayload::SaitamaBoss(_) => Self::SaitamaBoss,
             StatePayload::LazyBoss { .. } => Self::LazyBoss,
             StatePayload::LazyInfection { .. } => Self::LazyInfection,
             StatePayload::MarioBoss { .. } => Self::MarioBoss,
@@ -425,8 +425,8 @@ impl StateStore {
                 | StatePayload::Curse { .. }
                 | StatePayload::Iron { .. }
                 | StatePayload::CovidBoss { .. }
-                | StatePayload::CovidInfection { .. }
-                | StatePayload::SaitamaBoss { .. }
+                | StatePayload::CovidInfection(_)
+                | StatePayload::SaitamaBoss(_)
                 | StatePayload::LazyBoss { .. }
                 | StatePayload::LazyInfection { .. }
                 | StatePayload::MarioBoss { .. } => {
@@ -501,8 +501,8 @@ impl StateStore {
 
     /// 清除全部正面状态，返回按优先级与注册序排序的解除消息。
     pub fn clear_positive_states_with_ordered_messages(&mut self, owner_alive: bool) -> Vec<(i32, &'static str)> {
-        let mut messages = Vec::new();
-        let mut to_remove = Vec::new();
+        let mut messages = SmallVec::<[(i32, RegistrationOrder, u32, &'static str); 6]>::new();
+        let mut to_remove = SmallVec::<[u32; 6]>::new();
 
         for entry in &self.entries {
             if entry.is_positive_state() {
@@ -513,12 +513,17 @@ impl StateStore {
             }
         }
 
-        messages.sort_unstable_by(|(priority_a, order_a, key_a, _), (priority_b, order_b, key_b, _)| {
-            priority_a
-                .cmp(priority_b)
-                .then_with(|| order_a.cmp(order_b))
-                .then_with(|| key_a.cmp(key_b))
-        });
+        if to_remove.is_empty() {
+            return Vec::new();
+        }
+        if messages.len() > 1 {
+            messages.sort_unstable_by(|(priority_a, order_a, key_a, _), (priority_b, order_b, key_b, _)| {
+                priority_a
+                    .cmp(priority_b)
+                    .then_with(|| order_a.cmp(order_b))
+                    .then_with(|| key_a.cmp(key_b))
+            });
+        }
         for legacy_order_key in to_remove {
             self.clear_legacy_key(legacy_order_key);
         }

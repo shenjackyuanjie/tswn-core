@@ -264,12 +264,14 @@ impl PhaseScheduler {
         let (actor, should_act, ice_released) = world.advance_round_ticks(max_ticks, |actor| {
             let entity = entities.get_mut(actor).filter(|entity| entity.runtime.alive)?;
             let roll = i32::from(randomer.next_u8() & 3);
-            let (step, ice_released) =
-                if entity.states.has_scheduler_states() || entity.runtime.rosmontic.is_some() || entity.runtime.upgrade_active {
-                    Self::step_with_scheduler_state(entity, roll)
-                } else {
-                    (entity.template.speed * roll, false)
-                };
+            let (step, ice_released) = if entity.states.has_scheduler_states()
+                || entity.runtime.boss.as_deref().is_some_and(|b| b.rosmontic.is_some())
+                || entity.runtime.upgrade_active
+            {
+                Self::step_with_scheduler_state(entity, roll)
+            } else {
+                (entity.template.speed * roll, false)
+            };
             let points = &mut entity.runtime.move_state.speed_points;
             *points += step;
             let should_act = *points > MOVE_POINT_THRESHOLD;
@@ -550,9 +552,9 @@ impl PhaseScheduler {
             };
             if matches!(hook, ProcMask::PRE_ACTION | ProcMask::POST_ACTION)
                 && entry.is_boss_infection(entities)
-                && let crate::runtime::StatePayload::CovidInfection { entries: strains, .. } = &entry.payload
+                && let crate::runtime::StatePayload::CovidInfection(covid) = &entry.payload
             {
-                entries.extend(strains.iter().map(|strain| StateHookPlanEntry {
+                entries.extend(covid.entries.iter().map(|strain| StateHookPlanEntry {
                     runtime_registration_order: strain.registration_order.unwrap_or(runtime_registration_order),
                     ..planned
                 }));

@@ -21,7 +21,7 @@ impl CombatRuntime {
         }
         if self.is_rosmontic_boss(actor, "phantom") {
             let e = self.entities.get(actor).unwrap();
-            let members = e.runtime.rosmontic.as_ref().unwrap().phantom_members;
+            let members = e.runtime.boss.as_deref().and_then(|b| b.rosmontic.as_ref()).unwrap().phantom_members;
             let count = members.count_ones();
             let factor = if count == 3 { 0.66 } else { 0.5 };
             if count > 1 && f64::from(e.runtime.hp) < f64::from(e.template.max_hp) * factor {
@@ -29,7 +29,7 @@ impl CombatRuntime {
                 let lost = choices[self.rng.next_u8() as usize % choices.len()];
                 let e = self.entities.get_mut(actor).unwrap();
                 e.template.max_hp = (f64::from(e.template.max_hp) * factor) as i32;
-                let s = e.runtime.rosmontic.as_mut().unwrap();
+                let s = e.runtime.boss_mut().rosmontic.as_mut().unwrap();
                 s.phantom_members &= !(1 << lost);
                 s.levels[0] = 0;
                 let remaining: Vec<_> = (0..3).filter(|i| s.phantom_members & (1 << i) != 0).collect();
@@ -77,7 +77,7 @@ impl CombatRuntime {
 
     /// 神现只按受益者自己的实际行动倒计时；施放当回合也算一回合。
     pub fn end_pcb_action(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
-        let Some(s) = self.entities.get_mut(actor).and_then(|e| e.runtime.rosmontic.as_mut()) else {
+        let Some(s) = self.entities.get_mut(actor).and_then(|e| e.runtime.boss_mut().rosmontic.as_mut()) else {
             return;
         };
         if s.divine_turns > 0 {
@@ -115,7 +115,7 @@ impl CombatRuntime {
             && !self
                 .entities
                 .get(value.caster())
-                .and_then(|e| e.runtime.rosmontic.as_ref())
+                .and_then(|e| e.runtime.boss.as_deref().and_then(|b| b.rosmontic.as_ref()))
                 .is_some_and(|s| s.parry_countering)
         {
             self.ros_state(target).guard = 2;
@@ -159,8 +159,11 @@ impl CombatRuntime {
             return false;
         }
         let e = self.entities.get_mut(target).unwrap();
-        let s = e.runtime.rosmontic.as_mut().unwrap();
-        if e.runtime.hp > 0 || s.butterfly_revived {
+        if e.runtime.hp > 0 {
+            return false;
+        }
+        let s = e.runtime.boss_mut().rosmontic.as_mut().unwrap();
+        if s.butterfly_revived {
             return false;
         }
         s.butterfly_revived = true;
@@ -179,7 +182,7 @@ impl CombatRuntime {
         if e.runtime.hp > 0 || !e.runtime.alive {
             return;
         }
-        let Some(s) = e.runtime.rosmontic.as_mut() else {
+        let Some(s) = e.runtime.boss_mut().rosmontic.as_mut() else {
             return;
         };
         if s.child_death_notified || !(20..=22).contains(&s.child_kind) {

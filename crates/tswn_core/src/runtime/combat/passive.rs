@@ -32,10 +32,12 @@ impl CombatRuntime {
             return;
         }
 
-        // 来源：KODU16。高体力阶段的剑技受到实际伤害后中断，低体力阶段不挂中断钩子。
-        self.interrupt_megia_into(target, updates);
-        self.upgrade_rumia_into(target, updates);
-        self.pcb_after_damage(target, updates);
+        if self.has_boss_entities {
+            // 来源：KODU16。高体力阶段的剑技受到实际伤害后中断，低体力阶段不挂中断钩子。
+            self.interrupt_megia_into(target, updates);
+            self.upgrade_rumia_into(target, updates);
+            self.pcb_after_damage(target, updates);
+        }
 
         #[derive(Debug, Clone, Copy)]
         enum PlainPostDamageSkill {
@@ -52,94 +54,100 @@ impl CombatRuntime {
             .entities
             .get(target)
             .unwrap_or_else(|| panic!("unknown runtime post-damage target: {}", target.0));
-        let mut plan = target_entity
-            .template
-            .skills
-            .post_damage_order()
-            .iter()
-            .copied()
-            .enumerate()
-            .filter_map(|(registration_order, fixed_lane)| {
-                let skill_id = *target_entity.template.skills.skills().get(fixed_lane)?;
-                let export_name = self.registry.skill(skill_id)?.export_name.as_str();
-                let skill = match export_name {
-                    DEFAULT_CORE_UPGRADE_SKILL_EXPORT => PlainPostDamageSkill::Upgrade,
-                    DEFAULT_CORE_HIDE_SKILL_EXPORT => PlainPostDamageSkill::Hide,
-                    DEFAULT_CORE_COUNTER_SKILL_EXPORT => PlainPostDamageSkill::Counter,
-                    export_name if export_name == BuiltinActiveSkill::Assassinate.export_name() => {
-                        PlainPostDamageSkill::Assassinate
+        if !target_entity.template.skills.post_damage_order().is_empty() {
+            let mut plan = target_entity
+                .template
+                .skills
+                .post_damage_order()
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(registration_order, fixed_lane)| {
+                    let skill_id = *target_entity.template.skills.skills().get(fixed_lane)?;
+                    let export_name = self.registry.skill(skill_id)?.export_name.as_str();
+                    let skill = match export_name {
+                        DEFAULT_CORE_UPGRADE_SKILL_EXPORT => PlainPostDamageSkill::Upgrade,
+                        DEFAULT_CORE_HIDE_SKILL_EXPORT => PlainPostDamageSkill::Hide,
+                        DEFAULT_CORE_COUNTER_SKILL_EXPORT => PlainPostDamageSkill::Counter,
+                        export_name if export_name == BuiltinActiveSkill::Assassinate.export_name() => {
+                            PlainPostDamageSkill::Assassinate
+                        }
+                        DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT => PlainPostDamageSkill::SummonShareDamage,
+                        DEFAULT_CORE_WEAPON_DEATH_NOTE_SKILL_EXPORT => PlainPostDamageSkill::WeaponDeathNote,
+                        DEFAULT_CORE_WEAPON_XUAN_YUE_COUNTER_SKILL_EXPORT => PlainPostDamageSkill::WeaponXuanYue,
+                        _ => return None,
+                    };
+                    let level = target_entity.template.skills.level_at(fixed_lane)?;
+                    if level == 0 {
+                        return None;
                     }
-                    DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT => PlainPostDamageSkill::SummonShareDamage,
-                    DEFAULT_CORE_WEAPON_DEATH_NOTE_SKILL_EXPORT => PlainPostDamageSkill::WeaponDeathNote,
-                    DEFAULT_CORE_WEAPON_XUAN_YUE_COUNTER_SKILL_EXPORT => PlainPostDamageSkill::WeaponXuanYue,
-                    _ => return None,
-                };
-                let level = target_entity.template.skills.level_at(fixed_lane)?;
-                if level == 0 {
-                    return None;
-                }
-                let priority = match skill {
-                    // 死亡笔记包在 PostDamageImpl 里，产物按 Infinity 排到静态钩子之后；
-                    // 影袭是运行期动态注册的 Infinity 钩子，仍排在死亡笔记之后。
-                    PlainPostDamageSkill::WeaponDeathNote => i32::MAX - 1,
-                    PlainPostDamageSkill::Assassinate => i32::MAX,
-                    _ => 0,
-                };
-                Some((skill, level, priority, registration_order))
-            })
-            .collect::<smallvec::SmallVec<[_; 4]>>();
-        // `post_damage_order` 保存钩子的实际注册顺序。Merge 可能在运行期启用
-        // 原本为零级的槽位，因此固定槽位顺序和主动行动顺序都不足以复现该事件列表。
-        plan.sort_by_key(|(_, _, priority, registration_order)| (*priority, *registration_order));
-        #[cfg(not(feature = "no_debug"))]
-        let debug_counter = crate::debug::probe_counter().is_some();
-        #[cfg(not(feature = "no_debug"))]
-        if debug_counter {
-            eprintln!(
-                "[counter_probe:runtime:plan] target={} caster={} damage={} updates_id={} plan={:?} rc4=({}, {})",
-                target.0, caster.0, damage, updates.id, plan, self.rng.i, self.rng.j,
-            );
-        }
-
-        for (skill, level, _, _) in plan {
-            #[cfg(not(feature = "no_debug"))]
-            let rng_before = (self.rng.i, self.rng.j);
-            match skill {
-                PlainPostDamageSkill::Upgrade => {
-                    self.run_plain_upgrade_post_damage_into(target, level, damage, caster, updates);
-                }
-                PlainPostDamageSkill::Hide => {
-                    self.run_plain_hide_post_damage_into(target, level, damage, caster, updates);
-                }
-                PlainPostDamageSkill::Counter => {
-                    self.run_plain_counter_post_damage_into(target, level, damage, caster, updates);
-                }
-                PlainPostDamageSkill::Assassinate => {
-                    self.run_plain_assassinate_post_damage_into(target, damage, updates);
-                }
-                PlainPostDamageSkill::SummonShareDamage => {
-                    self.drain_plain_summon_share_damage_into(target, level, damage, caster, updates);
-                }
-                PlainPostDamageSkill::WeaponDeathNote => {
-                    self.run_plain_weapon_death_note_post_damage(target, damage, caster);
-                }
-                PlainPostDamageSkill::WeaponXuanYue => {
-                    self.run_plain_weapon_xuan_yue_post_damage_into(target, caster, updates);
-                }
+                    let priority = match skill {
+                        // 死亡笔记包在 PostDamageImpl 里，产物按 Infinity 排到静态钩子之后；
+                        // 影袭是运行期动态注册的 Infinity 钩子，仍排在死亡笔记之后。
+                        PlainPostDamageSkill::WeaponDeathNote => i32::MAX - 1,
+                        PlainPostDamageSkill::Assassinate => i32::MAX,
+                        _ => 0,
+                    };
+                    Some((skill, level, priority, registration_order))
+                })
+                .collect::<smallvec::SmallVec<[_; 4]>>();
+            // `post_damage_order` 保存钩子的实际注册顺序。Merge 可能在运行期启用
+            // 原本为零级的槽位，因此固定槽位顺序和主动行动顺序都不足以复现该事件列表。
+            if plan.len() > 1 {
+                plan.sort_by_key(|(_, _, priority, registration_order)| (*priority, *registration_order));
             }
+            #[cfg(not(feature = "no_debug"))]
+            let debug_counter = crate::debug::probe_counter().is_some();
             #[cfg(not(feature = "no_debug"))]
             if debug_counter {
                 eprintln!(
-                    "[counter_probe:runtime:skill] target={} caster={} skill={:?} level={} updates_id={} rc4=({}, {}) -> ({}, {})",
-                    target.0, caster.0, skill, level, updates.id, rng_before.0, rng_before.1, self.rng.i, self.rng.j,
+                    "[counter_probe:runtime:plan] target={} caster={} damage={} updates_id={} plan={:?} rc4=({}, {})",
+                    target.0, caster.0, damage, updates.id, plan, self.rng.i, self.rng.j,
                 );
             }
+
+            for (skill, level, _, _) in plan {
+                #[cfg(not(feature = "no_debug"))]
+                let rng_before = (self.rng.i, self.rng.j);
+                match skill {
+                    PlainPostDamageSkill::Upgrade => {
+                        self.run_plain_upgrade_post_damage_into(target, level, damage, caster, updates);
+                    }
+                    PlainPostDamageSkill::Hide => {
+                        self.run_plain_hide_post_damage_into(target, level, damage, caster, updates);
+                    }
+                    PlainPostDamageSkill::Counter => {
+                        self.run_plain_counter_post_damage_into(target, level, damage, caster, updates);
+                    }
+                    PlainPostDamageSkill::Assassinate => {
+                        self.run_plain_assassinate_post_damage_into(target, damage, updates);
+                    }
+                    PlainPostDamageSkill::SummonShareDamage => {
+                        self.drain_plain_summon_share_damage_into(target, level, damage, caster, updates);
+                    }
+                    PlainPostDamageSkill::WeaponDeathNote => {
+                        self.run_plain_weapon_death_note_post_damage(target, damage, caster);
+                    }
+                    PlainPostDamageSkill::WeaponXuanYue => {
+                        self.run_plain_weapon_xuan_yue_post_damage_into(target, caster, updates);
+                    }
+                }
+                #[cfg(not(feature = "no_debug"))]
+                if debug_counter {
+                    eprintln!(
+                        "[counter_probe:runtime:skill] target={} caster={} skill={:?} level={} updates_id={} rc4=({}, {}) -> ({}, {})",
+                        target.0, caster.0, skill, level, updates.id, rng_before.0, rng_before.1, self.rng.i, self.rng.j,
+                    );
+                }
+            }
         }
-        if let Some(mutation) = self.covid_boss_mutation(target) {
-            self.try_covid_spread_to_attacker_into(target, caster, mutation, updates);
-        }
-        if self.lazy_boss_at_boost(target).is_some() {
-            self.infect_with_lazy_into(target, caster, updates);
+        if self.has_boss_entities {
+            if let Some(mutation) = self.covid_boss_mutation(target) {
+                self.try_covid_spread_to_attacker_into(target, caster, mutation, updates);
+            }
+            if self.lazy_boss_at_boost(target).is_some() {
+                self.infect_with_lazy_into(target, caster, updates);
+            }
         }
     }
 

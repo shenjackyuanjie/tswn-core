@@ -5,7 +5,7 @@ use crate::runtime::entity::RosmonticRuntime;
 
 impl CombatRuntime {
     pub fn ros_state(&mut self, actor: EntityIdx) -> &mut RosmonticRuntime {
-        self.entities.get_mut(actor).unwrap().runtime.rosmontic.get_or_insert_default()
+        self.entities.get_mut(actor).unwrap().runtime.boss_mut().rosmontic.get_or_insert_default()
     }
 
     pub fn ros_atp(&mut self, actor: EntityIdx, magic: bool) -> f64 {
@@ -99,22 +99,33 @@ impl CombatRuntime {
         let Some(e) = self.entities.get_mut(actor) else {
             return;
         };
-        let Some(s) = e.runtime.rosmontic.as_mut() else {
+        let is_sakuya = e.template.name == "sakuya" && e.runtime.flags.contains(PlayerKindFlags::BOSS);
+        let boost_agility = is_sakuya && e.runtime.agility < 310;
+        let Some(s) = e.runtime.boss.as_deref_mut().and_then(|b| b.rosmontic.as_mut()) else {
             return;
         };
         if s.dream > 0 {
             s.dream = s.dream.saturating_add(1);
         }
-        if e.template.name == "sakuya" && e.runtime.flags.contains(PlayerKindFlags::BOSS) {
-            if e.runtime.agility < 310 {
-                e.runtime.agility += 21;
+        if is_sakuya {
+            if boost_agility {
                 s.stat_add[3] += 21;
             }
-            if s.time_stop > 0 {
+            let stop_ended = if s.time_stop > 0 {
                 s.time_stop += 1;
+                if s.time_stop > 4 {
+                    s.time_stop = 0;
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+            if boost_agility {
+                e.runtime.agility += 21;
             }
-            if s.time_stop > 4 {
-                s.time_stop = 0;
+            if stop_ended {
                 self.rosmontic_message(actor, "[0]的[世界]结束了", updates);
             }
         }
@@ -123,7 +134,7 @@ impl CombatRuntime {
 
     /// 结界四次自身行动后解除；燃烧的剩余威力分两轮衰减并走真实伤害链。
     pub fn end_rosmontic_action(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
-        let Some(s) = self.entities.get_mut(actor).and_then(|e| e.runtime.rosmontic.as_mut()) else {
+        let Some(s) = self.entities.get_mut(actor).and_then(|e| e.runtime.boss_mut().rosmontic.as_mut()) else {
             return;
         };
         if s.barrier_turns > 0 {
@@ -134,7 +145,15 @@ impl CombatRuntime {
             }
         }
         let (caster, atp, turns) = {
-            let s = self.entities.get(actor).unwrap().runtime.rosmontic.as_ref().unwrap();
+            let s = self
+                .entities
+                .get(actor)
+                .unwrap()
+                .runtime
+                .boss
+                .as_deref()
+                .and_then(|b| b.rosmontic.as_ref())
+                .unwrap();
             (s.burn_owner, f64::from_bits(s.burn_atp_bits), s.burn_turns)
         };
         if let Some(caster) = caster
@@ -159,7 +178,7 @@ impl CombatRuntime {
 
     /// 驱散只清除可解除的结界和气场，不重置已经消耗的招式或五行进度。
     pub fn dispel_rosmontic_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) {
-        let Some(s) = self.entities.get_mut(target).and_then(|e| e.runtime.rosmontic.as_mut()) else {
+        let Some(s) = self.entities.get_mut(target).and_then(|e| e.runtime.boss_mut().rosmontic.as_mut()) else {
             return;
         };
         let changed = s.aura || s.barrier_turns > 0 || s.divine_turns > 0;
@@ -206,7 +225,7 @@ impl CombatRuntime {
         for key in keys {
             e.states.clear_legacy_key(key);
         }
-        if let Some(s) = e.runtime.rosmontic.as_mut() {
+        if let Some(s) = e.runtime.boss_mut().rosmontic.as_mut() {
             s.burn_owner = None;
             s.burn_atp_bits = 0;
             s.burn_turns = 0;
@@ -283,7 +302,7 @@ impl CombatRuntime {
 
     pub fn ros_skill_allowed(&mut self, actor: EntityIdx, skill: usize, smart: bool) -> bool {
         let e = self.entities.get(actor).unwrap();
-        let s = e.runtime.rosmontic.as_ref().unwrap();
+        let s = e.runtime.boss.as_deref().and_then(|b| b.rosmontic.as_ref()).unwrap();
         match e.template.name.as_str() {
             "reimu" => match skill {
                 1 => s.dream == 0 || s.dream > 6,
@@ -335,9 +354,18 @@ impl CombatRuntime {
                     9 => 16,
                     _ => 14,
                 };
-                !dolls
-                    .into_iter()
-                    .any(|id| self.entities.get(id).unwrap().runtime.rosmontic.as_ref().unwrap().child_kind == role)
+                !dolls.into_iter().any(|id| {
+                    self.entities
+                        .get(id)
+                        .unwrap()
+                        .runtime
+                        .boss
+                        .as_deref()
+                        .and_then(|b| b.rosmontic.as_ref())
+                        .unwrap()
+                        .child_kind
+                        == role
+                })
             }
             "phantom" => {
                 if skill == 0 {

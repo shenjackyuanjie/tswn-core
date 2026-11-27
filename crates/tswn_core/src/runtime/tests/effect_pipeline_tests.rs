@@ -27,7 +27,7 @@ fn flush_effects_routes_root_owner_damage_to_owner_entity() {
     ));
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::with_kind(3, "summon", summon_kind, 0, 5, 1),
+        template: Box::new(PlayerTemplate::with_kind(3, "summon", summon_kind, 0, 5, 1)),
     });
     runtime.flush_effects().expect("spawn should emit update");
     runtime.effects.push(QueuedEffect::Damage {
@@ -84,7 +84,7 @@ fn flush_effects_runs_die_hook_on_resolved_root_owner() {
     runtime.set_state_handler(die_state, state_marks_update);
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::with_kind(3, "summon", summon_kind, 0, 5, 1),
+        template: Box::new(PlayerTemplate::with_kind(3, "summon", summon_kind, 0, 5, 1)),
     });
     runtime.flush_effects().expect("spawn should emit update");
     runtime.effects.push(QueuedEffect::Damage {
@@ -130,7 +130,7 @@ fn flush_effects_shares_summon_damage_to_owner_entity() {
     ));
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::with_kind(3, "summon", summon_kind, 0, 5, 1),
+        template: Box::new(PlayerTemplate::with_kind(3, "summon", summon_kind, 0, 5, 1)),
     });
     runtime.flush_effects().expect("spawn should emit update");
     runtime.effects.push(QueuedEffect::Damage {
@@ -189,7 +189,7 @@ fn flush_effects_runs_die_hook_on_damage_share_owner() {
     runtime.set_state_handler(die_state, state_marks_update);
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::with_kind(3, "summon", summon_kind, 0, 5, 1),
+        template: Box::new(PlayerTemplate::with_kind(3, "summon", summon_kind, 0, 5, 1)),
     });
     runtime.flush_effects().expect("spawn should emit update");
     runtime.effects.push(QueuedEffect::Damage {
@@ -254,11 +254,11 @@ fn flush_effects_shares_owner_damage_to_alive_summons() {
     ));
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::new(3, "summon-a", 0, 5, 1),
+        template: Box::new(PlayerTemplate::new(3, "summon-a", 0, 5, 1)),
     });
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::new(4, "summon-b", 0, 5, 1),
+        template: Box::new(PlayerTemplate::new(4, "summon-b", 0, 5, 1)),
     });
     runtime.flush_effects().expect("spawns should emit updates");
     runtime.entities.get_mut(EntityIdx(3)).unwrap().runtime.alive = false;
@@ -433,7 +433,7 @@ fn flush_effects_spawns_entity_and_adds_it_to_round_order() {
     let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::minimal_1v1(10, 10, 3));
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::new(3, "summoned", 0, 5, 2),
+        template: Box::new(PlayerTemplate::new(3, "summoned", 0, 5, 2)),
     });
 
     let frame = runtime.flush_effects().expect("spawn should emit update");
@@ -457,7 +457,7 @@ fn owner_spawn_ignores_blueprint_team_and_does_not_create_enemy() {
     ));
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::new(2, "enemy", 1, 8, 4),
+        template: Box::new(PlayerTemplate::new(2, "enemy", 1, 8, 4)),
     });
     runtime.flush_effects().expect("spawn should emit update");
 
@@ -844,7 +844,7 @@ fn flush_effects_panics_on_unknown_effect_entities() {
     });
     assert_effect_panics(QueuedEffect::Spawn {
         caster: EntityIdx(99),
-        template: PlayerTemplate::new(3, "ghost", 1, 1, 0),
+        template: Box::new(PlayerTemplate::new(3, "ghost", 1, 1, 0)),
     });
     assert_effect_panics(QueuedEffect::AddState {
         target: EntityIdx(99),

@@ -38,7 +38,7 @@ impl CombatRuntime {
         let zero_level = self
             .entities
             .get(actor)
-            .and_then(|e| e.runtime.cirno.as_ref())
+            .and_then(|e| e.runtime.boss.as_deref().and_then(|b| b.cirno.as_ref()))
             .map_or(90, |state| state.zero_level);
         if self.entities.get(actor).unwrap().runtime.magic_point >= cost {
             // 参考初始化中 k1 的顺序为被动、冰瀑、钻石风暴、绝对零度、完美冻结。
@@ -155,7 +155,7 @@ impl CombatRuntime {
         }
         self.cirno_say(actor, "[0]使用[冻符「绝对零度」]", updates);
         let mut atp = self.cirno_atp(actor, true) * 0.99;
-        if let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.cirno.as_mut()) {
+        if let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.boss_mut().cirno.as_mut()) {
             state.zero_level = state.zero_level.saturating_sub(10);
         }
         for target in targets {

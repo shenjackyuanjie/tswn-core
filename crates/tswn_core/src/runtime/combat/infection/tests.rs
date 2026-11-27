@@ -29,17 +29,12 @@ fn public_plant_recovers_then_accepts_two_strains_and_uses_the_latest() {
         }
         let entity = runner.runtime.entities.get(target).unwrap();
         let state = entity.states.entry(PLAIN_COVID_INFECTION_STATE_KEY).unwrap();
-        let StatePayload::CovidInfection {
-            entries,
-            mutation_set,
-            recovered,
-        } = &state.payload
-        else {
+        let StatePayload::CovidInfection(covid) = &state.payload else {
             panic!("应有新冠状态");
         };
-        assert!(*recovered);
-        assert_eq!(mutation_set.as_slice(), &[40, 29, 57]);
-        let active: Vec<_> = entries.iter().map(|strain| (strain.mutation, strain.days)).collect();
+        assert!(covid.recovered);
+        assert_eq!(covid.mutation_set.as_slice(), &[40, 29, 57]);
+        let active: Vec<_> = covid.entries.iter().map(|strain| (strain.mutation, strain.days)).collect();
         assert_eq!(active, [(29, 0), (57, i32::from(number == 40))]);
         if number == 39 {
             assert_eq!((runner.runtime.rng.i, runner.runtime.rng.j), (33, 11));
@@ -138,11 +133,11 @@ fn public_terminal_pneumonia_stops_before_heal_and_recovery() {
         .states
         .entry(PLAIN_COVID_INFECTION_STATE_KEY)
         .unwrap();
-    let StatePayload::CovidInfection { entries, recovered, .. } = &state.payload else {
+    let StatePayload::CovidInfection(covid) = &state.payload else {
         panic!("应有新冠状态");
     };
-    assert!(!recovered);
-    assert_eq!(entries[0].days, 11);
+    assert!(!covid.recovered);
+    assert_eq!(covid.entries[0].days, 11);
 }
 
 #[test]
@@ -196,17 +191,12 @@ fn strain_recovery_preserves_history_and_ticks_in_registration_order() {
             .states
             .entry(PLAIN_COVID_INFECTION_STATE_KEY)
             .unwrap();
-        let StatePayload::CovidInfection {
-            entries,
-            mutation_set,
-            recovered,
-        } = &state.payload
-        else {
+        let StatePayload::CovidInfection(covid) = &state.payload else {
             panic!("应有新冠状态");
         };
-        assert!(*recovered);
-        assert_eq!(mutation_set.as_slice(), &[40, 41, 42]);
-        let remaining: Vec<_> = entries.iter().map(|strain| (strain.mutation, strain.days)).collect();
+        assert!(covid.recovered);
+        assert_eq!(covid.mutation_set.as_slice(), &[40, 41, 42]);
+        let remaining: Vec<_> = covid.entries.iter().map(|strain| (strain.mutation, strain.days)).collect();
         // 非终局死亡会跳过第二次伤害及抽样，但照常注销两条过期钩子。
         assert_eq!(remaining, if dying { &[][..] } else { &[(42, 2)][..] });
     }
@@ -270,11 +260,11 @@ fn set_strain_days(runtime: &mut CombatRuntime, owner: EntityIdx, days: &[i32]) 
         .states
         .entry_mut(PLAIN_COVID_INFECTION_STATE_KEY)
         .unwrap();
-    let StatePayload::CovidInfection { entries, .. } = &mut state.payload else {
+    let StatePayload::CovidInfection(covid) = &mut state.payload else {
         panic!("应有新冠状态");
     };
-    assert_eq!(entries.len(), days.len());
-    for (strain, &days) in entries.iter_mut().zip(days) {
+    assert_eq!(covid.entries.len(), days.len());
+    for (strain, &days) in covid.entries.iter_mut().zip(days) {
         strain.days = days;
     }
 }

@@ -31,8 +31,8 @@ pub fn push_minion_from_template_with_allocated_name(
     minion_template.name = minion_name;
     context.push_nested(QueuedEffect::SpawnWithMessage {
         caster: context.owner_idx(),
-        template: minion_template,
-        message: message.into(),
+        template: Box::new(minion_template),
+        message: std::borrow::Cow::Owned(message.into()),
     });
     Ok(next_entity)
 }
@@ -48,7 +48,7 @@ pub fn push_minion_from_template_with_allocated_name_silent(
     minion_template.name = minion_name;
     context.push_nested(QueuedEffect::SpawnSilent {
         caster: context.owner_idx(),
-        template: minion_template,
+        template: Box::new(minion_template),
     });
     Ok(next_entity)
 }

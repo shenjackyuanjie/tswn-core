@@ -50,11 +50,11 @@ fn custom_summon_fixture_combines_owner_route_share_and_skill_reuse() {
     ));
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::with_kind(3, "summon", summon_kind, 0, 5, 1).with_skills([recast_skill]),
+        template: Box::new(PlayerTemplate::with_kind(3, "summon", summon_kind, 0, 5, 1).with_skills([recast_skill])),
     });
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::with_kind(4, "summon-recast", summon_kind, 0, 5, 1).with_skills([recast_skill]),
+        template: Box::new(PlayerTemplate::with_kind(4, "summon-recast", summon_kind, 0, 5, 1).with_skills([recast_skill])),
     });
     runtime.flush_effects().expect("summon spawns should emit updates");
 
@@ -129,7 +129,7 @@ fn custom_summon_fixture_inherits_owner_defense_and_resistance() {
 
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::with_kind(3, "summon", summon_kind, 0, 10, 1).with_def_res(11, 22),
+        template: Box::new(PlayerTemplate::with_kind(3, "summon", summon_kind, 0, 10, 1).with_def_res(11, 22)),
     });
     runtime.flush_effects().expect("summon spawn should emit update");
 
@@ -177,9 +177,11 @@ fn charged_summon_template_can_disable_share_damage() {
     ));
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::with_kind(3, "charged-summon", summon_kind, 0, 5, 1)
-            .with_damage_share_policy(DamageSharePolicy::None)
-            .with_speed_points(2048),
+        template: Box::new(
+            PlayerTemplate::with_kind(3, "charged-summon", summon_kind, 0, 5, 1)
+                .with_damage_share_policy(DamageSharePolicy::None)
+                .with_speed_points(2048),
+        ),
     });
     runtime.flush_effects().expect("charged summon spawn should emit update");
 

@@ -64,8 +64,8 @@ pub fn push_summon_from_template_slot_with_message(
     };
     context.push_nested(QueuedEffect::SpawnWithMessage {
         caster: context.owner_idx(),
-        template: summon_template,
-        message: message.into(),
+        template: Box::new(summon_template),
+        message: std::borrow::Cow::Owned(message.into()),
     });
     Ok(())
 }
@@ -135,8 +135,8 @@ pub fn push_summon_recast_from_entity_slot_with_messages(
     let next_entity = EntityArena::next_spawn_idx_from_slot_count(context.entity_count(), &summon_template);
     context.push_nested(QueuedEffect::SpawnWithMessage {
         caster: owner,
-        template: summon_template,
-        message: spawn_message,
+        template: Box::new(summon_template),
+        message: std::borrow::Cow::Owned(spawn_message),
     });
     context.set_entity_slot(owner, entity_slot, SlotValue::U64(u64::from(next_entity.0)))?;
     Ok(next_entity)

@@ -77,8 +77,8 @@ impl CombatRuntime {
         self.set_plain_summon_share_level(&mut template.skills, !charge_active);
         self.effects.push(QueuedEffect::SpawnWithMessage {
             caster: actor,
-            template,
-            message: "召唤出[1]".to_owned(),
+            template: Box::new(template),
+            message: std::borrow::Cow::Borrowed("召唤出[1]"),
         });
         self.drain_effects_into(updates);
         assert!(

@@ -59,7 +59,7 @@ fn absolute_zero_updates_level_magic_and_wisdom() {
     let mut updates = RunUpdates::new();
     rt.cirno_absolute_zero(boss, &mut updates);
     let runtime = &rt.entities.get(boss).unwrap().runtime;
-    assert_eq!(runtime.cirno.as_ref().unwrap().zero_level, 80);
+    assert_eq!(runtime.boss.as_deref().and_then(|b| b.cirno.as_ref()).unwrap().zero_level, 80);
     assert_eq!(runtime.magic, 54);
     assert_eq!(runtime.wisdom, 5);
     assert!(updates.updates.iter().any(|u| u.message.contains("变[⑨]")));
@@ -75,6 +75,7 @@ fn battle_reset_restores_skill_level() {
         .get_mut(boss)
         .unwrap()
         .runtime
+        .boss_mut()
         .cirno
         .as_mut()
         .unwrap()
@@ -87,7 +88,17 @@ fn battle_reset_restores_skill_level() {
         .runtime
         .reset_battle_state_from(&template);
     assert_eq!(
-        runner.runtime().entities.get(boss).unwrap().runtime.cirno.as_ref().unwrap().zero_level,
+        runner
+            .runtime()
+            .entities
+            .get(boss)
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.cirno.as_ref())
+            .unwrap()
+            .zero_level,
         90
     );
 }

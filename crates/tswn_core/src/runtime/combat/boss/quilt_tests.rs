@@ -162,7 +162,16 @@ fn monkey_arrest_keeps_its_own_status_and_removes_the_monkey() {
     rt.minion_state_mut(monkey).unwrap().turn = 11;
     rt.drain_quilt_minion_action_into(monkey, enemies[0], &mut u);
     assert!(!rt.entities.get(monkey).unwrap().runtime.alive);
-    assert_eq!(rt.entities.get(enemies[0]).unwrap().runtime.quilt_arrests.len(), 1);
+    assert_eq!(
+        rt.entities
+            .get(enemies[0])
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .map_or(0, |b| b.quilt_arrests.len()),
+        1
+    );
     assert!(u.updates.iter().any(|line| line.message == "[1]消失了"));
 }
 
@@ -175,7 +184,17 @@ fn fish_dives_then_spits_a_monkey() {
     let fish = rt.quilt_fish(boss)[0];
     let before = rt.quilt_monkeys(boss).len();
     rt.drain_quilt_minion_action_into(fish, enemies[0], &mut u);
-    assert!(rt.entities.get(fish).unwrap().runtime.quilt_minion.as_ref().unwrap().pending_spawn);
+    assert!(
+        rt.entities
+            .get(fish)
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.quilt_minion.as_ref())
+            .unwrap()
+            .pending_spawn
+    );
     // 下一次行动开始就召出猴区，不再额外等待一个行动。
     rt.drain_quilt_minion_action_into(fish, enemies[0], &mut u);
     assert_eq!(rt.quilt_monkeys(boss).len(), before + 1);

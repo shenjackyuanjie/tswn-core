@@ -61,7 +61,7 @@ fn baixie_heals_the_boss_only_after_everyone_is_thanked() {
     assert_eq!(rt.entities.get(boss).unwrap().runtime.hp, 300);
     // 把所有敌人都标记为已拜谢后再行动，才会回 20 点。
     let enemies = rt.yi_enemies(baixie);
-    if let Some(state) = rt.entities.get_mut(baixie).and_then(|e| e.runtime.baixie.as_mut()) {
+    if let Some(state) = rt.entities.get_mut(baixie).and_then(|e| e.runtime.boss_mut().baixie.as_mut()) {
         state.thanked.extend(enemies);
     }
     rt.drain_baixie_action_into(baixie, &mut u);

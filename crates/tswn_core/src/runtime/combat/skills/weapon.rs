@@ -385,8 +385,8 @@ impl CombatRuntime {
             updates.add_newline();
             self.effects.push(QueuedEffect::SpawnWithMessage {
                 caster: owner,
-                template,
-                message: crate::runtime::lang::get_lang(keys::SKL_CLONED).to_owned(),
+                template: Box::new(template),
+                message: std::borrow::Cow::Owned(crate::runtime::lang::get_lang(keys::SKL_CLONED).to_owned()),
             });
             self.drain_effects_into(updates);
         }

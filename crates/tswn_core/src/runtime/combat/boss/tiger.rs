@@ -47,7 +47,11 @@ impl CombatRuntime {
 
     /// 选出下一个技能；只在本模块内调度，内部枚举不进入公开签名。
     fn next_tiger_skill(&mut self, actor: EntityIdx) -> TigerSkill {
-        let Some(state) = self.entities.get(actor).and_then(|e| e.runtime.tiger.as_ref()) else {
+        let Some(state) = self
+            .entities
+            .get(actor)
+            .and_then(|e| e.runtime.boss.as_deref().and_then(|b| b.tiger.as_ref()))
+        else {
             return TigerSkill::Buff;
         };
         if !state.red && self.entities.get(actor).is_some_and(|e| e.runtime.hp * 2 < e.template.max_hp) {
@@ -81,7 +85,7 @@ impl CombatRuntime {
             return;
         }
         {
-            let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.tiger.as_mut()) else {
+            let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.boss_mut().tiger.as_mut()) else {
                 return;
             };
             state.turn = state.turn.saturating_add(1);
@@ -139,7 +143,7 @@ impl CombatRuntime {
 
     /// 我是M：两回合内受伤时随机属性提升等量数值。
     pub fn tiger_masochist(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
-        if let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.tiger.as_mut()) {
+        if let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.boss_mut().tiger.as_mut()) {
             state.m_turns = 2;
         }
         self.tiger_say(actor, "[0]使用[我是M]", updates);
@@ -165,7 +169,7 @@ impl CombatRuntime {
             return;
         };
         self.tiger_say(actor, "[0]使用[拜谢者，出神豹]", updates);
-        if let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.tiger.as_mut()) {
+        if let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.boss_mut().tiger.as_mut()) {
             state.thanks.push(target);
         }
         updates.add(RunUpdate::new("[1]被拜谢", actor.0 as usize, target.0 as usize, 0));
@@ -207,10 +211,16 @@ impl CombatRuntime {
         let Some(entity) = self.entities.get_mut(actor) else {
             return;
         };
-        if entity.runtime.tiger.as_ref().is_some_and(|state| state.red) {
+        if entity
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.tiger.as_ref())
+            .is_some_and(|state| state.red)
+        {
             return;
         }
-        if let Some(state) = entity.runtime.tiger.as_mut() {
+        if let Some(state) = entity.runtime.boss_mut().tiger.as_mut() {
             state.red = true;
         }
         for (runtime, template) in [
@@ -267,8 +277,8 @@ impl CombatRuntime {
         template.display_name = "分身".to_owned();
         self.effects.push(QueuedEffect::SpawnWithMessage {
             caster: actor,
-            template,
-            message: "[1]加入了己方".to_owned(),
+            template: Box::new(template),
+            message: std::borrow::Cow::Borrowed("[1]加入了己方"),
         });
         self.drain_effects_into(updates);
         self.tiger_say(actor, "[0]使用[显得我小]", updates);
@@ -329,8 +339,8 @@ impl CombatRuntime {
         let idx = self.entities.next_spawn_idx(&template);
         self.effects.push(QueuedEffect::SpawnWithMessage {
             caster: actor,
-            template,
-            message: "[1]加入了己方".to_owned(),
+            template: Box::new(template),
+            message: std::borrow::Cow::Borrowed("[1]加入了己方"),
         });
         self.drain_effects_into(updates);
         if let Some(spawned) = self.entities.get_mut(idx) {
@@ -349,7 +359,7 @@ impl CombatRuntime {
         let Some(entity) = self.entities.get_mut(target) else {
             return;
         };
-        let Some(state) = entity.runtime.tiger.as_ref() else {
+        let Some(state) = entity.runtime.boss.as_deref().and_then(|b| b.tiger.as_ref()) else {
             return;
         };
         if state.m_turns == 0 {
@@ -378,7 +388,13 @@ impl CombatRuntime {
     /// 目标是否被 TigerStar 拜谢（自然回蓝减半）。
     pub fn tiger_thanked(&self, target: EntityIdx) -> bool {
         self.entities.iter().any(|(_, entity)| {
-            entity.runtime.alive && entity.runtime.tiger.as_ref().is_some_and(|state| state.thanks.contains(&target))
+            entity.runtime.alive
+                && entity
+                    .runtime
+                    .boss
+                    .as_deref()
+                    .and_then(|b| b.tiger.as_ref())
+                    .is_some_and(|state| state.thanks.contains(&target))
         })
     }
 }

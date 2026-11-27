@@ -173,6 +173,8 @@ pub struct CombatRuntime {
     pub show_renderers: ShowRenderers,
     /// 固定记录科研 Boss 的实体槽，普通对局不扫描所有实体。
     pub squall_bosses: Vec<EntityIdx>,
+    /// 本局存在 Boss 实体时的快速守卫位图；普通对局为 0，热路径一条分支跳过全部 Boss 检查。
+    pub has_boss_entities: bool,
     pub scratch: BattleScratch,
     pub template_slots: TemplateSlotStorage,
     pub slots: BattleSlotStorage,

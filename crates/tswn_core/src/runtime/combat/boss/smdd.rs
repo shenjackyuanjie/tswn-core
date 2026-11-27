@@ -36,7 +36,11 @@ impl CombatRuntime {
     pub fn next_smdd_skill(&mut self, actor: EntityIdx) -> SmddSkill {
         // 存在性守卫：只确认该实体有 smdd 状态就提前返回，取值本身有意不使用，
         // 这样未装配状态的实体不会消耗后续 RNG。
-        let Some(_state) = self.entities.get(actor).and_then(|e| e.runtime.smdd.as_ref()) else {
+        let Some(_state) = self
+            .entities
+            .get(actor)
+            .and_then(|e| e.runtime.boss.as_deref().and_then(|b| b.smdd.as_ref()))
+        else {
             return SmddSkill::Win;
         };
         // 曙光按普通 AI 随机选技能。
@@ -53,7 +57,7 @@ impl CombatRuntime {
 
     /// 被敌方本体命中时做局层数 +1；开始做局始终激活，每个自身行动也会 +1。
     pub fn record_smdd_hit(&mut self, target: EntityIdx) {
-        if let Some(state) = self.entities.get_mut(target).and_then(|e| e.runtime.smdd.as_mut()) {
+        if let Some(state) = self.entities.get_mut(target).and_then(|e| e.runtime.boss_mut().smdd.as_mut()) {
             state.stacks = (state.stacks + 1).min(8);
         }
     }
@@ -64,7 +68,7 @@ impl CombatRuntime {
         }
         // 开始做局：始终激活的被动，每次自身行动叠一层。
         let stacks = {
-            let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.smdd.as_mut()) else {
+            let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.boss_mut().smdd.as_mut()) else {
                 return;
             };
             state.turn = state.turn.saturating_add(1);
@@ -103,7 +107,7 @@ impl CombatRuntime {
         let Some(entity) = self.entities.get_mut(actor) else {
             return;
         };
-        let Some(state) = entity.runtime.smdd.as_mut() else {
+        let Some(state) = entity.runtime.boss_mut().smdd.as_mut() else {
             return;
         };
         if state.rp_stacks >= 2 {
@@ -180,8 +184,8 @@ impl CombatRuntime {
         let idx = self.entities.next_spawn_idx(&template);
         self.effects.push(QueuedEffect::SpawnWithMessage {
             caster: actor,
-            template,
-            message: "[1]加入了己方".to_owned(),
+            template: Box::new(template),
+            message: std::borrow::Cow::Borrowed("[1]加入了己方"),
         });
         self.drain_effects_into(updates);
         // 召唤会继承 Boss 的 @! 徽章名，这里改回完整的名字与图标键。

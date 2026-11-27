@@ -29,7 +29,7 @@ impl CombatRuntime {
             return;
         }
         let turn = {
-            let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.yi.as_mut()) else {
+            let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.boss_mut().yi.as_mut()) else {
                 return;
             };
             state.turn = state.turn.saturating_add(1);
@@ -88,13 +88,13 @@ impl CombatRuntime {
         let idx = self.entities.next_spawn_idx(&template);
         self.effects.push(QueuedEffect::SpawnWithMessage {
             caster: actor,
-            template,
-            message: format!("{BAIXIE}从虚空中出现了"),
+            template: Box::new(template),
+            message: std::borrow::Cow::Owned(format!("{BAIXIE}从虚空中出现了")),
         });
         self.drain_effects_into(updates);
         if let Some(spawned) = self.entities.get_mut(idx) {
             spawned.template.id_key_name = "yi-baixie".to_owned();
-            spawned.runtime.baixie = Some(Box::new(BaixieRuntime::default()));
+            spawned.runtime.boss_mut().baixie = Some(Box::new(BaixieRuntime::default()));
             // 拜谢的嘲讽值必须高于咦本体，保证敌方优先打拜谢。
             spawned.runtime.attract_bits = 1.0e12_f64.to_bits();
             // 拜谢自带 70 级反弹熟练度。
@@ -164,7 +164,7 @@ impl CombatRuntime {
                 !self
                     .entities
                     .get(actor)
-                    .and_then(|e| e.runtime.baixie.as_ref())
+                    .and_then(|e| e.runtime.boss.as_deref().and_then(|b| b.baixie.as_ref()))
                     .is_some_and(|state| state.thanked.contains(target))
             })
             .collect();
@@ -184,7 +184,7 @@ impl CombatRuntime {
             if let Some(entity) = self.entities.get_mut(target) {
                 entity.runtime.magic_point = (entity.runtime.magic_point - 20).max(0);
             }
-            if let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.baixie.as_mut()) {
+            if let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.boss_mut().baixie.as_mut()) {
                 state.thanked.push(target);
             }
             updates.add(RunUpdate::new(
@@ -215,14 +215,17 @@ impl CombatRuntime {
 
     /// 反弹命中后，给被反弹到的敌人也加上拜谢。
     pub fn mark_baixie_on(&mut self, baixie: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
-        let is_baixie = self.entities.get(baixie).is_some_and(|e| e.runtime.baixie.is_some());
+        let is_baixie = self
+            .entities
+            .get(baixie)
+            .is_some_and(|e| e.runtime.boss.as_deref().is_some_and(|b| b.baixie.is_some()));
         if !is_baixie || !self.entities.get(target).is_some_and(|e| e.runtime.active()) {
             return;
         }
         let already = self
             .entities
             .get(baixie)
-            .and_then(|e| e.runtime.baixie.as_ref())
+            .and_then(|e| e.runtime.boss.as_deref().and_then(|b| b.baixie.as_ref()))
             .is_some_and(|state| state.thanked.contains(&target));
         if already {
             return;
@@ -230,7 +233,7 @@ impl CombatRuntime {
         if let Some(entity) = self.entities.get_mut(target) {
             entity.runtime.magic_point = (entity.runtime.magic_point - 20).max(0);
         }
-        if let Some(state) = self.entities.get_mut(baixie).and_then(|e| e.runtime.baixie.as_mut()) {
+        if let Some(state) = self.entities.get_mut(baixie).and_then(|e| e.runtime.boss_mut().baixie.as_mut()) {
             state.thanked.push(target);
         }
         updates.add(RunUpdate::new(
@@ -247,7 +250,7 @@ impl CombatRuntime {
             if !entity.runtime.alive {
                 continue;
             }
-            if let Some(state) = entity.runtime.baixie.as_ref()
+            if let Some(state) = entity.runtime.boss.as_deref().and_then(|b| b.baixie.as_ref())
                 && state.thanked.contains(&target)
             {
                 thanked = true;

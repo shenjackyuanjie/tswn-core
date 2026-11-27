@@ -30,11 +30,12 @@ impl CombatRuntime {
             return;
         }
         let r = &mut self.entities.get_mut(target).unwrap().runtime;
-        if r.hp <= 0 || r.hp > 100 || r.rosmontic.as_ref().unwrap().rumia_destroy {
+        if r.hp <= 0 || r.hp > 100 || r.boss.as_deref().and_then(|b| b.rosmontic.as_ref()).unwrap().rumia_destroy {
             return;
         }
-        r.rosmontic.as_mut().unwrap().rumia_destroy = true;
-        r.rosmontic.as_mut().unwrap().rumia_def_bonus *= 5;
+        let s = r.boss_mut().rosmontic.as_mut().unwrap();
+        s.rumia_destroy = true;
+        s.rumia_def_bonus *= 5;
         r.attack *= 5;
         r.defense *= 5;
         r.magic *= 5;
@@ -48,7 +49,16 @@ impl CombatRuntime {
     pub fn drain_rumia_action_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
         let cost = i32::from(self.rng.next_u8() & 15) + 8;
         let can_cast = self.entities.get(actor).unwrap().runtime.magic_point >= cost;
-        let moons = self.entities.get(actor).unwrap().runtime.rosmontic.as_ref().unwrap().rumia_moons;
+        let moons = self
+            .entities
+            .get(actor)
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.rosmontic.as_ref())
+            .unwrap()
+            .rumia_moons;
         let mut selected = 0;
         if can_cast {
             for (skill, level) in [(2, 85), (1, 45), (3, 200i32 - (moons as i32) * 100)] {
@@ -108,7 +118,15 @@ impl CombatRuntime {
             }
             _ => {
                 self.rosmontic_message(actor, "[0]使用[暗符「月的阴暗面」]", updates);
-                self.entities.get_mut(actor).unwrap().runtime.rosmontic.as_mut().unwrap().rumia_moons += 1;
+                self.entities
+                    .get_mut(actor)
+                    .unwrap()
+                    .runtime
+                    .boss_mut()
+                    .rosmontic
+                    .as_mut()
+                    .unwrap()
+                    .rumia_moons += 1;
                 self.drain_plain_attack_with_atp_and_on_damage_into(
                     actor,
                     target,
@@ -119,7 +137,7 @@ impl CombatRuntime {
                     updates,
                 );
                 let r = &mut self.entities.get_mut(actor).unwrap().runtime;
-                r.rosmontic.as_mut().unwrap().rumia_def_bonus += 50;
+                r.boss_mut().rosmontic.as_mut().unwrap().rumia_def_bonus += 50;
                 r.defense += 50;
                 r.resistance += 50;
             }

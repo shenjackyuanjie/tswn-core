@@ -49,13 +49,13 @@ impl CombatRuntime {
         let idx = self.entities.next_spawn_idx(&template);
         self.effects.push(QueuedEffect::SpawnWithMessage {
             caster: actor,
-            template,
-            message: "召唤出[1]".to_owned(),
+            template: Box::new(template),
+            message: std::borrow::Cow::Borrowed("召唤出[1]"),
         });
         self.drain_effects_into(updates);
         let child = self.entities.get_mut(idx).unwrap();
         child.runtime.policies.damage_share = DamageSharePolicy::None;
-        child.runtime.rosmontic = Some(Box::new(RosmonticRuntime {
+        child.runtime.boss_mut().rosmontic = Some(Box::new(RosmonticRuntime {
             child_kind: role,
             ..Default::default()
         }));

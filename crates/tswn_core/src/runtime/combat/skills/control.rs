@@ -410,8 +410,8 @@ impl CombatRuntime {
         updates.add_with(|| crate::runtime::update::RunUpdate::new("[0]使用[分身]", actor.0 as usize, actor.0 as usize, 60));
         self.effects.push(QueuedEffect::SpawnWithMessage {
             caster: actor,
-            template: clone_template,
-            message: "出现一个新的[1]".to_owned(),
+            template: Box::new(clone_template),
+            message: std::borrow::Cow::Borrowed("出现一个新的[1]"),
         });
         self.drain_effects_into(updates);
         let clone_entity = self
@@ -447,7 +447,7 @@ impl CombatRuntime {
             .map(|entity| entity.runtime.hp)
             .unwrap_or_else(|| panic!("unknown runtime exchange actor: {}", actor.0));
         let actor_team = self.plain_effective_team(actor);
-        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let target_pool = Self::target_pool(self.has_boss_entities, &self.entities, &self.world);
         let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return PreparedTargetList::new();

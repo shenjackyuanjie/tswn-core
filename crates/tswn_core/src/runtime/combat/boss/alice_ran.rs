@@ -10,7 +10,11 @@ impl CombatRuntime {
                 (e.runtime.owner == actor
                     && e.runtime.hp > 0
                     && e.runtime.alive
-                    && e.runtime.rosmontic.as_ref().is_some_and(|s| (10..=18).contains(&s.child_kind)))
+                    && e.runtime
+                        .boss
+                        .as_deref()
+                        .and_then(|b| b.rosmontic.as_ref())
+                        .is_some_and(|s| (10..=18).contains(&s.child_kind)))
                 .then_some(id)
             })
             .collect()
@@ -110,7 +114,7 @@ impl CombatRuntime {
                         let speed = e.runtime.speed;
                         let e = self.entities.get_mut(target).unwrap();
                         e.runtime.move_state.speed_points += speed;
-                        let s = e.runtime.rosmontic.get_or_insert_with(Default::default);
+                        let s = e.runtime.boss_mut().rosmontic.get_or_insert_with(Default::default);
                         s.divine_turns = s.divine_turns.saturating_add(3);
                         e.apply_runtime_stats_from_template(false);
                         self.ros_message(actor, target, "[1]进入[神现]，属性大幅度增加", updates);

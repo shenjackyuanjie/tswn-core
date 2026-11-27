@@ -248,25 +248,21 @@ fn prepared_runtime_win_rate_with_timing<const TIMED: bool>(
         return run_prepared_range::<TIMED>(prepared, 0, n).map_err(Into::into);
     }
 
-    let prepared = Arc::new(prepared.clone());
-    let next = Arc::new(AtomicUsize::new(0));
+    let next = AtomicUsize::new(0);
     // 小区间动态领取，减少逐场原子争用，同时为每个 worker 留出多次领取机会。
     let chunk_size = n.div_ceil(workers.saturating_mul(8)).clamp(1, 128);
-    let mut handles = Vec::with_capacity(workers);
-    for _ in 0..workers {
-        let prepared = Arc::clone(&prepared);
-        let next = Arc::clone(&next);
-        handles.push(std::thread::spawn(move || {
-            run_prepared_worker::<TIMED>(prepared.as_ref(), next.as_ref(), n, chunk_size)
-        }));
-    }
-
-    let mut merged = RuntimeBatchSummary::default();
-    for handle in handles {
-        let part = handle.join().expect("runtime win-rate worker thread panicked")?;
-        merged.merge(part);
-    }
-    Ok(merged)
+    std::thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(workers);
+        for _ in 0..workers {
+            handles.push(scope.spawn(|| run_prepared_worker::<TIMED>(prepared, &next, n, chunk_size)));
+        }
+        let mut merged = RuntimeBatchSummary::default();
+        for handle in handles {
+            let part = handle.join().expect("runtime win-rate worker thread panicked")?;
+            merged.merge(part);
+        }
+        Ok(merged)
+    })
 }
 
 /// 串行执行准备模板的原始轮次区间 `[start, end)`，适合外部任务分片。

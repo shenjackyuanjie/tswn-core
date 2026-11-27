@@ -130,7 +130,7 @@ impl CombatRuntime {
     /// 减速选目标：聪明时要求体力不低于 80 且未携带深层迟缓。
     pub fn select_plain_slow_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
-        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let target_pool = Self::target_pool(self.has_boss_entities, &self.entities, &self.world);
         let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return PreparedTargetList::new();
@@ -352,8 +352,8 @@ impl CombatRuntime {
         updates.add_with(|| RuntimeFrame::replay_update(actor.0 as usize, actor.0 as usize, "[0]使用[幻术]", 60));
         self.effects.push(QueuedEffect::SpawnWithMessage {
             caster: actor,
-            template: shadow_template,
-            message: "召唤出[1]".to_owned(),
+            template: Box::new(shadow_template),
+            message: std::borrow::Cow::Borrowed("召唤出[1]"),
         });
         self.drain_effects_into(updates);
 
@@ -372,7 +372,7 @@ impl CombatRuntime {
     /// 附体选目标：敌方存活者，无敌人时返回空列表。
     pub fn select_plain_possess_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
-        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let target_pool = Self::target_pool(self.has_boss_entities, &self.entities, &self.world);
         let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return PreparedTargetList::new();

@@ -118,24 +118,26 @@ impl CombatRuntime {
         defend_value: &mut RuntimeDefendValue,
         on_damage: PlainAttackOnDamage,
     ) {
-        self.pcb_letty_shield(target, updates);
-        // 来源：KODU16。大妖精支付自己的反射消耗，成功后本次入射威力归零。
-        if self.is_rosmontic_boss(target, "daiyousei")
-            && self.entities.get(defend_value.caster()).is_some_and(|e| e.runtime.hp > 0)
-            && self.rng.next_u8() < 85
-        {
-            let byte = i32::from(self.rng.next_u8());
-            let cost = ((((byte & 15) + 1) * (((byte >> 4) & 15) + 1)) >> 5) + 1;
-            let r = &mut self.entities.get_mut(target).unwrap().runtime;
-            if r.hp > 0 && r.magic_point >= cost {
-                r.magic_point -= cost;
-                defend_value.set_atp(0.0);
-                self.rosmontic_message(target, "[0]反射并抵消了攻击", updates);
-                return;
+        if self.has_boss_entities {
+            self.pcb_letty_shield(target, updates);
+            // 来源：KODU16。大妖精支付自己的反射消耗，成功后本次入射威力归零。
+            if self.is_rosmontic_boss(target, "daiyousei")
+                && self.entities.get(defend_value.caster()).is_some_and(|e| e.runtime.hp > 0)
+                && self.rng.next_u8() < 85
+            {
+                let byte = i32::from(self.rng.next_u8());
+                let cost = ((((byte & 15) + 1) * (((byte >> 4) & 15) + 1)) >> 5) + 1;
+                let r = &mut self.entities.get_mut(target).unwrap().runtime;
+                if r.hp > 0 && r.magic_point >= cost {
+                    r.magic_point -= cost;
+                    defend_value.set_atp(0.0);
+                    self.rosmontic_message(target, "[0]反射并抵消了攻击", updates);
+                    return;
+                }
             }
+            // 来源：KODU16。黑雾反击绕过 PRE_DEFEND，避免反射双方递归互弹。
+            self.reflect_rumia_into(target, defend_value.caster(), updates);
         }
-        // 来源：KODU16。黑雾反击绕过 PRE_DEFEND，避免反射双方递归互弹。
-        self.reflect_rumia_into(target, defend_value.caster(), updates);
         let defender = self.entities.get(target).expect("runtime pre-defend target missing");
         let skills = &defender.template.skills;
         let protect_split = (!defender.runtime.protect_from.is_empty())
@@ -421,13 +423,15 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
         defend_value: &mut RuntimeDefendValue,
     ) {
-        // 被子衍生物在睡5觉/钻被/猴儿冰冻期间固定 0 伤，不再借用超大护盾。
-        if self.quilt_minion_sleeping(target) {
-            defend_value.set_damage(0);
-            return;
-        }
-        if self.pcb_defend(target, defend_value, updates) {
-            return;
+        if self.has_boss_entities {
+            // 被子衍生物在睡5觉/钻被/猴儿冰冻期间固定 0 伤，不再借用超大护盾。
+            if self.quilt_minion_sleeping(target) {
+                defend_value.set_damage(0);
+                return;
+            }
+            if self.pcb_defend(target, defend_value, updates) {
+                return;
+            }
         }
         #[derive(Clone, Copy)]
         enum DefendHookPlanEntry {
@@ -437,7 +441,11 @@ impl CombatRuntime {
             BossDefend(PlainBossDefend),
         }
 
-        let boss_defend = self.plain_boss_defend(target);
+        let boss_defend = if self.has_boss_entities {
+            self.plain_boss_defend(target)
+        } else {
+            None
+        };
         let mut executed_skill_lanes = smallvec::SmallVec::<[usize; 8]>::new();
         let mut executed_state_keys = smallvec::SmallVec::<[u32; 8]>::new();
         let mut executed_runtime_shield = false;
@@ -461,11 +469,82 @@ impl CombatRuntime {
             }
             let skill_generation = skills.hook_generation();
             let state_generation = defender.states.generation();
-            let skill_plan = self
-                .scheduler
-                .skill_hook_plan_for_loadout(skills, &self.registry, target, ProcMask::POST_DEFEND);
-            let state_plan = self.scheduler.state_hook_plan(&self.entities, target, ProcMask::POST_DEFEND);
+            let skill_plan = if skills.may_have_enabled_hook(ProcMask::POST_DEFEND) {
+                self.scheduler
+                    .skill_hook_plan_for_loadout(skills, &self.registry, target, ProcMask::POST_DEFEND)
+            } else {
+                SkillHookPlan {
+                    owner: target,
+                    hook: ProcMask::POST_DEFEND,
+                    loadout_len: skills.len(),
+                    entries: smallvec::SmallVec::new(),
+                }
+            };
+            let state_plan = if defender.states.hook_mask().intersects(ProcMask::POST_DEFEND) {
+                self.scheduler.state_hook_plan(&self.entities, target, ProcMask::POST_DEFEND)
+            } else {
+                StateHookPlan {
+                    hook: ProcMask::POST_DEFEND,
+                    store_generation: state_generation,
+                    entries: smallvec::SmallVec::new(),
+                }
+            };
             debug_assert_eq!(state_plan.store_generation, state_generation);
+            let total_entries = skill_plan.entries.len()
+                + state_plan.entries.len()
+                + usize::from(shield_active)
+                + usize::from(boss_defend.is_some());
+            if total_entries == 0 {
+                break;
+            }
+            // 快路径：绝大多数受击只有单个 POST_DEFEND 钩子（仅防御/仅护盾/仅状态），跳过 528 B 数组与排序。
+            if total_entries == 1 {
+                let mut ran = false;
+                if let Some(&entry) = skill_plan.entries.first() {
+                    if !executed_skill_lanes.contains(&entry.fixed_lane) {
+                        executed_skill_lanes.push(entry.fixed_lane);
+                        self.drain_skill_hook_entry_with_defend_value_and_on_damage_into(
+                            entry,
+                            updates,
+                            defend_value,
+                            PlainAttackOnDamage::None,
+                        );
+                        ran = true;
+                    }
+                } else if let Some(&entry) = state_plan.entries.first() {
+                    if !executed_state_keys.contains(&entry.legacy_order_key) {
+                        executed_state_keys.push(entry.legacy_order_key);
+                        self.drain_state_hook_entry_with_defend_value_into(state_plan.hook, entry, updates, defend_value);
+                        ran = true;
+                    }
+                } else if shield_active {
+                    if !executed_runtime_shield {
+                        executed_runtime_shield = true;
+                        self.apply_runtime_shield_post_defend(target, defend_value);
+                        ran = true;
+                    }
+                } else if let Some((_, boss)) = boss_defend {
+                    if !executed_boss_defend {
+                        executed_boss_defend = true;
+                        self.apply_plain_boss_defend(target, boss, defend_value, updates);
+                        ran = true;
+                    }
+                }
+                if !ran {
+                    break;
+                }
+                let entity = self
+                    .entities
+                    .get(target)
+                    .unwrap_or_else(|| panic!("runtime 防御钩子目标已消失：{}", target.0));
+                let rebuild = entity.template.skills.hook_generation() != skill_generation
+                    || entity.states.generation() != state_generation
+                    || (entity.runtime.shield > 0) != shield_active;
+                if !rebuild {
+                    break;
+                }
+                continue;
+            }
             let mut entries =
                 smallvec::SmallVec::<[(SkillPriority, u8, usize, RegistrationOrder, DefendHookPlanEntry); 8]>::new();
             entries.extend(skill_plan.entries.iter().copied().map(|entry| {
@@ -554,28 +633,30 @@ impl CombatRuntime {
                 break;
             }
         }
-        // 来源：KODU16。灵梦的常驻减伤和结界、蕾米莉亚的鲜红印记都作用于换算后的伤害。
-        if let Some(amount) = defend_value.damage().filter(|n| *n > 0) {
-            if self.is_rosmontic_boss(target, "reimu") {
-                let mut damage = (i64::from(amount) * 4 / 5) as i32;
-                let s = self.ros_state(target);
-                if s.barrier_turns > 0 {
-                    if damage <= 100 {
-                        damage = 1;
-                    } else {
-                        damage -= 100;
-                        s.barrier_turns = 0;
-                        self.rosmontic_message(target, "[0]的[结界]被打破了", updates);
+        if self.has_boss_entities {
+            // 来源：KODU16。灵梦的常驻减伤和结界、蕾米莉亚的鲜红印记都作用于换算后的伤害。
+            if let Some(amount) = defend_value.damage().filter(|n| *n > 0) {
+                if self.is_rosmontic_boss(target, "reimu") {
+                    let mut damage = (i64::from(amount) * 4 / 5) as i32;
+                    let s = self.ros_state(target);
+                    if s.barrier_turns > 0 {
+                        if damage <= 100 {
+                            damage = 1;
+                        } else {
+                            damage -= 100;
+                            s.barrier_turns = 0;
+                            self.rosmontic_message(target, "[0]的[结界]被打破了", updates);
+                        }
                     }
+                    defend_value.set_damage(damage);
+                } else if self.is_rosmontic_boss(target, "remilia") {
+                    let count = self.ros_state(target).scarlet;
+                    defend_value.set_damage((f64::from(amount) * (1.0 + 0.75 * f64::from(count))).floor() as i32);
                 }
-                defend_value.set_damage(damage);
-            } else if self.is_rosmontic_boss(target, "remilia") {
-                let count = self.ros_state(target).scarlet;
-                defend_value.set_damage((f64::from(amount) * (1.0 + 0.75 * f64::from(count))).floor() as i32);
             }
+            // 科研铁壁和复查易伤应用于完成常规防御后的正伤害。
+            self.apply_squall_defense(target, defend_value);
         }
-        // 科研铁壁和复查易伤应用于完成常规防御后的正伤害。
-        self.apply_squall_defense(target, defend_value);
     }
 
     /// 常规护盾在 POST_DEFEND 中抵减伤害；护盾不足时清零且不抵消伤害。
@@ -690,23 +771,25 @@ impl CombatRuntime {
 
     /// 执行目标的死亡 hook：护身符、史莱姆分裂、马里奥复活等。
     pub fn drain_die_hooks_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) {
-        // 猴区的 HOUQU_BLAST 先于其它死亡钩子结算，分裂出的子体不再继续分裂。
-        self.drain_quilt_split_into(target, updates);
-        // 史莱姆分裂的死亡钩子优先级为 0，先于马里奥复活（10）和通用死亡链；
-        // 分裂不阻止本体死亡，因此继续走后续死亡流程。
-        self.drain_plain_slime_split_into(target, updates);
-        // 马里奥的专属复活技能优先级为 10，先于通用死亡链；复活成功后整条死亡链中止。
-        if self.drain_plain_mario_reraise_into(target, updates) {
-            return;
-        }
-        // 实验体的异常再生同样先于通用死亡链：旧实现用 post_damage_priority = i32::MIN
-        // 抢在死亡记录前，这里的执行点已经在 alive = false 与 mark_dead 之前。
-        if self.drain_testsubject_reraise_into(target, updates) {
-            return;
-        }
-        // 来源：KODU16。无名的决意在首次致死时恢复 199 HP，并中止死亡链。
-        if self.revive_megia_into(target, updates) || self.revive_pcb_into(target, updates) {
-            return;
+        if self.has_boss_entities {
+            // 猴区的 HOUQU_BLAST 先于其它死亡钩子结算，分裂出的子体不再继续分裂。
+            self.drain_quilt_split_into(target, updates);
+            // 史莱姆分裂的死亡钩子优先级为 0，先于马里奥复活（10）和通用死亡链；
+            // 分裂不阻止本体死亡，因此继续走后续死亡流程。
+            self.drain_plain_slime_split_into(target, updates);
+            // 马里奥的专属复活技能优先级为 10，先于通用死亡链；复活成功后整条死亡链中止。
+            if self.drain_plain_mario_reraise_into(target, updates) {
+                return;
+            }
+            // 实验体的异常再生同样先于通用死亡链：旧实现用 post_damage_priority = i32::MIN
+            // 抢在死亡记录前，这里的执行点已经在 alive = false 与 mark_dead 之前。
+            if self.drain_testsubject_reraise_into(target, updates) {
+                return;
+            }
+            // 来源：KODU16。无名的决意在首次致死时恢复 199 HP，并中止死亡链。
+            if self.revive_megia_into(target, updates) || self.revive_pcb_into(target, updates) {
+                return;
+            }
         }
         let die_skill_plan = self.scheduler.skill_hook_plan(&self.entities, &self.registry, target, ProcMask::DIE);
         self.drain_skill_hook_plan_into(&die_skill_plan, updates);
@@ -717,7 +800,9 @@ impl CombatRuntime {
         }
         let die_state_plan = self.scheduler.state_hook_plan(&self.entities, target, ProcMask::DIE);
         self.drain_state_hook_plan_into(&die_state_plan, updates);
-        self.pcb_child_died(target);
+        if self.has_boss_entities {
+            self.pcb_child_died(target);
+        }
     }
 
     /// 执行击杀者的 KILL hook。
@@ -1051,7 +1136,8 @@ impl CombatRuntime {
         let charge_active = caster_entity.is_some_and(|entity| entity.runtime.charge.active);
         // 来源：KODU16。蕾蒂的延长冬日与寒流额外冻结时长独立于普通蓄力。
         let frost = caster_entity
-            .and_then(|e| e.runtime.rosmontic.as_ref())
+            .and_then(|e| e.runtime.boss.as_deref())
+            .and_then(|b| b.rosmontic.as_ref())
             .map_or(0, |s| i32::from(s.frost_mode) * 1024);
         let frozen_step = 1024 + frost + if charge_active { 2048 } else { 0 };
         let target_entity = self.entities.get_mut(target).unwrap();
@@ -1156,7 +1242,7 @@ impl CombatRuntime {
             .entities
             .iter()
             .filter_map(|(idx, entity)| entity.runtime.alive.then_some(idx))
-            .collect::<Vec<_>>();
+            .collect::<smallvec::SmallVec<[EntityIdx; 16]>>();
         self.cleanup_linked_minions_for_owner_except_if(owner, excluded, true, updates, |entity| {
             entity.runtime.owner == owner
                 || (entity.runtime.flags.contains(PlayerKindFlags::SUMMON) && !alive_owners.contains(&entity.runtime.owner))
@@ -1198,7 +1284,7 @@ impl CombatRuntime {
                     && keep(entity))
                 .then_some(idx)
             })
-            .collect::<Vec<_>>();
+            .collect::<smallvec::SmallVec<[EntityIdx; 8]>>();
 
         for minion in linked_minions {
             let Some(minion_entity) = self.entities.get_mut(minion) else {

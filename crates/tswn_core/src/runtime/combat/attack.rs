@@ -402,16 +402,10 @@ impl CombatRuntime {
     /// 读取一拳超人的 (回合数, 累计伤害, 攻击者数, 召唤物数)；无状态返回 None。
     pub fn saitama_boss_state(&self, actor: EntityIdx) -> Option<(i32, i32, usize, usize)> {
         self.entities.get(actor)?.states.entries().iter().find_map(|entry| {
-            let StatePayload::SaitamaBoss {
-                turns,
-                damages,
-                hitters,
-                minions,
-            } = &entry.payload
-            else {
+            let StatePayload::SaitamaBoss(state) = &entry.payload else {
                 return None;
             };
-            Some((*turns, *damages, hitters.len(), minions.len()))
+            Some((state.turns, state.damages, state.hitters.len(), state.minions.len()))
         })
     }
 
@@ -456,10 +450,10 @@ impl CombatRuntime {
                 .states
                 .entry_mut(PLAIN_SAITAMA_BOSS_STATE_KEY)
                 .expect("runtime saitama state disappeared");
-            let StatePayload::SaitamaBoss { turns, .. } = &mut entry.payload else {
+            let StatePayload::SaitamaBoss(state) = &mut entry.payload else {
                 panic!("runtime saitama state key is occupied by another state");
             };
-            *turns += 1;
+            state.turns += 1;
             return;
         }
 
@@ -910,12 +904,14 @@ impl CombatRuntime {
         let actual_damage = amount.max(0).min(target_entity.runtime.hp.max(0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let was_alive = target_entity.runtime.alive;
-        self.record_squall_damage(caster, target, actual_damage);
-        if actual_damage > 0 {
-            // 曙光的「局」层数：被本体命中一次加一层。
-            self.record_smdd_hit(target);
-            // TigerStar 的「我是M」：受伤时随机属性提升等量数值。
-            self.record_tiger_damage(target, actual_damage);
+        if self.has_boss_entities {
+            self.record_squall_damage(caster, target, actual_damage);
+            if actual_damage > 0 {
+                // 曙光的「局」层数：被本体命中一次加一层。
+                self.record_smdd_hit(target);
+                // TigerStar 的「我是M」：受伤时随机属性提升等量数值。
+                self.record_tiger_damage(target, actual_damage);
+            }
         }
         updates.add_with(|| RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         self.relay_quilt_damage(caster, target, amount, updates);
@@ -1318,10 +1314,10 @@ mod tests {
             .states
             .entry_mut(PLAIN_SAITAMA_BOSS_STATE_KEY)
             .unwrap();
-        let StatePayload::SaitamaBoss { damages, .. } = &mut entry.payload else {
+        let StatePayload::SaitamaBoss(state) = &mut entry.payload else {
             panic!("一拳超人应带有 Boss 状态");
         };
-        *damages = 256;
+        state.damages = 256;
         let mut updates = RunUpdates::new();
         runtime.drain_plain_saitama_action_into(actor, None, &mut updates);
         assert!(!runtime.plain_battle_has_ended());

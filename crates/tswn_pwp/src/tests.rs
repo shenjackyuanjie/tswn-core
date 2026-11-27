@@ -259,7 +259,7 @@ fn parquet_preserves_rare_payloads_and_full_integer_precision() {
         StatePayload::Slow { step: 6 },
         StatePayload::Iron { protect: 5, step: 2 },
         StatePayload::CovidBoss { mutation: 9 },
-        StatePayload::CovidInfection {
+        StatePayload::CovidInfection(Box::new(tswn_core::runtime::CovidInfectionState {
             entries: vec![CovidInfectionEntry {
                 registration_order: None,
                 boss: EntityIdx(1),
@@ -269,13 +269,13 @@ fn parquet_preserves_rare_payloads_and_full_integer_precision() {
             .into(),
             mutation_set: vec![9, 11].into(),
             recovered: true,
-        },
-        StatePayload::SaitamaBoss {
+        })),
+        StatePayload::SaitamaBoss(Box::new(tswn_core::runtime::SaitamaBossState {
             turns: 80,
             damages: 5,
             hitters: vec![EntityIdx(1)].into(),
             minions: vec![EntityIdx(0)].into(),
-        },
+        })),
         StatePayload::LazyBoss { at_boost_bits: u64::MAX },
         StatePayload::LazyInfection { boss: EntityIdx(1) },
     ];

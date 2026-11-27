@@ -176,7 +176,7 @@ fn pending_enemy_spawn_allows_kill_hooks() {
     queue_lethal_damage(&mut runtime, EntityIdx(1));
     runtime.effects.push(QueuedEffect::SpawnSilent {
         caster: EntityIdx(1),
-        template: PlayerTemplate::new(3, "pending-enemy", 0, 10, 3),
+        template: Box::new(PlayerTemplate::new(3, "pending-enemy", 0, 10, 3)),
     });
 
     let frame = runtime.flush_effects().expect("pending enemy spawn should keep kill hooks active");

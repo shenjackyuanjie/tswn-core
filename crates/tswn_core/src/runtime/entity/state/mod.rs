@@ -27,6 +27,23 @@ pub struct CovidInfectionEntry {
     pub registration_order: Option<u64>,
 }
 
+/// 新冠传染状态装箱载荷。
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct CovidInfectionState {
+    pub entries: SmallVec<[CovidInfectionEntry; 2]>,
+    pub mutation_set: SmallVec<[i32; 4]>,
+    pub recovered: bool,
+}
+
+/// 一拳超人 Boss 状态装箱载荷。
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct SaitamaBossState {
+    pub turns: i32,
+    pub damages: i32,
+    pub hitters: SmallVec<[EntityIdx; 8]>,
+    pub minions: SmallVec<[EntityIdx; 8]>,
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 /// 已实现状态的机制数据；步骤、来源、有效阵营与浮点 bits 均有各自语义。
 pub enum StatePayload {
@@ -72,17 +89,10 @@ pub enum StatePayload {
     CovidBoss {
         mutation: i32,
     },
-    CovidInfection {
-        entries: SmallVec<[CovidInfectionEntry; 2]>,
-        mutation_set: SmallVec<[i32; 4]>,
-        recovered: bool,
-    },
-    SaitamaBoss {
-        turns: i32,
-        damages: i32,
-        hitters: SmallVec<[EntityIdx; 8]>,
-        minions: SmallVec<[EntityIdx; 8]>,
-    },
+    /// 新冠传染状态载荷装箱存储，避免把热路径 StateEntry 撑大到 152 B。
+    CovidInfection(Box<CovidInfectionState>),
+    /// 一拳超人 Boss 状态载荷装箱存储，避免把热路径 StateEntry 撑大到 152 B。
+    SaitamaBoss(Box<SaitamaBossState>),
     LazyBoss {
         at_boost_bits: u64,
     },
@@ -304,7 +314,7 @@ impl StateEntry {
             hook_mask: ProcMask::PRE_ACTION | ProcMask::POST_ACTION,
             priority,
             registration_order: RegistrationOrder::default(),
-            payload: StatePayload::CovidInfection {
+            payload: StatePayload::CovidInfection(Box::new(CovidInfectionState {
                 entries: SmallVec::from_slice(&[CovidInfectionEntry {
                     boss,
                     mutation,
@@ -313,7 +323,7 @@ impl StateEntry {
                 }]),
                 mutation_set: SmallVec::from_slice(&[mutation]),
                 recovered: false,
-            },
+            })),
         }
     }
 
@@ -339,12 +349,12 @@ impl StateEntry {
             hook_mask: ProcMask::POST_DEFEND,
             priority,
             registration_order: RegistrationOrder::default(),
-            payload: StatePayload::SaitamaBoss {
+            payload: StatePayload::SaitamaBoss(Box::new(SaitamaBossState {
                 turns: 0,
                 damages: 0,
                 hitters: SmallVec::new(),
                 minions: SmallVec::new(),
-            },
+            })),
         }
     }
 
@@ -425,8 +435,8 @@ impl StateEntry {
             | StatePayload::Slow { .. }
             | StatePayload::Iron { .. }
             | StatePayload::CovidBoss { .. }
-            | StatePayload::CovidInfection { .. }
-            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::CovidInfection(_)
+            | StatePayload::SaitamaBoss(_)
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. }
             | StatePayload::MarioBoss { .. }
@@ -450,8 +460,8 @@ impl StateEntry {
             | StatePayload::Slow { .. }
             | StatePayload::Iron { .. }
             | StatePayload::CovidBoss { .. }
-            | StatePayload::CovidInfection { .. }
-            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::CovidInfection(_)
+            | StatePayload::SaitamaBoss(_)
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. }
             | StatePayload::MarioBoss { .. }
@@ -475,8 +485,8 @@ impl StateEntry {
             | StatePayload::Slow { .. }
             | StatePayload::Iron { .. }
             | StatePayload::CovidBoss { .. }
-            | StatePayload::CovidInfection { .. }
-            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::CovidInfection(_)
+            | StatePayload::SaitamaBoss(_)
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. }
             | StatePayload::MarioBoss { .. }
@@ -517,8 +527,8 @@ impl StateEntry {
             | StatePayload::Slow { .. }
             | StatePayload::Iron { .. }
             | StatePayload::CovidBoss { .. }
-            | StatePayload::CovidInfection { .. }
-            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::CovidInfection(_)
+            | StatePayload::SaitamaBoss(_)
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. }
             | StatePayload::MarioBoss { .. }
@@ -548,8 +558,8 @@ impl StateEntry {
             | StatePayload::Slow { .. }
             | StatePayload::Iron { .. }
             | StatePayload::CovidBoss { .. }
-            | StatePayload::CovidInfection { .. }
-            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::CovidInfection(_)
+            | StatePayload::SaitamaBoss(_)
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. }
             | StatePayload::MarioBoss { .. }
@@ -573,8 +583,8 @@ impl StateEntry {
             | StatePayload::Charm { .. }
             | StatePayload::Iron { .. }
             | StatePayload::CovidBoss { .. }
-            | StatePayload::CovidInfection { .. }
-            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::CovidInfection(_)
+            | StatePayload::SaitamaBoss(_)
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. }
             | StatePayload::MarioBoss { .. }
@@ -598,8 +608,8 @@ impl StateEntry {
             | StatePayload::Slow { .. }
             | StatePayload::Iron { .. }
             | StatePayload::CovidBoss { .. }
-            | StatePayload::CovidInfection { .. }
-            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::CovidInfection(_)
+            | StatePayload::SaitamaBoss(_)
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. }
             | StatePayload::MarioBoss { .. }
@@ -623,8 +633,8 @@ impl StateEntry {
             | StatePayload::Charm { .. }
             | StatePayload::Slow { .. }
             | StatePayload::CovidBoss { .. }
-            | StatePayload::CovidInfection { .. }
-            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::CovidInfection(_)
+            | StatePayload::SaitamaBoss(_)
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. }
             | StatePayload::MarioBoss { .. }
@@ -646,7 +656,7 @@ impl StateEntry {
             // 易伤的 POST_DEFEND 优先级取登记值 10000，POST_ACTION 单独压到 1000，
             // 与旧实现的 post_defend_priority / post_action_priority 一致。
             StatePayload::SkullFracture { .. } if hook.intersects(ProcMask::POST_ACTION) => SkillPriority(1000),
-            StatePayload::CovidInfection { .. } if hook.intersects(ProcMask::PRE_ACTION | ProcMask::POST_ACTION) => {
+            StatePayload::CovidInfection(_) if hook.intersects(ProcMask::PRE_ACTION | ProcMask::POST_ACTION) => {
                 SkillPriority(1000)
             }
             StatePayload::LazyInfection { .. } if hook.intersects(ProcMask::PRE_ACTION | ProcMask::POST_ACTION) => {
@@ -666,9 +676,9 @@ impl StateEntry {
         };
         match (&self.payload, self.legacy_order_key) {
             (StatePayload::LazyInfection { boss }, PLAIN_LAZY_INFECTION_STATE_KEY) => from_boss(*boss, "lazy"),
-            (StatePayload::CovidInfection { entries, .. }, PLAIN_COVID_INFECTION_STATE_KEY) => {
-                !entries.is_empty()
-                    && entries.iter().all(|strain| {
+            (StatePayload::CovidInfection(state), PLAIN_COVID_INFECTION_STATE_KEY) => {
+                !state.entries.is_empty()
+                    && state.entries.iter().all(|strain| {
                         entities
                             .get(strain.boss)
                             .is_some_and(|source| source.runtime.flags.contains(PlayerKindFlags::BOSS))
@@ -710,8 +720,8 @@ impl StateEntry {
             | StatePayload::Charm { .. }
             | StatePayload::Slow { .. }
             | StatePayload::CovidBoss { .. }
-            | StatePayload::CovidInfection { .. }
-            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::CovidInfection(_)
+            | StatePayload::SaitamaBoss(_)
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. }
             | StatePayload::MarioBoss { .. }
@@ -750,8 +760,8 @@ impl StateEntry {
             | StatePayload::Charm { .. }
             | StatePayload::Slow { .. }
             | StatePayload::CovidBoss { .. }
-            | StatePayload::CovidInfection { .. }
-            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::CovidInfection(_)
+            | StatePayload::SaitamaBoss(_)
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. }
             | StatePayload::SkullFracture { .. }

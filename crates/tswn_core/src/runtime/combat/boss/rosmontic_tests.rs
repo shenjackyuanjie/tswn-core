@@ -34,7 +34,7 @@ fn megia_resolve_revives_only_once() {
     let revived = rt.entities.get(boss).unwrap();
     assert_eq!(revived.runtime.hp, 199);
     assert!(revived.runtime.alive);
-    assert!(revived.runtime.rosmontic.as_ref().unwrap().resolve_used);
+    assert!(revived.runtime.boss.as_deref().and_then(|b| b.rosmontic.as_ref()).unwrap().resolve_used);
     assert!(rt.apply_plain_attack_damage_into(enemy, boss, 1000, &mut updates));
     rt.drain_plain_lethal_damage_into(enemy, boss, &mut updates);
     let dead = rt.entities.get(boss).unwrap();
@@ -48,13 +48,46 @@ fn megia_high_charge_breaks_even_when_hit_crosses_low_threshold() {
     let rt = runner.runtime_mut();
     let mut updates = RunUpdates::new();
     rt.drain_rosmontic_action_into(boss, false, &mut updates);
-    assert!(rt.entities.get(boss).unwrap().runtime.rosmontic.as_ref().unwrap().charge_target.is_some());
+    assert!(
+        rt.entities
+            .get(boss)
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.rosmontic.as_ref())
+            .unwrap()
+            .charge_target
+            .is_some()
+    );
     let amount = rt.entities.get(boss).unwrap().runtime.hp - 190;
     assert!(!rt.apply_plain_attack_damage_into(enemy, boss, amount, &mut updates));
-    assert!(rt.entities.get(boss).unwrap().runtime.rosmontic.as_ref().unwrap().charge_target.is_none());
+    assert!(
+        rt.entities
+            .get(boss)
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.rosmontic.as_ref())
+            .unwrap()
+            .charge_target
+            .is_none()
+    );
     rt.drain_rosmontic_action_into(boss, false, &mut updates);
     assert!(!rt.apply_plain_attack_damage_into(enemy, boss, 1, &mut updates));
-    assert!(rt.entities.get(boss).unwrap().runtime.rosmontic.as_ref().unwrap().charge_target.is_some());
+    assert!(
+        rt.entities
+            .get(boss)
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.rosmontic.as_ref())
+            .unwrap()
+            .charge_target
+            .is_some()
+    );
     rt.drain_rosmontic_action_into(boss, false, &mut updates);
     assert!(updates.updates.iter().any(|u| u.message.contains("肃清的一刀")));
 }
@@ -65,7 +98,15 @@ fn rumia_destroy_triggers_once_and_survives_state_refresh() {
     let rt = runner.runtime_mut();
     let mut updates = RunUpdates::new();
     rt.entities.get_mut(boss).unwrap().runtime.hp = 100;
-    rt.entities.get_mut(boss).unwrap().runtime.rosmontic.as_mut().unwrap().rumia_def_bonus = 50;
+    rt.entities
+        .get_mut(boss)
+        .unwrap()
+        .runtime
+        .boss_mut()
+        .rosmontic
+        .as_mut()
+        .unwrap()
+        .rumia_def_bonus = 50;
     rt.entities.get_mut(boss).unwrap().runtime.defense += 50;
     rt.entities.get_mut(boss).unwrap().runtime.resistance += 50;
     rt.upgrade_rumia_into(boss, &mut updates);
@@ -107,8 +148,16 @@ fn new_bosses_finish_real_battles_and_preserve_snapshot_state() {
             .runtime
             .reset_battle_state_from(&original);
         assert_eq!(
-            runner.runtime().entities.get(boss).unwrap().runtime.rosmontic,
-            original.rosmontic
+            runner
+                .runtime()
+                .entities
+                .get(boss)
+                .unwrap()
+                .runtime
+                .boss
+                .as_deref()
+                .and_then(|b| b.rosmontic.as_ref()),
+            original.boss.as_deref().and_then(|b| b.rosmontic.as_ref())
         );
     }
 }
@@ -200,7 +249,7 @@ fn signed_attack_and_magic_reject_other_identities_flags_and_values() {
 fn shared_runtime_state_does_not_take_over_an_ordinary_players_action() {
     let (mut runner, _, enemy) = battle("rin");
     let rt = runner.runtime_mut();
-    rt.entities.get_mut(enemy).unwrap().runtime.rosmontic = Some(Box::default());
+    rt.entities.get_mut(enemy).unwrap().runtime.boss_mut().rosmontic = Some(Box::default());
     assert!(!rt.has_rosmontic_action(enemy));
     assert!(!matches!(
         rt.prepare_plain_action(enemy, true, Default::default()),

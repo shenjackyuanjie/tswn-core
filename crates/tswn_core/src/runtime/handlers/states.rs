@@ -195,22 +195,12 @@ fn planned_covid_strain(
 
 pub fn propose_boss_infection_pre_action(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) -> Option<StateHandlerFn> {
     match context.owner_state_payload(entry.legacy_order_key)? {
-        StatePayload::CovidInfection {
-            mut entries,
-            mut mutation_set,
-            recovered,
-        } if !entries.is_empty() => {
-            let index = planned_covid_strain(context, entry, &entries)?;
-            if roll_covid_mutations(context, &mut entries[index..=index], &mut mutation_set) {
+        StatePayload::CovidInfection(mut covid) if !covid.entries.is_empty() => {
+            let index = planned_covid_strain(context, entry, &covid.entries)?;
+            let c = covid.as_mut();
+            if roll_covid_mutations(context, &mut c.entries[index..=index], &mut c.mutation_set) {
                 context
-                    .set_owner_state_payload_without_refresh(
-                        entry.legacy_order_key,
-                        StatePayload::CovidInfection {
-                            entries,
-                            mutation_set,
-                            recovered,
-                        },
-                    )
+                    .set_owner_state_payload_without_refresh(entry.legacy_order_key, StatePayload::CovidInfection(covid))
                     .expect("runtime covid state payload must still exist");
             }
             Some(execute_proposed_covid_pre_action)
@@ -237,14 +227,15 @@ pub fn run_covid_infection_state(context: &mut StateContext<'_>, entry: &StateHo
 
 /// 新冠传染状态实现：PRE_ACTION 按变异抽样决定发作或接管动作，POST_ACTION 推入新冠肺炎效果；`proposed` 表示变异已在前置钩子处理。
 fn run_covid_infection_state_impl(context: &mut StateContext<'_>, entry: &StateHookPlanEntry, proposed: bool) {
-    let Some(StatePayload::CovidInfection {
-        mut entries,
-        mut mutation_set,
-        recovered,
-    }) = context.owner_state_payload(entry.legacy_order_key)
-    else {
+    let Some(StatePayload::CovidInfection(covid)) = context.owner_state_payload(entry.legacy_order_key) else {
         return;
     };
+    let crate::runtime::CovidInfectionState {
+        entries,
+        mutation_set,
+        recovered,
+    } = *covid;
+    let (mut entries, mut mutation_set) = (entries, mutation_set);
     if entries.is_empty() {
         return;
     }
@@ -262,11 +253,11 @@ fn run_covid_infection_state_impl(context: &mut StateContext<'_>, entry: &StateH
             context
                 .set_owner_state_payload_without_refresh(
                     entry.legacy_order_key,
-                    StatePayload::CovidInfection {
+                    StatePayload::CovidInfection(Box::new(crate::runtime::CovidInfectionState {
                         entries,
                         mutation_set,
                         recovered,
-                    },
+                    })),
                 )
                 .expect("runtime covid state payload must still exist");
             return;
@@ -338,10 +329,7 @@ fn run_covid_infection_state_impl(context: &mut StateContext<'_>, entry: &StateH
                 let already_has_mutation = candidate_entity.states.entries().iter().any(|state| {
                     matches!(
                         &state.payload,
-                        StatePayload::CovidInfection {
-                            mutation_set,
-                            ..
-                        } if mutation_set.contains(&mutation)
+                        StatePayload::CovidInfection(covid) if covid.mutation_set.contains(&mutation)
                     )
                 });
                 if already_has_mutation {
@@ -366,11 +354,11 @@ fn run_covid_infection_state_impl(context: &mut StateContext<'_>, entry: &StateH
                 context
                     .set_owner_state_payload_without_refresh(
                         entry.legacy_order_key,
-                        StatePayload::CovidInfection {
+                        StatePayload::CovidInfection(Box::new(crate::runtime::CovidInfectionState {
                             entries,
                             mutation_set,
                             recovered,
-                        },
+                        })),
                     )
                     .expect("runtime covid state payload must still exist");
                 context.push(effect);
@@ -394,11 +382,11 @@ fn run_covid_infection_state_impl(context: &mut StateContext<'_>, entry: &StateH
         context
             .set_owner_state_payload_without_refresh(
                 entry.legacy_order_key,
-                StatePayload::CovidInfection {
+                StatePayload::CovidInfection(Box::new(crate::runtime::CovidInfectionState {
                     entries,
                     mutation_set,
                     recovered,
-                },
+                })),
             )
             .expect("runtime covid state payload must still exist");
         context.intercept_action();
@@ -501,15 +489,15 @@ pub fn run_saitama_boss_state(context: &mut StateContext<'_>, entry: &StateHookP
     if context.hook() != ProcMask::POST_DEFEND {
         return;
     }
-    let Some(StatePayload::SaitamaBoss {
+    let Some(StatePayload::SaitamaBoss(state)) = context.owner_state_payload(entry.legacy_order_key) else {
+        return;
+    };
+    let crate::runtime::SaitamaBossState {
         turns,
         mut damages,
         mut hitters,
         mut minions,
-    }) = context.owner_state_payload(entry.legacy_order_key)
-    else {
-        return;
-    };
+    } = *state;
     let damage = context.defend_damage().expect("runtime saitama state requires POST_DEFEND damage");
     let caster = context.defend_caster().expect("runtime saitama state requires a damage caster");
     damages += damage;
@@ -534,12 +522,12 @@ pub fn run_saitama_boss_state(context: &mut StateContext<'_>, entry: &StateHookP
     context
         .set_owner_state_payload(
             entry.legacy_order_key,
-            StatePayload::SaitamaBoss {
+            StatePayload::SaitamaBoss(Box::new(crate::runtime::SaitamaBossState {
                 turns,
                 damages,
                 hitters,
                 minions,
-            },
+            })),
         )
         .expect("runtime saitama state owner must exist");
     context.set_defend_damage(damage / 100);

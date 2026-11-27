@@ -147,7 +147,13 @@ fn daiyousei_summons_two_fairies_and_support_cleans_burn() {
     let children: Vec<_> = rt
         .entities
         .iter()
-        .filter(|(_, e)| e.runtime.rosmontic.as_ref().is_some_and(|s| s.child_kind == 1))
+        .filter(|(_, e)| {
+            e.runtime
+                .boss
+                .as_deref()
+                .and_then(|b| b.rosmontic.as_ref())
+                .is_some_and(|s| s.child_kind == 1)
+        })
         .collect();
     assert_eq!(children.len(), 2);
     for (_, e) in children {
@@ -380,8 +386,16 @@ fn all_eight_finish_battles_and_capture_matches_fast_execution_and_reset() {
             .runtime
             .reset_battle_state_from(&original);
         assert_eq!(
-            runner.runtime().entities.get(boss).unwrap().runtime.rosmontic,
-            original.rosmontic
+            runner
+                .runtime()
+                .entities
+                .get(boss)
+                .unwrap()
+                .runtime
+                .boss
+                .as_deref()
+                .and_then(|b| b.rosmontic.as_ref()),
+            original.boss.as_deref().and_then(|b| b.rosmontic.as_ref())
         );
     }
 }

@@ -289,7 +289,7 @@ enemy-b"
             .states
             .entry_mut(PLAIN_SAITAMA_BOSS_STATE_KEY)
             .unwrap();
-        entry.payload = StatePayload::SaitamaBoss {
+        entry.payload = StatePayload::SaitamaBoss(Box::new(crate::runtime::SaitamaBossState {
             turns: 0,
             damages,
             hitters: smallvec::smallvec![enemy],
@@ -298,7 +298,7 @@ enemy-b"
             } else {
                 Default::default()
             },
-        };
+        }));
         let mut updates = RunUpdates::new();
         runtime.drain_plain_saitama_action_into(actor, Some(enemy), &mut updates);
 

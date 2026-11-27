@@ -38,7 +38,18 @@ fn masochist_sets_two_turns() {
     let rt = runner.runtime_mut();
     let mut u = RunUpdates::new();
     rt.tiger_masochist(boss, &mut u);
-    assert_eq!(rt.entities.get(boss).unwrap().runtime.tiger.as_ref().unwrap().m_turns, 2);
+    assert_eq!(
+        rt.entities
+            .get(boss)
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.tiger.as_ref())
+            .unwrap()
+            .m_turns,
+        2
+    );
 }
 
 #[test]

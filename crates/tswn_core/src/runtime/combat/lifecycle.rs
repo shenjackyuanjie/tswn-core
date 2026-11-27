@@ -33,8 +33,9 @@ impl CombatRuntime {
         let show_renderers = ShowRenderers::from_registry(&registry);
         let squall_bosses = entities
             .iter()
-            .filter_map(|(idx, entity)| entity.runtime.squall.is_some().then_some(idx))
+            .filter_map(|(idx, entity)| entity.runtime.boss.as_ref().is_some_and(|b| b.squall.is_some()).then_some(idx))
             .collect();
+        let has_boss_entities = Self::compute_has_boss_entities(&entities);
         Self {
             entities,
             world,
@@ -46,6 +47,7 @@ impl CombatRuntime {
             replay_renderers,
             show_renderers,
             squall_bosses,
+            has_boss_entities,
             scratch: BattleScratch::default(),
             template_slots,
             slots,
@@ -56,6 +58,20 @@ impl CombatRuntime {
             trace: None,
             round: 0,
         }
+    }
+
+    /// 扫描当前实体列表是否存在任意 Boss 或 Boss 专属子体，用于普通对局热路径快速跳过。
+    pub fn compute_has_boss_entities(entities: &EntityArena) -> bool {
+        entities.iter().any(|(_, entity)| {
+            entity.runtime.flags.contains(PlayerKindFlags::BOSS)
+                || entity.runtime.boss.is_some()
+                || entity.template.name == crate::runtime::combat::boss::yi::BAIXIE
+                || entity.template.name == crate::runtime::combat::boss::fish::ID
+                || entity.template.name == crate::runtime::combat::boss::tiger::ID
+                || entity.template.name == crate::runtime::combat::boss::yi::ID
+                || entity.template.name == "新纪元"
+                || entity.template.name == crate::runtime::combat::boss::testsubject::ID
+        })
     }
 
     #[cfg(not(feature = "no_debug"))]

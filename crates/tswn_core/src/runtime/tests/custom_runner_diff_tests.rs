@@ -189,7 +189,7 @@ fn custom_runner_fixture_matches_strict_diff_golden() {
 
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::with_kind(4, "summon", summon_kind, 0, 10, 1).with_def_res(11, 22),
+        template: Box::new(PlayerTemplate::with_kind(4, "summon", summon_kind, 0, 10, 1).with_def_res(11, 22)),
     });
     runtime.effects.push(QueuedEffect::Damage {
         caster: EntityIdx(2),
@@ -335,11 +335,11 @@ fn custom_runner_minion_owner_death_matches_strict_diff_golden() {
 
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::with_kind(3, "owner?0", minion_kind, 0, 4, 1),
+        template: Box::new(PlayerTemplate::with_kind(3, "owner?0", minion_kind, 0, 4, 1)),
     });
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::with_kind(4, "owner?1", minion_kind, 0, 4, 1),
+        template: Box::new(PlayerTemplate::with_kind(4, "owner?1", minion_kind, 0, 4, 1)),
     });
     runtime.flush_effects().expect("minion spawns should emit updates");
     runtime.effects.push(QueuedEffect::Damage {

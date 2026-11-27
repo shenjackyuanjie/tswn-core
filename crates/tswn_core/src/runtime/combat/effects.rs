@@ -382,17 +382,17 @@ impl CombatRuntime {
                     let root_owner = self.entities.get(caster).unwrap().runtime.root_owner;
                     let spawned =
                         self.entities
-                            .spawn_from_template_with_owner(template, &self.registry, Some(caster), Some(root_owner));
+                            .spawn_from_template_with_owner(*template, &self.registry, Some(caster), Some(root_owner));
                     let team = self.entities.get(spawned).unwrap().runtime.team;
                     self.world.add_spawned_alive(spawned, team);
-                    updates.add(RuntimeFrame::spawn_update(caster.0 as usize, spawned.0 as usize));
+                    updates.add_with(|| RuntimeFrame::spawn_update(caster.0 as usize, spawned.0 as usize));
                 }
                 QueuedEffect::SpawnSilent { caster, template } => {
                     self.ensure_effect_entity("spawn", "caster", caster);
                     let root_owner = self.entities.get(caster).unwrap().runtime.root_owner;
                     let spawned =
                         self.entities
-                            .spawn_from_template_with_owner(template, &self.registry, Some(caster), Some(root_owner));
+                            .spawn_from_template_with_owner(*template, &self.registry, Some(caster), Some(root_owner));
                     let team = self.entities.get(spawned).unwrap().runtime.team;
                     self.world.add_spawned_alive(spawned, team);
                 }
@@ -405,10 +405,10 @@ impl CombatRuntime {
                     let root_owner = self.entities.get(caster).unwrap().runtime.root_owner;
                     let spawned =
                         self.entities
-                            .spawn_from_template_with_owner(template, &self.registry, Some(caster), Some(root_owner));
+                            .spawn_from_template_with_owner(*template, &self.registry, Some(caster), Some(root_owner));
                     let team = self.entities.get(spawned).unwrap().runtime.team;
                     self.world.add_spawned_alive(spawned, team);
-                    updates.add(RuntimeFrame::replay_update(caster.0 as usize, spawned.0 as usize, message, 0));
+                    updates.add_with(|| RuntimeFrame::replay_update(caster.0 as usize, spawned.0 as usize, message, 0));
                 }
                 QueuedEffect::AddState { target, state } => {
                     self.ensure_effect_entity("add-state", "target", target);

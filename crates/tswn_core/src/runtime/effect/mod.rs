@@ -106,16 +106,16 @@ pub enum QueuedEffect {
     },
     Spawn {
         caster: EntityIdx,
-        template: PlayerTemplate,
+        template: Box<PlayerTemplate>,
     },
     SpawnSilent {
         caster: EntityIdx,
-        template: PlayerTemplate,
+        template: Box<PlayerTemplate>,
     },
     SpawnWithMessage {
         caster: EntityIdx,
-        template: PlayerTemplate,
-        message: String,
+        template: Box<PlayerTemplate>,
+        message: std::borrow::Cow<'static, str>,
     },
     AddState {
         target: EntityIdx,

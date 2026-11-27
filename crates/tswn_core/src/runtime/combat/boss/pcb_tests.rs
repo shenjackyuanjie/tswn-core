@@ -73,7 +73,14 @@ fn flandre_splits_into_three_owned_clones_and_executes_low_hp() {
     let children: Vec<_> = rt
         .entities
         .iter()
-        .filter(|(_, e)| e.runtime.owner == b && e.runtime.rosmontic.as_ref().is_some_and(|s| s.child_kind == 4))
+        .filter(|(_, e)| {
+            e.runtime.owner == b
+                && e.runtime
+                    .boss
+                    .as_deref()
+                    .and_then(|b| b.rosmontic.as_ref())
+                    .is_some_and(|s| s.child_kind == 4)
+        })
         .map(|(id, _)| id)
         .collect();
     assert_eq!(children.len(), 3);
@@ -206,7 +213,18 @@ fn alice_all_dolls_have_stats_can_act_and_can_be_resummoned() {
     let shanghai = rt
         .pcb_dolls(b)
         .into_iter()
-        .find(|id| rt.entities.get(*id).unwrap().runtime.rosmontic.as_ref().unwrap().child_kind == 10)
+        .find(|id| {
+            rt.entities
+                .get(*id)
+                .unwrap()
+                .runtime
+                .boss
+                .as_deref()
+                .and_then(|b| b.rosmontic.as_ref())
+                .unwrap()
+                .child_kind
+                == 10
+        })
         .unwrap();
     assert_eq!(rt.entities.get(shanghai).unwrap().template.max_hp, 200);
     rt.entities.get_mut(shanghai).unwrap().runtime.hp = 0;
@@ -331,7 +349,14 @@ fn ran_shikigami_return_stats_once_and_illusions_grow() {
     let children: Vec<_> = rt
         .entities
         .iter()
-        .filter(|(_, e)| e.runtime.owner == b && e.runtime.rosmontic.as_ref().is_some_and(|s| (20..=22).contains(&s.child_kind)))
+        .filter(|(_, e)| {
+            e.runtime.owner == b
+                && e.runtime
+                    .boss
+                    .as_deref()
+                    .and_then(|b| b.rosmontic.as_ref())
+                    .is_some_and(|s| (20..=22).contains(&s.child_kind))
+        })
         .map(|(id, _)| id)
         .collect();
     assert_eq!(children.len(), 3);
@@ -362,7 +387,13 @@ fn ran_shikigami_return_stats_once_and_illusions_grow() {
     let hp: Vec<_> = rt
         .entities
         .iter()
-        .filter(|(_, e)| e.runtime.rosmontic.as_ref().is_some_and(|s| s.child_kind == 23))
+        .filter(|(_, e)| {
+            e.runtime
+                .boss
+                .as_deref()
+                .and_then(|b| b.rosmontic.as_ref())
+                .is_some_and(|s| s.child_kind == 23)
+        })
         .map(|(_, e)| e.runtime.hp)
         .collect();
     assert_eq!(hp, vec![100, 112]);
@@ -479,7 +510,10 @@ fn two_allied_alices_can_summon_the_same_kind_independently() {
         let e = rt.entities.get(doll).unwrap();
         assert_eq!(e.runtime.owner, owner);
         assert_eq!(e.runtime.root_owner, owner);
-        assert_eq!(e.runtime.rosmontic.as_ref().unwrap().child_kind, 10);
+        assert_eq!(
+            e.runtime.boss.as_deref().and_then(|b| b.rosmontic.as_ref()).unwrap().child_kind,
+            10
+        );
         assert!(rt.world.team_roster(e.runtime.team).unwrap().contains(&doll));
         assert!(rt.world.team_alive(e.runtime.team).unwrap().contains(&doll));
     }
@@ -782,7 +816,15 @@ fn frozen_skip_does_not_advance_pcb_pre_or_post_action_timers() {
     assert_eq!(rt.entities.get(boss).unwrap().runtime.move_state.speed_points, 1);
     assert!(rt.entities.get(boss).unwrap().states.is_frozen());
     let timers = |rt: &CombatRuntime| {
-        let state = rt.entities.get(boss).unwrap().runtime.rosmontic.as_ref().unwrap();
+        let state = rt
+            .entities
+            .get(boss)
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.rosmontic.as_ref())
+            .unwrap();
         (state.butterfly_turns, state.divine_turns, state.burn_turns)
     };
     assert_eq!(timers(rt), (3, 3, 1));

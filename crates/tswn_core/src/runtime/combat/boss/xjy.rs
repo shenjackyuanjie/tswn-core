@@ -100,7 +100,7 @@ impl CombatRuntime {
         }
         self.begin_xjy_turn(actor, updates);
         {
-            let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.xjy.as_mut()) else {
+            let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.boss_mut().xjy.as_mut()) else {
                 return;
             };
             state.turn = state.turn.saturating_add(1);
@@ -199,8 +199,8 @@ impl CombatRuntime {
         let idx = self.entities.next_spawn_idx(&template);
         self.effects.push(QueuedEffect::SpawnWithMessage {
             caster: actor,
-            template,
-            message: "[1]加入了己方".to_owned(),
+            template: Box::new(template),
+            message: std::borrow::Cow::Borrowed("[1]加入了己方"),
         });
         self.drain_effects_into(updates);
         if let Some(spawned) = self.entities.get_mut(idx) {
@@ -305,8 +305,8 @@ impl CombatRuntime {
         template.display_name = "分身".to_owned();
         self.effects.push(QueuedEffect::SpawnWithMessage {
             caster: actor,
-            template,
-            message: "[1]加入了己方".to_owned(),
+            template: Box::new(template),
+            message: std::borrow::Cow::Borrowed("[1]加入了己方"),
         });
         self.drain_effects_into(updates);
         updates.add(RunUpdate::new("[0]召唤了[分身]", actor.0 as usize, actor.0 as usize, 0));
@@ -375,8 +375,8 @@ impl CombatRuntime {
             entity.template.attack *= 2;
             entity.runtime.magic *= 2;
             entity.template.magic *= 2;
-            let turn = entity.runtime.xjy.as_ref().map_or(0, |state| state.turn);
-            if let Some(state) = entity.runtime.xjy.as_mut() {
+            let turn = entity.runtime.boss.as_deref().and_then(|b| b.xjy.as_ref()).map_or(0, |state| state.turn);
+            if let Some(state) = entity.runtime.boss_mut().xjy.as_mut() {
                 state.iron_until = turn + 2;
                 state.iron_turn = turn;
             }
@@ -403,7 +403,7 @@ impl CombatRuntime {
             let magic = entity.runtime.magic;
             entity.runtime.attack = 0;
             entity.runtime.magic = 0;
-            if let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.xjy.as_mut()) {
+            if let Some(state) = self.entities.get_mut(actor).and_then(|e| e.runtime.boss_mut().xjy.as_mut()) {
                 let turn = state.turn;
                 state.thanks.push((target, turn + 2, attack, magic));
             }
@@ -444,7 +444,7 @@ impl CombatRuntime {
             let Some(entity) = self.entities.get_mut(actor) else {
                 return;
             };
-            let Some(state) = entity.runtime.xjy.as_mut() else {
+            let Some(state) = entity.runtime.boss_mut().xjy.as_mut() else {
                 return;
             };
             if state.iron_until != 0 && state.turn > state.iron_until {

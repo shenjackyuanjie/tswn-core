@@ -248,9 +248,13 @@ impl PreparedBattleInit {
         );
         // 完成 Boss 类型与运行态覆盖后重建科研索引，避免把导入占位模板当作最终身份。
         runtime.squall_bosses.clear();
-        runtime
-            .squall_bosses
-            .extend(runtime.entities.iter().filter_map(|(idx, e)| e.runtime.squall.is_some().then_some(idx)));
+        runtime.squall_bosses.extend(
+            runtime
+                .entities
+                .iter()
+                .filter_map(|(idx, e)| e.runtime.boss.as_ref().is_some_and(|b| b.squall.is_some()).then_some(idx)),
+        );
+        runtime.has_boss_entities = CombatRuntime::compute_has_boss_entities(&runtime.entities);
         runtime.rng.clone_from(&self.rng);
         runtime.scheduler.reset_action_mode_from_entities(&runtime.entities);
         let seed = PreparedBattleSeed {

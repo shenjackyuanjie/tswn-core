@@ -27,13 +27,18 @@ pub enum Child {
 
 impl CombatRuntime {
     /// 本体是否为被子。
-    pub fn is_quilt(&self, idx: EntityIdx) -> bool { self.entities.get(idx).is_some_and(Self::is_quilt_entity) }
+    #[inline]
+    pub fn is_quilt(&self, idx: EntityIdx) -> bool {
+        self.has_boss_entities && self.entities.get(idx).is_some_and(Self::is_quilt_entity)
+    }
 
-    pub(in crate::runtime::combat) fn is_quilt_entity(entity: &EntityRecord) -> bool {
+    #[inline]
+    pub fn is_quilt_entity(entity: &EntityRecord) -> bool {
         entity.runtime.flags.contains(PlayerKindFlags::BOSS) && entity.template.name == ID
     }
 
     /// 被子始终排除在敌方选敌之外，空场时仍可轮到本体召唤。
+    #[inline]
     pub fn quilt_untargetable(&self, idx: EntityIdx) -> bool { self.is_quilt(idx) }
 
     /// 选敌时排除被子，保留其在调度器和判胜中的存活记录。
@@ -47,8 +52,26 @@ impl CombatRuntime {
         }
     }
 
+    /// 带 Boss 快速守卫的选敌池：普通对局直接借用 world.flat_alive()，零遍历。
+    #[inline]
+    pub fn target_pool<'a>(
+        has_boss_entities: bool,
+        entities: &EntityArena,
+        world: &'a WorldArena,
+    ) -> std::borrow::Cow<'a, [EntityIdx]> {
+        if !has_boss_entities {
+            std::borrow::Cow::Borrowed(world.flat_alive())
+        } else {
+            Self::quilt_target_pool(entities, world)
+        }
+    }
+
     /// 对衍生物统一计算钻被免伤与飞翔减伤。
+    #[inline]
     pub fn quilt_damage(&self, target: EntityIdx, amount: i32) -> i32 {
+        if !self.has_boss_entities {
+            return amount;
+        }
         if self.is_quilt(target) || self.quilt_minion_sleeping(target) {
             return 0;
         }
@@ -62,7 +85,11 @@ impl CombatRuntime {
     }
 
     /// 按衍生物受到的伤害（而不是实际掉血）传导一半给本体；1 血吃 200 伤也会传导 100。
+    #[inline]
     pub fn relay_quilt_damage(&mut self, caster: EntityIdx, target: EntityIdx, amount: i32, updates: &mut RunUpdates) {
+        if !self.has_boss_entities {
+            return;
+        }
         let shared = amount.max(0) / 2;
         if shared == 0 {
             return;
@@ -125,6 +152,7 @@ impl CombatRuntime {
             .get_mut(actor)
             .unwrap()
             .runtime
+            .boss_mut()
             .quilt_minion
             .get_or_insert_with(Default::default);
         state.turn += 1;
@@ -172,7 +200,6 @@ impl CombatRuntime {
         template.id_key_name = tag.to_owned();
         template.display_name = name.to_owned();
         let idx = self.entities.next_spawn_idx(&template);
-        let message = "[1]从被子里钻出来了".to_owned();
         // 猴区只显示钻出事件；鱼保留其传统技能发动行。
         if child == Child::Fish {
             updates.add(RunUpdate::new("[0]使用[鱼我所欲也]", actor.0 as usize, actor.0 as usize, 0));
@@ -180,15 +207,15 @@ impl CombatRuntime {
         }
         self.effects.push(QueuedEffect::SpawnWithMessage {
             caster: actor,
-            template,
-            message,
+            template: Box::new(template),
+            message: std::borrow::Cow::Borrowed("[1]从被子里钻出来了"),
         });
         self.drain_effects_into(updates);
         if let Some(spawned) = self.entities.get_mut(idx) {
             spawned.runtime.policies.damage_share = DamageSharePolicy::ShareToOwner;
             // 召唤会继承 Boss 的 `@!` 徽章名，这里改回衍生物自己的键，前端才能用 emoji 图标。
             spawned.template.id_key_name = tag.to_owned();
-            spawned.runtime.quilt_minion = Some(Box::new(QuiltMinionState {
+            spawned.runtime.boss_mut().quilt_minion = Some(Box::new(QuiltMinionState {
                 owner: Some(actor),
                 ..QuiltMinionState::default()
             }));
@@ -208,7 +235,7 @@ impl CombatRuntime {
         let first = self.entities.get(*keep).unwrap();
         let mut template = first.template.clone();
         let mut hp = first.runtime.hp;
-        let state = first.runtime.quilt_minion.clone();
+        let state = first.runtime.boss.as_deref().and_then(|b| b.quilt_minion.clone());
         for &idx in rest {
             let e = self.entities.get(idx).unwrap();
             template.attack += e.template.attack;
@@ -244,7 +271,7 @@ impl CombatRuntime {
         let e = self.entities.get_mut(child).unwrap();
         e.template.id_key_name = "quilt-monkey".into();
         e.runtime.policies.damage_share = DamageSharePolicy::ShareToOwner;
-        e.runtime.quilt_minion = state;
+        e.runtime.boss_mut().quilt_minion = state;
         e.runtime.hp = hp;
         self.world.add_spawned_alive(child, e.runtime.team);
         child
@@ -291,7 +318,7 @@ impl CombatRuntime {
     /// 衍生物种类；非衍生物返回 None。
     pub fn quilt_minion_kind(&self, idx: EntityIdx) -> Option<MinionKind> {
         let entity = self.entities.get(idx)?;
-        entity.runtime.quilt_minion.as_ref()?;
+        entity.runtime.boss.as_deref().and_then(|b| b.quilt_minion.as_ref())?;
         match entity.template.name.as_str() {
             MONKEY_NAME => Some(MinionKind::Monkey),
             FISH_NAME => Some(MinionKind::Fish),
@@ -300,11 +327,11 @@ impl CombatRuntime {
     }
 
     fn minion_state(&self, idx: EntityIdx) -> Option<&QuiltMinionState> {
-        self.entities.get(idx)?.runtime.quilt_minion.as_deref()
+        self.entities.get(idx)?.runtime.boss.as_deref().and_then(|b| b.quilt_minion.as_deref())
     }
 
     pub fn minion_state_mut(&mut self, idx: EntityIdx) -> Option<&mut QuiltMinionState> {
-        self.entities.get_mut(idx)?.runtime.quilt_minion.as_deref_mut()
+        self.entities.get_mut(idx)?.runtime.boss_mut().quilt_minion.as_deref_mut()
     }
 
     fn quilt_owner_of(&self, idx: EntityIdx) -> Option<EntityIdx> { self.minion_state(idx).and_then(|state| state.owner) }
@@ -423,7 +450,13 @@ impl CombatRuntime {
     }
 
     fn add_quilt_arrest(&mut self, actor: EntityIdx, target: EntityIdx, damage: i32) {
-        self.entities.get_mut(target).unwrap().runtime.quilt_arrests.push((actor, damage, 3));
+        self.entities
+            .get_mut(target)
+            .unwrap()
+            .runtime
+            .boss_mut()
+            .quilt_arrests
+            .push((actor, damage, 3));
     }
 
     /// 逮捕按受害者行动结算，不注册中毒状态；飞翔跟随在场的鱼。
@@ -439,7 +472,7 @@ impl CombatRuntime {
         let Some(e) = self.entities.get_mut(actor) else {
             return;
         };
-        let mut arrests = std::mem::take(&mut e.runtime.quilt_arrests);
+        let mut arrests = std::mem::take(&mut e.runtime.boss_mut().quilt_arrests);
         let had = !arrests.is_empty();
         for (caster, damage, remaining) in &mut arrests {
             if !self.entities.get(actor).is_some_and(|e| e.runtime.active()) {
@@ -458,7 +491,7 @@ impl CombatRuntime {
                 updates.add_newline();
                 updates.add(RunUpdate::new("[0]从[逮捕]中解除", actor.0 as usize, actor.0 as usize, 0));
             }
-            e.runtime.quilt_arrests = arrests;
+            e.runtime.boss_mut().quilt_arrests = arrests;
         }
     }
 
@@ -468,7 +501,7 @@ impl CombatRuntime {
         let clone = self.spawn_quilt_copy(
             owner,
             source.template.clone(),
-            source.runtime.quilt_minion.clone(),
+            source.runtime.boss.as_deref().and_then(|b| b.quilt_minion.clone()),
             source.runtime.hp,
         );
         updates.add(RunUpdate::new(
@@ -544,7 +577,7 @@ impl CombatRuntime {
         let Some(entity) = self.entities.get(target) else {
             return;
         };
-        let Some(state) = entity.runtime.quilt_minion.as_ref() else {
+        let Some(state) = entity.runtime.boss.as_deref().and_then(|b| b.quilt_minion.as_ref()) else {
             return;
         };
         if state.no_split || entity.template.name != MONKEY_NAME || entity.runtime.hp > 0 {

@@ -129,6 +129,59 @@ pub enum RuntimeCorpseKind {
     Slime,
 }
 
+/// 各类自定义/东方 Boss 及衍生物的扩展运行态；装箱后普通实体免付 184 B 缓存体积。
+#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BossRuntimeExt {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub squall: Option<Box<SquallRuntime>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub squall_helper: Option<(EntityIdx, u8, u32)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub squall_taunt: Option<(EntityIdx, u64)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub smdd: Option<Box<SmddRuntime>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fish: Option<Box<FishRuntime>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cirno: Option<Box<CirnoRuntime>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rosmontic: Option<Box<RosmonticRuntime>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tiger: Option<Box<TigerRuntime>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub yi: Option<Box<YiRuntime>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baixie: Option<Box<BaixieRuntime>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xjy: Option<Box<XjyRuntime>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quilt_minion: Option<Box<QuiltMinionState>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub testsubject: Option<Box<TestSubjectRuntime>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub quilt_arrests: Vec<(EntityIdx, i32, u8)>,
+}
+
+impl BossRuntimeExt {
+    /// 是否全部字段均为空（用于按需构造，普通实体返回 true）。
+    pub fn is_empty(&self) -> bool {
+        self.squall.is_none()
+            && self.squall_helper.is_none()
+            && self.squall_taunt.is_none()
+            && self.smdd.is_none()
+            && self.fish.is_none()
+            && self.cirno.is_none()
+            && self.rosmontic.is_none()
+            && self.tiger.is_none()
+            && self.yi.is_none()
+            && self.baixie.is_none()
+            && self.xjy.is_none()
+            && self.quilt_minion.is_none()
+            && self.testsubject.is_none()
+            && self.quilt_arrests.is_empty()
+    }
+}
+
 /// 实体的当前战斗数值与机制运行时字段，由模板经状态处理得到。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PlayerRuntime {
@@ -178,45 +231,9 @@ pub struct PlayerRuntime {
     pub conan_thinking: Option<i32>,
     /// 史莱姆 Boss 的分裂代数；0 为原始 Boss，1 为第一代子体，2 起不再分裂。
     pub slime_split_generation: Option<u32>,
-    /// 科研 Boss、助手角色和临时嘲讽覆盖随克隆与存档完整保存。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub squall: Option<Box<SquallRuntime>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub squall_helper: Option<(EntityIdx, u8, u32)>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub squall_taunt: Option<(EntityIdx, u64)>,
-    /// smdd 的做局层数与技能冷却。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub smdd: Option<Box<SmddRuntime>>,
-    /// 沙冰鱼的运行态。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fish: Option<Box<FishRuntime>>,
-    /// 来源：KODU16。琪露诺的绝对零度概率等级。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cirno: Option<Box<CirnoRuntime>>,
-    /// 来源：KODU16。Rosmontic 的回合计数、蓄力目标与一次性复活。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rosmontic: Option<Box<RosmonticRuntime>>,
-    /// TigerStar 的运行态。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tiger: Option<Box<TigerRuntime>>,
-    /// 咦 Boss 与拜谢衍生物的运行态。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub yi: Option<Box<YiRuntime>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub baixie: Option<Box<BaixieRuntime>>,
-    /// 新纪元的行动计数、铁壁与拜谢状态。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub xjy: Option<Box<XjyRuntime>>,
-    /// 被子衍生物的行动计数与睡眠、钻被、得意等临时标记。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub quilt_minion: Option<Box<QuiltMinionState>>,
-    /// 实验体 Boss 的阶段计数与本回合待执行招式。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub testsubject: Option<Box<TestSubjectRuntime>>,
-    /// 独立的逮捕效果保存来源、每跳伤害和剩余跳数。
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub quilt_arrests: Vec<(EntityIdx, i32, u8)>,
+    /// 各类自定义/东方 Boss 及专属衍生物的扩展运行态；普通实体保持 None，只占 8 B。
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    pub boss: Option<Box<BossRuntimeExt>>,
     pub corpse: RuntimeCorpseKind,
 }
 
@@ -282,33 +299,32 @@ impl PlayerRuntime {
             rinick_reraise_lives: template.rinick.as_ref().is_some_and(|data| data.revive_attrs.is_some()).then_some(2),
             conan_thinking,
             slime_split_generation,
-            squall: (flags.contains(PlayerKindFlags::BOSS) && template.name == "Squall")
-                .then(|| Box::new(SquallRuntime::default())),
-            squall_helper: None,
-            squall_taunt: None,
-            smdd: (flags.contains(PlayerKindFlags::BOSS) && template.name == "smdd").then(|| Box::new(SmddRuntime::default())),
-            xjy: (flags.contains(PlayerKindFlags::BOSS) && template.name == "新纪元").then(|| Box::new(XjyRuntime::default())),
-            yi: (flags.contains(PlayerKindFlags::BOSS) && template.name == "咦").then(|| Box::new(YiRuntime::default())),
-            tiger: (flags.contains(PlayerKindFlags::BOSS) && template.name == "TigerStar")
-                .then(|| Box::new(TigerRuntime::default())),
-            fish: (flags.contains(PlayerKindFlags::BOSS) && template.name == "Shabby_fish")
-                .then(|| Box::new(FishRuntime::default())),
-            cirno: (flags.contains(PlayerKindFlags::BOSS) && template.name == crate::runtime::combat::boss::cirno::ID)
-                .then(|| Box::new(CirnoRuntime::default())),
-            rosmontic: RosmonticRuntime::boss_levels(&template.name)
-                .filter(|_| flags.contains(PlayerKindFlags::BOSS))
-                .map(|levels| {
-                    Box::new(RosmonticRuntime {
+            boss: if flags.contains(PlayerKindFlags::BOSS) {
+                let mut ext = BossRuntimeExt::default();
+                match template.name.as_str() {
+                    "Squall" => ext.squall = Some(Box::new(SquallRuntime::default())),
+                    "smdd" => ext.smdd = Some(Box::new(SmddRuntime::default())),
+                    "新纪元" => ext.xjy = Some(Box::new(XjyRuntime::default())),
+                    "咦" => ext.yi = Some(Box::new(YiRuntime::default())),
+                    "TigerStar" => ext.tiger = Some(Box::new(TigerRuntime::default())),
+                    "Shabby_fish" => ext.fish = Some(Box::new(FishRuntime::default())),
+                    name if name == crate::runtime::combat::boss::cirno::ID => {
+                        ext.cirno = Some(Box::new(CirnoRuntime::default()));
+                    }
+                    "testsubject" => ext.testsubject = Some(Box::new(TestSubjectRuntime::default())),
+                    _ => {}
+                }
+                if let Some(levels) = RosmonticRuntime::boss_levels(&template.name) {
+                    ext.rosmontic = Some(Box::new(RosmonticRuntime {
                         levels: levels.to_vec(),
                         phantom_members: if template.name == "phantom" { 7 } else { 0 },
                         ..Default::default()
-                    })
-                }),
-            baixie: None,
-            quilt_minion: None,
-            testsubject: (flags.contains(PlayerKindFlags::BOSS) && template.name == "testsubject")
-                .then(|| Box::new(TestSubjectRuntime::default())),
-            quilt_arrests: Vec::new(),
+                    }));
+                }
+                (!ext.is_empty()).then(|| Box::new(ext))
+            } else {
+                None
+            },
             corpse: RuntimeCorpseKind::None,
         }
     }
@@ -355,20 +371,7 @@ impl PlayerRuntime {
         self.rinick_reraise_lives = None;
         self.conan_thinking = None;
         self.slime_split_generation = None;
-        self.squall = None;
-        self.squall_helper = None;
-        self.squall_taunt = None;
-        self.smdd = None;
-        self.xjy = None;
-        self.yi = None;
-        self.tiger = None;
-        self.fish = None;
-        self.cirno = None;
-        self.rosmontic = None;
-        self.baixie = None;
-        self.quilt_minion = None;
-        self.testsubject = None;
-        self.quilt_arrests.clear();
+        self.boss = None;
         self.corpse = RuntimeCorpseKind::None;
     }
 
@@ -414,20 +417,9 @@ impl PlayerRuntime {
         self.rinick_reraise_lives = prepared.rinick_reraise_lives;
         self.conan_thinking = prepared.conan_thinking;
         self.slime_split_generation = prepared.slime_split_generation;
-        self.squall.clone_from(&prepared.squall);
-        self.squall_helper = prepared.squall_helper;
-        self.squall_taunt = prepared.squall_taunt;
-        self.smdd.clone_from(&prepared.smdd);
-        self.xjy.clone_from(&prepared.xjy);
-        self.yi.clone_from(&prepared.yi);
-        self.tiger.clone_from(&prepared.tiger);
-        self.fish.clone_from(&prepared.fish);
-        self.cirno.clone_from(&prepared.cirno);
-        self.rosmontic.clone_from(&prepared.rosmontic);
-        self.baixie.clone_from(&prepared.baixie);
-        self.quilt_minion.clone_from(&prepared.quilt_minion);
-        self.testsubject.clone_from(&prepared.testsubject);
-        self.quilt_arrests.clone_from(&prepared.quilt_arrests);
+        if self.boss.is_some() || prepared.boss.is_some() {
+            self.boss.clone_from(&prepared.boss);
+        }
         self.corpse = prepared.corpse;
     }
 
@@ -435,7 +427,19 @@ impl PlayerRuntime {
     pub fn at_boost(&self) -> f64 { f64::from_bits(self.at_boost_bits) }
 
     /// 当前吸引力。
-    pub fn attract(&self) -> f64 { f64::from_bits(self.squall_taunt.map_or(self.attract_bits, |(_, bits)| bits)) }
+    #[inline]
+    pub fn attract(&self) -> f64 {
+        let bits = self
+            .boss
+            .as_deref()
+            .and_then(|b| b.squall_taunt)
+            .map_or(self.attract_bits, |(_, bits)| bits);
+        f64::from_bits(bits)
+    }
+
+    /// 懒初始化并返回 Boss 扩展运行态的可变引用。
+    #[inline]
+    pub fn boss_mut(&mut self) -> &mut BossRuntimeExt { self.boss.get_or_insert_with(|| Box::new(BossRuntimeExt::default())) }
 
     /// 是否为使魔。
     pub fn is_minion(&self) -> bool { self.flags.contains(PlayerKindFlags::MINION) }
@@ -601,7 +605,7 @@ impl EntityRecord {
     /// 含状态修正与垂死增益的有效速度。
     pub fn effective_speed(&self) -> i32 {
         // 来源：KODU16。调度器也读取专属速度变化，不能只让状态面板显示加速。
-        if self.runtime.rosmontic.as_ref().is_some_and(|s| {
+        if self.runtime.boss.as_deref().and_then(|b| b.rosmontic.as_ref()).is_some_and(|s| {
             s.stat_add[2] != 0 || s.stat_scale_bits[2] != 0 || s.divine_turns > 0 || (s.aura && self.template.name == "remilia")
         }) {
             return self.states.effective_speed(self.runtime.speed);
@@ -691,18 +695,19 @@ impl EntityRecord {
         // 来源：KODU16。黑雾形态与月影增防属于持续修正，重建状态时仍需恢复。
         if self.runtime.flags.contains(PlayerKindFlags::BOSS)
             && self.template.name == "rumia"
-            && let Some(state) = &self.runtime.rosmontic
+            && let Some(state) = self.runtime.boss.as_deref().and_then(|b| b.rosmontic.as_ref())
         {
             let multiplier = if state.rumia_destroy { 5 } else { 1 };
+            let def_bonus = state.rumia_def_bonus;
             self.runtime.attack *= multiplier;
             self.runtime.magic *= multiplier;
             self.runtime.wisdom *= multiplier;
-            self.runtime.defense = self.runtime.defense * multiplier + state.rumia_def_bonus;
-            self.runtime.resistance = self.runtime.resistance * multiplier + state.rumia_def_bonus;
+            self.runtime.defense = self.runtime.defense * multiplier + def_bonus;
+            self.runtime.resistance = self.runtime.resistance * multiplier + def_bonus;
         }
         // 来源：KODU16。专属变化在普通状态重建后恢复，燃烧本身不会赋予行动能力。
         let r = &mut self.runtime;
-        if let Some(s) = &r.rosmontic {
+        if let Some(s) = r.boss.as_deref().and_then(|b| b.rosmontic.as_ref()) {
             for (i, value) in [
                 &mut r.attack,
                 &mut r.defense,
@@ -937,20 +942,21 @@ impl EntityRecord {
             at_boost *= 1.5;
         }
         // 来源：KODU16。气场的威力倍率独立于普通聚气，驱散后可恢复基底。
-        if let Some(s) = &self.runtime.rosmontic
-            && s.aura
-        {
-            let bonus = if s.aura_bonus { 1.0 } else { 0.0 };
-            match self.template.name.as_str() {
-                "hong" => at_boost *= 1.8 + bonus,
-                "remilia" => at_boost *= 1.7 + bonus + 0.5 * f64::from(s.scarlet),
-                _ => {}
+        if let Some(s) = self.runtime.boss.as_deref().and_then(|b| b.rosmontic.as_ref()) {
+            if s.aura {
+                let bonus = if s.aura_bonus { 1.0 } else { 0.0 };
+                match self.template.name.as_str() {
+                    "hong" => at_boost *= 1.8 + bonus,
+                    "remilia" => at_boost *= 1.7 + bonus + 0.5 * f64::from(s.scarlet),
+                    _ => {}
+                }
+            }
+            // 来源：KODU16。化猫额外提升威力，与速敏变化独立保存。
+            if s.cat {
+                at_boost *= 2.0;
             }
         }
-        // 来源：KODU16。化猫额外提升威力，与速敏变化独立保存。
-        if self.runtime.rosmontic.as_ref().is_some_and(|s| s.cat) {
-            at_boost *= 2.0;
-        }
+
         self.runtime.at_boost_bits = at_boost.to_bits();
         self.runtime.at_boost_millionths = at_boost_to_millionths(at_boost);
     }

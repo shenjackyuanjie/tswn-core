@@ -82,7 +82,7 @@ fn next_minion_name_from_entity_slot_uses_root_owner_for_child_minions() {
     ));
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::with_kind(3, "owner?shadow", minion_kind, 0, 5, 1).with_skills([minion_skill]),
+        template: Box::new(PlayerTemplate::with_kind(3, "owner?shadow", minion_kind, 0, 5, 1).with_skills([minion_skill])),
     });
     runtime.flush_effects().expect("child minion spawn should emit update");
     runtime.set_skill_handler_with_capabilities(
@@ -148,7 +148,7 @@ fn next_minion_name_from_entity_slot_requires_root_owner_read_capability() {
     ));
     runtime.effects.push(QueuedEffect::Spawn {
         caster: EntityIdx(0),
-        template: PlayerTemplate::with_kind(3, "owner?shadow", minion_kind, 0, 5, 1).with_skills([minion_skill]),
+        template: Box::new(PlayerTemplate::with_kind(3, "owner?shadow", minion_kind, 0, 5, 1).with_skills([minion_skill])),
     });
     runtime.flush_effects().expect("child minion spawn should emit update");
     runtime.set_skill_handler_with_capabilities(

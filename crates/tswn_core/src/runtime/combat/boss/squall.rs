@@ -36,7 +36,15 @@ pub enum ResearchSkill {
 impl CombatRuntime {
     /// 派生独立的演出随机数，读取当前检查点但不消费战斗 RNG，也不窥视后续随机序列。
     pub fn next_squall_sample_quote(&mut self, actor: EntityIdx) -> &'static str {
-        let s = self.entities.get(actor).unwrap().runtime.squall.as_ref().unwrap();
+        let s = self
+            .entities
+            .get(actor)
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.squall.as_ref())
+            .unwrap();
         let mut value = ((self.rng.i as u64) << 32)
             ^ (self.rng.j as u64)
             ^ u64::from(s.turn).wrapping_mul(0x9e3779b97f4a7c15)
@@ -45,7 +53,15 @@ impl CombatRuntime {
         value = (value ^ (value >> 27)).wrapping_mul(0x94d049bb133111eb);
         value ^= value >> 31;
         let index = s.last_sample_quote.map_or((value % 5) as u8, |last| (last + 1 + (value % 4) as u8) % 5);
-        self.entities.get_mut(actor).unwrap().runtime.squall.as_mut().unwrap().last_sample_quote = Some(index);
+        self.entities
+            .get_mut(actor)
+            .unwrap()
+            .runtime
+            .boss_mut()
+            .squall
+            .as_mut()
+            .unwrap()
+            .last_sample_quote = Some(index);
         SAMPLE_QUOTES[index as usize]
     }
 
@@ -106,7 +122,7 @@ impl CombatRuntime {
             if !e.runtime.active() {
                 continue;
             }
-            if let Some(s) = &mut e.runtime.squall {
+            if let Some(s) = &mut e.runtime.boss_mut().squall {
                 if let Some((_, damage)) = s.damage.iter_mut().find(|(idx, _)| *idx == caster) {
                     *damage += i64::from(amount);
                 } else {
@@ -122,13 +138,18 @@ impl CombatRuntime {
         let pair = self
             .entities
             .get_mut(boss)
-            .and_then(|e| e.runtime.squall.as_mut())
+            .and_then(|e| e.runtime.boss_mut().squall.as_mut())
             .and_then(|s| s.taunt.take());
         if let Some((a, b, _)) = pair {
             for idx in [a, b] {
                 if let Some(e) = self.entities.get_mut(idx) {
-                    if e.runtime.squall_taunt.is_some_and(|(owner, _)| owner == boss) {
-                        e.runtime.squall_taunt = None;
+                    if e.runtime
+                        .boss
+                        .as_deref()
+                        .and_then(|b| b.squall_taunt)
+                        .is_some_and(|(owner, _)| owner == boss)
+                    {
+                        e.runtime.boss_mut().squall_taunt = None;
                         updates.add_newline();
                         updates.add(RunUpdate::new("[1]的[嘲讽变换]解除了", boss.0 as usize, idx.0 as usize, 0));
                     }
@@ -139,7 +160,7 @@ impl CombatRuntime {
 
     /// 行动前推进专属计时；冻结未获行动时不调用此入口。
     pub fn begin_squall_action(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
-        let Some(s) = self.entities.get_mut(actor).and_then(|e| e.runtime.squall.as_mut()) else {
+        let Some(s) = self.entities.get_mut(actor).and_then(|e| e.runtime.boss_mut().squall.as_mut()) else {
             return;
         };
         s.turn = s.turn.saturating_add(1);
@@ -181,7 +202,7 @@ impl CombatRuntime {
             return;
         }
         let mut cleared = false;
-        if let Some(s) = self.entities.get_mut(target).and_then(|e| e.runtime.squall.as_mut()) {
+        if let Some(s) = self.entities.get_mut(target).and_then(|e| e.runtime.boss_mut().squall.as_mut()) {
             cleared = s.iron_until != 0 || s.amplify > 0;
             s.iron_until = 0;
             s.amplify = 0;
@@ -196,7 +217,7 @@ impl CombatRuntime {
             ));
         }
         for boss in self.squall_bosses.clone() {
-            let Some(s) = self.entities.get_mut(boss).and_then(|e| e.runtime.squall.as_mut()) else {
+            let Some(s) = self.entities.get_mut(boss).and_then(|e| e.runtime.boss_mut().squall.as_mut()) else {
                 continue;
             };
             if boss == target {
@@ -215,7 +236,11 @@ impl CombatRuntime {
     }
 
     pub fn apply_squall_defense(&self, target: EntityIdx, value: &mut RuntimeDefendValue) {
-        let Some(s) = self.entities.get(target).and_then(|e| e.runtime.squall.as_ref()) else {
+        let Some(s) = self
+            .entities
+            .get(target)
+            .and_then(|e| e.runtime.boss.as_deref().and_then(|b| b.squall.as_ref()))
+        else {
             return;
         };
         if let Some(damage) = value.damage().filter(|n| *n > 0) {
@@ -232,7 +257,7 @@ impl CombatRuntime {
         if !e.runtime.active() || i64::from(e.runtime.hp) * 2 >= i64::from(e.template.max_hp) {
             return;
         }
-        let Some(s) = &mut e.runtime.squall else {
+        let Some(s) = &mut e.runtime.boss_mut().squall else {
             return;
         };
         if s.red {
@@ -264,7 +289,7 @@ impl CombatRuntime {
         if !e.runtime.active() || i64::from(e.runtime.hp) * 4 > i64::from(e.template.max_hp) {
             return;
         }
-        let Some(s) = &mut e.runtime.squall else {
+        let Some(s) = &mut e.runtime.boss_mut().squall else {
             return;
         };
         if s.burned {
@@ -316,7 +341,7 @@ impl CombatRuntime {
             let invalid_pair = self
                 .entities
                 .get(boss)
-                .and_then(|e| e.runtime.squall.as_ref())
+                .and_then(|e| e.runtime.boss.as_deref().and_then(|b| b.squall.as_ref()))
                 .and_then(|s| s.taunt)
                 .is_some_and(|(a, b, _)| {
                     self.plain_effective_team(a) == self.plain_effective_team(boss)
@@ -334,12 +359,12 @@ impl CombatRuntime {
                 if self.plain_effective_team(actor) != self.plain_effective_team(boss)
                     && self.entities.get(actor).is_some_and(|e| !e.runtime.is_minion())
                 {
-                    self.entities.get_mut(boss).unwrap().runtime.squall.as_mut().unwrap().observed = true;
+                    self.entities.get_mut(boss).unwrap().runtime.boss_mut().squall.as_mut().unwrap().observed = true;
                 }
                 continue;
             }
             let enemies = self.squall_enemies(boss, true);
-            let s = self.entities.get_mut(boss).unwrap().runtime.squall.as_mut().unwrap();
+            let s = self.entities.get_mut(boss).unwrap().runtime.boss_mut().squall.as_mut().unwrap();
             let marked = s
                 .damage
                 .iter()
@@ -395,13 +420,13 @@ impl CombatRuntime {
     pub fn squall_take_amplify(&mut self, actor: EntityIdx) -> f64 {
         self.entities
             .get_mut(actor)
-            .and_then(|e| e.runtime.squall.as_mut())
+            .and_then(|e| e.runtime.boss_mut().squall.as_mut())
             .map_or(1.0, |s| 1.0 + f64::from(std::mem::take(&mut s.amplify).min(100)) / 100.0)
     }
 
     pub fn select_research_skill(&self, actor: EntityIdx) -> Option<ResearchSkill> {
         let e = self.entities.get(actor)?;
-        let s = e.runtime.squall.as_ref()?;
+        let s = e.runtime.boss.as_deref().and_then(|b| b.squall.as_ref())?;
         let ready = |slot: usize| s.turn >= s.next_skill[slot];
         if e.runtime.hp * 100 < e.template.max_hp * 55 && s.heal_count < 3 && ready(5) {
             return Some(ResearchSkill::Heal);
@@ -447,7 +472,11 @@ impl CombatRuntime {
     }
 
     pub fn drain_squall_action_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
-        if let Some((owner, role, _)) = self.entities.get(actor).and_then(|e| e.runtime.squall_helper) {
+        if let Some((owner, role, _)) = self
+            .entities
+            .get(actor)
+            .and_then(|e| e.runtime.boss.as_deref().and_then(|b| b.squall_helper))
+        {
             self.squall_helper_action(actor, owner, role, updates);
             return;
         }
@@ -464,7 +493,7 @@ impl CombatRuntime {
             }
             return;
         };
-        let s = self.entities.get_mut(actor).unwrap().runtime.squall.as_mut().unwrap();
+        let s = self.entities.get_mut(actor).unwrap().runtime.boss_mut().squall.as_mut().unwrap();
         if s.active_count == 3 {
             s.active_count = 0;
             let lost = s.samples.min(2);
@@ -494,7 +523,7 @@ impl CombatRuntime {
             ResearchSkill::Team => self.squall_team(actor, updates),
             ResearchSkill::Prune => self.squall_prune(actor, updates),
             ResearchSkill::Iron => {
-                let s = self.entities.get_mut(actor).unwrap().runtime.squall.as_mut().unwrap();
+                let s = self.entities.get_mut(actor).unwrap().runtime.boss_mut().squall.as_mut().unwrap();
                 s.next_skill[3] = s.turn + 4;
                 s.iron_until = s.turn + 3;
                 s.amplify = (s.amplify + 50).min(100);
@@ -509,7 +538,7 @@ impl CombatRuntime {
                 updates.add(RunUpdate::new("[0]开始[蓄势]", actor.0 as usize, actor.0 as usize, 0));
             }
             ResearchSkill::Quake => {
-                let s = self.entities.get_mut(actor).unwrap().runtime.squall.as_mut().unwrap();
+                let s = self.entities.get_mut(actor).unwrap().runtime.boss_mut().squall.as_mut().unwrap();
                 s.next_skill[4] = s.turn + 4;
                 let amp = self.squall_take_amplify(actor);
                 self.squall_say(
@@ -539,7 +568,7 @@ impl CombatRuntime {
         if enemies.is_empty() {
             return;
         }
-        let s = self.entities.get_mut(actor).unwrap().runtime.squall.as_mut().unwrap();
+        let s = self.entities.get_mut(actor).unwrap().runtime.boss_mut().squall.as_mut().unwrap();
         s.samples -= 2;
         s.next_skill[0] = s.turn + 2;
         let target = s.marked.filter(|idx| enemies.contains(idx)).unwrap_or(enemies[0]);
@@ -585,9 +614,9 @@ impl CombatRuntime {
         let high = Self::plain_smart_attack_score(&self.world, b, &self.entities.get(b).unwrap().runtime).max(0.001);
         let a_bits = (self.entities.get(a).unwrap().runtime.attract() * high / low).to_bits();
         let b_bits = (self.entities.get(b).unwrap().runtime.attract() * low / high).to_bits();
-        self.entities.get_mut(a).unwrap().runtime.squall_taunt = Some((actor, a_bits));
-        self.entities.get_mut(b).unwrap().runtime.squall_taunt = Some((actor, b_bits));
-        let s = self.entities.get_mut(actor).unwrap().runtime.squall.as_mut().unwrap();
+        self.entities.get_mut(a).unwrap().runtime.boss_mut().squall_taunt = Some((actor, a_bits));
+        self.entities.get_mut(b).unwrap().runtime.boss_mut().squall_taunt = Some((actor, b_bits));
+        let s = self.entities.get_mut(actor).unwrap().runtime.boss_mut().squall.as_mut().unwrap();
         s.next_skill[1] = s.turn + 4;
         s.taunt = Some((a, b, s.turn + 3));
         self.squall_say(
@@ -611,7 +640,7 @@ impl CombatRuntime {
     }
 
     pub fn squall_team(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
-        self.entities.get_mut(actor).unwrap().runtime.squall.as_mut().unwrap().summoned = true;
+        self.entities.get_mut(actor).unwrap().runtime.boss_mut().squall.as_mut().unwrap().summoned = true;
         self.squall_say(
             actor,
             "[0]使用[现在只有我在做真正的三人科研]",
@@ -646,23 +675,31 @@ impl CombatRuntime {
             let idx = self.entities.next_spawn_idx(&template);
             self.effects.push(QueuedEffect::SpawnWithMessage {
                 caster: actor,
-                template,
-                message: "召唤出[1]".to_owned(),
+                template: Box::new(template),
+                message: std::borrow::Cow::Borrowed("召唤出[1]"),
             });
             self.drain_effects_into(updates);
             let helper = self.entities.get_mut(idx).expect("research helper missing");
             // 召唤即满血。
             helper.runtime.hp = helper.template.max_hp;
-            helper.runtime.squall = None;
-            helper.runtime.squall_helper = Some((actor, role, 0));
+            helper.runtime.boss_mut().squall = None;
+            helper.runtime.boss_mut().squall_helper = Some((actor, role, 0));
             helper.runtime.policies.damage_share = DamageSharePolicy::None;
         }
     }
 
     fn squall_helper_action(&mut self, actor: EntityIdx, owner: EntityIdx, role: u8, updates: &mut RunUpdates) {
         // 助手只继承角色分工，不复制科研、烧库或召唤能力。
-        let (_, _, turn) = self.entities.get(actor).unwrap().runtime.squall_helper.unwrap();
-        self.entities.get_mut(actor).unwrap().runtime.squall_helper = Some((owner, role, turn + 1));
+        let (_, _, turn) = self
+            .entities
+            .get(actor)
+            .unwrap()
+            .runtime
+            .boss
+            .as_deref()
+            .and_then(|b| b.squall_helper)
+            .unwrap();
+        self.entities.get_mut(actor).unwrap().runtime.boss_mut().squall_helper = Some((owner, role, turn + 1));
         if role == 0
             && self
                 .entities
@@ -704,7 +741,7 @@ impl CombatRuntime {
             .collect();
         targets.sort_by_key(|i| self.entities.get(*i).unwrap().runtime.hp);
         targets.truncate(3);
-        let s = self.entities.get_mut(actor).unwrap().runtime.squall.as_mut().unwrap();
+        let s = self.entities.get_mut(actor).unwrap().runtime.boss_mut().squall.as_mut().unwrap();
         s.next_skill[2] = s.turn + 3;
         s.prune_at = s.turn + 1;
         s.pruning = targets.clone();
@@ -740,7 +777,7 @@ impl CombatRuntime {
             e.states.clear_legacy_key(key);
             e.refresh_runtime_stats_from_template();
         }
-        let s = e.runtime.squall.as_mut().unwrap();
+        let s = e.runtime.boss_mut().squall.as_mut().unwrap();
         s.next_skill[5] = s.turn + 4;
         s.heal_count += 1;
         s.amplify = (s.amplify + 30).min(100);
@@ -770,7 +807,7 @@ impl CombatRuntime {
         if targets.is_empty() {
             return;
         }
-        let s = self.entities.get_mut(actor).unwrap().runtime.squall.as_mut().unwrap();
+        let s = self.entities.get_mut(actor).unwrap().runtime.boss_mut().squall.as_mut().unwrap();
         s.next_skill[6] = s.turn + 4;
         self.squall_say(actor, "[0]使用[暴政一下]", TYRANNY_QUOTE, updates);
         for target in targets {
