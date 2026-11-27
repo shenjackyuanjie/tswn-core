@@ -2,6 +2,11 @@
 
 本文件记录跨 crate 的维护与兼容性变更；各 crate 的版本发布历史仍以对应 CHANGELOG 为准。
 
+## 未发布 · 2026-11-27 固定阵容胜率优化
+
+- 合并空 tick 推进和普攻和技能选敌中的重复遍历。逐 seed 对照覆盖 9 组普通 1v1、5 组普通 2v2，共 458,752 局，胜负与战斗轨迹逐局一致。见 [核心更新日志](crates/tswn_core/CHANGELOG.md#固定阵容胜率优化)。
+- 使用 `--release --features "no_debug,mimalloc_alloc"`、固定 8 线程，整批耗时的配对中位数下降 5.42%。
+
 ## tswn_core 0.8.0 · 2026-11-26
 
 - 移植 KODU16 fork 的 7 只自定义 Boss（Squall、被子、曙光、新纪元、咦、豹星老虎、沙冰鱼），并完整恢复「实验体」（`testsubject@!`）的三阶段技能实现。

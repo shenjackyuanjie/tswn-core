@@ -19,34 +19,11 @@ impl CombatRuntime {
     pub fn select_plain_default_attack_target(&mut self, actor: EntityIdx, smart: bool) -> Option<EntityIdx> {
         self.entities.get(actor)?;
         let actor_team = self.plain_effective_team(actor);
-        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let (target_pool, enemy_skip_indices) = Self::attack_sampling_inputs(&self.entities, &self.world, actor_team);
         let all_alive = target_pool.as_ref();
         if all_alive.is_empty() {
             return None;
         }
-        // 被子有存活召唤物时不可被选中：单独抽取，避免破坏原版连续跳过区间的假设。
-        if all_alive.iter().any(|idx| self.quilt_untargetable(*idx)) {
-            let candidates: smallvec::SmallVec<[EntityIdx; 8]> = all_alive
-                .iter()
-                .copied()
-                .filter(|idx| self.plain_effective_team(*idx) != actor_team && !self.quilt_untargetable(*idx))
-                .collect();
-            if candidates.is_empty() {
-                return None;
-            }
-            let index = usize::from(self.rng.next_u8()) % candidates.len();
-            return Some(candidates[index]);
-        }
-        let enemy_skip_indices = all_alive
-            .iter()
-            .enumerate()
-            .filter_map(|(index, entity)| {
-                self.entities
-                    .get(*entity)
-                    .is_some_and(|record| record.runtime.team == actor_team)
-                    .then_some(index)
-            })
-            .collect::<crate::rc4::PickSkipRange>();
         #[cfg(feature = "no_debug")]
         if let Some(index) = enemy_skip_indices.single_remaining_index(all_alive.len()) {
             if all_alive.len() > 1 {
@@ -123,6 +100,42 @@ impl CombatRuntime {
             );
         }
         scored.first().map(|(target, _)| *target)
+    }
+
+    /// 沿用原来的连续跳过区间，同时在一次遍历中检查不可选中的本体。
+    pub(super) fn attack_sampling_inputs<'a>(
+        entities: &EntityArena,
+        world: &'a WorldArena,
+        team: usize,
+    ) -> (std::borrow::Cow<'a, [EntityIdx]>, crate::rc4::PickSkipRange) {
+        let alive = world.flat_alive();
+        let mut skips = crate::rc4::PickSkipRange::default();
+        for (index, &id) in alive.iter().enumerate() {
+            if let Some(entity) = entities.get(id) {
+                if Self::is_quilt_entity(entity) {
+                    return Self::filtered_attack_sampling_inputs(entities, world, team);
+                }
+                if entity.runtime.team == team {
+                    skips.push(index);
+                }
+            }
+        }
+        (std::borrow::Cow::Borrowed(alive), skips)
+    }
+
+    #[cold]
+    fn filtered_attack_sampling_inputs<'a>(
+        entities: &EntityArena,
+        world: &'a WorldArena,
+        team: usize,
+    ) -> (std::borrow::Cow<'a, [EntityIdx]>, crate::rc4::PickSkipRange) {
+        let pool = Self::quilt_target_pool(entities, world);
+        let skips = pool
+            .iter()
+            .enumerate()
+            .filter_map(|(index, &id)| entities.get(id).is_some_and(|entity| entity.runtime.team == team).then_some(index))
+            .collect();
+        (pool, skips)
     }
 
     pub fn plain_smart_attack_score(world: &WorldArena, target: EntityIdx, runtime: &PlayerRuntime) -> f64 {
@@ -205,13 +218,8 @@ impl CombatRuntime {
         score: impl Fn(&mut Self, EntityIdx, bool) -> f64,
     ) -> PreparedTargetList {
         let team = self.plain_effective_team(actor);
-        let target_pool = Self::quilt_target_pool(&self.entities, &self.world);
+        let (target_pool, skips) = Self::attack_sampling_inputs(&self.entities, &self.world, team);
         let alive = target_pool.as_ref();
-        let skips = alive
-            .iter()
-            .enumerate()
-            .filter_map(|(index, &id)| self.entities.get(id).is_some_and(|entity| entity.runtime.team == team).then_some(index))
-            .collect::<crate::rc4::PickSkipRange>();
         let limit = if smart { 3 } else { 2 };
         #[cfg(feature = "no_debug")]
         if let Some(index) = skips.single_remaining_index(alive.len())

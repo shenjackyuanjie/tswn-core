@@ -1,6 +1,6 @@
 # tswn_core
 
-名字竞技场的 Rust 核心引擎。当前版本为 [0.7.2](CHANGELOG.md#072---2026-11-21)。
+名字竞技场的 Rust 核心引擎。当前版本为 [0.8.0](CHANGELOG.md#080---2026-11-26)。
 
 熟悉 namerena 的读者可以从 [项目与 core 原理指南](../../docs/core-guide/README.md) 开始，
 按角色构建、Runtime、战斗流程、hook 与交互层理解实现。Rust API 可通过
@@ -70,7 +70,7 @@ echo '<your raw input>' | ./target/release/tswn-cli fight
 `peach+toad`。固定同一阵容和 `-n` 时，`--single-thread` 和 `--thread 8` 使用
 同一批 seed，输出胜场数、计入统计的局数和胜率。对比不同构建的总耗时，使用同一份输入、
 场数和固定线程数。需要拆分初始化和战斗耗时时，再用 `--perf` 单独采集。
-批量路径的逐 seed 验证与测速口径见 [核心更新日志](CHANGELOG.md#固定阵容胜率)。
+`no_debug` 构建会在同一次遍历中推进多个空 tick，选敌时同步收集需要跳过的位置。批量路径的逐 seed 验证与测速口径见 [核心更新日志](CHANGELOG.md#固定阵容胜率优化)。
 
 ### 单挑 Rinick
 

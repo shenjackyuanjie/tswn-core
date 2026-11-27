@@ -27,10 +27,10 @@ pub enum Child {
 
 impl CombatRuntime {
     /// 本体是否为被子。
-    pub fn is_quilt(&self, idx: EntityIdx) -> bool {
-        self.entities
-            .get(idx)
-            .is_some_and(|e| e.template.name == ID && e.runtime.flags.contains(PlayerKindFlags::BOSS))
+    pub fn is_quilt(&self, idx: EntityIdx) -> bool { self.entities.get(idx).is_some_and(Self::is_quilt_entity) }
+
+    pub(in crate::runtime::combat) fn is_quilt_entity(entity: &EntityRecord) -> bool {
+        entity.runtime.flags.contains(PlayerKindFlags::BOSS) && entity.template.name == ID
     }
 
     /// 被子始终排除在敌方选敌之外，空场时仍可轮到本体召唤。
@@ -39,11 +39,7 @@ impl CombatRuntime {
     /// 选敌时排除被子，保留其在调度器和判胜中的存活记录。
     pub fn quilt_target_pool<'a>(entities: &EntityArena, world: &'a WorldArena) -> std::borrow::Cow<'a, [EntityIdx]> {
         let alive = world.flat_alive();
-        let visible = |idx| {
-            entities
-                .get(idx)
-                .is_none_or(|e| e.template.name != ID || !e.runtime.flags.contains(PlayerKindFlags::BOSS))
-        };
+        let visible = |idx| !entities.get(idx).is_some_and(Self::is_quilt_entity);
         if alive.iter().copied().all(visible) {
             std::borrow::Cow::Borrowed(alive)
         } else {

@@ -231,6 +231,53 @@ impl WorldArena {
         None
     }
 
+    /// 在一份不变的行动序列内推进多个 tick。空槽和已死亡实体不占预算。
+    #[cfg(feature = "no_debug")]
+    pub(super) fn advance_round_ticks<T>(
+        &mut self,
+        mut ticks: usize,
+        mut visit: impl FnMut(EntityIdx) -> Option<std::ops::ControlFlow<T>>,
+    ) -> Option<T> {
+        use std::ops::ControlFlow;
+
+        let len = self.round_order.len() as i32;
+        if len <= 0 || ticks == 0 {
+            return None;
+        }
+        let next = self.round_pos + 1;
+        let mut pos = if (0..len).contains(&next) {
+            next
+        } else if next == len {
+            0
+        } else {
+            next.rem_euclid(len)
+        };
+        let mut skipped = 0;
+        loop {
+            self.round_pos = pos;
+            match visit(self.round_order[pos as usize]) {
+                Some(ControlFlow::Break(result)) => return Some(result),
+                Some(ControlFlow::Continue(())) => {
+                    ticks -= 1;
+                    if ticks == 0 {
+                        return None;
+                    }
+                    skipped = 0;
+                }
+                None => {
+                    skipped += 1;
+                    if skipped == len {
+                        return None;
+                    }
+                }
+            }
+            pos += 1;
+            if pos == len {
+                pos = 0;
+            }
+        }
+    }
+
     /// 返回给定实体在扁平存活列表中遇到的第一个敌对队伍存活实体。
     pub fn first_alive_enemy(&self, actor: EntityIdx, entities: &EntityArena) -> Option<EntityIdx> {
         let actor_team = entities.get(actor)?.runtime.team;
@@ -529,6 +576,41 @@ mod tests {
         assert_eq!(world.sync_winner_from_alive_views(), Some(1));
         world.revive_alive(EntityIdx(0), 0);
         assert_eq!(world.sync_winner_from_alive_views(), None);
+    }
+
+    #[cfg(feature = "no_debug")]
+    #[test]
+    fn round_ticks_skip_empty_slots_and_keep_cyclic_position() {
+        use std::ops::ControlFlow;
+
+        let entities = EntityArena::from_templates(vec![
+            PlayerTemplate::new(1, "left", 0, 10, 3),
+            PlayerTemplate::new(2, "right", 1, 10, 3),
+        ]);
+        let mut world = WorldArena::from_entities(&entities);
+        world.append_round_actor(EntityIdx(9));
+        world.round_pos = -3;
+        let mut visited = Vec::new();
+        let selected = world.advance_round_ticks(2, |actor| {
+            visited.push(actor);
+            match actor {
+                EntityIdx(0) => Some(ControlFlow::Break(actor)),
+                EntityIdx(1) => Some(ControlFlow::Continue(())),
+                _ => None,
+            }
+        });
+        assert_eq!(selected, Some(EntityIdx(0)));
+        assert_eq!(visited, [EntityIdx(1), EntityIdx(9), EntityIdx(0)]);
+        assert_eq!(world.round_position(), 0);
+
+        visited.clear();
+        let selected: Option<()> = world.advance_round_ticks(2, |actor| {
+            visited.push(actor);
+            None
+        });
+        assert_eq!(selected, None);
+        assert_eq!(visited, [EntityIdx(1), EntityIdx(9), EntityIdx(0)]);
+        assert_eq!(world.round_position(), 0);
     }
 
     #[test]

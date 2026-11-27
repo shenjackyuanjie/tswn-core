@@ -6,7 +6,8 @@
 
 ## 当前状态
 
-- 核心 crate 当前版本为 `tswn_core 0.7.2`，补齐 Rinick 属性修改器，并对齐 Boss 联动与批量胜负。版本明细见 [核心更新日志](crates/tswn_core/CHANGELOG.md#072---2026-11-21)。
+- 核心 crate 当前版本为 `tswn_core 0.8.0`。版本明细见 [核心更新日志](crates/tswn_core/CHANGELOG.md#080---2026-11-26)。
+- 普通 1v1、2v2 的批量胜率计算合并了行动条推进和选敌中的重复遍历。逐 seed 对照覆盖 458,752 局。见 [固定阵容胜率优化](crates/tswn_core/CHANGELOG.md#固定阵容胜率优化)。
 - 固定阵容胜率批处理复用 seed 缓冲、队伍身份和场前状态。Boss 单挑按原版胜率模式逐场比较，覆盖 51,576,000 场。验证范围见 [胜率复查](docs/reviews/2026-11-21-boss-win-rate-parity.md)。
 - CLI 已覆盖普通对战、JSONL 流式日志、runtime diff 输出、benchmark、图标导出、DIY/OL overlay 导出等常用入口。
 - 仓库内同时维护 Python、WASM、C ABI、Openbox GUI/CLI，以及 `ds4` 数据处理与 `tswn-pwp` 胜率数据集/特征编码工具。

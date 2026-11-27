@@ -166,36 +166,8 @@ impl PhaseScheduler {
         // 保留的 ID 空洞不属于 roster，若把它们计入会让新生成的使魔或亡灵提前一帧行动。
         let max_ticks = world.roster_entity_count().max(1) * 4;
         #[cfg(feature = "no_debug")]
-        for _ in 0..max_ticks {
-            let (actor, should_act, ice_released) = world.next_round_actor_with(|actor| {
-                let entity = entities.get_mut(actor).filter(|entity| entity.runtime.alive)?;
-                let step_roll = (randomer.next_u8() & 3) as i32;
-                let speed = entity.effective_speed();
-                let move_points = entity.runtime.move_state.speed_points;
-                let (step, ice_released) = entity.states.apply_ice_pre_step(speed * step_roll, move_points);
-                if ice_released {
-                    // 原版先在解冻钩子内重算状态，再累计本步行动点。
-                    entity.apply_runtime_stats_from_template(true);
-                }
-                entity.runtime.move_state.speed_points += step;
-                let should_act = entity.runtime.move_state.speed_points > MOVE_POINT_THRESHOLD;
-                if should_act {
-                    entity.runtime.move_state.speed_points -= MOVE_POINT_THRESHOLD;
-                }
-                Some((actor, should_act, ice_released))
-            })?;
-            if ice_released {
-                self.ice_release_events.push(actor);
-                if !should_act {
-                    return None;
-                }
-            }
-            if should_act {
-                let target = world.first_alive_enemy(actor, entities)?;
-                let amount = entities.get(actor).map_or(0, |entity| entity.template.attack);
-                return Some(ActionPlan { actor, target, amount });
-            }
-        }
+        return self.select_legacy_action(world, entities, randomer, max_ticks);
+
         #[cfg(not(feature = "no_debug"))]
         for _ in 0..max_ticks {
             let actor = world.next_actor(entities)?;
@@ -275,7 +247,63 @@ impl PhaseScheduler {
             let amount = entities.get(actor).map_or(0, |entity| entity.template.attack);
             return Some(ActionPlan { actor, target, amount });
         }
+        #[cfg(not(feature = "no_debug"))]
         None
+    }
+
+    #[cfg(feature = "no_debug")]
+    fn select_legacy_action(
+        &mut self,
+        world: &mut WorldArena,
+        entities: &mut EntityArena,
+        randomer: &mut RC4,
+        max_ticks: usize,
+    ) -> Option<ActionPlan> {
+        use std::ops::ControlFlow;
+
+        let (actor, should_act, ice_released) = world.advance_round_ticks(max_ticks, |actor| {
+            let entity = entities.get_mut(actor).filter(|entity| entity.runtime.alive)?;
+            let roll = i32::from(randomer.next_u8() & 3);
+            let (step, ice_released) =
+                if entity.states.has_scheduler_states() || entity.runtime.rosmontic.is_some() || entity.runtime.upgrade_active {
+                    Self::step_with_scheduler_state(entity, roll)
+                } else {
+                    (entity.template.speed * roll, false)
+                };
+            let points = &mut entity.runtime.move_state.speed_points;
+            *points += step;
+            let should_act = *points > MOVE_POINT_THRESHOLD;
+            if should_act {
+                *points -= MOVE_POINT_THRESHOLD;
+            }
+            if should_act || ice_released {
+                Some(ControlFlow::Break((actor, should_act, ice_released)))
+            } else {
+                Some(ControlFlow::Continue(()))
+            }
+        })?;
+        if ice_released {
+            self.ice_release_events.push(actor);
+        }
+        if !should_act {
+            return None;
+        }
+        let target = world.first_alive_enemy(actor, entities)?;
+        let amount = entities.get(actor).map_or(0, |entity| entity.template.attack);
+        Some(ActionPlan { actor, target, amount })
+    }
+
+    /// 保留速度修正和解冻时的重算时序，普通 tick 直接使用模板速度。
+    #[cfg(feature = "no_debug")]
+    #[cold]
+    #[inline(never)]
+    fn step_with_scheduler_state(entity: &mut crate::runtime::EntityRecord, roll: i32) -> (i32, bool) {
+        let speed = entity.effective_speed();
+        let (step, released) = entity.states.apply_ice_pre_step(speed * roll, entity.runtime.move_state.speed_points);
+        if released {
+            entity.apply_runtime_stats_from_template(true);
+        }
+        (step, released)
     }
 
     /// 最小模式选行动：下一行动者攻击其首个存活敌人。

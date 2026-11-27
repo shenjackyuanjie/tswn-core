@@ -134,6 +134,9 @@ impl PartialEq for StateStore {
 impl Eq for StateStore {}
 
 impl StateStore {
+    #[cfg(feature = "no_debug")]
+    pub(in crate::runtime) fn has_scheduler_states(&self) -> bool { self.scheduler_state_flags != 0 }
+
     pub fn model_compressed_flags(&self) -> u8 { self.compressed_legacy_states }
 
     /// 按登记顺序返回状态条目。
