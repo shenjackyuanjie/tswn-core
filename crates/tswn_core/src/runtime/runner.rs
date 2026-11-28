@@ -748,7 +748,11 @@ impl PreparedRuntimeRunner {
     ///
     /// 返回值已带空 seed 的初始状态；需要特定 seed 时，在推进前调用
     /// [`Self::reset_with_seed`]。不要让多个 worker 共享同一个可变 runner。
-    pub fn new_reusable_runner(&self) -> RuntimeRunner { self.prototype.clone() }
+    pub fn new_reusable_runner(&self) -> RuntimeRunner {
+        let mut runner = self.prototype.clone();
+        runner.runtime.entities.isolate_worker_skill_layouts();
+        runner
+    }
 
     /// 从同一准备模板恢复下一局，保留可复用容器容量并应用本场 seed。
     ///

@@ -1116,6 +1116,13 @@ impl EntityArena {
         idx
     }
 
+    /// 让该 worker 独占首发技能布局，分身仍可在同一 worker 内共享。
+    pub fn isolate_worker_skill_layouts(&mut self) {
+        for entity in self.entities.iter_mut().flatten() {
+            entity.template.skills.isolate_worker_layout();
+        }
+    }
+
     /// 遍历现有实体及其下标，跳过空槽。
     pub fn iter(&self) -> impl Iterator<Item = (EntityIdx, &EntityRecord)> {
         self.entities
