@@ -25,6 +25,7 @@ use crate::rc4::RC4;
 use crate::time::Stopwatch;
 use crate::win_rate::{WinRateTiming, resolve_win_rate_workers};
 
+use super::prepared_init::PreparedBattleSeed;
 use super::{
     CustomRuntimeImportError, DefaultCustomRuntimeProfileError, PreparedRuntimeRunner, RuntimeRunner, ScoreIdentityBuffer,
     ScoreRosterBuffers, ScoreRoundScratch, SkillLoadout, default_custom_runtime_import_config,
@@ -45,6 +46,7 @@ struct WinRateSeedScratch {
     seed: String,
     keys: [String; WIN_RATE_SEED_BATCH],
     profile_keys: Option<ProfileSeedKeys>,
+    small_team_seeds: Option<Box<[PreparedBattleSeed; WIN_RATE_SEED_BATCH]>>,
 }
 
 impl WinRateSeedScratch {
@@ -65,6 +67,8 @@ impl WinRateSeedScratch {
             seed: String::new(),
             keys: Default::default(),
             profile_keys,
+            small_team_seeds: (rounds >= WIN_RATE_SEED_BATCH && prepared.battle_roster.has_small_team_identity_keys())
+                .then(|| Box::new(std::array::from_fn(|_| prepared.battle_roster.new_seed_state()))),
         }
     }
 
@@ -114,6 +118,7 @@ impl ProfileSeedKeys {
 enum WinRateSeed<'a> {
     Text(&'a [String]),
     PreparedRng(&'a crate::rc4::RC4),
+    PreparedState(&'a mut PreparedBattleSeed),
 }
 
 /// 一批对局的累计统计；比例以 `total` 为分母，不包含初始化失败的轮次。
@@ -455,12 +460,21 @@ fn run_prepared_chunk<const TIMED: bool>(
         let init_started = TIMED.then(Stopwatch::now);
         let rngs = seed_scratch.prepare_rngs(prepared, rounds.start);
         rounds.start += WIN_RATE_SEED_BATCH;
-        if let Some(init_started) = init_started {
-            summary.timing.init_nanos += init_started.elapsed_nanos();
-        }
-
-        for rng in &rngs {
-            run_prepared_round::<TIMED>(prepared, runner, summary, WinRateSeed::PreparedRng(rng))?;
+        if let Some(states) = &mut seed_scratch.small_team_seeds {
+            prepared.battle_roster.refill_small_team_seed_batch(states, rngs);
+            if let Some(init_started) = init_started {
+                summary.timing.init_nanos += init_started.elapsed_nanos();
+            }
+            for state in states.iter_mut() {
+                run_prepared_round::<TIMED>(prepared, runner, summary, WinRateSeed::PreparedState(state))?;
+            }
+        } else {
+            if let Some(init_started) = init_started {
+                summary.timing.init_nanos += init_started.elapsed_nanos();
+            }
+            for rng in &rngs {
+                run_prepared_round::<TIMED>(prepared, runner, summary, WinRateSeed::PreparedRng(rng))?;
+            }
         }
     }
     for round in rounds {
@@ -483,6 +497,7 @@ fn run_prepared_round<const TIMED: bool>(
     match seed {
         WinRateSeed::Text(seed) => prepared.reset_with_seed(runner, seed)?,
         WinRateSeed::PreparedRng(rng) => prepared.reset_with_seed_rng(runner, rng.clone())?,
+        WinRateSeed::PreparedState(state) => prepared.reset_with_prepared_seed(runner, state)?,
     }
     if let Some(init_started) = init_started {
         summary.timing.init_nanos += init_started.elapsed_nanos();
@@ -984,13 +999,16 @@ mod chunk_regressions {
         let mut seed_scratch = WinRateSeedScratch::new(&prepared, WIN_RATE_SEED_BATCH);
         let carry = 100_000_000 - crate::runtime::PROFILE_START as usize;
         for start in [0, 1, 7, carry - WIN_RATE_SEED_BATCH, carry - 1, carry] {
-            let mut rngs = seed_scratch.prepare_rngs(&prepared, start).into_iter();
+            let rngs = seed_scratch.prepare_rngs(&prepared, start);
+            let states = seed_scratch.small_team_seeds.as_deref_mut().expect("2v2 应启用交错开局准备");
+            prepared.battle_roster.refill_small_team_seed_batch(states, rngs);
+            let mut seeds = states.iter_mut();
             let end = start + WIN_RATE_SEED_BATCH + 3;
             let mut expected = RuntimeBatchSummary::default();
             for round in start..end {
                 prepared.reset_with_seed(&mut scalar, profile_seed_for_round(&mut seed, round)).unwrap();
-                let batched_result = rngs.next().map(|rng| {
-                    prepared.reset_with_seed_rng(&mut batched, rng).unwrap();
+                let batched_result = seeds.next().map(|state| {
+                    prepared.reset_with_prepared_seed(&mut batched, state).unwrap();
                     assert_eq!(batched.input_groups(), scalar.input_groups(), "round={round}");
                     let expected_rng = &scalar.runtime().rng;
                     let actual_rng = &batched.runtime().rng;

@@ -66,16 +66,22 @@ struct EffectiveActionWeights {
     adjustment: Option<Vec<(usize, EffectiveSkillWeight)>>,
 }
 
+/// 分身和首发模板可共享固定槽位。修改阵容或重填 score profile 时按需分离。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct SkillLayout {
+    skills: SmallVec<[SkillId; 8]>,
+    fixed_lane_keys: SmallVec<[usize; 8]>,
+    merge_lane_order: SmallVec<[usize; 8]>,
+}
+
 #[derive(Debug, Clone)]
 /// 一份技能配置及其运行期变动；handler 函数由 registry ID 另行绑定。
 pub struct SkillLoadout {
-    skills: SmallVec<[SkillId; 8]>,
+    layout: Arc<SkillLayout>,
     levels: SmallVec<[u32; 8]>,
     build_levels: SmallVec<[u32; 8]>,
     boosts: SmallVec<[Option<SkillBoost>; 8]>,
     boosted: SmallVec<[bool; 8]>,
-    fixed_lane_keys: SmallVec<[usize; 8]>,
-    merge_lane_order: SmallVec<[usize; 8]>,
     active_order: SmallVec<[usize; 8]>,
     pre_action_order: SmallVec<[usize; 8]>,
     post_damage_order: SmallVec<[usize; 8]>,
@@ -102,13 +108,11 @@ impl Default for SkillLoadout {
     /// 空技能表：无技能与缓存，基线编号新建，启用掩码保守置为全量。
     fn default() -> Self {
         Self {
-            skills: SmallVec::new(),
+            layout: Arc::default(),
             levels: SmallVec::new(),
             build_levels: SmallVec::new(),
             boosts: SmallVec::new(),
             boosted: SmallVec::new(),
-            fixed_lane_keys: SmallVec::new(),
-            merge_lane_order: SmallVec::new(),
             active_order: SmallVec::new(),
             pre_action_order: SmallVec::new(),
             post_damage_order: SmallVec::new(),
@@ -130,13 +134,11 @@ impl Default for SkillLoadout {
 impl PartialEq for SkillLoadout {
     /// 语义相等：只比较技能、等级、强化与权重等数据字段，忽略 hook 缓存等纯派生内容。
     fn eq(&self, other: &Self) -> bool {
-        self.skills == other.skills
+        self.layout == other.layout
             && self.levels == other.levels
             && self.build_levels == other.build_levels
             && self.boosts == other.boosts
             && self.boosted == other.boosted
-            && self.fixed_lane_keys == other.fixed_lane_keys
-            && self.merge_lane_order == other.merge_lane_order
             && self.active_order == other.active_order
             && self.pre_action_order == other.pre_action_order
             && self.post_damage_order == other.post_damage_order
@@ -160,13 +162,15 @@ impl SkillLoadout {
         let active_order = (0..skills.len()).collect();
         let post_damage_order = (0..skills.len()).collect();
         Self {
-            skills,
+            layout: Arc::new(SkillLayout {
+                skills,
+                fixed_lane_keys,
+                merge_lane_order,
+            }),
             levels,
             build_levels,
             boosts,
             boosted,
-            fixed_lane_keys,
-            merge_lane_order,
             active_order,
             pre_action_order: SmallVec::new(),
             post_damage_order,
@@ -195,13 +199,15 @@ impl SkillLoadout {
         let active_order = (0..skills.len()).collect();
         let post_damage_order = (0..skills.len()).collect();
         Self {
-            skills,
+            layout: Arc::new(SkillLayout {
+                skills,
+                fixed_lane_keys,
+                merge_lane_order,
+            }),
             levels,
             build_levels,
             boosts,
             boosted,
-            fixed_lane_keys,
-            merge_lane_order,
             active_order,
             pre_action_order: SmallVec::new(),
             post_damage_order,
@@ -243,13 +249,15 @@ impl SkillLoadout {
         let active_order = (0..skill_ids.len()).collect();
         let post_damage_order = (0..skill_ids.len()).collect();
         Self {
-            skills: skill_ids,
+            layout: Arc::new(SkillLayout {
+                skills: skill_ids,
+                fixed_lane_keys,
+                merge_lane_order,
+            }),
             levels,
             build_levels,
             boosts,
             boosted,
-            fixed_lane_keys,
-            merge_lane_order,
             active_order,
             pre_action_order: SmallVec::new(),
             post_damage_order,
@@ -280,13 +288,14 @@ impl SkillLoadout {
     ) {
         self.invalidate_hook_cache();
         self.effective_skill_weights = None;
-        self.skills.clear();
+        let layout = Arc::make_mut(&mut self.layout);
+        layout.skills.clear();
         self.levels.clear();
         self.build_levels.clear();
         self.boosts.clear();
         self.boosted.clear();
-        self.fixed_lane_keys.clear();
-        self.merge_lane_order.clear();
+        layout.fixed_lane_keys.clear();
+        layout.merge_lane_order.clear();
         self.active_order.clear();
         self.pre_action_order.clear();
         self.post_damage_order.clear();
@@ -297,15 +306,15 @@ impl SkillLoadout {
             let Some(skill_id) = skill_ids[key] else {
                 continue;
             };
-            let lane = self.skills.len();
+            let lane = layout.skills.len();
             lane_by_key[key] = lane;
-            self.skills.push(skill_id);
+            layout.skills.push(skill_id);
             self.levels.push(levels[key]);
             self.build_levels.push(boosts[key].as_ref().map_or(levels[key], SkillBoost::base_level));
             self.boosts.push(boosts[key].clone());
             self.boosted.push(boosted[key]);
-            self.fixed_lane_keys.push(key);
-            self.merge_lane_order.push(lane);
+            layout.fixed_lane_keys.push(key);
+            layout.merge_lane_order.push(lane);
         }
 
         let mut active_position_by_key = [usize::MAX; 35];
@@ -361,6 +370,9 @@ impl SkillLoadout {
         self.hook_generation = 0;
     }
 
+    /// 每个 worker 独立持有基线，分身共享只在同一 worker 增减引用。
+    pub fn isolate_worker_layout(&mut self) { Arc::make_mut(&mut self.layout); }
+
     /// 将当前技能表封为可复用 runner 的场前基线。
     pub fn mark_battle_baseline(&mut self) {
         self.battle_dirty = 0;
@@ -378,9 +390,9 @@ impl SkillLoadout {
             return;
         }
 
-        debug_assert_eq!(self.skills, prepared.skills);
-        debug_assert_eq!(self.fixed_lane_keys, prepared.fixed_lane_keys);
-        debug_assert_eq!(self.merge_lane_order, prepared.merge_lane_order);
+        debug_assert_eq!(self.layout.skills, prepared.layout.skills);
+        debug_assert_eq!(self.layout.fixed_lane_keys, prepared.layout.fixed_lane_keys);
+        debug_assert_eq!(self.layout.merge_lane_order, prepared.layout.merge_lane_order);
         if dirty & SKILL_DIRTY_LEVELS != 0 {
             self.levels.clone_from(&prepared.levels);
         }
@@ -419,7 +431,7 @@ impl SkillLoadout {
 
     /// 召唤实体沿用已准备的缓存；外部模板的技能全部登记后才构建缓存。
     pub fn prepare_registered_hook_cache(&mut self, registry: &ExtensionRegistry) {
-        if !self.hook_cache_ready && self.skills.iter().all(|&id| registry.skill(id).is_some()) {
+        if !self.hook_cache_ready && self.layout.skills.iter().all(|&id| registry.skill(id).is_some()) {
             self.prepare_hook_cache(registry);
         }
     }
@@ -434,6 +446,7 @@ impl SkillLoadout {
         let mut action_cache_supported = true;
         for (active_order, &fixed_lane) in self.active_order.iter().enumerate() {
             let skill_id = *self
+                .layout
                 .skills
                 .get(fixed_lane)
                 .unwrap_or_else(|| panic!("runtime skill active order references missing lane: {fixed_lane}"));
@@ -541,7 +554,7 @@ impl SkillLoadout {
     }
 
     /// 按固定 lane 排列的技能 ID。
-    pub fn skills(&self) -> &[SkillId] { &self.skills }
+    pub fn skills(&self) -> &[SkillId] { &self.layout.skills }
 
     /// 各固定 lane 的当前等级。
     pub fn levels(&self) -> &[u32] { &self.levels }
@@ -559,10 +572,10 @@ impl SkillLoadout {
     pub fn boosted_at(&self, fixed_lane: usize) -> Option<bool> { self.boosted.get(fixed_lane).copied() }
 
     /// 指定 lane 的固定键（legacy 兼容编号）；越界返回 None。
-    pub fn fixed_lane_key_at(&self, fixed_lane: usize) -> Option<usize> { self.fixed_lane_keys.get(fixed_lane).copied() }
+    pub fn fixed_lane_key_at(&self, fixed_lane: usize) -> Option<usize> { self.layout.fixed_lane_keys.get(fixed_lane).copied() }
 
     /// 吞噬配对使用的 lane 顺序。
-    pub fn merge_lane_order(&self) -> &[usize] { &self.merge_lane_order }
+    pub fn merge_lane_order(&self) -> &[usize] { &self.layout.merge_lane_order }
 
     /// 设置当前等级；等级进出 0 时刷新 hook 启用掩码，lane 越界返回 false。
     pub fn set_level_at(&mut self, fixed_lane: usize, level: u32) -> bool {
@@ -595,7 +608,7 @@ impl SkillLoadout {
                 entries: weights
                     .iter()
                     .filter_map(|&(key, weight)| {
-                        let lane = self.fixed_lane_keys.iter().position(|&candidate| candidate == key)?;
+                        let lane = self.layout.fixed_lane_keys.iter().position(|&candidate| candidate == key)?;
                         let level = self.levels[lane];
                         (level > 0 && weight.value() > 0.0).then_some((lane, level, weight))
                     })
@@ -605,7 +618,7 @@ impl SkillLoadout {
                     adjustment
                         .iter()
                         .filter_map(|&(key, cut)| {
-                            let lane = self.fixed_lane_keys.iter().position(|&candidate| candidate == key)?;
+                            let lane = self.layout.fixed_lane_keys.iter().position(|&candidate| candidate == key)?;
                             Some((lane, cut))
                         })
                         .collect()
@@ -661,10 +674,10 @@ impl SkillLoadout {
     pub const fn hook_generation(&self) -> u32 { self.hook_generation }
 
     /// 是否没有任何技能。
-    pub fn is_empty(&self) -> bool { self.skills.is_empty() }
+    pub fn is_empty(&self) -> bool { self.layout.skills.is_empty() }
 
     /// 技能数量，即固定 lane 数。
-    pub fn len(&self) -> usize { self.skills.len() }
+    pub fn len(&self) -> usize { self.layout.skills.len() }
 
     /// 按各 lane 的强化类型重建一套克隆等级，供分身使用。
     pub fn rebuilt_for_clone(&self) -> Self {
@@ -695,7 +708,7 @@ impl SkillLoadout {
         let mut clone = self.clone();
         let mut eligibility_changed = false;
         for lane in 0..clone.levels.len() {
-            let key = clone.fixed_lane_keys[lane];
+            let key = clone.layout.fixed_lane_keys[lane];
             clone.levels[lane] = self.build_levels[lane].min(self.levels[lane]);
             eligibility_changed |= self.levels[lane] > 0 && clone.levels[lane] == 0;
             clone.boosts[lane] = None;
@@ -707,7 +720,7 @@ impl SkillLoadout {
             .iter()
             .rev()
             .copied()
-            .find(|lane| clone.fixed_lane_keys[*lane] < 25 && clone.levels[*lane] > 0 && !clone.boosted[*lane])
+            .find(|lane| clone.layout.fixed_lane_keys[*lane] < 25 && clone.levels[*lane] > 0 && !clone.boosted[*lane])
         {
             let base = clone.levels[lane];
             clone.levels[lane] = base.saturating_mul(2);
@@ -717,7 +730,7 @@ impl SkillLoadout {
 
         for &(key, max_boost) in plan.slot_boosts.iter().flatten() {
             let key = usize::from(key);
-            let Some(lane) = clone.fixed_lane_keys.iter().position(|candidate| *candidate == key) else {
+            let Some(lane) = clone.layout.fixed_lane_keys.iter().position(|candidate| *candidate == key) else {
                 continue;
             };
             if clone.levels[lane] == 0 || clone.boosted[lane] {
@@ -757,7 +770,7 @@ impl SkillLoadout {
         self.active_order = active_order.into_iter().collect();
         self.invalidate_hook_cache();
         assert!(
-            self.active_order.iter().all(|idx| *idx < self.skills.len()),
+            self.active_order.iter().all(|idx| *idx < self.layout.skills.len()),
             "runtime skill active order must reference existing fixed lanes"
         );
         self
@@ -767,7 +780,7 @@ impl SkillLoadout {
     pub fn with_pre_action_order(mut self, pre_action_order: impl IntoIterator<Item = usize>) -> Self {
         self.pre_action_order = pre_action_order.into_iter().collect();
         assert!(
-            self.pre_action_order.iter().all(|idx| *idx < self.skills.len()),
+            self.pre_action_order.iter().all(|idx| *idx < self.layout.skills.len()),
             "runtime skill pre-action order must reference existing fixed lanes"
         );
         self
@@ -777,7 +790,7 @@ impl SkillLoadout {
     pub fn with_post_damage_order(mut self, post_damage_order: impl IntoIterator<Item = usize>) -> Self {
         self.post_damage_order = post_damage_order.into_iter().collect();
         assert!(
-            self.post_damage_order.iter().all(|idx| *idx < self.skills.len()),
+            self.post_damage_order.iter().all(|idx| *idx < self.layout.skills.len()),
             "runtime skill post-damage order must reference existing fixed lanes"
         );
         self
@@ -787,7 +800,7 @@ impl SkillLoadout {
     pub fn with_post_action_after_states(mut self, post_action_after_states: impl IntoIterator<Item = (u64, usize)>) -> Self {
         self.post_action_after_states = post_action_after_states.into_iter().collect();
         assert!(
-            self.post_action_after_states.iter().all(|(_, idx)| *idx < self.skills.len()),
+            self.post_action_after_states.iter().all(|(_, idx)| *idx < self.layout.skills.len()),
             "runtime deferred post-action order must reference existing fixed lanes"
         );
         self.post_action_after_states.sort_by_key(|(cursor, _)| *cursor);
@@ -797,7 +810,7 @@ impl SkillLoadout {
     /// 登记一个延后 POST_ACTION 条目；同一 lane 重复登记被忽略。
     pub fn register_post_action_after_states(&mut self, fixed_lane: usize, state_order_cursor: u64) {
         assert!(
-            fixed_lane < self.skills.len(),
+            fixed_lane < self.layout.skills.len(),
             "runtime deferred post-action order must reference an existing fixed lane"
         );
         if self.post_action_after_states.iter().any(|(_, lane)| *lane == fixed_lane) {
@@ -811,7 +824,7 @@ impl SkillLoadout {
     /// 确保指定 lane 出现在 PRE_ACTION 顺序中。
     pub fn ensure_pre_action_lane(&mut self, fixed_lane: usize) {
         assert!(
-            fixed_lane < self.skills.len(),
+            fixed_lane < self.layout.skills.len(),
             "runtime skill pre-action order must reference existing fixed lanes"
         );
         if !self.pre_action_order.contains(&fixed_lane) {
@@ -831,10 +844,10 @@ impl SkillLoadout {
 
     /// 设置固定键；长度必须与技能数一致，否则 panic。
     pub fn with_fixed_lane_keys(mut self, fixed_lane_keys: impl IntoIterator<Item = usize>) -> Self {
-        self.fixed_lane_keys = fixed_lane_keys.into_iter().collect();
+        Arc::make_mut(&mut self.layout).fixed_lane_keys = fixed_lane_keys.into_iter().collect();
         assert_eq!(
-            self.fixed_lane_keys.len(),
-            self.skills.len(),
+            self.layout.fixed_lane_keys.len(),
+            self.layout.skills.len(),
             "runtime fixed lane keys must match skill loadout length"
         );
         self
@@ -845,7 +858,7 @@ impl SkillLoadout {
         self.boosted = boosted.into_iter().collect();
         assert_eq!(
             self.boosted.len(),
-            self.skills.len(),
+            self.layout.skills.len(),
             "runtime boosted flags must match skill loadout length"
         );
         self
@@ -854,7 +867,7 @@ impl SkillLoadout {
     /// 复刻 legacy `boost_last()`：从行动顺序末尾寻找首个未强化的正等级技能。
     pub fn boost_last_active_except_key(&mut self, excluded_fixed_key: usize) -> bool {
         for &lane in self.active_order.iter().rev() {
-            if self.fixed_lane_keys[lane] == excluded_fixed_key || self.levels[lane] == 0 || self.boosted[lane] {
+            if self.layout.fixed_lane_keys[lane] == excluded_fixed_key || self.levels[lane] == 0 || self.boosted[lane] {
                 continue;
             }
             let base = self.levels[lane];
@@ -870,9 +883,9 @@ impl SkillLoadout {
 
     /// 设置吞噬配对顺序；引用不存在的 lane 会 panic。
     pub fn with_merge_lane_order(mut self, merge_lane_order: impl IntoIterator<Item = usize>) -> Self {
-        self.merge_lane_order = merge_lane_order.into_iter().collect();
+        Arc::make_mut(&mut self.layout).merge_lane_order = merge_lane_order.into_iter().collect();
         assert!(
-            self.merge_lane_order.iter().all(|idx| *idx < self.skills.len()),
+            self.layout.merge_lane_order.iter().all(|idx| *idx < self.layout.skills.len()),
             "runtime merge lane order must reference existing fixed lanes"
         );
         self
@@ -885,13 +898,14 @@ impl SkillLoadout {
             MergePolicy::FixedLane | MergePolicy::FixedLaneHalfResources => {
                 // legacy 的 Merge 只会按双方 `slot_skill` 的位置配对；store 中额外注册的
                 // 分摊伤害等技能不属于固定槽位，不能挤进普通技能槽位。
-                self.merge_slot_levels_from(source.merge_lane_order.iter().map(|&lane| source.levels[lane]))
+                self.merge_slot_levels_from(source.layout.merge_lane_order.iter().map(|&lane| source.levels[lane]))
             }
             MergePolicy::DropUnmappedSkills => {
                 let mut changed = false;
                 for owner_idx in 0..self.levels.len() {
-                    let fixed_lane_key = self.fixed_lane_keys[owner_idx];
-                    let Some(source_idx) = source.fixed_lane_keys.iter().position(|source_key| *source_key == fixed_lane_key)
+                    let fixed_lane_key = self.layout.fixed_lane_keys[owner_idx];
+                    let Some(source_idx) =
+                        source.layout.fixed_lane_keys.iter().position(|source_key| *source_key == fixed_lane_key)
                     else {
                         continue;
                     };
@@ -905,8 +919,8 @@ impl SkillLoadout {
     /// 按固定槽位顺序合并来源等级，双方都存在的槽位才参与比较。
     pub fn merge_slot_levels_from(&mut self, source_levels: impl IntoIterator<Item = u32>) -> bool {
         let mut changed = false;
-        for (position, level) in source_levels.into_iter().take(self.merge_lane_order.len()).enumerate() {
-            changed |= self.merge_level_at(self.merge_lane_order[position], level);
+        for (position, level) in source_levels.into_iter().take(self.layout.merge_lane_order.len()).enumerate() {
+            changed |= self.merge_level_at(self.layout.merge_lane_order[position], level);
         }
         changed
     }

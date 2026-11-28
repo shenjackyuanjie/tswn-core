@@ -10,6 +10,41 @@ enum PostActionPriority {
     Infinity,
 }
 
+/// 概率抽样规则在执行前分类，普通技能可以直接消耗一个概率字节。
+#[derive(Clone, Copy)]
+enum ActionRollRule {
+    Standard,
+    Charge,
+    Absorb,
+    Iron,
+    Accumulate,
+    Assassinate,
+    Summon,
+    Shadow,
+    WeaponS11,
+    WeaponDeathNote,
+    WeaponXuanYue,
+}
+
+impl ActionRollRule {
+    #[inline]
+    fn for_skill(skill: BuiltinActiveSkill, smart: bool) -> Self {
+        match skill {
+            BuiltinActiveSkill::Charge => Self::Charge,
+            BuiltinActiveSkill::Absorb if smart => Self::Absorb,
+            BuiltinActiveSkill::Iron => Self::Iron,
+            BuiltinActiveSkill::Accumulate => Self::Accumulate,
+            BuiltinActiveSkill::Assassinate if smart => Self::Assassinate,
+            BuiltinActiveSkill::Summon => Self::Summon,
+            BuiltinActiveSkill::Shadow if smart => Self::Shadow,
+            BuiltinActiveSkill::WeaponS11 => Self::WeaponS11,
+            BuiltinActiveSkill::WeaponDeathNote => Self::WeaponDeathNote,
+            BuiltinActiveSkill::WeaponXuanYue => Self::WeaponXuanYue,
+            _ => Self::Standard,
+        }
+    }
+}
+
 /// 卡牌兼容模式的降级战报；前端按这句话判断「点名的技能没生效」。
 pub const FORCED_FALLBACK_MESSAGE: &str = "[1]的指定技能无法生效，改为普通攻击";
 
@@ -429,14 +464,20 @@ impl CombatRuntime {
         }
         let mut skill_plans = self.scheduler.skill_post_action_plans(skills, &self.registry, owner);
         self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, &skill_plans.early, updates);
-        let skills_after_early = &self
+        let owner_entity = self
             .entities
             .get(owner)
-            .unwrap_or_else(|| panic!("unknown runtime post-action owner entity: {}", owner.0))
-            .template
-            .skills;
+            .unwrap_or_else(|| panic!("unknown runtime post-action owner entity: {}", owner.0));
+        let skills_after_early = &owner_entity.template.skills;
         if skills_after_early.hook_generation() != skill_plans.generation {
             skill_plans = self.scheduler.skill_post_action_plans(skills_after_early, &self.registry, owner);
+        }
+        // 早段技能可能登记状态或修改技能。使用执行后的视图判断后续阶段是否为空。
+        if skill_plans.deferred.is_empty()
+            && skill_plans.late.is_empty()
+            && !owner_entity.states.hook_mask().intersects(ProcMask::POST_ACTION)
+        {
+            return;
         }
 
         enum PostActionHook {
@@ -445,7 +486,6 @@ impl CombatRuntime {
         }
 
         let state_plan = self.scheduler.state_hook_plan(&self.entities, owner, ProcMask::POST_ACTION);
-        let owner_entity = self.entities.get(owner).expect("runtime post-action owner missing");
         let charge = if owner_entity.runtime.charge.post_action_active {
             self.registry.skill_id_by_export_name(BuiltinActiveSkill::Charge.export_name())
         } else {
@@ -1870,10 +1910,27 @@ impl CombatRuntime {
 
     /// 行动抽样准入门槛：按技能类型检查当前是否允许尝试，如蓄力、吸收、钢铁、蓄劲、暗杀与召唤各有 gate。
     fn plain_action_skill_allowed(&self, actor: EntityIdx, builtin_skill: BuiltinActiveSkill, _level: u32, smart: bool) -> bool {
+        self.action_roll_gate(
+            actor,
+            builtin_skill,
+            ActionRollRule::for_skill(builtin_skill, smart),
+            _level,
+            smart,
+        )
+    }
+
+    fn action_roll_gate(
+        &self,
+        actor: EntityIdx,
+        _builtin_skill: BuiltinActiveSkill,
+        rule: ActionRollRule,
+        _level: u32,
+        smart: bool,
+    ) -> bool {
         #[cfg(not(feature = "no_debug"))]
         let probe_action = self.probe_plain_action_matches(actor);
-        match builtin_skill {
-            BuiltinActiveSkill::Charge => {
+        match rule {
+            ActionRollRule::Charge => {
                 let actor_runtime = &self
                     .entities
                     .get(actor)
@@ -1886,7 +1943,7 @@ impl CombatRuntime {
                             "[action_probe:runtime:prob] actor={} skill={} level={} smart={} skipped=charge_gate active={} hp={} \
                          rc4=({}, {})",
                             actor.0,
-                            builtin_skill.export_name(),
+                            _builtin_skill.export_name(),
                             _level,
                             smart,
                             actor_runtime.charge.active,
@@ -1898,7 +1955,7 @@ impl CombatRuntime {
                     return false;
                 }
             }
-            BuiltinActiveSkill::Absorb if smart => {
+            ActionRollRule::Absorb => {
                 let actor_entity = self
                     .entities
                     .get(actor)
@@ -1910,7 +1967,7 @@ impl CombatRuntime {
                             "[action_probe:runtime:prob] actor={} skill={} level={} smart={} skipped=absorb_low_missing_hp \
                          hp={} max_hp={} rc4=({}, {})",
                             actor.0,
-                            builtin_skill.export_name(),
+                            _builtin_skill.export_name(),
                             _level,
                             smart,
                             actor_entity.runtime.hp,
@@ -1922,7 +1979,7 @@ impl CombatRuntime {
                     return false;
                 }
             }
-            BuiltinActiveSkill::Iron => {
+            ActionRollRule::Iron => {
                 if self
                     .entities
                     .get(actor)
@@ -1933,7 +1990,7 @@ impl CombatRuntime {
                     return false;
                 }
             }
-            BuiltinActiveSkill::Accumulate => {
+            ActionRollRule::Accumulate => {
                 let actor_runtime = &self
                     .entities
                     .get(actor)
@@ -1946,7 +2003,7 @@ impl CombatRuntime {
                             "[action_probe:runtime:prob] actor={} skill={} level={} smart={} skipped=accumulate_gate \
                          active={} hp={} rc4=({}, {})",
                             actor.0,
-                            builtin_skill.export_name(),
+                            _builtin_skill.export_name(),
                             _level,
                             smart,
                             actor_runtime.accumulate.active,
@@ -1958,7 +2015,7 @@ impl CombatRuntime {
                     return false;
                 }
             }
-            BuiltinActiveSkill::Assassinate if smart => {
+            ActionRollRule::Assassinate => {
                 if self.entities.get(actor).is_some_and(|entity| {
                     entity
                         .states
@@ -1969,13 +2026,13 @@ impl CombatRuntime {
                     return false;
                 }
             }
-            BuiltinActiveSkill::Summon => {
+            ActionRollRule::Summon => {
                 if !self.plain_summon_probability_allowed(actor, smart) {
                     return false;
                 }
             }
             // 影袭在智能模式且 HP < 80 时短路，不消耗概率字节。
-            BuiltinActiveSkill::Shadow if smart => {
+            ActionRollRule::Shadow => {
                 if self
                     .entities
                     .get(actor)
@@ -1989,7 +2046,7 @@ impl CombatRuntime {
                         eprintln!(
                             "[action_probe:runtime:prob] actor={} skill={} level={} smart={} skipped=shadow_low_hp rc4=({}, {})",
                             actor.0,
-                            builtin_skill.export_name(),
+                            _builtin_skill.export_name(),
                             _level,
                             smart,
                             self.rng.i,
@@ -2016,12 +2073,17 @@ impl CombatRuntime {
         let level = self.card_skill_level(actor, builtin_skill, level);
         #[cfg(not(feature = "no_debug"))]
         let probe_action = self.probe_plain_action_matches(actor);
-        if !self.plain_action_skill_allowed(actor, builtin_skill, level, smart) {
+        let rule = ActionRollRule::for_skill(builtin_skill, smart);
+        #[cfg(feature = "no_debug")]
+        if matches!(rule, ActionRollRule::Standard) {
+            return self.rng.r127() < level;
+        }
+        if !self.action_roll_gate(actor, builtin_skill, rule, level, smart) {
             return false;
         }
-        match builtin_skill {
+        match rule {
             // 剁手刀：等级为 0 时直接失败且不消耗字节；否则只掷一次 r63。
-            BuiltinActiveSkill::WeaponS11 => {
+            ActionRollRule::WeaponS11 => {
                 let actor_entity = self
                     .entities
                     .get(actor)
@@ -2055,7 +2117,7 @@ impl CombatRuntime {
                 return pass;
             }
             // 死亡笔记：只有写下的目标仍在场时才可能行动；智能模式不消耗字节。
-            BuiltinActiveSkill::WeaponDeathNote => {
+            ActionRollRule::WeaponDeathNote => {
                 let Some(mark) = self.death_note_live_mark(actor) else {
                     return false;
                 };
@@ -2065,7 +2127,7 @@ impl CombatRuntime {
                 return self.rng.c50();
             }
             // 玄月奖杯只注册受击回调，从不进入主动扫描。
-            BuiltinActiveSkill::WeaponXuanYue => return false,
+            ActionRollRule::WeaponXuanYue => return false,
             _ => {}
         }
         #[cfg(not(feature = "no_debug"))]

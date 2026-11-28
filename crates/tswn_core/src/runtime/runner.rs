@@ -748,7 +748,11 @@ impl PreparedRuntimeRunner {
     ///
     /// 返回值已带空 seed 的初始状态；需要特定 seed 时，在推进前调用
     /// [`Self::reset_with_seed`]。不要让多个 worker 共享同一个可变 runner。
-    pub fn new_reusable_runner(&self) -> RuntimeRunner { self.prototype.clone() }
+    pub fn new_reusable_runner(&self) -> RuntimeRunner {
+        let mut runner = self.prototype.clone();
+        runner.runtime.entities.isolate_worker_skill_layouts();
+        runner
+    }
 
     /// 从同一准备模板恢复下一局，保留可复用容器容量并应用本场 seed。
     ///
@@ -761,6 +765,17 @@ impl PreparedRuntimeRunner {
 
     pub fn reset_with_seed_rng(&self, runner: &mut RuntimeRunner, rng: RC4) -> Result<(), CustomRuntimeImportError> {
         self.reset_with_seed_state(runner, |roster, state| roster.refill_seed_state_with_rng(state, rng))
+    }
+
+    /// 将已计算的种子状态装入复用 runner；交换出的视图仍由本批次复用。
+    pub fn reset_with_prepared_seed(
+        &self,
+        runner: &mut RuntimeRunner,
+        seed: &mut PreparedBattleSeed,
+    ) -> Result<(), CustomRuntimeImportError> {
+        self.reset_mutable_battle_state(runner);
+        seed.swap_input_groups(&mut runner.input_groups);
+        seed.apply_swapping_views(&mut runner.runtime).map_err(Into::into)
     }
 
     /// 用回调填充 seed 状态并复位 runner：先恢复可变战斗状态，再套用 seed 与输入组。

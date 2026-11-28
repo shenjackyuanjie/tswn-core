@@ -496,8 +496,39 @@ impl PreparedBattleRoster {
         )
     }
 
+    /// 小队身份串可用于交错准备同一阵容的多局开局。
+    pub fn has_small_team_identity_keys(&self) -> bool { self.small_team_identity_keys.is_some() }
+
+    /// 保持各局的排序和 RC4 状态独立；交错执行等长身份串的反馈混入。
+    pub fn refill_small_team_seed_batch<const N: usize>(&self, states: &mut [PreparedBattleSeed; N], mut rngs: [RC4; N]) {
+        let identities = self.small_team_identity_keys.as_ref().expect("小队 seed 批次需要预拼身份串");
+        let keys: [_; N] = std::array::from_fn(|index| {
+            let order = self.refill_seed_order(&mut states[index], &mut rngs[index]);
+            identities[order].as_bytes()
+        });
+        RC4::mix_key_bytes_interleaved(&mut rngs, keys);
+        for (state, rng) in states.iter_mut().zip(rngs) {
+            self.finish_seed_state(state, rng);
+        }
+    }
+
     /// 复用已完成密钥调度和密钥混入的随机状态，继续计算排序和初始移动点。
     pub fn refill_seed_state_with_rng(&self, state: &mut PreparedBattleSeed, mut rng: RC4) {
+        let identity_order = self.refill_seed_order(state, &mut rng);
+        if let Some(keys) = &self.small_team_identity_keys {
+            rng.encrypt_bytes_no_change(&keys[identity_order]);
+        } else {
+            for group in &state.battle_groups {
+                for player in group {
+                    rng.encrypt_bytes_no_change(&self.id_key_names[*player]);
+                }
+                rng.encrypt_bytes(&mut [0]);
+            }
+        }
+        self.finish_seed_state(state, rng);
+    }
+
+    fn refill_seed_order(&self, state: &mut PreparedBattleSeed, rng: &mut RC4) -> usize {
         state.sort_ints.clear();
         state.sort_ints.resize(self.players.len(), 0);
         for &id in &self.sorted_by_id_name {
@@ -507,7 +538,7 @@ impl PreparedBattleRoster {
         let compare = |left, right| PreparedBattleInit::cmp_player_keys(&state.sort_ints, &self.id_key_names, left, right);
         state.battle_groups.clone_from(&self.input_groups);
         state.round_order.clear();
-        let identity_order = if let [left, right] = state.battle_groups.as_mut_slice()
+        if let [left, right] = state.battle_groups.as_mut_slice()
             && left.len() == right.len()
             && (1..=2).contains(&left.len())
         {
@@ -554,19 +585,10 @@ impl PreparedBattleRoster {
                 .extend(state.battle_groups.iter().flatten().copied().map(PreparedBattleInit::entity_idx));
             state.round_order.sort_by(|left, right| compare(left.0 as usize, right.0 as usize));
             0
-        };
-
-        if let Some(keys) = &self.small_team_identity_keys {
-            rng.encrypt_bytes_no_change(&keys[identity_order]);
-        } else {
-            for group in &state.battle_groups {
-                for player in group {
-                    rng.encrypt_bytes_no_change(&self.id_key_names[*player]);
-                }
-                rng.encrypt_bytes(&mut [0]);
-            }
         }
+    }
 
+    fn finish_seed_state(&self, state: &mut PreparedBattleSeed, mut rng: RC4) {
         state.teams.clear();
         state.teams.resize(self.players.len(), 0);
         for (team, group) in state.battle_groups.iter().enumerate() {

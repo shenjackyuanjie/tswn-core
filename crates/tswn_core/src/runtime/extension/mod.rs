@@ -60,8 +60,8 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
 use crate::runtime::profile::{
-    BuiltinActiveSkill, DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT, DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT,
-    DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT,
+    BuiltinActiveSkill, BuiltinPostDamageSkill, DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT,
+    DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT, DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT,
 };
 
 /// 玩家类型 ID；由注册表按注册次序分配，仅在所属注册表内有效。
@@ -830,12 +830,17 @@ impl ExtensionRegistryBuilder {
         Ok(id)
     }
 
-    /// 冻结注册表：解析内置主动技能映射与蓝图槽 ID。
+    /// 冻结注册表：解析内置技能映射与蓝图槽 ID。
     pub fn build(self) -> ExtensionRegistry {
         let builtin_active_skills = self
             .skills
             .iter()
             .map(|skill| BuiltinActiveSkill::from_export_name(&skill.export_name))
+            .collect();
+        let builtin_post_damage_skills = self
+            .skills
+            .iter()
+            .map(|skill| BuiltinPostDamageSkill::from_export_name(&skill.export_name))
             .collect();
         let seed_blueprint_slots = [
             DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT,
@@ -856,6 +861,7 @@ impl ExtensionRegistryBuilder {
             replay_renderers: self.replay_renderers,
             show_renderers: self.show_renderers,
             builtin_active_skills,
+            builtin_post_damage_skills,
         }
     }
 
@@ -882,6 +888,7 @@ pub struct ExtensionRegistry {
     show_renderers: Vec<ShowRendererSpec>,
     /// 构造期解析好的内置主动技能，战斗热路径按 `SkillId` 直接索引。
     builtin_active_skills: Vec<Option<BuiltinActiveSkill>>,
+    builtin_post_damage_skills: Vec<Option<BuiltinPostDamageSkill>>,
     /// 每局会同步队伍编号的内置蓝图槽；注册表构造后 ID 固定。
     seed_blueprint_slots: [Option<EntitySlotId>; 3],
 }
@@ -913,6 +920,11 @@ impl ExtensionRegistry {
 
     pub fn builtin_active_skill(&self, id: SkillId) -> Option<BuiltinActiveSkill> {
         self.builtin_active_skills.get(id.0 as usize).copied().flatten()
+    }
+
+    /// 按 ID 取得内置受伤技能，免去战斗中比较导出名。
+    pub fn builtin_post_damage_skill(&self, id: SkillId) -> Option<BuiltinPostDamageSkill> {
+        self.builtin_post_damage_skills.get(id.0 as usize).copied().flatten()
     }
 
     /// 全部技能，按注册顺序排列。
