@@ -118,6 +118,25 @@ impl CombatRuntime {
         defend_value: &mut RuntimeDefendValue,
         on_damage: PlainAttackOnDamage,
     ) {
+        let defender = self.entities.get(target).expect("runtime pre-defend target missing");
+        if !defender.runtime.flags.contains(PlayerKindFlags::BOSS)
+            && (defender.runtime.protect_from.is_empty() || defender.runtime.protect_pre_defend_skill_count.is_none())
+            && !defender.template.skills.may_have_enabled_hook(ProcMask::PRE_DEFEND)
+            && !defender.states.hook_mask().intersects(ProcMask::PRE_DEFEND)
+        {
+            return;
+        }
+        self.drain_pre_defend_with_hooks_into(target, updates, defend_value, on_damage);
+    }
+
+    #[inline(never)]
+    fn drain_pre_defend_with_hooks_into(
+        &mut self,
+        target: EntityIdx,
+        updates: &mut RunUpdates,
+        defend_value: &mut RuntimeDefendValue,
+        on_damage: PlainAttackOnDamage,
+    ) {
         self.pcb_letty_shield(target, updates);
         // 来源：KODU16。大妖精支付自己的反射消耗，成功后本次入射威力归零。
         if self.is_rosmontic_boss(target, "daiyousei")
@@ -421,11 +440,33 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
         defend_value: &mut RuntimeDefendValue,
     ) {
+        let defender = self.entities.get(target).expect("runtime 防御钩子目标已消失");
         // 被子衍生物在睡5觉/钻被/猴儿冰冻期间固定 0 伤，不再借用超大护盾。
-        if self.quilt_minion_sleeping(target) {
+        if defender.runtime.quilt_minion.as_ref().is_some_and(|state| state.sleeping) {
             defend_value.set_damage(0);
             return;
         }
+        // 独立的普通护盾不会注册新钩子，直接结算即可。
+        if !defender.runtime.flags.contains(PlayerKindFlags::BOSS)
+            && defender.runtime.squall.is_none()
+            && !defender.states.hook_mask().intersects(ProcMask::POST_DEFEND)
+            && !defender.template.skills.may_have_enabled_hook(ProcMask::POST_DEFEND)
+        {
+            if defender.runtime.shield > 0 {
+                self.apply_runtime_shield_post_defend(target, defend_value);
+            }
+            return;
+        }
+        self.drain_post_defend_with_hooks_into(target, updates, defend_value);
+    }
+
+    #[inline(never)]
+    fn drain_post_defend_with_hooks_into(
+        &mut self,
+        target: EntityIdx,
+        updates: &mut RunUpdates,
+        defend_value: &mut RuntimeDefendValue,
+    ) {
         if self.pcb_defend(target, defend_value, updates) {
             return;
         }

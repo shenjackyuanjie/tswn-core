@@ -58,6 +58,42 @@ pub enum BuiltinActiveSkill {
     RinickYuriControl,
 }
 
+/// 受伤后由内置被动链执行的技能，按注册表的导出名称区分。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuiltinPostDamageSkill {
+    Upgrade,
+    Hide,
+    Counter,
+    Assassinate,
+    SummonShareDamage,
+    WeaponDeathNote,
+    WeaponXuanYue,
+}
+
+impl BuiltinPostDamageSkill {
+    pub fn from_export_name(export_name: &str) -> Option<Self> {
+        Some(match export_name {
+            DEFAULT_CORE_UPGRADE_SKILL_EXPORT => Self::Upgrade,
+            DEFAULT_CORE_HIDE_SKILL_EXPORT => Self::Hide,
+            DEFAULT_CORE_COUNTER_SKILL_EXPORT => Self::Counter,
+            DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT => Self::SummonShareDamage,
+            DEFAULT_CORE_WEAPON_DEATH_NOTE_SKILL_EXPORT => Self::WeaponDeathNote,
+            DEFAULT_CORE_WEAPON_XUAN_YUE_COUNTER_SKILL_EXPORT => Self::WeaponXuanYue,
+            name if name == BuiltinActiveSkill::Assassinate.export_name() => Self::Assassinate,
+            _ => return None,
+        })
+    }
+
+    /// 死亡笔记和影袭排在静态钩子之后，同级按实际登记顺序执行。
+    pub const fn priority(self) -> i32 {
+        match self {
+            Self::WeaponDeathNote => i32::MAX - 1,
+            Self::Assassinate => i32::MAX,
+            _ => 0,
+        }
+    }
+}
+
 /// 火焰精通状态的 legacy 兼容键。
 pub const PLAIN_FIRE_STATE_KEY: u32 = 0;
 /// 冰冻状态的 legacy 兼容键。

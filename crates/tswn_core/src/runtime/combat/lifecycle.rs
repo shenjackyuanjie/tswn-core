@@ -453,9 +453,9 @@ impl CombatRuntime {
         let export_name = self
             .registry
             .skill(entry.skill_id)
-            .map(|skill| skill.export_name.clone())
+            .map(|skill| skill.export_name.as_str())
             .unwrap_or_default();
-        let phase = match export_name.as_str() {
+        let phase = match export_name {
             DEFAULT_CORE_REFLECT_SKILL_EXPORT => Some(crate::runtime::DamageDecisionPhase::Reflect),
             DEFAULT_CORE_DEFEND_SKILL_EXPORT => Some(crate::runtime::DamageDecisionPhase::Defend),
             _ => None,
@@ -463,7 +463,7 @@ impl CombatRuntime {
         let reflect_caster_active = export_name != DEFAULT_CORE_REFLECT_SKILL_EXPORT
             || self.entities.get(defend_value.caster()).is_some_and(|entity| entity.runtime.active());
         let force_passive =
-            if self.control.passive_decision_mode() && passive_decision_skill(&export_name) && reflect_caster_active {
+            if self.control.passive_decision_mode() && passive_decision_skill(export_name) && reflect_caster_active {
                 let Some(decision) = self.control.next_passive_decision() else {
                     let level = self
                         .entities
@@ -472,10 +472,10 @@ impl CombatRuntime {
                         .unwrap_or(0);
                     let request = PassiveRequest {
                         initiator: Some(defend_value.caster().0 as PlrId),
-                        mp_costs: self.passive_mp_costs(entry.owner, &export_name, false),
+                        mp_costs: self.passive_mp_costs(entry.owner, export_name, false),
                         actor: entry.owner.0 as PlrId,
                         target: Some(defend_value.target().0 as PlrId),
-                        skill: export_name,
+                        skill: export_name.to_owned(),
                         level,
                         candidates: Vec::new(),
                         unavoidable: false,
