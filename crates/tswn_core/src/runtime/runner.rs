@@ -763,6 +763,17 @@ impl PreparedRuntimeRunner {
         self.reset_with_seed_state(runner, |roster, state| roster.refill_seed_state_with_rng(state, rng))
     }
 
+    /// 将已计算的种子状态装入复用 runner；交换出的视图仍由本批次复用。
+    pub fn reset_with_prepared_seed(
+        &self,
+        runner: &mut RuntimeRunner,
+        seed: &mut PreparedBattleSeed,
+    ) -> Result<(), CustomRuntimeImportError> {
+        self.reset_mutable_battle_state(runner);
+        seed.swap_input_groups(&mut runner.input_groups);
+        seed.apply_swapping_views(&mut runner.runtime).map_err(Into::into)
+    }
+
     /// 用回调填充 seed 状态并复位 runner：先恢复可变战斗状态，再套用 seed 与输入组。
     fn reset_with_seed_state(
         &self,
