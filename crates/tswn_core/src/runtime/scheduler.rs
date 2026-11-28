@@ -261,7 +261,7 @@ impl PhaseScheduler {
     ) -> Option<ActionPlan> {
         use std::ops::ControlFlow;
 
-        let (actor, should_act, ice_released) = world.advance_round_ticks(max_ticks, |actor| {
+        let (actor, should_act, ice_released, team, amount) = world.advance_round_ticks(max_ticks, |actor| {
             let entity = entities.get_mut(actor).filter(|entity| entity.runtime.alive)?;
             let roll = i32::from(randomer.next_u8() & 3);
             let (step, ice_released) =
@@ -277,7 +277,13 @@ impl PhaseScheduler {
                 *points -= MOVE_POINT_THRESHOLD;
             }
             if should_act || ice_released {
-                Some(ControlFlow::Break((actor, should_act, ice_released)))
+                Some(ControlFlow::Break((
+                    actor,
+                    should_act,
+                    ice_released,
+                    entity.runtime.team,
+                    entity.template.attack,
+                )))
             } else {
                 Some(ControlFlow::Continue(()))
             }
@@ -288,8 +294,7 @@ impl PhaseScheduler {
         if !should_act {
             return None;
         }
-        let target = world.first_alive_enemy(actor, entities)?;
-        let amount = entities.get(actor).map_or(0, |entity| entity.template.attack);
+        let target = world.first_alive_enemy_from_team(team, entities)?;
         Some(ActionPlan { actor, target, amount })
     }
 

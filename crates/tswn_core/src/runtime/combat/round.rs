@@ -460,14 +460,20 @@ impl CombatRuntime {
         }
         let mut skill_plans = self.scheduler.skill_post_action_plans(skills, &self.registry, owner);
         self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, &skill_plans.early, updates);
-        let skills_after_early = &self
+        let owner_entity = self
             .entities
             .get(owner)
-            .unwrap_or_else(|| panic!("unknown runtime post-action owner entity: {}", owner.0))
-            .template
-            .skills;
+            .unwrap_or_else(|| panic!("unknown runtime post-action owner entity: {}", owner.0));
+        let skills_after_early = &owner_entity.template.skills;
         if skills_after_early.hook_generation() != skill_plans.generation {
             skill_plans = self.scheduler.skill_post_action_plans(skills_after_early, &self.registry, owner);
+        }
+        // 早段技能可能登记状态或修改技能。使用执行后的视图判断后续阶段是否为空。
+        if skill_plans.deferred.is_empty()
+            && skill_plans.late.is_empty()
+            && !owner_entity.states.hook_mask().intersects(ProcMask::POST_ACTION)
+        {
+            return;
         }
 
         enum PostActionHook {
@@ -476,7 +482,6 @@ impl CombatRuntime {
         }
 
         let state_plan = self.scheduler.state_hook_plan(&self.entities, owner, ProcMask::POST_ACTION);
-        let owner_entity = self.entities.get(owner).expect("runtime post-action owner missing");
         let charge = if owner_entity.runtime.charge.post_action_active {
             self.registry.skill_id_by_export_name(BuiltinActiveSkill::Charge.export_name())
         } else {

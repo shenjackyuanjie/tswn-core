@@ -280,7 +280,11 @@ impl WorldArena {
 
     /// 返回给定实体在扁平存活列表中遇到的第一个敌对队伍存活实体。
     pub fn first_alive_enemy(&self, actor: EntityIdx, entities: &EntityArena) -> Option<EntityIdx> {
-        let actor_team = entities.get(actor)?.runtime.team;
+        self.first_alive_enemy_from_team(entities.get(actor)?.runtime.team, entities)
+    }
+
+    /// 行动者已读出队伍时，直接按同一扁平次序查找敌人。
+    pub fn first_alive_enemy_from_team(&self, actor_team: usize, entities: &EntityArena) -> Option<EntityIdx> {
         self.flat_alive
             .iter()
             .copied()
