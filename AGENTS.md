@@ -57,6 +57,7 @@ Co-authored-by: <模型标识> <模型标识@厂商域名>
 | Claude Opus | `claude-opus-4-7 <claude-opus-4-7@anthropic.com>` |
 | DeepSeek Flash | `deepseek-flash <deepseek-flash@deepseek.com>` |
 | Step 5 Preview | `step-5-preview <step-5-preview@stepfun.com>` |
+| Gemini 4 Neon | `gemini-4-neon <gemini-4-neon@google.com>` |
 
 署名要落到**具体模型**上。`Copilot`、`Codex`、`Claude Code` 这类产品名和代理名都不算——它们只是入口，换个后端就换了脑子，挂上去说不清到底是谁在干活。历史上 `Codex GPT-5.5` 和 `GPT-5.5` 分裂成两条就是这么来的。被它们调起来跑的那个具体模型才该署名；认不出底层模型时按厂商-模型写，别拿产品名顶替。
 
